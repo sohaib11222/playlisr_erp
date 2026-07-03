@@ -876,6 +876,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/employee-checklist', 'EmployeeChecklistController@index')->name('employee-checklist.index');
     Route::post('/employee-checklist', 'EmployeeChecklistController@complete')->name('employee-checklist.complete');
 
+    // Phone playbook — how to answer calls, triage them, and locate a record
+    // across both stores. Read-only reference styled to match /pos/create.
+    Route::get('/phone-playbook', 'PhonePlaybookController@index')->name('phone-playbook.index');
+
     // Fatteen's daily checklist. Recurring tasks that reset each day; auto-saves
     // per checkbox. Admin + Fatteen only — gated in the controller. JSON-backed
     // (storage/app/daily_checklist.json).
