@@ -1471,6 +1471,7 @@
                                     style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
                                 <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Set date</button>
                             </form>
+                            @if($can_fix_payment_method ?? false)
                             <form method="POST" action="{{ route('pos.overridePaymentMethod') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Override payment method on #{{ $sale->invoice_no }}? Old method will be snapshotted for undo.');">
                                 @csrf
                                 <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
@@ -1483,6 +1484,9 @@
                                     style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
                                 <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Set method</button>
                             </form>
+                            @else
+                                <div style="font-size:11px; color:#8A7C6A;">Payment method (cash↔card) can only be changed by Sarah, Jon, or Fatteen.</div>
+                            @endif
                             <div style="font-size:11px; color:#8A7C6A;">Currently: {{ $saleDtLocal->format('M j · g:i a') }} · {{ $currentMethod ? strtoupper($currentMethod) : ($methods->count() > 1 ? 'split' : '—') }}</div>
                         </div>
                     </details>

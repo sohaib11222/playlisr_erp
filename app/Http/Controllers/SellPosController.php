@@ -1794,6 +1794,9 @@ class SellPosController extends Controller
         $employee_breakdown_by_day = [];
         $reconciliations = [];
         $can_see_reconciliation = $this->businessUtil->is_admin(auth()->user());
+        // Sarah 2026-07-03: the tender fix (cash↔card) is locked to Sarah /
+        // Jon / Fatteen even among admins — it rewrites paid payment rows.
+        $can_fix_payment_method = self::canFixPaymentMethod();
         if ($can_see_reconciliation && !$is_month_mode) {
             try {
                 $card_methods = [
@@ -1945,7 +1948,7 @@ class SellPosController extends Controller
             \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'web_paid_ids', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'web_paid_ids', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation', 'can_fix_payment_method'));
     }
 
     /**
@@ -2692,9 +2695,33 @@ class SellPosController extends Controller
      * next to a reconciliation row. The drawer-side accounting picks up
      * the new method on the next cashier shift roll-up.
      */
+    /**
+     * Who may flip a sale's tender (cash↔card) on the recent feed.
+     * Sarah 2026-07-03: narrower than the admin reconciliation view —
+     * only Sarah, Jon, or Fatteen, because it rewrites paid payment
+     * rows and nulls card refs. Fatteen's ERP account is "Nerdy
+     * Solutions"; Jon is "Jonathan Hedvat".
+     */
+    public static function canFixPaymentMethod(): bool
+    {
+        $u = auth()->user();
+        if (!$u) {
+            return false;
+        }
+        $first = strtolower(trim((string) $u->first_name));
+        $full  = strtolower(trim($u->first_name . ' ' . $u->last_name));
+        $email = strtolower(trim((string) ($u->email ?? '')));
+
+        $isFatteen = strpos($full, 'fatteen') !== false || strpos($full, 'nerdy') !== false;
+        $isJon     = $first === 'jonathan' || $first === 'jon';
+        $isSarah   = $first === 'sarah' || $email === 'sarah@nivessa.com';
+
+        return $isFatteen || $isJon || $isSarah;
+    }
+
     public function overridePaymentMethod(Request $request)
     {
-        if (!auth()->user()->can('sell.update')) {
+        if (!self::canFixPaymentMethod()) {
             abort(403, 'Unauthorized action.');
         }
 
