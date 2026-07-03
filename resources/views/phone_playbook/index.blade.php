@@ -226,7 +226,7 @@
             <div class="label"><span class="chan call">Call</span> Standard greeting</div>
             <p class="say">Thanks for calling Nivessa Records! How can I help you?</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Opening a text back</div>
-            <p class="say">Hey! Thanks for reaching out to Nivessa Records &mdash; happy to help. What are you looking for?</p>
+            <p class="say">Hi! Thanks for reaching out to Nivessa Records. What are you looking for?</p>
         </div>
 
         <div class="callout"><strong>If you don't know the answer, never guess.</strong> Say: &ldquo;Great question &mdash; let me double-check and get right back to you,&rdquo; take their name and number, and make sure someone follows up. Nothing gets ignored.</div>
