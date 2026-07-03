@@ -345,6 +345,11 @@
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
                 <span class="say">Yes, you can book the space at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
             </div>
+            <div class="qa">
+                <p class="q">&ldquo;I made a song &mdash; any thoughts? Is it worth publishing?&rdquo;</p>
+                <span class="say">Love that you're making music! We're a record shop, not a label, so we don't review or publish tracks &mdash; but we'd love to have you play. You can book a show at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>, and if you press your own record we'd be glad to carry it.</span>
+                <p class="note">Be encouraging and warm &mdash; we're not A&amp;R, so point them toward performing.</p>
+            </div>
         </div>
 
         <div class="card" id="hiring" style="margin-top:14px">
