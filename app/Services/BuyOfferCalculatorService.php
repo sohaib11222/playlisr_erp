@@ -101,6 +101,15 @@ class BuyOfferCalculatorService
                 'receiver' => ['label' => 'Receiver', 'mode' => 'bulk_fixed', 'unit_rate' => 20.00, 'no_grading' => true],
                 'dvd_player' => ['label' => 'DVD Player', 'mode' => 'bulk_fixed', 'unit_rate' => 5.00, 'no_grading' => true],
                 'camcorder_digital' => ['label' => 'Digital Video Camcorder', 'mode' => 'bulk_fixed', 'unit_rate' => 10.00, 'no_grading' => true],
+                // Sarah 2026-07-02: cameras are priced off eBay value, not a flat
+                // rate — the cashier types the eBay value into the median-price
+                // column and we pay a % of it: 15% under $30, 20% at $30+. The
+                // 50/75/95% offer ladder then negotiates down from there, so the
+                // final offer lands at ~15% / ~20% of value.
+                'camera' => ['label' => 'Camera', 'mode' => 'value_percent', 'no_grading' => true, 'value_tiers' => [
+                    ['under' => 30, 'percent' => 0.15],
+                    ['under' => null, 'percent' => 0.20],
+                ]],
                 'cassette_player' => ['label' => 'Cassette Player', 'mode' => 'bulk_fixed', 'unit_rate' => 5.00, 'no_grading' => true],
                 'cd_player' => ['label' => 'CD Player', 'mode' => 'bulk_fixed', 'unit_rate' => 6.00, 'no_grading' => true],
                 'flatscreen_tv' => ['label' => 'Flatscreen TV', 'mode' => 'bulk_fixed', 'unit_rate' => 13.00, 'no_grading' => true],
@@ -126,6 +135,27 @@ class BuyOfferCalculatorService
     public function getGradesForDropdown()
     {
         return array_keys($this->getRules()['grade_multipliers']);
+    }
+
+    /**
+     * Pick the pay-out percentage for a value_percent item (e.g. cameras) from
+     * its tier table. Tiers are checked in order; the first whose `under`
+     * threshold the value falls below wins, and a null `under` is the catch-all
+     * top tier.
+     *
+     * @param  float|int|string  $value
+     * @param  array<int, array{under: float|int|null, percent: float}>  $tiers
+     */
+    protected function percentForValue($value, array $tiers)
+    {
+        $value = (float) $value;
+        foreach ($tiers as $tier) {
+            $under = $tier['under'] ?? null;
+            if ($under === null || $value < (float) $under) {
+                return (float) ($tier['percent'] ?? 0);
+            }
+        }
+        return 0.0;
     }
 
     public function calculate(array $lines, array $offerInputs = [])
@@ -155,6 +185,11 @@ class BuyOfferCalculatorService
 
             if ($cfg['mode'] === 'individual_discogs') {
                 $cashLine = $quantity * $discogsMedian * $gradeMultiplier * $standardMultiplier;
+            } elseif ($cfg['mode'] === 'value_percent') {
+                // Value-based: pay a % of the eBay value the cashier entered into
+                // the median-price column. The % steps by value (see value_tiers).
+                $standardMultiplier = $this->percentForValue($discogsMedian, $cfg['value_tiers'] ?? []);
+                $cashLine = $quantity * $discogsMedian * $standardMultiplier;
             } else {
                 $cashLine = $quantity * $unitRate * $gradeMultiplier;
             }
@@ -229,7 +264,7 @@ class BuyOfferCalculatorService
             'g_plus_below' => 0.0,
         ];
 
-        $equipmentKeys = ['receiver', 'dvd_player', 'camcorder_digital', 'cassette_player', 'cd_player', 'flatscreen_tv'];
+        $equipmentKeys = ['receiver', 'dvd_player', 'camcorder_digital', 'camera', 'cassette_player', 'cd_player', 'flatscreen_tv'];
         $apparelKeys = ['hat_cap', 'hat_fitted', 'tshirt', 'tanktop', 'sweatshirt'];
         $printKeys = ['magazine', 'book', 'coffee_table_book'];
         $toyKeys = ['mask', 'furry_doll', 'funko_pop', 'board_game'];
