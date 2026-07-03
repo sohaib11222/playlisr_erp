@@ -163,7 +163,51 @@ class ListingCommissionController extends Controller
         $history = collect($paid)->sortByDesc('marked_at')->values();
         $salesHistory = collect($this->loadSalesPayouts())->sortByDesc('marked_at')->values();
 
+        // Sales-bonus-by-day lookup: pick ONE day (default today) plus an optional
+        // person, to see just that day's sales-goal bonus per employee. Read-only —
+        // reuses the exact leaderboard math (salesBonusByUser) scoped to a single
+        // day, and never touches the cumulative owed/payout ledger above. Answers
+        // "what's Andy's sales bonus for today" without paging through the roll-up.
+        $bonusDay = $request->input('day');
+        $bonusDay = (is_string($bonusDay) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $bonusDay))
+            ? $bonusDay : now()->toDateString();
+        $bonusPerson = trim((string) $request->input('person', ''));
+
+        $dayRows = collect();
+        try {
+            $daily = app(\App\Http\Controllers\ReportController::class)
+                ->salesBonusByUser($businessId, $bonusDay, $bonusDay);
+            $rows = [];
+            foreach ($daily as $uid => $s) {
+                $uid = (int) $uid;
+                $u = DB::table('users')->where('id', $uid)->first();
+                $name = $u
+                    ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid)))
+                    : ('User #' . $uid);
+                $rows[] = (object) [
+                    'user_id'  => $uid,
+                    'name'     => $name,
+                    'goal'     => (float) $s->goal,
+                    'achieved' => (float) $s->achieved,
+                    'bonus'    => (float) $s->bonus,
+                ];
+            }
+            $dayRows = collect($rows);
+        } catch (\Throwable $e) {
+            \Log::warning('daily sales-bonus lookup failed: ' . $e->getMessage());
+        }
+        if ($bonusPerson !== '') {
+            $needle = strtolower($bonusPerson);
+            $dayRows = $dayRows->filter(function ($r) use ($needle) {
+                return strpos(strtolower($r->name), $needle) !== false;
+            })->values();
+        }
+        $dayRows = $dayRows->sortByDesc('bonus')->values();
+
         return view('admin.listing_commissions', [
+            'bonus_day'    => $bonusDay,
+            'bonus_person' => $bonusPerson,
+            'day_rows'     => $dayRows,
             'from'        => $from,
             'rate_pct'    => self::RATE * 100,
             'people'      => $people,

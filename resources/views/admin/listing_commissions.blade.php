@@ -122,6 +122,51 @@
 
 <div class="row">
     <div class="col-md-12">
+        @component('components.widget', ['title' => 'Sales bonus by day'])
+            <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline" style="margin-bottom:12px;">
+                <label style="margin-right:6px;">Day</label>
+                <input type="date" name="day" value="{{ $bonus_day }}" class="form-control input-sm" max="{{ \Carbon::now()->toDateString() }}" style="margin-right:12px;">
+                <label style="margin-right:6px;">Person</label>
+                <input type="text" name="person" value="{{ $bonus_person }}" placeholder="e.g. Andy" class="form-control input-sm" style="margin-right:12px;">
+                <button type="submit" class="btn btn-primary btn-sm">Show</button>
+                @if ($bonus_person !== '' || $bonus_day !== \Carbon::now()->toDateString())
+                    <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-default btn-sm" style="margin-left:6px;">Reset to today</a>
+                @endif
+            </form>
+            <p class="text-muted" style="margin-bottom:10px;">
+                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('D, M j, Y') }}</strong>@if($bonus_person !== ''), filtered to "<strong>{{ $bonus_person }}</strong>"@endif.
+                Same math as the Employee Leaderboard, scoped to that single day.
+            </p>
+            @if ($day_rows->isEmpty())
+                <p class="text-muted">No sales bonus for that day@if($bonus_person !== '') matching "{{ $bonus_person }}"@endif.</p>
+            @else
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Person</th>
+                            <th style="text-align:right;" title="Sales rung that day (Whatnot excluded)">Sales achieved</th>
+                            <th style="text-align:right;" title="Sales target for that day">Sales goal</th>
+                            <th style="text-align:right;" title="Sales-goal bonus earned that day">Bonus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($day_rows as $r)
+                            <tr>
+                                <td><a href="{{ url('/my-earnings') }}?user_id={{ $r->user_id }}" target="_blank">{{ $r->name }}</a></td>
+                                <td style="text-align:right;">@if($r->achieved > 0)${{ number_format($r->achieved, 0) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;"><span class="text-muted">@if($r->goal > 0)${{ number_format($r->goal, 0) }}@else — @endif</span></td>
+                                <td style="text-align:right;">@if($r->bonus > 0)<strong>${{ number_format($r->bonus, 2) }}</strong>@else <span class="text-muted">$0.00</span>@endif</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        @endcomponent
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — listing + sales commission'])
             @if ($people->isEmpty())
                 <p class="text-muted">No commission to show yet.</p>
