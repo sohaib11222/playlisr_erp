@@ -1409,6 +1409,27 @@ class SellPosController extends Controller
         foreach ($sales as $sale) {
             $clover_expected_cents[$sale->id] = max(0, $toCentsSummary($sale->final_total) - (int) ($advCentsView[(int) $sale->id] ?? 0));
         }
+
+        // Sarah 2026-07-02: nivessa.com web orders that Nick rings into POS to
+        // decrement inventory. They're paid online (Stripe on the website),
+        // never on the Clover terminal — so the absence of a Clover pair is
+        // EXPECTED, not a missed cashier entry. Left unflagged they show as
+        // "⚠ MISSING / not in Clover" and throw off the reconciliation.
+        // Detect by the explicit 'web' channel tag, the "Website Customer"
+        // contact, or a "Website order …" note, and exclude from the
+        // no_clover / mismatch counts + render them as "paid online".
+        $web_paid_ids = [];
+        foreach ($sales as $sale) {
+            $chan  = strtolower(trim((string) ($sale->channel ?? '')));
+            $cname = strtolower(trim((string) optional($sale->contact)->name));
+            $note  = strtolower(trim((string) ($sale->staff_note ?? $sale->additional_notes ?? '')));
+            if ($chan === 'web'
+                || $cname === 'website customer'
+                || strpos($note, 'website order') === 0
+            ) {
+                $web_paid_ids[$sale->id] = true;
+            }
+        }
         // A paired Clover swipe reconciles if the expected (card) amount is
         // within tolerance of EITHER its gross OR its net-of-tax value — HW is
         // pre-tax (net), Pico is gross. Shared with the filter + view below.
@@ -1426,6 +1447,8 @@ class SellPosController extends Controller
         $no_clover_count = 0;
         foreach ($sales as $sale) {
             if (isset($clover_reconciled[$sale->id])) continue;
+            // Web orders are paid online, never on Clover — not a gap.
+            if (isset($web_paid_ids[$sale->id])) continue;
             $info = $clover_by_transaction[$sale->id] ?? null;
             $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
             if ($info === null) {
@@ -1526,15 +1549,17 @@ class SellPosController extends Controller
             // ERP rows; the view will render the unclaimed Clover list.
             $sales = collect();
         } elseif ($discrepancy !== '') {
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents, $clover_reconciled) {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents, $clover_reconciled, $web_paid_ids) {
                 // Hand-acknowledged rows never appear under a discrepancy filter.
                 if (isset($clover_reconciled[$sale->id])) return false;
+                // Web orders are paid online, never on Clover — never a discrepancy.
+                $isWeb = isset($web_paid_ids[$sale->id]);
                 $info = $clover_by_transaction[$sale->id] ?? null;
                 $expectedCents = $clover_expected_cents[$sale->id] ?? $toCentsSummary($sale->final_total);
                 // Fully store-credit-covered sales have nothing due on Clover —
                 // don't treat their (expected) absence as a no_clover gap.
-                $isNoClover = $info === null && $expectedCents > 0;
-                $isMismatch = $info !== null && $cloverGapCents($info, $expectedCents) > 5;
+                $isNoClover = !$isWeb && $info === null && $expectedCents > 0;
+                $isMismatch = !$isWeb && $info !== null && $cloverGapCents($info, $expectedCents) > 5;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -1853,7 +1878,7 @@ class SellPosController extends Controller
             \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'web_paid_ids', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation'));
     }
 
     /**

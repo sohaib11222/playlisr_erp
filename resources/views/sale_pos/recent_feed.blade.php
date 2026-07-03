@@ -1366,6 +1366,13 @@
                                      card, so there's nothing to enter on Clover. --}}
                                 <div class="amt" style="color:#8A7C6A; font-weight:700;">—</div>
                                 <div class="sub" style="color:#8A7C6A; font-weight:600;">store credit · none due</div>
+                            @elseif(!empty($web_paid_ids[$sale->id]))
+                                {{-- nivessa.com web order rung into POS only to
+                                     decrement inventory. Paid online (Stripe),
+                                     never on Clover — so no terminal charge is
+                                     expected. Not a missed cashier entry. --}}
+                                <div class="amt" style="color:#8A7C6A; font-weight:700;">—</div>
+                                <div class="sub" style="color:#3B6E47; font-weight:600;">website · paid online</div>
                             @else
                                 {{-- Cashiers ring EVERY sale on Clover at
                                      Nivessa — cash + card. Any ERP sale
@@ -1413,7 +1420,10 @@
                      the default view. Admin-only. --}}
                 @php
                     $isReconciled     = isset($clover_reconciled) && isset($clover_reconciled[$sale->id]);
-                    $isNoCloverRow    = !$cloverInfo && $expectedCents > 0;
+                    $isWebPaidRow     = !empty($web_paid_ids[$sale->id]);
+                    // Web orders are paid online — never a Clover discrepancy,
+                    // so they never nag for a "Mark reconciled" acknowledgement.
+                    $isNoCloverRow    = !$isWebPaidRow && !$cloverInfo && $expectedCents > 0;
                     $isMismatchRow    = $cloverInfo && $cloverMismatch;
                     $isDiscrepancyRow = $isNoCloverRow || $isMismatchRow;
                 @endphp
