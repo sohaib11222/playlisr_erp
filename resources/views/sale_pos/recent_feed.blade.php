@@ -287,8 +287,11 @@
     @endif
 
     {{-- Daily reconciliation guide — for whoever is reconciling the feed
-         (Fatteen). Collapsible so it stays out of the way once known.
-         Goal: every sale ends up in BOTH ERP (inventory) and Clover (money). --}}
+         (Fatteen / admins). Gated to the same audience as the per-cashier
+         reconciliation below: it names theft signals, so cashiers working
+         the feed must not see it. Collapsible so it stays out of the way
+         once known. Goal: every sale in BOTH ERP (inventory) and Clover (money). --}}
+    @if($can_see_reconciliation ?? false)
     <details style="margin-bottom:12px; background:#FFFBF2; border:1px solid #E8DCB8; border-radius:10px;">
         <summary style="cursor:pointer; padding:12px 16px; font-size:14px; font-weight:700; color:#1F1B16; list-style:none;">
             How to reconcile the feed — daily guide
@@ -348,6 +351,7 @@
             </p>
         </div>
     </details>
+    @endif
 
     {{-- Date navigation: prev / today / next day + Sync Now button in day
          mode, or prev / this-month / next month in month mode. Always
