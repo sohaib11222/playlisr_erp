@@ -220,7 +220,7 @@
     {{-- 1 --}}
     <section id="tone">
         <div class="sec-head"><span class="sec-num">1</span><h2>How to talk on the phone</h2></div>
-        <p class="lede">Short, warm, top customer service. Sound glad they called and genuinely happy to help. Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> whenever it answers their question.</p>
+        <p class="lede">Short, warm, top customer service. Sound glad they called and genuinely happy to help. Write like you talk &mdash; natural, easygoing American English, the way you'd text a friend. Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> whenever it answers their question.</p>
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> Standard greeting</div>
@@ -243,7 +243,15 @@
             <div class="cell no">We don't have it. (and stop)</div>
             <div class="cell yes">Looking this up for you!</div>
             <div class="cell no">Hold on. (silence)</div>
+            <div class="cell yes">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in?</div>
+            <div class="cell no">We will be selling them now, to whom who preorder.</div>
+            <div class="cell yes">Awesome &mdash; see you today!</div>
+            <div class="cell no">Great, most welcome.</div>
+            <div class="cell yes">One sec, checking our stock now!</div>
+            <div class="cell no">Let us check and we will get back to you.</div>
         </div>
+
+        <div class="callout"><strong>Talk like a local.</strong> Keep it natural and casual &mdash; the way you'd text a friend. Skip stiff or translated-sounding phrases like &ldquo;most welcome&rdquo; or &ldquo;to whom who preorder.&rdquo; Read it back before you send: if it doesn't sound like everyday American English, rewrite it.</div>
 
         <div class="callout"><strong>Never call a customer &ldquo;buddy&rdquo; or &ldquo;bro.&rdquo;</strong> Use their name if they gave it, or just speak to them directly. Please, thank you, and no problem go a long way.</div>
     </section>
@@ -274,6 +282,8 @@
             <p class="say">Pulling it up in our system right now! It's $[price], UPC [number] &mdash; and yes, I can have it moved to the Hollywood store for you. Want me to set it aside there?</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> They were told it's set aside for them</div>
             <p class="say">You're all set &mdash; it's tucked to the side with your name on it. See you at open!</p>
+            <div class="label" style="margin-top:14px"><span class="chan text">Text</span> New release tonight / preorders</div>
+            <p class="say">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in? If so, you're all set to grab it today.</p>
         </div>
 
         <div class="callout"><strong>Look it up before you promise.</strong> For price, UPC, or &ldquo;do you have it,&rdquo; open the ERP first and tell them you're checking &mdash; never &ldquo;we'll check and get back to you.&rdquo; Give them the real number.</div>
