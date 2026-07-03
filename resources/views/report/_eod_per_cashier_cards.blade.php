@@ -1,4 +1,4 @@
-{{-- Per-cashier daily reconciliation cards.
+{{-- Per-cashier daily reconciliation — one compact ROW per cashier.
 
      Shared between /reports/clover-eod-reconciliation and
      /pos/recent-feed (Sarah 2026-05-13: moved the daily-cash flow onto
@@ -6,37 +6,66 @@
      are watched). Both views compute $employee_breakdown_by_day +
      $reconciliations the same way, then @include this partial.
 
-     One card per (cashier, day, location). Three plain sections answer
-     three questions:
-       · WHAT THEY SOLD — cash + card, with the totals broken out
-       · CARD CHECK — Clover settled vs ERP card sales for that
-         cashier (the theft signal: a card swiped on Clover but
-         never rung into the POS = pocketed)
-       · CASH DRAWER — opening + cash sales − cash buys = expected,
-         vs what the cashier counted at close (the wrong-change /
-         skim signal)
-     Each card has its own ✓ Reconciled toggle + notes so each cashier
-     can be signed off independently.
+     Sarah 2026-07-03: collapsed from full cards to one line per
+     cashier. The always-visible row carries the money (ERP / Clover /
+     diff / drawer) plus a FLAGS cluster that calls out anything weird —
+     e.g. a safe drop logged at a store with no safe (Pico). Click the
+     row to expand the full breakdown, notes and ✓ sign-off.
 
-     POST handlers for the checkbox / notes / recat buttons live on
-     the existing /reports/clover-eod/* routes; their JS is duplicated
-     into both views verbatim so the partial stays markup-only. --}}
+     JS hooks preserved verbatim so the existing /reports/clover-eod/*
+     handlers keep working: the outer element is still .eod-loc-card with
+     data-day / data-location-id / data-employee-key, and it still holds
+     .eod-recon-checkbox, .eod-recon-label, .eod-recon-notes,
+     .eod-recon-notes-status and .cc-recat-btn / .cc-recat-row. --}}
 @if(!empty($employee_breakdown_by_day))
     <style>
         .cc-day-block { margin-bottom: 22px; }
         .cc-day-head { font-size:13px; color:#6b7280; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin:6px 0 10px; }
-        .cc-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap:14px; }
-        .cc-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
-        .cc-card.flag { border-color:#fecaca; background:#fff5f5; }
-        .cc-card.warn { border-color:#fde68a; background:#fffbeb; }
-        .cc-card.ok   { border-color:#bbf7d0; }
-        .cc-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e5e7eb; }
-        .cc-title { font-size:16px; font-weight:800; color:#111827; }
-        .cc-sub { font-size:11px; color:#6b7280; margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+        /* Stacked list of one-line rows (was a card grid). */
+        .cc-grid { display:flex; flex-direction:column; gap:8px; }
+
+        /* Each cashier is a <details>; the <summary> is the one line. */
+        .cc-card { background:#fff; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
+        .cc-card.flag { border-color:#fecaca; }
+        .cc-card.warn { border-color:#fde68a; }
+        .cc-card.ok   { border-color:#e5e7eb; }
+        .cc-card[open] { box-shadow:0 1px 3px rgba(0,0,0,.06); }
+
+        .cc-row { list-style:none; cursor:pointer; display:flex; align-items:center; flex-wrap:wrap;
+                  gap:8px 14px; padding:9px 14px; font-size:13px; font-variant-numeric: tabular-nums; }
+        .cc-row::-webkit-details-marker { display:none; }
+        .cc-card.flag > .cc-row { background:#fff5f5; }
+        .cc-card.warn > .cc-row { background:#fffbeb; }
+        .cc-caret { color:#9ca3af; font-size:11px; transition:transform .15s; }
+        .cc-card[open] .cc-caret { transform:rotate(90deg); }
+
+        .cc-row-name { font-weight:800; color:#111827; font-size:14px; }
+        .cc-row-store { color:#6b7280; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+        .cc-metric { display:inline-flex; align-items:baseline; gap:5px; color:#6b7280; font-size:11px;
+                     text-transform:uppercase; letter-spacing:.03em; }
+        .cc-metric b { font-size:13px; font-weight:700; color:#111827; letter-spacing:0; }
+        .cc-metric b.ok  { color:#166534; }
+        .cc-metric b.bad { color:#b91c1c; }
+        .cc-spacer { flex:1 1 auto; }
+
+        /* Reconciled rows read muted (JS toggles .cc-collapsed on sign-off). */
+        .cc-card.cc-collapsed { opacity:.65; }
+
+        /* Flags cluster — the "anything weird" callouts. */
+        .cc-flags { display:inline-flex; flex-wrap:wrap; gap:5px; }
+        .cc-flag { display:inline-block; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+        .cc-flag.ok { background:#dcfce7; color:#166534; }
+        .cc-flag.warn { background:#fef3c7; color:#92400e; }
+        .cc-flag.bad { background:#fee2e2; color:#991b1b; }
+        .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
+
+        /* Expanded detail body. */
+        .cc-body { padding:2px 16px 14px; border-top:1px solid #f0f0f0; }
         .cc-section { margin:10px 0 6px; }
         .cc-sec-h { font-size:10px; font-weight:800; color:#374151; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
         .cc-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; padding:2px 0; font-variant-numeric: tabular-nums; }
         .cc-line.sum { border-top:1px solid #d1d5db; padding-top:5px; margin-top:4px; font-weight:700; }
+        .cc-line.bad-line { color:#b91c1c; font-weight:700; }
         .cc-label { color:#374151; }
         .cc-label.minor { color:#6b7280; font-size:12px; }
         .cc-val { font-weight:600; color:#111827; }
@@ -44,33 +73,7 @@
         .cc-val.ok { color:#166534; }
         .cc-val.warn { color:#b45309; }
         .cc-val.bad  { color:#b91c1c; }
-        .cc-flag { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-        .cc-flag.ok { background:#dcfce7; color:#166534; }
-        .cc-flag.warn { background:#fef3c7; color:#92400e; }
-        .cc-flag.bad { background:#fee2e2; color:#991b1b; }
-        .cc-flag.muted { background:#f3f4f6; color:#6b7280; }
         .cc-foot { margin-top:10px; padding-top:10px; border-top:1px solid #e5e7eb; }
-
-        /* Collapsed reconciled cards: thin horizontal strip with the
-           Clover total dominant. Sarah 2026-05-14: collapsed state was
-           the same height as expanded — wanted long rectangles with the
-           dollar amount as the focal point, not a half-empty card. */
-        .cc-card.cc-collapsed { padding:6px 14px; cursor:pointer; opacity:.8; background:#f9fafb; grid-column:span 1; }
-        .cc-card.cc-collapsed.flag,
-        .cc-card.cc-collapsed.warn { background:#f9fafb; border-color:#e5e7eb; }
-        .cc-card.cc-collapsed .cc-head { margin-bottom:0; padding-bottom:0; border-bottom:none; align-items:center; flex-wrap:wrap; gap:14px; }
-        .cc-card.cc-collapsed .cc-title { font-size:13px; font-weight:600; color:#374151; }
-        .cc-card.cc-collapsed .cc-section,
-        .cc-card.cc-collapsed .cc-foot,
-        .cc-card.cc-collapsed .cc-details,
-        .cc-card.cc-collapsed .cc-sub { display:none; }
-        .cc-card.cc-collapsed .cc-collapsed-summary { display:flex; align-items:baseline; gap:8px; line-height:1.1; }
-        .cc-card.cc-collapsed .cc-collapsed-amt { font-size:22px; font-weight:800; color:#111827; font-variant-numeric: tabular-nums; }
-        .cc-card.cc-collapsed .cc-collapsed-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
-        .cc-collapsed-summary { display:none; font-size:12px; color:#6b7280; margin-top:4px; font-variant-numeric: tabular-nums; }
-        /* Reconciled cards span the full row so they read as one
-           continuous "done" strip rather than fragmented half-cards. */
-        .cc-grid .cc-card.cc-collapsed { grid-column:1 / -1; }
     </style>
 
     @foreach($employee_breakdown_by_day as $dayBlock)
@@ -88,20 +91,18 @@
                         $locNameRaw = $loc['location_name'];
                         $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
                         $locNameDisplay = $isNoLoc ? 'No location' : $locNameRaw;
+                        // Sarah 2026-07-03: Pico has no safe, so any safe drop
+                        // logged there is a data/process error worth flagging.
+                        // Everywhere else is assumed to have a safe.
+                        $storeHasSafe = stripos($locNameRaw, 'pico') === false;
                     @endphp
                     @foreach($loc['employees'] as $e)
                         @php
                             $empKey = strtolower(trim($e['display_name']));
                             if ($empKey === 'unknown' || $empKey === 'unattributed') continue;
 
-                            // Sarah 2026-05-13: per-cashier numbers are GROSS
-                            // (final_total vs Clover amount) so they sum to
-                            // the per-store banner above. NET-vs-NET caused
-                            // confusing $13+ "diffs" on individual cashiers
-                            // when the store as a whole reconciled to pennies
-                            // — the gap was Clover's tax_cents column
-                            // disagreeing with ERP's tax rather than a real
-                            // keying/swipe issue.
+                            // Per-cashier numbers are GROSS (final_total vs
+                            // Clover amount) so they sum to the per-store banner.
                             $totalSold       = (float) ($e['total_sales'] ?? 0);
                             $cardClover      = (float) ($e['clover_total'] ?? 0);
                             $totalSoldNet    = (float) ($e['net_sales'] ?? 0);
@@ -117,6 +118,18 @@
                             $hasShift    = !empty($e['has_shift']);
                             $shiftStatus = $e['shift_status'] ?? null;
 
+                            // Cash-movement + safe-drop figures (needed up here now
+                            // so the flag cluster can reason about them).
+                            $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
+                            $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
+                            $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
+                            $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
+                            $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
+                            $safeDrop         = (float) ($e['safe_drop_amount']    ?? 0);
+                            $cashRung         = (float) ($e['cash_rung'] ?? 0);
+                            $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
+                            $missingClover    = $totalSold > 0 && $cardClover == 0;
+
                             if ($overSwipe < 1) { $swipeCls = 'ok'; $swipeLabel = 'OK'; }
                             elseif ($overSwipe < 10) { $swipeCls = 'warn'; $swipeLabel = 'Over swipe'; }
                             else { $swipeCls = 'bad'; $swipeLabel = 'Over swipe'; }
@@ -131,8 +144,25 @@
                                 else { $cashCls = 'bad'; $cashLabel = $cashVar < 0 ? 'Short' : 'Over'; }
                             }
 
-                            $cardKind = ($swipeCls === 'bad' || $cashCls === 'bad') ? 'flag'
-                                      : (($swipeCls === 'warn' || $cashCls === 'warn') ? 'warn' : 'ok');
+                            // ---- FLAGS: anything weird worth a manager's eye ----
+                            $flags = [];
+                            if ($safeDrop > 0 && !$storeHasSafe) {
+                                $flags[] = ['bad', 'Safe drop $' . number_format($safeDrop, 0) . ' — ' . $locNameDisplay . ' has no safe', 'Cash logged as dropped to a safe, but this store has no safe. Find out where the money actually went.'];
+                            }
+                            if ($overSwipe >= 10) {
+                                $flags[] = ['bad', 'Over-swipe +$' . number_format($overSwipe, 2), 'Clover collected more than was rung into the POS — the classic theft tell.'];
+                            }
+                            if ($missingClover) {
+                                $flags[] = ['warn', 'No Clover match', 'Cashier rang sales but no Clover swipes matched — either all cash, or the sync is stale.'];
+                            }
+                            if ($cashVar !== null && abs($cashVar) >= 5) {
+                                $flags[] = ['bad', 'Drawer ' . ($cashVar < 0 ? 'short' : 'over') . ' $' . number_format(abs($cashVar), 2), 'Counted cash is off from expected by more than $5.'];
+                            }
+                            $hasBadFlag  = collect($flags)->contains(fn($f) => $f[0] === 'bad');
+                            $hasWarnFlag = collect($flags)->contains(fn($f) => $f[0] === 'warn');
+
+                            $cardKind = ($swipeCls === 'bad' || $cashCls === 'bad' || $hasBadFlag) ? 'flag'
+                                      : (($swipeCls === 'warn' || $cashCls === 'warn' || $hasWarnFlag) ? 'warn' : 'ok');
 
                             $rKey = $dayBlock['day'] . '|' . ($loc['location_id'] ?: 0) . '|' . $empKey;
                             $rec = $reconciliations[$rKey] ?? null;
@@ -158,31 +188,40 @@
                                 if ($a) $shiftLabel = $a . ' → ' . ($b ?: '—');
                             }
                             $txnCount = (int) ($e['txn_count'] ?? 0);
+                            $diffOk = abs($overSwipe) < 0.01;
                         @endphp
-                        <div class="cc-card {{ $cardKind }} {{ $isReconciled ? 'cc-collapsed' : '' }} eod-loc-card"
+                        <details class="cc-card {{ $cardKind }} {{ $isReconciled ? 'cc-collapsed' : '' }} eod-loc-card"
                              data-day="{{ $dayBlock['day'] }}"
                              data-location-id="{{ $loc['location_id'] ?: 0 }}"
                              data-employee-key="{{ $empKey }}">
-                            <div class="cc-head">
-                                <div style="flex:1; min-width:0;">
-                                    <div class="cc-title">{{ $e['display_name'] }}</div>
-                                    <div class="cc-sub">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</div>
-                                    <div class="cc-collapsed-summary"><span class="cc-collapsed-amt">${{ number_format($cardClover, 2) }}</span> <span class="cc-collapsed-lbl">Clover sales</span></div>
-                                </div>
-                                <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
+                            <summary class="cc-row">
+                                <label class="eod-recon-toggle" style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; cursor:pointer; color:{{ $isReconciled ? '#166534' : '#374151' }}; white-space:nowrap;" onclick="event.stopPropagation();">
                                     <input type="checkbox" class="eod-recon-checkbox" {{ $isReconciled ? 'checked' : '' }}>
-                                    <span class="eod-recon-label">{{ $isReconciled ? '✓ Reconciled' : 'Mark reconciled' }}</span>
+                                    <span class="eod-recon-label">{{ $isReconciled ? '✓' : 'Sign off' }}</span>
                                 </label>
-                            </div>
+                                <span class="cc-row-name">{{ $e['display_name'] }}</span>
+                                <span class="cc-row-store">{{ $locNameDisplay }}@if($shiftLabel) · {{ $shiftLabel }}@endif</span>
+                                <span class="cc-metric">ERP <b>${{ number_format($totalSold, 2) }}</b></span>
+                                <span class="cc-metric">Clover <b>${{ number_format($cardClover, 2) }}</b></span>
+                                <span class="cc-metric">Diff <b class="{{ $diffOk ? 'ok' : 'bad' }}">{{ $diffOk ? '$0.00' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</b></span>
+                                <span class="cc-metric">Drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></span>
+                                @if(!empty($flags))
+                                    <span class="cc-flags">
+                                        @foreach($flags as $f)
+                                            <span class="cc-flag {{ $f[0] }}" title="{{ $f[2] ?? '' }}">⚑ {{ $f[1] }}</span>
+                                        @endforeach
+                                    </span>
+                                @endif
+                                <span class="cc-spacer"></span>
+                                <span class="cc-caret">▶</span>
+                            </summary>
 
-                            @php
-                                $missingClover = $totalSold > 0 && $cardClover == 0;
-                            @endphp
+                            <div class="cc-body">
                             <div class="cc-section">
                                 <div class="cc-sec-h">What they sold @if($txnCount)<span style="font-weight:500; color:#9ca3af;">· {{ $txnCount }} sale{{ $txnCount === 1 ? '' : 's' }}</span>@endif</div>
                                 <div class="cc-line sum"><span class="cc-label" title="ERP Sales (gross) = sum of final_total — what customers actually paid for this cashier's sales. Matches per-store and Day Totals.">ERP Sales</span><span class="cc-val">${{ number_format($totalSold, 2) }}</span></div>
                                 <div class="cc-line"><span class="cc-label minor" title="Clover swipes attributed to this cashier (gross, customer-paid). Matches the per-store banner.">Clover Sales (this cashier)</span><span class="cc-val">${{ number_format($cardClover, 2) }}</span></div>
-                                <div class="cc-line"><span class="cc-label minor" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ abs($overSwipe) < 0.01 ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ abs($overSwipe) < 0.01 ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
+                                <div class="cc-line"><span class="cc-label minor" style="color:{{ $diffOk ? '#2E6F40' : '#8B2C2C' }};">Diff (Clover − ERP)</span><span class="cc-val" style="color:{{ $diffOk ? '#2E6F40' : '#8B2C2C' }}; font-weight:700;">{{ $diffOk ? '$0.00 ✓' : (($overSwipe > 0 ? '+' : '') . '$' . number_format($overSwipe, 2)) }}</span></div>
                                 <div class="cc-line"><span class="cc-label minor" style="color:#8A7C6A; font-size:11px;" title="Net (pre-tax) — same sales without tax + fees. Useful for cross-checking Clover's Net Sales dashboard.">Net (pre-tax, both sides)</span><span class="cc-val" style="color:#8A7C6A; font-size:11px;">${{ number_format($totalSoldNet, 2) }} / ${{ number_format($cardCloverNet, 2) }}</span></div>
                                 @if($missingClover)
                                     <div class="cc-line"><span class="cc-label" style="color:#92400e;">⚠ No Clover swipes matched — sync may be stale</span><span class="cc-val"></span></div>
@@ -192,16 +231,6 @@
                                 @endif
                             </div>
 
-                            @php
-                                $cashRefunds      = (float) ($e['cash_refunds']       ?? 0);
-                                $cashExpenses     = (float) ($e['cash_expenses']      ?? 0);
-                                $cashTransfersOut = (float) ($e['cash_transfers_out'] ?? 0);
-                                $cashTransfersIn  = (float) ($e['cash_transfers_in']  ?? 0);
-                                $cashOtherNet     = (float) ($e['cash_other_net']     ?? 0);
-                                $safeDrop         = (float) ($e['safe_drop_amount']    ?? 0);
-                                $noDrawerCounts   = is_null($opening) && is_null($expected) && is_null($reported) && is_null($cashVar);
-                                $cashRung = (float) ($e['cash_rung'] ?? 0);
-                            @endphp
                             <div class="cc-section">
                                 <div class="cc-sec-h">Cash drawer <span class="cc-flag {{ $cashCls }}">{{ $cashLabel }}</span></div>
                                 @if(!$noDrawerCounts)
@@ -227,7 +256,7 @@
                                     <div class="cc-line"><span class="cc-label minor">{{ $cashOtherNet >= 0 ? '+' : '−' }} Other movements</span><span class="cc-val">${{ number_format(abs($cashOtherNet), 2) }}</span></div>
                                 @endif
                                 @if($safeDrop > 0)
-                                    <div class="cc-line"><span class="cc-label minor" title="Safe drops physically remove cash from the drawer mid-shift (Sarah's >$500 → drop excess in $100 rule). Subtracted from expected because the drawer doesn't have this cash at close.">− Safe drops</span><span class="cc-val">${{ number_format($safeDrop, 2) }}</span></div>
+                                    <div class="cc-line {{ $storeHasSafe ? '' : 'bad-line' }}"><span class="cc-label minor" title="Safe drops physically remove cash from the drawer mid-shift (Sarah's >$500 → drop excess in $100 rule). Subtracted from expected because the drawer doesn't have this cash at close.">− Safe drops{{ $storeHasSafe ? '' : ' — ' . $locNameDisplay . ' has NO safe' }}</span><span class="cc-val">${{ number_format($safeDrop, 2) }}</span></div>
                                 @endif
                                 @if($noDrawerCounts)
                                     <div class="cc-line" style="margin-top:6px; color:#9ca3af; font-size:12px;">
@@ -375,14 +404,14 @@
                                     style="font-size:12px; resize:vertical; margin-top:6px;">{{ $recNotes }}</textarea>
                                 <div class="eod-recon-notes-status" style="font-size:11px; color:#9ca3af; margin-top:2px; min-height:14px;">{{ $recStampLabel }}</div>
                             </div>
-                        </div>
+                            </div>
+                        </details>
                     @endforeach
                 @endforeach
             </div>
         </div>
     @endforeach
     <p class="help-block" style="margin-top:-6px; margin-bottom:18px;">
-        <strong>ERP Sales</strong> is the gross total (final_total) of every sale this cashier rang up. <strong>Clover Sales (this cashier)</strong> = gross Clover swipes attributed to them. Both match the per-store banner above. <strong>Over swipe</strong> means Clover collected more than the cashier rang up — the theft tell.
-        <strong>Cash drawer</strong>: opening + cash collected − cash buys should equal what the cashier counted at close. <em>Short</em> = drawer low (skim or wrong change), <em>Over</em> = drawer high (mis-rung sale).
+        One row per cashier — click to expand. <strong>ERP</strong> is the gross total (final_total) they rang up; <strong>Clover</strong> = gross Clover swipes attributed to them; both match the per-store banner above. <strong>Diff</strong> / <strong>Over swipe</strong> = Clover collected more than rung (the theft tell). <strong>Drawer</strong> compares opening + cash − buys to what was counted at close. The <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts, missing Clover, or a safe drop logged at a store with no safe.
     </p>
 @endif
