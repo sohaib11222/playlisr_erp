@@ -4267,21 +4267,41 @@ class SellPosController extends Controller
                         && ($input['status'] ?? '') === 'final'
                         && empty($request->input('dup_ok'))) {
                         $dup_cents = (int) round(((float) $invoice_total['final_total']) * 100);
-                        $dup_exists = Transaction::where('business_id', $business_id)
+                        $dup_tx = Transaction::where('business_id', $business_id)
                             ->where('type', 'sell')
                             ->where('status', 'final')
                             ->where('created_by', $user_id)
                             ->where('location_id', $input['location_id'])
                             ->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds(60))
                             ->whereRaw('ROUND(final_total * 100) = ?', [$dup_cents])
-                            ->exists();
-                        if ($dup_exists) {
+                            ->orderByDesc('id')
+                            ->first(['id']);
+                        if ($dup_tx) {
+                            // Pull the item names off the sale they just rang so
+                            // the cashier can recognize the possible duplicate.
+                            $dup_names = \DB::table('transaction_sell_lines as tsl')
+                                ->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')
+                                ->where('tsl.transaction_id', $dup_tx->id)
+                                ->orderBy('tsl.id')
+                                ->pluck('p.name')
+                                ->filter()
+                                ->values()
+                                ->all();
+                            $dup_items = '';
+                            if (!empty($dup_names)) {
+                                $dup_items = implode(', ', array_slice($dup_names, 0, 4))
+                                    . (count($dup_names) > 4 ? ', …' : '');
+                            }
+                            $dup_amt = $this->transactionUtil->num_f($invoice_total['final_total'], true);
+                            $dup_msg = $dup_items !== ''
+                                ? ('You just rang this less than a minute ago: ' . $dup_items
+                                    . ' (' . $dup_amt . '). Ring it again?')
+                                : ('You just rang an identical sale (' . $dup_amt
+                                    . ') less than a minute ago. Ring it again?');
                             return [
                                 'success' => 0,
                                 'duplicate_confirm' => 1,
-                                'msg' => 'You just rang an identical sale ('
-                                    . $this->transactionUtil->num_f($invoice_total['final_total'], true)
-                                    . ') less than a minute ago. Ring it again?',
+                                'msg' => $dup_msg,
                             ];
                         }
                     }
