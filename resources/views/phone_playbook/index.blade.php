@@ -306,7 +306,28 @@
 
     {{-- 7 --}}
     <section>
-        <div class="sec-head"><span class="sec-num">7</span><h2>Reaching a coworker</h2></div>
+        <div class="sec-head"><span class="sec-num">7</span><h2>Turn every call into a visit</h2></div>
+        <p class="lede">The best outcome of almost any call is a customer walking through the door. On every call, look for a natural reason to invite them in &mdash; and give them a reason to come <em>today</em>. Getting people into the store is one of the most valuable things you can do on the phone.</p>
+
+        <ol class="flow">
+            <li><strong>Always extend the invite.</strong><span class="sub">Close warm and open: &ldquo;Come by and see us&rdquo; &mdash; not just &ldquo;okay, bye.&rdquo; Make them feel wanted in the shop.</span></li>
+            <li><strong>Give them a reason to come now.</strong><span class="sub">Mention what's fresh &mdash; new arrivals, a record you can hold at the counter, or tonight's event. &ldquo;We just got a big batch in this week, worth a dig.&rdquo;</span></li>
+            <li><strong>Make it easy to say yes.</strong><span class="sub">Offer to hold the record under their name, tell them today's hours, and where to park. Remove every little reason not to come.</span></li>
+            <li><strong>Invite them to the event.</strong><span class="sub">If there's something on, personally invite them: &ldquo;We've got a listening party tonight at 7 &mdash; you should swing by.&rdquo;</span></li>
+        </ol>
+
+        <div class="branch">
+            <div class="row"><div class="cond">Record's in stock</div><div class="arrow">&rarr;</div><div class="act">&ldquo;Want me to hold it at the counter so it's here when you come in?&rdquo;</div></div>
+            <div class="row"><div class="cond">We don't have it</div><div class="arrow">&rarr;</div><div class="act">&ldquo;Come dig anyway &mdash; we get new stuff in constantly and I'll keep an eye out.&rdquo;</div></div>
+            <div class="row"><div class="cond">Just a quick question</div><div class="arrow">&rarr;</div><div class="act">Answer it, then: &ldquo;Come say hi while you're around.&rdquo;</div></div>
+        </div>
+
+        <div class="callout"><strong>This one counts.</strong> Bringing customers into the store is a big deal &mdash; there's a reward being set up for it, so keep track of the people you get through the door. (Ask Sarah for the current details.)</div>
+    </section>
+
+    {{-- 8 --}}
+    <section>
+        <div class="sec-head"><span class="sec-num">8</span><h2>Reaching a coworker</h2></div>
         <p class="lede">Whether you're confirming a record or a caller needs a specific person, the path is the same: Slack first, cell if no answer, and only ever reach someone who is actually on shift.</p>
 
         <ol class="flow">
@@ -319,9 +340,9 @@
         <div class="callout"><strong>Two hard rules:</strong> Slack before you call &mdash; and never call someone who isn't on shift. If Slack goes quiet and it matters, the cell phone is the right move.</div>
     </section>
 
-    {{-- 8 --}}
+    {{-- 9 --}}
     <section>
-        <div class="sec-head"><span class="sec-num">8</span><h2>Quick reference</h2></div>
+        <div class="sec-head"><span class="sec-num">9</span><h2>Quick reference</h2></div>
         <p class="lede">The whole guide in one glance. Read this before every shift until it's second nature.</p>
         <div class="dd">
             <div class="col do">
@@ -335,6 +356,7 @@
                     <li>Update the ERP when the count is wrong</li>
                     <li>Always end with a yes, a no, or an alternative</li>
                     <li>Get excited about collections; take full details</li>
+                    <li>Invite every caller into the store &mdash; give them a reason to come today</li>
                     <li>Slack a coworker first; call their cell if no reply</li>
                 </ul>
             </div>
