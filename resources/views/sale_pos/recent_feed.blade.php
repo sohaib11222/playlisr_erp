@@ -306,8 +306,8 @@
             </p>
             <p style="margin:0 0 12px 0; padding:8px 10px; background:#F3ECD9; border-radius:6px;">
                 <strong>Do it once a day</strong> — check today and yesterday (use ← Previous day).
-                <strong>Ignore a few cents</strong> of difference between ERP and Clover — that's bag fees / tax
-                rounding, not a problem.
+                <strong>Anything under 15¢</strong> of difference between ERP and Clover counts as reconciled
+                automatically — that's bag fees / tax rounding, not a problem, so it won't flag.
             </p>
 
             <div style="margin:0 0 10px 0;">
@@ -976,13 +976,13 @@
                     };
                     if ($discrepancy === 'mismatch') {
                         $info = $clover_by_transaction[$s->id] ?? null;
-                        $isMismatch = $info !== null && $sGap($info) > 5;
+                        $isMismatch = $info !== null && $sGap($info) > 15;
                         if (!$isMismatch) continue;
                     } elseif ($discrepancy === 'no_clover') {
                         if (isset($clover_by_transaction[$s->id]) || $sExpectedCents <= 0) continue;
                     } elseif ($discrepancy === 'any') {
                         $info = $clover_by_transaction[$s->id] ?? null;
-                        $isMismatch = $info !== null && $sGap($info) > 5;
+                        $isMismatch = $info !== null && $sGap($info) > 15;
                         $isNoClover = $info === null && $sExpectedCents > 0;
                         if (!$isMismatch && !$isNoClover) continue;
                     } elseif ($discrepancy === 'no_erp') {
@@ -1385,7 +1385,9 @@
                         $cloverDiffCents = (abs($cloverGrossCents - $expectedCents) <= abs($cloverNetCents - $expectedCents))
                             ? ($cloverGrossCents - $expectedCents)
                             : ($cloverNetCents - $expectedCents);
-                        $cloverMismatch = abs($cloverDiffCents) > 1;
+                        // Sarah 2026-07-03: within 15¢ counts as reconciled (bag
+                        // fee / tax rounding). Only bigger gaps flag as mismatch.
+                        $cloverMismatch = abs($cloverDiffCents) > 15;
                     }
                 @endphp
                 <div class="rf-foot">
@@ -1470,7 +1472,8 @@
                                 if ($perSaleDiffCents === 0) {
                                     $diffColor = '#8A7C6A';
                                     $diffStr   = '$0.00';
-                                } elseif (abs($perSaleDiffCents) <= 1) {
+                                } elseif (abs($perSaleDiffCents) <= 15) {
+                                    // Sarah 2026-07-03: ≤15¢ is reconciled — keep it calm/grey.
                                     $diffColor = '#8A7C6A';
                                     $diffStr   = ($perSaleDiffCents > 0 ? '+' : '−') . '$' . $perSaleDiffAbs;
                                 } else {

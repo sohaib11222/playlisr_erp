@@ -1463,9 +1463,11 @@ class SellPosController extends Controller
         // so the UI can show a "5 mismatches · 12 ERP-only · 3 Clover-only"
         // summary regardless of which filter the user has on. Always computed
         // in cents.
-        // Mismatch threshold raised to >5¢ to align with the 5¢ pair
-        // tolerance — tax-rounding drift up to 5¢ is now treated as a
-        // legit match, not a mismatch.
+        // Sarah 2026-07-03: a paired Clover swipe within 15¢ of the ERP
+        // total counts as reconciled — bag fees + tax rounding routinely
+        // drift a few cents and shouldn't nag. Only gaps OVER 15¢ tag as
+        // a real "mismatch". (Was >5¢.)
+        $mismatchToleranceCents = 15;
         $toCentsSummary = function ($x) { return (int) round(((float) $x) * 100); };
         // Store-credit-adjusted Clover expectation per visible sale: compare
         // Clover against (final_total − store credit), the amount that actually
@@ -1524,7 +1526,7 @@ class SellPosController extends Controller
                 if ($expectedCents > 0) {
                     $no_clover_count++;
                 }
-            } elseif ($cloverGapCents($info, $expectedCents) > 5) {
+            } elseif ($cloverGapCents($info, $expectedCents) > $mismatchToleranceCents) {
                 $mismatch_count++;
             }
         }
@@ -1616,7 +1618,7 @@ class SellPosController extends Controller
             // ERP rows; the view will render the unclaimed Clover list.
             $sales = collect();
         } elseif ($discrepancy !== '') {
-            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents, $clover_reconciled, $web_paid_ids) {
+            $sales = $sales->filter(function ($sale) use ($clover_by_transaction, $discrepancy, $toCentsSummary, $clover_expected_cents, $cloverGapCents, $clover_reconciled, $web_paid_ids, $mismatchToleranceCents) {
                 // Hand-acknowledged rows never appear under a discrepancy filter.
                 if (isset($clover_reconciled[$sale->id])) return false;
                 // Web orders are paid online, never on Clover — never a discrepancy.
@@ -1626,7 +1628,7 @@ class SellPosController extends Controller
                 // Fully store-credit-covered sales have nothing due on Clover —
                 // don't treat their (expected) absence as a no_clover gap.
                 $isNoClover = !$isWeb && $info === null && $expectedCents > 0;
-                $isMismatch = !$isWeb && $info !== null && $cloverGapCents($info, $expectedCents) > 5;
+                $isMismatch = !$isWeb && $info !== null && $cloverGapCents($info, $expectedCents) > $mismatchToleranceCents;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
@@ -3751,7 +3753,8 @@ class SellPosController extends Controller
                     abs((int) $info['amount_cents'] - $expectedCents),
                     abs(((int) $info['amount_cents'] - (int) ($info['tax_cents'] ?? 0)) - $expectedCents)
                 );
-                $isMismatch = $info !== null && $gapCents > 1;
+                // Sarah 2026-07-03: within 15¢ = reconciled (bag fee / tax dust).
+                $isMismatch = $info !== null && $gapCents > 15;
                 if ($discrepancy === 'mismatch')   return $isMismatch;
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
