@@ -189,6 +189,11 @@
                 <span class="bc-q">&ldquo;Do you buy records? / I want to sell&rdquo;</span>
                 <span class="bc-go">Get them a quote &rarr;</span>
             </a>
+            <a class="branch-card high" href="#partnerships">
+                <span class="prio high">High priority</span>
+                <span class="bc-q">Partnership with a big brand or label</span>
+                <span class="bc-go">Route to Sarah &rarr;</span>
+            </a>
             <a class="branch-card low" href="#hours">
                 <span class="prio low">Quick</span>
                 <span class="bc-q">Hours &middot; open today? &middot; where are you?</span>
@@ -263,7 +268,7 @@
 
         <ol class="flow">
             <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search the title by artist and album. See which store it shows at &mdash; Pico or Hollywood.</span></li>
-            <li><strong>Have someone lay eyes on it.</strong><span class="sub">DM whoever's on shift at that store on Slack to confirm the copy is really on the shelf. No Slack answer? Call their cell (on-shift only &mdash; see Section 6).</span></li>
+            <li><strong>Have someone lay eyes on it.</strong><span class="sub">DM whoever's on shift at that store on Slack to confirm the copy is really on the shelf. No Slack answer? Call their cell (on-shift only &mdash; see Section 7).</span></li>
             <li><strong>Not at one store? Check the other and the warehouse.</strong><span class="sub">If it's not at Pico, check Hollywood, and the warehouse, before you ever say we don't have it.</span></li>
             <li><strong>Fix the ERP if the count is wrong.</strong><span class="sub">If the shelf didn't match the system &mdash; none there, or extras &mdash; update the true inventory so the next person isn't misled.</span></li>
             <li><strong>Give a real answer.</strong><span class="sub">A clear yes, or a no with an alternative (another format, pressing, or ordering it in). Never a flat &ldquo;nope.&rdquo;</span></li>
@@ -307,8 +312,21 @@
     </section>
 
     {{-- 4 --}}
+    <section id="partnerships">
+        <div class="sec-head"><span class="sec-num">4</span><h2>Brand &amp; label partnerships</h2><span class="prio high">High priority</span></div>
+        <p class="lede">A collaboration with a big label or brand &mdash; Warner, Universal, Sony, or names like Puma or Lego. These are a big deal. Be warm, get their details, and hand it straight to Sarah, who manages brand partnerships.</p>
+
+        <div class="script">
+            <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Routing to Sarah</div>
+            <p class="say">Sounds exciting! Let me put you in touch with Sarah &mdash; she manages our brand partnerships.</p>
+        </div>
+
+        <div class="callout"><strong>Get it to Sarah.</strong> Take the company, the person's name, and the best way to reach them, and pass it to Sarah right away. Don't discuss any terms yourself &mdash; just make the warm hand-off.</div>
+    </section>
+
+    {{-- 5 --}}
     <section id="quick">
-        <div class="sec-head"><span class="sec-num">4</span><h2>Quick answers</h2><span class="prio low">Quick &mdash; under a minute</span></div>
+        <div class="sec-head"><span class="sec-num">5</span><h2>Quick answers</h2><span class="prio low">Quick &mdash; under a minute</span></div>
         <p class="lede">These have a known answer. Give it warmly, point to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it helps, and wrap up.</p>
 
         <div class="card" id="hours">
@@ -390,9 +408,9 @@
         </div>
     </section>
 
-    {{-- 5 --}}
+    {{-- 6 --}}
     <section id="visit">
-        <div class="sec-head"><span class="sec-num">5</span><h2>Turn every call into a visit</h2></div>
+        <div class="sec-head"><span class="sec-num">6</span><h2>Turn every call into a visit</h2></div>
         <p class="lede">The best outcome of almost any call is a customer walking in. On every call, find a natural reason to invite them in &mdash; and a reason to come today.</p>
 
         <div class="branch">
@@ -404,9 +422,9 @@
         <div class="callout"><strong>This one counts.</strong> Getting people through the door is one of the most valuable things you can do on the phone &mdash; there's a reward being set up for it, so keep track of who you bring in. (Ask Sarah for the current details.)</div>
     </section>
 
-    {{-- 6 --}}
+    {{-- 7 --}}
     <section id="coworker">
-        <div class="sec-head"><span class="sec-num">6</span><h2>Reaching a coworker</h2></div>
+        <div class="sec-head"><span class="sec-num">7</span><h2>Reaching a coworker</h2></div>
         <p class="lede">Confirming a record, or a caller needs a specific person: Slack first, cell if no answer, and only ever reach someone who's actually on shift.</p>
 
         <ol class="flow">
@@ -419,9 +437,9 @@
         <div class="callout"><strong>Transferring to the other store?</strong> &ldquo;Let me connect you &mdash; one moment please.&rdquo; Slack before you call, and never ring someone who isn't on shift.</div>
     </section>
 
-    {{-- 7 --}}
+    {{-- 8 --}}
     <section id="reference">
-        <div class="sec-head"><span class="sec-num">7</span><h2>Quick reference</h2></div>
+        <div class="sec-head"><span class="sec-num">8</span><h2>Quick reference</h2></div>
         <div class="dd">
             <div class="col do">
                 <h4>Always do</h4>
