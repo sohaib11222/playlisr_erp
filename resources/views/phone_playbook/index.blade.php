@@ -117,11 +117,10 @@
 .pp-shell .qa .note { font-size: 12.5px; color: var(--d-ink-3); margin: 5px 0 0; }
 
 /* hours + address rows */
-.pp-shell .facts { display: grid; gap: 8px; margin: 0 0 12px; }
-.pp-shell .facts .row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: baseline; background: var(--d-surface-2); border: 1px solid var(--d-line); border-radius: var(--d-radius-sm); padding: 10px 14px; }
-.pp-shell .facts .store { font-weight: 800; font-size: 14px; }
-.pp-shell .facts .val { font-size: 14px; color: var(--d-ink-2); line-height: 1.45; }
-@media (max-width: 500px) { .pp-shell .facts .row { grid-template-columns: 1fr; gap: 2px; } }
+.pp-shell .facts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.pp-shell .facts .frow { background: var(--d-surface-2); border: 1px solid var(--d-line); border-radius: var(--d-radius-sm); padding: 9px 14px; }
+.pp-shell .facts .store { font-weight: 800; font-size: 14px; margin-right: 8px; }
+.pp-shell .facts .val { font-size: 14px; color: var(--d-ink-2); line-height: 1.5; }
 
 /* branch (if / then) */
 .pp-shell .branch { display: grid; gap: 9px; margin-top: 12px; }
@@ -299,8 +298,8 @@
         <div class="card" id="hours">
             <h3 style="margin-top:0">Hours &amp; locations</h3>
             <div class="facts">
-                <div class="row"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 9:30am&ndash;11pm &middot; Fri &amp; Sat 9:30am&ndash;1am &middot; Sun 9am&ndash;11pm<br><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
-                <div class="row"><span class="store">Pico</span><span class="val">Sun&ndash;Wed 10am&ndash;7pm &middot; Thu&ndash;Sat 10am&ndash;8pm<br><a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
+                <div class="frow"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 9:30am&ndash;11pm &middot; Fri &amp; Sat 9:30am&ndash;1am &middot; Sun 9am&ndash;11pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
+                <div class="frow"><span class="store">Pico</span><span class="val">Sun&ndash;Wed 10am&ndash;7pm &middot; Thu&ndash;Sat 10am&ndash;8pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;What are your hours?&rdquo;</p>
