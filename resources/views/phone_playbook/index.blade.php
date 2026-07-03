@@ -348,7 +348,11 @@
             <h3 style="margin-top:0">Hiring</h3>
             <div class="qa">
                 <p class="q">&ldquo;Are you hiring?&rdquo;</p>
-                <span class="say">Yes! Check out nivessa.com/careers and you can apply right there.</span>
+                <span class="say">Check out nivessa.com/careers and you can apply there.</span>
+            </div>
+            <div class="qa">
+                <p class="q">&ldquo;I applied but no one replied.&rdquo;</p>
+                <span class="say">If there's a good fit you will hear back from us.</span>
             </div>
         </div>
     </section>
