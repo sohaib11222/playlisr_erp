@@ -302,6 +302,7 @@
             <div class="qa">
                 <p class="q">&ldquo;What are your hours?&rdquo;</p>
                 <span class="say">Hey! We're open every day. Hollywood: 9:30am&ndash;11pm Mon&ndash;Thu, til 1am Fri &amp; Sat, and 9am&ndash;11pm Sundays. Pico: 10am&ndash;7pm, and til 8pm Thursday&ndash;Saturday.</span>
+                <p class="note">Give today's business hours for both stores.</p>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Are you open today?&rdquo;</p>
