@@ -319,76 +319,86 @@
             <span style="font-size:17px; font-weight:800; color:#1F1B16;">How to reconcile the feed</span>
             <span style="font-size:13px; font-weight:600; color:#8A6A12; margin-left:auto;">Click to open the daily steps ▾</span>
         </summary>
-        <div style="padding:4px 18px 16px 18px; font-size:13px; color:#3A3128; line-height:1.55;">
-            <p style="margin:0 0 12px 0;">
-                <strong>Goal:</strong> every sale should end up in <strong>both</strong> systems —
-                <strong>ERP</strong> (so the inventory tracker is right) and <strong>Clover</strong> (so we actually
-                collected the money). The feed pairs each ERP sale to its Clover charge; your job is to catch the
-                ones that only landed in one place and fix them.
-            </p>
-            <p style="margin:0 0 12px 0; padding:8px 10px; background:#F3ECD9; border-radius:6px;">
-                <strong>Do this every couple of hours</strong> — don't wait for end of day. Check today (and
-                yesterday first thing in the morning, with ← Previous day).
-                <strong>Anything under 15¢</strong> of difference between ERP and Clover counts as reconciled
-                automatically — that's bag fees / tax rounding, not a problem, so it won't flag.
-            </p>
+        <div style="padding:8px 18px 18px 18px; font-size:14px; color:#3A3128; line-height:1.5;">
+            @php
+                // Compact number badge used down the left of each step.
+                $rfBadge = 'flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:#C99A2A; color:#fff; font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; margin-top:1px;';
+                $rfDo    = 'color:#1F5A2E; font-weight:800;';
+            @endphp
 
-            <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">1. Filter to "Any discrepancy"</div>
-                <div style="color:#5A5045;">In the <strong>Discrepancy</strong> dropdown below, choose
-                    <strong>"Any discrepancy."</strong> That hides all the clean, matched sales and leaves only the
-                    rows that need attention. Work through what's left — cases 2–4 below.</div>
-            </div>
-            <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">2. In ERP but NOT in Clover — and it was cash</div>
-                <div style="color:#5A5045;">Row shows an ERP total but "no Clover match." The cashier rang the cash
-                    in the ERP but never entered it on Clover.
-                    <em>Action:</em> remind that employee every <strong>cash</strong> sale still has to be rung on
-                    <strong>Clover too</strong> — that's how we track the drawer.</div>
-            </div>
-            <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">3. In ERP but NOT in Clover — should have been a card</div>
-                <div style="color:#5A5045;">Same "no Clover match" row, but the customer paid by card so it should
-                    have hit the terminal.
-                    <em>Action:</em> ask the cashier what happened — did the card actually run? Did Clover fail, or
-                    was it run on another terminal? Troubleshoot until you know where the money is.</div>
-            </div>
-            <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">4. In Clover but NOT in ERP</div>
-                <div style="color:#5A5045;">The purple cards — a Clover charge with no ERP sale. We collected the
-                    money but inventory was never decremented.
-                    <em>Action:</em> ask the cashier <strong>what items were sold</strong> on that charge, then enter
-                    the sale in the ERP so inventory updates.</div>
-            </div>
-
-            <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">5. Cash drawer — opening must match yesterday's close</div>
-                <div style="color:#5A5045;">In the <strong>per-cashier reconciliation</strong> below, check each
-                    register's <strong>opening cash</strong> against what it was <strong>closed with the day before</strong>.
-                    They should be the same. If today's opening doesn't match yesterday's closing count, cash went
-                    missing overnight — <strong>this is how we catch theft.</strong> Flag it and investigate.</div>
-            </div>
-
-            <div style="margin:12px 0 0 0; padding:10px 12px; background:#F3ECD9; border-radius:6px;">
-                <div style="font-weight:800; color:#1F1B16; margin-bottom:4px;">Reading the per-cashier rows (below)</div>
-                <div style="color:#5A5045;">
-                    <strong>ERP</strong> = what the cashier rang up · <strong>Clover</strong> = what actually swiped —
-                    they should match. <strong>Diff / Over-swipe</strong> = Clover collected more than was rung
-                    (the theft tell). <strong>Drawer</strong> compares opening + cash − buys to what was counted at
-                    close. The <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts,
-                    missing Clover, or a safe drop logged at a store with no safe. Click a row to expand it.
+            {{-- Goal + cadence: two short cards, side by side --}}
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+                <div style="flex:1 1 240px; padding:10px 12px; background:#fff; border:1px solid #E8DCB8; border-radius:8px;">
+                    <span style="font-weight:800; color:#1F1B16;">The goal</span><br>
+                    Every sale lands in <strong>both</strong> ERP (inventory) <strong>and</strong> Clover (the money). Find the ones in only one — fix them.
+                </div>
+                <div style="flex:1 1 240px; padding:10px 12px; background:#fff; border:1px solid #E8DCB8; border-radius:8px;">
+                    <span style="font-weight:800; color:#1F1B16;">When</span><br>
+                    Every couple of hours. <strong>Under 15¢ off = fine</strong> (rounding / bag fees — it won't flag).
                 </div>
             </div>
 
-            <p style="margin:12px 0 0 0; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
-                <strong>Wrong tender (card rang as cash, or vice-versa)?</strong> Open
-                "Fix sale (date / method)" under that sale and set the right method.
-                Only <strong>Sarah, Jon, or Fatteen</strong> can change the method — everyone else is blocked.
-                Every change is snapshotted and undoable at /admin/admin-action-history.
-            </p>
-            <p style="margin:10px 0 0 0; color:#2E6F40; font-weight:600;">
-                Done for the day when nothing is left under the discrepancy filter except sub-dollar cent differences.
-            </p>
+            {{-- Step 1: the filter --}}
+            <div style="display:flex; gap:12px; margin-bottom:14px; align-items:flex-start;">
+                <span style="{{ $rfBadge }}">1</span>
+                <div>
+                    <div style="font-weight:800; color:#1F1B16;">Set the filter to “Any discrepancy”</div>
+                    <div style="color:#5A5045;">Clean sales disappear — only rows that need attention stay. Fix each one:</div>
+                </div>
+            </div>
+
+            {{-- Steps 2–4: the three fixes --}}
+            <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
+                <span style="{{ $rfBadge }}">2</span>
+                <div>
+                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover — cash sale</div>
+                    <div style="color:#5A5045;">Cashier rang the cash in ERP but not on Clover.</div>
+                    <div><span style="{{ $rfDo }}">Do:</span> remind them every cash sale must be rung on Clover too.</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
+                <span style="{{ $rfBadge }}">3</span>
+                <div>
+                    <div style="font-weight:800; color:#1F1B16;">In ERP, not in Clover — card sale</div>
+                    <div style="color:#5A5045;">It was a card, so it should have hit the terminal.</div>
+                    <div><span style="{{ $rfDo }}">Do:</span> ask the cashier what happened — did the card run? Find where the money is.</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
+                <span style="{{ $rfBadge }}">4</span>
+                <div>
+                    <div style="font-weight:800; color:#1F1B16;">In Clover, not in ERP <span style="font-weight:600; color:#7B3FA0;">(purple cards)</span></div>
+                    <div style="color:#5A5045;">Money collected, but inventory wasn’t touched.</div>
+                    <div><span style="{{ $rfDo }}">Do:</span> ask what items sold, then ring the sale in ERP so inventory updates.</div>
+                </div>
+            </div>
+
+            {{-- Step 5: the drawer / theft check --}}
+            <div style="display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;">
+                <span style="{{ $rfBadge }}; background:#B91C1C;">5</span>
+                <div>
+                    <div style="font-weight:800; color:#1F1B16;">Cash drawer — opening must match yesterday’s close</div>
+                    <div style="color:#5A5045;">Check each register below: today’s <strong>opening cash</strong> = what it <strong>closed with yesterday</strong>.</div>
+                    <div><span style="color:#B91C1C; font-weight:800;">If it doesn’t match, cash went missing overnight — this is how we catch theft.</span> Flag it.</div>
+                </div>
+            </div>
+
+            {{-- Legend for the per-cashier rows --}}
+            <div style="margin-top:14px; padding:10px 12px; background:#F3ECD9; border-radius:8px; color:#5A5045;">
+                <div style="font-weight:800; color:#1F1B16; margin-bottom:4px;">Reading the rows below</div>
+                <strong>ERP</strong> = rang up · <strong>Clover</strong> = actually swiped — they should match.<br>
+                <strong>Diff / Over-swipe</strong> = Clover took more than was rung (the theft tell).<br>
+                <strong>Drawer</strong> = opening + cash − buys vs. what was counted at close.<br>
+                <strong>⚑ flags</strong> call out anything weird — over-swipes, drawer shorts, missing Clover, or a safe drop at a store with no safe.
+            </div>
+
+            {{-- Tender fix + done --}}
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid #E8DCB8; color:#5A5045;">
+                <strong>Wrong tender?</strong> (card rang as cash, or vice-versa) — open <strong>“Fix sale (date / method)”</strong> under the sale and set it right. Only <strong>Sarah, Jon, or Fatteen</strong> can change it; it’s undoable.
+            </div>
+            <div style="margin-top:10px; color:#2E6F40; font-weight:700;">
+                ✓ Done when nothing’s left under the filter except sub-dollar cent differences.
+            </div>
         </div>
     </details>
     @endif
