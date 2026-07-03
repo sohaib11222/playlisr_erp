@@ -124,11 +124,11 @@
 
 /* branch (if / then) */
 .pp-shell .branch { display: grid; gap: 9px; margin-top: 12px; }
-.pp-shell .branch .row { display: grid; grid-template-columns: 1fr auto 1.3fr; align-items: center; gap: 12px; background: var(--d-surface); border: 1px solid var(--d-line); border-left: 4px solid var(--d-accent-deep); border-radius: var(--d-radius-sm); padding: 11px 16px; }
+.pp-shell .branch .brow { display: grid; grid-template-columns: 0.9fr auto 1.6fr; align-items: center; gap: 14px; background: var(--d-surface); border: 1px solid var(--d-line); border-left: 4px solid var(--d-accent-deep); border-radius: var(--d-radius-sm); padding: 11px 16px; }
 .pp-shell .branch .cond { font-weight: 700; font-size: 14px; }
 .pp-shell .branch .arrow { color: var(--d-accent-text); font-weight: 800; font-size: 18px; }
 .pp-shell .branch .act { color: var(--d-ink-2); font-size: 14px; }
-@media (max-width: 560px) { .pp-shell .branch .row { grid-template-columns: 1fr; gap: 3px; } .pp-shell .branch .arrow { display: none; } .pp-shell .branch .act::before { content: "\2192  "; color: var(--d-accent-text); font-weight: 800; } }
+@media (max-width: 560px) { .pp-shell .branch .brow { grid-template-columns: 1fr; gap: 3px; } .pp-shell .branch .arrow { display: none; } .pp-shell .branch .act::before { content: "\2192  "; color: var(--d-accent-text); font-weight: 800; } }
 
 /* word swap */
 .pp-shell .word-swap { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--d-line); border-radius: var(--d-radius); overflow: hidden; box-shadow: 0 1px 2px rgba(31,27,22,.05); }
@@ -272,7 +272,7 @@
             <p class="say">No copy on CD right now, but we've got it on vinyl! Want me to hold it under your name, or order the CD in for you?</p>
         </div>
 
-        <div class="callout"><strong>Always offer an alternative.</strong> No One Direction CD but we have the vinyl? Say so. Nothing in stock? Offer to order it or take their number. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
+        <div class="callout"><strong>Always offer an alternative.</strong> Before you say no, check every format for that artist (vinyl, CD, cassette) and their other titles. No One Direction CD but we have the vinyl? Say so. Nothing in stock? Offer to order it or take their number. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
     </section>
 
     {{-- 3 --}}
@@ -366,9 +366,9 @@
         <p class="lede">The best outcome of almost any call is a customer walking in. On every call, find a natural reason to invite them in &mdash; and a reason to come today.</p>
 
         <div class="branch">
-            <div class="row"><div class="cond">Record's in stock</div><div class="arrow">&rarr;</div><div class="act">&ldquo;Want me to hold it at the counter so it's here when you come in?&rdquo;</div></div>
-            <div class="row"><div class="cond">We don't have it</div><div class="arrow">&rarr;</div><div class="act">&ldquo;Come dig anyway &mdash; we get new stuff in constantly and I'll keep an eye out.&rdquo;</div></div>
-            <div class="row"><div class="cond">Just a quick question</div><div class="arrow">&rarr;</div><div class="act">Answer it, then: &ldquo;Come say hi while you're around &mdash; see you there!&rdquo;</div></div>
+            <div class="brow"><div class="cond">Record's in stock</div><div class="arrow">&rarr;</div><div class="act">&ldquo;We have it! Want to place a pickup order?&rdquo;</div></div>
+            <div class="brow"><div class="cond">We don't have that title</div><div class="arrow">&rarr;</div><div class="act">Check all formats for that artist, and their other titles, before saying no.</div></div>
+            <div class="brow"><div class="cond">Just a quick question</div><div class="arrow">&rarr;</div><div class="act">Answer it, then: &ldquo;See you soon :)&rdquo;</div></div>
         </div>
 
         <div class="callout"><strong>This one counts.</strong> Getting people through the door is one of the most valuable things you can do on the phone &mdash; there's a reward being set up for it, so keep track of who you bring in. (Ask Sarah for the current details.)</div>
