@@ -307,25 +307,31 @@
             <p style="margin:0 0 12px 0; padding:8px 10px; background:#F3ECD9; border-radius:6px;">
                 <strong>Do it once a day</strong> — check today and yesterday (use ← Previous day).
                 <strong>Ignore a few cents</strong> of difference between ERP and Clover — that's bag fees / tax
-                rounding, not a problem. Use the <strong>Discrepancy filter</strong> below to walk the three cases:
+                rounding, not a problem.
             </p>
 
             <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">1. In ERP but NOT in Clover — and it was cash</div>
+                <div style="font-weight:700; color:#1F1B16;">1. Filter to "Any discrepancy"</div>
+                <div style="color:#5A5045;">In the <strong>Discrepancy</strong> dropdown below, choose
+                    <strong>"Any discrepancy."</strong> That hides all the clean, matched sales and leaves only the
+                    rows that need attention. Work through what's left — cases 2–4 below.</div>
+            </div>
+            <div style="margin:0 0 10px 0;">
+                <div style="font-weight:700; color:#1F1B16;">2. In ERP but NOT in Clover — and it was cash</div>
                 <div style="color:#5A5045;">Row shows an ERP total but "no Clover match." The cashier rang the cash
                     in the ERP but never entered it on Clover.
                     <em>Action:</em> remind that employee every <strong>cash</strong> sale still has to be rung on
                     <strong>Clover too</strong> — that's how we track the drawer.</div>
             </div>
             <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">2. In ERP but NOT in Clover — should have been a card</div>
+                <div style="font-weight:700; color:#1F1B16;">3. In ERP but NOT in Clover — should have been a card</div>
                 <div style="color:#5A5045;">Same "no Clover match" row, but the customer paid by card so it should
                     have hit the terminal.
                     <em>Action:</em> ask the cashier what happened — did the card actually run? Did Clover fail, or
                     was it run on another terminal? Troubleshoot until you know where the money is.</div>
             </div>
             <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">3. In Clover but NOT in ERP</div>
+                <div style="font-weight:700; color:#1F1B16;">4. In Clover but NOT in ERP</div>
                 <div style="color:#5A5045;">The purple cards — a Clover charge with no ERP sale. We collected the
                     money but inventory was never decremented.
                     <em>Action:</em> ask the cashier <strong>what items were sold</strong> on that charge, then enter
@@ -333,7 +339,7 @@
             </div>
 
             <div style="margin:0 0 10px 0;">
-                <div style="font-weight:700; color:#1F1B16;">4. Cash drawer — opening must match yesterday's close</div>
+                <div style="font-weight:700; color:#1F1B16;">5. Cash drawer — opening must match yesterday's close</div>
                 <div style="color:#5A5045;">In the <strong>per-cashier reconciliation</strong> below, check each
                     register's <strong>opening cash</strong> against what it was <strong>closed with the day before</strong>.
                     They should be the same. If today's opening doesn't match yesterday's closing count, cash went
