@@ -292,10 +292,11 @@
          the feed must not see it. Collapsible so it stays out of the way
          once known. Goal: every sale in BOTH ERP (inventory) and Clover (money). --}}
     @if($can_see_reconciliation ?? false)
-    <details style="margin-bottom:12px; background:#FFFBF2; border:1px solid #E8DCB8; border-radius:10px;">
-        <summary style="cursor:pointer; padding:12px 16px; font-size:14px; font-weight:700; color:#1F1B16; list-style:none;">
-            How to reconcile the feed — daily guide
-            <span style="font-weight:500; color:#8A7C6A; font-size:12px;">· click to expand</span>
+    <details style="margin-bottom:14px; background:#FFF7E0; border:2px solid #C99A2A; border-radius:10px; box-shadow:0 1px 4px rgba(201,154,42,.18);">
+        <summary style="cursor:pointer; padding:15px 18px; list-style:none; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="background:#C99A2A; color:#fff; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:5px;">Start here</span>
+            <span style="font-size:17px; font-weight:800; color:#1F1B16;">How to reconcile the feed</span>
+            <span style="font-size:13px; font-weight:600; color:#8A6A12; margin-left:auto;">Click to open the daily steps ▾</span>
         </summary>
         <div style="padding:4px 18px 16px 18px; font-size:13px; color:#3A3128; line-height:1.55;">
             <p style="margin:0 0 12px 0;">
@@ -305,7 +306,8 @@
                 ones that only landed in one place and fix them.
             </p>
             <p style="margin:0 0 12px 0; padding:8px 10px; background:#F3ECD9; border-radius:6px;">
-                <strong>Do it once a day</strong> — check today and yesterday (use ← Previous day).
+                <strong>Do this every couple of hours</strong> — don't wait for end of day. Check today (and
+                yesterday first thing in the morning, with ← Previous day).
                 <strong>Anything under 15¢</strong> of difference between ERP and Clover counts as reconciled
                 automatically — that's bag fees / tax rounding, not a problem, so it won't flag.
             </p>
