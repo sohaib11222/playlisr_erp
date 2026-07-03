@@ -319,7 +319,7 @@
             <h3 style="margin-top:0">Online orders &amp; shipping</h3>
             <div class="qa">
                 <p class="q">&ldquo;Do you ship?&rdquo;</p>
-                <span class="say">Yes, we ship worldwide! You can order through nivessa.com, or DM me if you need a hand.</span>
+                <span class="say">Yes, we ship worldwide! You can order through nivessa.com.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;How long does shipping take?&rdquo;</p>
