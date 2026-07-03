@@ -1119,7 +1119,7 @@
                 </div>
                 <div class="rf-orphan-note">
                     @if($isPending)
-                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last 10 min — ERP ring not in yet. Give it a minute.
+                        Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> in the last few minutes — ERP ring not in yet. Please give it a minute.
                     @elseif($dupOfTxId)
                         Clover charged <strong>${{ number_format($cpAmount, 2) }}</strong> — same Clover order as paired sale <a href="{{ url('sells/' . $dupOfTxId) }}" style="color:#1F1B16;text-decoration:underline;">#{{ $dupOfTxId }}</a>. Likely a sync-side duplicate (Clover API returned 2 payment records for one logical sale). Not a missed ring-up.
                     @else
@@ -1132,21 +1132,6 @@
                     </div>
                 @endif
 
-                {{-- Inline raw_payload viewer for sync-bug investigation.
-                     Sarah 2026-05-13: click to expand the original JSON
-                     Clover returned for this payment. Comparing the raw
-                     payload of an orphan against its paired sibling tells
-                     us which Clover-side workflow created the dup record
-                     (auth+capture, tip adjustment, void+re-charge, etc.). --}}
-                @if(!empty($cp->raw_payload))
-                    <details style="margin: 0 16px 8px 16px;">
-                        <summary style="cursor:pointer; font-size:11px; color:#8B6A1A; list-style:none; padding:4px 0;">▸ Show raw Clover payload (for sync-bug diagnostic)</summary>
-                        <pre style="margin-top:6px; padding:8px 10px; background:#F7F1E3; border:1px solid #DFD2B3; border-radius:6px; font-size:10px; line-height:1.4; color:#1F1B16; overflow-x:auto; max-height:340px; white-space:pre-wrap; word-break:break-all;">@php
-                            try { echo json_encode(json_decode($cp->raw_payload, true), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES); }
-                            catch (\Throwable $e) { echo e((string) $cp->raw_payload); }
-                        @endphp</pre>
-                    </details>
-                @endif
                 @php $nearMatches = $orphan_near_matches[$cp->clover_payment_id] ?? []; @endphp
                 <div style="margin: 6px 16px 8px 16px; padding: 8px 10px; background:#FAF6EE; border:1px dashed #DFD2B3; border-radius:6px; font-size: 12px;">
                     @if(!empty($nearMatches))
@@ -1170,7 +1155,8 @@
                             </div>
                         @endforeach
                     @else
-                        <div style="color:#8B2C2C; font-weight:600;">⚠ No unmatched ERP sale within 1 hour — this is a real missing ring-up.</div>
+                        @php $askName = $orphanCashierName ?: (!empty($cp->employee_name) ? $cp->employee_name : null); @endphp
+                        <div style="color:#7A5A12; font-weight:600;">This sale isn't in the ERP. Please ask {{ $askName ?: 'the cashier' }} what this sale was for so we can update our inventory.</div>
                     @endif
 
                     {{-- One-click "create the missing ERP ring + pair it"
@@ -1185,8 +1171,8 @@
                         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                             <label style="font-size:11px; color:#5A5045;">Channel
                                 <select name="channel" style="padding:3px 6px; font-size:11px; border:1px solid #DFD2B3; border-radius:4px;">
-                                    <option value="discogs" selected>discogs</option>
-                                    <option value="in_store">in_store</option>
+                                    <option value="in_store" selected>in_store</option>
+                                    <option value="discogs">discogs</option>
                                     <option value="ebay">ebay</option>
                                 </select>
                             </label>
