@@ -305,7 +305,7 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Are you open today?&rdquo;</p>
-                <span class="say">Yes, we're open til 11pm today &mdash; come by :)</span>
+                <span class="say">Yes, we're open til x pm today &mdash; come visit :)</span>
                 <p class="note">(Or 1am on weekends. Pico has different hours &mdash; check above.)</p>
             </div>
             <div class="qa">
