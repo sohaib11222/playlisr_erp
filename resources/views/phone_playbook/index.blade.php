@@ -340,7 +340,7 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
-                <span class="say">We do private rentals in our underground venue at the Hollywood store &mdash; details and booking are at nivessa.com/events.</span>
+                <span class="say">Yes, you can book the space at nivessa.com/venues.</span>
             </div>
         </div>
 
