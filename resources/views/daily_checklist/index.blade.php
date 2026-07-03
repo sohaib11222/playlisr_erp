@@ -229,6 +229,43 @@
         @endforeach
     </div>
 
+    @php
+        $quarterlyDue  = $quarterlyDue  ?? [];
+        $quarterlyDone = $quarterlyDone ?? [];
+        $quarterLabel  = $quarterLabel  ?? '';
+    @endphp
+    @if(!empty($quarterlyDue) || !empty($quarterlyDone))
+        <div class="card">
+            <div class="grp" style="margin-top:0">
+                <h3>Quarterly &mdash; {{ $quarterLabel }}</h3>
+                <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 10px;line-height:1.5;">
+                    These recur every quarter, not daily. Tick one off and it stays done until next quarter.
+                </p>
+                @foreach ($quarterlyDue as $key => $label)
+                    <div class="item">
+                        <label class="item-main">
+                            <input type="checkbox" class="periodic-box" value="{{ $key }}">
+                            <span class="txt">{{ $label }}</span>
+                        </label>
+                    </div>
+                @endforeach
+                @foreach ($quarterlyDone as $key => $rec)
+                    <div class="item" style="opacity:.7">
+                        <label class="item-main">
+                            <input type="checkbox" class="periodic-box" value="{{ $key }}" checked>
+                            <span class="txt">
+                                {{ $rec['label'] ?? $key }}
+                                <span style="display:block;font-size:12px;color:var(--d-good);font-weight:700;margin-top:2px;">
+                                    Done{{ !empty($rec['user_name']) ? ' by ' . $rec['user_name'] : '' }}{{ !empty($rec['done_at']) ? ' · ' . \Carbon\Carbon::parse($rec['done_at'])->format('M j') : '' }}
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
     @if(!empty($recent))
         <div class="card">
             <div class="grp" style="margin-top:0">
@@ -305,6 +342,29 @@
     });
 
     refreshCount();
+
+    // Quarterly tasks save to their own endpoint and don't affect the daily count.
+    var periodicUrl = '{{ url('/daily-checklist/toggle-periodic') }}';
+    document.querySelectorAll('.open-shell .periodic-box').forEach(function (b) {
+        b.addEventListener('change', function () {
+            var body = new FormData();
+            body.append('key', b.value);
+            body.append('checked', b.checked ? '1' : '0');
+            fetch(periodicUrl, {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+                body: body
+            }).then(function (r) {
+                if (!r.ok) { throw new Error('save failed'); }
+                return r.json();
+            }).then(function () {
+                flashSaved();
+            }).catch(function () {
+                b.checked = !b.checked;
+                alert('Could not save that — check your connection and try again.');
+            });
+        });
+    });
 })();
 </script>
 @endsection

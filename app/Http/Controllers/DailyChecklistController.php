@@ -24,6 +24,22 @@ class DailyChecklistController extends Controller
     const STORE_PATH = 'daily_checklist.json';
 
     /**
+     * Recurring tasks on a longer-than-daily cadence. Unlike the daily list,
+     * these only surface when they're DUE for the current period and vanish once
+     * ticked, staying done until the next period begins — so a quarterly task
+     * doesn't nag every day. Completion is tracked per period (see
+     * daily_checklist_periodic.json), not per day.
+     *
+     * Keys are stable ids (used in storage). Edit labels freely; don't rename a
+     * key once it's in use or old completion records lose their mapping.
+     */
+    const QUARTERLY = [
+        'pci_compliance' => 'Run the quarterly PCI compliance test (SAQ + external network scan) and file the passing result.',
+    ];
+
+    const PERIODIC_STORE = 'daily_checklist_periodic.json';
+
+    /**
      * The daily tasks, grouped. Keys are stable ids (used in storage); edit the
      * labels freely, but don't rename a key once it's in use or old records lose
      * the mapping.
@@ -128,6 +144,24 @@ class DailyChecklistController extends Controller
         return $key;
     }
 
+    /* ---------- period (quarterly) helpers ---------- */
+
+    /** Current quarter id, e.g. "2026-Q3". */
+    public static function currentQuarter($date = null)
+    {
+        $ts = $date ? strtotime($date) : time();
+        $year = (int) date('Y', $ts);
+        $quarter = (int) ceil(((int) date('n', $ts)) / 3);
+        return $year . '-Q' . $quarter;
+    }
+
+    /** Human label for a quarter id, e.g. "Q3 2026". */
+    public static function quarterLabel($period)
+    {
+        $parts = explode('-Q', $period);
+        return isset($parts[1]) ? 'Q' . $parts[1] . ' ' . $parts[0] : $period;
+    }
+
     /* ---------- storage ---------- */
 
     public static function readAll()
@@ -142,6 +176,31 @@ class DailyChecklistController extends Controller
     private static function writeAll(array $items)
     {
         Storage::put(self::STORE_PATH, json_encode(array_values($items), JSON_PRETTY_PRINT));
+    }
+
+    public static function readPeriodic()
+    {
+        if (!Storage::exists(self::PERIODIC_STORE)) {
+            return [];
+        }
+        $data = json_decode(Storage::get(self::PERIODIC_STORE), true);
+        return is_array($data) ? $data : [];
+    }
+
+    private static function writePeriodic(array $items)
+    {
+        Storage::put(self::PERIODIC_STORE, json_encode(array_values($items), JSON_PRETTY_PRINT));
+    }
+
+    /** The completion record for a period+key, or null if not yet done. */
+    private static function periodicRecord(array $recs, $period, $key)
+    {
+        foreach ($recs as $r) {
+            if (($r['period'] ?? '') === $period && ($r['key'] ?? '') === $key) {
+                return $r;
+            }
+        }
+        return null;
     }
 
     /** Find today's record index for the current user, or null. */
@@ -175,13 +234,31 @@ class DailyChecklistController extends Controller
         });
         $recent = array_slice($recent, 0, 30);
 
+        // Quarterly tasks: show what's still due this quarter, plus a note for
+        // anything already ticked off, so it's clear the cadence is handled.
+        $period = self::currentQuarter($date);
+        $periodicRecs = self::readPeriodic();
+        $quarterlyDue = [];
+        $quarterlyDone = [];
+        foreach (self::QUARTERLY as $key => $label) {
+            $rec = self::periodicRecord($periodicRecs, $period, $key);
+            if ($rec) {
+                $quarterlyDone[$key] = $rec;
+            } else {
+                $quarterlyDue[$key] = $label;
+            }
+        }
+
         return view('daily_checklist.index', [
-            'groups'     => self::GROUPS,
-            'links'      => self::LINKS,
-            'checked'    => $checked,
-            'totalItems' => count(self::allKeys()),
-            'today'      => $date,
-            'recent'     => $recent,
+            'groups'        => self::GROUPS,
+            'links'         => self::LINKS,
+            'checked'       => $checked,
+            'totalItems'    => count(self::allKeys()),
+            'today'         => $date,
+            'recent'        => $recent,
+            'quarterlyDue'  => $quarterlyDue,
+            'quarterlyDone' => $quarterlyDone,
+            'quarterLabel'  => self::quarterLabel($period),
         ]);
     }
 
@@ -242,5 +319,41 @@ class DailyChecklistController extends Controller
             'checked' => count($checked),
             'total'   => count(self::allKeys()),
         ]);
+    }
+
+    /**
+     * Mark a quarterly task done/undone for the current quarter (AJAX auto-save).
+     * Once done it won't reappear until the next quarter begins.
+     */
+    public function togglePeriodic(Request $request)
+    {
+        $this->guard();
+
+        $key = (string) $request->input('key', '');
+        if (!array_key_exists($key, self::QUARTERLY)) {
+            return response()->json(['ok' => false, 'msg' => 'Unknown task.'], 422);
+        }
+        $on = filter_var($request->input('checked'), FILTER_VALIDATE_BOOLEAN);
+
+        $period = self::currentQuarter();
+        $userName = auth()->user()->first_name . ' ' . auth()->user()->last_name;
+
+        // Drop any existing record for this period+key, then re-add if ticking on.
+        $recs = array_values(array_filter(self::readPeriodic(), function ($r) use ($period, $key) {
+            return !(($r['period'] ?? '') === $period && ($r['key'] ?? '') === $key);
+        }));
+        if ($on) {
+            $recs[] = [
+                'period'    => $period,
+                'key'       => $key,
+                'label'     => self::QUARTERLY[$key],
+                'user_id'   => auth()->id(),
+                'user_name' => $userName,
+                'done_at'   => date('Y-m-d H:i'),
+            ];
+        }
+        self::writePeriodic($recs);
+
+        return response()->json(['ok' => true, 'period' => self::quarterLabel($period)]);
     }
 }

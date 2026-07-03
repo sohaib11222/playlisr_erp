@@ -881,6 +881,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // (storage/app/daily_checklist.json).
     Route::get('/daily-checklist', 'DailyChecklistController@index')->name('daily-checklist.index');
     Route::post('/daily-checklist/toggle', 'DailyChecklistController@toggle')->name('daily-checklist.toggle');
+    Route::post('/daily-checklist/toggle-periodic', 'DailyChecklistController@togglePeriodic')->name('daily-checklist.toggle-periodic');
 
     // Per-employee starred sidebar links. Each user can pin any left-menu link
     // (or a whole page, via a page's "Pin to my sidebar" button) to a personal
