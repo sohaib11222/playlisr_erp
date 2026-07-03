@@ -330,7 +330,7 @@
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
                 <div style="flex:1 1 240px; padding:10px 12px; background:#fff; border:1px solid #E8DCB8; border-radius:8px;">
                     <span style="font-weight:800; color:#1F1B16;">The goal</span><br>
-                    Every sale lands in <strong>both</strong> ERP (inventory) <strong>and</strong> Clover (the money). Find the ones in only one — fix them.
+                    Every sale should be in <strong>both</strong> ERP (inventory) <strong>and</strong> Clover (the money). Your job: find any sale that made it into only one, and get it into both.
                 </div>
                 <div style="flex:1 1 240px; padding:10px 12px; background:#fff; border:1px solid #E8DCB8; border-radius:8px;">
                     <span style="font-weight:800; color:#1F1B16;">When</span><br>
