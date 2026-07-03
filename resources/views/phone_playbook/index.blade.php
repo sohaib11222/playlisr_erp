@@ -347,7 +347,7 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;I made a song &mdash; any thoughts? Is it worth publishing?&rdquo;</p>
-                <span class="say">Love that you're making music! We're a record shop, not a label, so we don't review or publish tracks &mdash; but we'd love to have you play. You can book a show at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>, and if you press your own record we'd be glad to carry it.</span>
+                <span class="say">Love that you're making music! We're a record shop &mdash; not a label or publisher &mdash; so we don't review or publish tracks. But we'd love to have you play: you can book a show at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>, and if you press your own record we'd be glad to carry it.</span>
                 <p class="note">Be encouraging and warm &mdash; we're not A&amp;R, so point them toward performing.</p>
             </div>
         </div>
@@ -361,6 +361,15 @@
             <div class="qa">
                 <p class="q">&ldquo;I applied but no one replied.&rdquo;</p>
                 <span class="say">If there's a good fit you will hear back from us.</span>
+            </div>
+        </div>
+
+        <div class="card" id="lost" style="margin-top:14px">
+            <h3 style="margin-top:0">Lost &amp; found</h3>
+            <div class="qa">
+                <p class="q">&ldquo;I think I left something in the store &mdash; can you find it?&rdquo;</p>
+                <span class="say">Yes sure, I'll check in with the cashier and let you know if we found them!</span>
+                <p class="note">Get exactly what and where (e.g. black headphones, front-left corner), have a cashier look and safeguard it, then follow up.</p>
             </div>
         </div>
     </section>
