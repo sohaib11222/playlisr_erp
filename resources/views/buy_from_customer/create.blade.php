@@ -476,11 +476,6 @@ HTML;
                             <span>Final offer · 95% <strong id="bfc_running_final">$0.00</strong></span>
                         </span>
                     </div>
-                    <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
-                    <div class="pos-action-row">
-                        <span class="text-muted small" style="margin-right:auto; align-self:center; max-width:520px;">The totals above are a live preview. Saving records this quote to History and opens the accept / reject step (compliance &amp; signature).</span>
-                        <button type="submit" class="btn btn-primary"><i class="fa fa-arrow-right"></i> Save quote &amp; continue</button>
-                    </div>
                     <h4>Negotiation offers <small class="text-muted">— auto-filled from the items above. Open at row 1 and work down; <strong style="color:#8a6d00;">row 3 (Final) is the price actually paid and recorded.</strong> Type over any figure to use a negotiated number.</small></h4>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
@@ -533,6 +528,13 @@ HTML;
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
+                    </div>
+
+                    <hr>
+                    <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
+                    <div class="pos-action-row">
+                        <span class="text-muted small" style="margin-right:auto; align-self:center; max-width:520px;">The totals above are a live preview. Saving records this quote to History and opens the accept / reject step (compliance &amp; signature).</span>
+                        <button type="submit" class="btn btn-primary"><i class="fa fa-arrow-right"></i> Save quote &amp; continue</button>
                     </div>
 
                     </form>
