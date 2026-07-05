@@ -524,7 +524,7 @@ HTML;
                             </tr>
                         </tbody>
                     </table>
-                    <p class="help-block small" style="margin-top:-4px;">Tip: blank a field and click Save quote &amp; continue to reset it to the auto suggestion. Saving again after editing items above recomputes everything.</p>
+                    <p class="help-block small" style="margin-top:-4px;">Tip: these fill in automatically from the items above as you type. Type over any figure to use a negotiated price, or blank it to snap back to the suggestion.</p>
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
@@ -1044,6 +1044,27 @@ HTML;
             }
         @endphp
         var BFC_RULES = @json($bfcRules);
+        var BFC_HAS_CALC = @json(!empty($calc));
+        // The negotiation ladder auto-fills from the live total at 50 / 75 / 95%
+        // (credit at ×credit_bonus), mirroring the server. We only drive it live
+        // BEFORE the first save — after a save the server owns those values and the
+        // override tracking further down manages the Final row. A field the cashier
+        // has typed into is left alone; blanking it re-enables auto-fill.
+        var BFC_LADDER = [
+            ['starting_offer_cash', 'cash', 0.50], ['starting_offer_credit', 'credit', 0.50],
+            ['second_offer_cash', 'cash', 0.75], ['second_offer_credit', 'credit', 0.75],
+            ['final_offer_cash', 'cash', 0.95], ['final_offer_credit', 'credit', 0.95]
+        ];
+        function bfcPopulateLadder(cashTotal) {
+            var creditTotal = Math.round(cashTotal * (parseFloat(BFC_RULES.credit_bonus) || 1) * 100) / 100;
+            BFC_LADDER.forEach(function (f) {
+                var $inp = $('#buy_offer_form').find('[name="' + f[0] + '"]');
+                if (!$inp.length || $inp.data('manual')) return;
+                var base = f[1] === 'credit' ? creditTotal : cashTotal;
+                var val = cashTotal > 0 ? (Math.round(base * f[2] * 100) / 100).toFixed(2) : '';
+                $inp.val(val).attr('data-auto', val);
+            });
+        }
 
         function bfcGradeMult(type, grade) {
             var t = BFC_RULES.types[type];
@@ -1123,6 +1144,7 @@ HTML;
             cashTotal = Math.round(cashTotal * 100) / 100;
             $('#bfc_running_total').text(bfcMoney(cashTotal));
             $('#bfc_running_final').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
+            if (!BFC_HAS_CALC) { bfcPopulateLadder(cashTotal); }
         }
 
         $(document).on('input change', '#offer_lines_table input', bfcRecalcAll);
@@ -1130,6 +1152,16 @@ HTML;
             bfcApplyRowState($(this).closest('tr'));
             bfcRecalcAll();
         });
+
+        // Pre-save: a ladder field the cashier edits is marked manual so the
+        // auto-fill leaves it alone; blanking it clears the flag so it snaps back
+        // to the suggestion on the next recalc.
+        if (!BFC_HAS_CALC) {
+            $(document).on('input', '#buy_offer_form input[name$="_offer_cash"], #buy_offer_form input[name$="_offer_credit"]', function () {
+                $(this).data('manual', $(this).val() !== '');
+                bfcRecalcAll();
+            });
+        }
 
         $('#offer_lines_table tbody tr').each(function () { bfcApplyRowState($(this)); });
         bfcRecalcAll();
