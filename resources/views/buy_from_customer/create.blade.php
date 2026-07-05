@@ -229,7 +229,7 @@
                 <div class="row">
                     <div class="col-sm-4"><strong>Date &amp; time:</strong> {{ @format_datetime(\Carbon\Carbon::now()) }}</div>
                     <div class="col-sm-4"><strong>Employee:</strong> {{ auth()->user()->user_full_name ?? auth()->user()->username ?? '—' }}</div>
-                    <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else <span class="text-muted">assigned on Calculate</span> @endif</div>
+                    <div class="col-sm-4"><strong>Buy record #:</strong> @if(($saved_offer_id ?? session('saved_offer_id'))) BFC-{{ str_pad((string) ($saved_offer_id ?? session('saved_offer_id')), 6, '0', STR_PAD_LEFT) }} @else <span class="text-muted">assigned on save</span> @endif</div>
                 </div>
             </div>
 
@@ -478,7 +478,8 @@ HTML;
                     </div>
                     <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
                     <div class="pos-action-row">
-                        <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
+                        <span class="text-muted small" style="margin-right:auto; align-self:center; max-width:520px;">The totals above are a live preview. Saving records this quote to History and opens the accept / reject step (compliance &amp; signature).</span>
+                        <button type="submit" class="btn btn-primary"><i class="fa fa-arrow-right"></i> Save quote &amp; continue</button>
                     </div>
                     <h4>Negotiation offers <small class="text-muted">— auto-filled from the items above. Open at row 1 and work down; <strong style="color:#8a6d00;">row 3 (Final) is the price actually paid and recorded.</strong> Type over any figure to use a negotiated number.</small></h4>
                     @php
@@ -528,7 +529,7 @@ HTML;
                             </tr>
                         </tbody>
                     </table>
-                    <p class="help-block small" style="margin-top:-4px;">Tip: blank a field and press Calculate to reset to the auto suggestion. Press Calculate again after editing items above to recompute.</p>
+                    <p class="help-block small" style="margin-top:-4px;">Tip: blank a field and click Save quote &amp; continue to reset it to the auto suggestion. Saving again after editing items above recomputes everything.</p>
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
