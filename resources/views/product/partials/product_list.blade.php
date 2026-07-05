@@ -1,6 +1,6 @@
 @php 
-    // Columns: select, actions, store, product, artist, category, subcategory, prices, current stock, units sold, sku, created at, last updated, last updated by, created by, discogs, ebay, nivessa.com
-    $colspan = 18;
+    // Columns: select, actions, store, product, artist, category, subcategory, prices, current stock, units sold, sku, created at, last updated, last updated by, created by, discogs id, discogs, ebay, nivessa.com
+    $colspan = 19;
     $custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
 <table class="table table-bordered table-striped ajax_view hide-footer" id="product_table">
@@ -26,6 +26,7 @@
             <th>Last updated at</th>
             <th>Last updated by</th>
             <th>Created by</th>
+            <th>Discogs ID</th>
             <th>Discogs</th>
             <th>eBay</th>
             <th>nivessa.com</th>

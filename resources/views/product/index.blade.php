@@ -303,6 +303,33 @@
     </div>
 </div>
 
+<!-- Set / change a product's Discogs release id (inline from the list) -->
+<div class="modal fade" id="discogs_id_modal" tabindex="-1" role="dialog" aria-labelledby="discogs_id_modal_label">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="discogs_id_modal_label"><i class="fa fa-music"></i> Discogs Release ID</h4>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="discogs_id_product_id">
+                <div class="form-group">
+                    <label for="discogs_id_input">Release ID</label>
+                    <input type="number" min="1" step="1" class="form-control" id="discogs_id_input" placeholder="e.g. 249504">
+                    <p class="help-block">
+                        Saving downloads the release's cover art and fills any <strong>blank</strong> category / description.
+                        It never overwrites values you've already set. Leave empty to clear the link.
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="discogs_id_save_btn">Save &amp; import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 </section>
 <!-- /.content -->
 
@@ -485,6 +512,7 @@
                         { data: 'updated_at', name: 'real_updated_at', orderable: true, searchable: false},
                         { data: 'updated_by_name', name: 'updated_by_name', orderable: false, searchable: false},
                         { data: 'created_by_name', name: 'u.first_name' },
+                        { data: 'discogs_id', name: 'discogs_id', orderable: false, searchable: false },
                         { data: 'list_discogs', name: 'list_discogs', orderable: false, searchable: false },
                         { data: 'list_ebay', name: 'list_ebay', orderable: false, searchable: false },
                         { data: 'nivessa_url', name: 'nivessa_url', orderable: false, searchable: false }
@@ -1788,6 +1816,55 @@
                 toastr.error('Bulk list failed: ' + (xhr.statusText || xhr.status));
             }).always(function() {
                 $btn.prop('disabled', false);
+            });
+        });
+
+        // --- Discogs release id: inline set / change + fill-blanks import ---
+        // Open the modal from the "Discogs ID" column. stopPropagation keeps the
+        // row-click (which navigates to the product view) from firing.
+        $(document).on('click', '#product_table tbody a.edit-discogs-id', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $a = $(this);
+            $('#discogs_id_product_id').val($a.data('id'));
+            $('#discogs_id_input').val($a.data('release-id') || '');
+            $('#discogs_id_modal').modal('show');
+        });
+
+        $(document).on('click', '#discogs_id_save_btn', function() {
+            var productId = $('#discogs_id_product_id').val();
+            var releaseId = $.trim(String($('#discogs_id_input').val() || ''));
+            if (!productId) { return; }
+            var $btn = $(this);
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/product/' + productId + '/discogs-release-id',
+                type: 'POST',
+                data: { _token: '{{ csrf_token() }}', release_id: releaseId },
+                success: function(resp) {
+                    if (resp && resp.success) {
+                        var msg = resp.msg || 'Saved.';
+                        if (resp.release_label) {
+                            msg = 'Imported: ' + resp.release_label;
+                            if (resp.imported && resp.imported.length) {
+                                msg += ' (' + resp.imported.join(', ') + ')';
+                            }
+                        }
+                        toastr.success(msg);
+                        $('#discogs_id_modal').modal('hide');
+                        if (typeof product_table !== 'undefined' && product_table) {
+                            product_table.ajax.reload(null, false);
+                        }
+                    } else {
+                        toastr.error((resp && resp.msg) || 'Could not save the release id.');
+                    }
+                },
+                error: function(xhr) {
+                    toastr.error('Could not save the release id: ' + (xhr.statusText || xhr.status));
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                }
             });
         });
 

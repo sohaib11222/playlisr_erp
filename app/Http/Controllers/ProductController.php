@@ -494,6 +494,20 @@ class ProductController extends Controller
                 ->addColumn('created_by_name', function ($row) {
                     return $row->created_by_name ?? '';
                 })
+                ->addColumn('discogs_id', function ($row) {
+                    // Whether this product is linked to a Discogs release, and an
+                    // inline affordance to set / change it (opens the modal in
+                    // index.blade.php). e.stopPropagation keeps the row-click from
+                    // navigating to the product view.
+                    $rid = (int) ($row->discogs_release_id ?? 0);
+                    if ($rid > 0) {
+                        return '<a href="#" class="edit-discogs-id" data-id="' . $row->id . '" data-release-id="' . $rid . '" title="Change / re-import from Discogs">'
+                            . '<span class="label label-info">#' . $rid . '</span></a> '
+                            . '<a href="https://www.discogs.com/release/' . $rid . '" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Open on Discogs"><i class="fa fa-external-link"></i></a>';
+                    }
+                    return '<a href="#" class="edit-discogs-id" data-id="' . $row->id . '" data-release-id="" title="Add a Discogs release id">'
+                        . '<span class="text-muted"><i class="fa fa-plus"></i> Add</span></a>';
+                })
                 ->addColumn('list_discogs', function ($row) use ($discogsListedSet) {
                     // Already on Discogs? Match the release id (preferred) or a numeric
                     // SKU token against the synced "For Sale" inventory, and show a badge
@@ -567,7 +581,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'list_discogs', 'list_ebay', 'nivessa_url'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url'])
                 ->make(true);
         }
 
@@ -3583,6 +3597,113 @@ class ProductController extends Controller
             \Log::warning('mass-add image download error for ' . $url . ': ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Products list inline action: set / change / clear a product's Discogs
+     * release id. On save (when a real id is given) we re-fetch the release and
+     * import on a FILL-BLANKS basis — always refresh the cover art, and fill
+     * category / subcategory / description only where the product currently has
+     * none. Values staff already set are never overwritten. A failed Discogs
+     * fetch still persists the id so the link isn't lost.
+     */
+    public function setDiscogsReleaseId(Request $request, $id)
+    {
+        if (!auth()->user()->can('product.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+
+        if (!\Schema::hasColumn('products', 'discogs_release_id')) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Discogs release id is not available on this environment.',
+            ]);
+        }
+
+        $product = Product::where('business_id', $business_id)->where('id', $id)->first();
+        if (empty($product)) {
+            return response()->json(['success' => false, 'msg' => 'Product not found.']);
+        }
+
+        $releaseId = (int) $request->input('release_id', 0);
+
+        // Clearing the link.
+        if ($releaseId < 1) {
+            $product->discogs_release_id = null;
+            $product->save();
+            return response()->json([
+                'success' => true,
+                'msg' => 'Discogs release id cleared.',
+                'release_id' => null,
+                'imported' => [],
+            ]);
+        }
+
+        $product->discogs_release_id = $releaseId;
+
+        $imported = [];
+        $label = null;
+        try {
+            $svc = new \App\Services\DiscogsService($business_id);
+            $release = $svc->getReleaseById($releaseId);
+            if (!empty($release['error'])) {
+                // Keep the id even when the lookup fails — staff can retry.
+                $product->save();
+                return response()->json([
+                    'success' => true,
+                    'msg' => 'Saved release id ' . $releaseId . ', but Discogs lookup failed: ' . ($release['message'] ?? 'unknown error'),
+                    'release_id' => $releaseId,
+                    'imported' => [],
+                ]);
+            }
+
+            $payload = $release['data'] ?? null;
+            if ($payload && is_object($payload)) {
+                $mapper = new \App\Services\DiscogsReleaseImportMapper();
+                $mapped = $mapper->mapFromApiPayload($business_id, $payload, $releaseId);
+
+                // Cover art: always refresh so the photo matches the new release.
+                // Only replaces the stored image when the download succeeds.
+                if (!empty($mapped['image_url'])) {
+                    $newImage = $this->downloadRemoteProductImage($mapped['image_url']);
+                    if (!empty($newImage)) {
+                        $product->image = $newImage;
+                        $product->product_custom_field1 = $mapped['image_url'];
+                        $imported[] = 'cover art';
+                    }
+                }
+
+                // Fill blanks only — never overwrite what staff already set.
+                if (empty($product->category_id) && !empty($mapped['category_id'])) {
+                    $product->category_id = $mapped['category_id'];
+                    $product->sub_category_id = $mapped['sub_category_id'] ?? null;
+                    $imported[] = 'category';
+                }
+                if (empty($product->product_description) && !empty($mapped['product_description'])) {
+                    $product->product_description = $mapped['product_description'];
+                    $imported[] = 'description';
+                }
+
+                $label = trim(
+                    (!empty($mapped['artist']) ? $mapped['artist'] . ' - ' : '')
+                    . ($mapped['title'] ?? '')
+                );
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('set-discogs-release import failed for product ' . $id . ' / release ' . $releaseId . ': ' . $e->getMessage());
+        }
+
+        $product->save();
+
+        return response()->json([
+            'success' => true,
+            'msg' => 'Saved release id ' . $releaseId . '.',
+            'release_id' => $releaseId,
+            'release_label' => $label !== '' ? $label : null,
+            'imported' => $imported,
+        ]);
     }
 
     public function getMassProductRow(Request $request)

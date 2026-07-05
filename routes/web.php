@@ -235,6 +235,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/product/mass-create/resolve-artist-category', [ProductController::class, 'resolveArtistCategoryForMassCreate'])
         ->name('product.massCreate.resolveArtistCategory');
     Route::post('/product/mass-store', [ProductController::class, 'massStore'])->name('product.massStore');
+    Route::post('/product/{id}/discogs-release-id', [ProductController::class, 'setDiscogsReleaseId'])
+        ->name('product.setDiscogsReleaseId');
     Route::post('/products/bulk-send-to-purchase', [ProductController::class, 'bulkSendToPurchase'])->name('products.bulkSendToPurchase');
     Route::get('/products/get-combo-product-entry-row', 'ProductController@getComboProductEntryRow');
     Route::post('/products/toggle-woocommerce-sync', 'ProductController@toggleWooCommerceSync');
