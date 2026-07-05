@@ -2648,6 +2648,11 @@
                     if (discogsData.image_url) {
                         $row.find('input[name*="[image_url]"]').val(discogsData.image_url);
                     }
+                    // Stash the Discogs release id so the saved product links
+                    // back to its release (persisted by massStore()).
+                    if (discogsData.discogs_release_id) {
+                        $row.find('input[name*="[discogs_release_id]"]').val(discogsData.discogs_release_id);
+                    }
                     if (price) {
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
                     }

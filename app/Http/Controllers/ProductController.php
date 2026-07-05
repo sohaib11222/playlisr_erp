@@ -3388,6 +3388,16 @@ class ProductController extends Controller
                         'type' => $productData['type'] ?? 'single',
                     ]);
 
+                    // Link the product back to its Discogs release so sales
+                    // history / re-listing can find it later. The bulk-Discogs
+                    // fetch supplies this per row. Column is optional across
+                    // envs, so guard on its presence like the product list does.
+                    if (!empty($productData['discogs_release_id'])
+                        && \Schema::hasColumn('products', 'discogs_release_id')) {
+                        $product->discogs_release_id = (int) $productData['discogs_release_id'];
+                        $product->save();
+                    }
+
                     // Генерация SKU, если поле пустое
                     if (empty(trim($productData['sku']))) {
                         $generatedSku = $this->productUtil->generateProductSku($product->id);

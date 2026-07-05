@@ -131,6 +131,9 @@
 
     <!-- Add Image URL Field -->
     <td class="td expandable" data-hide-on-selection="yes" data-row-index="{{ $index }}">
+        {{-- Set by the Fetch-from-Discogs flow so the created product links
+             back to its Discogs release (see addRowFromDiscogsData). --}}
+        {!! Form::hidden("products[{$index}][discogs_release_id]", null, ['class' => 'discogs-release-id']) !!}
         {!! Form::text("products[{$index}][image_url]", null, [
             'class' => 'form-control',
             'placeholder' => __('product.image_url'),
