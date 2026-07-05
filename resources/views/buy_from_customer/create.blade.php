@@ -72,7 +72,10 @@
         .bfc-create .bfc-offer-table { max-width: 560px; margin-bottom: 12px; }
         .bfc-create .bfc-offer-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
         .bfc-create .bfc-offer-table td { padding: 6px; vertical-align: middle; }
-        .bfc-create .bfc-offer-table .bfc-offer-rowlabel { width: 160px; font-weight: 600; color: #333; text-transform: none; letter-spacing: 0; background: #fafafa; }
+        .bfc-create .bfc-offer-table .bfc-offer-rowlabel { width: 200px; font-weight: 600; color: #333; text-transform: none; letter-spacing: 0; background: #fafafa; }
+        /* Final row is the one that actually gets recorded — make it read as the destination of the ladder. */
+        .bfc-create .bfc-offer-table tr.bfc-final-row .bfc-offer-rowlabel { background: #fffdf0; border-left: 3px solid #d4a017; }
+        .bfc-create .bfc-offer-table tr.bfc-final-row td { background: #fffef8; }
         /* Make per-row remove "X" subtle — just a muted glyph, no big red block. */
         .bfc-create #offer_lines_table .remove-line {
             background: transparent;
@@ -318,8 +321,8 @@ HTML;
                         </div>
                         <div class="col-md-3">
                             <div class="form-group">
-                                <label>Seller mode</label>
-                                {!! Form::select('seller_mode', ['contact' => 'Existing account', 'phone' => 'Walk-in / phone first'], $input['seller_mode'] ?? 'phone', ['class' => 'form-control', 'id' => 'seller_mode']) !!}
+                                <label>New or returning seller?</label>
+                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? 'phone', ['class' => 'form-control', 'id' => 'seller_mode']) !!}
                             </div>
                         </div>
                         <div class="col-md-3 seller-contact-block">
@@ -333,7 +336,7 @@ HTML;
                         </div>
                         <div class="col-md-3">
                             <div class="form-group">
-                                <label>Payment method</label>
+                                <label>How do they want to be paid?</label>
                                 {!! Form::select('payment_method', $paymentMethods, $pmVal, ['class' => 'form-control', 'id' => 'payment_method']) !!}
                             </div>
                         </div>
@@ -450,7 +453,7 @@ HTML;
                     <div class="pos-action-row">
                         <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
                     </div>
-                    <h4>Offer to customer <small class="text-muted">— autofilled from items; type to override the actual offered/accepted price</small></h4>
+                    <h4>Negotiation offers <small class="text-muted">— auto-filled from the items above. Open at row 1 and work down; <strong style="color:#8a6d00;">row 3 (Final) is the price actually paid and recorded.</strong> Type over any figure to use a negotiated number.</small></h4>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
                         $offerStartingCredit = data_get($calc, 'starting_offer_credit');
@@ -472,17 +475,17 @@ HTML;
                         </thead>
                         <tbody>
                             <tr>
-                                <th class="bfc-offer-rowlabel">1. Starting offer</th>
+                                <th class="bfc-offer-rowlabel">1. Opening offer <small class="text-muted" style="font-weight:400;">(start low)</small></th>
                                 <td>{!! Form::number('starting_offer_cash', $offerInput($offerStartingCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
                                 <td>{!! Form::number('starting_offer_credit', $offerInput($offerStartingCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
                             </tr>
                             <tr>
-                                <th class="bfc-offer-rowlabel">2. 2nd offer</th>
+                                <th class="bfc-offer-rowlabel">2. Counter offer <small class="text-muted" style="font-weight:400;">(if they push back)</small></th>
                                 <td>{!! Form::number('second_offer_cash', $offerInput($offerSecondCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
                                 <td>{!! Form::number('second_offer_credit', $offerInput($offerSecondCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
                             </tr>
-                            <tr>
-                                <th class="bfc-offer-rowlabel">3. Final offer</th>
+                            <tr class="bfc-final-row">
+                                <th class="bfc-offer-rowlabel">3. Final price <small style="font-weight:600; color:#8a6d00;">← what you'll pay</small></th>
                                 <td>
                                     {!! Form::number('final_offer_cash', $offerInput($offerFinalCash), ['class' => 'form-control bfc-final-edit', 'id' => 'bfc_final_cash', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)', 'data-auto' => $offerInput($offerFinalCash)]) !!}
                                     @if(!empty($calc) && $offerFinalCash !== null)
