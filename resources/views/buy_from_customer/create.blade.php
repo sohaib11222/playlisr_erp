@@ -48,6 +48,9 @@
         .bfc-create #offer_lines_table td:nth-child(6),
         .bfc-create #offer_lines_table td:nth-child(7) { width: 110px; }
         .bfc-create #offer_lines_table td:last-child { width: 40px; text-align: center; }
+        /* Individual-Discogs line missing its median price — the grade multiplier
+           has nothing to scale, so flag the cell before Calculate. */
+        .bfc-create #offer_lines_table input.bfc-median-missing { background: #fff3cd; border-color: #d9534f; box-shadow: 0 0 0 2px rgba(217,83,79,0.18); }
         .bfc-create .negotiation-row { display: grid; grid-template-columns: repeat(4, minmax(0, 180px)) 1fr; gap: 12px; align-items: end; }
         .bfc-create .negotiation-row .form-control { max-width: 180px; }
         .bfc-create .meta-row { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; }
@@ -450,6 +453,7 @@ HTML;
                          Multiplier are ignored, or any negotiated number that diverges
                          from the suggestion). Blank a field to fall back to the auto
                          suggestion on the next Calculate. --}}
+                    <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
                     <div class="pos-action-row">
                         <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
                     </div>
@@ -932,6 +936,60 @@ HTML;
             if ($('#offer_lines_table tbody tr').length > 1) {
                 $(this).closest('tr').remove();
             }
+        });
+
+        // Sarah 2026-07-05: individual-Discogs lines are priced as
+        // Median × grade × standard multiplier, so a blank Discogs Median
+        // flattens every grade to $0 — it looks like grade "does nothing".
+        // Guard Calculate: if a filled-in individual line (has a title/genre)
+        // is missing its median, highlight the cell and stop. Blank default
+        // rows (no title) are ignored so the form still calculates normally.
+        function bfcFlagMissingMedians() {
+            var problems = 0;
+            $('#offer_lines_table tbody tr').each(function () {
+                var $row = $(this);
+                if ($row.find('select[name$="[item_type]"]').val() !== 'individual_vinyl') {
+                    return;
+                }
+                var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
+                var title = ($row.find('input[name$="[title]"]').val() || '').trim();
+                var genre = ($row.find('input[name$="[genre]"]').val() || '').trim();
+                var $median = $row.find('input[name$="[discogs_median_price]"]');
+                var median = parseFloat($median.val()) || 0;
+                var inUse = qty > 0 && (title !== '' || genre !== '');
+                if (inUse && median <= 0) {
+                    $median.addClass('bfc-median-missing');
+                    problems++;
+                } else {
+                    $median.removeClass('bfc-median-missing');
+                }
+            });
+            return problems;
+        }
+
+        // Clear a row's flag as soon as a median is typed in.
+        $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"]', function () {
+            if ((parseFloat($(this).val()) || 0) > 0) {
+                $(this).removeClass('bfc-median-missing');
+            }
+        });
+
+        $('#buy_offer_form').on('submit', function (e) {
+            if (bfcFlagMissingMedians() > 0) {
+                e.preventDefault();
+                $('#bfc_calc_error').html(
+                    '<strong>Enter a Discogs Median Price for each highlighted line.</strong> ' +
+                    'Individual Discogs items are priced as Median × grade × standard multiplier, so with a blank median ' +
+                    'every grade calculates to $0 — the grade can\'t lower the offer until there\'s a median for it to scale.'
+                ).show();
+                var $first = $('#offer_lines_table .bfc-median-missing').first();
+                if ($first.length) {
+                    $('html, body').animate({ scrollTop: $first.offset().top - 140 }, 200);
+                    $first.trigger('focus');
+                }
+                return false;
+            }
+            $('#bfc_calc_error').hide();
         });
 
         @if(!empty($calc))
