@@ -51,6 +51,19 @@
         /* Individual-Discogs line missing its median price — the grade multiplier
            has nothing to scale, so flag the cell before Calculate. */
         .bfc-create #offer_lines_table input.bfc-median-missing { background: #fff3cd; border-color: #d9534f; box-shadow: 0 0 0 2px rgba(217,83,79,0.18); }
+        /* Cells that don't apply to the selected item type (e.g. median on a
+           bulk line, grade on a no-grading type) are disabled + grayed. */
+        .bfc-create #offer_lines_table .bfc-cell-off { background: #f0f0f0; color: #bbb; cursor: not-allowed; text-align: center; }
+        /* Live per-line value (read-out, computed client-side to mirror the server). */
+        .bfc-create #offer_lines_table td.bfc-line-cell { text-align: right; white-space: nowrap; }
+        .bfc-create .bfc-line-value { font-weight: 600; font-variant-numeric: tabular-nums; color: #333; }
+        .bfc-create .bfc-line-formula { display: block; font-size: 11px; color: #aaa; font-weight: 400; font-variant-numeric: tabular-nums; }
+        /* Running totals bar above Calculate — offer builds live as items are typed. */
+        .bfc-create .bfc-running { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0 8px; padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 8px; }
+        .bfc-create .bfc-running-note { font-size: 11px; color: #999; }
+        .bfc-create .bfc-running-figs { display: flex; gap: 22px; font-size: 12px; color: #666; }
+        .bfc-create .bfc-running-figs strong { font-size: 18px; color: #333; margin-left: 6px; font-variant-numeric: tabular-nums; }
+        .bfc-create .bfc-running-figs strong#bfc_running_final { color: #2c699a; }
         .bfc-create .negotiation-row { display: grid; grid-template-columns: repeat(4, minmax(0, 180px)) 1fr; gap: 12px; align-items: end; }
         .bfc-create .negotiation-row .form-control { max-width: 180px; }
         .bfc-create .meta-row { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; }
@@ -416,8 +429,8 @@ HTML;
                                     <th>Genre</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
-                                    <th>Discogs Median Price (if individual)</th>
-                                    <th>Standard Multiplier</th>
+                                    <th>Discogs median / value</th>
+                                    <th>Line value</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -435,8 +448,11 @@ HTML;
                                         <td>{!! Form::text("lines[$i][genre]", $line['genre'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::select("lines[$i][condition_grade]", array_combine($grades, $grades), $line['condition_grade'] ?? 'VG+', ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
-                                        <td>{!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}</td>
-                                        <td>{!! Form::number("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}</td>
+                                        <td>
+                                            {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
+                                            {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
+                                        </td>
+                                        <td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>
                                         <td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>
                                     </tr>
                                 @endforeach
@@ -453,6 +469,13 @@ HTML;
                          Multiplier are ignored, or any negotiated number that diverges
                          from the suggestion). Blank a field to fall back to the auto
                          suggestion on the next Calculate. --}}
+                    <div class="bfc-running">
+                        <span class="bfc-running-note"><i class="fa fa-eye-slash"></i> Standard multiplier is automatic (hidden) · grayed cells don't apply to that item type</span>
+                        <span class="bfc-running-figs">
+                            <span>Running total <strong id="bfc_running_total">$0.00</strong></span>
+                            <span>Final offer · 95% <strong id="bfc_running_final">$0.00</strong></span>
+                        </span>
+                    </div>
                     <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
                     <div class="pos-action-row">
                         <button type="submit" class="btn btn-primary"><i class="fa fa-calculator"></i> Calculate</button>
@@ -922,19 +945,22 @@ HTML;
                 + '<td><input type="text" name="lines[' + idx + '][genre]" class="form-control"></td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
-                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"></td>'
-                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="form-control"></td>'
+                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
+                + '<td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
             var $newRow = $($.parseHTML(row));
             $newRow.find('select[name$="[item_type]"]').val(prevType);
             $newRow.find('select[name$="[condition_grade]"]').val(prevGrade);
             $tbody.append($newRow);
+            bfcApplyRowState($newRow);
+            bfcRecalcAll();
         });
 
         $(document).on('click', '.remove-line', function () {
             if ($('#offer_lines_table tbody tr').length > 1) {
                 $(this).closest('tr').remove();
+                bfcRecalcAll();
             }
         });
 
@@ -991,6 +1017,119 @@ HTML;
             }
             $('#bfc_calc_error').hide();
         });
+
+        // Sarah 2026-07-05: live per-line value + running total. Mirrors the
+        // server's BuyOfferCalculatorService::calculate so what the cashier sees
+        // while typing matches the numbers Calculate returns. Rules (modes, unit
+        // rates, grade multipliers, value tiers) come straight from getRules() so
+        // the two can't drift. Also drives the per-row enable/disable: median only
+        // applies to individual/value-percent types, grade only to graded types.
+        @php
+            $bfcRulesRaw = app(\App\Services\BuyOfferCalculatorService::class)->getRules();
+            $bfcRules = [
+                'credit_bonus' => $bfcRulesRaw['credit_bonus_multiplier'],
+                'grades' => $bfcRulesRaw['grade_multipliers'],
+                'types' => [],
+            ];
+            foreach ($bfcRulesRaw['item_types'] as $bfcK => $bfcCfg) {
+                $bfcRules['types'][$bfcK] = [
+                    'mode' => $bfcCfg['mode'],
+                    'unit_rate' => $bfcCfg['unit_rate'] ?? null,
+                    'no_grading' => !empty($bfcCfg['no_grading']),
+                    'value_tiers' => $bfcCfg['value_tiers'] ?? null,
+                ];
+            }
+        @endphp
+        var BFC_RULES = @json($bfcRules);
+
+        function bfcGradeMult(type, grade) {
+            var t = BFC_RULES.types[type];
+            if (!t || t.no_grading) return 1.0;
+            var g = BFC_RULES.grades[grade];
+            return (g === undefined || g === null) ? 1 : g;
+        }
+        function bfcPercentForValue(v, tiers) {
+            v = parseFloat(v) || 0;
+            tiers = tiers || [];
+            for (var i = 0; i < tiers.length; i++) {
+                var u = tiers[i].under;
+                if (u === null || u === undefined || v < parseFloat(u)) {
+                    return parseFloat(tiers[i].percent) || 0;
+                }
+            }
+            return 0;
+        }
+        function bfcMoney(n) { n = Math.round(n * 100) / 100; return '$' + n.toFixed(2); }
+        function bfcLineValue($row) {
+            var type = $row.find('select[name$="[item_type]"]').val();
+            var t = BFC_RULES.types[type];
+            if (!t) return 0;
+            var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
+            if (qty <= 0) return 0;
+            var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
+            var median = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+            var line = 0;
+            if (t.mode === 'individual_discogs') {
+                line = qty * median * gm * computeStdMult(median);
+            } else if (t.mode === 'value_percent') {
+                line = qty * median * bfcPercentForValue(median, t.value_tiers);
+            } else {
+                line = qty * (parseFloat(t.unit_rate) || 0) * gm;
+            }
+            return Math.round(line * 100) / 100;
+        }
+        function bfcLineFormula($row) {
+            var type = $row.find('select[name$="[item_type]"]').val();
+            var t = BFC_RULES.types[type];
+            if (!t) return '';
+            var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
+            if (qty <= 0) return '';
+            var median = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+            var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
+            if (t.mode === 'individual_discogs') {
+                if (median <= 0) return '';
+                var f = median + ' × ' + gm + ' × ' + computeStdMult(median).toFixed(2);
+                return qty !== 1 ? (qty + ' × (' + f + ')') : f;
+            }
+            if (t.mode === 'value_percent') {
+                if (median <= 0) return '';
+                return qty + ' × ' + median + ' × ' + Math.round(bfcPercentForValue(median, t.value_tiers) * 100) + '%';
+            }
+            return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
+        }
+        function bfcApplyRowState($row) {
+            var type = $row.find('select[name$="[item_type]"]').val();
+            var t = BFC_RULES.types[type] || {};
+            var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent');
+            var $median = $row.find('input[name$="[discogs_median_price]"]');
+            $median.prop('disabled', !usesValue).toggleClass('bfc-cell-off', !usesValue);
+            $median.attr('placeholder', usesValue ? (t.mode === 'value_percent' ? 'value $' : 'median $') : 'n/a');
+            if (!usesValue) { $median.removeClass('bfc-median-missing'); }
+            var $grade = $row.find('select[name$="[condition_grade]"]');
+            $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);
+        }
+        function bfcRecalcAll() {
+            var cashTotal = 0;
+            $('#offer_lines_table tbody tr').each(function () {
+                var $row = $(this);
+                var v = bfcLineValue($row);
+                $row.find('.bfc-line-value').text(bfcMoney(v));
+                $row.find('.bfc-line-formula').text(bfcLineFormula($row));
+                cashTotal += v;
+            });
+            cashTotal = Math.round(cashTotal * 100) / 100;
+            $('#bfc_running_total').text(bfcMoney(cashTotal));
+            $('#bfc_running_final').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
+        }
+
+        $(document).on('input change', '#offer_lines_table input', bfcRecalcAll);
+        $(document).on('change', '#offer_lines_table select', function () {
+            bfcApplyRowState($(this).closest('tr'));
+            bfcRecalcAll();
+        });
+
+        $('#offer_lines_table tbody tr').each(function () { bfcApplyRowState($(this)); });
+        bfcRecalcAll();
 
         @if(!empty($calc))
         // Sarah 2026-05-19: the offer fields live inside the Calculate form, but
