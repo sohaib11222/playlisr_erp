@@ -223,12 +223,12 @@
          from 2026-05-15 — legacy inventory is not eligible. --}}
     <div class="pp-card">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
-            <div style="font-size:14px; font-weight:600;">Your earnings</div>
+            <div style="font-size:16px; font-weight:700;">Your Earnings — Bonus Pay from Listings &amp; Sales</div>
             <div class="pp-muted">listing pay + sales bonus</div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
-                <div class="pp-muted" style="margin-bottom:8px;">Today</div>
+                <div class="pp-muted" style="margin-bottom:8px; font-size:16px; font-weight:800; color:#166534; letter-spacing:0.2px;">Today</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
                     <div>
                         <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
@@ -251,7 +251,7 @@
                 </div>
             </div>
             <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px;">
-                <div class="pp-muted" style="margin-bottom:8px;">Last 2 weeks</div>
+                <div class="pp-muted" style="margin-bottom:8px; font-size:16px; font-weight:800; color:#166534; letter-spacing:0.2px;">Last 2 weeks</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
                     <div>
                         <div style="font-size:24px; font-weight:600; color:#15803d; line-height:1;">
