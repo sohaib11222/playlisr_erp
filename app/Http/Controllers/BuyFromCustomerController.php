@@ -119,6 +119,62 @@ class BuyFromCustomerController extends Controller
             ->with('saved_offer_id', $saved->id);
     }
 
+    /**
+     * Background autosave. Fired debounced from the form (and on tab-close via
+     * sendBeacon) so the seller's name / phone / email and whatever items have
+     * been entered persist to a Draft even if the cashier never clicks Save &
+     * continue — "the contact is the asset." Best-effort: skips strict
+     * validation, never creates Contact records (a half-typed phone would spawn
+     * junk — that happens on the real Save), and swallows errors so a failed
+     * autosave never disrupts the counter. Reuses offer_id so it's one draft per
+     * quote, not one per keystroke. Returns the id so the form keeps updating it.
+     */
+    public function autosave(Request $request)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        if (!$this->autosaveHasContent($request)) {
+            return response()->json(['saved' => false, 'offer_id' => $request->input('offer_id') ?: null]);
+        }
+
+        $offerId = $request->input('offer_id') ?: null;
+        try {
+            $saved = DB::transaction(function () use ($request, $offerId) {
+                return $this->saveOffer($request, 'draft', $offerId, false);
+            });
+        } catch (\Throwable $e) {
+            \Log::warning('BFC autosave failed: ' . $e->getMessage());
+            return response()->json(['saved' => false], 200);
+        }
+
+        return response()->json(['saved' => true, 'offer_id' => $saved->id]);
+    }
+
+    /**
+     * Only autosave once something worth keeping has been entered — a seller
+     * field, or a line the cashier actually filled in. Keeps the 7 blank default
+     * rows from creating empty draft records on page load.
+     */
+    protected function autosaveHasContent(Request $request)
+    {
+        foreach (['seller_first_name', 'seller_last_name', 'seller_name', 'seller_phone', 'seller_email'] as $f) {
+            if (trim((string) $request->input($f, '')) !== '') {
+                return true;
+            }
+        }
+        foreach ((array) $request->input('lines', []) as $line) {
+            if (!is_array($line)) {
+                continue;
+            }
+            if (trim((string) ($line['title'] ?? '')) !== '') return true;
+            if (trim((string) ($line['genre'] ?? '')) !== '') return true;
+            if (trim((string) ($line['discogs_median_price'] ?? '')) !== '') return true;
+        }
+        return false;
+    }
+
     public function store(Request $request)
     {
         if (!auth()->user()->can('purchase.create')) {
@@ -346,11 +402,11 @@ class BuyFromCustomerController extends Controller
         return ['payout_type' => 'cash', 'payment_method' => 'cash_in_store'];
     }
 
-    protected function saveOffer(Request $request, $status = 'draft', $offerId = null)
+    protected function saveOffer(Request $request, $status = 'draft', $offerId = null, $createContact = true)
     {
         $business_id = request()->session()->get('user.business_id');
         $user_id = request()->session()->get('user.id');
-        $contact = $this->resolveSellerContact($request, $business_id, $user_id);
+        $contact = $this->resolveSellerContact($request, $business_id, $user_id, $createContact);
         $calculation = $this->calculator->calculate($request->input('lines', []), $request->all());
 
         // If we were handed an existing offer id, reuse it — UNLESS that offer
@@ -434,12 +490,21 @@ class BuyFromCustomerController extends Controller
         return $offer->fresh(['lines']);
     }
 
-    protected function resolveSellerContact(Request $request, $business_id, $user_id)
+    protected function resolveSellerContact(Request $request, $business_id, $user_id, $createIfMissing = true)
     {
         // Direct picker — existing contact was chosen.
         $mode = $request->input('seller_mode');
         if ($mode === 'contact' && !empty($request->input('contact_id'))) {
             return Contact::where('business_id', $business_id)->find($request->input('contact_id'));
+        }
+
+        // Background autosave passes $createIfMissing = false: a half-typed
+        // walk-in must never spawn (or mutate) a Contact — otherwise every
+        // keystroke of a phone number would create a fresh junk record. The raw
+        // seller fields are still persisted on the offer draft itself; the real
+        // Save / Accept path (createIfMissing = true) creates the contact once.
+        if (!$createIfMissing) {
+            return null;
         }
 
         // Walk-in seller. Phase 1 intake sends first + last + phone + email.

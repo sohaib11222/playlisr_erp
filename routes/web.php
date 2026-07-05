@@ -260,6 +260,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer', 'BuyFromCustomerController@create')->name('buy-from-customer.create');
     Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@create');
     Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');
+    Route::post('/buy-from-customer/autosave', 'BuyFromCustomerController@autosave')->name('buy-from-customer.autosave');
     Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
     Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');

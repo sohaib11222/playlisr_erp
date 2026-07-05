@@ -1166,6 +1166,68 @@ HTML;
         $('#offer_lines_table tbody tr').each(function () { bfcApplyRowState($(this)); });
         bfcRecalcAll();
 
+        // Sarah 2026-07-05: background autosave. Persists seller name / phone /
+        // email + whatever items are entered to a Draft (visible in History) even
+        // if the cashier never clicks Save & continue — the contact is the asset.
+        // Debounced; reuses offer_id so it's one draft per quote, not one per
+        // keystroke. The server skips Contact creation on this path (a half-typed
+        // phone would spawn junk) and swallows errors. A final flush fires on
+        // tab-hide / close via sendBeacon.
+        (function bfcAutosave() {
+            var $form = $('#buy_offer_form');
+            if (!$form.length) return;
+            var url = '{{ route('buy-from-customer.autosave') }}';
+            var timer = null, inFlight = false, pending = false;
+
+            function hasContent() {
+                var seller = ['seller_first_name', 'seller_last_name', 'seller_name', 'seller_phone', 'seller_email'].some(function (n) {
+                    return ($form.find('[name="' + n + '"]').val() || '').trim() !== '';
+                });
+                if (seller) return true;
+                var line = false;
+                $('#offer_lines_table tbody tr').each(function () {
+                    var $r = $(this);
+                    if (($r.find('input[name$="[title]"]').val() || '').trim() !== '') line = true;
+                    if (($r.find('input[name$="[genre]"]').val() || '').trim() !== '') line = true;
+                    if (($r.find('input[name$="[discogs_median_price]"]').val() || '').trim() !== '') line = true;
+                });
+                return line;
+            }
+
+            function doSave() {
+                if (!hasContent()) return;
+                if (inFlight) { pending = true; return; }
+                inFlight = true;
+                $.ajax({ url: url, method: 'POST', dataType: 'json', data: $form.serialize() })
+                    .done(function (resp) {
+                        if (resp && resp.offer_id) { $('#bfc_offer_id').val(resp.offer_id); }
+                    })
+                    .always(function () {
+                        inFlight = false;
+                        if (pending) { pending = false; doSave(); }
+                    });
+            }
+
+            function schedule() { clearTimeout(timer); timer = setTimeout(doSave, 1200); }
+
+            $form.on('input change', 'input, select, textarea', schedule);
+            // Don't let a queued autosave fire as the real Save navigates away.
+            $form.on('submit', function () { clearTimeout(timer); });
+
+            // Final flush when the tab is hidden / closed — sendBeacon survives unload.
+            function flushBeacon() {
+                if (!hasContent() || !navigator.sendBeacon) return;
+                try {
+                    var blob = new Blob([$form.serialize()], { type: 'application/x-www-form-urlencoded' });
+                    navigator.sendBeacon(url, blob);
+                } catch (e) {}
+            }
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') flushBeacon();
+            });
+            window.addEventListener('pagehide', flushBeacon);
+        })();
+
         @if(!empty($calc))
         // Sarah 2026-05-19: the offer fields live inside the Calculate form, but
         // Save / Accept / Reject are separate forms whose offer values come from
