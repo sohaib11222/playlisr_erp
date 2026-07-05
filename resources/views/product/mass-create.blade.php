@@ -2642,6 +2642,12 @@
                     if (discogsData.artist) {
                         $row.find('input[name*="[artist]"]').val(discogsData.artist);
                     }
+                    // Carry the release's primary cover-art URL into the row's
+                    // Image URL field. On save, massStore() downloads it into our
+                    // uploads folder so the product view shows the photo.
+                    if (discogsData.image_url) {
+                        $row.find('input[name*="[image_url]"]').val(discogsData.image_url);
+                    }
                     if (price) {
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
                     }

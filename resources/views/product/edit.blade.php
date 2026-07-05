@@ -277,6 +277,15 @@
             <div class="col-sm-6">
                 <div class="form-group">
                     {!! Form::label('image', __('lang_v1.product_image') . ':') !!}
+                    @if(!empty($product->image))
+                        {{-- Show the currently stored image (e.g. the Discogs cover
+                             pulled in via Mass Add) so staff can see what's on file
+                             before choosing to replace it. --}}
+                        <div style="margin-bottom:8px;">
+                            <img src="{{ $product->image_url }}" alt="Product image"
+                                style="max-height:120px; max-width:120px; border:1px solid #ddd; border-radius:4px; padding:2px;">
+                        </div>
+                    @endif
                     {!! Form::file('image', ['id' => 'upload_image', 'accept' => 'image/*']) !!}
                     <p class="help-block">@lang('purchase.max_file_size', ['size' => (config('constants.document_size_limit') / 1000000)]). @lang('lang_v1.aspect_ratio_should_be_1_1') @if(!empty($product->image)) <br>@lang('lang_v1.previous_image_will_be_replaced') @endif</p>
                 </div>

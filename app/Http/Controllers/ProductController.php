@@ -3351,6 +3351,16 @@ class ProductController extends Controller
                     );
                 }
 
+                // Sarah 2026-07-05: bulk Discogs adds ship the release's primary
+                // cover art in image_url. When the row has no hand-uploaded file,
+                // pull that photo down into our own uploads folder so the product
+                // view shows it — Discogs' image CDN 403s on hot-linking, and a
+                // stored copy survives their URL churn. A failed fetch just leaves
+                // the product without a photo; it never blocks the add.
+                if (empty($image) && !empty($productData['image_url'])) {
+                    $image = $this->downloadRemoteProductImage($productData['image_url']);
+                }
+
                 $sku = !empty($productData['sku']) ? $productData['sku'] : null;
 
                 // create product if no product id provided
@@ -3494,6 +3504,76 @@ class ProductController extends Controller
 
     }
 
+
+    /**
+     * Mass-add helper: download a remote product image (e.g. a Discogs release's
+     * cover art) into the local product image folder and return the saved file
+     * name for the products.image column. Returns null on any failure so a
+     * broken, blocked, or non-image URL never aborts product creation — the
+     * product is just left without a photo. Discogs' image CDN (i.discogs.com)
+     * rejects requests without a real User-Agent, so we send the same one the
+     * Discogs API calls use.
+     *
+     * @param  string|null  $url
+     * @return string|null  saved file name, or null on failure
+     */
+    private function downloadRemoteProductImage($url)
+    {
+        // Mirror uploadFile(): no external fetches on the demo environment.
+        if (config('app.env') == 'demo') {
+            return null;
+        }
+        $url = trim((string) $url);
+        if ($url === '' || !preg_match('#^https?://#i', $url)) {
+            return null;
+        }
+
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
+                'Accept: image/*',
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+
+            $mime = strtolower(trim(explode(';', $type)[0]));
+            if ($err || $code !== 200 || empty($body) || strpos($mime, 'image/') !== 0) {
+                \Log::warning('mass-add image download failed for ' . $url
+                    . ' (http ' . $code . ', type ' . $type . ($err ? ', ' . $err : '') . ')');
+                return null;
+            }
+
+            $extMap = [
+                'image/jpeg' => 'jpg',
+                'image/jpg'  => 'jpg',
+                'image/png'  => 'png',
+                'image/gif'  => 'gif',
+                'image/webp' => 'webp',
+            ];
+            $ext = $extMap[$mime] ?? 'jpg';
+
+            // uniqid() guards against same-second collisions across rows.
+            $new_name = time() . '_' . uniqid() . '.' . $ext;
+            $dest = public_path() . '/uploads/' . config('constants.product_img_path') . '/' . $new_name;
+            if (file_put_contents($dest, $body) === false) {
+                return null;
+            }
+
+            return $new_name;
+        } catch (\Throwable $e) {
+            \Log::warning('mass-add image download error for ' . $url . ': ' . $e->getMessage());
+            return null;
+        }
+    }
 
     public function getMassProductRow(Request $request)
     {
@@ -3950,6 +4030,7 @@ class ProductController extends Controller
                 'sub_category_id' => $mapped['sub_category_id'] ?? null,
                 'sku' => $mapped['sku'] ?? null,
                 'product_description' => $mapped['product_description'] ?? null,
+                'image_url' => $mapped['image_url'] ?? null,
                 'discogs_release_id' => $mapped['discogs_release_id'] ?? $id,
                 'warnings' => $mapped['warnings'] ?? [],
                 'sales_history' => $salesHistory,

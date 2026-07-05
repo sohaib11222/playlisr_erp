@@ -18,7 +18,7 @@ class DiscogsReleaseImportMapper
      * Map Discogs GET /releases/{id} JSON payload to ERP product fields.
      *
      * @param  object  $payload  json_decode object from Discogs API
-     * @return array{name: string, artist: string, format: string, product_description: string|null, category_id: int|null, sub_category_id: int|null, discogs_release_id: int, warnings: string[]}
+     * @return array{name: string, artist: string, format: string, product_description: string|null, category_id: int|null, sub_category_id: int|null, image_url: string|null, discogs_release_id: int, warnings: string[]}
      */
     public function mapFromApiPayload(int $businessId, object $payload, int $releaseId): array
     {
@@ -166,9 +166,42 @@ class DiscogsReleaseImportMapper
             'category_id' => $categoryId,
             'sub_category_id' => $subCategoryId,
             'sku' => $sku,
+            'image_url' => $this->primaryImageUri($payload->images ?? null),
             'discogs_release_id' => $releaseId,
             'warnings' => array_values(array_unique($warnings)),
         ];
+    }
+
+    /**
+     * Pull the release's primary cover-art URL from a Discogs payload. Discogs
+     * flags one image with type == "primary"; fall back to the first image
+     * with a usable uri when none is flagged. Returns the full-size `uri`
+     * (not the uri150 thumbnail), or null when the release has no images.
+     *
+     * @param  mixed  $images  Discogs images array (objects with ->type, ->uri)
+     */
+    private function primaryImageUri($images): ?string
+    {
+        if (!is_array($images)) {
+            return null;
+        }
+        $first = null;
+        foreach ($images as $img) {
+            if (!is_object($img)) {
+                continue;
+            }
+            $uri = trim((string) ($img->uri ?? ''));
+            if ($uri === '') {
+                continue;
+            }
+            if ($first === null) {
+                $first = $uri;
+            }
+            if (isset($img->type) && $img->type === 'primary') {
+                return $uri;
+            }
+        }
+        return $first;
     }
 
     /**
