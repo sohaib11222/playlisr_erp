@@ -1323,6 +1323,11 @@
                                  A plain tender-'other' ring with no channel tag is a
                                  real cashier off-register sale - keep the cashier. --}}
                             <span class="rf-cashier" title="Auto-created from the {{ $store }} order sync - not a cashier sale">· {{ $store }} sync</span>
+                        @elseif($store === 'online' && $cashier)
+                            {{-- Off-register online order handled by shipments (Nick).
+                                 Frame it as shipments with their name, not a register
+                                 cashier sale. --}}
+                            <span class="rf-cashier" title="Online order handled by shipments">· shipments · <strong>{{ $cashier }}</strong></span>
                         @elseif($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>
                 </div>
