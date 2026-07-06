@@ -295,8 +295,22 @@ class SyncNivessaWebSales extends Command
     {
         return DB::table('transactions')
             ->where('business_id', $businessId)
-            ->where('import_source', $importSource)
-            ->where('import_external_id', $extId)
+            ->where(function ($q) use ($importSource, $extId) {
+                // (a) Already imported by a prior run of this command.
+                $q->where(function ($q2) use ($importSource, $extId) {
+                    $q2->where('import_source', $importSource)
+                       ->where('import_external_id', $extId);
+                });
+                // (b) Web orders only: the website already pushes each paid
+                // order into the ERP LIVE against the real product (stock
+                // decrements), noting it "Website order <id>". Skip so this
+                // command never adds a second placeholder copy of the same
+                // order - that was the duplicate row in the transactions list.
+                if ($importSource === 'nivessa_web') {
+                    $q->orWhere('additional_notes', 'Website order ' . $extId)
+                      ->orWhere('additional_notes', 'like', 'Website order ' . $extId . '%');
+                }
+            })
             ->exists();
     }
 
