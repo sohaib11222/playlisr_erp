@@ -890,6 +890,33 @@ $(document).ready(function() {
         adjustComboQty(tr);
     });
 
+    //Sarah 2026-07-06: "+1 same" - add another unit of this exact line without
+    //re-typing it, even when the item's system stock is lower than what's
+    //physically on the counter. Lifts this one row's max cap only when needed,
+    //after a confirm, so overselling is deliberate (stock goes negative and
+    //flags a count to fix). Reuses the normal qty pipeline for totals/validation.
+    $('table#pos_table tbody').on('click', '.pos_add_another_unit', function() {
+        var qty_element = $(this).closest('tr').find('input.pos_quantity');
+        if (!qty_element.length) { return; }
+        var current_qty = __read_number(qty_element);
+        var new_qty = current_qty + 1;
+        var allow_oversell = qty_element.data('allow-overselling');
+        var max_rule = parseFloat(qty_element.attr('data-rule-max-value'));
+        if (!allow_oversell && !isNaN(max_rule) && new_qty > max_rule) {
+            var avail = qty_element.data('qty_available');
+            var shown = (avail === undefined || avail === null) ? max_rule : avail;
+            if (!confirm('The system shows only ' + shown + ' of this item in stock. Sell another copy anyway? Stock will go negative and flag a count to fix.')) {
+                return;
+            }
+            //Raise this one row's cap so the sale can complete. Set both the
+            //attribute and the live validator rule (same pattern used for lots).
+            qty_element.attr('data-rule-max-value', new_qty);
+            try { qty_element.rules('add', { 'max-value': new_qty }); } catch (e) {}
+        }
+        __write_number(qty_element, new_qty);
+        qty_element.change();
+    });
+
     //If change in unit price update price including tax and line total
     $('table#pos_table tbody').on('change', 'input.pos_unit_price', function() {
         var unit_price = __read_number($(this));

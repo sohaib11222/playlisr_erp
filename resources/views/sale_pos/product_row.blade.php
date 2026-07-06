@@ -289,6 +289,7 @@
 		<span class="input-group-btn"><button type="button" class="btn btn-default btn-flat quantity-up"><i class="fa fa-plus text-success"></i></button></span>
 		</div>
 		
+		<button type="button" class="btn btn-link btn-xs pos_add_another_unit" style="padding:2px 4px; font-size:11px; text-decoration:none;" title="Sell another copy of this exact item, even if it is more than the system count (stock goes negative and flags a count to fix). No need to re-type it.">+1 same</button>
 		<input type="hidden" name="products[{{$row_count}}][product_unit_id]" value="{{$product->unit_id}}">
 		@if(count($sub_units) > 0)
 			<br>
