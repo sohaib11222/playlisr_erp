@@ -11457,6 +11457,15 @@ class ReportController extends Controller
             ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
+        // Sarah 2026-07-06: only in-store sales belong in the per-cashier
+        // Clover reconciliation. Website/Discogs/eBay orders (e.g. Nick's
+        // shipments) live in transactions but are paid online and never touch
+        // the drawer or Clover, so counting them made Nick show up as a
+        // Hollywood cashier "off by" his whole online total. Same in_store
+        // guard the amount-matching query below already uses.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $erpQ->where('t.channel', 'in_store');
+        }
         if (!$used_all_methods) {
             $erpQ->whereIn('tp.method', $card_methods);
         }
@@ -11489,6 +11498,10 @@ class ReportController extends Controller
             ->where('tp.method', 'cash')
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
+        // Same in-store-only guard: online orders never hit the cash drawer.
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $cashQ->where('t.channel', 'in_store');
+        }
         if (!empty($location_id)) {
             $cashQ->where('t.location_id', $location_id);
         }
