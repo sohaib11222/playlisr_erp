@@ -6275,11 +6275,33 @@ class SellPosController extends Controller
 
             //Include search
             if (!empty($term)) {
-                $products->where(function ($query) use ($term) {
-                    $query->where('p.name', 'like', '%' . $term .'%');
-                    $query->orWhere('sku', 'like', '%' . $term .'%');
-                    $query->orWhere('sub_sku', 'like', '%' . $term .'%');
-                    $query->orWhere('p.artist', 'like', '%' . $term .'%');
+                // Cashiers type what's on the sticker ("Artist - Title"), but the
+                // catalog stores records two ways: Discogs imports keep the artist
+                // in a separate column (name = "Artist - Title"), while legacy
+                // records leave artist empty and bake it into the name as
+                // "Title / Artist". A single contiguous LIKE misses both whenever
+                // the typed word order or separator differs from how the record
+                // was stored, so the item "doesn't come up" and the cashier rings
+                // it in manually. Tokenize the term and require every word to
+                // appear somewhere in the name or artist, so word order and
+                // punctuation no longer matter. A full SKU/sub_sku still matches
+                // as a whole so barcode scans keep working.
+                $tokens = preg_split('/[^\p{L}\p{N}]+/u', $term, -1, PREG_SPLIT_NO_EMPTY);
+                if (empty($tokens)) {
+                    $tokens = [$term];
+                }
+
+                $products->where(function ($query) use ($term, $tokens) {
+                    $query->where(function ($q) use ($tokens) {
+                        foreach ($tokens as $tok) {
+                            $q->where(function ($qq) use ($tok) {
+                                $qq->where('p.name', 'like', '%' . $tok . '%')
+                                   ->orWhere('p.artist', 'like', '%' . $tok . '%');
+                            });
+                        }
+                    });
+                    $query->orWhere('sku', 'like', '%' . $term . '%');
+                    $query->orWhere('sub_sku', 'like', '%' . $term . '%');
                 });
             }
 
