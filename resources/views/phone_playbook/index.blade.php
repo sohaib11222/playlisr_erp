@@ -221,9 +221,9 @@
         <div class="sec-head"><span class="sec-num">1</span><h2>How to talk on the phone</h2></div>
 
         <div class="script">
-            <div class="label"><span class="chan call">Call</span> Standard greeting</div>
+            <div class="label">Standard greeting</div>
             <p class="say">Thanks for calling Nivessa Records! How can I help you?</p>
-            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Opening a text back</div>
+            <div class="label" style="margin-top:10px">Opening a text back</div>
             <p class="say">Hi! Thanks for reaching out to Nivessa Records. What are you looking for?</p>
         </div>
         <div class="word-swap">
@@ -261,17 +261,15 @@
         </ol>
 
         <div class="script">
-            <div class="label"><span class="chan call">Call</span> While you check</div>
+            <div class="label">While you check</div>
             <p class="say">Looking this up for you!</p>
-            <div class="label" style="margin-top:14px"><span class="chan call">Call</span> Not here right now</div>
+            <div class="label" style="margin-top:14px">Not here right now</div>
             <p class="say">We don't have that one here, but we may have it at our other store or the warehouse - checking!</p>
-            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
+            <div class="label" style="margin-top:10px">The &ldquo;no, but&hellip;&rdquo;</div>
             <p class="say">We don't have that on CD right now, but we do have it on vinyl - are you interested? Or do you want us to order the CD for you? I can check if our distributor has it.</p>
-            <div class="label" style="margin-top:14px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Price, UPC, or move it to the other store</div>
-            <p class="say">Pulling it up in our system right now! It's $[price], UPC [number] &mdash; and yes, I can have it moved to the Hollywood store for you. Want me to set it aside there?</p>
-            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> They were told it's set aside for them</div>
+            <div class="label" style="margin-top:10px">They were told it's set aside for them</div>
             <p class="say">You're all set &mdash; it's at the front desk with your name on it. See you soon!</p>
-            <div class="label" style="margin-top:14px"><span class="chan text">Text</span> New release tonight / preorders</div>
+            <div class="label" style="margin-top:14px">New release tonight / preorders</div>
             <p class="say">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in? If so, you're all set to grab it today.</p>
         </div>
 
@@ -283,9 +281,9 @@
         <div class="sec-head"><span class="sec-num">3</span><h2>Do you buy records? / Selling a collection</h2><span class="prio high">High priority</span></div>
 
         <div class="script">
-            <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
+            <div class="label">Do you buy records?</div>
             <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
-            <div class="label" style="margin-top:12px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Big collection</div>
+            <div class="label" style="margin-top:12px">Big collection</div>
             <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we may be able to arrange a house pickup depending on what you have. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out to you.</p>
         </div>
 
@@ -298,7 +296,7 @@
         <p class="lede">Big label or brand &mdash; Warner, Universal, Sony, Puma, Lego. Route to Sarah.</p>
 
         <div class="script">
-            <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Routing to Sarah</div>
+            <div class="label">Routing to Sarah</div>
             <p class="say">Sounds exciting! I'll forward this to Sarah &mdash; she manages our brand partnerships.</p>
         </div>
 
