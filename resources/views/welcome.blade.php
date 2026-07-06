@@ -36,8 +36,8 @@
                 <img src="https://nivessa.com/nivessa-new-logo.png" alt="Nivessa" class="niv-home-logo">
                 @if(Auth::check())
                     <h1 class="niv-home-title">Welcome back</h1>
-                    <p class="niv-home-sub">You are signed in to the Nivessa dashboard.</p>
-                    <a href="{{ action('HomeController@index') }}" class="niv-home-btn">Go to dashboard</a>
+                    <p class="niv-home-sub">You are signed into the Nivessa inventory system.</p>
+                    <a href="{{ action('HomeController@index') }}" class="niv-home-btn">Go to the ERP</a>
                 @else
                     <h1 class="niv-home-title">Nivessa Records</h1>
                     <p class="niv-home-sub">Staff dashboard and point of sale.</p>
