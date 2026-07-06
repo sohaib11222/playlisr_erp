@@ -300,7 +300,7 @@
             <p class="say">Sounds exciting! I'll forward this to Sarah &mdash; she manages our brand partnerships.</p>
         </div>
 
-        <div class="callout"><strong>Give Sarah's email only:</strong> sarah@nivessa.com. Get the company and contact name &mdash; don't discuss terms yourself.</div>
+        <div class="callout"><strong>Give Sarah's email only:</strong> <a href="mailto:sarah@nivessa.com">sarah@nivessa.com</a>. Get the company and contact name &mdash; don't discuss terms yourself.</div>
     </section>
 
     {{-- 5 --}}
@@ -355,10 +355,6 @@
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
                 <span class="say">Yes, you can book the space at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
             </div>
-            <div class="qa">
-                <p class="q">&ldquo;I made a song &mdash; any thoughts? Is it worth publishing?&rdquo;</p>
-                <span class="say">Love that you're making music! We're a record shop &mdash; not a label or publisher &mdash; so we don't review or publish tracks. But we'd love to have you play: you can book a show at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>, and if you press your own record we'd be glad to carry it.</span>
-            </div>
         </div>
 
         <div class="card" id="hiring" style="margin-top:14px">
@@ -403,7 +399,7 @@
         <ol class="flow">
             <li><strong>Check they're on shift.</strong><span class="sub">Only contact people who are working right now. Never message or call someone off their shift &mdash; find who's on shift instead.</span></li>
             <li><strong>DM them on Slack; no answer, call or text their cell.</strong></li>
-            <li><strong>Take a message.</strong><span class="sub">Collect the customer's name, number, and what they need, and give them a callback time &mdash; then make sure it happens. You can say: &ldquo;It's very busy in the store right now, I didn't get an answer yet but I'll call you within the hour with an update.&rdquo; Then actually update them, and get a hold of the cashier.</span></li>
+            <li><strong>Take a message.</strong><span class="sub">Collect the customer's name, number, and what they need, and give them a callback time &mdash; then make sure it happens. You can say: &ldquo;It appears to be busy in the store right now, I didn't get an answer yet but I'll call you back within the hour with an update.&rdquo; Then actually update them, and get a hold of the cashier.</span></li>
         </ol>
     </section>
 
