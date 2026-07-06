@@ -27,6 +27,7 @@ Route::get('/discogs/search-product-price-2', [ProductController::class, 'search
 // nginx hijacks /api/*. The website reads listening-party / event detail
 // from here — the ERP is the source of truth.
 Route::get('/events-feed.json', 'EventsController@publicFeed');
+Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'publicFeed']);
 
 
 Route::middleware(['setData'])->group(function () {

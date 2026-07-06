@@ -31,7 +31,38 @@ class NivessaProductsFeedController extends Controller
 {
     private function businessId(): int
     {
-        return (int) config('services.nivessa_web.business_id');
+        // Single-tenant install; fall back to 1 if the bridge env isn't set so
+        // the public feed still works without the nivessa_web token configured.
+        return (int) (config('services.nivessa_web.business_id') ?: 1);
+    }
+
+    /**
+     * GET /products-feed.json  (PUBLIC, off the /api/ path like /events-feed.json)
+     *
+     * Newest arrivals only - the same catalogue that's already public on
+     * nivessa.com, so no auth needed. In-store SALES figures stay behind the
+     * token-guarded index() endpoint below.
+     */
+    public function publicFeed(Request $request): JsonResponse
+    {
+        $businessId  = $this->businessId();
+        $newestLimit = min(60, max(0, (int) $request->query('newest', 40)));
+
+        $newest = [];
+        try {
+            $newest = $newestLimit ? $this->newest($businessId, $newestLimit) : [];
+        } catch (\Throwable $e) {
+            Log::warning('[products-feed] public newest failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'newest'       => $newest,
+            'bestsellers'  => [], // sales data stays behind the token bridge
+            'generated_at' => now()->toIso8601String(),
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=300',
+        ], JSON_UNESCAPED_SLASHES);
     }
 
     /**
