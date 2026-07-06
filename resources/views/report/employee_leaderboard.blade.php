@@ -136,7 +136,7 @@
         .lb-rank-2 { background:#d4d8de; color:#1f2937; }
         .lb-rank-3 { background:#e8a06a; color:#5a2200; }
         .lb-me { background:#eef2ff; }
-        .lb-table td, .lb-table th { vertical-align:middle; padding:6px 8px; }
+        .lb-table td, .lb-table th { vertical-align:middle; padding:10px 10px; font-size:14px; }
         .lb-hit { color:#1b7a32; font-weight:700; }
         .lb-miss { color:#9aa0a6; }
         .lb-comm { background:#f1faf3; font-weight:700; color:#1b5e20; }
@@ -200,7 +200,7 @@
                         @endif
                         <table class="table table-condensed lb-table">
                             <thead>
-                                <tr style="color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:.5px;">
+                                <tr style="color:#6b7280; text-transform:uppercase; font-size:12px; letter-spacing:.5px;">
                                     <th class="text-center">#</th>
                                     <th>Employee</th>
                                     <th class="text-right">Sales / hr</th>
