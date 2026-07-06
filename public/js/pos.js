@@ -673,6 +673,20 @@ $(document).ready(function() {
                     if (ui.content.length == 1) {
                         ui.item = ui.content[0];
 
+                        // Only auto-add a lone result when the cashier actually scanned a
+                        // barcode / typed an exact SKU or product id - NOT for a free-text
+                        // name/artist search. A text search like "rosalia" that matches a
+                        // single record used to silently drop it into the cart with no
+                        // chance to look at it ("it auto adds a record i dont want"). Now a
+                        // text search just shows the match in the dropdown so the cashier
+                        // can confirm it or keep typing; barcode/SKU scans still add instantly.
+                        var typed = $.trim($(this).val() || "");
+                        var typedLc = typed.toLowerCase();
+                        var is_scan = /^[0-9]+$/.test(typed) ||
+                            (ui.item.sub_sku && String(ui.item.sub_sku).toLowerCase() === typedLc) ||
+                            (ui.item.product_id != null && String(ui.item.product_id) === typed);
+                        if (!is_scan) { return; }
+
                         var is_overselling_allowed = false;
                         if($('input#is_overselling_allowed').length) {
                             is_overselling_allowed = true;
