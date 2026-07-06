@@ -251,7 +251,7 @@
             <div class="cell no">Let us check and we will get back to you.</div>
         </div>
 
-        <div class="callout"><strong>Talk like a local.</strong> Natural, casual American English, like texting a friend &mdash; read it back before you send. Never call a customer &ldquo;buddy&rdquo; or &ldquo;bro.&rdquo;</div>
+        <div class="callout"><strong>Never call a customer &ldquo;buddy,&rdquo; &ldquo;bro,&rdquo; or &ldquo;brother.&rdquo;</strong></div>
     </section>
 
     {{-- 2 --}}
