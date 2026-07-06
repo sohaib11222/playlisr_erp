@@ -1240,6 +1240,16 @@
                 $when = $isToday ? $dt->format('g:i a') : $dt->format('M j · g:i a');
                 $customer = optional($sale->contact)->name ?: 'Walk-In Customer';
                 $store = optional($sale->location)->name ?: '-';
+                // Off-register marketplace sales decrement stock at a real store,
+                // but on the feed they read as their channel, not the physical
+                // store - so a Discogs sale shows "discogs", not "hollywood".
+                $saleChan = strtolower(trim((string) ($sale->channel ?? '')));
+                $saleNoteLc = strtolower(trim((string) ($sale->staff_note ?? $sale->additional_notes ?? '')));
+                if ($saleChan === 'discogs' || strpos($saleNoteLc, 'discogs order') === 0) {
+                    $store = 'discogs';
+                } elseif ($saleChan === 'ebay' || strpos($saleNoteLc, 'ebay order') === 0) {
+                    $store = 'ebay';
+                }
                 // sales_person -> User via created_by (who saved the sale in ERP)
                 $cashier = optional($sale->sales_person)->user_full_name;
                 $cashier = $cashier ? trim($cashier) : null;
