@@ -4537,6 +4537,7 @@ class SellPosController extends Controller
                     $this->updateProductSaleDates($transaction);
                     
                     // Update product stock
+                    $oversell_adjusted = 0; // # of lines floored at 0 (sold over count)
                     foreach ($input['products'] as $product) {
                         if ($product['product_id'] == 'manual') {
                             continue;
@@ -4562,6 +4563,36 @@ class SellPosController extends Controller
                             ->where('location_id', $input['location_id'])
                             ->first();
 
+                        // Sarah 2026-07-06: never let a checkout leave stock
+                        // negative. If we just sold more than the system counted
+                        // (physical copies not all in the system), floor at 0 and
+                        // log that inventory was auto-adjusted at checkout, so the
+                        // discrepancy is recorded rather than shown as a misleading
+                        // negative. Guarded so it can never break the sell flow.
+                        if ($product['enable_stock'] && !empty($variation_location_d) && $variation_location_d->qty_available < 0) {
+                            try {
+                                $over_by = abs((float) $variation_location_d->qty_available);
+                                $variation_location_d->qty_available = 0;
+                                $variation_location_d->save();
+                                $oversell_adjusted++;
+                                \Illuminate\Support\Facades\Storage::disk('local')->append(
+                                    'oversell-adjustments-' . \Carbon\Carbon::now()->format('Y-m') . '.jsonl',
+                                    json_encode([
+                                        'at' => \Carbon\Carbon::now()->toDateTimeString(),
+                                        'invoice_no' => $transaction->invoice_no ?? null,
+                                        'transaction_id' => $transaction->id ?? null,
+                                        'location_id' => $input['location_id'],
+                                        'product_id' => $product['product_id'],
+                                        'variation_id' => $product['variation_id'],
+                                        'sold_over_by' => $over_by,
+                                        'cashier_id' => auth()->id(),
+                                    ])
+                                );
+                            } catch (\Throwable $e) {
+                                \Log::warning('oversell floor/log failed: ' . $e->getMessage());
+                            }
+                        }
+
                         // var_dump($variation_location_d);die;
                         if (!$product['enable_stock'] && (empty($variation_location_d) || $variation_location_d == 0)) {
                             $this->productUtil->updateProductQuantity2(
@@ -4581,6 +4612,18 @@ class SellPosController extends Controller
                                 $product['combo'],
                                 $input['location_id']
                             );
+                        }
+                    }
+
+                    // Surface the checkout stock auto-adjustment on the sale
+                    // itself (staff note) so it's visible, not just in the log.
+                    if ($oversell_adjusted > 0) {
+                        try {
+                            $adj_note = 'Stock auto-adjusted at checkout: ' . $oversell_adjusted . ' item(s) sold over the system count (floored to 0).';
+                            $transaction->staff_note = trim(($transaction->staff_note ? $transaction->staff_note . ' | ' : '') . $adj_note);
+                            $transaction->save();
+                        } catch (\Throwable $e) {
+                            \Log::warning('oversell staff_note failed: ' . $e->getMessage());
                         }
                     }
 
