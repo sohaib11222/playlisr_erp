@@ -263,8 +263,6 @@
         <div class="script">
             <div class="label"><span class="chan call">Call</span> While you check</div>
             <p class="say">Looking this up for you!</p>
-            <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Not sure / not online yet</div>
-            <p class="say">We get new and used records in every day! If you don't see it on <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>, we're happy to dig for you.</p>
             <div class="label" style="margin-top:14px"><span class="chan call">Call</span> Not here right now</div>
             <p class="say">We don't have that one here, but we may have it at our other store or the warehouse - checking!</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
