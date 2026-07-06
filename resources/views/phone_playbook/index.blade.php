@@ -335,7 +335,7 @@
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Where are you located?&rdquo;</p>
-                <span class="say"><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">Hollywood: 6434 Hollywood Blvd, LA 90028</a>. <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">Pico: 5770 W Pico Blvd, LA 90019</a>. See you there!</span>
+                <span class="say"><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">Hollywood: 6434 Hollywood Blvd, Los Angeles, CA 90028</a>. <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">Pico: 5770 W Pico Blvd, Los Angeles, CA 90019</a>. See you there!</span>
                 <p class="note">Maps and directions: <a href="https://nivessa.com/locations" target="_blank" rel="noopener">nivessa.com/locations</a></p>
             </div>
         </div>
