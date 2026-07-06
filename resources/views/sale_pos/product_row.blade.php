@@ -275,21 +275,27 @@
 			<span class="input-group-btn"><button type="button" class="btn btn-default btn-flat quantity-down"><i class="fa fa-minus text-danger"></i></button></span>
 		<input type="text" data-min="1" 
 			class="form-control pos_quantity input_number mousetrap input_quantity" 
-			value="{{@format_quantity($product->quantity_ordered)}}" name="products[{{$row_count}}][quantity]" data-allow-overselling="@if(empty($pos_settings['allow_overselling'])){{'false'}}@else{{'true'}}@endif" 
+			value="{{@format_quantity($product->quantity_ordered)}}" name="products[{{$row_count}}][quantity]" data-allow-overselling="true"
 			data-decimal="0"
 			data-rule-abs_digit="true"
 			data-msg-abs_digit="@lang('lang_v1.decimal_value_not_allowed')"
-			data-rule-required="true" 
-			data-msg-required="@lang('validation.custom-messages.this_field_is_required')" 
-			@if($product->enable_stock && empty($pos_settings['allow_overselling']) && empty($is_sales_order) )
-				data-rule-max-value="{{$max_qty_rule}}" data-qty_available="{{$product->qty_available}}" data-msg-max-value="{{$max_qty_msg}}" 
-				data-msg_max_default="@lang('validation.custom-messages.quantity_not_available', ['qty'=> $product->formatted_qty_available, 'unit' => $product->unit  ])" 
-			@endif 
+			data-rule-required="true"
+			data-msg-required="@lang('validation.custom-messages.this_field_is_required')"
+			{{-- Sarah 2026-07-06: POS never hard-blocks on stock. If a record is
+			     on the counter it can be sold even when the system count is low
+			     (counts drift in a used-record store). Keep qty_available for the
+			     soft "in stock" note below, but drop the blocking max-value rule
+			     so a sale can always be completed. --}}
+			@if($product->enable_stock && empty($is_sales_order) )
+				data-qty_available="{{$product->qty_available}}"
+			@endif
 		>
 		<span class="input-group-btn"><button type="button" class="btn btn-default btn-flat quantity-up"><i class="fa fa-plus text-success"></i></button></span>
 		</div>
 		
-		<button type="button" class="btn btn-link btn-xs pos_add_another_unit" style="padding:2px 4px; font-size:11px; text-decoration:none;" title="Sell another copy of this exact item, even if it is more than the system count (stock goes negative and flags a count to fix). No need to re-type it.">+1 same</button>
+		@if($product->enable_stock && empty($is_sales_order))
+			<div class="text-muted" style="font-size:11px; margin-top:2px;">{{ $product->formatted_qty_available }} in stock</div>
+		@endif
 		<input type="hidden" name="products[{{$row_count}}][product_unit_id]" value="{{$product->unit_id}}">
 		@if(count($sub_units) > 0)
 			<br>
