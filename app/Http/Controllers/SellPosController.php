@@ -1510,6 +1510,8 @@ class SellPosController extends Controller
                 || strpos($note, 'website order') === 0;
             $isOffreg = in_array($chan, ['discogs', 'ebay'], true)
                 || strpos($note, 'web order') === 0
+                || strpos($note, 'discogs order') === 0
+                || strpos($note, 'ebay order') === 0
                 || $allOther;
 
             if ($isWeb || $isOffreg) {
