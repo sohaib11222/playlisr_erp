@@ -166,17 +166,15 @@
 <div class="pp-shell">
 
     <header class="pp-header">
-        <p class="pp-eyebrow">Nivessa Records &middot; Front-of-House Guide</p>
-        <h1>Answering the Phone &amp; Finding Records</h1>
-        <p>Exactly what to say on calls and texts &mdash; find a record across both stores, quote a collection, and answer the everyday questions fast.</p>
-        <p class="who">For whoever's on the phones. Keep it open at the counter &mdash; tap what they're asking and read the script.</p>
+        <p class="pp-eyebrow">Nivessa Records</p>
+        <h1>A Guide to Answering the Phone &amp; Texts</h1>
     </header>
 
     {{-- router --}}
     <nav class="pp-tree" aria-label="Jump to the right script">
         <div class="tree-head">
-            <h2>Start here &mdash; what are they asking?</h2>
-            <p>Tap the one that fits and read the exact words. Handle the high-priority ones first.</p>
+            <h2>Start here &mdash; what is the question?</h2>
+            <p>Handle high-priority questions first.</p>
         </div>
         <div class="tree-grid">
             <a class="branch-card high" href="#record">
@@ -196,7 +194,7 @@
             </a>
             <a class="branch-card low" href="#hours">
                 <span class="prio low">Quick</span>
-                <span class="bc-q">Hours &middot; open today? &middot; where are you?</span>
+                <span class="bc-q">Hours &middot; open today? &middot; where are you located?</span>
                 <span class="bc-go">Hours &amp; locations &rarr;</span>
             </a>
             <a class="branch-card low" href="#shipping">
@@ -215,11 +213,7 @@
                 <span class="bc-go">Careers &rarr;</span>
             </a>
         </div>
-        <div class="prio-legend">
-            <span><span class="prio high">High priority</span> A sale or a buy on the line &mdash; give it full effort.</span>
-            <span><span class="prio low">Quick</span> Fast info &mdash; answer warmly in under a minute.</span>
-        </div>
-        <p class="tree-foot">Not sure? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo; and give them a real answer &mdash; never &ldquo;we'll get back to you.&rdquo; However it ends, <a href="#visit">invite them in</a>.</p>
+        <p class="tree-foot">Not sure? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo; and please give them a real answer &mdash; not &ldquo;let me see&rdquo; with no reply after that.</p>
     </nav>
 
     {{-- 1 --}}
@@ -239,15 +233,15 @@
             <div class="cell no"><s>Buddy</s>, bro, pal, boss, my friend, brother</div>
             <div class="cell yes">Sure, what can I help you find?</div>
             <div class="cell no">Yeah&hellip; what do you want?</div>
-            <div class="cell yes">We don't have that one here &mdash; but we may have it at our other store or the warehouse.</div>
+            <div class="cell yes">We don't have that 1 here &mdash; but I am checking our other store and warehouse.</div>
             <div class="cell no">We don't have it. (and stop)</div>
             <div class="cell yes">Looking this up for you!</div>
-            <div class="cell no">Hold on. (silence)</div>
+            <div class="cell no">Hold on.</div>
             <div class="cell yes">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in?</div>
             <div class="cell no">We will be selling them now, to whom who preorder.</div>
-            <div class="cell yes">Awesome &mdash; see you today!</div>
+            <div class="cell yes">Awesome &mdash; see you soon!</div>
             <div class="cell no">Great, most welcome.</div>
-            <div class="cell yes">One sec, checking our stock now!</div>
+            <div class="cell yes">One sec, checking in with our cashiers now.</div>
             <div class="cell no">Let us check and we will get back to you.</div>
         </div>
 
@@ -259,11 +253,11 @@
         <div class="sec-head"><span class="sec-num">2</span><h2>Do you have this record?</h2><span class="prio high">High priority</span></div>
 
         <ol class="flow">
-            <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search the title by artist and album. See which store it shows at &mdash; Pico or Hollywood.</span></li>
-            <li><strong>Have someone lay eyes on it.</strong><span class="sub">DM whoever's on shift at that store on Slack to confirm the copy is really on the shelf. No Slack answer? Call their cell (on-shift only &mdash; see Section 7).</span></li>
-            <li><strong>Not at one store? Check the other and the warehouse.</strong><span class="sub">If it's not at Pico, check Hollywood, and the warehouse, before you ever say we don't have it.</span></li>
-            <li><strong>Fix the ERP if the count is wrong.</strong><span class="sub">If the shelf didn't match the system &mdash; none there, or extras &mdash; update the true inventory so the next person isn't misled.</span></li>
-            <li><strong>Give a real answer.</strong><span class="sub">A clear yes, or a no with an alternative (another format, pressing, or ordering it in). Never a flat &ldquo;nope.&rdquo;</span></li>
+            <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search by artist. If we don't have the exact title/format, offer other titles or another format, and say we're checking our other locations.</span></li>
+            <li><strong>Have an employee lay eyes on it.</strong><span class="sub">DM whoever's on shift there to confirm it's really on the shelf. No answer? Call or text their cell &mdash; on-shift only, and only during business hours (9:30am&ndash;11pm).</span></li>
+            <li><strong>Not at one store? Check the other store and the warehouse.</strong></li>
+            <li><strong>Fix the ERP if the total in stock is wrong.</strong><span class="sub">Update the true inventory so the next person isn't misled.</span></li>
+            <li><strong>Give a real answer.</strong><span class="sub">A clear yes, or a no with an alternative (another format, pressing, or a special order). Never a flat &ldquo;nope.&rdquo;</span></li>
         </ol>
 
         <div class="script">
@@ -272,13 +266,13 @@
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Not sure / not online yet</div>
             <p class="say">We get new and used records in every day! If you don't see it on <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>, we're happy to dig for you.</p>
             <div class="label" style="margin-top:14px"><span class="chan call">Call</span> Not here right now</div>
-            <p class="say">We don't have that one here, but we may have it at our other store or the warehouse.</p>
+            <p class="say">We don't have that one here, but we may have it at our other store or the warehouse - checking!</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> The &ldquo;no, but&hellip;&rdquo;</div>
-            <p class="say">No copy on CD right now, but we've got it on vinyl! Want me to hold it under your name, or order the CD in for you?</p>
+            <p class="say">We don't have that on CD right now, but we do have it on vinyl - are you interested? Or do you want us to order the CD for you? I can check if our distributor has it.</p>
             <div class="label" style="margin-top:14px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Price, UPC, or move it to the other store</div>
             <p class="say">Pulling it up in our system right now! It's $[price], UPC [number] &mdash; and yes, I can have it moved to the Hollywood store for you. Want me to set it aside there?</p>
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> They were told it's set aside for them</div>
-            <p class="say">You're all set &mdash; it's tucked to the side with your name on it. See you at open!</p>
+            <p class="say">You're all set &mdash; it's at the front desk with your name on it. See you soon!</p>
             <div class="label" style="margin-top:14px"><span class="chan text">Text</span> New release tonight / preorders</div>
             <p class="say">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in? If so, you're all set to grab it today.</p>
         </div>
@@ -294,10 +288,10 @@
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
             <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
             <div class="label" style="margin-top:12px"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Big collection</div>
-            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we can arrange a house pickup. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out with a quote.</p>
+            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we may be able to arrange a house pickup depending on what you have. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out to you.</p>
         </div>
 
-        <div class="callout"><strong>Never quote a price over the phone.</strong> Get format, quantity, a few titles, photos, and their number, and pass it to a buyer.</div>
+        <div class="callout"><strong>Pass it to Jon.</strong> Get format, quantity, a few titles, photos, and their number. Never quote a price over the phone.</div>
     </section>
 
     {{-- 4 --}}
@@ -307,10 +301,10 @@
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Routing to Sarah</div>
-            <p class="say">Sounds exciting! Let me put you in touch with Sarah &mdash; she manages our brand partnerships.</p>
+            <p class="say">Sounds exciting! I'll forward this to Sarah &mdash; she manages our brand partnerships.</p>
         </div>
 
-        <div class="callout"><strong>Hand it to Sarah.</strong> Get the company, contact name, and number &mdash; don't discuss terms yourself.</div>
+        <div class="callout"><strong>Give Sarah's email only:</strong> sarah@nivessa.com. Get the company and contact name &mdash; don't discuss terms yourself.</div>
     </section>
 
     {{-- 5 --}}
@@ -326,12 +320,10 @@
             <div class="qa">
                 <p class="q">&ldquo;What are your hours?&rdquo;</p>
                 <span class="say">Hey! We're open every day. Hollywood: 9:30am&ndash;11pm Mon&ndash;Thu, til 1am Fri &amp; Sat, and 9am&ndash;11pm Sundays. Pico: 10am&ndash;7pm, and til 8pm Thursday&ndash;Saturday.</span>
-                <p class="note">Give today's business hours for both stores.</p>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Are you open today?&rdquo;</p>
                 <span class="say">Yes, we're open til x pm today &mdash; come visit :)</span>
-                <p class="note">(Or 1am on weekends. Pico has different hours &mdash; check above.)</p>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Where are you located?&rdquo;</p>
@@ -361,7 +353,7 @@
             <h3 style="margin-top:0">Events &amp; venue</h3>
             <div class="qa">
                 <p class="q">&ldquo;How do I perform / book a show?&rdquo;</p>
-                <span class="say">Excited to host your show! You can book it at: <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
+                <span class="say">Excited to host your event! You can book it at: <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
@@ -389,7 +381,7 @@
             <h3 style="margin-top:0">Lost &amp; found</h3>
             <div class="qa">
                 <p class="q">&ldquo;I think I left something in the store &mdash; can you find it?&rdquo;</p>
-                <span class="say">Yes sure, I'll check in with the cashier and let you know if we found them!</span>
+                <span class="say">Yes sure, I'll check in with the cashier and let you know if we found it!</span>
                 <p class="note">Get exactly what and where (e.g. black headphones, front-left corner), have a cashier look and safeguard it, then follow up.</p>
             </div>
         </div>
@@ -413,13 +405,10 @@
         <div class="sec-head"><span class="sec-num">7</span><h2>Reaching a coworker</h2></div>
 
         <ol class="flow">
-            <li><strong>Check they're on shift.</strong><span class="sub">Only contact people who are working right now. Never message or call someone on their day off &mdash; find who's on shift instead.</span></li>
-            <li><strong>DM them on Slack.</strong><span class="sub">Short and clear: what you need and that a customer's waiting. Give them a moment to reply.</span></li>
-            <li><strong>No answer? Call their cell.</strong><span class="sub">If it's time-sensitive and Slack's quiet, call their cell directly. That's what the escalation is for.</span></li>
-            <li><strong>Still nothing? Take a message.</strong><span class="sub">Name, number, what they need, and a callback time &mdash; then make sure it actually happens.</span></li>
+            <li><strong>Check they're on shift.</strong><span class="sub">Only contact people who are working right now. Never message or call someone off their shift &mdash; find who's on shift instead.</span></li>
+            <li><strong>DM them on Slack; no answer, call or text their cell.</strong></li>
+            <li><strong>Take a message.</strong><span class="sub">Collect the customer's name, number, and what they need, and give them a callback time &mdash; then make sure it happens. You can say: &ldquo;It's very busy in the store right now, I didn't get an answer yet but I'll call you within the hour with an update.&rdquo; Then actually update them, and get a hold of the cashier.</span></li>
         </ol>
-
-        <div class="callout"><strong>Transferring to the other store?</strong> &ldquo;Let me connect you &mdash; one moment please.&rdquo; Slack before you call, and never ring someone who isn't on shift.</div>
     </section>
 
     {{-- 8 --}}
@@ -451,7 +440,7 @@
                     <li>Quote a price on a collection over the phone</li>
                     <li>Guess at an answer &mdash; find out for sure instead</li>
                     <li>Leave someone with no direct reply</li>
-                    <li>Contact a coworker who's off today</li>
+                    <li>Contact a coworker who's off the clock</li>
                 </ul>
             </div>
         </div>
