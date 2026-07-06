@@ -38,4 +38,5 @@ Route::prefix('v1/nivessa-web')
         Route::post('gift-cards/charge', [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'charge']);
         Route::post('gift-cards/issue',  [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'issue']);
         Route::post('store-credit/adjust', [\App\Http\Controllers\Api\NivessaStoreCreditController::class, 'adjust']);
+        Route::get('products-feed', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'index']);
     });
