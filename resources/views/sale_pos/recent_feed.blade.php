@@ -1471,12 +1471,18 @@
                                 <div class="amt" style="color:#8A7C6A; font-weight:700;">-</div>
                                 <div class="sub" style="color:#8A7C6A; font-weight:600;">store credit · none due</div>
                             @elseif(!empty($web_paid_ids[$sale->id]))
-                                {{-- nivessa.com web order rung into POS only to
-                                     decrement inventory. Paid online (Stripe),
-                                     never on Clover - so no terminal charge is
-                                     expected. Not a missed cashier entry. --}}
+                                {{-- Paid off the Clover terminal, so no swipe is
+                                     expected and this is not a missed entry.
+                                     'web'   = nivessa.com order (Stripe online).
+                                     'offreg' = Discogs / eBay marketplace order
+                                     rung as tender 'other' just to decrement
+                                     inventory - paid on the marketplace. --}}
                                 <div class="amt" style="color:#8A7C6A; font-weight:700;">-</div>
-                                <div class="sub" style="color:#3B6E47; font-weight:600;">website · paid online</div>
+                                @if(($web_paid_reason[$sale->id] ?? 'web') === 'offreg')
+                                    <div class="sub" style="color:#3B6E47; font-weight:600;">off-register · paid online</div>
+                                @else
+                                    <div class="sub" style="color:#3B6E47; font-weight:600;">website · paid online</div>
+                                @endif
                             @else
                                 {{-- Cashiers ring EVERY sale on Clover at
                                      Nivessa - cash + card. Any ERP sale

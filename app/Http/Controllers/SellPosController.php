@@ -1487,16 +1487,34 @@ class SellPosController extends Controller
         // Detect by the explicit 'web' channel tag, the "Website Customer"
         // contact, or a "Website order …" note, and exclude from the
         // no_clover / mismatch counts + render them as "paid online".
+        // Sarah 2026-07-06: Discogs / eBay orders that Nick rings into POS are
+        // finalized off-register (tender 'other', the deliberate off-drawer
+        // bucket) and paid on the marketplace, never on the Clover terminal -
+        // just like a nivessa.com web order. Left unflagged they render as
+        // "MISSING / not in Clover". Detect them by the off-register channel
+        // (discogs/ebay), a "Web order ..." note, OR a sale whose only tender
+        // is 'other' (Clover only ever holds card swipes, so a pure-'other'
+        // ring can never have a Clover pair). Reason tags the label below:
+        // 'web' -> "website - paid online", 'offreg' -> "off-register".
         $web_paid_ids = [];
+        $web_paid_reason = [];
         foreach ($sales as $sale) {
             $chan  = strtolower(trim((string) ($sale->channel ?? '')));
             $cname = strtolower(trim((string) optional($sale->contact)->name));
             $note  = strtolower(trim((string) ($sale->staff_note ?? $sale->additional_notes ?? '')));
-            if ($chan === 'web'
+            $methods = $sale->payment_lines->pluck('method')->filter()->unique()->values();
+            $allOther = $methods->isNotEmpty() && $methods->reject(fn($m) => $m === 'other')->isEmpty();
+
+            $isWeb = $chan === 'web'
                 || $cname === 'website customer'
-                || strpos($note, 'website order') === 0
-            ) {
+                || strpos($note, 'website order') === 0;
+            $isOffreg = in_array($chan, ['discogs', 'ebay'], true)
+                || strpos($note, 'web order') === 0
+                || $allOther;
+
+            if ($isWeb || $isOffreg) {
                 $web_paid_ids[$sale->id] = true;
+                $web_paid_reason[$sale->id] = $isWeb ? 'web' : 'offreg';
             }
         }
         // A paired Clover swipe reconciles if the expected (card) amount is
@@ -1953,7 +1971,7 @@ class SellPosController extends Controller
             \Log::warning('auto_closed detection failed: ' . $e->getMessage());
         }
 
-        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'web_paid_ids', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation', 'can_fix_payment_method'));
+        return view('sale_pos.recent_feed')->with(compact('sales', 'business_locations', 'employees', 'limit', 'location_id', 'created_by', 'discrepancy', 'mismatch_count', 'no_clover_count', 'no_erp_count', 'clover_expected_cents', 'web_paid_ids', 'web_paid_reason', 'orphan_by_loc', 'orphan_null_loc', 'orphan_refund_count', 'orphan_voided_count', 'orphan_real_count', 'orphan_nearmatch_count', 'orphan_dup_cluster_count', 'orphan_dup_cluster_rows', 'scanned_count', 'clover_by_transaction', 'unclaimed_clover_payments', 'pending_clover_payments', 'show_clover_only', 'cashier_for_orphan', 'cashierNameById', 'clover_debug', 'orphan_near_matches', 'erp_today_total', 'erp_today_count', 'erp_today_card_total', 'erp_today_cash_total', 'erp_today_other_total', 'clover_today_total', 'clover_today_count', 'today_by_store', 'tz_debug', 'dateStr', 'day_label', 'prev_date', 'next_date', 'is_today', 'allow_next', 'dayMode', 'is_month_mode', 'month_label', 'prev_month', 'next_month', 'allow_next_month', 'monthStr', 'sales_by_store', 'orphans_by_store', 'pending_by_store', 'pending_amount_by_store', 'pending_count_by_store', 'store_order', 'orphan_duplicate_of', 'erp_only_pair_candidates', 'clover_explanations', 'employee_breakdown_by_day', 'reconciliations', 'stale_open_registers', 'clover_reconciled', 'can_see_reconciliation', 'can_fix_payment_method'));
     }
 
     /**
