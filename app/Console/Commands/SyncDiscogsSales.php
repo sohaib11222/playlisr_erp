@@ -140,8 +140,19 @@ class SyncDiscogsSales extends Command
     {
         return DB::table('transactions')
             ->where('business_id', $businessId)
-            ->where('import_source', 'discogs')
-            ->where('import_external_id', $extId)
+            ->where(function ($q) use ($extId) {
+                // (a) Already imported by a prior run of this command.
+                $q->where(function ($q2) use ($extId) {
+                    $q2->where('import_source', 'discogs')
+                       ->where('import_external_id', $extId);
+                })
+                // (b) Already recorded live by the website's Discogs->ERP push,
+                // which stock-decrements the real product and notes the sale
+                // exactly "Discogs order <id>". Skip so this command never
+                // creates a second (placeholder, no-stock) copy of it.
+                ->orWhere('additional_notes', 'Discogs order ' . $extId)
+                ->orWhere('additional_notes', 'like', 'Discogs order ' . $extId . ' %');
+            })
             ->exists();
     }
 
