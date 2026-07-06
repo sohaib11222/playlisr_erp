@@ -239,6 +239,35 @@ class SellPosController extends Controller
 
         $erpRows = (clone $erpBase)
             ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+            // Sarah 2026-07-06: exclude off-register / paid-online sales from the
+            // Clover comparison. Website, Discogs and eBay orders (and manual
+            // off-register rings tendered entirely as 'other') are entered only
+            // to move inventory - they're paid online, never on the Clover
+            // terminal - so counting them here falsely flags the store as "off".
+            // Mirrors the per-sale off-register exclusion in the feed below.
+            ->whereRaw("LOWER(COALESCE(channel, '')) NOT IN ('web', 'discogs', 'ebay')")
+            ->where(function ($q) {
+                $q->whereNull('additional_notes')
+                  ->orWhere(function ($q2) {
+                      $q2->where('additional_notes', 'not like', 'Website order%')
+                         ->where('additional_notes', 'not like', 'Discogs order%')
+                         ->where('additional_notes', 'not like', 'eBay order%');
+                  });
+            })
+            ->where(function ($q) {
+                // Exclude sales whose every tender is 'other' (off-register).
+                // Keep sales with any card/cash/store-credit tender, and sales
+                // with no payment rows at all (defensive - never suppress a
+                // genuine register sale).
+                $q->whereExists(function ($sub) {
+                    $sub->selectRaw('1')->from('transaction_payments as tp')
+                        ->whereColumn('tp.transaction_id', 'transactions.id')
+                        ->where('tp.method', '!=', 'other');
+                })->orWhereNotExists(function ($sub) {
+                    $sub->selectRaw('1')->from('transaction_payments as tp2')
+                        ->whereColumn('tp2.transaction_id', 'transactions.id');
+                });
+            })
             ->selectRaw('id, location_id, final_total as gross_sales')
             ->get();
 
