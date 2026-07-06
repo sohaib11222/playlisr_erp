@@ -1249,6 +1249,8 @@
                     $store = 'discogs';
                 } elseif ($saleChan === 'ebay' || strpos($saleNoteLc, 'ebay order') === 0) {
                     $store = 'ebay';
+                } elseif ($saleChan === 'web' || strtolower((string) $customer) === 'website customer' || strpos($saleNoteLc, 'website order') === 0) {
+                    $store = 'website';
                 }
                 // sales_person -> User via created_by (who saved the sale in ERP)
                 $cashier = optional($sale->sales_person)->user_full_name;
