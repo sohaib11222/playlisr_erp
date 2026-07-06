@@ -942,11 +942,24 @@ class HomeController extends Controller
         $my_today_whatnot_count = (int) ($my_today_whatnot->cnt ?? 0);
         $my_today_whatnot_total = (float) ($my_today_whatnot->total ?? 0);
 
-        // Team goal for my current location today — average same-day-of-week revenue over the last 12 weeks
-        $my_default_loc_id = \DB::table('business_locations')
-            ->where('business_id', $business_id)
-            ->orderBy('id')
-            ->value('id');
+        // Team goal for my current location today — average same-day-of-week revenue over the last 12 weeks.
+        // Prefer the logged-in user's own assigned location so multi-store staff
+        // see their store's goal, not whichever location has the lowest id.
+        $permitted_loc_ids = auth()->user()->permitted_locations();
+        $my_default_loc_id = null;
+        if (is_array($permitted_loc_ids) && !empty($permitted_loc_ids)) {
+            $my_default_loc_id = \DB::table('business_locations')
+                ->where('business_id', $business_id)
+                ->whereIn('id', $permitted_loc_ids)
+                ->orderBy('id')
+                ->value('id');
+        }
+        if (!$my_default_loc_id) {
+            $my_default_loc_id = \DB::table('business_locations')
+                ->where('business_id', $business_id)
+                ->orderBy('id')
+                ->value('id');
+        }
         $team_location_name = \DB::table('business_locations')
             ->where('id', $my_default_loc_id)->value('name');
         $team_today_rev = (float) \DB::table('transactions')
