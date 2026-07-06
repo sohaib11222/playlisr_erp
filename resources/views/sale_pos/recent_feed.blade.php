@@ -1309,11 +1309,13 @@
                         <span class="rf-store-badge">{{ $store }}</span>
                         <span class="rf-tender {{ $tenderClass }}" title="Tender the cashier selected at checkout (cashiers usually pick Cash even for card sales - see Clover column for what actually ran)">{{ $tenderLabel }}</span>
                         <span class="rf-customer">· {{ $customer }}</span>
-                        @if(!empty($web_paid_ids[$sale->id]))
-                            {{-- Website/Discogs/eBay sales are created by the API
-                                 sync user (shows as whoever holds the token, e.g.
-                                 Jon) - not a cashier. Label the channel instead of
-                                 mis-attributing it to a person. --}}
+                        @if(in_array($store, ['website', 'discogs', 'ebay'], true))
+                            {{-- Only channel-TAGGED sales (real website/Discogs/eBay
+                                 orders) are auto-created by the API sync user - shows
+                                 as whoever holds the token (e.g. Jon), not a cashier.
+                                 Label the channel instead of mis-attributing it.
+                                 A plain tender-'other' ring with no channel tag is a
+                                 real cashier off-register sale - keep the cashier. --}}
                             <span class="rf-cashier" title="Auto-created from the {{ $store }} order sync - not a cashier sale">· {{ $store }} sync</span>
                         @elseif($cashier)<span class="rf-cashier" title="User who created this sale in the ERP (POS)">· ERP: <strong>{{ $cashier }}</strong></span>@endif
                     </div>
