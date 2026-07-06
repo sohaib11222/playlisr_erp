@@ -219,13 +219,12 @@
             <span><span class="prio high">High priority</span> A sale or a buy on the line &mdash; give it full effort.</span>
             <span><span class="prio low">Quick</span> Fast info &mdash; answer warmly in under a minute.</span>
         </div>
-        <p class="tree-foot">Not sure of an answer? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;, find out, and give them a real answer before you hang up. Need a person? See <a href="#coworker">reaching a coworker</a>. However it ends, <a href="#visit">invite them into the store</a>.</p>
+        <p class="tree-foot">Not sure? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo; and give them a real answer &mdash; never &ldquo;we'll get back to you.&rdquo; However it ends, <a href="#visit">invite them in</a>.</p>
     </nav>
 
     {{-- 1 --}}
     <section id="tone">
         <div class="sec-head"><span class="sec-num">1</span><h2>How to talk on the phone</h2></div>
-        <p class="lede">Short, warm, top customer service. Sound glad they called and genuinely happy to help. Write like you talk &mdash; natural, easygoing American English, the way you'd text a friend. Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> whenever it answers their question.</p>
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> Standard greeting</div>
@@ -233,10 +232,6 @@
             <div class="label" style="margin-top:10px"><span class="chan text">Text</span> Opening a text back</div>
             <p class="say">Hi! Thanks for reaching out to Nivessa Records. What are you looking for?</p>
         </div>
-
-        <div class="callout"><strong>If you don't know the answer, never guess.</strong> Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;, find out, and give them a real answer. If it truly needs a follow-up, take their name and number and make sure someone handles it. Nothing gets ignored.</div>
-
-        <h3>Words &amp; the way you say them</h3>
         <div class="word-swap">
             <div class="h yes">What we say</div>
             <div class="h no">What we don't say</div>
@@ -256,15 +251,12 @@
             <div class="cell no">Let us check and we will get back to you.</div>
         </div>
 
-        <div class="callout"><strong>Talk like a local.</strong> Keep it natural and casual &mdash; the way you'd text a friend. Skip stiff or translated-sounding phrases like &ldquo;most welcome&rdquo; or &ldquo;to whom who preorder.&rdquo; Read it back before you send: if it doesn't sound like everyday American English, rewrite it.</div>
-
-        <div class="callout"><strong>Never call a customer &ldquo;buddy&rdquo; or &ldquo;bro.&rdquo;</strong> Use their name if they gave it, or just speak to them directly. Please, thank you, and no problem go a long way.</div>
+        <div class="callout"><strong>Talk like a local.</strong> Natural, casual American English, like texting a friend &mdash; read it back before you send. Never call a customer &ldquo;buddy&rdquo; or &ldquo;bro.&rdquo;</div>
     </section>
 
     {{-- 2 --}}
     <section id="record">
         <div class="sec-head"><span class="sec-num">2</span><h2>Do you have this record?</h2><span class="prio high">High priority</span></div>
-        <p class="lede">A sale on the line &mdash; reply fast. The system tells you what <em>should</em> be there; only someone's eyes confirm what <em>is</em>. Always finish with a yes, or a no plus an alternative.</p>
 
         <ol class="flow">
             <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search the title by artist and album. See which store it shows at &mdash; Pico or Hollywood.</span></li>
@@ -291,15 +283,12 @@
             <p class="say">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in? If so, you're all set to grab it today.</p>
         </div>
 
-        <div class="callout"><strong>Look it up before you promise.</strong> For price, UPC, or &ldquo;do you have it,&rdquo; open the ERP first and tell them you're checking &mdash; never &ldquo;we'll check and get back to you.&rdquo; Give them the real number.</div>
-
-        <div class="callout"><strong>Always offer an alternative.</strong> Before you say no, check every format for that artist (vinyl, CD, cassette) and their other titles. No One Direction CD but we have the vinyl? Say so. Nothing in stock? Offer to order it or take their number. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
+        <div class="callout"><strong>Look it up, then offer an alternative.</strong> Open the ERP first &mdash; never &ldquo;we'll get back to you.&rdquo; Before saying no, check every format for that artist and their other titles. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
     </section>
 
     {{-- 3 --}}
     <section id="buying">
         <div class="sec-head"><span class="sec-num">3</span><h2>Do you buy records? / Selling a collection</h2><span class="prio high">High priority</span></div>
-        <p class="lede">A buy can be real money for the store. Make them feel great about calling, get the details, and hand it to a Nivessa buyer &mdash; never quote a price yourself.</p>
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Do you buy records?</div>
@@ -308,26 +297,25 @@
             <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we can arrange a house pickup. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out with a quote.</p>
         </div>
 
-        <div class="callout"><strong>Get the details, not a price.</strong> Collect format, quantity, a few titles, and photos, plus their name and number, and pass it to a buyer. Never put a dollar figure on it over the phone.</div>
+        <div class="callout"><strong>Never quote a price over the phone.</strong> Get format, quantity, a few titles, photos, and their number, and pass it to a buyer.</div>
     </section>
 
     {{-- 4 --}}
     <section id="partnerships">
         <div class="sec-head"><span class="sec-num">4</span><h2>Brand &amp; label partnerships</h2><span class="prio high">High priority</span></div>
-        <p class="lede">A collaboration with a big label or brand &mdash; Warner, Universal, Sony, or names like Puma or Lego. These are a big deal. Be warm, get their details, and hand it straight to Sarah, who manages brand partnerships.</p>
+        <p class="lede">Big label or brand &mdash; Warner, Universal, Sony, Puma, Lego. Route to Sarah.</p>
 
         <div class="script">
             <div class="label"><span class="chan call">Call</span> / <span class="chan text">Text</span> &nbsp;Routing to Sarah</div>
             <p class="say">Sounds exciting! Let me put you in touch with Sarah &mdash; she manages our brand partnerships.</p>
         </div>
 
-        <div class="callout"><strong>Get it to Sarah.</strong> Take the company, the person's name, and the best way to reach them, and pass it to Sarah right away. Don't discuss any terms yourself &mdash; just make the warm hand-off.</div>
+        <div class="callout"><strong>Hand it to Sarah.</strong> Get the company, contact name, and number &mdash; don't discuss terms yourself.</div>
     </section>
 
     {{-- 5 --}}
     <section id="quick">
         <div class="sec-head"><span class="sec-num">5</span><h2>Quick answers</h2><span class="prio low">Quick &mdash; under a minute</span></div>
-        <p class="lede">These have a known answer. Give it warmly, point to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it helps, and wrap up.</p>
 
         <div class="card" id="hours">
             <h3 style="margin-top:0">Hours &amp; locations</h3>
@@ -382,7 +370,6 @@
             <div class="qa">
                 <p class="q">&ldquo;I made a song &mdash; any thoughts? Is it worth publishing?&rdquo;</p>
                 <span class="say">Love that you're making music! We're a record shop &mdash; not a label or publisher &mdash; so we don't review or publish tracks. But we'd love to have you play: you can book a show at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>, and if you press your own record we'd be glad to carry it.</span>
-                <p class="note">Be encouraging and warm &mdash; we're not A&amp;R, so point them toward performing.</p>
             </div>
         </div>
 
@@ -411,7 +398,6 @@
     {{-- 6 --}}
     <section id="visit">
         <div class="sec-head"><span class="sec-num">6</span><h2>Turn every call into a visit</h2></div>
-        <p class="lede">The best outcome of almost any call is a customer walking in. On every call, find a natural reason to invite them in &mdash; and a reason to come today.</p>
 
         <div class="branch">
             <div class="brow"><div class="cond">Record's in stock</div><div class="arrow">&rarr;</div><div class="act">&ldquo;We have it! Want to place a pickup order?&rdquo;</div></div>
@@ -419,13 +405,12 @@
             <div class="brow"><div class="cond">Just a quick question</div><div class="arrow">&rarr;</div><div class="act">Answer it, then: &ldquo;See you soon :)&rdquo;</div></div>
         </div>
 
-        <div class="callout"><strong>This one counts.</strong> Getting people through the door is one of the most valuable things you can do on the phone &mdash; there's a reward being set up for it, so keep track of who you bring in. (Ask Sarah for the current details.)</div>
+        <div class="callout"><strong>This one counts.</strong> There's a reward being set up for getting people through the door &mdash; keep track of who you bring in. (Ask Sarah for details.)</div>
     </section>
 
     {{-- 7 --}}
     <section id="coworker">
         <div class="sec-head"><span class="sec-num">7</span><h2>Reaching a coworker</h2></div>
-        <p class="lede">Confirming a record, or a caller needs a specific person: Slack first, cell if no answer, and only ever reach someone who's actually on shift.</p>
 
         <ol class="flow">
             <li><strong>Check they're on shift.</strong><span class="sub">Only contact people who are working right now. Never message or call someone on their day off &mdash; find who's on shift instead.</span></li>
