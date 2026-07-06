@@ -254,7 +254,7 @@
 
         <ol class="flow">
             <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search by artist. If we don't have the exact title/format, offer other titles or another format, and say we're checking our other locations.</span></li>
-            <li><strong>Have an employee lay eyes on it.</strong><span class="sub">DM whoever's on shift there to confirm it's really on the shelf. No answer? Call or text their cell &mdash; on-shift only, and only during business hours (9:30am&ndash;11pm).</span></li>
+            <li><strong>Have an employee lay eyes on it.</strong><span class="sub">DM whoever's on shift there to confirm it's really on the shelf. No answer? Call or text their cell &mdash; on-shift only, and only during business hours.</span></li>
             <li><strong>Not at one store? Check the other store and the warehouse.</strong></li>
             <li><strong>Fix the ERP if the total in stock is wrong.</strong><span class="sub">Update the true inventory so the next person isn't misled.</span></li>
             <li><strong>Give a real answer.</strong><span class="sub">A clear yes, or a no with an alternative (another format, pressing, or a special order). Never a flat &ldquo;nope.&rdquo;</span></li>
