@@ -53,8 +53,8 @@
                         @foreach($samples as $s)
                             <tr>
                                 <td>#{{ $s->invoice_no }}</td>
-                                <td class="text-danger">{{ $s->transaction_date }}</td>
-                                <td class="text-success">{{ $s->created_at }}</td>
+                                <td class="text-danger">{{ \Carbon\Carbon::parse($s->transaction_date)->format('M j, Y g:i a') }}</td>
+                                <td class="text-success">{{ \Carbon\Carbon::parse($s->created_at)->format('M j, Y g:i a') }}</td>
                                 <td>${{ number_format((float) $s->final_total, 2) }}</td>
                                 <td><small>{{ \Illuminate\Support\Str::limit($s->additional_notes, 40) }}</small></td>
                             </tr>
