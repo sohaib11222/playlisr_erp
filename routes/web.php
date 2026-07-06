@@ -922,6 +922,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/fix-in-store-sold-dates', 'FixInStoreSoldDatesController@index');
     Route::post('/admin/fix-in-store-sold-dates/run', 'FixInStoreSoldDatesController@run');
 
+    // One-shot cleanup: website/Discogs sales pushed into the ERP before the
+    // 2026-07-06 timezone fix stored transaction_date in UTC (showed ~7h ahead
+    // on the recon feed). Sets each back to its correct local time (= created_at).
+    // Snapshot + undo via /admin/admin-action-history (action 'fix-web-sync-times').
+    Route::get('/admin/fix-web-sync-times', 'FixWebSyncTimesController@index');
+    Route::post('/admin/fix-web-sync-times/run', 'FixWebSyncTimesController@run');
+
     // Per-row date editor for the leftover In Store transactions whose date
     // is still > CUTOFF after the bulk fix. Lists artist/title/amount so we
     // can pick the right date for each. Snapshot + undo via admin-action-history.
