@@ -1251,6 +1251,12 @@
                     $store = 'ebay';
                 } elseif ($saleChan === 'web' || strtolower((string) $customer) === 'website customer' || strpos($saleNoteLc, 'website order') === 0) {
                     $store = 'website';
+                } elseif (!empty($web_paid_ids[$sale->id])) {
+                    // Off-register / paid-online sale with no channel tag (e.g. an
+                    // online order rung as tender 'other'). It's not a real
+                    // walk-in at the physical store, so label it "online" rather
+                    // than Hollywood/Pico. The cashier who rang it is still shown.
+                    $store = 'online';
                 }
                 // sales_person -> User via created_by (who saved the sale in ERP)
                 $cashier = optional($sale->sales_person)->user_full_name;
