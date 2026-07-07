@@ -1177,7 +1177,7 @@ HTML;
             var $form = $('#buy_offer_form');
             if (!$form.length) return;
             var url = '{{ route('buy-from-customer.autosave') }}';
-            var timer = null, inFlight = false, pending = false;
+            var timer = null, inFlight = false, pending = false, submitting = false;
 
             function hasContent() {
                 var seller = ['seller_first_name', 'seller_last_name', 'seller_name', 'seller_phone', 'seller_email'].some(function (n) {
@@ -1195,6 +1195,7 @@ HTML;
             }
 
             function doSave() {
+                if (submitting) return;
                 if (!hasContent()) return;
                 if (inFlight) { pending = true; return; }
                 inFlight = true;
@@ -1211,11 +1212,28 @@ HTML;
             function schedule() { clearTimeout(timer); timer = setTimeout(doSave, 1200); }
 
             $form.on('input change', 'input, select, textarea', schedule);
-            // Don't let a queued autosave fire as the real Save navigates away.
-            $form.on('submit', function () { clearTimeout(timer); });
+            // Once the cashier intentionally submits ANY buy form (Calculate on
+            // #buy_offer_form, or the separate Save-draft / Accept / Reject forms),
+            // stop autosaving entirely. Otherwise the unload path below fires a
+            // sendBeacon autosave AS the page navigates away on submit — and when
+            // the async autosave hasn't returned an offer_id yet, that beacon POSTs
+            // with an empty offer_id and spawns a SECOND draft alongside the one the
+            // submitted form creates. That's the "2 drafts per buy" bug. Guard both
+            // the debounced save and the unload beacon on this flag; a genuine tab
+            // close (submitting stays false) still flushes as intended.
+            // Scoped to the buy forms by action (Calculate/Save/Accept/Reject all
+            // POST to a buy-from-customer.* route) so an unrelated AJAX form in the
+            // layout can't permanently kill autosave for the page.
+            $(document).on('submit', 'form', function () {
+                var action = ($(this).attr('action') || '');
+                if (action.indexOf('buy-from-customer') === -1 && this.id !== 'buy_offer_form') return;
+                submitting = true;
+                clearTimeout(timer);
+            });
 
             // Final flush when the tab is hidden / closed — sendBeacon survives unload.
             function flushBeacon() {
+                if (submitting) return;
                 if (!hasContent() || !navigator.sendBeacon) return;
                 try {
                     var blob = new Blob([$form.serialize()], { type: 'application/x-www-form-urlencoded' });
