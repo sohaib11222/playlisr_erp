@@ -71,17 +71,44 @@
     .lb-table .g-first { border-left: 2px solid #E2D9C2 !important; }
 
     /* ---- live KPI strip: muted, neutral tones (ahead/behind still readable) ---- */
-    /* One neutral card for the whole KPI strip; ahead/behind shown by the
-       value color only, so the strip reads as a single tone. */
-    .lb-live-card { border-radius: 10px !important; background: #2E2A25 !important; }
-    .lb-up, .lb-down, .lb-neutral { background: #2E2A25 !important; }
-    .lb-up .lb-live-val { color: #9FCBAC !important; }
-    .lb-down .lb-live-val { color: #E0A79A !important; }
+    /* Light KPI strip: white cards, dark values; ahead/behind shown by the
+       value color only so the strip stays calm and easy to read. */
+    .lb-live-card { border-radius: 10px !important; background: #FFFFFF !important;
+        border: 1px solid #ECE3CF !important; color: #1F1B16 !important; }
+    .lb-up, .lb-down, .lb-neutral { background: #FFFFFF !important; }
+    .lb-live-lbl { color: #8E8273 !important; opacity: 1 !important; }
+    .lb-live-sub { color: #8E8273 !important; opacity: 1 !important; }
+    .lb-live-val { color: #1F1B16 !important; }
+    .lb-up .lb-live-val { color: #2F6B3E !important; }
+    .lb-down .lb-live-val { color: #B4462F !important; }
+    .lb-bar { background: #F1ECDD !important; }
+    .lb-bar-fill { background: #6E8A78 !important; }
+    .lb-bar-pace { background: rgba(0,0,0,.45) !important; }
 </style>
-<section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
-    <h1><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
-    @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
+<section class="content-header" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:6px;">
+    <h1 style="margin:0;"><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
+    <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" id="lb-toggle-shift-strip" style="padding:6px 12px; background:#fff; border:1px solid #DFD2B3; border-radius:7px; color:#5A5045; font-size:12px; font-weight:600; cursor:pointer;">Hide shift bar</button>
+        @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
+    </div>
 </section>
+<script>
+(function(){
+    var KEY = 'rf_hide_shift_strip';
+    var btn = document.getElementById('lb-toggle-shift-strip');
+    function apply(){
+        var strip = document.querySelector('.st-strip');
+        var hidden = localStorage.getItem(KEY) === '1';
+        if (strip) strip.style.display = hidden ? 'none' : '';
+        if (btn) btn.textContent = hidden ? 'Show shift bar' : 'Hide shift bar';
+    }
+    if (btn) btn.addEventListener('click', function(){
+        localStorage.setItem(KEY, localStorage.getItem(KEY) === '1' ? '0' : '1');
+        apply();
+    });
+    apply();
+})();
+</script>
 
 <section class="content">
 
@@ -89,46 +116,36 @@
         <div class="alert alert-success">{{ session('status') }}</div>
     @endif
 
-    <div class="box box-primary">
-        <div class="box-header with-border"><h3 class="box-title">Window &amp; Goal</h3></div>
-        <div class="box-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <form method="GET" action="{{ action('ReportController@employeeLeaderboard') }}" id="lb-period-form">
-                        <label>Period</label>
-                        <select name="period" class="form-control" id="lb-period" onchange="lbPeriodChange(this)">
-                            <option value="today" @if($period==='today') selected @endif>Today</option>
-                            <option value="yesterday" @if($period==='yesterday') selected @endif>Yesterday</option>
-                            <option value="this_week" @if($period==='this_week') selected @endif>This week</option>
-                            <option value="last_week" @if($period==='last_week') selected @endif>Previous week</option>
-                            <option value="last_7" @if($period==='last_7') selected @endif>Last 7 days</option>
-                            <option value="this_month" @if($period==='this_month') selected @endif>This month</option>
-                            <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>
-                            <option value="this_quarter" @if($period==='this_quarter') selected @endif>This quarter</option>
-                            <option value="custom" @if($period==='custom') selected @endif>Custom dates&hellip;</option>
-                        </select>
-                        <div id="lb-custom" style="margin-top:8px; @if($period!=='custom') display:none; @endif">
-                            <div class="row">
-                                <div class="col-xs-5"><input type="date" name="start_date" class="form-control" value="{{ $start->format('Y-m-d') }}"></div>
-                                <div class="col-xs-5"><input type="date" name="end_date" class="form-control" value="{{ $end->format('Y-m-d') }}"></div>
-                                <div class="col-xs-2"><button type="submit" class="btn btn-primary btn-block">Go</button></div>
-                            </div>
-                        </div>
-                        <p class="text-muted" style="margin-top:8px;">Showing <strong>{{ $start->format('M j, Y') }}</strong> &rarr; <strong>{{ $end->format('M j, Y') }}</strong></p>
-                    </form>
-                    <script>
-                        function lbPeriodChange(sel) {
-                            if (sel.value === 'custom') {
-                                document.getElementById('lb-custom').style.display = '';
-                            } else {
-                                document.getElementById('lb-period-form').submit();
-                            }
-                        }
-                    </script>
-                </div>
-            </div>
-        </div>
-    </div>
+    <form method="GET" action="{{ action('ReportController@employeeLeaderboard') }}" id="lb-period-form"
+          style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
+        <label style="margin:0;">Period</label>
+        <select name="period" class="form-control" id="lb-period" onchange="lbPeriodChange(this)" style="width:auto; display:inline-block;">
+            <option value="today" @if($period==='today') selected @endif>Today</option>
+            <option value="yesterday" @if($period==='yesterday') selected @endif>Yesterday</option>
+            <option value="this_week" @if($period==='this_week') selected @endif>This week</option>
+            <option value="last_week" @if($period==='last_week') selected @endif>Previous week</option>
+            <option value="last_7" @if($period==='last_7') selected @endif>Last 7 days</option>
+            <option value="this_month" @if($period==='this_month') selected @endif>This month</option>
+            <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>
+            <option value="this_quarter" @if($period==='this_quarter') selected @endif>This quarter</option>
+            <option value="custom" @if($period==='custom') selected @endif>Custom dates&hellip;</option>
+        </select>
+        <span class="text-muted" style="font-size:12px;">{{ $start->format('M j') }} &rarr; {{ $end->format('M j, Y') }}</span>
+        <span id="lb-custom" style="@if($period!=='custom') display:none; @endif">
+            <input type="date" name="start_date" class="form-control" style="width:auto; display:inline-block;" value="{{ $start->format('Y-m-d') }}">
+            <input type="date" name="end_date" class="form-control" style="width:auto; display:inline-block;" value="{{ $end->format('Y-m-d') }}">
+            <button type="submit" class="btn btn-primary btn-sm">Go</button>
+        </span>
+    </form>
+    <script>
+        function lbPeriodChange(sel) {
+            if (sel.value === 'custom') {
+                document.getElementById('lb-custom').style.display = '';
+            } else {
+                document.getElementById('lb-period-form').submit();
+            }
+        }
+    </script>
 
     @php $me = auth()->user()->id; @endphp
 
