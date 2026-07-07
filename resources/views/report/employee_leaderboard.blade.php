@@ -157,14 +157,25 @@
         .lb-bar { position:relative; height:9px; background:rgba(255,255,255,.28); border-radius:6px; margin:7px 0 5px; }
         .lb-bar-fill { position:absolute; left:0; top:0; height:100%; background:#fff; border-radius:6px; transition:width .4s ease; }
         .lb-bar-pace { position:absolute; top:-2px; width:2px; height:13px; background:rgba(0,0,0,.55); }
+        /* Performance view: hide the payroll/commission columns until asked for. */
+        .lb-hide-comm .g-list, .lb-hide-comm .g-sales, .lb-hide-comm .g-total, .lb-hide-comm .g-pay { display:none; }
     </style>
 
     <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
         <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm pull-right">Pay commissions</a>
+        <button type="button" id="lb-comm-toggle" class="btn btn-primary btn-sm pull-right" style="margin-right:8px;" onclick="lbToggleComm()">Show commissions</button>
         Each store is ranked by <strong>sales per hour</strong>. Whatnot sales don't count. <strong>Sales commission</strong> starts Jun 15.
     </div>
+    <script>
+        function lbToggleComm() {
+            var el = document.getElementById('lb-stores');
+            var btn = document.getElementById('lb-comm-toggle');
+            var hidden = el.classList.toggle('lb-hide-comm');
+            btn.textContent = hidden ? 'Show commissions' : 'Hide commissions';
+        }
+    </script>
 
-    <div class="row">
+    <div class="row lb-hide-comm" id="lb-stores">
         @forelse($stores as $store)
             <div class="col-md-12" style="float:none;width:100%;clear:both;display:block;">
                 <div class="box box-solid">
@@ -213,8 +224,8 @@
                                     <th class="text-right g-sales g-first">Sales target</th>
                                     <th class="text-right g-sales" title="Sales-goal bonus earned (from Jun 15)">Sales commission</th>
                                     <th class="text-right g-total" title="Listing earned + sales commission">Total commission</th>
-                                    <th class="text-right" title="Commission already paid out (listing; sales bonus is paid manually)">Commission paid</th>
-                                    <th class="text-right" title="Still owed — unpaid listing commission + sales bonus">Commission owed</th>
+                                    <th class="text-right g-pay" title="Commission already paid out (listing; sales bonus is paid manually)">Commission paid</th>
+                                    <th class="text-right g-pay" title="Still owed — unpaid listing commission + sales bonus">Commission owed</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -270,8 +281,8 @@
                                         </td>
                                         <td class="text-right g-sales">@if($sales_earned > 0)${{ number_format($sales_earned, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                         <td class="text-right g-total">@if($total_comm > 0)<strong>${{ number_format($total_comm, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">@if($comm_paid > 0)<span class="text-muted">${{ number_format($comm_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                        <td class="text-right">@if($comm_owed > 0)<strong>${{ number_format($comm_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right g-pay">@if($comm_paid > 0)<span class="text-muted">${{ number_format($comm_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                        <td class="text-right g-pay">@if($comm_owed > 0)<strong>${{ number_format($comm_owed, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                     </tr>
                                 @empty
                                     <tr><td colspan="14" class="text-center text-muted">No activity in this window.</td></tr>
