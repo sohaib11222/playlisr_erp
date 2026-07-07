@@ -188,21 +188,21 @@
                                     $pw = $lv['target_full'] > 0 ? min(100, max(0, $lv['target_so_far'] / $lv['target_full'] * 100)) : 0;
                                 @endphp
                                 <div class="lb-live-card {{ $lv['target_state'] === 'ahead' ? 'lb-up' : 'lb-down' }}" data-tile="target">
-                                    <div class="lb-live-lbl">Today vs target</div>
+                                    <div class="lb-live-lbl">Today's sales vs goal</div>
                                     <div class="lb-live-val" data-f="revenue_today">${{ number_format($lv['revenue_today']) }}</div>
                                     <div class="lb-bar" title="Full-day target ${{ number_format($lv['target_full']) }}">
                                         <div class="lb-bar-fill" data-f-bar="target" style="width: {{ round($tw, 1) }}%"></div>
                                         <div class="lb-bar-pace" data-f-pace="target" style="left: {{ round($pw, 1) }}%"></div>
                                     </div>
-                                    <div class="lb-live-sub"><span data-f="target_pct">{{ number_format($lv['target_pct']) }}%</span> of <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now &middot; ${{ number_format($lv['target_full']) }} goal</div>
+                                    <div class="lb-live-sub">Should be at <span data-f="target_so_far">${{ number_format($lv['target_so_far']) }}</span> by now &middot; ${{ number_format($lv['target_full']) }} goal for the day</div>
                                 </div>
                                 <div class="lb-live-card {{ $lv['lfl_state'] === 'ahead' ? 'lb-up' : ($lv['lfl_state'] === 'behind' ? 'lb-down' : 'lb-neutral') }}" data-tile="lfl">
-                                    <div class="lb-live-lbl">Vs last year</div>
+                                    <div class="lb-live-lbl">Vs same day last year</div>
                                     <div class="lb-live-val" data-f="lfl_pct">@if($lv['lfl_pct'] === null) — @else {{ ($lv['lfl_pct'] >= 0 ? '+' : '') . number_format($lv['lfl_pct'], 1) }}% @endif</div>
-                                    <div class="lb-live-sub"><span data-f="lfl_last_year">${{ number_format($lv['lfl_last_year']) }}</span> by now</div>
+                                    <div class="lb-live-sub">Last year was at <span data-f="lfl_last_year">${{ number_format($lv['lfl_last_year']) }}</span> by this time</div>
                                 </div>
                                 <div class="lb-live-card lb-neutral" data-tile="tx">
-                                    <div class="lb-live-lbl">Sales today</div>
+                                    <div class="lb-live-lbl">Transactions today</div>
                                     <div class="lb-live-val" data-f="tx_count">{{ number_format($lv['tx_count']) }}</div>
                                     <div class="lb-live-sub">avg sale <span data-f="avg_tx">${{ number_format($lv['avg_tx'], 2) }}</span></div>
                                 </div>
