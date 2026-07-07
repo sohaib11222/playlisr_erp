@@ -163,10 +163,9 @@
         .lb-hide-comm .g-list, .lb-hide-comm .g-sales, .lb-hide-comm .g-total, .lb-hide-comm .g-pay { display:none; }
     </style>
 
-    <div class="alert alert-info" style="border-left:4px solid #3c8dbc;">
-        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm pull-right">Pay commissions</a>
-        <button type="button" id="lb-comm-toggle" class="btn btn-primary btn-sm pull-right" style="margin-right:8px;" onclick="lbToggleComm()">Show commissions</button>
-        Each store is ranked by <strong>sales per hour</strong>. Whatnot sales don't count. <strong>Sales commission</strong> starts Jun 15.
+    <div style="text-align:right; margin-bottom:12px;">
+        <button type="button" id="lb-comm-toggle" class="btn btn-primary btn-sm" onclick="lbToggleComm()">Show commissions</button>
+        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm" style="margin-left:8px;">Pay commissions</a>
     </div>
     <script>
         function lbToggleComm() {
