@@ -60,11 +60,12 @@ body.role-picker .de-filter { flex-wrap:wrap; }
         @php
             $dayGroups = $data['days'];
             $live = $data['live'];
-            $g_rang = 0; $g_listed = 0; $g_lpay = 0; $g_bonus = 0; $g_total = 0;
+            $g_rang = 0; $g_listed = 0; $g_lpay = 0; $g_bonus = 0; $g_total = 0; $g_lcnt = 0; $g_lval = 0;
             foreach ($dayGroups as $list) {
                 foreach ($list as $r) {
                     $g_rang += $r['register_sales']; $g_listed += $r['listed_sales'];
                     $g_lpay += $r['listing_comm']; $g_bonus += $r['sales_bonus']; $g_total += $r['total_comm'];
+                    $g_lcnt += $r['listed_count']; $g_lval += $r['listed_value'];
                 }
             }
         @endphp
@@ -94,6 +95,14 @@ body.role-picker .de-filter { flex-wrap:wrap; }
 
         <div class="de-stats">
             <div class="de-stat">
+                <div class="lbl">Items listed (used)</div>
+                <div class="val" style="font-size:24px;">{{ number_format($g_lcnt) }}</div>
+            </div>
+            <div class="de-stat">
+                <div class="lbl">List value</div>
+                <div class="val" style="font-size:24px;">${{ number_format($g_lval, 2) }}</div>
+            </div>
+            <div class="de-stat">
                 <div class="lbl">Sales rung</div>
                 <div class="val" style="font-size:24px;">${{ number_format($g_rang, 2) }}</div>
             </div>
@@ -120,10 +129,11 @@ body.role-picker .de-filter { flex-wrap:wrap; }
         @else
             @foreach($dayGroups as $date => $list)
                 @php
-                    $d_rang = 0; $d_listed = 0; $d_lpay = 0; $d_bonus = 0; $d_total = 0;
+                    $d_rang = 0; $d_listed = 0; $d_lpay = 0; $d_bonus = 0; $d_total = 0; $d_lcnt = 0; $d_lval = 0;
                     foreach ($list as $r) {
                         $d_rang += $r['register_sales']; $d_listed += $r['listed_sales'];
                         $d_lpay += $r['listing_comm']; $d_bonus += $r['sales_bonus']; $d_total += $r['total_comm'];
+                        $d_lcnt += $r['listed_count']; $d_lval += $r['listed_value'];
                     }
                 @endphp
                 <div class="de-card">
@@ -136,6 +146,8 @@ body.role-picker .de-filter { flex-wrap:wrap; }
                         <thead>
                             <tr>
                                 <th>Employee</th>
+                                <th>Listed (used)</th>
+                                <th>List value</th>
                                 <th>Rang</th>
                                 <th>Listed sold</th>
                                 <th>Listing pay</th>
@@ -147,6 +159,8 @@ body.role-picker .de-filter { flex-wrap:wrap; }
                             @foreach($list as $r)
                                 <tr>
                                     <td>{{ $r['employee'] }}</td>
+                                    <td class="{{ $r['listed_count'] > 0 ? '' : 'de-zero' }}">{{ number_format($r['listed_count']) }}</td>
+                                    <td class="{{ $r['listed_value'] > 0 ? '' : 'de-zero' }}">${{ number_format($r['listed_value'], 2) }}</td>
                                     <td>${{ number_format($r['register_sales'], 2) }}</td>
                                     <td>${{ number_format($r['listed_sales'], 2) }}</td>
                                     <td>${{ number_format($r['listing_comm'], 2) }}</td>
@@ -158,6 +172,8 @@ body.role-picker .de-filter { flex-wrap:wrap; }
                         <tfoot>
                             <tr>
                                 <td>Day total</td>
+                                <td>{{ number_format($d_lcnt) }}</td>
+                                <td>${{ number_format($d_lval, 2) }}</td>
                                 <td>${{ number_format($d_rang, 2) }}</td>
                                 <td>${{ number_format($d_listed, 2) }}</td>
                                 <td>${{ number_format($d_lpay, 2) }}</td>
@@ -172,7 +188,8 @@ body.role-picker .de-filter { flex-wrap:wrap; }
         @endif
 
         <div class="de-note">
-            Listing pay = 2% of the pre-tax sale value of items each person listed that sold that day (used items, since May 15).
+            Listed (used) / List value = how many used items each person listed that day and their total sticker value - what they put into the system (not yet paid).
+            Listing pay = 2% of the pre-tax sale value of items each person listed that SOLD that day (used items, since May 15) - this is only paid once an item sells.
             Sales bonus = 2% of dollars rung over that day's target, 4% on the peak-hour share.
             @unless($live) *Sales bonus isn't live yet — those figures are projections and aren't included in total commission. @endunless
         </div>

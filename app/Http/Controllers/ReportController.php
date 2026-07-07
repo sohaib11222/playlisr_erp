@@ -14036,7 +14036,7 @@ class ReportController extends Controller
         }
 
         $userIds = array_keys($names);
-        $register = []; $listed = []; $listingComm = [];
+        $register = []; $listed = []; $listingComm = []; $createdListed = [];
         if (!empty($userIds)) {
             // Register sales: non-whatnot $ each person rang, per day.
             foreach (\DB::table('transactions as t')
@@ -14074,6 +14074,26 @@ class ReportController extends Controller
                 $listed[$row->uid][$row->d] = (float) $row->sales;
                 $listingComm[$row->uid][$row->d] = round((float) $row->sales * 0.02, 2);
             }
+
+            // What each person LISTED per day (products they created that day),
+            // used-only, with the sticker (list) value. This is "what they put
+            // into the system" — distinct from listing pay, which only pays once
+            // those items later sell. Keyed on DATE(p.created_at), NOT sale date.
+            $listPriceSub = '(SELECT MAX(v.sell_price_inc_tax) FROM variations v WHERE v.product_id = p.id AND v.deleted_at IS NULL)';
+            $cq = \DB::table('products as p')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->where('p.business_id', $business_id)
+                ->whereNotNull('p.created_by')
+                ->whereIn('p.created_by', $userIds)
+                ->whereBetween('p.created_at', [$start, $end]);
+            $this->applyUsedItemCategoryFilter($cq);
+            foreach ($cq
+                ->selectRaw("p.created_by as uid, DATE(p.created_at) as d, COUNT(*) as cnt, COALESCE(SUM($listPriceSub), 0) as val")
+                ->groupBy('p.created_by', \DB::raw('DATE(p.created_at)'))
+                ->get() as $row) {
+                $createdListed[$row->uid][$row->d] = ['count' => (int) $row->cnt, 'value' => (float) $row->val];
+            }
         }
 
         // Assemble one row per (employee, day) that had ANY of: register sales,
@@ -14083,12 +14103,15 @@ class ReportController extends Controller
             $dates = array_unique(array_merge(
                 array_keys($register[$uid] ?? []),
                 array_keys($listed[$uid] ?? []),
+                array_keys($createdListed[$uid] ?? []),
                 array_keys($byUserDay[$uid] ?? [])
             ));
             foreach ($dates as $date) {
                 $reg   = round($register[$uid][$date] ?? 0, 2);
                 $lsal  = round($listed[$uid][$date] ?? 0, 2);
                 $lcomm = round($listingComm[$uid][$date] ?? 0, 2);
+                $lcnt  = (int) ($createdListed[$uid][$date]['count'] ?? 0);
+                $lval  = round($createdListed[$uid][$date]['value'] ?? 0, 2);
                 $tgt   = round($byUserDay[$uid][$date]['target'] ?? 0, 2);
                 $bon   = round($byUserDay[$uid][$date]['bonus'] ?? 0, 2);
                 // Owed for the day = listing pay always + sales bonus only once
@@ -14098,6 +14121,8 @@ class ReportController extends Controller
                     'user_id'        => (int) $uid,
                     'employee'       => $nm,
                     'register_sales' => $reg,
+                    'listed_count'   => $lcnt,
+                    'listed_value'   => $lval,
                     'listed_sales'   => $lsal,
                     'listing_comm'   => $lcomm,
                     'sales_target'   => $tgt,
