@@ -3697,6 +3697,11 @@ class ProductController extends Controller
 
         $product->save();
 
+        // Push the fresh cover to nivessa.com right away (fire-and-forget) so the
+        // website reflects the new Discogs image in seconds — instead of waiting
+        // for the rolling POS backfill sweep to revisit this product (~1–2 days).
+        $this->notifyWebsiteProductImageRefresh($product->id, $releaseId);
+
         return response()->json([
             'success' => true,
             'msg' => 'Saved release id ' . $releaseId . '.',
@@ -3704,6 +3709,90 @@ class ProductController extends Controller
             'release_label' => $label !== '' ? $label : null,
             'imported' => $imported,
         ]);
+    }
+
+    /**
+     * Fire-and-forget bridge call: ask nivessa.com to immediately re-pull this
+     * product's cover from the POS API. Used after a Discogs-id edit downloads a
+     * new cover, so the website updates in seconds rather than on the next
+     * backfill pass. Reuses the existing key-gated ERP bridge (same base URL and
+     * ERP_API_KEY as the events bridge). Never throws — the ERP save must not
+     * depend on the website being reachable.
+     */
+    private function notifyWebsiteProductImageRefresh($posProductId, $releaseId = null): void
+    {
+        try {
+            $posProductId = (int) $posProductId;
+            if ($posProductId < 1) {
+                return;
+            }
+
+            // Base URL — same resolution as the events bridge.
+            $base = trim((string) config('constants.nivessa_api'));
+            if ($base === '') {
+                $base = trim((string) env('NIVESSA_API', ''));
+            }
+            if ($base === '') {
+                $base = 'https://nivessa.com/api/v1';
+            }
+            $base = rtrim($base, '/');
+
+            // Shared key — config, then .env, then the .env file straight off disk
+            // (cache-proof, mirrors EventsController's resolution).
+            $key = trim((string) config('constants.erp_api_key'));
+            if ($key === '') {
+                $key = trim((string) env('ERP_API_KEY', ''));
+            }
+            if ($key === '') {
+                $key = $this->readErpApiKeyFromDisk();
+            }
+            if ($key === '') {
+                return; // bridge not configured — nothing to do
+            }
+
+            $payload = json_encode([
+                'pos_product_id'     => $posProductId,
+                'discogs_release_id' => $releaseId ? (int) $releaseId : null,
+            ]);
+
+            $ch = curl_init($base . '/erp/product-image-refresh');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 2,
+                CURLOPT_TIMEOUT        => 4,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $payload,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                    'x-erp-key: ' . $key,
+                ],
+            ]);
+            curl_exec($ch);
+            curl_close($ch);
+        } catch (\Throwable $e) {
+            \Log::info('notifyWebsiteProductImageRefresh failed for product ' . $posProductId . ': ' . $e->getMessage());
+        }
+    }
+
+    /** Read ERP_API_KEY straight from the .env file (cache-proof fallback). */
+    private function readErpApiKeyFromDisk(): string
+    {
+        try {
+            $path = base_path('.env');
+            if (!is_readable($path)) {
+                return '';
+            }
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                if (strpos(ltrim($line), 'ERP_API_KEY=') === 0) {
+                    $val = trim(substr(ltrim($line), strlen('ERP_API_KEY=')));
+                    return trim($val, "\"'");
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
+        return '';
     }
 
     public function getMassProductRow(Request $request)
