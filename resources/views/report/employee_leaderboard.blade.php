@@ -162,8 +162,8 @@
     </style>
 
     <div style="text-align:right; margin-bottom:12px;">
-        <button type="button" id="lb-comm-toggle" class="btn btn-primary btn-sm" onclick="lbToggleComm()">Show commissions</button>
-        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-primary btn-sm" style="margin-left:8px;">Pay commissions</a>
+        <button type="button" id="lb-comm-toggle" class="btn btn-sm" style="background:#1F1B16; border:1px solid #1F1B16; color:#FAF6EE; font-weight:600;" onclick="lbToggleComm()">Show commissions</button>
+        <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-sm" style="margin-left:8px; background:#E8CF68; border:1px solid #E8CF68; color:#5A4410; font-weight:700;">Pay commissions</a>
     </div>
     <script>
         function lbToggleComm() {
@@ -234,11 +234,13 @@
                                         $rank_cls = $rank === 1 ? 'lb-rank-1' : ($rank === 2 ? 'lb-rank-2' : ($rank === 3 ? 'lb-rank-3' : ''));
                                         $no_hours = is_null($r->revenue_per_hour);
                                     @endphp
+                                    @if(($r->non_whatnot_revenue ?? 0) <= 0 && ($r->hours_worked ?? 0) <= 0 && ($r->priced_count ?? 0) <= 0)
+                                        @continue
+                                    @endif
                                     <tr class="{{ $r->user_id == $me ? 'lb-me' : '' }}">
                                         <td class="lb-rank {{ $no_hours ? '' : $rank_cls }}">{{ $no_hours ? '—' : $rank }}</td>
                                         <td>
                                             <strong>{{ $r->employee }}</strong>
-                                            @if($r->whatnot_revenue > 0)<div class="lb-sub">Whatnot ${{ number_format($r->whatnot_revenue, 0) }} (excluded)</div>@endif
                                         </td>
                                         <td class="text-right">@if(!$no_hours)<strong style="color:#1F1B16;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
                                         <td class="text-right">
