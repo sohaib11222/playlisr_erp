@@ -37,6 +37,10 @@ body.role-picker .de-pill.on { background:#1F1B16; color:#FAF6EE; border-color:#
 body.role-picker .de-note { background:#FBF6E6; border:1px solid #EADFBE; border-radius:10px; padding:12px 16px; font-size:13.5px; color:#5A5045; }
 body.role-picker .de-pos { color:#2F6B3E; font-weight:600; }
 body.role-picker .de-zero { color:#8E8273; }
+body.role-picker .de-filter { display:flex; align-items:center; gap:10px; margin:0 0 18px; }
+body.role-picker .de-filter label { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; color:#8E8273; }
+body.role-picker .de-filter select { min-height:38px; padding:6px 34px 6px 14px; border-radius:999px; border:1px solid #ECE3CF; background:#FFFFFF; color:#1F1B16; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8273' d='M6 8 0 0h12z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; }
+body.role-picker .de-filter select:focus { outline:none; border-color:#C9BE9C; box-shadow:0 0 0 3px rgba(255,242,179,.6); }
 </style>
 
 <section class="content">
@@ -63,9 +67,22 @@ body.role-picker .de-zero { color:#8E8273; }
 
         <div class="de-pills">
             @foreach([7 => '7 days', 14 => '14 days', 30 => '30 days', 60 => '60 days'] as $d => $lbl)
-                <a class="de-pill {{ (int)$days === $d ? 'on' : '' }}" href="{{ url('/my-earnings/daily') }}?days={{ $d }}">{{ $lbl }}</a>
+                <a class="de-pill {{ (int)$days === $d ? 'on' : '' }}" href="{{ url('/my-earnings/daily') }}?days={{ $d }}{{ $selected_user ? '&user='.$selected_user : '' }}">{{ $lbl }}</a>
             @endforeach
         </div>
+
+        @php $employees = $data['employees']; asort($employees); @endphp
+        <form method="GET" action="{{ url('/my-earnings/daily') }}" class="de-filter" onchange="this.submit()">
+            <input type="hidden" name="days" value="{{ (int) $days }}">
+            <label for="de-emp">Employee</label>
+            <select id="de-emp" name="user">
+                <option value="0">All employees</option>
+                @foreach($employees as $uid => $nm)
+                    <option value="{{ $uid }}" {{ (int)$selected_user === (int)$uid ? 'selected' : '' }}>{{ $nm }}</option>
+                @endforeach
+            </select>
+            <noscript><button type="submit">Go</button></noscript>
+        </form>
 
         <div class="de-stats">
             <div class="de-stat">

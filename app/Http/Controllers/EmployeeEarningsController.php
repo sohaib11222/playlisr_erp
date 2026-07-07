@@ -183,11 +183,30 @@ class EmployeeEarningsController extends Controller
         $data = app(\App\Http\Controllers\ReportController::class)
             ->buildDailyEarnings($businessId, $start, $end, null, true);
 
+        // Optional single-employee filter. We always build the full dataset so
+        // the dropdown lists everyone; when a valid ?user= is passed we narrow
+        // the day rows to that person so the stat cards + day totals reflect
+        // just them. user=0 (or unset/unknown) keeps the all-employees view.
+        $selectedUser = (int) $request->input('user', 0);
+        if ($selectedUser > 0 && isset($data['employees'][$selectedUser])) {
+            $filtered = [];
+            foreach ($data['days'] as $date => $list) {
+                $rows = array_values(array_filter($list, function ($r) use ($selectedUser) {
+                    return (int) $r['user_id'] === $selectedUser;
+                }));
+                if (!empty($rows)) { $filtered[$date] = $rows; }
+            }
+            $data['days'] = $filtered;
+        } else {
+            $selectedUser = 0;
+        }
+
         return view('employee.daily_earnings', [
-            'data'       => $data,
-            'days'       => $days,
-            'range_from' => \Carbon::parse($start)->format('M j'),
-            'range_to'   => \Carbon::parse($end)->format('M j, Y'),
+            'data'          => $data,
+            'days'          => $days,
+            'selected_user' => $selectedUser,
+            'range_from'    => \Carbon::parse($start)->format('M j'),
+            'range_to'      => \Carbon::parse($end)->format('M j, Y'),
         ]);
     }
 
