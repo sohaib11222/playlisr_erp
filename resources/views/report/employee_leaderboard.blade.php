@@ -234,7 +234,7 @@
                                         $rank_cls = $rank === 1 ? 'lb-rank-1' : ($rank === 2 ? 'lb-rank-2' : ($rank === 3 ? 'lb-rank-3' : ''));
                                         $no_hours = is_null($r->revenue_per_hour);
                                     @endphp
-                                    @if(($r->non_whatnot_revenue ?? 0) <= 0 && ($r->hours_worked ?? 0) <= 0 && ($r->priced_count ?? 0) <= 0)
+                                    @if(($r->non_whatnot_revenue ?? 0) <= 0 && ($r->hours_worked ?? 0) <= 0)
                                         @continue
                                     @endif
                                     <tr class="{{ $r->user_id == $me ? 'lb-me' : '' }}">
