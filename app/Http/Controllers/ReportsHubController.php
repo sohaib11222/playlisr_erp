@@ -30,7 +30,6 @@ class ReportsHubController extends Controller
                 'title' => 'Sales & Revenue',
                 'icon'  => 'fa-chart-line',
                 'reports' => [
-                    ['key' => 'store-performance',     'name' => 'Store Performance (Live)', 'icon' => 'fa-tachometer-alt',  'action' => 'StorePerformanceController@index',           'desc' => 'Trading-day dashboard: revenue vs target, LFL vs last year, tx count, avg ticket.', 'admin_only' => true],
                     ['key' => 'lfl-sales',             'name' => 'Like-for-Like Sales',   'icon' => 'fa-calendar-check',     'action' => 'ReportController@lflSalesReport',            'desc' => 'Pick any day or range — all stores vs the same weekday last year, $ and % change, CSV export.', 'admin_only' => true],
                     ['key' => 'revenue-drivers',       'name' => 'Revenue Drivers',       'icon' => 'fa-bullseye',           'action' => 'ReportController@revenueDrivers',            'desc' => 'Revenue = Traffic x Conversion x AOV + product mix. Fills in what the ERP can measure, flags what is not tracked yet.', 'admin_only' => true],
                     ['key' => 'profit-loss',           'name' => 'Profit / Loss Report',  'icon' => 'fa-balance-scale',      'action' => 'ReportController@getProfitLoss',              'desc' => 'Full P&L by date range.', 'admin_only' => true],
@@ -94,7 +93,7 @@ class ReportsHubController extends Controller
                 'title' => 'People',
                 'icon'  => 'fa-users',
                 'reports' => [
-                    ['key' => 'employee-leaderboard',  'name' => 'Employee Leaderboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Ranked by $ / hour.', 'admin_only' => true],
+                    ['key' => 'employee-leaderboard',  'name' => 'Daily Store Dashboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Live store KPIs (revenue vs goal, LFL, tx, ATV) plus staff ranked by $ / hour.', 'admin_only' => true],
                     ['key' => 'employee-productivity', 'name' => 'Employee Productivity', 'icon' => 'fa-user-clock',         'action' => 'ReportController@productEntryProductivity',   'desc' => 'Products priced + purchases entered.'],
                     ['key' => 'revenue-by-employee-barcoding', 'name' => 'Revenue by Employee (Barcoded)', 'icon' => 'fa-barcode', 'action' => 'ReportController@revenueByEmployeeBarcoding', 'desc' => 'Items each employee barcoded that sold + the revenue they generated.'],
                     ['key' => 'help-searches',         'name' => 'Handbook Searches',     'icon' => 'fa-search',             'action' => 'HelpReportController@index',                  'desc' => 'What employees look up in the handbook + zero-result queries.', 'admin_only' => true],

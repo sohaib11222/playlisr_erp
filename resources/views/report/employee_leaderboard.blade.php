@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Employee Leaderboard')
+@section('title', 'Daily Store Dashboard')
 
 @section('content')
 {{-- POS-create visual language (Inter Tight + cream palette) applied to the
@@ -86,8 +86,8 @@
     .lb-bar-pace { background: rgba(0,0,0,.45) !important; }
 </style>
 <section class="content-header" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:6px;">
-    <h1 style="margin:0;"><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
-    @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
+    <h1 style="margin:0;"><i class="fa fa-trophy"></i> Daily Store Dashboard <small>live store KPIs &amp; staff performance</small></h1>
+    @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Daily Store Dashboard'])
 </section>
 
 <section class="content">
