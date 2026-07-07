@@ -71,10 +71,12 @@
     .lb-table .g-first { border-left: 2px solid #E2D9C2 !important; }
 
     /* ---- live KPI strip: muted, neutral tones (ahead/behind still readable) ---- */
-    .lb-live-card { border-radius: 10px !important; }
-    .lb-up { background: #6E8A78 !important; }       /* ahead  — muted sage   */
-    .lb-down { background: #A88B7E !important; }      /* behind — muted taupe  */
-    .lb-neutral { background: #8C8275 !important; }   /* neutral — warm gray   */
+    /* One neutral card for the whole KPI strip; ahead/behind shown by the
+       value color only, so the strip reads as a single tone. */
+    .lb-live-card { border-radius: 10px !important; background: #2E2A25 !important; }
+    .lb-up, .lb-down, .lb-neutral { background: #2E2A25 !important; }
+    .lb-up .lb-live-val { color: #9FCBAC !important; }
+    .lb-down .lb-live-val { color: #E0A79A !important; }
 </style>
 <section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <h1><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
@@ -132,9 +134,9 @@
 
     <style>
         .lb-rank { font-size:16px; font-weight:800; text-align:center; width:44px; }
-        .lb-rank-1 { background:#f6c244; color:#5b3b00; }
-        .lb-rank-2 { background:#d4d8de; color:#1f2937; }
-        .lb-rank-3 { background:#e8a06a; color:#5a2200; }
+        .lb-rank-1 { background:#E8CF68; color:#5A4410; }
+        .lb-rank-2 { background:#EAE3D2; color:#5F5E5A; }
+        .lb-rank-3 { background:#EAE3D2; color:#5F5E5A; }
         .lb-me { background:#eef2ff; }
         .lb-table td, .lb-table th { vertical-align:middle; padding:10px 10px; font-size:14px; }
         .lb-hit { color:#1b7a32; font-weight:700; }
@@ -241,7 +243,7 @@
                                             <strong>{{ $r->employee }}</strong>
                                             @if($r->whatnot_revenue > 0)<div class="lb-sub">Whatnot ${{ number_format($r->whatnot_revenue, 0) }} (excluded)</div>@endif
                                         </td>
-                                        <td class="text-right">@if(!$no_hours)<strong style="color:#065f46;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
+                                        <td class="text-right">@if(!$no_hours)<strong style="color:#1F1B16;">${{ number_format($r->revenue_per_hour, 0) }}</strong>@else — @endif</td>
                                         <td class="text-right">
                                             @if($r->hours_worked > 0)
                                                 {{ number_format($r->hours_worked, 1) }}h
