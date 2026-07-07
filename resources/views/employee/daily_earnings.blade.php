@@ -41,6 +41,10 @@ body.role-picker .de-filter { display:flex; align-items:center; gap:10px; margin
 body.role-picker .de-filter label { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; color:#8E8273; }
 body.role-picker .de-filter select { min-height:38px; padding:6px 34px 6px 14px; border-radius:999px; border:1px solid #ECE3CF; background:#FFFFFF; color:#1F1B16; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238E8273' d='M6 8 0 0h12z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; }
 body.role-picker .de-filter select:focus { outline:none; border-color:#C9BE9C; box-shadow:0 0 0 3px rgba(255,242,179,.6); }
+body.role-picker .de-filter input[type=date] { min-height:38px; padding:6px 12px; border-radius:999px; border:1px solid #ECE3CF; background:#FFFFFF; color:#1F1B16; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+body.role-picker .de-filter input[type=date]:focus { outline:none; border-color:#C9BE9C; box-shadow:0 0 0 3px rgba(255,242,179,.6); }
+body.role-picker .de-clear { font-size:13px; font-weight:600; color:#6B5E2E; text-decoration:none; }
+body.role-picker .de-filter { flex-wrap:wrap; }
 </style>
 
 <section class="content">
@@ -66,14 +70,15 @@ body.role-picker .de-filter select:focus { outline:none; border-color:#C9BE9C; b
         @endphp
 
         <div class="de-pills">
+            <a class="de-pill {{ $pinned_date === $today ? 'on' : '' }}" href="{{ url('/my-earnings/daily') }}?date={{ $today }}{{ $selected_user ? '&user='.$selected_user : '' }}">Today</a>
             @foreach([7 => '7 days', 14 => '14 days', 30 => '30 days', 60 => '60 days'] as $d => $lbl)
-                <a class="de-pill {{ (int)$days === $d ? 'on' : '' }}" href="{{ url('/my-earnings/daily') }}?days={{ $d }}{{ $selected_user ? '&user='.$selected_user : '' }}">{{ $lbl }}</a>
+                <a class="de-pill {{ (!$pinned_date && (int)$days === $d) ? 'on' : '' }}" href="{{ url('/my-earnings/daily') }}?days={{ $d }}{{ $selected_user ? '&user='.$selected_user : '' }}">{{ $lbl }}</a>
             @endforeach
         </div>
 
         @php $employees = $data['employees']; asort($employees); @endphp
         <form method="GET" action="{{ url('/my-earnings/daily') }}" class="de-filter" onchange="this.submit()">
-            <input type="hidden" name="days" value="{{ (int) $days }}">
+            @unless($pinned_date)<input type="hidden" name="days" value="{{ (int) $days }}">@endunless
             <label for="de-emp">Employee</label>
             <select id="de-emp" name="user">
                 <option value="0">All employees</option>
@@ -81,6 +86,9 @@ body.role-picker .de-filter select:focus { outline:none; border-color:#C9BE9C; b
                     <option value="{{ $uid }}" {{ (int)$selected_user === (int)$uid ? 'selected' : '' }}>{{ $nm }}</option>
                 @endforeach
             </select>
+            <label for="de-date">Day</label>
+            <input type="date" id="de-date" name="date" value="{{ $pinned_date }}" max="{{ $today }}">
+            @if($pinned_date)<a class="de-clear" href="{{ url('/my-earnings/daily') }}{{ $selected_user ? '?user='.$selected_user : '' }}">clear day</a>@endif
             <noscript><button type="submit">Go</button></noscript>
         </form>
 

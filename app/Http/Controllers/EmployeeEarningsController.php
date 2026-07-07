@@ -174,11 +174,29 @@ class EmployeeEarningsController extends Controller
         }
         $businessId = $request->session()->get('user.business_id');
 
+        // Single-day mode: ?date=YYYY-MM-DD pins the report to one day (defaults
+        // to that day's 00:00–23:59). Otherwise fall back to the rolling window.
+        $pinnedDate = null;
+        $rawDate = trim((string) $request->input('date', ''));
+        if ($rawDate !== '') {
+            try {
+                $pinnedDate = \Carbon::createFromFormat('Y-m-d', $rawDate)->startOfDay();
+            } catch (\Exception $e) {
+                $pinnedDate = null; // ignore an unparseable date, show the window
+            }
+        }
+
         $days = (int) $request->input('days', 14);
         if ($days < 1) { $days = 14; }
         if ($days > 92) { $days = 92; }
-        $end = now()->toDateTimeString();
-        $start = \Carbon::parse($end)->subDays($days - 1)->startOfDay()->toDateTimeString();
+
+        if ($pinnedDate) {
+            $start = $pinnedDate->copy()->startOfDay()->toDateTimeString();
+            $end   = $pinnedDate->copy()->endOfDay()->toDateTimeString();
+        } else {
+            $end = now()->toDateTimeString();
+            $start = \Carbon::parse($end)->subDays($days - 1)->startOfDay()->toDateTimeString();
+        }
 
         $data = app(\App\Http\Controllers\ReportController::class)
             ->buildDailyEarnings($businessId, $start, $end, null, true);
@@ -205,6 +223,8 @@ class EmployeeEarningsController extends Controller
             'data'          => $data,
             'days'          => $days,
             'selected_user' => $selectedUser,
+            'pinned_date'   => $pinnedDate ? $pinnedDate->format('Y-m-d') : '',
+            'today'         => now()->format('Y-m-d'),
             'range_from'    => \Carbon::parse($start)->format('M j'),
             'range_to'      => \Carbon::parse($end)->format('M j, Y'),
         ]);
