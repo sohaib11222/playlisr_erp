@@ -106,6 +106,7 @@
             <option value="last_week" @if($period==='last_week') selected @endif>Previous week</option>
             <option value="last_7" @if($period==='last_7') selected @endif>Last 7 days</option>
             <option value="this_month" @if($period==='this_month') selected @endif>This month</option>
+            <option value="last_month" @if($period==='last_month') selected @endif>Last month</option>
             <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>
             <option value="this_quarter" @if($period==='this_quarter') selected @endif>This quarter</option>
             <option value="custom" @if($period==='custom') selected @endif>Custom dates&hellip;</option>

@@ -12966,6 +12966,12 @@ class ReportController extends Controller
                 $start = $now->copy()->subDays(29)->startOfDay();
                 $end = $now->copy()->endOfDay();
                 break;
+            case 'last_month':
+                // Previous full calendar month. startOfMonth first, so subMonth
+                // can't overflow (e.g. Mar 31 -> Mar 3).
+                $start = $now->copy()->startOfMonth()->subMonth();
+                $end = $start->copy()->endOfMonth();
+                break;
             case 'this_quarter':
                 $start = $now->copy()->startOfQuarter();
                 $end = $now->copy()->endOfDay();
@@ -13195,6 +13201,7 @@ class ReportController extends Controller
             case 'last_week':  $start = $now->copy()->subWeek()->startOfWeek();  $end = $now->copy()->subWeek()->endOfWeek(); break;
             case 'last_7':     $start = $now->copy()->subDays(6)->startOfDay();  $end = $now->copy()->endOfDay(); break;
             case 'last_30':    $start = $now->copy()->subDays(29)->startOfDay(); $end = $now->copy()->endOfDay(); break;
+            case 'last_month': $start = $now->copy()->startOfMonth()->subMonth(); $end = $start->copy()->endOfMonth(); break;
             default:           $start = $now->copy()->startOfMonth();            $end = $now->copy()->endOfDay(); $period = 'this_month'; break;
         }
         $start_str = $start->toDateTimeString();
@@ -13247,6 +13254,7 @@ class ReportController extends Controller
             case 'last_week':  $start = $now->copy()->subWeek()->startOfWeek();  $end = $now->copy()->subWeek()->endOfWeek(); break;
             case 'last_7':     $start = $now->copy()->subDays(6)->startOfDay();  $end = $now->copy()->endOfDay(); break;
             case 'last_30':    $start = $now->copy()->subDays(29)->startOfDay(); $end = $now->copy()->endOfDay(); break;
+            case 'last_month': $start = $now->copy()->startOfMonth()->subMonth(); $end = $start->copy()->endOfMonth(); break;
             default:           $start = $now->copy()->startOfMonth();            $end = $now->copy()->endOfDay(); $period = 'this_month'; break;
         }
         $startC = $start; $endC = $end;
