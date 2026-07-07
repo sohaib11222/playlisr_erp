@@ -48,6 +48,29 @@ $(document).ready(function() {
                         $(this).autocomplete('close');
                         return;
                     }
+                    // The same-price auto-pick below is only meant for TRUE
+                    // duplicates: multiple rows of the SAME title (e.g. a
+                    // record listed twice). It must NOT collapse genuinely
+                    // different titles that happen to share a price — e.g.
+                    // "Jaco Pastorius" vs "Jaco Pastorius Invitation" both
+                    // tagged $25 would always silently pick the first, so the
+                    // other title could never be printed (Sarah 2026-07-06).
+                    // If the matches span more than one distinct title, show
+                    // the picker and let the user choose. The title is the 1st
+                    // " - " chunk of the display text; strip any trailing
+                    // " (variation)" so variations of one product still collapse.
+                    var titleOf = function (it) {
+                        var raw = ((it.text || '').split(' - ')[0] || '').trim();
+                        return raw.replace(/\s*\([^()]*\)\s*$/, '').trim().toLowerCase();
+                    };
+                    var uniqueTitles = {};
+                    for (var n = 0; n < ui.content.length; n++) {
+                        uniqueTitles[titleOf(ui.content[n])] = true;
+                    }
+                    if (Object.keys(uniqueTitles).length > 1) {
+                        // Distinct titles matched → let the menu render normally.
+                        return;
+                    }
                     // Multi-match: extract price tokens from each result's
                     // display text. The endpoint builds text as
                     // "<name> - <sku> - <price> - <category>", so the 3rd
