@@ -3737,8 +3737,11 @@ class ProductController extends Controller
             }
             $base = rtrim($base, '/');
 
-            // Shared key — config, then .env, then the .env file straight off disk
-            // (cache-proof, mirrors EventsController's resolution).
+            // Shared key — resolved EXACTLY like the events bridge: config, then
+            // .env, then the .env file off disk (cache-proof), then the key set
+            // from the ERP admin UI (storage/app/events-bridge.json). The box
+            // .env is hand-managed, so on many deployments the key ONLY lives in
+            // that store file — miss it and the ping silently sends nothing.
             $key = trim((string) config('constants.erp_api_key'));
             if ($key === '') {
                 $key = trim((string) env('ERP_API_KEY', ''));
@@ -3747,6 +3750,10 @@ class ProductController extends Controller
                 $key = $this->readErpApiKeyFromDisk();
             }
             if ($key === '') {
+                $key = $this->readErpApiKeyFromStore();
+            }
+            if ($key === '') {
+                \Log::info('notifyWebsiteProductImageRefresh: no ERP bridge key resolved for product ' . $posProductId . ' — skipping.');
                 return; // bridge not configured — nothing to do
             }
 
@@ -3755,11 +3762,15 @@ class ProductController extends Controller
                 'discogs_release_id' => $releaseId ? (int) $releaseId : null,
             ]);
 
-            $ch = curl_init($base . '/erp/product-image-refresh');
+            // wait=1 → the website runs the refresh synchronously and returns the
+            // real result (updated / reason / new image url), which we log below.
+            // Adds ~1–3s to the save but makes the whole chain diagnosable and
+            // confirms the cover actually landed on the site.
+            $ch = curl_init($base . '/erp/product-image-refresh?wait=1');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CONNECTTIMEOUT => 2,
-                CURLOPT_TIMEOUT        => 4,
+                CURLOPT_TIMEOUT        => 8,
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_HTTPHEADER     => [
@@ -3768,8 +3779,15 @@ class ProductController extends Controller
                     'x-erp-key: ' . $key,
                 ],
             ]);
-            curl_exec($ch);
+            $resp = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
             curl_close($ch);
+
+            \Log::info('notifyWebsiteProductImageRefresh product ' . $posProductId
+                . ' release ' . ($releaseId ?: 'none') . ' → HTTP ' . $code
+                . ($err ? (' curl_err=' . $err) : '')
+                . ' body=' . substr((string) $resp, 0, 300));
         } catch (\Throwable $e) {
             \Log::info('notifyWebsiteProductImageRefresh failed for product ' . $posProductId . ': ' . $e->getMessage());
         }
@@ -3793,6 +3811,21 @@ class ProductController extends Controller
             // fall through
         }
         return '';
+    }
+
+    /** Read the UI-set bridge key from storage (same file the events page writes). */
+    private function readErpApiKeyFromStore(): string
+    {
+        try {
+            $path = storage_path('app/events-bridge.json');
+            if (!is_file($path)) {
+                return '';
+            }
+            $j = json_decode((string) file_get_contents($path), true);
+            return is_array($j) ? trim((string) ($j['erpApiKey'] ?? '')) : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     public function getMassProductRow(Request $request)
