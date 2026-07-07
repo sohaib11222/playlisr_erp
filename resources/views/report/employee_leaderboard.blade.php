@@ -87,28 +87,8 @@
 </style>
 <section class="content-header" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:6px;">
     <h1 style="margin:0;"><i class="fa fa-trophy"></i> Employee Leaderboard <small>sales floor performance &amp; commission</small></h1>
-    <div style="display:flex; align-items:center; gap:8px;">
-        <button type="button" id="lb-toggle-shift-strip" style="padding:6px 12px; background:#fff; border:1px solid #DFD2B3; border-radius:7px; color:#5A5045; font-size:12px; font-weight:600; cursor:pointer;">Hide shift bar</button>
-        @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
-    </div>
+    @include('partials.pin_button', ['pinUrl' => url('/reports/employee-leaderboard'), 'pinLabel' => 'Employee Leaderboard'])
 </section>
-<script>
-(function(){
-    var KEY = 'rf_hide_shift_strip';
-    var btn = document.getElementById('lb-toggle-shift-strip');
-    function apply(){
-        var strip = document.querySelector('.st-strip');
-        var hidden = localStorage.getItem(KEY) === '1';
-        if (strip) strip.style.display = hidden ? 'none' : '';
-        if (btn) btn.textContent = hidden ? 'Show shift bar' : 'Hide shift bar';
-    }
-    if (btn) btn.addEventListener('click', function(){
-        localStorage.setItem(KEY, localStorage.getItem(KEY) === '1' ? '0' : '1');
-        apply();
-    });
-    apply();
-})();
-</script>
 
 <section class="content">
 

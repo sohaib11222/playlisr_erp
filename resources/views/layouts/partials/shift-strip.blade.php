@@ -45,9 +45,37 @@
     .st-empty { font-size:13px; color:#6b7280; }
     .st-live { display:inline-block; width:7px; height:7px; border-radius:50%; background:#9ca3af; vertical-align:middle; margin-left:6px; transition:background .3s, transform .3s; }
     .st-live.pulse { background:#16a34a; transform:scale(1.6); }
+    .st-strip { position:relative; }
+    .st-collapse-btn { position:absolute; top:6px; right:10px; width:22px; height:22px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; color:#6b7280; font-size:11px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; z-index:2; }
+    .st-collapse-btn:hover { background:#f3f4f6; color:#374151; }
+    .st-strip.st-collapsed { padding-top:6px; padding-bottom:6px; }
+    .st-strip.st-collapsed > *:not(.st-collapse-btn) { display:none; }
 </style>
 
 <div class="st-strip no-print" id="shift-tasks-panel">
+    <button type="button" class="st-collapse-btn" id="st-collapse-btn" aria-label="Hide shift bar" title="Hide shift bar">&#9650;</button>
+    <script>
+        (function(){
+            var KEY = 'st_collapsed';
+            function ready(fn){ if(document.readyState!=='loading'){fn();} else {document.addEventListener('DOMContentLoaded',fn);} }
+            ready(function(){
+                var panel = document.getElementById('shift-tasks-panel');
+                var btn = document.getElementById('st-collapse-btn');
+                if(!panel || !btn) return;
+                function apply(){
+                    var collapsed = localStorage.getItem(KEY) === '1';
+                    panel.classList.toggle('st-collapsed', collapsed);
+                    btn.innerHTML = collapsed ? '&#9660;' : '&#9650;';
+                    btn.title = collapsed ? 'Show shift bar' : 'Hide shift bar';
+                }
+                btn.addEventListener('click', function(){
+                    localStorage.setItem(KEY, localStorage.getItem(KEY) === '1' ? '0' : '1');
+                    apply();
+                });
+                apply();
+            });
+        })();
+    </script>
     @if(!$shift_panel['active'])
         <div class="st-strip-head">
             <div class="st-strip-title">Your shift</div>
