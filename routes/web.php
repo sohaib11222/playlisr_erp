@@ -28,6 +28,8 @@ Route::get('/discogs/search-product-price-2', [ProductController::class, 'search
 // from here — the ERP is the source of truth.
 Route::get('/events-feed.json', 'EventsController@publicFeed');
 Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'publicFeed']);
+// A-class product ids (sales-based ABC import) for the nivessa.com New Arrivals ordering.
+Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'abcAProducts']);
 
 
 Route::middleware(['setData'])->group(function () {

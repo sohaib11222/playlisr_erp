@@ -37,6 +37,42 @@ class NivessaProductsFeedController extends Controller
     }
 
     /**
+     * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
+     *
+     * Returns the set of A-class product ids from the latest imported ABC
+     * classification (sales-based, storage/app/abc-import/latest.json). The
+     * nivessa.com homepage "New Arrivals" uses this to surface A-class stock
+     * first. Product ids here are UltimatePOS product ids, which match the
+     * website product docs' posProductId. Read-only, CORS-open, and returns an
+     * empty list (HTTP 200) if no ABC file is present, so the site just falls
+     * back to plain newest ordering rather than breaking.
+     */
+    public function abcAProducts(Request $request): JsonResponse
+    {
+        $productIds = [];
+        try {
+            $data = app(\App\Services\AbcImportService::class)->load();
+            $globalMap = is_array($data['global_map'] ?? null) ? $data['global_map'] : [];
+            foreach ($globalMap as $pid => $class) {
+                if (strtoupper((string) $class) === 'A') {
+                    $productIds[] = (int) $pid;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[abc-a-products] load failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'productIds'   => $productIds,
+            'count'        => count($productIds),
+            'generated_at' => now()->toIso8601String(),
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=600',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * GET /products-feed.json  (PUBLIC, off the /api/ path like /events-feed.json)
      *
      * Newest arrivals only - the same catalogue that's already public on
