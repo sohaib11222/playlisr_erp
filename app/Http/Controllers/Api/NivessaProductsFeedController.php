@@ -211,6 +211,56 @@ class NivessaProductsFeedController extends Controller
     }
 
     /**
+     * GET /product-price-search/{query}.json  (PUBLIC)
+     *
+     * Search products by name and return their sell price, so the website can
+     * match manual listings (new releases / preorders) to real ERP pricing.
+     * Path param (nginx strips query strings on these .json routes).
+     */
+    public function productPriceSearch(Request $request, $query): JsonResponse
+    {
+        $q = strtolower(trim(urldecode((string) $query)));
+        $items = [];
+        if (strlen($q) >= 2) {
+            try {
+                $businessId = $this->businessId();
+                $rows = DB::table('products as p')
+                    ->join('variations as v', 'v.product_id', '=', 'p.id')
+                    ->where('p.business_id', $businessId)
+                    ->whereRaw('LOWER(p.name) LIKE ?', ['%' . $q . '%'])
+                    ->groupBy('p.id', 'p.name', 'p.artist')
+                    ->orderBy('p.id', 'desc')
+                    ->limit(25)
+                    ->select(
+                        'p.id',
+                        'p.name',
+                        'p.artist',
+                        DB::raw('MAX(v.sell_price_inc_tax) as price')
+                    )
+                    ->get();
+                foreach ($rows as $r) {
+                    $items[] = [
+                        'id'     => (int) $r->id,
+                        'name'   => (string) $r->name,
+                        'artist' => (string) ($r->artist ?? ''),
+                        'price'  => round((float) $r->price, 2),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[product-price-search] failed: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'query' => $q,
+            'items' => $items,
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=60',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
      *
      * Returns the normalized ARTISTS and TITLES of the A-class products from the

@@ -35,6 +35,8 @@ Route::get('/new-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedC
 Route::get('/new-products-breakdown.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProductsBreakdown']);
 // Product id -> created_at, keyset-paginated, for fast posCreatedAt backfill on nivessa.com.
 Route::get('/product-created-dates/{after}.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'productCreatedDates']);
+// Search products by name -> price, for matching website listings to ERP pricing.
+Route::get('/product-price-search/{query}.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'productPriceSearch']);
 
 
 Route::middleware(['setData'])->group(function () {
