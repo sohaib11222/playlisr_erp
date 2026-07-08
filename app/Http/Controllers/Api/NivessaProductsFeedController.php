@@ -169,6 +169,48 @@ class NivessaProductsFeedController extends Controller
     }
 
     /**
+     * GET /product-created-dates/{after}.json  (PUBLIC)
+     *
+     * Keyset-paginated map of product id -> created_at (the real "added at
+     * store" date). The website reads this to bulk-backfill posCreatedAt fast,
+     * instead of the ~14h POS-API full sync. {after} is the last id seen (0 to
+     * start); response includes next_after_id (null when done). Path param, not
+     * a query string, because nginx strips query strings on these .json routes.
+     */
+    public function productCreatedDates(Request $request, $after): JsonResponse
+    {
+        $pageSize = 20000;
+        $afterId = (int) $after;
+        $items = [];
+        $lastId = $afterId;
+        try {
+            $businessId = $this->businessId();
+            $rows = DB::table('products')
+                ->where('business_id', $businessId)
+                ->where('id', '>', $afterId)
+                ->orderBy('id')
+                ->limit($pageSize)
+                ->select('id', 'created_at')
+                ->get();
+            foreach ($rows as $r) {
+                $items[] = [(int) $r->id, (string) $r->created_at];
+                $lastId = (int) $r->id;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[product-created-dates] failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'items'         => $items,
+            'count'         => count($items),
+            'next_after_id' => count($items) === $pageSize ? $lastId : null,
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=120',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
      *
      * Returns the normalized ARTISTS and TITLES of the A-class products from the

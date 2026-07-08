@@ -33,6 +33,8 @@ Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFee
 // New/sealed product ids so the site can badge best sellers on new stock only.
 Route::get('/new-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProducts']);
 Route::get('/new-products-breakdown.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProductsBreakdown']);
+// Product id -> created_at, keyset-paginated, for fast posCreatedAt backfill on nivessa.com.
+Route::get('/product-created-dates/{after}.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'productCreatedDates']);
 
 
 Route::middleware(['setData'])->group(function () {
