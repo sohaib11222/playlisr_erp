@@ -4101,7 +4101,10 @@ class TransactionUtil extends Util
 
         $credit_limit = Contact::find($input['contact_id'])->credit_limit;
 
-        if ($credit_limit == null) {
+        //Treat a null or zero credit limit as "no limit" (skip the check).
+        //Note: the decimal column comes back as the string "0.0000", which is
+        //not == null, so we must also check numerically for zero.
+        if (is_null($credit_limit) || (float) $credit_limit == 0) {
             return false;
         }
 
