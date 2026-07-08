@@ -411,46 +411,76 @@ class ProductMergeController extends Controller
         $varsByProduct = \DB::table('variations')->whereIn('product_id', $dupeIds)->whereNull('deleted_at')
             ->select('id', 'product_id', 'product_variation_id')->get()->groupBy('product_id');
 
+        // Store per product (product_locations is many-to-many). We only merge
+        // within the SAME store, so the store signature = the sorted set of a
+        // product's location ids. Products at different stores stay separate.
+        $locNames = \DB::table('business_locations')->where('business_id', $business_id)
+            ->pluck('name', 'id');
+        $storeSig = [];      // product_id => "id,id"
+        $storeLabel = [];    // product_id => "Hollywood, Pico"
+        $plRows = \DB::table('product_locations')->whereIn('product_id', $dupeIds)
+            ->select('product_id', 'location_id')->get()->groupBy('product_id');
+        foreach ($dupeIds as $pid) {
+            $locs = $plRows->get($pid);
+            $ids = $locs ? $locs->pluck('location_id')->map(function ($v) { return (int) $v; })->sort()->values()->all() : [];
+            $storeSig[$pid] = implode(',', $ids);
+            $storeLabel[$pid] = empty($ids)
+                ? 'No store'
+                : implode(', ', array_map(function ($id) use ($locNames) { return $locNames[$id] ?? ('#' . $id); }, $ids));
+        }
+
         $groups = [];
         $skipped = 0;
         $totalMerges = 0;
         foreach ($dupeKeys as $key => $rows) {
-            $singleOk = true;
+            // Split this barcode+title group by store, so cross-store copies
+            // never merge together.
+            $byStore = [];
             foreach ($rows as $r) {
-                $vs = $varsByProduct->get($r->id);
-                if (!$vs || count($vs) !== 1) { $singleOk = false; break; }
+                $byStore[$storeSig[(int) $r->id] ?? ''][] = $r;
             }
-            if (!$singleOk) { $skipped++; continue; }
 
-            $items = [];
-            foreach ($rows as $r) {
-                $items[] = [
-                    'id' => (int) $r->id,
-                    'name' => $r->name,
-                    'sku' => $r->sku,
-                    'is_inactive' => (int) $r->is_inactive,
-                    'units_sold' => (float) ($soldMap[$r->id] ?? 0),
-                    'current_stock' => (float) ($stockMap[$r->id] ?? 0),
+            foreach ($byStore as $storeKey => $storeRows) {
+                if (count($storeRows) < 2) { continue; }
+
+                $singleOk = true;
+                foreach ($storeRows as $r) {
+                    $vs = $varsByProduct->get($r->id);
+                    if (!$vs || count($vs) !== 1) { $singleOk = false; break; }
+                }
+                if (!$singleOk) { $skipped++; continue; }
+
+                $items = [];
+                foreach ($storeRows as $r) {
+                    $items[] = [
+                        'id' => (int) $r->id,
+                        'name' => $r->name,
+                        'sku' => $r->sku,
+                        'is_inactive' => (int) $r->is_inactive,
+                        'units_sold' => (float) ($soldMap[$r->id] ?? 0),
+                        'current_stock' => (float) ($stockMap[$r->id] ?? 0),
+                    ];
+                }
+                // Survivor: active first, then most stock, most sold, oldest id.
+                usort($items, function ($a, $b) {
+                    if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
+                    if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
+                    if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
+                    return $a['id'] <=> $b['id'];
+                });
+
+                $keep = $items[0];
+                $mergeIn = array_slice($items, 1);
+                $totalMerges += count($mergeIn);
+                $groups[] = [
+                    'key' => $key . '#' . $storeKey,
+                    'store' => $storeLabel[$keep['id']] ?? 'No store',
+                    'keep' => $keep,
+                    'merge_in' => $mergeIn,
+                    'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
+                    'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
                 ];
             }
-            // Survivor: active first, then most stock, most sold, oldest id.
-            usort($items, function ($a, $b) {
-                if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
-                if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
-                if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
-                return $a['id'] <=> $b['id'];
-            });
-
-            $keep = $items[0];
-            $mergeIn = array_slice($items, 1);
-            $totalMerges += count($mergeIn);
-            $groups[] = [
-                'key' => $key,
-                'keep' => $keep,
-                'merge_in' => $mergeIn,
-                'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
-                'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
-            ];
         }
 
         return ['groups' => $groups, 'skipped' => $skipped, 'total_groups' => count($groups), 'total_merges' => $totalMerges];

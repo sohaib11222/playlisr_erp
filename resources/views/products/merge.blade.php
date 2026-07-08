@@ -95,7 +95,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
             <div class="mg-compare" style="display:block;margin-top:10px;max-height:360px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table>
-                    <thead><tr><th>Keep (survivor)</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
+                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
                     <tbody id="mgScanRows"></tbody>
                 </table>
             </div>
@@ -199,14 +199,15 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             var rows = d.preview.map(function (g) {
                 var mergeNames = g.merge_in.map(function (m) { return esc(m.name) + ' <small style="color:#8E8273">(SKU ' + esc(m.sku) + ')</small>'; }).join('<br>');
                 return '<tr><td>' + esc(g.keep.name) + ' <small style="color:#8E8273">(SKU ' + esc(g.keep.sku) + ')</small></td>' +
+                    '<td>' + esc(g.store) + '</td>' +
                     '<td>' + mergeNames + '</td>' +
                     '<td class="num">' + num(g.combined_stock) + '</td>' +
                     '<td class="num">' + num(g.combined_sold) + '</td></tr>';
             }).join('');
             if (d.total_groups > d.preview.length) {
-                rows += '<tr><td colspan="4" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. All will be merged.</td></tr>';
+                rows += '<tr><td colspan="5" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. All will be merged.</td></tr>';
             }
-            document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="4">No duplicates found.</td></tr>';
+            document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="5">No duplicates found.</td></tr>';
             bulkBtn.style.display = d.total_merges > 0 ? '' : 'none';
             scanResult.style.display = 'block';
         }).catch(function () {
