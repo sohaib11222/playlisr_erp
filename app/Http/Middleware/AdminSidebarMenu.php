@@ -224,6 +224,17 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-gem', 'active' => request()->segment(1) == 'brands']
                             );
                         }
+                        // Owner-only: merge duplicate products (Jonathan Hedvat).
+                        if (
+                            strtolower(trim((string) auth()->user()->first_name)) === 'jonathan'
+                            && strtolower(trim((string) auth()->user()->last_name)) === 'hedvat'
+                        ) {
+                            $sub->url(
+                                route('products.merge.index'),
+                                'Merge Duplicates',
+                                ['icon' => 'fa fas fa-object-group', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'merge']
+                            );
+                        }
                         if (auth()->user()->can('product.create')) {
                             $sub->url(
                                 route('manual-item-price-rules.index'),

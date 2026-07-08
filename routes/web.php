@@ -256,6 +256,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
     Route::get('/products/{id}/set-current-stock-quick', 'ProductController@setCurrentStockQuickPage')->name('products.setCurrentStockQuick');
 
+    // Owner-only merge-duplicates tool. Declared BEFORE the products resource
+    // so "products/merge" isn't swallowed by the {product} show route.
+    Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
+    Route::post('/products/merge/preview', 'ProductMergeController@preview')->name('products.merge.preview');
+    Route::post('/products/merge', 'ProductMergeController@merge')->name('products.merge');
+
     Route::resource('products', 'ProductController');
 
     Route::post('/import-purchase-products', 'PurchaseController@importPurchaseProducts');

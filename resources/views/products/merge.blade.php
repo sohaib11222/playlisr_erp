@@ -1,0 +1,160 @@
+@extends('layouts.app')
+@section('title', 'Merge Duplicate Products')
+
+@section('content')
+<script>document.body.classList.add('merge-v2');</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+
+<style>
+body.merge-v2 { background: #FAF6EE; font-family: "Inter Tight", system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1F1B16; }
+body.merge-v2 .content-wrapper { background: #FAF6EE !important; }
+body.merge-v2 .content-header { background: transparent; padding: 28px 16px 8px; }
+body.merge-v2 .content-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.2px; color: #1F1B16; margin: 0 0 6px; }
+body.merge-v2 .content { padding: 0 16px 60px; }
+.mg-wrap { max-width: 860px; }
+.mg-card { background: #fff; border: 1px solid #ECE3D2; border-radius: 16px; padding: 22px 22px 24px; box-shadow: 0 1px 2px rgba(31,27,22,.04); margin-bottom: 18px; }
+.mg-card h2 { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
+.mg-card p.sub { color: #8E8273; font-size: 13.5px; margin: 0 0 18px; }
+.mg-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.mg-field { flex: 1 1 320px; }
+.mg-field label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+.mg-field label .hint { font-weight: 400; color: #8E8273; }
+.mg-field input { width: 100%; height: 44px; border: 1px solid #E1D7C4; border-radius: 10px; padding: 0 14px; font-size: 15px; font-family: inherit; background: #FEFCF7; }
+.mg-field input:focus { outline: none; border-color: #C9A227; box-shadow: 0 0 0 3px #FFF2B3; }
+.mg-btn { height: 44px; padding: 0 22px; border-radius: 10px; border: 0; font-family: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; }
+.mg-btn-primary { background: #1F1B16; color: #FFF2B3; }
+.mg-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.mg-btn-ghost { background: #F3ECDD; color: #1F1B16; }
+.mg-actions { margin-top: 18px; display: flex; gap: 10px; align-items: center; }
+.mg-compare { display: none; }
+.mg-compare table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.mg-compare th, .mg-compare td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #F0E9DA; font-size: 14px; }
+.mg-compare th { color: #8E8273; font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .4px; }
+.mg-compare td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mg-after { background: #FFF9E3; }
+.mg-keep-tag { display: inline-block; background: #E8F5E9; color: #1B5E20; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+.mg-drop-tag { display: inline-block; background: #FDECEA; color: #B71C1C; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+.mg-note { font-size: 13px; color: #8E8273; margin-top: 14px; line-height: 1.5; }
+.mg-msg { display: none; padding: 12px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.mg-msg.ok { display: block; background: #E8F5E9; color: #1B5E20; }
+.mg-msg.err { display: block; background: #FDECEA; color: #B71C1C; }
+</style>
+
+<section class="content-header"><h1>Merge Duplicate Products<br><small>Move all sales &amp; stock onto the one you keep, then deactivate the duplicate. Fully undoable.</small></h1></section>
+
+<section class="content">
+<div class="mg-wrap">
+    <div id="mgMsg" class="mg-msg"></div>
+
+    <div class="mg-card">
+        <h2>Pick the two products</h2>
+        <p class="sub">Enter each product's SKU (or its ERP id). The one you keep stays live; the duplicate is deactivated and its sales, purchases and stock move onto the kept product.</p>
+        <div class="mg-row">
+            <div class="mg-field">
+                <label>Keep this one <span class="hint">(SKU or id — survives)</span></label>
+                <input type="text" id="mgKeep" placeholder="e.g. 197190162899" autocomplete="off">
+            </div>
+            <div class="mg-field">
+                <label>Merge this one in <span class="hint">(SKU or id — deactivated)</span></label>
+                <input type="text" id="mgMerge" placeholder="e.g. 0197190162899" autocomplete="off">
+            </div>
+        </div>
+        <div class="mg-actions">
+            <button class="mg-btn mg-btn-ghost" id="mgPreviewBtn" type="button">Preview</button>
+        </div>
+    </div>
+
+    <div class="mg-card mg-compare" id="mgCompare">
+        <h2>Preview</h2>
+        <p class="sub">Check this is right before merging. Nothing is changed until you confirm.</p>
+        <table>
+            <thead><tr><th>Product</th><th>Units sold</th><th>Current stock</th></tr></thead>
+            <tbody>
+                <tr id="mgRowKeep"></tr>
+                <tr id="mgRowMerge"></tr>
+                <tr class="mg-after" id="mgRowAfter"></tr>
+            </tbody>
+        </table>
+        <div class="mg-note" id="mgMoves"></div>
+        <div class="mg-actions">
+            <button class="mg-btn mg-btn-primary" id="mgConfirmBtn" type="button">Confirm merge</button>
+            <span class="mg-note" style="margin-top:0">Undo any time at <a href="/admin/admin-action-history">Admin Action History</a>.</span>
+        </div>
+    </div>
+</div>
+</section>
+@stop
+
+@section('javascript')
+<script>
+(function () {
+    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute
+        ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+    var msg = document.getElementById('mgMsg');
+    var compare = document.getElementById('mgCompare');
+    var previewBtn = document.getElementById('mgPreviewBtn');
+    var confirmBtn = document.getElementById('mgConfirmBtn');
+    var lastPair = null;
+
+    function showMsg(text, ok) {
+        msg.textContent = text;
+        msg.className = 'mg-msg ' + (ok ? 'ok' : 'err');
+    }
+    function clearMsg() { msg.className = 'mg-msg'; msg.textContent = ''; }
+    function num(n) { return (Math.round(n * 100) / 100).toLocaleString(); }
+
+    function post(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            body: JSON.stringify(body),
+        }).then(function (r) { return r.json(); });
+    }
+
+    previewBtn.addEventListener('click', function () {
+        clearMsg();
+        compare.style.display = 'none';
+        var keep = document.getElementById('mgKeep').value.trim();
+        var merge = document.getElementById('mgMerge').value.trim();
+        if (!keep || !merge) { showMsg('Enter both products first.', false); return; }
+        previewBtn.disabled = true;
+        post('{{ route('products.merge.preview') }}', { keep: keep, merge: merge }).then(function (d) {
+            previewBtn.disabled = false;
+            if (!d.success) { showMsg(d.msg || 'Could not preview.', false); return; }
+            lastPair = { keep: keep, merge: merge };
+            document.getElementById('mgRowKeep').innerHTML =
+                '<td>' + d.target.name + ' <span class="mg-keep-tag">KEEP</span><br><small style="color:#8E8273">SKU ' + d.target.sku + '</small></td>' +
+                '<td class="num">' + num(d.target.units_sold) + '</td><td class="num">' + num(d.target.current_stock) + '</td>';
+            document.getElementById('mgRowMerge').innerHTML =
+                '<td>' + d.source.name + ' <span class="mg-drop-tag">DEACTIVATE</span><br><small style="color:#8E8273">SKU ' + d.source.sku + '</small></td>' +
+                '<td class="num">' + num(d.source.units_sold) + '</td><td class="num">' + num(d.source.current_stock) + '</td>';
+            document.getElementById('mgRowAfter').innerHTML =
+                '<td><strong>' + d.target.name + '</strong> after merge</td>' +
+                '<td class="num">' + num(d.after.units_sold) + '</td><td class="num">' + num(d.after.current_stock) + '</td>';
+            document.getElementById('mgMoves').textContent =
+                'Moves ' + d.moves.sell_lines + ' sale line(s) and ' + d.moves.purchase_lines + ' purchase line(s) onto the kept product.';
+            compare.style.display = 'block';
+        }).catch(function () { previewBtn.disabled = false; showMsg('Preview failed — try again.', false); });
+    });
+
+    confirmBtn.addEventListener('click', function () {
+        if (!lastPair) return;
+        if (!confirm('Merge these two products? The duplicate will be deactivated. You can undo this from Admin Action History.')) return;
+        confirmBtn.disabled = true;
+        post('{{ route('products.merge') }}', lastPair).then(function (d) {
+            confirmBtn.disabled = false;
+            if (!d.success) { showMsg(d.msg || 'Merge failed.', false); return; }
+            compare.style.display = 'none';
+            showMsg(d.msg, true);
+            document.getElementById('mgKeep').value = '';
+            document.getElementById('mgMerge').value = '';
+            lastPair = null;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }).catch(function () { confirmBtn.disabled = false; showMsg('Merge failed — try again.', false); });
+    });
+})();
+</script>
+@endsection
