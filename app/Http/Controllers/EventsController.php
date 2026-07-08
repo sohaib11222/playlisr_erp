@@ -108,6 +108,25 @@ class EventsController extends Controller
         ];
     }
 
+    /**
+     * Prep checklist scoped to one event. Events flagged "hide preorders"
+     * (we're ringing sales at the door, not taking preorders) drop the
+     * preorder-specific steps so the checklist never tells the host to
+     * announce an order/pickup that doesn't exist.
+     */
+    public static function prepItemsForEvent(array $event): array
+    {
+        $items = self::prepItems();
+        if (empty($event['hidePreorders'])) {
+            return $items;
+        }
+        $preorderOnly = ['host_stage_announcement'];
+        return array_values(array_filter(
+            $items,
+            fn ($it) => !in_array($it['id'], $preorderOnly, true)
+        ));
+    }
+
     // --------------------------------------------------------------------
     // JSON sidecar I/O (same pattern as ConsignmentController)
     // --------------------------------------------------------------------
@@ -275,7 +294,7 @@ class EventsController extends Controller
             'event'      => $event,
             'eventTypes' => self::eventTypes(),
             'genres'     => self::genres(),
-            'prepItems'  => self::prepItems(),
+            'prepItems'  => self::prepItemsForEvent($event),
             'bridge'     => $bridge,
             'storeScope' => $storeScope,
         ]);
