@@ -247,6 +247,25 @@ class EventsController extends Controller
 
         $event = $items[$id];
 
+        // Per-store management scope for events that run at both stores. Each
+        // store's event host works from their own link (?store=hollywood|pico)
+        // so the RSVP list, check-in and the giveaway spin show ONLY their
+        // store. Remembered per event in the session so it survives the reload
+        // after each check-in / walk-in add (and each host has their own
+        // session, so the two stores never step on each other).
+        $eventLocs = array_values(array_filter((array) ($event['location'] ?? [])));
+        $scopeKey = 'events.storeScope.' . $id;
+        $storeScope = strtolower((string) $request->query('store', ''));
+        if (in_array($storeScope, ['hollywood', 'pico', 'all'], true)) {
+            session([$scopeKey => $storeScope]);
+        } else {
+            $storeScope = (string) session($scopeKey, 'all');
+        }
+        // Only honor a scope the event actually spans; otherwise show both.
+        if ($storeScope !== 'all' && !in_array($storeScope, $eventLocs, true)) {
+            $storeScope = 'all';
+        }
+
         // Live RSVP + preorder data from the website bridge (source of those
         // records). Degrades gracefully: $bridge['ready'] is false when the
         // key isn't configured or the website is unreachable.
@@ -258,6 +277,7 @@ class EventsController extends Controller
             'genres'     => self::genres(),
             'prepItems'  => self::prepItems(),
             'bridge'     => $bridge,
+            'storeScope' => $storeScope,
         ]);
     }
 
@@ -761,7 +781,15 @@ class EventsController extends Controller
             'email.required'     => 'Email is required.',
         ]);
 
-        $locations = (array) ($event['location'] ?? []);
+        $locations = array_values(array_filter((array) ($event['location'] ?? [])));
+        // Tag the walk-in to the store the host is working from (their scoped
+        // view sends `store`), so it shows up in that store's list — not the
+        // other store's. Falls back to the event's first/only location.
+        $store = strtolower((string) $request->input('store', ''));
+        $eventLocationKey = (in_array($store, ['hollywood', 'pico'], true)
+            && in_array($store, array_map('strval', $locations), true))
+            ? $store
+            : ($locations[0] ?? null);
         $payload = [
             'firstName' => trim($request->input('firstName')),
             'lastName'  => trim($request->input('lastName')),
@@ -775,7 +803,7 @@ class EventsController extends Controller
             'eventType' => $event['eventType'] ?? null,
             'eventDate' => $event['date'] ?? null,
             'eventTime' => $event['time'] ?? null,
-            'eventLocationKey' => $locations[0] ?? null,
+            'eventLocationKey' => $eventLocationKey,
             // The form sends this explicitly (hidden 0 + checkbox 1), default on.
             'checkedIn' => filter_var($request->input('checkedIn'), FILTER_VALIDATE_BOOLEAN),
         ];

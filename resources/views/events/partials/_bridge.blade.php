@@ -49,6 +49,39 @@
     $stats = $bridge['stats'] ?? null;
     $preorders = $bridge['preorders'] ?? [];
 
+    // ---- Per-store scope. For an event at both stores, each store's host
+    //      works from ?store=hollywood|pico (set in the controller, remembered
+    //      in the session). When scoped we filter the RSVP list down to that
+    //      store BEFORE everything below is built — so the guest list,
+    //      check-in, counts, the giveaway pool and preorder matching all show
+    //      only that store. Guests are tagged by the store they picked at RSVP
+    //      (eventLocationKey).
+    $storeScope = $storeScope ?? 'all';
+    $eventLocsAll = array_values(array_filter((array) ($event['location'] ?? [])));
+    $multiStoreEvent = count($eventLocsAll) > 1;
+    $scopedToStore = $multiStoreEvent && in_array($storeScope, ['hollywood', 'pico'], true);
+    if ($scopedToStore) {
+      $rsvps = array_values(array_filter($rsvps, function ($r) use ($storeScope) {
+        return ($r['eventLocationKey'] ?? '') === $storeScope;
+      }));
+      // Rebuild the headline counts from the scoped list — the bridge stats
+      // row is a both-store total, so it can't be used as-is here.
+      $sYes = 0; $sMaybe = 0; $sGuests = 0;
+      foreach ($rsvps as $r) {
+        $att = $r['attendance'] ?? 'yes';
+        if ($att === 'no') { continue; }
+        if ($att === 'maybe') { $sMaybe++; } else { $sYes++; }
+        $sGuests += (int) ($r['guests'] ?? 0);
+      }
+      $stats = [
+        'attendingCount' => $sYes + $sMaybe,
+        'yesCount'       => $sYes,
+        'maybeCount'     => $sMaybe,
+        'totalGuests'    => $sGuests,
+        'totalAttendees' => $sYes + $sMaybe + $sGuests,
+      ];
+    }
+
     // ---- Preorders: shown inline in the guest table below. Split active vs
     //      canceled, then match each active preorder to an RSVP row by email /
     //      phone / name so it appears on that person's row. Anything that
@@ -100,6 +133,10 @@
     foreach ($activePreorders as $i => $p) {
       if (empty($claimedPre[$i])) { $unmatchedPre[] = $p; }
     }
+    // In a per-store view, don't surface preorders that didn't match a guest
+    // in this store — they belong to the other store (preorders aren't store-
+    // tagged, so this is the safe default). Use "Both stores" to see them all.
+    if ($scopedToStore) { $unmatchedPre = []; }
 
     // Everyone on the RSVP list, offered in the "+ Add preorder" picker so we
     // reuse the email/phone we already have instead of retyping. De-duped by
@@ -200,6 +237,33 @@
     }
   @endphp
 
+  {{-- ---------- Per-store switcher (two-store events only) ---------- --}}
+  @if($multiStoreEvent)
+    <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <strong style="font-size:15px;">Managing:</strong>
+        @php
+          $storeTabs = ['all' => 'Both stores'];
+          foreach ($eventLocsAll as $lk) { $storeTabs[$lk] = $storeLabels[$lk] ?? ucfirst($lk); }
+        @endphp
+        @foreach($storeTabs as $sk => $slabel)
+          <a href="{{ route('events.edit', ['id' => $event['id'], 'store' => $sk]) }}"
+             class="btn-ghost"
+             style="padding:8px 16px;font-weight:700;{{ $storeScope === $sk ? 'background:#1c2150;color:#fff;border-color:#1c2150;' : '' }}">
+            {{ $slabel }}
+          </a>
+        @endforeach
+      </div>
+      <div class="ev-meta" style="margin-top:8px;">
+        @if($storeScope === 'all')
+          Showing RSVPs, check-in and the giveaway spin for <strong>both stores</strong>. Pick a store so each store's host manages just their own guests - share that page's link with them.
+        @else
+          Showing <strong>{{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }}</strong> only. RSVPs, check-in and the spin below are limited to this store. Share this page's link with the {{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }} host.
+        @endif
+      </div>
+    </div>
+  @endif
+
   {{-- ---------- RSVPs ---------- --}}
   <style>.rsvp-add-details[open]{ flex:1 1 100%; }</style>
   <div class="ev-card">
@@ -212,6 +276,12 @@
         </summary>
         <form method="POST" action="{{ route('events.rsvpAdd', ['id' => $event['id']]) }}" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border:1px dashed var(--pos-line,#ECE3CF);border-radius:10px;padding:14px;">
           {{ csrf_field() }}
+          {{-- Tag this walk-in to the store the host is scoped to, so it lands
+               in the right store's list. Empty on the "Both stores" view. --}}
+          <input type="hidden" name="store" value="{{ in_array($storeScope, ['hollywood','pico'], true) ? $storeScope : '' }}">
+          @if($scopedToStore)
+            <p class="ev-meta" style="flex:1 1 100%;margin:0;">Adding to <strong>{{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }}</strong>.</p>
+          @endif
           <div class="ev-field" style="flex:1 1 130px;"><label>First name *</label><input type="text" name="firstName" required></div>
           <div class="ev-field" style="flex:1 1 130px;"><label>Last name *</label><input type="text" name="lastName" required></div>
           <div class="ev-field" style="flex:2 1 220px;"><label>Email *</label><input type="email" name="email" required></div>
