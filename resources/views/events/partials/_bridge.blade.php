@@ -592,23 +592,20 @@
     <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;margin-bottom:12px;background:var(--pos-accent-soft,#FFF9DB);font-size:13px;line-height:1.5;">
       <strong>How it works:</strong>
       <ol style="margin:6px 0 0;padding-left:18px;">
-        <li>Pick the pool: <strong>Checked-in only</strong> (fair — just the people in the room) or <strong>All RSVPs</strong>.</li>
+        <li>Only <strong>checked-in guests</strong> can win, so check people in (RSVP table above) before spinning.</li>
         <li>Hit <strong>Spin the wheel</strong>. It shuffles, then lands on one random name.</li>
         <li>The <strong>Winner</strong> shows below the button. Spin again for another draw.</li>
       </ol>
-      <div class="ev-meta" style="margin-top:6px;">Tip: check guests in (RSVP table above) before spinning so only people present can win.</div>
     </div>
-    @if(empty($pool))
-      <div class="empty">No one to spin yet — RSVPs (or check-ins) will appear here.</div>
+    @php $spinPool = array_values(array_filter($pool, fn ($p) => !empty($p['checkedIn']))); @endphp
+    @if(empty($spinPool))
+      <div class="empty">No one is checked in yet — check guests in (RSVP table above) and they'll be entered in the spin.</div>
     @else
-      <div class="ev-checks" style="margin-bottom:12px;">
-        <label><input type="radio" name="spin-scope" value="checkedin" checked> Checked-in only</label>
-        <label><input type="radio" name="spin-scope" value="all"> All RSVPs</label>
-      </div>
+      <div class="ev-meta" style="margin-bottom:12px;">{{ count($spinPool) }} checked-in guest{{ count($spinPool) === 1 ? '' : 's' }} in the draw.</div>
       <div id="spin-display" style="font-size:26px;font-weight:800;min-height:40px;padding:10px 0;color:var(--pos-accent-text);">—</div>
       <button type="button" class="btn-accent" id="spin-btn">Spin the wheel</button>
       <script>
-        window.__spinPool = @json($pool);
+        window.__spinPool = @json($spinPool);
       </script>
     @endif
   </div>
@@ -633,10 +630,9 @@
     var disp = document.getElementById('spin-display');
     if (btn && disp) {
       btn.addEventListener('click', function () {
-        var scope = (document.querySelector('input[name=spin-scope]:checked') || {}).value || 'checkedin';
+        // Checked-in guests only — the pool is already filtered server-side.
         var pool = (window.__spinPool || []);
-        if (scope === 'checkedin') pool = pool.filter(function (p) { return p.checkedIn; });
-        if (!pool.length) { disp.textContent = scope === 'checkedin' ? 'No one is checked in yet' : 'No RSVPs'; return; }
+        if (!pool.length) { disp.textContent = 'No one is checked in yet'; return; }
         btn.disabled = true;
         var ticks = 0, total = 28 + Math.floor(pool.length % 7);
         var iv = setInterval(function () {
