@@ -400,11 +400,16 @@ class ProductMergeController extends Controller
             ->select('tsl.product_id', \DB::raw('SUM(tsl.quantity) as qty'))
             ->pluck('qty', 'product_id');
 
-        $stockMap = \DB::table('variation_location_details')
-            ->whereIn('product_id', $dupeIds)
-            ->groupBy('product_id')
-            ->select('product_id', \DB::raw('SUM(qty_available) as qty'))
-            ->pluck('qty', 'product_id');
+        // Stock per (product, location) — NOT summed across locations. A product
+        // often carries a Discogs Warehouse row on top of its store row, so a
+        // flat sum overcounts the store's real on-hand. We scope to the group's
+        // store locations below.
+        $vldMap = [];
+        foreach (\DB::table('variation_location_details')->whereIn('product_id', $dupeIds)
+            ->select('product_id', 'location_id', \DB::raw('SUM(qty_available) as qty'))
+            ->groupBy('product_id', 'location_id')->get() as $r) {
+            $vldMap[(int) $r->product_id][(int) $r->location_id] = (float) $r->qty;
+        }
 
         // Live variations per product (id + product_variation_id). Groups where
         // any product isn't exactly single-variation are skipped.
@@ -448,6 +453,12 @@ class ProductMergeController extends Controller
             foreach ($byBucket as $bucketKey => $storeRows) {
                 if (count($storeRows) < 2) { continue; }
 
+                // Store location ids for this bucket (from the store part of the
+                // key). Stock is counted only at these locations, so warehouse
+                // copies don't inflate the store total. Empty = no store set →
+                // fall back to all locations.
+                $storeLocs = array_values(array_filter(array_map('intval', explode(',', explode('|cat|', $bucketKey)[0]))));
+
                 $singleOk = true;
                 foreach ($storeRows as $r) {
                     $vs = $varsByProduct->get($r->id);
@@ -461,13 +472,17 @@ class ProductMergeController extends Controller
                 foreach ($storeRows as $r) {
                     $groupCatId = (int) $r->category_id;
                     $groupSubId = (int) $r->sub_category_id;
+                    $perLoc = $vldMap[(int) $r->id] ?? [];
+                    $stock = empty($storeLocs)
+                        ? array_sum($perLoc)
+                        : array_sum(array_map(function ($l) use ($perLoc) { return $perLoc[$l] ?? 0; }, $storeLocs));
                     $items[] = [
                         'id' => (int) $r->id,
                         'name' => $r->name,
                         'sku' => $r->sku,
                         'is_inactive' => (int) $r->is_inactive,
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
-                        'current_stock' => (float) ($stockMap[$r->id] ?? 0),
+                        'current_stock' => (float) $stock,
                     ];
                 }
                 $catLabel = $groupSubId && isset($catNames[$groupSubId])
