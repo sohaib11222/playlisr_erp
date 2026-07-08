@@ -84,6 +84,27 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             <span class="mg-note" style="margin-top:0">Undo any time at <a href="/admin/admin-action-history">Admin Action History</a>.</span>
         </div>
     </div>
+
+    <div class="mg-card">
+        <h2>Or merge the whole catalog</h2>
+        <p class="sub">Scans every product, groups by barcode (leading zeros ignored), and merges each set of duplicates into one — keeping the active copy with the most stock and combining stock + units sold onto it. Products with multiple variations are skipped for manual review. Scanning changes nothing.</p>
+        <div class="mg-actions">
+            <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
+        </div>
+        <div id="mgScanResult" style="display:none;margin-top:18px;">
+            <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
+            <div class="mg-compare" style="display:block;margin-top:10px;max-height:360px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table>
+                    <thead><tr><th>Keep (survivor)</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
+                    <tbody id="mgScanRows"></tbody>
+                </table>
+            </div>
+            <div class="mg-actions">
+                <button class="mg-btn mg-btn-primary" id="mgBulkBtn" type="button">Merge all duplicates</button>
+                <span class="mg-note" id="mgBulkProgress" style="margin-top:0"></span>
+            </div>
+        </div>
+    </div>
 </div>
 </section>
 @stop
@@ -154,6 +175,70 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             lastPair = null;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }).catch(function () { confirmBtn.disabled = false; showMsg('Merge failed — try again.', false); });
+    });
+
+    // ---- Whole-catalog scan + bulk sweep ----
+    var scanBtn = document.getElementById('mgScanBtn');
+    var bulkBtn = document.getElementById('mgBulkBtn');
+    var scanResult = document.getElementById('mgScanResult');
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+    scanBtn.addEventListener('click', function () {
+        clearMsg();
+        scanResult.style.display = 'none';
+        scanBtn.disabled = true;
+        scanBtn.textContent = 'Scanning…';
+        post('{{ route('products.merge.scan') }}', {}).then(function (d) {
+            scanBtn.disabled = false;
+            scanBtn.textContent = 'Scan whole catalog';
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            var summary = d.total_groups + ' duplicate set(s) found — ' + d.total_merges + ' product(s) will be deactivated after merging.';
+            if (d.skipped > 0) { summary += ' ' + d.skipped + ' set(s) skipped (multiple variations — merge those manually).'; }
+            document.getElementById('mgScanSummary').textContent = summary;
+            var rows = d.preview.map(function (g) {
+                var mergeNames = g.merge_in.map(function (m) { return esc(m.name) + ' <small style="color:#8E8273">(SKU ' + esc(m.sku) + ')</small>'; }).join('<br>');
+                return '<tr><td>' + esc(g.keep.name) + ' <small style="color:#8E8273">(SKU ' + esc(g.keep.sku) + ')</small></td>' +
+                    '<td>' + mergeNames + '</td>' +
+                    '<td class="num">' + num(g.combined_stock) + '</td>' +
+                    '<td class="num">' + num(g.combined_sold) + '</td></tr>';
+            }).join('');
+            if (d.total_groups > d.preview.length) {
+                rows += '<tr><td colspan="4" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. All will be merged.</td></tr>';
+            }
+            document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="4">No duplicates found.</td></tr>';
+            bulkBtn.style.display = d.total_merges > 0 ? '' : 'none';
+            scanResult.style.display = 'block';
+        }).catch(function () {
+            scanBtn.disabled = false;
+            scanBtn.textContent = 'Scan whole catalog';
+            showMsg('Scan failed — try again.', false);
+        });
+    });
+
+    function runBulkBatch(totalDone) {
+        post('{{ route('products.merge.bulk') }}', { max: 150 }).then(function (d) {
+            if (!d.success) { bulkBtn.disabled = false; showMsg(d.msg || 'Merge failed.', false); return; }
+            totalDone += d.merged;
+            document.getElementById('mgBulkProgress').textContent =
+                'Merged ' + totalDone + ' so far — ' + d.remaining + ' remaining' + (d.failed ? ' (' + d.failed + ' skipped)' : '') + '…';
+            if (d.remaining > 0 && d.merged > 0) {
+                runBulkBatch(totalDone);
+            } else {
+                bulkBtn.disabled = false;
+                scanResult.style.display = 'none';
+                showMsg('Done — merged ' + totalDone + ' duplicate(s) across the catalog. Undo any batch at Admin Action History.', true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }).catch(function () { bulkBtn.disabled = false; showMsg('Merge failed mid-run — re-scan to see what remains.', false); });
+    }
+
+    bulkBtn.addEventListener('click', function () {
+        if (!confirm('Merge ALL duplicate sets across the catalog? Duplicates get deactivated and their stock + sales combine onto each survivor. Each batch is undoable from Admin Action History.')) return;
+        clearMsg();
+        bulkBtn.disabled = true;
+        document.getElementById('mgBulkProgress').textContent = 'Starting…';
+        runBulkBatch(0);
     });
 })();
 </script>

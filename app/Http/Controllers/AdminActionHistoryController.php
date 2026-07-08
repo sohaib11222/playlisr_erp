@@ -34,7 +34,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (($data['action'] ?? '') === 'merge-categories' || ($data['action'] ?? '') === 'merge-products') {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -92,6 +92,11 @@ class AdminActionHistoryController extends Controller
         // guard would be wrong — a merge with zero prior sales is still valid).
         if ($action === 'merge-products') {
             return $this->undoMergeProducts($data, $key);
+        }
+
+        // merge-products-bulk: reverse a whole batch of merges as a unit.
+        if ($action === 'merge-products-bulk') {
+            return $this->undoMergeProductsBulk($data, $key);
         }
 
         // ams-invoice-import: snapshot holds the purchase transaction id created
@@ -166,7 +171,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -627,73 +632,14 @@ class AdminActionHistoryController extends Controller
     // numbers changed since the merge.
     protected function undoMergeProducts(array $data, $key)
     {
-        $sourceId = (int) ($data['source_id'] ?? 0);
-        $targetId = (int) ($data['target_id'] ?? 0);
-        $sourceVarId = (int) ($data['source_variation_id'] ?? 0);
-        if ($sourceId <= 0 || $targetId <= 0 || $sourceVarId <= 0) {
+        if ((int) ($data['source_id'] ?? 0) <= 0 || (int) ($data['target_id'] ?? 0) <= 0 || (int) ($data['source_variation_id'] ?? 0) <= 0) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => 'Snapshot missing source/target/variation.']);
         }
 
         DB::beginTransaction();
         try {
-            // 1) Move sales / purchase / adjustment lines back by their ids.
-            foreach ([
-                'transaction_sell_lines' => $data['sell_line_ids'] ?? [],
-                'purchase_lines'         => $data['purchase_line_ids'] ?? [],
-                'stock_adjustment_lines' => $data['adj_line_ids'] ?? [],
-            ] as $table => $ids) {
-                foreach (array_chunk($ids, 500) as $chunk) {
-                    if (empty($chunk)) { continue; }
-                    DB::table($table)->whereIn('id', $chunk)->update([
-                        'product_id'   => $sourceId,
-                        'variation_id' => $sourceVarId,
-                    ]);
-                }
-            }
-
-            // 2) Restore stock. Drop the target rows we created, put the target's
-            //    pre-merge quantities back, and recreate the source's stock rows.
-            foreach (($data['created_target_vld_ids'] ?? []) as $vldId) {
-                DB::table('variation_location_details')->where('id', (int) $vldId)->delete();
-            }
-            foreach (($data['target_vld_before'] ?? []) as $r) {
-                DB::table('variation_location_details')->where('id', (int) $r['id'])
-                    ->update(['qty_available' => $r['qty_available']]);
-            }
-            // The source's own product_variation_id (the merge deleted these
-            // rows, so we recreate them against the source variation).
-            $sourcePvId = (int) (DB::table('variations')->where('id', $sourceVarId)->value('product_variation_id') ?? 0);
-            foreach (($data['source_vld'] ?? []) as $r) {
-                $exists = DB::table('variation_location_details')->where('id', (int) $r['id'])->exists();
-                if ($exists) {
-                    DB::table('variation_location_details')->where('id', (int) $r['id'])
-                        ->update(['qty_available' => $r['qty_available']]);
-                } else {
-                    DB::table('variation_location_details')->insert([
-                        'id' => (int) $r['id'],
-                        'product_id' => $sourceId,
-                        'product_variation_id' => $sourcePvId,
-                        'variation_id' => $sourceVarId,
-                        'location_id' => (int) $r['location_id'],
-                        'qty_available' => $r['qty_available'],
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                }
-            }
-
-            // 3) Reactivate the source to its pre-merge flags.
-            DB::table('products')->where('id', $sourceId)->update([
-                'is_inactive' => (int) ($data['source_was_inactive'] ?? 0),
-                'not_for_selling' => (int) ($data['source_was_not_for_selling'] ?? 0),
-            ]);
-
-            // 4) Bust caches so both products recompute.
-            if (\Schema::hasTable('product_stock_cache')) {
-                DB::table('product_stock_cache')->whereIn('product_id', [$sourceId, $targetId])->delete();
-            }
-
+            $this->reverseOneMerge($data);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -703,11 +649,106 @@ class AdminActionHistoryController extends Controller
 
         \Cache::forget('products_index_sold_totals:' . (int) ($data['business_id'] ?? 0));
 
-        $src = $data['source_name'] ?? ('#' . $sourceId);
-        $tgt = $data['target_name'] ?? ('#' . $targetId);
+        $src = $data['source_name'] ?? ('#' . (int) $data['source_id']);
+        $tgt = $data['target_name'] ?? ('#' . (int) $data['target_id']);
         $moved = count($data['sell_line_ids'] ?? []);
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => "Un-merged \"{$src}\" from \"{$tgt}\": moved {$moved} sale line(s) back, restored stock, reactivated the duplicate."]);
+    }
+
+    // Reverse a whole batch of merges (a merge-products-bulk snapshot). Each
+    // merge is reversed newest-first inside one transaction so a failure rolls
+    // the entire batch back.
+    protected function undoMergeProductsBulk(array $data, $key)
+    {
+        $merges = $data['merges'] ?? [];
+        if (empty($merges)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Batch snapshot has no merges to undo.']);
+        }
+
+        DB::beginTransaction();
+        try {
+            foreach (array_reverse($merges) as $m) {
+                $this->reverseOneMerge($m);
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Batch undo failed, nothing changed: ' . $e->getMessage()]);
+        }
+
+        \Cache::forget('products_index_sold_totals:' . (int) ($data['business_id'] ?? 0));
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => 'Un-merged a batch of ' . count($merges) . ' duplicate(s): history moved back, stock restored, duplicates reactivated.']);
+    }
+
+    // Reverse a single merge given its payload (from performMerge). Assumes it
+    // runs inside a DB transaction managed by the caller.
+    protected function reverseOneMerge(array $m)
+    {
+        $sourceId = (int) ($m['source_id'] ?? 0);
+        $targetId = (int) ($m['target_id'] ?? 0);
+        $sourceVarId = (int) ($m['source_variation_id'] ?? 0);
+        if ($sourceId <= 0 || $targetId <= 0 || $sourceVarId <= 0) {
+            throw new \RuntimeException('merge payload missing source/target/variation');
+        }
+
+        // 1) Move sales / purchase / adjustment lines back by their ids.
+        foreach ([
+            'transaction_sell_lines' => $m['sell_line_ids'] ?? [],
+            'purchase_lines'         => $m['purchase_line_ids'] ?? [],
+            'stock_adjustment_lines' => $m['adj_line_ids'] ?? [],
+        ] as $table => $ids) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                if (empty($chunk)) { continue; }
+                DB::table($table)->whereIn('id', $chunk)->update([
+                    'product_id'   => $sourceId,
+                    'variation_id' => $sourceVarId,
+                ]);
+            }
+        }
+
+        // 2) Restore stock: drop target rows we created, put target's pre-merge
+        //    quantities back, recreate the source's stock rows.
+        foreach (($m['created_target_vld_ids'] ?? []) as $vldId) {
+            DB::table('variation_location_details')->where('id', (int) $vldId)->delete();
+        }
+        foreach (($m['target_vld_before'] ?? []) as $r) {
+            DB::table('variation_location_details')->where('id', (int) $r['id'])
+                ->update(['qty_available' => $r['qty_available']]);
+        }
+        $sourcePvId = (int) (DB::table('variations')->where('id', $sourceVarId)->value('product_variation_id') ?? 0);
+        foreach (($m['source_vld'] ?? []) as $r) {
+            $exists = DB::table('variation_location_details')->where('id', (int) $r['id'])->exists();
+            if ($exists) {
+                DB::table('variation_location_details')->where('id', (int) $r['id'])
+                    ->update(['qty_available' => $r['qty_available']]);
+            } else {
+                DB::table('variation_location_details')->insert([
+                    'id' => (int) $r['id'],
+                    'product_id' => $sourceId,
+                    'product_variation_id' => $sourcePvId,
+                    'variation_id' => $sourceVarId,
+                    'location_id' => (int) $r['location_id'],
+                    'qty_available' => $r['qty_available'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        // 3) Reactivate the source to its pre-merge flags.
+        DB::table('products')->where('id', $sourceId)->update([
+            'is_inactive' => (int) ($m['source_was_inactive'] ?? 0),
+            'not_for_selling' => (int) ($m['source_was_not_for_selling'] ?? 0),
+        ]);
+
+        // 4) Bust denormalized stock cache (later migration; may be absent).
+        if (\Schema::hasTable('product_stock_cache')) {
+            DB::table('product_stock_cache')->whereIn('product_id', [$sourceId, $targetId])->delete();
+        }
     }
 
     // Undo a "Buy from customer" receive. Per-line: skip if already sold,

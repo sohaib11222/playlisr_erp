@@ -260,6 +260,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::post('/products/merge/preview', 'ProductMergeController@preview')->name('products.merge.preview');
+    Route::post('/products/merge/scan', 'ProductMergeController@scan')->name('products.merge.scan');
+    Route::post('/products/merge/bulk', 'ProductMergeController@bulk')->name('products.merge.bulk');
     Route::post('/products/merge', 'ProductMergeController@merge')->name('products.merge');
 
     Route::resource('products', 'ProductController');

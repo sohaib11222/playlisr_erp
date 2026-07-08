@@ -5,48 +5,65 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 
 /**
- * Owner-only tool to merge a duplicate product into the one you keep.
+ * Owner-only tool to merge duplicate products into the one you keep — either
+ * one pair at a time, or the whole catalog in one sweep.
  *
- * It moves ALL history off the duplicate onto the product you keep so
- * nothing is lost:
- *   - transaction_sell_lines  (Units Sold)
- *   - purchase_lines          (what was received / cost history)
- *   - stock_adjustment_lines  (manual stock changes)
- *   - variation_location_details (on-hand stock, summed per location)
- * then deactivates the duplicate (is_inactive) so it drops out of POS and
- * the product list but the row stays for undo.
+ * Merging moves ALL history off each duplicate onto the survivor so nothing
+ * is lost, and the survivor shows the COMBINED totals:
+ *   - transaction_sell_lines      (Units Sold  -> summed)
+ *   - purchase_lines              (cost history)
+ *   - stock_adjustment_lines      (manual stock changes)
+ *   - variation_location_details  (on-hand stock -> summed per location)
+ * then deactivates the duplicate (is_inactive) so it drops out of POS and the
+ * product list. The duplicate row is kept (Product has no SoftDeletes, so it
+ * is never hard-deleted) so the merge can be reversed.
  *
- * Everything is snapshotted to storage/app/admin-snapshots BEFORE any write,
- * so it can be reversed at /admin/admin-action-history — same pattern as the
+ * Every write is snapshotted to storage/app/admin-snapshots BEFORE it happens
+ * and is reversible at /admin/admin-action-history — same pattern as the
  * category merge (TaxonomyController@merge).
  *
- * Scope guard: single-variation products only (all vinyl / CDs are single).
- * A product with multiple variations is refused rather than risk scrambling
- * its attribute/stock matrix.
+ *   Single merge  -> one "merge-products" snapshot.
+ *   Bulk sweep    -> one "merge-products-bulk" snapshot per batch (a list of
+ *                    individual merges), reversed as a batch.
+ *
+ * Duplicates are matched by SKU with leading zeros ignored (so 0197190162899
+ * and 197190162899 are the same barcode). Single-variation products only
+ * (all vinyl / CDs); groups with any multi-variation product are skipped and
+ * reported for manual review.
  */
 class ProductMergeController extends Controller
 {
     /** Owner-only, mirroring the category-merge gate (Jonathan Hedvat). */
-    protected function ensureOwner()
+    protected function isOwner()
     {
         $u = auth()->user();
-        $isJon = $u
+        return $u
             && strtolower(trim((string) $u->first_name)) === 'jonathan'
             && strtolower(trim((string) $u->last_name)) === 'hedvat';
-        return $isJon;
+    }
+
+    /** Barcode key with leading zeros ignored. */
+    protected function skuKey($sku)
+    {
+        $s = trim((string) $sku);
+        if ($s === '') {
+            return '';
+        }
+        $stripped = ltrim($s, '0');
+        return $stripped === '' ? $s : $stripped;
     }
 
     public function index()
     {
-        if (!$this->ensureOwner()) {
+        if (!$this->isOwner()) {
             abort(403, 'Product merge is owner-only.');
         }
         return view('products.merge');
     }
 
     /**
-     * Resolve a product by SKU or numeric id within the business, and load
-     * its single variation. Returns [product, variation] or [null, null].
+     * Resolve a product by SKU or numeric id within the business, plus its
+     * (single) live variation rows. Returns [product, variationsCollection].
      */
     protected function resolveProduct($ref, $business_id)
     {
@@ -55,19 +72,10 @@ class ProductMergeController extends Controller
             return [null, null];
         }
 
-        $query = \DB::table('products')->where('business_id', $business_id);
-        if (ctype_digit($ref) && strlen($ref) < 12) {
-            // Short all-digit strings are ambiguous (could be an id or a short
-            // sku). Try id first, fall back to sku below if not found.
-            $product = (clone $query)->where('id', (int) $ref)->first();
-            if (!$product) {
-                $product = (clone $query)->where('sku', $ref)->first();
-            }
-        } else {
-            $product = (clone $query)->where('sku', $ref)->first();
-            if (!$product && ctype_digit($ref)) {
-                $product = (clone $query)->where('id', (int) $ref)->first();
-            }
+        $base = \DB::table('products')->where('business_id', $business_id);
+        $product = (clone $base)->where('sku', $ref)->first();
+        if (!$product && ctype_digit($ref)) {
+            $product = (clone $base)->where('id', (int) $ref)->first();
         }
         if (!$product) {
             return [null, null];
@@ -81,7 +89,7 @@ class ProductMergeController extends Controller
         return [$product, $variations];
     }
 
-    /** Units sold (final sells) + on-hand stock for a product. */
+    /** Units sold (final sells) + on-hand stock for one product. */
     protected function stats($product_id, $business_id)
     {
         $unitsSold = (float) \DB::table('transaction_sell_lines as tsl')
@@ -99,14 +107,12 @@ class ProductMergeController extends Controller
         return ['units_sold' => $unitsSold, 'current_stock' => $stock];
     }
 
-    /**
-     * Validate a source/target pair and return a normalized bundle, or an
-     * error string. Shared by preview() and merge() so both agree.
-     */
+    // ================= SINGLE-PAIR FLOW =================
+
     protected function validatePair(Request $request, $business_id)
     {
-        $keepRef  = $request->input('keep');   // target — the product you keep
-        $mergeRef = $request->input('merge');  // source — the duplicate
+        $keepRef  = $request->input('keep');
+        $mergeRef = $request->input('merge');
 
         [$target, $targetVars] = $this->resolveProduct($keepRef, $business_id);
         [$source, $sourceVars] = $this->resolveProduct($mergeRef, $business_id);
@@ -121,7 +127,7 @@ class ProductMergeController extends Controller
             return ['error' => 'Those are the same product — pick two different rows.'];
         }
         if (count($targetVars) !== 1 || count($sourceVars) !== 1) {
-            return ['error' => 'This tool merges single-variation products only (vinyl / CDs). One of these has multiple variations — merge it manually.'];
+            return ['error' => 'This tool merges single-variation products only. One of these has multiple variations — merge it manually.'];
         }
 
         return [
@@ -133,10 +139,9 @@ class ProductMergeController extends Controller
         ];
     }
 
-    /** Show what the merge will do — no writes. */
     public function preview(Request $request)
     {
-        if (!$this->ensureOwner()) {
+        if (!$this->isOwner()) {
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
         $business_id = $request->session()->get('user.business_id');
@@ -150,38 +155,24 @@ class ProductMergeController extends Controller
         $s = $this->stats($source->id, $business_id);
         $t = $this->stats($target->id, $business_id);
 
-        $sellLines = \DB::table('transaction_sell_lines')->where('product_id', $source->id)->count();
-        $purchaseLines = \DB::table('purchase_lines')->where('product_id', $source->id)->count();
-
         return response()->json([
             'success' => true,
-            'source' => [
-                'id' => (int) $source->id, 'name' => $source->name, 'sku' => $source->sku,
-                'units_sold' => $s['units_sold'], 'current_stock' => $s['current_stock'],
-                'inactive' => (int) $source->is_inactive === 1,
-            ],
-            'target' => [
-                'id' => (int) $target->id, 'name' => $target->name, 'sku' => $target->sku,
-                'units_sold' => $t['units_sold'], 'current_stock' => $t['current_stock'],
-            ],
-            'after' => [
-                'units_sold' => $s['units_sold'] + $t['units_sold'],
-                'current_stock' => $s['current_stock'] + $t['current_stock'],
-            ],
+            'source' => ['id' => (int) $source->id, 'name' => $source->name, 'sku' => $source->sku, 'units_sold' => $s['units_sold'], 'current_stock' => $s['current_stock']],
+            'target' => ['id' => (int) $target->id, 'name' => $target->name, 'sku' => $target->sku, 'units_sold' => $t['units_sold'], 'current_stock' => $t['current_stock']],
+            'after' => ['units_sold' => $s['units_sold'] + $t['units_sold'], 'current_stock' => $s['current_stock'] + $t['current_stock']],
             'moves' => [
-                'sell_lines' => $sellLines,
-                'purchase_lines' => $purchaseLines,
+                'sell_lines' => \DB::table('transaction_sell_lines')->where('product_id', $source->id)->count(),
+                'purchase_lines' => \DB::table('purchase_lines')->where('product_id', $source->id)->count(),
             ],
         ]);
     }
 
-    /** Do the merge, transactionally, after snapshotting. */
     public function merge(Request $request)
     {
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
-        if (!$this->ensureOwner()) {
+        if (!$this->isOwner()) {
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
         $business_id = $request->session()->get('user.business_id');
@@ -192,131 +183,31 @@ class ProductMergeController extends Controller
 
         $source = $pair['source'];
         $target = $pair['target'];
-        $sourceId = (int) $source->id;
-        $targetId = (int) $target->id;
-        $sourceVarId = $pair['source_variation_id'];
-        $targetVarId = $pair['target_variation_id'];
-        $targetPvId = $pair['target_product_variation_id'];
-
-        // ---- Snapshot BEFORE any write ---------------------------------
-        $sellLineIds = \DB::table('transaction_sell_lines')->where('product_id', $sourceId)->pluck('id')->all();
-        $purchaseLineIds = \DB::table('purchase_lines')->where('product_id', $sourceId)->pluck('id')->all();
-        $adjLineIds = \DB::table('stock_adjustment_lines')->where('product_id', $sourceId)->pluck('id')->all();
-
-        $sourceVld = \DB::table('variation_location_details')
-            ->where('product_id', $sourceId)
-            ->select('id', 'location_id', 'qty_available')
-            ->get()
-            ->map(function ($r) { return ['id' => (int) $r->id, 'location_id' => (int) $r->location_id, 'qty_available' => (string) $r->qty_available]; })
-            ->all();
-
-        // Target stock rows that already exist for the locations the source
-        // has stock in — snapshot their BEFORE qty so undo can restore them.
-        $sourceLocs = array_values(array_unique(array_map(function ($r) { return $r['location_id']; }, $sourceVld)));
-        $targetVldBefore = [];
-        if (!empty($sourceLocs)) {
-            $targetVldBefore = \DB::table('variation_location_details')
-                ->where('product_id', $targetId)
-                ->whereIn('location_id', $sourceLocs)
-                ->select('id', 'location_id', 'qty_available')
-                ->get()
-                ->map(function ($r) { return ['id' => (int) $r->id, 'location_id' => (int) $r->location_id, 'qty_available' => (string) $r->qty_available]; })
-                ->all();
-        }
-
         $timestamp = now()->format('Y-m-d_His');
         $snapshotKey = "merge-products-{$timestamp}";
-        $createdTargetVldIds = [];
 
         \DB::beginTransaction();
         try {
-            // 1) Move sales history (Units Sold).
-            \DB::table('transaction_sell_lines')->where('product_id', $sourceId)
-                ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
-
-            // 2) Move purchase history.
-            \DB::table('purchase_lines')->where('product_id', $sourceId)
-                ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
-
-            // 3) Move manual stock adjustments.
-            \DB::table('stock_adjustment_lines')->where('product_id', $sourceId)
-                ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
-
-            // 4) Merge on-hand stock per location: add source qty into the
-            //    target's row for that location, creating it if missing. Then
-            //    delete the source's stock rows.
-            $targetVldByLoc = [];
-            foreach ($targetVldBefore as $tr) {
-                $targetVldByLoc[$tr['location_id']] = $tr['id'];
-            }
-            foreach ($sourceVld as $sr) {
-                $loc = $sr['location_id'];
-                if (isset($targetVldByLoc[$loc])) {
-                    \DB::table('variation_location_details')
-                        ->where('id', $targetVldByLoc[$loc])
-                        ->increment('qty_available', (float) $sr['qty_available']);
-                } else {
-                    $newId = \DB::table('variation_location_details')->insertGetId([
-                        'product_id' => $targetId,
-                        'product_variation_id' => $targetPvId,
-                        'variation_id' => $targetVarId,
-                        'location_id' => $loc,
-                        'qty_available' => $sr['qty_available'],
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                    $createdTargetVldIds[] = (int) $newId;
-                }
-            }
-            \DB::table('variation_location_details')->where('product_id', $sourceId)->delete();
-
-            // ---- Write the snapshot (inside the txn is fine; it's a file). --
-            \Storage::disk('local')->put(
-                "admin-snapshots/{$snapshotKey}.json",
-                json_encode([
-                    'timestamp'   => $timestamp,
-                    'action'      => 'merge-products',
-                    'user_id'     => auth()->id(),
-                    'business_id' => $business_id,
-                    'source_id'   => $sourceId,
-                    'target_id'   => $targetId,
-                    'source_name' => $source->name,
-                    'target_name' => $target->name,
-                    'source_variation_id' => $sourceVarId,
-                    'target_variation_id' => $targetVarId,
-                    'target_product_variation_id' => $targetPvId,
-                    'source_was_inactive' => (int) $source->is_inactive,
-                    'source_was_not_for_selling' => (int) $source->not_for_selling,
-                    'sell_line_ids' => $sellLineIds,
-                    'purchase_line_ids' => $purchaseLineIds,
-                    'adj_line_ids' => $adjLineIds,
-                    'source_vld' => $sourceVld,
-                    'target_vld_before' => $targetVldBefore,
-                    'created_target_vld_ids' => $createdTargetVldIds,
-                    // 'rows' drives the count column on the history page.
-                    'rows' => array_map(function ($id) { return ['id' => $id]; }, $sellLineIds),
-                ], JSON_PRETTY_PRINT)
+            $payload = $this->performMerge(
+                (int) $source->id, (int) $target->id,
+                $pair['source_variation_id'], $pair['target_variation_id'], $pair['target_product_variation_id'],
+                (int) $source->is_inactive, (int) $source->not_for_selling,
+                $source->name, $target->name, $business_id
             );
 
-            // 5) Deactivate the duplicate (keep the row for undo). Product has
-            //    no SoftDeletes, so we never hard-delete it.
-            \DB::table('products')->where('id', $sourceId)->update([
-                'is_inactive' => 1,
-                'not_for_selling' => 1,
-            ]);
-
-            // 6) Bust the denormalized stock cache + the products-list sold
-            //    aggregate so both products show fresh numbers. The cache table
-            //    is a later migration that may not be deployed everywhere.
-            if (\Schema::hasTable('product_stock_cache')) {
-                \DB::table('product_stock_cache')->whereIn('product_id', [$sourceId, $targetId])->delete();
-            }
-
+            \Storage::disk('local')->put(
+                "admin-snapshots/{$snapshotKey}.json",
+                json_encode(array_merge([
+                    'timestamp' => $timestamp,
+                    'action' => 'merge-products',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'rows' => array_map(function ($id) { return ['id' => $id]; }, $payload['sell_line_ids']),
+                ], $payload), JSON_PRETTY_PRINT)
+            );
             \DB::commit();
         } catch (\Throwable $e) {
             \DB::rollBack();
-            // The snapshot file may have been written before a later failure;
-            // remove it so it can't be "undone" against un-changed data.
             if (\Storage::disk('local')->exists("admin-snapshots/{$snapshotKey}.json")) {
                 \Storage::disk('local')->delete("admin-snapshots/{$snapshotKey}.json");
             }
@@ -329,7 +220,308 @@ class ProductMergeController extends Controller
         return response()->json([
             'success' => true,
             'msg' => 'Merged "' . $source->name . '" into "' . $target->name . '" — moved '
-                . count($sellLineIds) . ' sale line(s) and combined stock. The duplicate is now deactivated. Undo at /admin/admin-action-history.',
+                . count($payload['sell_line_ids']) . ' sale line(s) and combined stock. The duplicate is now deactivated. Undo at /admin/admin-action-history.',
+        ]);
+    }
+
+    // ================= SHARED MERGE CORE =================
+
+    /**
+     * Move all history + stock from source onto target and deactivate source.
+     * MUST be called inside a DB transaction. Returns the reversal payload
+     * (all the ids/quantities undo needs). Does NOT write a snapshot file or
+     * manage the transaction — the caller does both.
+     */
+    protected function performMerge($sourceId, $targetId, $sourceVarId, $targetVarId, $targetPvId, $sourceWasInactive, $sourceWasNfs, $sourceName, $targetName, $business_id)
+    {
+        $sellLineIds = \DB::table('transaction_sell_lines')->where('product_id', $sourceId)->pluck('id')->all();
+        $purchaseLineIds = \DB::table('purchase_lines')->where('product_id', $sourceId)->pluck('id')->all();
+        $adjLineIds = \DB::table('stock_adjustment_lines')->where('product_id', $sourceId)->pluck('id')->all();
+
+        $sourceVld = \DB::table('variation_location_details')->where('product_id', $sourceId)
+            ->select('id', 'location_id', 'qty_available')->get()
+            ->map(function ($r) { return ['id' => (int) $r->id, 'location_id' => (int) $r->location_id, 'qty_available' => (string) $r->qty_available]; })
+            ->all();
+
+        $sourceLocs = array_values(array_unique(array_map(function ($r) { return $r['location_id']; }, $sourceVld)));
+        $targetVldBefore = [];
+        if (!empty($sourceLocs)) {
+            $targetVldBefore = \DB::table('variation_location_details')->where('product_id', $targetId)
+                ->whereIn('location_id', $sourceLocs)
+                ->select('id', 'location_id', 'qty_available')->get()
+                ->map(function ($r) { return ['id' => (int) $r->id, 'location_id' => (int) $r->location_id, 'qty_available' => (string) $r->qty_available]; })
+                ->all();
+        }
+
+        // 1-3) Move sales / purchase / adjustment history.
+        \DB::table('transaction_sell_lines')->where('product_id', $sourceId)
+            ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
+        \DB::table('purchase_lines')->where('product_id', $sourceId)
+            ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
+        \DB::table('stock_adjustment_lines')->where('product_id', $sourceId)
+            ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
+
+        // 4) Merge on-hand stock per location; then drop source stock rows.
+        $targetVldByLoc = [];
+        foreach ($targetVldBefore as $tr) {
+            $targetVldByLoc[$tr['location_id']] = $tr['id'];
+        }
+        $createdTargetVldIds = [];
+        foreach ($sourceVld as $sr) {
+            $loc = $sr['location_id'];
+            if (isset($targetVldByLoc[$loc])) {
+                \DB::table('variation_location_details')->where('id', $targetVldByLoc[$loc])
+                    ->increment('qty_available', (float) $sr['qty_available']);
+            } else {
+                $newId = \DB::table('variation_location_details')->insertGetId([
+                    'product_id' => $targetId,
+                    'product_variation_id' => $targetPvId,
+                    'variation_id' => $targetVarId,
+                    'location_id' => $loc,
+                    'qty_available' => $sr['qty_available'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $createdTargetVldIds[] = (int) $newId;
+            }
+        }
+        \DB::table('variation_location_details')->where('product_id', $sourceId)->delete();
+
+        // 5) Deactivate the duplicate.
+        \DB::table('products')->where('id', $sourceId)->update([
+            'is_inactive' => 1,
+            'not_for_selling' => 1,
+        ]);
+
+        // 6) Bust denormalized stock cache (later migration; may be absent).
+        if (\Schema::hasTable('product_stock_cache')) {
+            \DB::table('product_stock_cache')->whereIn('product_id', [$sourceId, $targetId])->delete();
+        }
+
+        return [
+            'source_id' => $sourceId,
+            'target_id' => $targetId,
+            'source_name' => $sourceName,
+            'target_name' => $targetName,
+            'source_variation_id' => $sourceVarId,
+            'target_variation_id' => $targetVarId,
+            'target_product_variation_id' => $targetPvId,
+            'source_was_inactive' => (int) $sourceWasInactive,
+            'source_was_not_for_selling' => (int) $sourceWasNfs,
+            'sell_line_ids' => $sellLineIds,
+            'purchase_line_ids' => $purchaseLineIds,
+            'adj_line_ids' => $adjLineIds,
+            'source_vld' => $sourceVld,
+            'target_vld_before' => $targetVldBefore,
+            'created_target_vld_ids' => $createdTargetVldIds,
+        ];
+    }
+
+    // ================= WHOLE-CATALOG FLOW =================
+
+    /**
+     * Find every duplicate group across the catalog, matched by SKU with
+     * leading zeros ignored. Returns groups with per-product stock/sold and
+     * the chosen survivor, plus a count of groups skipped for manual review
+     * (any product in the group has multiple variations).
+     *
+     * The survivor is the active copy with the most stock, tie-broken by most
+     * units sold, then oldest (lowest id). Combined totals land on it either
+     * way, so this only decides which record's name/image stays.
+     */
+    protected function scanData($business_id)
+    {
+        $products = \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->select('id', 'name', 'sku', 'is_inactive')
+            ->get();
+
+        // Group by normalized SKU.
+        $byKey = [];
+        foreach ($products as $p) {
+            $key = $this->skuKey($p->sku);
+            if ($key === '') { continue; }
+            $byKey[$key][] = $p;
+        }
+        $dupeKeys = [];
+        $dupeIds = [];
+        foreach ($byKey as $key => $rows) {
+            if (count($rows) < 2) { continue; }
+            $dupeKeys[$key] = $rows;
+            foreach ($rows as $r) { $dupeIds[] = (int) $r->id; }
+        }
+
+        if (empty($dupeIds)) {
+            return ['groups' => [], 'skipped' => 0, 'total_groups' => 0, 'total_merges' => 0];
+        }
+
+        // Bulk stats for every product in a dupe group.
+        $soldMap = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->whereIn('tsl.product_id', $dupeIds)
+            ->groupBy('tsl.product_id')
+            ->select('tsl.product_id', \DB::raw('SUM(tsl.quantity) as qty'))
+            ->pluck('qty', 'product_id');
+
+        $stockMap = \DB::table('variation_location_details')
+            ->whereIn('product_id', $dupeIds)
+            ->groupBy('product_id')
+            ->select('product_id', \DB::raw('SUM(qty_available) as qty'))
+            ->pluck('qty', 'product_id');
+
+        // Live variations per product (id + product_variation_id). Groups where
+        // any product isn't exactly single-variation are skipped.
+        $varsByProduct = \DB::table('variations')->whereIn('product_id', $dupeIds)->whereNull('deleted_at')
+            ->select('id', 'product_id', 'product_variation_id')->get()->groupBy('product_id');
+
+        $groups = [];
+        $skipped = 0;
+        $totalMerges = 0;
+        foreach ($dupeKeys as $key => $rows) {
+            $singleOk = true;
+            foreach ($rows as $r) {
+                $vs = $varsByProduct->get($r->id);
+                if (!$vs || count($vs) !== 1) { $singleOk = false; break; }
+            }
+            if (!$singleOk) { $skipped++; continue; }
+
+            $items = [];
+            foreach ($rows as $r) {
+                $items[] = [
+                    'id' => (int) $r->id,
+                    'name' => $r->name,
+                    'sku' => $r->sku,
+                    'is_inactive' => (int) $r->is_inactive,
+                    'units_sold' => (float) ($soldMap[$r->id] ?? 0),
+                    'current_stock' => (float) ($stockMap[$r->id] ?? 0),
+                ];
+            }
+            // Survivor: active first, then most stock, most sold, oldest id.
+            usort($items, function ($a, $b) {
+                if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
+                if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
+                if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
+                return $a['id'] <=> $b['id'];
+            });
+
+            $keep = $items[0];
+            $mergeIn = array_slice($items, 1);
+            $totalMerges += count($mergeIn);
+            $groups[] = [
+                'key' => $key,
+                'keep' => $keep,
+                'merge_in' => $mergeIn,
+                'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
+                'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
+            ];
+        }
+
+        return ['groups' => $groups, 'skipped' => $skipped, 'total_groups' => count($groups), 'total_merges' => $totalMerges];
+    }
+
+    /** Read-only whole-catalog scan. Caps the returned list for display. */
+    public function scan(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $data = $this->scanData($business_id);
+
+        return response()->json([
+            'success' => true,
+            'total_groups' => $data['total_groups'],
+            'total_merges' => $data['total_merges'],
+            'skipped' => $data['skipped'],
+            'preview' => array_slice($data['groups'], 0, 300),
+        ]);
+    }
+
+    /**
+     * Process one batch of the catalog sweep: merge up to `max` duplicates
+     * (default 150) and report how many remain. The UI calls this in a loop
+     * until remaining hits 0. Each call writes one "merge-products-bulk"
+     * snapshot so the batch can be undone as a unit.
+     */
+    public function bulk(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $max = (int) $request->input('max', 150);
+        if ($max < 1) { $max = 150; }
+
+        $data = $this->scanData($business_id);
+        $remainingBefore = $data['total_merges'];
+
+        $merges = [];
+        $done = 0;
+        $failed = 0;
+        foreach ($data['groups'] as $group) {
+            if ($done >= $max) { break; }
+            $keep = $group['keep'];
+            $targetVars = \DB::table('variations')->where('product_id', $keep['id'])->whereNull('deleted_at')->first();
+            if (!$targetVars) { $failed++; continue; }
+
+            foreach ($group['merge_in'] as $src) {
+                if ($done >= $max) { break; }
+                $srcVar = \DB::table('variations')->where('product_id', $src['id'])->whereNull('deleted_at')->first();
+                $srcProduct = \DB::table('products')->where('id', $src['id'])->first();
+                if (!$srcVar || !$srcProduct) { $failed++; continue; }
+
+                \DB::beginTransaction();
+                try {
+                    $payload = $this->performMerge(
+                        (int) $src['id'], (int) $keep['id'],
+                        (int) $srcVar->id, (int) $targetVars->id, (int) $targetVars->product_variation_id,
+                        (int) $srcProduct->is_inactive, (int) $srcProduct->not_for_selling,
+                        $src['name'], $keep['name'], $business_id
+                    );
+                    \DB::commit();
+                    $merges[] = $payload;
+                    $done++;
+                } catch (\Throwable $e) {
+                    \DB::rollBack();
+                    \Log::emergency('merge-products-bulk pair failed (src=' . $src['id'] . ' -> keep=' . $keep['id'] . '): ' . $e->getMessage());
+                    $failed++;
+                }
+            }
+        }
+
+        if (!empty($merges)) {
+            $timestamp = now()->format('Y-m-d_His');
+            \Storage::disk('local')->put(
+                "admin-snapshots/merge-products-bulk-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'merge-products-bulk',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => count($merges) . ' duplicate(s)',
+                    'target_name' => 'their survivors',
+                    'merges' => $merges,
+                    'rows' => array_map(function ($m) { return ['id' => $m['source_id']]; }, $merges),
+                ], JSON_PRETTY_PRINT)
+            );
+            \Cache::forget('products_index_sold_totals:' . $business_id);
+        }
+
+        $remaining = max(0, $remainingBefore - $done);
+
+        return response()->json([
+            'success' => true,
+            'merged' => $done,
+            'failed' => $failed,
+            'remaining' => $remaining,
+            'skipped_groups' => $data['skipped'],
+            'msg' => "Merged {$done} duplicate(s) this batch. {$remaining} remaining.",
         ]);
     }
 }
