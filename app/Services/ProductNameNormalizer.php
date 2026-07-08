@@ -56,6 +56,7 @@ class ProductNameNormalizer
         if ($title === '') {
             return ['name' => $name, 'compliant' => false, 'confident' => false, 'reason' => 'cannot derive a title'];
         }
+        $title = self::titleCase($title);
 
         $canonical = $artist . ' - ' . $title;
         return [
@@ -64,6 +65,32 @@ class ProductNameNormalizer
             'confident' => true,
             'reason' => '',
         ];
+    }
+
+    /**
+     * Title Case for the title portion: capitalizes each word (and each piece
+     * of a hyphen/slash/parenthesised/dotted compound, so "wu-tang" -> "Wu-Tang"
+     * and "damn." -> "Damn."), and lowercases minor words unless they're first
+     * or last.
+     */
+    protected static function titleCase($s)
+    {
+        static $minor = ['a', 'an', 'and', 'the', 'of', 'to', 'in', 'on', 'at', 'for', 'but', 'or', 'nor', 'as', 'by', 'from', 'with', 'vs', 'via', 'feat', 'x'];
+        $words = preg_split('/\s+/', trim($s));
+        $n = count($words);
+        foreach ($words as $i => $w) {
+            if ($w === '') { continue; }
+            $lw = mb_strtolower($w);
+            if ($i !== 0 && $i !== $n - 1 && in_array($lw, $minor, true)) {
+                $words[$i] = $lw;
+                continue;
+            }
+            // Capitalize the first letter, and any letter after - / ( . or ,
+            $words[$i] = preg_replace_callback('/(^|[\-\/(.,])(\p{L})/u', function ($m) {
+                return $m[1] . mb_strtoupper($m[2]);
+            }, $lw);
+        }
+        return implode(' ', $words);
     }
 
     /**
