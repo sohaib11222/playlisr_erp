@@ -145,7 +145,15 @@ class NivessaProductsFeedController extends Controller
      */
     private function normalizeMatchKey($value): string
     {
-        $s = strtolower(trim((string) $value));
+        $s = (string) $value;
+        // Fold accents to ASCII (Rosalia -> Rosalia, Beyonce -> Beyonce) so an
+        // accented arrival on the site still matches, instead of the accent
+        // splitting the word. Falls back to the raw string if iconv is absent.
+        $folded = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+        if ($folded !== false) {
+            $s = $folded;
+        }
+        $s = strtolower(trim($s));
         $s = str_replace('&', ' and ', $s);
         $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
         $s = preg_replace('/\s+/', ' ', $s);
