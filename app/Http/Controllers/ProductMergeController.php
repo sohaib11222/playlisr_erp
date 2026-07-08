@@ -366,7 +366,7 @@ class ProductMergeController extends Controller
         $products = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereNotNull('sku')->where('sku', '!=', '')
-            ->select('id', 'name', 'sku', 'is_inactive')
+            ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id')
             ->get();
 
         // Group by normalized SKU + title signature — BOTH must match, so
@@ -429,18 +429,23 @@ class ProductMergeController extends Controller
                 : implode(', ', array_map(function ($id) use ($locNames) { return $locNames[$id] ?? ('#' . $id); }, $ids));
         }
 
+        // Category names for labelling. Grouping also requires the same
+        // category + sub-category, so different categories never merge.
+        $catNames = \DB::table('categories')->where('business_id', $business_id)->pluck('name', 'id');
+
         $groups = [];
         $skipped = 0;
         $totalMerges = 0;
         foreach ($dupeKeys as $key => $rows) {
-            // Split this barcode+title group by store, so cross-store copies
-            // never merge together.
-            $byStore = [];
+            // Split this barcode+title group by store AND category, so copies
+            // at different stores or in different categories never merge.
+            $byBucket = [];
             foreach ($rows as $r) {
-                $byStore[$storeSig[(int) $r->id] ?? ''][] = $r;
+                $bucket = ($storeSig[(int) $r->id] ?? '') . '|cat|' . ((int) $r->category_id) . '-' . ((int) $r->sub_category_id);
+                $byBucket[$bucket][] = $r;
             }
 
-            foreach ($byStore as $storeKey => $storeRows) {
+            foreach ($byBucket as $bucketKey => $storeRows) {
                 if (count($storeRows) < 2) { continue; }
 
                 $singleOk = true;
@@ -451,7 +456,11 @@ class ProductMergeController extends Controller
                 if (!$singleOk) { $skipped++; continue; }
 
                 $items = [];
+                $groupCatId = 0;
+                $groupSubId = 0;
                 foreach ($storeRows as $r) {
+                    $groupCatId = (int) $r->category_id;
+                    $groupSubId = (int) $r->sub_category_id;
                     $items[] = [
                         'id' => (int) $r->id,
                         'name' => $r->name,
@@ -461,6 +470,9 @@ class ProductMergeController extends Controller
                         'current_stock' => (float) ($stockMap[$r->id] ?? 0),
                     ];
                 }
+                $catLabel = $groupSubId && isset($catNames[$groupSubId])
+                    ? $catNames[$groupSubId]
+                    : ($groupCatId && isset($catNames[$groupCatId]) ? $catNames[$groupCatId] : 'Uncategorized');
                 // Survivor: active first, then most stock, most sold, oldest id.
                 usort($items, function ($a, $b) {
                     if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
@@ -473,8 +485,9 @@ class ProductMergeController extends Controller
                 $mergeIn = array_slice($items, 1);
                 $totalMerges += count($mergeIn);
                 $groups[] = [
-                    'key' => $key . '#' . $storeKey,
+                    'key' => $key . '#' . $bucketKey,
                     'store' => $storeLabel[$keep['id']] ?? 'No store',
+                    'category' => $catLabel,
                     'keep' => $keep,
                     'merge_in' => $mergeIn,
                     'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
