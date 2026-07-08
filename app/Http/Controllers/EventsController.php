@@ -850,6 +850,24 @@ class EventsController extends Controller
             ->with($resp === null ? 'error' : 'status', $msg);
     }
 
+    /** Toggle a single additional guest's check-in (guests count + can win). */
+    public function rsvpGuestCheckIn(Request $request, string $id, string $rsvpId, string $guestIndex)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $checkedIn = filter_var($request->input('checkedIn'), FILTER_VALIDATE_BOOLEAN);
+        $resp = $this->websiteApi(
+            'PATCH',
+            '/erp/rsvps/' . rawurlencode($rsvpId) . '/guests/' . rawurlencode($guestIndex) . '/check-in',
+            ['checkedIn' => $checkedIn]
+        );
+        $msg = $resp === null ? 'Could not reach the website to update check-in.'
+            : ('Guest check-in ' . ($checkedIn ? 'marked' : 'cleared') . '.');
+        return redirect()->route('events.edit', ['id' => $id])
+            ->with($resp === null ? 'error' : 'status', $msg);
+    }
+
     /**
      * Add a preorder at the event for a customer who's ordering in person.
      * Posts to the website's PUBLIC create endpoint (the same one the customer

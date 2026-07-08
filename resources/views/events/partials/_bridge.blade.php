@@ -168,14 +168,22 @@
       if ($a['checkedIn'] !== $b['checkedIn']) { return $a['checkedIn'] ? -1 : 1; }
       return strcasecmp($a['label'], $b['label']);
     });
-    // Build the wheel pool: de-dupe by email, keep checked-in flag.
+    // Build the wheel pool: de-dupe by email, keep checked-in flag. Additional
+    // guests are their own entries too — they count and can win once checked in.
     $pool = [];
     foreach ($rsvps as $r) {
       $em = strtolower(trim($r['email'] ?? ''));
       $nm = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? $em);
-      if ($nm === '') { continue; }
-      $key = $em ?: $nm;
-      $pool[$key] = ['name' => $nm, 'checkedIn' => !empty($r['checkedIn'])];
+      $pkey = $em ?: $nm;
+      if ($nm !== '') {
+        $pool[$pkey] = ['name' => $nm, 'checkedIn' => !empty($r['checkedIn'])];
+      }
+      foreach (array_values(array_filter((array) ($r['additionalGuests'] ?? []))) as $gi => $g) {
+        $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? ''));
+        if ($gn === '') { continue; }
+        $gkey = strtolower(trim($g['email'] ?? '')) ?: ('g:' . $pkey . ':' . $gi . ':' . strtolower($gn));
+        $pool[$gkey] = ['name' => $gn, 'checkedIn' => !empty($g['checkedIn'])];
+      }
     }
     $pool = array_values($pool);
 
@@ -506,22 +514,20 @@
         <tbody>
           @foreach($rsvps as $ri => $r)
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
+            @php
+              // Iterate the RAW guest array (preserve keys) so each guest's
+              // index matches the stored subdoc the check-in endpoint updates.
+              $agRaw = (array) ($r['additionalGuests'] ?? []);
+              $gNamed = 0;
+              foreach ($agRaw as $g) { if (trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? '')) !== '') { $gNamed++; } }
+              $gCount = max((int) ($r['guests'] ?? 0), $gNamed);
+              $primaryName = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '');
+            @endphp
             <tr>
               <td class="ev-name">
-                {{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}
-                @php
-                  $ag = array_values(array_filter((array) ($r['additionalGuests'] ?? [])));
-                  $gCount = (int) ($r['guests'] ?? 0);
-                  if ($gCount < count($ag)) { $gCount = count($ag); }
-                @endphp
-                @if($gCount > 0 || count($ag) > 0)
-                  <div class="ev-meta" style="font-weight:500;margin-top:3px;">
-                    +{{ $gCount }} guest{{ $gCount === 1 ? '' : 's' }}
-                    @foreach($ag as $g)
-                      @php $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? '')); @endphp
-                      @if($gn !== '')<div>&middot; {{ $gn }}</div>@endif
-                    @endforeach
-                  </div>
+                {{ $primaryName ?: '—' }}
+                @if($gCount > 0)
+                  <div class="ev-meta" style="font-weight:500;margin-top:3px;">+{{ $gCount }} guest{{ $gCount === 1 ? '' : 's' }}</div>
                 @endif
               </td>
               <td class="ev-meta">{{ $r['email'] ?? '' }}@if(!empty($r['phone']))<div>{{ $r['phone'] }}</div>@endif</td>
@@ -556,6 +562,33 @@
               </td>
               @endif
             </tr>
+            {{-- One row per additional guest — each is checked in on its own and
+                 counts toward attendance + the giveaway just like a primary. --}}
+            @foreach($agRaw as $gi => $g)
+              @php $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? '')); $gci = !empty($g['checkedIn']); @endphp
+              @if($gn !== '')
+                <tr style="background:var(--pos-line-soft,#FBF7EC);">
+                  <td class="ev-name" style="padding-left:22px;">
+                    &middot; {{ $gn }}
+                    <span class="ev-meta" style="font-weight:500;">guest of {{ $primaryName }}</span>
+                  </td>
+                  <td class="ev-meta">{{ $g['email'] ?? '' }}</td>
+                  <td><span class="ev-meta">—</span></td>
+                  <td>
+                    @if($rid)
+                    <form method="POST" action="{{ route('events.rsvpGuestCheckIn', ['id' => $event['id'], 'rsvpId' => $rid, 'guestIndex' => $gi]) }}" style="display:inline;">
+                      {{ csrf_field() }}
+                      <input type="hidden" name="checkedIn" value="{{ $gci ? '0' : '1' }}">
+                      <button type="submit" class="btn-ghost" style="padding:5px 12px;font-size:12px;{{ $gci ? 'background:#2e7d32;color:#fff;border-color:#2e7d32;' : '' }}">
+                        {{ $gci ? 'Checked in' : 'Check in' }}
+                      </button>
+                    </form>
+                    @endif
+                  </td>
+                  @if($preordersOn)<td><span class="ev-meta">—</span></td>@endif
+                </tr>
+              @endif
+            @endforeach
           @endforeach
           @if($preordersOn)
             @foreach($unmatchedPre as $p)

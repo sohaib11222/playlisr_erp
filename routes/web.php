@@ -394,6 +394,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // RSVP + preorder management (records live on nivessa.com, reached via bridge)
     Route::post('/events/{id}/rsvps', 'EventsController@rsvpAdd')->name('events.rsvpAdd');
     Route::post('/events/{id}/rsvps/{rsvpId}/check-in', 'EventsController@rsvpCheckIn')->name('events.rsvpCheckIn');
+    Route::post('/events/{id}/rsvps/{rsvpId}/guests/{guestIndex}/check-in', 'EventsController@rsvpGuestCheckIn')->name('events.rsvpGuestCheckIn');
     Route::post('/events/{id}/preorders', 'EventsController@preorderAdd')->name('events.preorderAdd');
     Route::post('/events/{id}/preorders/{preorderId}/status', 'EventsController@preorderStatus')->name('events.preorderStatus');
 
