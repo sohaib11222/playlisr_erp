@@ -39,37 +39,80 @@ class NivessaProductsFeedController extends Controller
     /**
      * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
      *
-     * Returns the set of A-class product ids from the latest imported ABC
-     * classification (sales-based, storage/app/abc-import/latest.json). The
-     * nivessa.com homepage "New Arrivals" uses this to surface A-class stock
-     * first. Product ids here are UltimatePOS product ids, which match the
-     * website product docs' posProductId. Read-only, CORS-open, and returns an
-     * empty list (HTTP 200) if no ABC file is present, so the site just falls
-     * back to plain newest ordering rather than breaking.
+     * Returns the normalized ARTISTS and TITLES of the A-class products from the
+     * latest imported ABC classification (sales-based,
+     * storage/app/abc-import/latest.json global_map). The nivessa.com homepage
+     * "New Arrivals" uses these sets to surface arrivals by an A-selling artist
+     * or title first, then fall back to plain newest.
+     *
+     * We return artist/title (not the ABC product ids) on purpose: the ABC list
+     * is keyed by internal ERP product ids, which do NOT line up with the
+     * website's posProductId, and a brand-new arrival is a different product
+     * record than the historically-sold A copy anyway. Matching on
+     * artist/title lets a fresh copy of an A-selling release still rank first.
+     *
+     * Read-only, CORS-open, graceful-empty (HTTP 200) when no ABC file exists.
      */
     public function abcAProducts(Request $request): JsonResponse
     {
-        $productIds = [];
+        $artists = [];
+        $titles  = [];
         try {
             $data = app(\App\Services\AbcImportService::class)->load();
             $globalMap = is_array($data['global_map'] ?? null) ? $data['global_map'] : [];
+
+            $aIds = [];
             foreach ($globalMap as $pid => $class) {
                 if (strtoupper((string) $class) === 'A') {
-                    $productIds[] = (int) $pid;
+                    $aIds[] = (int) $pid;
                 }
+            }
+
+            if (!empty($aIds)) {
+                $businessId = $this->businessId();
+                Product::whereIn('id', $aIds)
+                    ->where('business_id', $businessId)
+                    ->select('id', 'name', 'artist')
+                    ->chunk(1000, function ($rows) use (&$artists, &$titles) {
+                        foreach ($rows as $r) {
+                            $a = $this->normalizeMatchKey($r->artist ?? '');
+                            $t = $this->normalizeMatchKey($r->name ?? '');
+                            if ($a !== '') {
+                                $artists[$a] = true;
+                            }
+                            if ($t !== '') {
+                                $titles[$t] = true;
+                            }
+                        }
+                    });
             }
         } catch (\Throwable $e) {
             Log::warning('[abc-a-products] load failed: ' . $e->getMessage());
         }
 
         return response()->json([
-            'productIds'   => $productIds,
-            'count'        => count($productIds),
+            'artists'      => array_keys($artists),
+            'titles'       => array_keys($titles),
+            'artistCount'  => count($artists),
+            'titleCount'   => count($titles),
             'generated_at' => now()->toIso8601String(),
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
             'Cache-Control'               => 'public, max-age=600',
         ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Lowercase, strip punctuation, collapse whitespace. Mirrors the website's
+     * normalizeText so artist/title sets match across ERP and nivessa.com.
+     */
+    private function normalizeMatchKey($value): string
+    {
+        $s = strtolower(trim((string) $value));
+        $s = str_replace('&', ' and ', $s);
+        $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+        return trim($s);
     }
 
     /**
