@@ -47,7 +47,6 @@ class ProductNameController extends Controller
 
         \DB::table('products')
             ->where('business_id', $business_id)
-            ->whereNull('deleted_at')
             ->select('id', 'name', 'artist')
             ->orderBy('id')
             ->chunk(2000, function ($rows) use (&$fixes, &$toFix, &$flagged, &$compliant, $collectFixes, $limit) {
@@ -73,7 +72,12 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
         $business_id = $request->session()->get('user.business_id');
-        $data = $this->computeChanges($business_id, true, 300);
+        try {
+            $data = $this->computeChanges($business_id, true, 300);
+        } catch (\Throwable $e) {
+            \Log::error('product-name-cleanup scan failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Scan failed: ' . $e->getMessage()]);
+        }
 
         return response()->json([
             'success' => true,
@@ -104,7 +108,6 @@ class ProductNameController extends Controller
         $batch = [];
         \DB::table('products')
             ->where('business_id', $business_id)
-            ->whereNull('deleted_at')
             ->select('id', 'name', 'artist')
             ->orderBy('id')
             ->chunk(2000, function ($rows) use (&$batch, $max) {
