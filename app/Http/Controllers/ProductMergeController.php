@@ -42,11 +42,16 @@ class ProductMergeController extends Controller
             && strtolower(trim((string) $u->last_name)) === 'hedvat';
     }
 
-    /** Barcode key with leading zeros ignored. */
+    /**
+     * Barcode key with leading zeros ignored — or '' if the SKU isn't a real
+     * barcode. Only all-digit SKUs of 8+ chars (UPC-E/EAN-8 up to EAN-13)
+     * count; junk placeholders like "3", "003", "0004" are rejected so they
+     * never anchor a duplicate group. Returning '' makes the scan skip it.
+     */
     protected function skuKey($sku)
     {
         $s = trim((string) $sku);
-        if ($s === '') {
+        if ($s === '' || !ctype_digit($s) || strlen($s) < 8) {
             return '';
         }
         $stripped = ltrim($s, '0');

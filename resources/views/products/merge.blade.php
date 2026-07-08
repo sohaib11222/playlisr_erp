@@ -87,7 +87,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 
     <div class="mg-card">
         <h2>Or merge the whole catalog</h2>
-        <p class="sub">Scans every product and groups duplicates that share BOTH the same barcode (leading zeros ignored) AND the same title (word order ignored), then merges each set into one — keeping the active copy with the most stock and combining stock + units sold onto it. Products with multiple variations are skipped for manual review. Scanning changes nothing.</p>
+        <p class="sub">Scans every product and groups duplicates that share BOTH a real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored) AND the same title (word order ignored), then merges each set into one — keeping the active copy with the most stock and combining stock + units sold onto it. Products with multiple variations are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
             <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
         </div>
