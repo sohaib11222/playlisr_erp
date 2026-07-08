@@ -78,6 +78,12 @@ class ProductNameNormalizer
      * and "damn." -> "Damn."), and lowercases minor words unless they're first
      * or last.
      */
+    /** Public wrapper so the Discogs rebuild can title-case a release title. */
+    public static function properTitle($s)
+    {
+        return self::titleCase(trim(preg_replace('/\s+/', ' ', (string) $s)));
+    }
+
     protected static function titleCase($s)
     {
         static $minor = ['a', 'an', 'and', 'the', 'of', 'to', 'in', 'on', 'at', 'for', 'but', 'or', 'nor', 'as', 'by', 'from', 'with', 'vs', 'via', 'feat', 'x'];

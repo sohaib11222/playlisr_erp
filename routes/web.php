@@ -272,6 +272,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/name-cleanup', 'ProductNameController@index')->name('products.name.index');
     Route::post('/products/name-cleanup/scan', 'ProductNameController@scan')->name('products.name.scan');
     Route::post('/products/name-cleanup/apply', 'ProductNameController@apply')->name('products.name.apply');
+    Route::post('/products/name-cleanup/discogs-scan', 'ProductNameController@discogsScan')->name('products.name.discogs.scan');
+    Route::post('/products/name-cleanup/discogs-rebuild', 'ProductNameController@discogsRebuild')->name('products.name.discogs.rebuild');
 
     Route::resource('products', 'ProductController');
 

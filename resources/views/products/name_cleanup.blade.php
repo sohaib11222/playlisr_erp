@@ -43,7 +43,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     <div class="mgn-card">
         <h2>Standard: <span style="color:#8E8273">ARTIST - TITLE</span></h2>
-        <p class="sub">Uses each product's Artist field as the source of truth: name becomes "Artist - Title" with a single " - " separator. Products with no real artist ("Unknown Artist" / blank) or where a title can't be worked out are flagged for manual review and never touched. Scanning changes nothing.</p>
+        <p class="sub"><b style="color:#B71C1C">Heads up:</b> this uses the Artist field, which is unreliable on a lot of products (it sometimes holds the title), so it can flip good names. Prefer "Rebuild from Discogs" below. Scanning changes nothing either way.</p>
         <div class="mgn-actions">
             <button class="mgn-btn mgn-btn-ghost" id="mgnScanBtn" type="button">Scan names</button>
         </div>
@@ -60,6 +60,28 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 <span class="mgn-note" id="mgnProgress" style="margin-top:0"></span>
             </div>
             <div class="mgn-note">Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
+        </div>
+    </div>
+
+    <div class="mgn-card" style="border-color:#C9A227;">
+        <h2>Rebuild from Discogs <span style="color:#8E8273;font-weight:400">(accurate — recommended)</span></h2>
+        <p class="sub">The Artist field is unreliable (often holds the title), so this pulls the true artist + title straight from Discogs using each product's release id, and rewrites the name as "ARTIST - TITLE". Rate-limited (~55/min), runs in batches, undoable. Only products with a Discogs release id are touched; "retired" is skipped.</p>
+        <div class="mgn-actions">
+            <button class="mgn-btn mgn-btn-ghost" id="dgScanBtn" type="button">Check + sample</button>
+        </div>
+        <div id="dgResult" style="display:none;margin-top:18px;">
+            <div class="mgn-note mgn-summary" id="dgSummary" style="margin-top:0;color:#1F1B16;"></div>
+            <div style="margin-top:10px;max-height:300px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table class="mgn-table">
+                    <thead><tr><th>Current name</th><th>From Discogs</th></tr></thead>
+                    <tbody id="dgRows"></tbody>
+                </table>
+            </div>
+            <div class="mgn-actions" style="margin-top:16px;">
+                <button class="mgn-btn mgn-btn-primary" id="dgRunBtn" type="button">Rebuild all from Discogs</button>
+                <span class="mgn-note" id="dgProgress" style="margin-top:0"></span>
+            </div>
+            <div class="mgn-note">Runs unattended in batches — leave this tab open. Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
         </div>
     </div>
 </div>
@@ -122,6 +144,55 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         clearMsg(); applyBtn.disabled = true;
         document.getElementById('mgnProgress').textContent = 'Starting…';
         runBatch(0);
+    });
+
+    // ---- Discogs rebuild ----
+    var dgScanBtn = document.getElementById('dgScanBtn');
+    var dgRunBtn = document.getElementById('dgRunBtn');
+    var dgResult = document.getElementById('dgResult');
+
+    dgScanBtn.addEventListener('click', function () {
+        clearMsg(); dgResult.style.display = 'none';
+        dgScanBtn.disabled = true; dgScanBtn.textContent = 'Checking (fetching samples)…';
+        post('{{ route('products.name.discogs.scan') }}').then(function (d) {
+            dgScanBtn.disabled = false; dgScanBtn.textContent = 'Check + sample';
+            if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
+            document.getElementById('dgSummary').innerHTML = '<b>' + d.total.toLocaleString() + '</b> product(s) have a Discogs id and can be rebuilt. Sample:';
+            document.getElementById('dgRows').innerHTML = (d.sample || []).map(function (s) {
+                return '<tr><td class="mgn-old">' + esc(s.old) + '</td><td class="mgn-new">' + esc(s['new']) + '</td></tr>';
+            }).join('') || '<tr><td colspan="2">No sample differences.</td></tr>';
+            dgRunBtn.style.display = d.total > 0 ? '' : 'none';
+            dgResult.style.display = 'block';
+        }).catch(function () { dgScanBtn.disabled = false; dgScanBtn.textContent = 'Check + sample'; showMsg('Check failed — try again.', false); });
+    });
+
+    function dgBatch(afterId, totalRenamed) {
+        post('{{ route('products.name.discogs.rebuild') }}', { after_id: afterId, max: 20 }).then(function (d) {
+            if (!d.success) { dgRunBtn.disabled = false; showMsg(d.msg || 'Rebuild failed.', false); return; }
+            totalRenamed += d.renamed;
+            var note = 'Rebuilt ' + totalRenamed + ' — ' + d.remaining.toLocaleString() + ' remaining';
+            if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
+            document.getElementById('dgProgress').textContent = note + '…';
+            if (d.done) {
+                dgRunBtn.disabled = false; dgResult.style.display = 'none';
+                showMsg('Done — rebuilt ' + totalRenamed + ' name(s) from Discogs. Undo any batch at Admin Action History.', true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            var wait = d.rate_limited ? 60000 : 300;
+            setTimeout(function () { dgBatch(d.after_id, totalRenamed); }, wait);
+        }).catch(function () {
+            // Network/timeout — wait and retry from the same cursor.
+            document.getElementById('dgProgress').textContent = 'Hiccup — retrying in 10s…';
+            setTimeout(function () { dgBatch(afterId, totalRenamed); }, 10000);
+        });
+    }
+
+    dgRunBtn.addEventListener('click', function () {
+        if (!confirm('Rebuild all Discogs-backed product names from Discogs? Runs in the background in batches (may take a while at Discogs rate limits). Each batch is undoable.')) return;
+        clearMsg(); dgRunBtn.disabled = true;
+        document.getElementById('dgProgress').textContent = 'Starting…';
+        dgBatch(0, 0);
     });
 })();
 </script>

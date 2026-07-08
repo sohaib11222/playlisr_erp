@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Services\ProductNameNormalizer;
+use App\Services\DiscogsService;
 
 /**
  * Owner-only tool to bring product names onto the "ARTIST - TITLE" standard.
@@ -166,6 +167,189 @@ class ProductNameController extends Controller
             'renamed' => $renamed,
             'remaining' => $remaining,
             'msg' => "Renamed {$renamed}. {$remaining} remaining.",
+        ]);
+    }
+
+    // ===================== DISCOGS-SOURCED REBUILD =====================
+    // The artist column is unreliable (often holds the title), so the accurate
+    // fix is to rebuild "ARTIST - TITLE" from the Discogs release itself, using
+    // products.discogs_release_id. Rate-limited, cursor-batched, undoable via
+    // the same product-name-cleanup snapshot.
+
+    /** True artist + title from a Discogs release object -> "Artist - Title". */
+    protected function nameFromRelease($data)
+    {
+        if (!$data) { return null; }
+        $data = (object) $data;
+
+        $artist = trim((string) ($data->artists_sort ?? ''));
+        if ($artist === '' && !empty($data->artists) && is_array($data->artists)) {
+            $parts = [];
+            foreach ($data->artists as $a) {
+                $a = (object) $a;
+                $parts[] = trim((string) ($a->anv ?? '') ?: (string) ($a->name ?? ''));
+            }
+            $artist = trim(implode(' ', array_filter($parts)));
+        }
+        // Strip Discogs disambiguation suffixes like "Nirvana (2)".
+        $artist = trim(preg_replace('/\s*\(\d+\)/', '', $artist));
+
+        $title = trim((string) ($data->title ?? ''));
+        if ($artist === '' || $title === '') { return null; }
+
+        return $artist . ' - ' . ProductNameNormalizer::properTitle($title);
+    }
+
+    protected function candidateQuery($business_id)
+    {
+        return \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereNotNull('discogs_release_id')
+            ->where('discogs_release_id', '>', 0);
+    }
+
+    /** Count Discogs-backed products + a small live sample of proposed names. */
+    public function discogsScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        if (!\Schema::hasColumn('products', 'discogs_release_id')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id column on products.']);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $total = $this->candidateQuery($business_id)->count();
+
+        // Live sample so she sees real Discogs-sourced names before committing.
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured (Business Settings > Integrations).']);
+        }
+        $sample = [];
+        $rows = $this->candidateQuery($business_id)->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
+        foreach ($rows as $r) {
+            if (stripos($r->name, 'retired') !== false) { continue; }
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) { continue; }
+            $proposed = $this->nameFromRelease($res['data'] ?? null);
+            if ($proposed && $proposed !== $r->name) {
+                $sample[] = ['old' => $r->name, 'new' => $proposed];
+            }
+            usleep(1100000);
+        }
+
+        return response()->json([
+            'success' => true,
+            'total' => $total,
+            'sample' => $sample,
+        ]);
+    }
+
+    /**
+     * Rebuild one batch from Discogs, cursor-paged by product id. `after_id`
+     * starts at 0. Fetches up to `max` (default 20) releases, throttled to stay
+     * under Discogs' ~60/min limit. Returns the new cursor so the UI can loop.
+     */
+    public function discogsRebuild(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $afterId = (int) $request->input('after_id', 0);
+        $max = (int) $request->input('max', 20);
+        if ($max < 1 || $max > 40) { $max = 20; }
+
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured.']);
+        }
+
+        $rows = $this->candidateQuery($business_id)
+            ->where('id', '>', $afterId)
+            ->select('id', 'name', 'discogs_release_id')
+            ->orderBy('id')->limit($max)->get();
+
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'renamed' => 0, 'failed' => 0, 'done' => true, 'after_id' => $afterId, 'remaining' => 0]);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        $changes = [];
+        $failed = 0;
+        $rateLimited = false;
+        $lastId = $afterId;
+
+        foreach ($rows as $r) {
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) {
+                // Stop the batch on a rate-limit hit so the UI can pause; the
+                // cursor stays before this row so we retry it next round.
+                if (stripos((string) $res['message'], '429') !== false || stripos((string) $res['message'], 'rate') !== false) {
+                    $rateLimited = true;
+                    break;
+                }
+                $failed++;
+                $lastId = (int) $r->id;
+                usleep(1100000);
+                continue;
+            }
+            $lastId = (int) $r->id;
+
+            if (stripos($r->name, 'retired') === false) {
+                $proposed = $this->nameFromRelease($res['data'] ?? null);
+                if ($proposed && $proposed !== $r->name) {
+                    $changes[] = ['id' => (int) $r->id, 'old' => $r->name, 'new' => $proposed];
+                }
+            }
+            usleep(1100000); // ~55 calls/min, under Discogs' 60/min ceiling
+        }
+
+        $renamed = 0;
+        if (!empty($changes)) {
+            \DB::beginTransaction();
+            try {
+                foreach ($changes as $c) {
+                    $affected = \DB::table('products')->where('id', $c['id'])->where('name', $c['old'])
+                        ->update(['name' => $c['new']]);
+                    if ($affected) { $renamed++; }
+                }
+                \Storage::disk('local')->put(
+                    "admin-snapshots/product-name-cleanup-{$timestamp}.json",
+                    json_encode([
+                        'timestamp' => $timestamp,
+                        'action' => 'product-name-cleanup',
+                        'user_id' => auth()->id(),
+                        'business_id' => $business_id,
+                        'source_name' => $renamed . ' product name(s) (Discogs)',
+                        'target_name' => 'ARTIST - TITLE',
+                        'rows' => $changes,
+                    ], JSON_PRETTY_PRINT)
+                );
+                \DB::commit();
+            } catch (\Throwable $e) {
+                \DB::rollBack();
+                if (\Storage::disk('local')->exists("admin-snapshots/product-name-cleanup-{$timestamp}.json")) {
+                    \Storage::disk('local')->delete("admin-snapshots/product-name-cleanup-{$timestamp}.json");
+                }
+                return response()->json(['success' => false, 'msg' => 'Rename failed — nothing changed this batch.']);
+            }
+            \Cache::forget('products_index_sold_totals:' . $business_id);
+        }
+
+        $remaining = $this->candidateQuery($business_id)->where('id', '>', $lastId)->count();
+
+        return response()->json([
+            'success' => true,
+            'renamed' => $renamed,
+            'failed' => $failed,
+            'rate_limited' => $rateLimited,
+            'after_id' => $lastId,
+            'remaining' => $remaining,
+            'done' => ($remaining === 0 && !$rateLimited),
         ]);
     }
 }
