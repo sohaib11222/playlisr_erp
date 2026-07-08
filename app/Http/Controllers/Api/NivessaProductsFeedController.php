@@ -58,33 +58,57 @@ class NivessaProductsFeedController extends Controller
         $artists = [];
         $titles  = [];
         try {
-            $data = app(\App\Services\AbcImportService::class)->load();
-            $globalMap = is_array($data['global_map'] ?? null) ? $data['global_map'] : [];
+            // Use report_rows (every A row from the CSV, matched or not) so this
+            // exactly mirrors /reports/abc-full-report. The global_map only holds
+            // rows that matched an ERP product, which silently dropped A-sellers
+            // whose CSV row never matched (e.g. Rosalia, Frank Ocean).
+            $svc = new \App\Services\AbcImportService();
+            $aRows = collect($svc->loadReportRows())
+                ->filter(function ($r) {
+                    return strtoupper((string) ($r['class'] ?? '')) === 'A';
+                })
+                ->values();
 
-            $aIds = [];
-            foreach ($globalMap as $pid => $class) {
-                if (strtoupper((string) $class) === 'A') {
-                    $aIds[] = (int) $pid;
+            // Clean artist/title for matched rows come from the products table
+            // (Discogs fills the artist column); mirror the report's fallback.
+            $ids = $aRows->pluck('matched_id')->filter()->unique()->values()->all();
+            $prodById = [];
+            if (!empty($ids)) {
+                foreach (Product::whereIn('id', $ids)->select('id', 'name', 'artist')->get() as $p) {
+                    $prodById[(int) $p->id] = $p;
                 }
             }
 
-            if (!empty($aIds)) {
-                $businessId = $this->businessId();
-                Product::whereIn('id', $aIds)
-                    ->where('business_id', $businessId)
-                    ->select('id', 'name', 'artist')
-                    ->chunk(1000, function ($rows) use (&$artists, &$titles) {
-                        foreach ($rows as $r) {
-                            $a = $this->normalizeMatchKey($r->artist ?? '');
-                            $t = $this->normalizeMatchKey($r->name ?? '');
-                            if ($a !== '') {
-                                $artists[$a] = true;
-                            }
-                            if ($t !== '') {
-                                $titles[$t] = true;
-                            }
-                        }
-                    });
+            foreach ($aRows as $r) {
+                $pid  = $r['matched_id'] ?? null;
+                $name = (string) ($r['product'] ?? '');
+                $artist = '';
+                $title  = '';
+
+                if ($pid && isset($prodById[(int) $pid])) {
+                    $artist = (string) ($prodById[(int) $pid]->artist ?? '');
+                    $title  = (string) ($prodById[(int) $pid]->name ?? '');
+                }
+                // Legacy/unmatched "Title / Artist": split on the last " / ".
+                if ($artist === '' && strpos($name, ' / ') !== false) {
+                    $pos = strrpos($name, ' / ');
+                    $artist = trim(substr($name, $pos + 3));
+                    if ($title === '') {
+                        $title = trim(substr($name, 0, $pos));
+                    }
+                }
+                if ($title === '') {
+                    $title = $name;
+                }
+
+                $a = $this->normalizeMatchKey($artist);
+                $t = $this->normalizeMatchKey($title);
+                if ($a !== '') {
+                    $artists[$a] = true;
+                }
+                if ($t !== '') {
+                    $titles[$t] = true;
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('[abc-a-products] load failed: ' . $e->getMessage());
