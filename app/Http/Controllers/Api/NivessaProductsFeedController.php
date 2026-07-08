@@ -37,6 +37,51 @@ class NivessaProductsFeedController extends Controller
     }
 
     /**
+     * GET /new-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
+     *
+     * Product ids of NEW/SEALED stock, identified the same way the ERP reports
+     * do: category (or sub-category) name LIKE %sealed% / %new vinyl|cd|cassette%.
+     * The website strips that suffix on sync, so it can't tell new from used on
+     * its own; it uses this list to show the "Best Seller" badge on new stock
+     * only. Ids are UltimatePOS product ids (match the website's posProductId).
+     * Read-only, CORS-open, graceful-empty.
+     */
+    public function newProducts(Request $request): JsonResponse
+    {
+        $productIds = [];
+        try {
+            $businessId = $this->businessId();
+            $patterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+            $productIds = DB::table('products as p')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->where('p.business_id', $businessId)
+                ->where(function ($qq) use ($patterns) {
+                    foreach ($patterns as $pat) {
+                        $qq->orWhere(DB::raw('LOWER(c.name)'), 'LIKE', $pat)
+                           ->orWhere(DB::raw("LOWER(COALESCE(sc.name, ''))"), 'LIKE', $pat);
+                    }
+                })
+                ->pluck('p.id')
+                ->map(function ($x) {
+                    return (int) $x;
+                })
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('[new-products] load failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'productIds'   => $productIds,
+            'count'        => count($productIds),
+            'generated_at' => now()->toIso8601String(),
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=600',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
      *
      * Returns the normalized ARTISTS and TITLES of the A-class products from the

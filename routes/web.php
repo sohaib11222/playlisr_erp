@@ -30,6 +30,8 @@ Route::get('/events-feed.json', 'EventsController@publicFeed');
 Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'publicFeed']);
 // A-class product ids (sales-based ABC import) for the nivessa.com New Arrivals ordering.
 Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'abcAProducts']);
+// New/sealed product ids so the site can badge best sellers on new stock only.
+Route::get('/new-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProducts']);
 
 
 Route::middleware(['setData'])->group(function () {
