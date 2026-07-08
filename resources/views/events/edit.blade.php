@@ -46,7 +46,9 @@
         <div style="display:inline-block;background:var(--pos-accent,#FFF2B3);color:#1c2150;font-weight:800;font-size:22px;padding:10px 22px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.1);">
           Street date — {{ date('l, F j, Y', strtotime($event['streetDate'])) }}
         </div>
-        <p style="font-size:14px;font-weight:700;margin:6px 0 0;color:var(--pos-ink);">All preorders will be ready for pickup from 10 AM on street date.</p>
+        @if(empty($event['hidePreorders']))
+          <p style="font-size:14px;font-weight:700;margin:6px 0 0;color:var(--pos-ink);">All preorders will be ready for pickup from 10 AM on street date.</p>
+        @endif
       </div>
     @endif
   </div>
