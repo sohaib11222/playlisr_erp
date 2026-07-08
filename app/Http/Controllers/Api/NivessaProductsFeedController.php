@@ -126,8 +126,9 @@ class NivessaProductsFeedController extends Controller
                            ->orWhere(DB::raw("LOWER(COALESCE(sc.name, ''))"), 'LIKE', $pat);
                     }
                 })
-                ->select('p.id', 'p.sku', 'p.name', 'vld.qty_available as qty')
-                ->limit(12)
+                ->select('p.id', 'p.sku', 'p.name', 'vld.qty_available as qty', 'p.created_at')
+                ->orderByDesc('p.created_at')
+                ->limit(15)
                 ->get();
 
             $patterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
