@@ -1,0 +1,128 @@
+@extends('layouts.app')
+@section('title', 'Product Name Cleanup')
+
+@section('content')
+<script>document.body.classList.add('mgn-v2');</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+
+<style>
+body.mgn-v2 { background: #FAF6EE; font-family: "Inter Tight", system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1F1B16; }
+body.mgn-v2 .content-wrapper { background: #FAF6EE !important; }
+body.mgn-v2 .content-header { background: transparent; padding: 28px 16px 8px; }
+body.mgn-v2 .content-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.2px; color: #1F1B16; margin: 0 0 6px; }
+body.mgn-v2 .content { padding: 0 16px 60px; }
+.mgn-wrap { max-width: 900px; }
+.mgn-card { background: #fff; border: 1px solid #ECE3D2; border-radius: 16px; padding: 22px; box-shadow: 0 1px 2px rgba(31,27,22,.04); margin-bottom: 18px; }
+.mgn-card h2 { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
+.mgn-card p.sub { color: #8E8273; font-size: 13.5px; margin: 0 0 18px; }
+.mgn-btn { height: 44px; padding: 0 22px; border-radius: 10px; border: 0; font-family: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; }
+.mgn-btn-primary { background: #1F1B16; color: #FFF2B3; }
+.mgn-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.mgn-btn-ghost { background: #F3ECDD; color: #1F1B16; }
+.mgn-actions { margin-top: 8px; display: flex; gap: 10px; align-items: center; }
+.mgn-note { font-size: 13px; color: #8E8273; margin-top: 14px; line-height: 1.5; }
+.mgn-msg { display: none; padding: 12px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.mgn-msg.ok { display: block; background: #E8F5E9; color: #1B5E20; }
+.mgn-msg.err { display: block; background: #FDECEA; color: #B71C1C; }
+.mgn-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.mgn-table th, .mgn-table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #F0E9DA; font-size: 13.5px; vertical-align: top; }
+.mgn-table th { color: #8E8273; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+.mgn-old { color: #B71C1C; }
+.mgn-new { color: #1B5E20; font-weight: 600; }
+.mgn-summary b { font-size: 17px; }
+</style>
+
+<section class="content-header"><h1>Product Name Cleanup<br><small>Normalize names to "ARTIST - TITLE". Read-only scan first; fully undoable.</small></h1></section>
+
+<section class="content">
+<div class="mgn-wrap">
+    <div id="mgnMsg" class="mgn-msg"></div>
+
+    <div class="mgn-card">
+        <h2>Standard: <span style="color:#8E8273">ARTIST - TITLE</span></h2>
+        <p class="sub">Uses each product's Artist field as the source of truth: name becomes "Artist - Title" with a single " - " separator. Products with no real artist ("Unknown Artist" / blank) or where a title can't be worked out are flagged for manual review and never touched. Scanning changes nothing.</p>
+        <div class="mgn-actions">
+            <button class="mgn-btn mgn-btn-ghost" id="mgnScanBtn" type="button">Scan names</button>
+        </div>
+        <div id="mgnResult" style="display:none;margin-top:18px;">
+            <div class="mgn-note mgn-summary" id="mgnSummary" style="margin-top:0;color:#1F1B16;"></div>
+            <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table class="mgn-table">
+                    <thead><tr><th>Current name</th><th>Proposed</th></tr></thead>
+                    <tbody id="mgnRows"></tbody>
+                </table>
+            </div>
+            <div class="mgn-actions" style="margin-top:16px;">
+                <button class="mgn-btn mgn-btn-primary" id="mgnApplyBtn" type="button">Rename all off-standard</button>
+                <span class="mgn-note" id="mgnProgress" style="margin-top:0"></span>
+            </div>
+            <div class="mgn-note">Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
+        </div>
+    </div>
+</div>
+</section>
+@stop
+
+@section('javascript')
+<script>
+(function () {
+    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute
+        ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+    var msg = document.getElementById('mgnMsg');
+    var result = document.getElementById('mgnResult');
+    var scanBtn = document.getElementById('mgnScanBtn');
+    var applyBtn = document.getElementById('mgnApplyBtn');
+
+    function showMsg(t, ok) { msg.textContent = t; msg.className = 'mgn-msg ' + (ok ? 'ok' : 'err'); }
+    function clearMsg() { msg.className = 'mgn-msg'; msg.textContent = ''; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+    }
+
+    scanBtn.addEventListener('click', function () {
+        clearMsg(); result.style.display = 'none';
+        scanBtn.disabled = true; scanBtn.textContent = 'Scanning…';
+        post('{{ route('products.name.scan') }}').then(function (d) {
+            scanBtn.disabled = false; scanBtn.textContent = 'Scan names';
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            document.getElementById('mgnSummary').innerHTML =
+                '<b>' + d.to_fix + '</b> name(s) to fix &nbsp;·&nbsp; ' + d.compliant + ' already standard &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review (no clear artist).';
+            var rows = d.preview.map(function (f) {
+                return '<tr><td class="mgn-old">' + esc(f.old) + '</td><td class="mgn-new">' + esc(f['new']) + '</td></tr>';
+            }).join('');
+            if (d.to_fix > d.preview.length) {
+                rows += '<tr><td colspan="2" style="color:#8E8273">… and ' + (d.to_fix - d.preview.length) + ' more. All will be renamed.</td></tr>';
+            }
+            document.getElementById('mgnRows').innerHTML = rows || '<tr><td colspan="2">Nothing to fix.</td></tr>';
+            applyBtn.style.display = d.to_fix > 0 ? '' : 'none';
+            result.style.display = 'block';
+        }).catch(function () { scanBtn.disabled = false; scanBtn.textContent = 'Scan names'; showMsg('Scan failed — try again.', false); });
+    });
+
+    function runBatch(total) {
+        post('{{ route('products.name.apply') }}', { max: 500 }).then(function (d) {
+            if (!d.success) { applyBtn.disabled = false; showMsg(d.msg || 'Rename failed.', false); return; }
+            total += d.renamed;
+            document.getElementById('mgnProgress').textContent = 'Renamed ' + total + ' — ' + d.remaining + ' remaining…';
+            if (d.remaining > 0 && d.renamed > 0) { runBatch(total); }
+            else {
+                applyBtn.disabled = false; result.style.display = 'none';
+                showMsg('Done — renamed ' + total + ' product(s). Undo any batch at Admin Action History.', true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }).catch(function () { applyBtn.disabled = false; showMsg('Rename failed mid-run — re-scan to see what remains.', false); });
+    }
+
+    applyBtn.addEventListener('click', function () {
+        if (!confirm('Rename all off-standard product names to "ARTIST - TITLE"? Each batch is undoable from Admin Action History.')) return;
+        clearMsg(); applyBtn.disabled = true;
+        document.getElementById('mgnProgress').textContent = 'Starting…';
+        runBatch(0);
+    });
+})();
+</script>
+@endsection

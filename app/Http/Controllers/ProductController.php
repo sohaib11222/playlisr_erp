@@ -834,6 +834,13 @@ class ProductController extends Controller
 
             $product_details['warranty_id'] = !empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
 
+            // Enforce the "ARTIST - TITLE" naming standard when a real artist
+            // is present and a title can be worked out; otherwise leave as-is.
+            $nameCanon = \App\Services\ProductNameNormalizer::canonical($product_details['artist'] ?? '', $product_details['name'] ?? '');
+            if ($nameCanon['confident']) {
+                $product_details['name'] = $nameCanon['name'];
+            }
+
             DB::beginTransaction();
 
 
@@ -1302,9 +1309,11 @@ class ProductController extends Controller
                 }
             }
 
-            $product->name = $product_details['name'];
             $product->brand_id = $product_details['brand_id'];
             $product->artist = $product_details['artist'];
+            // Enforce "ARTIST - TITLE" when a real artist + derivable title exist.
+            $nameCanon = \App\Services\ProductNameNormalizer::canonical($product_details['artist'] ?? '', $product_details['name'] ?? '');
+            $product->name = $nameCanon['confident'] ? $nameCanon['name'] : $product_details['name'];
             // unit_id + barcode_type are NOT NULL on the products table. The edit form
             // ships them as hidden inputs pre-populated from the row — but legacy
             // imports occasionally leave them blank, which then submits empty and

@@ -34,7 +34,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -97,6 +97,11 @@ class AdminActionHistoryController extends Controller
         // merge-products-bulk: reverse a whole batch of merges as a unit.
         if ($action === 'merge-products-bulk') {
             return $this->undoMergeProductsBulk($data, $key);
+        }
+
+        // product-name-cleanup: restore each product's previous name.
+        if ($action === 'product-name-cleanup') {
+            return $this->undoProductNameCleanup($data, $key);
         }
 
         // ams-invoice-import: snapshot holds the purchase transaction id created
@@ -171,7 +176,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -682,6 +687,41 @@ class AdminActionHistoryController extends Controller
         \Cache::forget('products_index_sold_totals:' . (int) ($data['business_id'] ?? 0));
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => 'Un-merged a batch of ' . count($merges) . ' duplicate(s): history moved back, stock restored, duplicates reactivated.']);
+    }
+
+    // Restore product names from a product-name-cleanup batch. Only reverts a
+    // row if its name still equals what we set it to, so a manual edit since
+    // the cleanup isn't clobbered.
+    protected function undoProductNameCleanup(array $data, $key)
+    {
+        $rows = $data['rows'] ?? [];
+        if (empty($rows)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot has no names to restore.']);
+        }
+
+        $restored = 0;
+        $skipped = 0;
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $id = (int) ($r['id'] ?? 0);
+                if (!$id || !isset($r['old'], $r['new'])) { continue; }
+                $affected = DB::table('products')->where('id', $id)->where('name', $r['new'])
+                    ->update(['name' => $r['old']]);
+                if ($affected) { $restored++; } else { $skipped++; }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+        }
+
+        $msg = "Restored {$restored} product name(s)";
+        $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
     }
 
     // Reverse a single merge given its payload (from performMerge). Assumes it

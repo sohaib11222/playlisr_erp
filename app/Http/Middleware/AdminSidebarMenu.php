@@ -234,6 +234,11 @@ class AdminSidebarMenu
                                 'Merge Duplicates',
                                 ['icon' => 'fa fas fa-object-group', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'merge']
                             );
+                            $sub->url(
+                                route('products.name.index'),
+                                'Name Cleanup',
+                                ['icon' => 'fa fas fa-font', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'name-cleanup']
+                            );
                         }
                         if (auth()->user()->can('product.create')) {
                             $sub->url(
