@@ -89,8 +89,47 @@ class NivessaProductsFeedController extends Controller
     public function newProductsBreakdown(Request $request): JsonResponse
     {
         $rows = [];
+        $allStock = [];
+        $sampleSealedInStock = [];
         try {
             $businessId = $this->businessId();
+
+            // Apples-to-apples: ALL products in stock per location, regardless of
+            // sealed/used, to compare against the website's in-stock count.
+            $allStock = DB::table('products as p')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->where('p.business_id', $businessId)
+                ->groupBy('bl.name')
+                ->select(
+                    'bl.name as location',
+                    DB::raw('COUNT(DISTINCT p.id) as products'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN vld.qty_available > 0 THEN p.id END) as in_stock')
+                )
+                ->get();
+
+            // A few real in-stock Pico sealed items to spot-check on the website.
+            $patternsS = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+            $sampleSealedInStock = DB::table('products as p')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->where('p.business_id', $businessId)
+                ->whereRaw('LOWER(bl.name) = ?', ['pico'])
+                ->where('vld.qty_available', '>', 0)
+                ->where(function ($qq) use ($patternsS) {
+                    foreach ($patternsS as $pat) {
+                        $qq->orWhere(DB::raw('LOWER(c.name)'), 'LIKE', $pat)
+                           ->orWhere(DB::raw("LOWER(COALESCE(sc.name, ''))"), 'LIKE', $pat);
+                    }
+                })
+                ->select('p.id', 'p.sku', 'p.name', 'vld.qty_available as qty')
+                ->limit(12)
+                ->get();
+
             $patterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
             $rows = DB::table('products as p')
                 ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
@@ -118,8 +157,10 @@ class NivessaProductsFeedController extends Controller
         }
 
         return response()->json([
-            'breakdown'    => $rows,
-            'generated_at' => now()->toIso8601String(),
+            'sealed_breakdown'      => $rows,
+            'all_stock_breakdown'   => $allStock,
+            'sample_pico_sealed_in_stock' => $sampleSealedInStock,
+            'generated_at'          => now()->toIso8601String(),
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
             'Cache-Control'               => 'public, max-age=120',
