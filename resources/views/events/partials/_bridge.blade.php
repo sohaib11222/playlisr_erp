@@ -483,13 +483,19 @@
     @if(empty($rsvps) && empty($unmatchedPre))
       <div class="empty">No RSVPs yet.</div>
     @else
+      @php
+        // Small events: just show everyone by default (no need to search).
+        $attendingNum = $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps);
+        $autoShowAll = ((int) $attendingNum) <= 8;
+      @endphp
       <div style="margin-bottom:12px;">
         <input type="search" id="rsvp-search" placeholder="Type in a name to check in a guest or to add a preorder…" autocomplete="off"
                style="width:100%;max-width:520px;padding:14px 16px;font-size:16px;border:2px solid var(--pos-line,#ECE3CF);border-radius:12px;">
-        <div style="margin-top:6px;"><button type="button" id="rsvp-show-all" class="btn-link" style="color:#5a5145;font-size:13px;">Show full list</button></div>
+        <div style="margin-top:6px;{{ $autoShowAll ? 'display:none;' : '' }}"><button type="button" id="rsvp-show-all" class="btn-link" style="color:#5a5145;font-size:13px;">Show full list</button></div>
       </div>
-      <div id="rsvp-hint" class="empty">Start typing a name above to pull someone up — then check them in or add their preorder.</div>
-      <table class="ev-tbl" id="rsvp-table" style="display:none;">
+      <div id="rsvp-hint" class="empty" style="{{ $autoShowAll ? 'display:none;' : '' }}">Start typing a name above to pull someone up — then check them in or add their preorder.</div>
+      <script>window.__rsvpAutoShow = @json($autoShowAll);</script>
+      <table class="ev-tbl" id="rsvp-table" style="{{ $autoShowAll ? '' : 'display:none;' }}">
         <thead><tr>
           <th data-sort-type="text">Name</th>
           <th data-sort-type="text">Email &amp; phone</th>
@@ -501,7 +507,23 @@
           @foreach($rsvps as $ri => $r)
             @php $rid = $r['_id'] ?? $r['id'] ?? ''; $ci = !empty($r['checkedIn']); @endphp
             <tr>
-              <td class="ev-name">{{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}</td>
+              <td class="ev-name">
+                {{ trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? '—') }}
+                @php
+                  $ag = array_values(array_filter((array) ($r['additionalGuests'] ?? [])));
+                  $gCount = (int) ($r['guests'] ?? 0);
+                  if ($gCount < count($ag)) { $gCount = count($ag); }
+                @endphp
+                @if($gCount > 0 || count($ag) > 0)
+                  <div class="ev-meta" style="font-weight:500;margin-top:3px;">
+                    +{{ $gCount }} guest{{ $gCount === 1 ? '' : 's' }}
+                    @foreach($ag as $g)
+                      @php $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? '')); @endphp
+                      @if($gn !== '')<div>&middot; {{ $gn }}</div>@endif
+                    @endforeach
+                  </div>
+                @endif
+              </td>
               <td class="ev-meta">{{ $r['email'] ?? '' }}@if(!empty($r['phone']))<div>{{ $r['phone'] }}</div>@endif</td>
               <td>
                 @php $vpills = $interestPills($r['interestedInPurchase'] ?? null); @endphp
@@ -636,14 +658,16 @@
       var tbody = rt.querySelector('tbody');
       var getRows = function () { return Array.prototype.slice.call(tbody.querySelectorAll('tr')); };
 
-      // The list stays collapsed (hidden) until you type a name — or click
+      // For a small event (8 or fewer attending) the full list shows by
+      // default. Otherwise it stays collapsed until you type a name — or click
       // "Show full list". Typing reveals only the matching guests.
+      var autoShow = !!window.__rsvpAutoShow;
       var search = document.getElementById('rsvp-search');
       var hint = document.getElementById('rsvp-hint');
       var showAll = document.getElementById('rsvp-show-all');
       var applyFilter = function (q, forceShow) {
         q = (q || '').trim().toLowerCase();
-        if (!q && !forceShow) {
+        if (!q && !forceShow && !autoShow) {
           rt.style.display = 'none';
           if (hint) hint.style.display = '';
           return;
