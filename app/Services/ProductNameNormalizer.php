@@ -48,6 +48,11 @@ class ProductNameNormalizer
         $artist = trim(preg_replace('/\s+/', ' ', (string) $artist));
         $name = trim(preg_replace('/\s+/', ' ', (string) $name));
 
+        // Leave anything tagged "retired" alone until Jon clarifies what it means.
+        if (stripos($name, 'retired') !== false || stripos($artist, 'retired') !== false) {
+            return ['name' => $name, 'compliant' => null, 'confident' => false, 'reason' => 'contains "retired" — left alone'];
+        }
+
         if (!self::isRealArtist($artist)) {
             return ['name' => $name, 'compliant' => null, 'confident' => false, 'reason' => 'no real artist'];
         }
