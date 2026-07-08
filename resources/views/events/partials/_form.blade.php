@@ -107,6 +107,14 @@
     </label>
   </div>
 </div>
+<div class="ev-row">
+  <div class="ev-field" style="flex:1 1 100%;">
+    <label class="ev-checks" style="margin:0;">
+      <input type="checkbox" name="hidePreorders" value="1" {{ filter_var($e['hidePreorders'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' }}> Taking sales at the event - hide preorders on this event's page
+    </label>
+    <div class="ev-meta" style="margin-top:4px;">Hides the preorder column and "Add preorder" buttons on this event's RSVP page. Use when you're ringing sales at the event instead of taking preorders ahead of time.</div>
+  </div>
+</div>
 <div id="pre-fields" style="{{ $pre ? '' : 'display:none;' }}">
   <div class="ev-row">
     <div class="ev-field" style="flex:2 1 240px;">

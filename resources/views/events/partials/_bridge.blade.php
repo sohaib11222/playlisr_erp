@@ -87,11 +87,12 @@
     //      phone / name so it appears on that person's row. Anything that
     //      doesn't match an RSVP gets its OWN row further down — so no preorder
     //      is ever hidden, regardless of whether the buyer also RSVP'd.
-    // Preorder column + add form are always available once the bridge is
-    // connected (we're already inside the bridge-ready branch). Staff can add
-    // a preorder after the fact even when public preorders were never turned
-    // on — the bridge create endpoint accepts a free-typed item + price.
-    $preordersOn = true;
+    // Preorder column + add form are available once the bridge is connected
+    // (we're already inside the bridge-ready branch), so staff can add a
+    // preorder after the fact even when public preorders were never turned on.
+    // The one exception: an event flagged "hide preorders" (we're ringing
+    // sales at the door, not taking preorders) drops the whole preorder UI.
+    $preordersOn = empty($event['hidePreorders']);
     $pVersions = array_values((array) ($event['preorderProducts'] ?? []));
     $activePreorders = [];
     $canceledPreorders = [];

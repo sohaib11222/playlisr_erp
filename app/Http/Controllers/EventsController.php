@@ -1098,6 +1098,9 @@ class EventsController extends Controller
             // Pickup date is always the event's street date.
             'preorderPickupDate' => $preorderEnabled ? ($request->input('streetDate') ?: null) : null,
             'preorderNote'     => $preorderEnabled ? trim((string) $request->input('preorderNote', '')) : '',
+            // Hide the preorder column + add buttons on this event's RSVP page
+            // (for events where we ring sales at the door, not preorders).
+            'hidePreorders'    => filter_var($request->input('hidePreorders'), FILTER_VALIDATE_BOOLEAN),
         ];
     }
 
@@ -1512,6 +1515,10 @@ class EventsController extends Controller
                     : (isset($e['preorderPrice']) && $e['preorderPrice'] !== null ? round((float) $e['preorderPrice'], 2) : null),
                 'preorderPickupDate' => array_key_exists('preorderPickupDate', $existing) ? $existing['preorderPickupDate'] : ($e['preorderPickupDate'] ?? null),
                 'preorderNote'     => array_key_exists('preorderNote', $existing) ? (string) $existing['preorderNote'] : (string) ($e['preorderNote'] ?? ''),
+                // ERP-owned: keep the local "hide preorders" choice on re-import.
+                'hidePreorders'    => array_key_exists('hidePreorders', $existing)
+                    ? filter_var($existing['hidePreorders'], FILTER_VALIDATE_BOOLEAN)
+                    : filter_var($e['hidePreorders'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'prepChecklist'    => $prepChecklist ?: new \stdClass(),
                 'prepDetails'      => $prepDetails ?: new \stdClass(),
                 'createdBy'        => $existing['createdBy'] ?? ($e['createdBy'] ?? 'website'),
