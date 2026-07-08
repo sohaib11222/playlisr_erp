@@ -71,49 +71,58 @@ class NivessaProductsFeedController extends Controller
             Log::warning('[new-products] load failed: ' . $e->getMessage());
         }
 
-        // ?breakdown=1 — diagnostic: sealed/new products that have stock at each
-        // location, and how many are for-sale/published, to explain why a store
-        // shows few "new" arrivals online.
-        $breakdown = null;
-        if ($request->query('breakdown')) {
-            try {
-                $businessId = $this->businessId();
-                $patterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
-                $rows = DB::table('products as p')
-                    ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
-                    ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
-                    ->join('variations as v', 'v.product_id', '=', 'p.id')
-                    ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
-                    ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
-                    ->where('p.business_id', $businessId)
-                    ->where(function ($qq) use ($patterns) {
-                        foreach ($patterns as $pat) {
-                            $qq->orWhere(DB::raw('LOWER(c.name)'), 'LIKE', $pat)
-                               ->orWhere(DB::raw("LOWER(COALESCE(sc.name, ''))"), 'LIKE', $pat);
-                        }
-                    })
-                    ->groupBy('bl.name')
-                    ->select(
-                        'bl.name as location',
-                        DB::raw('COUNT(DISTINCT p.id) as sealed_products'),
-                        DB::raw('COUNT(DISTINCT CASE WHEN vld.qty_available > 0 THEN p.id END) as in_stock'),
-                        DB::raw('COUNT(DISTINCT CASE WHEN p.not_for_selling = 0 THEN p.id END) as for_sale')
-                    )
-                    ->get();
-                $breakdown = $rows;
-            } catch (\Throwable $e) {
-                $breakdown = ['error' => $e->getMessage()];
-            }
-        }
-
         return response()->json([
             'productIds'   => $productIds,
             'count'        => count($productIds),
-            'breakdown'    => $breakdown,
             'generated_at' => now()->toIso8601String(),
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
             'Cache-Control'               => 'public, max-age=600',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * GET /new-products-breakdown.json (PUBLIC) — diagnostic: sealed/new stock
+     * per location, and how much is in-stock / for-sale, to explain why a store
+     * shows few "new" arrivals online.
+     */
+    public function newProductsBreakdown(Request $request): JsonResponse
+    {
+        $rows = [];
+        try {
+            $businessId = $this->businessId();
+            $patterns = ['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'];
+            $rows = DB::table('products as p')
+                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->where('p.business_id', $businessId)
+                ->where(function ($qq) use ($patterns) {
+                    foreach ($patterns as $pat) {
+                        $qq->orWhere(DB::raw('LOWER(c.name)'), 'LIKE', $pat)
+                           ->orWhere(DB::raw("LOWER(COALESCE(sc.name, ''))"), 'LIKE', $pat);
+                    }
+                })
+                ->groupBy('bl.name')
+                ->select(
+                    'bl.name as location',
+                    DB::raw('COUNT(DISTINCT p.id) as sealed_products'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN vld.qty_available > 0 THEN p.id END) as in_stock'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN p.not_for_selling = 0 THEN p.id END) as for_sale')
+                )
+                ->get();
+        } catch (\Throwable $e) {
+            $rows = ['error' => $e->getMessage()];
+        }
+
+        return response()->json([
+            'breakdown'    => $rows,
+            'generated_at' => now()->toIso8601String(),
+        ], 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Cache-Control'               => 'public, max-age=120',
         ], JSON_UNESCAPED_SLASHES);
     }
 

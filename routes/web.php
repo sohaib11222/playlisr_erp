@@ -32,6 +32,7 @@ Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeed
 Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'abcAProducts']);
 // New/sealed product ids so the site can badge best sellers on new stock only.
 Route::get('/new-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProducts']);
+Route::get('/new-products-breakdown.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'newProductsBreakdown']);
 
 
 Route::middleware(['setData'])->group(function () {
