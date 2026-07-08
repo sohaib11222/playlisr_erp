@@ -1,9 +1,84 @@
+// Autosave for the label print queue (Sarah 2026-07-08).
+// Zella lost 40+ scanned barcodes when Playlist went down mid-print: the
+// queue lived only in the browser DOM, so a crash / refresh / ctrl+shift+r
+// wiped it. We now mirror the queued rows to localStorage on every change
+// and restore them on load. Purely client-side, no backend involved.
+var LABEL_QUEUE_KEY = 'label_print_queue_v1';
+
+// Copy each input/select's live value into its DOM attribute so that
+// $.html() captures what the user actually typed/selected (typed values
+// live on the .value property, not the value attribute).
+function sync_label_row_values() {
+    $('table#product_table tbody tr').each(function() {
+        $(this).find('input').each(function() {
+            this.setAttribute('value', this.value);
+        });
+        $(this).find('select').each(function() {
+            var val = this.value;
+            $(this).find('option').removeAttr('selected');
+            $(this).find('option').filter(function() {
+                return this.value === val;
+            }).attr('selected', 'selected');
+        });
+    });
+}
+
+function save_label_queue() {
+    try {
+        if ($('table#product_table tbody tr').length === 0) {
+            localStorage.removeItem(LABEL_QUEUE_KEY);
+            return;
+        }
+        sync_label_row_values();
+        localStorage.setItem(LABEL_QUEUE_KEY, $('table#product_table tbody').html());
+    } catch (e) {
+        // localStorage unavailable / full — fail silently, never block printing.
+    }
+}
+
+function clear_label_queue() {
+    try {
+        localStorage.removeItem(LABEL_QUEUE_KEY);
+    } catch (e) {}
+}
+
+function restore_label_queue() {
+    try {
+        // Only restore into an empty table so a fresh server render wins.
+        if ($('table#product_table tbody tr').length > 0) {
+            return;
+        }
+        var saved = localStorage.getItem(LABEL_QUEUE_KEY);
+        if (!saved) {
+            return;
+        }
+        $('table#product_table tbody').html(saved);
+        $('table#product_table tbody').find('.label-date-picker').each(function() {
+            $(this).datepicker({ autoclose: true });
+        });
+        var count = $('table#product_table tbody tr').length;
+        if (count > 0 && typeof toastr !== 'undefined') {
+            toastr.info('Restored ' + count + ' label' + (count === 1 ? '' : 's') +
+                ' from your last session. Print or delete them to clear.');
+        }
+    } catch (e) {}
+}
+
 $(document).ready(function() {
     $('table#product_table tbody').find('.label-date-picker').each( function(){
         $(this).datepicker({
             autoclose: true
         });
     });
+
+    // Bring back any queue left over from a crash/refresh, then keep it saved.
+    restore_label_queue();
+    // Persist as the user edits quantities, dates, and price groups.
+    $(document).on('change keyup', 'table#product_table tbody input, table#product_table tbody select', function() {
+        save_label_queue();
+    });
+    // Last-ditch save if the tab is closed or the page navigates away.
+    $(window).on('beforeunload', save_label_queue);
     //Add products
     if ($('#search_product_for_label').length > 0) {
         $('#search_product_for_label')
@@ -168,7 +243,7 @@ $(document).ready(function() {
     $(document).on('click', 'button#print_label', function() {
         window.print();
     });
-    
+
     // Handle Delete Button Click
     $(document).on('click', '.delete-product', function () {
         // Get the row ID from the button's data attribute
@@ -176,6 +251,9 @@ $(document).ready(function() {
 
         // Remove the respective row
         $('#' + rowId).remove();
+
+        // Keep the saved queue in sync (clears storage once the last row goes).
+        save_label_queue();
     });
 });
 
@@ -195,6 +273,9 @@ function get_label_product_row(product_id, variation_id) {
                         autoclose: true
                     });
                 });
+
+                // Autosave the queue every time a scanned product is added.
+                save_label_queue();
             },
         });
     }
