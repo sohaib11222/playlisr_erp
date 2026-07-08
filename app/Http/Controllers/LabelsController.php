@@ -244,13 +244,23 @@ class LabelsController extends Controller
             // the category breakdown. Each printed sticker = one item put out.
             $label_value = 0.0;
             $label_categories = [];
+            $label_value_sealed = 0.0; // sealed/new stock (never earns commission)
+            $label_value_used = 0.0;   // everything else
             foreach ($product_details_page_wise as $page_products) {
                 foreach ($page_products as $pd) {
-                    $label_value += (float) ($pd->sell_price_inc_tax ?? 0);
+                    $price = (float) ($pd->sell_price_inc_tax ?? 0);
+                    $label_value += $price;
                     $cat = trim((string) ($pd->category ?? '')) ?: 'Uncategorized';
                     $sub = trim((string) ($pd->sub_category ?? ''));
                     $key = $sub !== '' ? $cat . ' › ' . $sub : $cat;
                     $label_categories[$key] = ($label_categories[$key] ?? 0) + 1;
+                    $hay = strtolower($cat . ' ' . $sub);
+                    $isSealed = strpos($hay, 'sealed') !== false
+                        || strpos($hay, 'new vinyl') !== false
+                        || strpos($hay, 'new cd') !== false
+                        || strpos($hay, 'new cassette') !== false;
+                    if ($isSealed) { $label_value_sealed += $price; }
+                    else { $label_value_used += $price; }
                 }
             }
 
@@ -339,6 +349,8 @@ class LabelsController extends Controller
                             'properties' => json_encode([
                                 'qty' => (int) $total_qty,
                                 'value' => round($label_value, 2),
+                                'value_sealed' => round($label_value_sealed, 2),
+                                'value_used' => round($label_value_used, 2),
                                 'categories' => $label_categories,
                             ]),
                             'created_at' => now(),

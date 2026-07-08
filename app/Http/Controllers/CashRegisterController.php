@@ -925,6 +925,8 @@ class CashRegisterController extends Controller
         // with qty + value + category mix in properties.
         $labels_printed_count = 0;
         $labels_value = 0.0;
+        $labels_value_sealed = 0.0;
+        $labels_value_used = 0.0;
         $labels_categories = [];
         $label_rows = \DB::table('activity_log')
             ->where('description', 'labels_printed')
@@ -936,6 +938,10 @@ class CashRegisterController extends Controller
             $d = json_decode($props, true) ?: [];
             $labels_printed_count += (int) ($d['qty'] ?? 0);
             $labels_value += (float) ($d['value'] ?? 0);
+            // Sealed/used split is only on runs logged after 2026-07-06; older
+            // rows lack the keys, so these sums cover just the split-aware runs.
+            $labels_value_sealed += (float) ($d['value_sealed'] ?? 0);
+            $labels_value_used += (float) ($d['value_used'] ?? 0);
             foreach (($d['categories'] ?? []) as $k => $c) {
                 $labels_categories[$k] = ($labels_categories[$k] ?? 0) + (int) $c;
             }
@@ -979,6 +985,8 @@ class CashRegisterController extends Controller
             'purchase_add_count' => $purchase_add_count,
             'labels_printed_count' => $labels_printed_count,
             'labels_value' => round($labels_value, 2),
+            'labels_value_sealed' => round($labels_value_sealed, 2),
+            'labels_value_used' => round($labels_value_used, 2),
             'labels_categories' => $labels_categories,
             'packages_picked_count' => count($packages_picked),
             'packages_shipped_count' => count($packages_shipped),
@@ -1159,9 +1167,17 @@ class CashRegisterController extends Controller
                 $topGenres[] = $genreLabel[$key];
             }
             $value = (float) ($s['labels_value'] ?? 0);
+            $vSealed = (float) ($s['labels_value_sealed'] ?? 0);
+            $vUsed = (float) ($s['labels_value_used'] ?? 0);
+            // Only show the sealed/used split once the run actually carries it
+            // (runs logged before 2026-07-06 have neither, so the parts sum to 0).
+            $split = ($vSealed + $vUsed) > 0
+                ? ' ($' . number_format($vUsed, 2) . ' used, $' . number_format($vSealed, 2) . ' sealed)'
+                : '';
             $lines[] = 'Put out: ' . implode(', ', $parts)
                 . ' (' . (int) ($s['labels_printed_count'] ?? 0) . ' labeled'
                 . ($value > 0 ? ', $' . number_format($value, 2) . ' value' : '') . ')'
+                . $split
                 . (!empty($topGenres) ? ' — mostly ' . implode(', ', $topGenres) : '');
         } elseif (!empty($s['labels_printed_count'])) {
             $lines[] = 'Labels printed: ' . (int) $s['labels_printed_count'];
