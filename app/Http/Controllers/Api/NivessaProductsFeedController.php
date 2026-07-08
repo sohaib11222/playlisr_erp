@@ -114,11 +114,24 @@ class NivessaProductsFeedController extends Controller
             Log::warning('[abc-a-products] load failed: ' . $e->getMessage());
         }
 
+        // Which import this reflects, so the website can confirm the month/source.
+        $sourceFile = '';
+        $importedAt = '';
+        try {
+            $meta = (new \App\Services\AbcImportService())->load() ?: [];
+            $sourceFile = (string) ($meta['source_file'] ?? ($meta['stats']['source_file'] ?? ''));
+            $importedAt = (string) ($meta['generated_at'] ?? '');
+        } catch (\Throwable $e) {
+            // non-fatal
+        }
+
         return response()->json([
             'artists'      => array_keys($artists),
             'titles'       => array_keys($titles),
             'artistCount'  => count($artists),
             'titleCount'   => count($titles),
+            'source_file'  => $sourceFile,
+            'imported_at'  => $importedAt,
             'generated_at' => now()->toIso8601String(),
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
