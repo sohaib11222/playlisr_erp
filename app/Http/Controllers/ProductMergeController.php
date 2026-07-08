@@ -53,6 +53,33 @@ class ProductMergeController extends Controller
         return $stripped === '' ? $s : $stripped;
     }
 
+    /**
+     * Title signature for duplicate matching: lowercased, accents flattened,
+     * punctuation dropped, words sorted. Word-order-insensitive so an ERP
+     * "Artist / Title" and its "Title / Artist" twin collapse to the same
+     * signature — but genuinely different titles never will. Two products are
+     * only treated as duplicates when their barcode AND this signature match,
+     * so unrelated records that happen to share a junk SKU (e.g. "555") are
+     * NOT merged.
+     */
+    protected function nameSig($name)
+    {
+        $n = mb_strtolower(trim((string) $name));
+        if ($n === '') { return ''; }
+        $n = strtr($n, [
+            'á' => 'a', 'à' => 'a', 'ä' => 'a', 'â' => 'a', 'ã' => 'a', 'å' => 'a',
+            'é' => 'e', 'è' => 'e', 'ë' => 'e', 'ê' => 'e',
+            'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'î' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o', 'õ' => 'o', 'ø' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+            'ñ' => 'n', 'ç' => 'c', 'ß' => 'ss', 'æ' => 'ae',
+        ]);
+        $n = preg_replace('/[^a-z0-9]+/', ' ', $n);
+        $words = array_values(array_filter(explode(' ', trim($n)), function ($w) { return $w !== ''; }));
+        sort($words);
+        return implode(' ', $words);
+    }
+
     public function index()
     {
         if (!$this->isOwner()) {
@@ -337,12 +364,15 @@ class ProductMergeController extends Controller
             ->select('id', 'name', 'sku', 'is_inactive')
             ->get();
 
-        // Group by normalized SKU.
+        // Group by normalized SKU + title signature — BOTH must match, so
+        // records that only share a junk SKU aren't grouped.
         $byKey = [];
         foreach ($products as $p) {
-            $key = $this->skuKey($p->sku);
-            if ($key === '') { continue; }
-            $byKey[$key][] = $p;
+            $sk = $this->skuKey($p->sku);
+            if ($sk === '') { continue; }
+            $sig = $this->nameSig($p->name);
+            if ($sig === '') { continue; }
+            $byKey[$sk . '|' . $sig][] = $p;
         }
         $dupeKeys = [];
         $dupeIds = [];
