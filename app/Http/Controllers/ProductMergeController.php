@@ -357,17 +357,30 @@ class ProductMergeController extends Controller
      * the chosen survivor, plus a count of groups skipped for manual review
      * (any product in the group has multiple variations).
      *
-     * The survivor is the active copy with the most stock, tie-broken by most
-     * units sold, then oldest (lowest id). Combined totals land on it either
-     * way, so this only decides which record's name/image stays.
+     * The survivor is the active copy that is NOT a Nerdy Solutions record,
+     * then the one with the most stock, tie-broken by most units sold, then
+     * oldest (lowest id). Combined totals land on it either way, so this only
+     * decides which record's name/price/image stays.
      */
     protected function scanData($business_id)
     {
         $products = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereNotNull('sku')->where('sku', '!=', '')
-            ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id')
+            ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id', 'created_by')
             ->get();
+
+        // Records created by Fatteen's "Nerdy Solutions" account are frequently
+        // wrong (bad names/prices), so they must NOT win the survivor slot just
+        // for being the oldest id. Match on name containing "nerdy" (mirrors the
+        // exclusion convention in ListingCommissionController). Stock + sales
+        // still combine onto whichever record survives, so demoting these loses
+        // nothing — it only keeps the trustworthy record's name/price/cost.
+        $untrustedSet = array_flip(
+            \DB::table('users')
+                ->whereRaw("LOWER(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) LIKE '%nerdy%'")
+                ->pluck('id')->map(function ($v) { return (int) $v; })->all()
+        );
 
         // Group by normalized SKU + title signature — BOTH must match, so
         // records that only share a junk SKU aren't grouped.
@@ -481,6 +494,7 @@ class ProductMergeController extends Controller
                         'name' => $r->name,
                         'sku' => $r->sku,
                         'is_inactive' => (int) $r->is_inactive,
+                        'is_untrusted' => isset($untrustedSet[(int) $r->created_by]) ? 1 : 0,
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
                         'current_stock' => (float) $stock,
                     ];
@@ -488,9 +502,11 @@ class ProductMergeController extends Controller
                 $catLabel = $groupSubId && isset($catNames[$groupSubId])
                     ? $catNames[$groupSubId]
                     : ($groupCatId && isset($catNames[$groupCatId]) ? $catNames[$groupCatId] : 'Uncategorized');
-                // Survivor: active first, then most stock, most sold, oldest id.
+                // Survivor: active first, then trustworthy creator (never let a
+                // Nerdy Solutions record win), then most stock, most sold, oldest id.
                 usort($items, function ($a, $b) {
                     if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
+                    if ($a['is_untrusted'] !== $b['is_untrusted']) { return $a['is_untrusted'] <=> $b['is_untrusted']; }
                     if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
                     if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
                     return $a['id'] <=> $b['id'];
