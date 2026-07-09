@@ -128,98 +128,6 @@
 
 <div class="row">
     <div class="col-md-12">
-        @if(!empty($freeze) && !empty($freeze['people']))
-            <div class="box box-solid" style="border:2px solid #2F6B3E;">
-                <div class="box-body">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-                        <div>
-                            <strong style="color:#2F6B3E; font-size:16px;">FROZEN payroll run</strong>
-                            <span class="text-muted"> — locked {{ \Carbon::parse($freeze['frozen_at'])->format('m/d/y g:ia') }}. Pay these exact amounts; they will not move.</span>
-                        </div>
-                        <form method="POST" action="{{ url('/admin/listing-commissions/unfreeze') }}" onsubmit="return confirm('Clear the freeze and go back to live amounts?');" style="margin:0;">
-                            @csrf
-                            <button type="submit" class="btn btn-default btn-sm">Unfreeze</button>
-                        </form>
-                    </div>
-                    <table class="table table-striped">
-                        <thead><tr><th>Person</th><th style="text-align:right;">Sales owed</th><th style="text-align:right;">Listing owed</th><th style="text-align:right;">Pay now</th></tr></thead>
-                        <tbody>
-                            @php $fTotal = 0; @endphp
-                            @foreach($freeze['people'] as $fp)
-                                @php $fTotal += $fp['total']; @endphp
-                                <tr>
-                                    <td>{{ $fp['name'] }}</td>
-                                    <td style="text-align:right;">${{ number_format($fp['sales_owed'], 2) }}</td>
-                                    <td style="text-align:right;">${{ number_format($fp['listing_owed'], 2) }}</td>
-                                    <td style="text-align:right; background:#FFE9A8;"><strong>${{ number_format($fp['total'], 2) }}</strong></td>
-                                </tr>
-                            @endforeach
-                            <tr><td><strong>Total</strong></td><td></td><td></td><td style="text-align:right; background:#FFE9A8;"><strong>${{ number_format($fTotal, 2) }}</strong></td></tr>
-                        </tbody>
-                    </table>
-                    <p class="text-muted" style="margin:0;">Pay each person their frozen amount, then hit Mark paid on their row in the live table below. This locked list stays put until you Unfreeze.</p>
-                </div>
-            </div>
-        @else
-            <form method="POST" action="{{ url('/admin/listing-commissions/freeze') }}" onsubmit="return confirm('Freeze everyone\'s current amounts for this payroll run?');" style="margin-bottom:12px;">
-                @csrf
-                <button type="submit" class="btn btn-success">Freeze amounts for this payroll run</button>
-                <span class="text-muted" style="margin-left:8px;">Locks amounts so they can't drift while you pay.</span>
-            </form>
-        @endif
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12">
-        @component('components.widget', ['title' => 'Spot-check: one day\'s sales bonus (not payroll)'])
-            <details>
-                <summary>Open the day lookup — a lookup only, doesn't change anyone's pay</summary>
-            <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline" style="margin-bottom:12px;">
-                <label style="margin-right:6px;">Day</label>
-                <input type="date" name="day" value="{{ $bonus_day }}" class="form-control input-sm" max="{{ \Carbon::now()->toDateString() }}" style="margin-right:12px;">
-                <label style="margin-right:6px;">Person</label>
-                <input type="text" name="person" value="{{ $bonus_person }}" placeholder="e.g. Andy" class="form-control input-sm" style="margin-right:12px;">
-                <button type="submit" class="btn btn-primary btn-sm">Show</button>
-                @if ($bonus_person !== '' || $bonus_day !== \Carbon::now()->toDateString())
-                    <a href="{{ url('/admin/listing-commissions') }}" class="btn btn-default btn-sm" style="margin-left:6px;">Reset to today</a>
-                @endif
-            </form>
-            <p class="text-muted" style="margin-bottom:10px;">
-                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('m/d/y') }}</strong>{!! $bonus_person !== '' ? ', filtered to "<strong>' . e($bonus_person) . '</strong>"' : '' !!}.
-                Same math as the Employee Leaderboard, scoped to that single day.
-            </p>
-            @if ($day_rows->isEmpty())
-                <p class="text-muted">No sales bonus for that day{{ $bonus_person !== '' ? ' matching "' . $bonus_person . '"' : '' }}.</p>
-            @else
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Person</th>
-                            <th style="text-align:right;" title="Sales rung that day (Whatnot excluded)">Sales achieved</th>
-                            <th style="text-align:right;" title="Sales target for that day">Sales goal</th>
-                            <th style="text-align:right;" title="Sales-goal bonus earned that day">Bonus</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($day_rows as $r)
-                            <tr>
-                                <td><a href="{{ url('/my-earnings') }}?user_id={{ $r->user_id }}" target="_blank">{{ $r->name }}</a></td>
-                                <td style="text-align:right;">@if($r->achieved > 0)${{ number_format($r->achieved, 0) }}@else <span class="text-muted">-</span>@endif</td>
-                                <td style="text-align:right;"><span class="text-muted">@if($r->goal > 0)${{ number_format($r->goal, 0) }}@else - @endif</span></td>
-                                <td style="text-align:right;">@if($r->bonus > 0)<strong>${{ number_format($r->bonus, 2) }}</strong>@else <span class="text-muted">$0.00</span>@endif</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
-            </details>
-        @endcomponent
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
             @php
                 $owedPeople = $people->filter(function ($p) { return $p->total_owed_now > 0; })->values();
@@ -293,10 +201,10 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Payment history'])
+        @component('components.widget', ['title' => ''])
             @php $grandPaid = round($total_paid + $total_sales_paid_all, 2); @endphp
             <details>
-                <summary>Show payment history &amp; record a payment</summary>
+                <summary>Show payment history or record a payment</summary>
 
                 <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
                       onsubmit="return confirm('Record this payment?');"
