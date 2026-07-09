@@ -363,15 +363,45 @@ class ProductNameNormalizer
             if ($firstKnown && $secondKnown) {
                 return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are known artists — manual'];
             }
-            // Neither side is recognized. The catalog mixes BOTH "Artist / Title"
-            // (GLAIVE / ...) and "Title / Artist" (... / SHABOOZEY), so position
-            // can't tell us which is the artist — flag it rather than guess wrong.
+            // Neither full segment is recognized. Try collab recognition: a
+            // side shaped like "X & Y" / "X and Y" / "X feat Y" whose one of its
+            // members IS a known artist is the artist side ("... / David Bowie
+            // and Mick Jagger"). Only fires when exactly one side qualifies.
+            $firstCollab = self::hasKnownCollaborator($first, $knownKeys);
+            $secondCollab = self::hasKnownCollaborator($second, $knownKeys);
+            if ($firstCollab && !$secondCollab) {
+                return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
+            }
+            if ($secondCollab && !$firstCollab) {
+                return self::validateParsedArtist(self::cleanArtistValue($second), $first, 'Title ' . $label . ' Artist');
+            }
+            // The catalog mixes BOTH "Artist / Title" (GLAIVE / ...) and
+            // "Title / Artist" (... / SHABOOZEY), so position can't tell us which
+            // is the artist — flag it rather than guess wrong.
             return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'artist not recognized — manual'];
         }
 
         // No known-artist set given (shouldn't happen from the backfill): fall
         // back to first-segment.
         return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
+    }
+
+    /**
+     * Is $seg a collaboration ("X & Y", "X and Y", "X feat. Y", "X, Y") whose
+     * one of its members is a known artist? Only collab-shaped segments qualify,
+     * so an ordinary title that merely contains an artist word isn't mistaken
+     * for the artist side.
+     */
+    protected static function hasKnownCollaborator($seg, $knownKeys)
+    {
+        if (!is_array($knownKeys)) { return false; }
+        if (!preg_match('/\s(?:&|and|feat\.?|ft\.?|featuring|with|vs\.?)\s|,/i', $seg)) { return false; }
+        $parts = preg_split('/\s+(?:&|and|feat\.?|ft\.?|featuring|with|vs\.?)\s+|\s*,\s*/i', $seg);
+        foreach ($parts as $p) {
+            $k = self::key(self::cleanSegment($p));
+            if ($k !== '' && isset($knownKeys[$k])) { return true; }
+        }
+        return false;
     }
 
     /**
