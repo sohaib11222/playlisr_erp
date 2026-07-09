@@ -131,6 +131,12 @@ class ProductNameController extends Controller
                 $keys[$k] = $spell[$k];
             }
         }
+
+        // Hand-fixed artists are always recognized (and spelled canonically),
+        // so a one-off like Willie Colón is never flagged.
+        foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) {
+            $keys[$k] = $spelling;
+        }
         return $keys;
     }
 

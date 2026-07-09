@@ -146,19 +146,36 @@ class ProductNameNormalizer
      * writes. Unmapped non-Latin names are left as-is here and rejected later by
      * validateParsedArtist so they get flagged for manual review.
      */
+    /**
+     * Hand-fixed canonical artist spellings, keyed by normalized key() of any
+     * form the catalog stores them in (both name orders where relevant). These
+     * both (a) override the parsed output here and (b) are seeded into the
+     * recognized-artist set so the artist is never flagged. Extend as they come.
+     */
+    public static function curatedArtists()
+    {
+        return [
+            'smiths' => 'The Smiths',
+            // Willie Colón — catalogued as "Willie Colon" or "Colon,Willie".
+            'williecolon' => 'Willie Colón',
+            'colonwillie' => 'Willie Colón',
+        ];
+    }
+
     public static function cleanArtistValue($s)
     {
         $s = trim((string) $s);
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
+        $curated = self::curatedArtists();
+        // Match the curated key on the raw value AND after flipping order.
+        foreach ([$s, self::flipLastFirst($s)] as $cand) {
+            $ck = self::key($cand);
+            if (isset($curated[$ck])) { return $curated[$ck]; }
+        }
         $out = self::properArtistCase(self::flipLastFirst($s));
-        // Post-casing alias fixups keyed by normalized name (e.g. bands catalogued
-        // without their leading "The"). Extend as they turn up.
-        static $post = [
-            'smiths' => 'The Smiths',
-        ];
         $k = self::key($out);
-        if (isset($post[$k])) { return $post[$k]; }
+        if (isset($curated[$k])) { return $curated[$k]; }
         return $out;
     }
 
