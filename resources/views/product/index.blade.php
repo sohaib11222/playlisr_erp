@@ -121,6 +121,12 @@
                     {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]) !!}
                 </div>
             </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label for="product_list_filter_active_state">Status:</label>
+                    {!! Form::select('active_state', ['active' => 'Active only', 'inactive' => 'Archived / merged', '' => 'All'], 'active', ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_active_state']) !!}
+                </div>
+            </div>
             <div class="col-md-4">
                 <div class="form-group">
                     {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
@@ -445,7 +451,8 @@
                         d.sub_category_id = $('#product_list_filter_sub_category_id').val();
                         d.location_id = $('#location_id').val();
                         d.created_by = $('#product_list_filter_created_by').val();
-                        
+                        d.active_state = $('#product_list_filter_active_state').val();
+
                         // Handle date range filter (skipped when All time checked)
                         var all_time = $('#product_list_filter_all_time').is(':checked');
                         var $dateRangeInput = $('#product_list_filter_created_date_range');
@@ -918,7 +925,7 @@
                 }
                 swal({
                     title: 'Merge ' + selected.length + ' products?',
-                    text: 'Keeps the cleanest, most-trusted copy (never a Nerdy Solutions record) and combines stock + sales onto it. Fully undoable from Admin Action History.',
+                    text: 'Keeps the best copy and combines stock + sales onto it. Fully undoable from Admin Action History.',
                     icon: 'warning',
                     buttons: true,
                     dangerMode: true,
@@ -1026,7 +1033,7 @@
                 }
             });
 
-            $(document).on('change', '#product_list_filter_category_id, #product_list_filter_sub_category_id, #location_id, #repair_model_id, #product_list_filter_created_by', 
+            $(document).on('change', '#product_list_filter_category_id, #product_list_filter_sub_category_id, #location_id, #repair_model_id, #product_list_filter_created_by, #product_list_filter_active_state',
                 function() {
                     if ($("#product_list_tab").hasClass('active')) {
                         product_table.ajax.reload();
