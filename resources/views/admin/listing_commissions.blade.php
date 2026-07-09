@@ -344,27 +344,25 @@
                 <p class="text-muted">Total paid to date: <strong>${{ number_format($grandPaid, 2) }}</strong>
                     &nbsp;·&nbsp; Listing ${{ number_format($total_paid, 2) }} &nbsp;·&nbsp; Sales ${{ number_format($total_sales_paid_all, 2) }}</p>
 
-                @foreach ($paid_groups as $g)
-                    <div style="margin:18px 0 6px; display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #E6CE5A; padding-bottom:4px;">
-                        <strong style="font-size:15px;">Paid {{ \Carbon::parse($g['date'])->format('m/d/y') }}</strong>
-                        <span class="text-muted">Run total <strong>${{ number_format($g['total'], 2) }}</strong></span>
-                    </div>
-                    <table class="table table-striped" style="margin-bottom:8px;">
-                        <thead>
-                            <tr>
-                                <th>Person</th>
-                                <th style="text-align:right;">Listing</th>
-                                <th style="text-align:right;">Sales</th>
-                                <th style="text-align:right;">Total</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Paid on</th>
+                            <th>Person</th>
+                            <th style="text-align:right;">Sales</th>
+                            <th style="text-align:right;">Listing</th>
+                            <th style="text-align:right;">Total</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($paid_groups as $g)
                             @foreach ($g['rows'] as $r)
                                 <tr>
+                                    <td style="white-space:nowrap;">{{ \Carbon::parse($g['date'])->format('m/d/y') }}</td>
                                     <td>{{ $r['name'] }}@if(!empty($r['notes'])) <span class="text-muted" style="font-size:11px;">({{ implode('; ', $r['notes']) }})</span>@endif</td>
-                                    <td style="text-align:right;">@if($r['listing'] != 0)${{ number_format($r['listing'], 2) }}@if($r['items']) <span class="text-muted" style="font-size:11px;">· {{ number_format($r['items']) }} items</span>@endif @else<span class="text-muted">—</span>@endif</td>
                                     <td style="text-align:right;">@if($r['sales'] != 0)${{ number_format($r['sales'], 2) }}@else<span class="text-muted">—</span>@endif</td>
+                                    <td style="text-align:right;">@if($r['listing'] != 0)${{ number_format($r['listing'], 2) }}@else<span class="text-muted">—</span>@endif</td>
                                     <td style="text-align:right;"><strong>${{ number_format($r['total'], 2) }}</strong></td>
                                     <td style="text-align:right; white-space:nowrap;">
                                         @foreach ($r['undos'] as $u)
@@ -380,9 +378,9 @@
                                     </td>
                                 </tr>
                             @endforeach
-                        </tbody>
-                    </table>
-                @endforeach
+                        @endforeach
+                    </tbody>
+                </table>
             @endif
         @endcomponent
     </div>
