@@ -18,14 +18,12 @@
     <div>
     <h1>Commissions Owed</h1>
     <p class="text-muted">
-        Both commission types per person, in one place.
-        <strong>Listing</strong> = <strong>{{ rtrim(rtrim(number_format($rate_pct, 2), '0'), '.') }}%</strong>
-        of the sale price of each item they listed/barcoded (since {{ \Carbon::parse($from)->format('M j, Y') }})
-        that has since sold and isn't paid yet.
-        <strong>Sales</strong> = the sales-goal bonus they've earned since {{ \Carbon::parse($sales_bonus_from)->format('M j, Y') }}
-        (same number as the Employee Leaderboard).
-        Click <strong>Mark paid</strong> once you've paid someone's listing commission — those sales drop
-        off the owed list. The sales bonus is paid out manually (no ledger yet).
+        One row per person. For payroll you only need the <strong>Pay now</strong> column — it's their
+        unpaid listing commission ({{ rtrim(rtrim(number_format($rate_pct, 2), '0'), '.') }}% of items they
+        listed that have since sold) <strong>plus</strong> their unpaid sales bonus, added up since the
+        program started and minus everything you've already paid. Pay that amount, then hit
+        <strong>Mark paid</strong> and it drops off so you can never pay it twice. Everything else is just
+        showing the math — tick <strong>Show full breakdown</strong> if you want to see it.
     </p>
     </div>
     <button type="button" class="lc-pin-btn {{ $pinAlready ? 'is-on' : '' }}"
@@ -47,6 +45,8 @@
 .lc-pin-btn:hover { background: #FFF2B3; }
 .lc-pin-btn.is-on { background: #FFF2B3; box-shadow: inset 0 0 0 1px #E6CE5A; }
 .lc-pin-btn .fa { color: #C99A12; }
+.lc-detail { display: none; }
+#lc-people.show-detail .lc-detail { display: table-cell; }
 </style>
 <script>
 (function () {
@@ -122,7 +122,14 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Sales bonus by day'])
+        @component('components.widget', ['title' => 'Spot-check: one day\'s sales bonus (not payroll)'])
+            <p style="margin:0 0 12px; padding:9px 12px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:6px; color:#6b5a00;">
+                <strong>This is just a lookup.</strong> Changing the date here does <strong>not</strong> change
+                what anyone gets paid — it only shows one single day's sales bonus for one person. To actually
+                pay people, use the <strong>Pay now</strong> column in the table below.
+            </p>
+            <details>
+                <summary style="cursor:pointer; font-weight:600; color:#6b5a00; margin-bottom:10px;">Open the day lookup</summary>
             <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline" style="margin-bottom:12px;">
                 <label style="margin-right:6px;">Day</label>
                 <input type="date" name="day" value="{{ $bonus_day }}" class="form-control input-sm" max="{{ \Carbon::now()->toDateString() }}" style="margin-right:12px;">
@@ -161,13 +168,17 @@
                     </tbody>
                 </table>
             @endif
+            </details>
         @endcomponent
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'By person — listing + sales commission'])
+        @component('components.widget', ['title' => 'By person — what to pay'])
+            <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#5A5045;">
+                <input type="checkbox" id="lc-detail-toggle"> Show full breakdown (earned, paid, listings, goals)
+            </label>
             @if ($people->isEmpty())
                 <p class="text-muted">No commission to show yet.</p>
             @else
@@ -175,18 +186,18 @@
                     <thead>
                         <tr>
                             <th>Person</th>
-                            <th style="text-align:right;" title="Listing earned + sales earned (total commission earned)">Total commission</th>
-                            <th style="text-align:right;" title="Items this person has listed since {{ $from }}"># Listings</th>
-                            <th style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
-                            <th style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
-                            <th style="text-align:right; border-left:1px solid #ddd;" title="Actual sales rung by this person since {{ $sales_bonus_from }} (Whatnot excluded)">Sales achieved</th>
-                            <th style="text-align:right;" title="Sales target for this person since {{ $sales_bonus_from }}">Sales goal</th>
-                            <th style="text-align:right;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
-                            <th style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
-                            <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales commission still owed">Sales owed</th>
-                            <th style="text-align:right; background:#FFF3C4;" title="Listing commission still owed">Listing owed</th>
-                            <th style="text-align:right;" title="Unpaid listing + unpaid sales = what you owe this person now">Total owed now</th>
-                            <th style="min-width:240px;" title="What this payout is for — for the pay stub">Payroll memo</th>
+                            <th class="lc-detail" style="text-align:right;" title="Listing earned + sales earned (total commission earned)">Total commission</th>
+                            <th class="lc-detail" style="text-align:right;" title="Items this person has listed since {{ $from }}"># Listings</th>
+                            <th class="lc-detail" style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
+                            <th class="lc-detail" style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
+                            <th class="lc-detail" style="text-align:right; border-left:1px solid #ddd;" title="Actual sales rung by this person since {{ $sales_bonus_from }} (Whatnot excluded)">Sales achieved</th>
+                            <th class="lc-detail" style="text-align:right;" title="Sales target for this person since {{ $sales_bonus_from }}">Sales goal</th>
+                            <th class="lc-detail" style="text-align:right;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
+                            <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
+                            <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Unpaid sales bonus">Sales owed</th>
+                            <th style="text-align:right; background:#FFF3C4;" title="Unpaid listing commission">Listing owed</th>
+                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Unpaid listing + unpaid sales = what you hand this person this run">Pay now</th>
+                            <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -194,17 +205,17 @@
                         @foreach ($people as $p)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
-                                <td style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->listed_count > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->earned > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: items {{ $p->name }} listed that sold">${{ number_format($p->earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right; border-left:1px solid #ddd;">@if($p->sales_achieved > 0)${{ number_format($p->sales_achieved, 0) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->sales_goal > 0)<span class="text-muted">${{ number_format($p->sales_goal, 0) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->sales_earned > 0)<a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: {{ $p->name }}'s day-by-day sales vs goal">${{ number_format($p->sales_earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->listed_count > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->earned > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: items {{ $p->name }} listed that sold">${{ number_format($p->earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right; border-left:1px solid #ddd;">@if($p->sales_achieved > 0)${{ number_format($p->sales_achieved, 0) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->sales_goal > 0)<span class="text-muted">${{ number_format($p->sales_goal, 0) }}</span>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->sales_earned > 0)<a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: {{ $p->name }}'s day-by-day sales vs goal">${{ number_format($p->sales_earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                <td class="lc-detail" style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if($p->sales_owed > 0)${{ number_format($p->sales_owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if($p->owed > 0)${{ number_format($p->owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right;">@if($p->total_owed_now > 0)<strong>${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
                                     @if($p->total_owed_now > 0)
@@ -356,6 +367,18 @@
                 th.textContent = th.textContent.replace(/[ ▲▼]+$/, '') + (dir === 1 ? ' ▲' : ' ▼');
             });
         })(i);
+    }
+})();
+</script>
+
+<script>
+(function () {
+    var t = document.getElementById('lc-detail-toggle');
+    var tbl = document.getElementById('lc-people');
+    if (t && tbl) {
+        t.addEventListener('change', function () {
+            tbl.classList.toggle('show-detail', t.checked);
+        });
     }
 })();
 </script>
