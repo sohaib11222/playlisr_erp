@@ -188,6 +188,10 @@ class ProductNameNormalizer
             'darylhalljohnoates' => 'Daryl Hall & John Oates',
             'kinggizzardthelizardwizard' => 'King Gizzard & The Lizard Wizard',
             'florencethemachine' => 'Florence & The Machine',
+            'pushat' => 'Pusha T',
+            'rem' => 'R.E.M.',
+            'eazye' => 'Eazy-E',
+            'gbh' => 'G.B.H.',
         ];
     }
 
