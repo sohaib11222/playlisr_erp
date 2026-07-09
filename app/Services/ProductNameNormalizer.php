@@ -111,6 +111,24 @@ class ProductNameNormalizer
     }
 
     /**
+     * Proper-case an artist that came in ALL CAPS ("BURZUM" -> "Burzum",
+     * "SUNNY DAY REAL ESTATE" -> "Sunny Day Real Estate"). Left alone as likely
+     * stylizations:
+     *   - anything already carrying a lowercase letter ("AC/DC", "iamamiwhoami"),
+     *   - a short single-word all-caps token (<= 4 chars: "GWAR", "KISS", "U2"),
+     *   - all-caps that contains punctuation or digits ("R.E.M.", "MF/DOOM").
+     */
+    public static function properArtistCase($s)
+    {
+        $s = trim(preg_replace('/\s+/', ' ', (string) $s));
+        if ($s === '') { return $s; }
+        if (preg_match('/\p{Ll}/u', $s)) { return $s; }
+        if (strpos($s, ' ') === false && mb_strlen($s) <= 4) { return $s; }
+        if (preg_match('/[^\p{L}\s]/u', $s)) { return $s; }
+        return self::titleCase($s);
+    }
+
+    /**
      * Reverse of canonical(): guess the ARTIST out of a name when the artist
      * column is blank. A name splits on a spaced "/" or " - " into exactly two
      * segments — but the catalog is inconsistent about order ("BURZUM / HVIS
@@ -163,13 +181,21 @@ class ProductNameNormalizer
     protected static function pickArtist($first, $second, $knownKeys, $label)
     {
         if (is_array($knownKeys)) {
-            $firstKnown = isset($knownKeys[self::key($first)]);
-            $secondKnown = isset($knownKeys[self::key($second)]);
+            $fk = self::key($first);
+            $sk = self::key($second);
+            $firstKnown = isset($knownKeys[$fk]);
+            $secondKnown = isset($knownKeys[$sk]);
+            // When matched, use the catalog's own spelling of that artist so the
+            // value stays consistent with the rest of the catalog (already
+            // Discogs-clean / proper-cased) instead of the raw name segment. If
+            // the catalog only has an ALL-CAPS spelling, proper-case that.
             if ($firstKnown && !$secondKnown) {
-                return self::validateParsedArtist($first, $second, 'Artist ' . $label . ' Title');
+                $artist = is_string($knownKeys[$fk]) ? $knownKeys[$fk] : $first;
+                return self::validateParsedArtist(self::properArtistCase($artist), $second, 'Artist ' . $label . ' Title');
             }
             if ($secondKnown && !$firstKnown) {
-                return self::validateParsedArtist($second, $first, 'Title ' . $label . ' Artist');
+                $artist = is_string($knownKeys[$sk]) ? $knownKeys[$sk] : $second;
+                return self::validateParsedArtist(self::properArtistCase($artist), $first, 'Title ' . $label . ' Artist');
             }
             $reason = ($firstKnown && $secondKnown)
                 ? 'both sides are known artists — manual'
@@ -178,7 +204,7 @@ class ProductNameNormalizer
         }
 
         // No known-artist set: assume artist-first.
-        return self::validateParsedArtist($first, $second, 'Artist ' . $label . ' Title');
+        return self::validateParsedArtist(self::properArtistCase($first), $second, 'Artist ' . $label . ' Title');
     }
 
     /**

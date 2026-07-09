@@ -83,6 +83,17 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             </div>
             <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
 
+            <div id="arCatWrap" style="display:none;margin-top:22px;">
+                <div class="mgn-note mgn-summary" style="margin-top:0;color:#1F1B16;">Where the blank / N/A artists are, by category:</div>
+                <div style="margin-top:10px;max-height:300px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Category</th><th style="text-align:right">Missing artist</th><th>In scope?</th></tr></thead>
+                        <tbody id="arCatRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-note">"In scope" = treated as a music format. If a music category shows "no" here, tell me its name and I'll add it.</div>
+            </div>
+
             <div id="arFlaggedWrap" style="display:none;margin-top:22px;">
                 <div class="mgn-note mgn-summary" id="arFlaggedSummary" style="margin-top:0;color:#1F1B16;"></div>
                 <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
@@ -249,6 +260,19 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             }
             document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="3">Nothing to fill.</td></tr>';
             arApplyBtn.style.display = d.to_fill > 0 ? '' : 'none';
+
+            var bc = d.by_category || [];
+            if (bc.length) {
+                document.getElementById('arCatRows').innerHTML = bc.map(function (c) {
+                    var tag = c.in_scope
+                        ? '<span style="color:#1B5E20;font-weight:600">yes</span>'
+                        : '<span style="color:#B71C1C;font-weight:600">no</span>';
+                    return '<tr><td>' + esc(c.category) + '</td><td style="text-align:right">' + c.count + '</td><td>' + tag + '</td></tr>';
+                }).join('');
+                document.getElementById('arCatWrap').style.display = 'block';
+            } else {
+                document.getElementById('arCatWrap').style.display = 'none';
+            }
 
             var fp = d.flagged_preview || [];
             if (fp.length) {

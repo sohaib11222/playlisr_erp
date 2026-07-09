@@ -74,9 +74,45 @@ class ProductNameController extends Controller
                 // Skip non-artist placeholders so "N/A"/"Various" never counts.
                 if ($a === '' || preg_match('/^(n\/?a|unknown|various|none|no artist)$/i', $a)) { return; }
                 $k = ProductNameNormalizer::artistKey($a);
-                if ($k !== '') { $keys[$k] = true; }
+                if ($k === '') { return; }
+                // Keep one canonical spelling per artist; prefer a mixed-case
+                // one ("Burzum") over an ALL-CAPS duplicate ("BURZUM").
+                if (!isset($keys[$k]) || (!preg_match('/\p{Ll}/u', $keys[$k]) && preg_match('/\p{Ll}/u', $a))) {
+                    $keys[$k] = $a;
+                }
             });
         return $keys;
+    }
+
+    /**
+     * Diagnostic for the scan: how many blank/"N/A"-artist products sit in each
+     * category across the WHOLE catalog (not just the music list), so we can see
+     * where missing artists actually are and which categories are in scope.
+     */
+    protected function artistlessByCategory($business_id, $musicCatIds)
+    {
+        $music = array_flip(array_map('intval', $musicCatIds));
+        $out = [];
+        \DB::table('products as p')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)
+            ->where(function ($q) {
+                $q->whereNull('p.artist')
+                  ->orWhereRaw("TRIM(p.artist) = ''")
+                  ->orWhereRaw("LOWER(TRIM(p.artist)) REGEXP '^(n/?a|unknown|various|none|no artist)$'");
+            })
+            ->select('p.category_id', \DB::raw('COALESCE(c.name, "(no category)") as cat'), \DB::raw('COUNT(*) as n'))
+            ->groupBy('p.category_id', 'cat')
+            ->orderByDesc('n')
+            ->get()
+            ->each(function ($r) use (&$out, $music) {
+                $out[] = [
+                    'category' => $r->cat,
+                    'count' => (int) $r->n,
+                    'in_scope' => isset($music[(int) $r->category_id]),
+                ];
+            });
+        return $out;
     }
 
     /** Products in a music category whose artist column is blank / "N/A"-ish. */
@@ -152,6 +188,7 @@ class ProductNameController extends Controller
         $business_id = $request->session()->get('user.business_id');
         try {
             $data = $this->computeArtistBackfill($business_id, true, 300);
+            $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => 'Scan failed: ' . $e->getMessage()]);
@@ -163,6 +200,7 @@ class ProductNameController extends Controller
             'flagged' => $data['flagged'],
             'preview' => $data['fixes'],
             'flagged_preview' => $data['flagged_rows'],
+            'by_category' => $byCategory,
         ]);
     }
 
