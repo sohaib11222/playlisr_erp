@@ -492,9 +492,15 @@ class ProductMergeController extends Controller
                     $groupCatId = (int) $r->category_id;
                     $groupSubId = (int) $r->sub_category_id;
                     $perLoc = $vldMap[(int) $r->id] ?? [];
+                    // Store-scoped stock (this bucket's locations only) is used to
+                    // RANK the survivor, so warehouse copies don't skew the pick.
                     $stock = empty($storeLocs)
                         ? array_sum($perLoc)
                         : array_sum(array_map(function ($l) use ($perLoc) { return $perLoc[$l] ?? 0; }, $storeLocs));
+                    // Full all-location stock is what performMerge actually moves
+                    // onto the survivor, so the COMBINED STOCK column must use this
+                    // (the scoped number under-reports the real post-merge on-hand).
+                    $fullStock = array_sum($perLoc);
                     $items[] = [
                         'id' => (int) $r->id,
                         'name' => $r->name,
@@ -512,6 +518,7 @@ class ProductMergeController extends Controller
                         'created_year' => $r->created_at ? substr((string) $r->created_at, 0, 4) : '',
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
                         'current_stock' => (float) $stock,
+                        'full_stock' => (float) $fullStock,
                     ];
                 }
                 $catLabel = $groupSubId && isset($catNames[$groupSubId])
@@ -538,7 +545,7 @@ class ProductMergeController extends Controller
                     'category' => $catLabel,
                     'keep' => $keep,
                     'merge_in' => $mergeIn,
-                    'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
+                    'combined_stock' => array_sum(array_map(function ($i) { return $i['full_stock']; }, $items)),
                     'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
                 ];
             }
