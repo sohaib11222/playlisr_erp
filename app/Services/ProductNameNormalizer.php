@@ -38,8 +38,11 @@ class ProductNameNormalizer
     protected static function isRealArtist($artist)
     {
         $a = trim((string) $artist);
+        // Drop leading quotes/punctuation so a stray wrapping quote can't sneak
+        // "Various" past the check (e.g. '"Various').
+        $a = preg_replace('/^[^\p{L}\p{N}]+/u', '', $a);
         if ($a === '') { return false; }
-        if (preg_match('/^(unknown|various|n\/?a|none|no artist)/i', $a)) { return false; }
+        if (preg_match('/^(unknown|various|v\/?a|compilation|soundtrack|o\.?s\.?t\.?|misc|n\/?a|none|no artist)\b/i', $a)) { return false; }
         return true;
     }
 
@@ -110,19 +113,28 @@ class ProductNameNormalizer
         return self::key($s);
     }
 
+    /** Strip wrapping quotes and stray edge punctuation from a name segment. */
+    protected static function cleanSegment($s)
+    {
+        $s = trim((string) $s);
+        $s = trim($s, "\"\u{201C}\u{201D}\u{2018}\u{2019}");
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
     /**
-     * Proper-case an artist that came in ALL CAPS ("BURZUM" -> "Burzum",
-     * "SUNNY DAY REAL ESTATE" -> "Sunny Day Real Estate"). Left alone as likely
-     * stylizations:
-     *   - anything already carrying a lowercase letter ("AC/DC", "iamamiwhoami"),
-     *   - a short single-word all-caps token (<= 4 chars: "GWAR", "KISS", "U2"),
-     *   - all-caps that contains punctuation or digits ("R.E.M.", "MF/DOOM").
+     * Proper-case an artist so the field reads clean ("BURZUM"/"burzum" ->
+     * "Burzum", "SUNNY DAY REAL ESTATE" -> "Sunny Day Real Estate"). Left alone
+     * as likely stylizations:
+     *   - a short single-word token (<= 4 chars: "GWAR", "KISS", "U2", "MF"),
+     *   - anything containing punctuation or digits ("AC/DC", "R.E.M.",
+     *     "deadmau5", "Blink-182", "Godspeed You! Black Emperor").
+     * Everything else is Title Cased, so both ALL-CAPS and all-lowercase inputs
+     * come out properly cased.
      */
     public static function properArtistCase($s)
     {
         $s = trim(preg_replace('/\s+/', ' ', (string) $s));
         if ($s === '') { return $s; }
-        if (preg_match('/\p{Ll}/u', $s)) { return $s; }
         if (strpos($s, ' ') === false && mb_strlen($s) <= 4) { return $s; }
         if (preg_match('/[^\p{L}\s]/u', $s)) { return $s; }
         return self::titleCase($s);
@@ -151,6 +163,10 @@ class ProductNameNormalizer
     public static function artistFromName($name, $knownKeys = null)
     {
         $name = trim(preg_replace('/\s+/', ' ', (string) $name));
+        // Drop wrapping double-quotes (straight or curly) — a "Various - ..."
+        // style quoted title otherwise leaves a stray quote on the segment.
+        $name = trim($name, "\"\u{201C}\u{201D}");
+        $name = trim(preg_replace('/\s+/', ' ', $name));
         if ($name === '') {
             return ['artist' => '', 'title' => '', 'source' => '', 'confident' => false, 'reason' => 'empty name'];
         }
@@ -164,7 +180,7 @@ class ProductNameNormalizer
             $label = $sep[1];
             if (!preg_match('/\s' . preg_quote($sep[0], '/') . '\s/', $name)) { continue; }
             $parts = preg_split('/\s+' . preg_quote($sep[0], '/') . '\s+/', $name);
-            $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
+            $parts = array_values(array_filter(array_map(function ($p) { return self::cleanSegment($p); }, $parts), function ($p) { return $p !== ''; }));
             if (count($parts) !== 2) {
                 return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple "' . $label . '" segments — manual'];
             }

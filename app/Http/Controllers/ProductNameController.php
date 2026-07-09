@@ -71,8 +71,9 @@ class ProductNameController extends Controller
             ->pluck('artist')
             ->each(function ($a) use (&$keys) {
                 $a = trim((string) $a);
-                // Skip non-artist placeholders so "N/A"/"Various" never counts.
-                if ($a === '' || preg_match('/^(n\/?a|unknown|various|none|no artist)$/i', $a)) { return; }
+                // Skip non-artist placeholders so "N/A"/"Various"/compilations
+                // never count as a known artist.
+                if ($a === '' || preg_match('/^(n\/?a|unknown|various|v\/?a|compilation|soundtrack|o\.?s\.?t\.?|misc|none|no artist)\b/i', $a)) { return; }
                 $k = ProductNameNormalizer::artistKey($a);
                 if ($k === '') { return; }
                 // Keep one canonical spelling per artist; prefer a mixed-case
