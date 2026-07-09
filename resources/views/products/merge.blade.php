@@ -93,7 +93,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         </div>
         <div id="mgScanResult" style="display:none;margin-top:18px;">
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
-            <div class="mg-compare" style="display:block;margin-top:10px;max-height:360px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+            <div class="mg-compare" style="display:block;margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table>
                     <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Category</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
                     <tbody id="mgScanRows"></tbody>
