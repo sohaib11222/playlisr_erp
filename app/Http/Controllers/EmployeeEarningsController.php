@@ -91,8 +91,19 @@ class EmployeeEarningsController extends Controller
         $bonusFrom = '2026-06-15';
         $salesBonus = ['bonus' => 0.0, 'revenue' => 0.0, 'live' => false, 'per_location' => []];
         try {
-            $salesBonus = app(\App\Http\Controllers\ReportController::class)
-                ->userSalesBonus($businessId, $userId, $bonusFrom . ' 00:00:00', $end);
+            $rc = app(\App\Http\Controllers\ReportController::class);
+            // Per-location split + the live flag (the employee-facing breakdown).
+            $salesBonus = $rc->userSalesBonus($businessId, $userId, $bonusFrom . ' 00:00:00', $end);
+            // Pin the HEADLINE bonus + sales to the exact method the payables page
+            // (/admin/listing-commissions) pays from, so what the employee sees
+            // always equals what they're paid to the penny. userSalesBonus ends the
+            // window at "now" and reports raw revenue, which drifts a few cents from
+            // the payable's end-of-day, day-by-day basis; this reconciles them.
+            $payable = $rc->salesBonusByUser($businessId, $bonusFrom, now()->toDateString())->get($userId);
+            if ($payable) {
+                $salesBonus['bonus']   = round((float) $payable->bonus, 2);
+                $salesBonus['revenue'] = round((float) $payable->achieved, 2);
+            }
         } catch (\Throwable $e) {
             \Log::warning('my-earnings sales bonus failed: ' . $e->getMessage());
         }
