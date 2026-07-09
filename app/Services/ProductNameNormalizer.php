@@ -113,18 +113,27 @@ class ProductNameNormalizer
         return self::key($s);
     }
 
+    /**
+     * Drop Discogs disambiguation markers and trailing parenthetical notes:
+     *   "Peanuts*" -> "Peanuts", "Nirvana (2)" -> "Nirvana",
+     *   "YUSUF (CAT STEVENS)" -> "YUSUF", "Album (2LP)" -> "Album".
+     * Keeps the original if stripping would empty the value.
+     */
+    public static function stripMarkers($s)
+    {
+        $s = trim((string) $s);
+        $s = preg_replace('/\s*\*+$/', '', $s);
+        $stripped = preg_replace('/(?:\s*\([^)]*\))+\s*$/u', '', $s);
+        if (trim((string) $stripped) !== '') { $s = $stripped; }
+        return trim($s);
+    }
+
     /** Strip wrapping quotes and stray edge punctuation from a name segment. */
     protected static function cleanSegment($s)
     {
         $s = trim((string) $s);
         $s = trim($s, "\"\u{201C}\u{201D}\u{2018}\u{2019}");
-        // Drop Discogs disambiguation markers: a trailing "*" ("Peanuts*").
-        $s = preg_replace('/\s*\*+$/', '', $s);
-        // Drop trailing parenthetical note(s): format/pressing/alias tails like
-        // "(2LP)", "(TRANSPARENT ORANGE VINYL)", "YUSUF (CAT STEVENS)" -> "YUSUF".
-        // Keep the original if stripping would empty the segment (e.g. "(Sandy)").
-        $stripped = preg_replace('/(?:\s*\([^)]*\))+\s*$/u', '', $s);
-        if (trim((string) $stripped) !== '') { $s = $stripped; }
+        $s = self::stripMarkers($s);
         return trim(preg_replace('/\s+/', ' ', $s));
     }
 
@@ -173,12 +182,15 @@ class ProductNameNormalizer
             'mfdoom' => 'MF Doom',
             'xxxtentacion' => 'XXXTENTACION',
             'maroon5' => 'Maroon 5',
+            'neworder' => 'New Order',
+            'notoriousbig' => 'Notorious B.I.G.',
         ];
     }
 
     public static function cleanArtistValue($s)
     {
-        $s = trim((string) $s);
+        // Strip Discogs markers (matched catalog spellings can carry "*"/"(2)").
+        $s = self::stripMarkers(trim((string) $s));
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
         $curated = self::curatedArtists();
@@ -240,7 +252,12 @@ class ProductNameNormalizer
     {
         $s = trim(preg_replace('/\s+/', ' ', (string) $s));
         if ($s === '') { return $s; }
-        if (preg_match('/[^\p{L}\s]/u', $s)) { return $s; }
+        // Preserve stylizations that Title Case would corrupt: a slash ("AC/DC")
+        // or a digit ("deadmau5", "Blink-182"). Names with only "." "&" "-" ","
+        // are Title Cased (titleCase re-capitalizes after those), so
+        // "NOTORIOUS B.I.G." -> "Notorious B.I.G." and
+        // "KING GIZZARD & THE LIZARD WIZARD" -> "King Gizzard & The Lizard Wizard".
+        if (preg_match('#[/\\\\\d]#u', $s)) { return $s; }
         if (self::keepUpperCase(mb_strtolower($s))) { return $s; }
         // Already mixed-case (has both an upper and a lower letter) -> assume it
         // was deliberately cased ("Green Day", "iPhone"), leave it. Only all-one-
