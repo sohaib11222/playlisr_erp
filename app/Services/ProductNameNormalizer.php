@@ -46,6 +46,13 @@ class ProductNameNormalizer
         return true;
     }
 
+    /** Is this whole segment a "Various Artists" compilation marker? */
+    public static function isVariousMarker($s)
+    {
+        $k = self::key($s);
+        return in_array($k, ['various', 'variousartists', 'variousartist', 'va', 'compilation', 'comp'], true);
+    }
+
     public static function canonical($artist, $name)
     {
         $artist = trim(preg_replace('/\s+/', ' ', (string) $artist));
@@ -199,6 +206,7 @@ class ProductNameNormalizer
             '2chainz' => '2 Chainz',
             '100gecs' => '100 gecs',
             'e40' => 'E-40',
+            'falloutboy' => 'Fall Out Boy',
         ];
     }
 
@@ -361,6 +369,18 @@ class ProductNameNormalizer
      */
     protected static function pickArtist($first, $second, $knownKeys, $label)
     {
+        // Compilations: if exactly one side is a "Various" marker, the artist is
+        // "Various Artists" (that's the correct value for a comp).
+        $fv = self::isVariousMarker($first);
+        $sv = self::isVariousMarker($second);
+        if ($fv !== $sv) {
+            $title = $fv ? $second : $first;
+            return ['artist' => 'Various Artists', 'title' => $title, 'source' => 'Compilation', 'confident' => true, 'reason' => ''];
+        }
+        if ($fv && $sv) {
+            return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are "Various" — manual'];
+        }
+
         if (is_array($knownKeys)) {
             $fk = self::key($first);
             $sk = self::key($second);
