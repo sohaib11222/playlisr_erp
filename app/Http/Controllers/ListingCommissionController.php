@@ -150,6 +150,23 @@ class ListingCommissionController extends Controller
                 ];
             }
         }
+        // Manual payments (Record-a-payment) are a plain dollar credit. They live
+        // in the sales ledger, so they already reduce sales owed — but any amount
+        // beyond a person's sales bonus should also reduce their LISTING owed, so
+        // a manual payment subtracts from total commission owed no matter the type
+        // (e.g. Nick, who only has listing commission) (Sarah 2026-07-09).
+        $manualByUser = [];
+        $realSalesByUser = [];
+        foreach ($this->loadSalesPayouts() as $sp) {
+            $u2 = (int) ($sp['user_id'] ?? 0);
+            if ($u2 <= 0) { continue; }
+            if (!empty($sp['manual'])) {
+                $manualByUser[$u2] = ($manualByUser[$u2] ?? 0) + (float) ($sp['amount'] ?? 0);
+            } else {
+                $realSalesByUser[$u2] = ($realSalesByUser[$u2] ?? 0) + (float) ($sp['amount'] ?? 0);
+            }
+        }
+
         foreach ($byId as $uid => $p) {
             $s = $salesSummary->get($uid);
             $p->sales_earned   = $s ? (float) $s->earned   : 0.0;
@@ -160,6 +177,14 @@ class ListingCommissionController extends Controller
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
             $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
+            // Apply any manual-payment overflow (dollars paid beyond the sales
+            // bonus) against listing owed, so a manual credit is never lost.
+            $manual = (float) ($manualByUser[$uid] ?? 0);
+            $absorbedBySales = max(0, $p->sales_earned - (float) ($realSalesByUser[$uid] ?? 0));
+            $overflow = max(0, round($manual - $absorbedBySales, 2));
+            if ($overflow > 0) {
+                $p->owed = round(max(0, $p->owed - $overflow), 2);
+            }
             // What you still owe this person right now = unpaid listing + unpaid sales.
             $p->total_owed_now = round($p->owed + $p->sales_owed, 2);
 
