@@ -176,7 +176,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -361,6 +361,34 @@ class AdminActionHistoryController extends Controller
         // store a finalized in-store import sale sat on before it was moved
         // (Hollywood). Undo restores location_id, but only if the row is still
         // on the to-location (Pico), so a later manual change isn't clobbered.
+        // recategorize-audio-gear: snapshot rows hold {id, category_id,
+        // sub_category_id} — each product's BEFORE category refs. Undo restores
+        // them, but only for products still sitting in the Audio Gear category we
+        // moved them to (so a later manual re-category isn't clobbered).
+        if ($action === 'recategorize-audio-gear') {
+            $audioGearId = $data['audio_gear_id'] ?? null;
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) { continue; }
+                $current = DB::table('products')->where('id', $id)->first();
+                if (!$current || ($audioGearId !== null && (int) $current->category_id !== (int) $audioGearId)) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table('products')->where('id', $id)->update([
+                    'category_id'     => $row['category_id'],
+                    'sub_category_id' => $row['sub_category_id'],
+                ]);
+                $restored++;
+            }
+            $msg = "Reverted {$restored} product(s) out of Audio Gear from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
         if ($action === 'reassign-import-location') {
             $toLocId = $data['to_location_id'] ?? null;
             $restored = 0;

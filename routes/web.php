@@ -275,6 +275,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/name-cleanup/discogs-scan', 'ProductNameController@discogsScan')->name('products.name.discogs.scan');
     Route::post('/products/name-cleanup/discogs-rebuild', 'ProductNameController@discogsRebuild')->name('products.name.discogs.rebuild');
 
+    // Owner-only one-click fix: assign blank-genre audio gear (players,
+    // boomboxes, turntables) to an "Audio Gear" category. Before the resource.
+    Route::get('/products/fix-audio-gear', 'AudioGearFixController@apply')->name('products.fix-audio-gear');
+
     Route::resource('products', 'ProductController');
 
     Route::post('/import-purchase-products', 'PurchaseController@importPurchaseProducts');
