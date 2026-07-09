@@ -220,12 +220,18 @@
 <div class="row">
     <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
+            @php
+                $owedPeople = $people->filter(function ($p) { return $p->total_owed_now > 0; })->values();
+                $paidUpCount = $people->count() - $owedPeople->count();
+            @endphp
             <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#5A5045;">
                 <input type="checkbox" id="lc-detail-toggle"> Show full breakdown (earned, paid, listings, goals)
             </label>
-            @if ($people->isEmpty())
-                <p class="text-muted">No commission to show yet.</p>
+            @if ($owedPeople->isEmpty())
+                <p style="font-size:16px; color:#2F6B3E; font-weight:700;">Everyone is paid up — nothing owed right now.</p>
+                @if($paidUpCount > 0)<p class="text-muted" style="margin:0;">{{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person' : 'people' }} on file, all settled. See the paid history below.</p>@endif
             @else
+                <p class="text-muted" style="margin-bottom:8px;">Showing only who still owes. {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} paid up (hidden).</p>
                 <table class="table table-striped" id="lc-people">
                     <thead>
                         <tr>
@@ -246,7 +252,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($people as $p)
+                        @foreach ($owedPeople as $p)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
