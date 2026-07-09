@@ -373,9 +373,16 @@ class ProductController extends Controller
                     return $row->sub_category ?? '';
                 })
                 ->editColumn('artist', function ($row) {
-                    // Trading cards, audio gear, etc. have no artist; show a
-                    // neutral dash instead of "N/A" so the column reads clean.
-                    return trim((string) ($row->artist ?? '')) !== '' ? $row->artist : '-';
+                    $artist = trim((string) ($row->artist ?? ''));
+                    if ($artist !== '') {
+                        return $row->artist;
+                    }
+                    // Missing artist: for music formats this is a data problem
+                    // worth flagging as "N/A"; for non-music categories (trading
+                    // cards, audio gear, DVD/Blu-Ray, toys, VHS, ...) there's no
+                    // artist by nature, so show a neutral dash instead.
+                    $catName = strtolower(trim((string) ($row->category ?? '')));
+                    return in_array($catName, self::musicArtistCategories(), true) ? 'N/A' : '-';
                 })
                 ->addColumn(
                     'action',
@@ -3236,6 +3243,25 @@ class ProductController extends Controller
     }
 
 
+    /**
+     * Lowercased category names that MUST carry an artist (music media only:
+     * vinyl, CD, cassette, 45s). Aliases kept liberal so upstream renames
+     * don't silently break the check. Non-music categories (trading cards,
+     * audio gear, DVD/Blu-Ray, toys, VHS, ...) are intentionally absent.
+     */
+    public static function musicArtistCategories()
+    {
+        return [
+            'sealed vinyl', 'new vinyl',
+            'used vinyl',
+            'used cd', 'used cds', 'cds (used)',
+            'sealed cd', 'cd (sealed)', 'new cd', 'new cds',
+            'used cassette', 'used cassettes', 'cassettes', 'cassettes (used)',
+            'sealed cassette', 'sealed cassettes', 'cassettes - sealed', 'new cassette', 'new cassettes',
+            '7", 45 rpm', '7"', '45 rpm', '7 inch', 'used 45s', 'new 45s', '45s',
+        ];
+    }
+
     public function massStore(Request $request)
     {
         // Валидация входящих данных
@@ -3294,18 +3320,10 @@ class ProductController extends Controller
                 }
             }
 
-            // Artist is required ONLY for these music-media categories:
-            // sealed/used vinyl, sealed/used CD, sealed/used cassette, and 45s.
-            // Aliases kept liberal so upstream renames don't silently break it.
-            $artistRequiredCategoryNames = [
-                'sealed vinyl', 'new vinyl',
-                'used vinyl',
-                'used cd', 'used cds', 'cds (used)',
-                'sealed cd', 'cd (sealed)', 'new cd', 'new cds',
-                'used cassette', 'used cassettes', 'cassettes', 'cassettes (used)',
-                'sealed cassette', 'sealed cassettes', 'cassettes - sealed', 'new cassette', 'new cassettes',
-                '7", 45 rpm', '7"', '45 rpm', '7 inch', 'used 45s', 'new 45s', '45s',
-            ];
+            // Artist is required ONLY for music-media categories (see
+            // musicArtistCategories()). Non-music categories (trading cards,
+            // audio gear, DVD/Blu-Ray, toys, VHS, ...) never require one.
+            $artistRequiredCategoryNames = self::musicArtistCategories();
 
             foreach ($productsInput as $index => $productInput) {
                 $isExistingProduct = !empty($productInput['id']);
