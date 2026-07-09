@@ -85,6 +85,56 @@ class ProductNameController extends Controller
     }
 
     /**
+     * Artists recognizable from the catalog, for disambiguating "A / B" names.
+     * Combines two signals:
+     *   1. the artist column (knownArtistKeys), plus
+     *   2. name segments that RECUR across >=2 music products — a store stocks
+     *      several albums per artist, so a repeated segment is almost always the
+     *      artist even when its artist column is blank. Common repeated title
+     *      phrases (Greatest Hits, Live, ...) are stop-listed out.
+     * Keyed by artistKey(), value = a representative spelling.
+     */
+    protected function artistSignalKeys($business_id, $catIds)
+    {
+        $keys = $this->knownArtistKeys($business_id);
+        if (empty($catIds)) { return $keys; }
+
+        $counts = [];
+        $spell = [];
+        \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereIn('category_id', $catIds)
+            ->select('name')
+            ->orderBy('id')
+            ->chunk(3000, function ($rows) use (&$counts, &$spell) {
+                foreach ($rows as $r) {
+                    $seg = ProductNameNormalizer::nameSegments($r->name);
+                    if ($seg === null) { continue; }
+                    foreach ([$seg[0], $seg[1]] as $s) {
+                        $k = ProductNameNormalizer::artistKey($s);
+                        if ($k === '') { continue; }
+                        $counts[$k] = ($counts[$k] ?? 0) + 1;
+                        if (!isset($spell[$k])) { $spell[$k] = $s; }
+                    }
+                }
+            });
+
+        // Repeated non-artist title phrases to never treat as an artist.
+        static $stop = ['greatesthits' => 1, 'bestof' => 1, 'thebest' => 1, 'live' => 1,
+            'singles' => 1, 'thesingles' => 1, 'selftitled' => 1, 'hits' => 1, 'anthology' => 1,
+            'collection' => 1, 'compilation' => 1, 'various' => 1, 'variousartists' => 1,
+            'soundtrack' => 1, 'ost' => 1, 'deluxe' => 1, 'remastered' => 1, 'acoustic' => 1,
+            'demos' => 1, 'demo' => 1, 'ep' => 1, 'lp' => 1, 'untitled' => 1];
+
+        foreach ($counts as $k => $n) {
+            if ($n >= 2 && !isset($keys[$k]) && !isset($stop[$k])) {
+                $keys[$k] = $spell[$k];
+            }
+        }
+        return $keys;
+    }
+
+    /**
      * Diagnostic for the scan: how many blank/"N/A"-artist products sit in each
      * category across the WHOLE catalog (not just the music list), so we can see
      * where missing artists actually are and which categories are in scope.
@@ -139,7 +189,7 @@ class ProductNameController extends Controller
             return ['fixes' => [], 'to_fill' => 0, 'flagged' => 0, 'cat_ids' => []];
         }
 
-        $knownKeys = $this->knownArtistKeys($business_id);
+        $knownKeys = $this->artistSignalKeys($business_id, $catIds);
         $fixes = [];
         $flaggedRows = [];
         $toFill = 0;
@@ -225,7 +275,7 @@ class ProductNameController extends Controller
             return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'No music categories found.']);
         }
 
-        $knownKeys = $this->knownArtistKeys($business_id);
+        $knownKeys = $this->artistSignalKeys($business_id, $catIds);
         $batch = [];
         $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')

@@ -151,7 +151,15 @@ class ProductNameNormalizer
         $s = trim((string) $s);
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
-        return self::properArtistCase(self::flipLastFirst($s));
+        $out = self::properArtistCase(self::flipLastFirst($s));
+        // Post-casing alias fixups keyed by normalized name (e.g. bands catalogued
+        // without their leading "The"). Extend as they turn up.
+        static $post = [
+            'smiths' => 'The Smiths',
+        ];
+        $k = self::key($out);
+        if (isset($post[$k])) { return $post[$k]; }
+        return $out;
     }
 
     /**
@@ -230,34 +238,46 @@ class ProductNameNormalizer
      * Returns ['artist' => string, 'title' => string, 'source' => string,
      *          'confident' => bool, 'reason' => string].
      */
+    /**
+     * Split a product name into its two cleaned segments on a spaced "/" or
+     * " - ". Returns [first, second, separatorLabel] for an exact two-part
+     * split, or null (no separator, or 3+ segments). Shared by the parser and
+     * the frequency counter so they see names the same way.
+     */
+    public static function nameSegments($name)
+    {
+        $name = trim(preg_replace('/\s+/', ' ', (string) $name));
+        $name = trim($name, "\"\u{201C}\u{201D}");
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        if ($name === '') { return null; }
+
+        foreach (['/', '-'] as $sep) {
+            if (!preg_match('/\s' . preg_quote($sep, '/') . '\s/', $name)) { continue; }
+            $parts = preg_split('/\s+' . preg_quote($sep, '/') . '\s+/', $name);
+            $parts = array_values(array_filter(array_map(function ($p) { return self::cleanSegment($p); }, $parts), function ($p) { return $p !== ''; }));
+            if (count($parts) !== 2) { return null; }
+            return [$parts[0], $parts[1], $sep];
+        }
+        return null;
+    }
+
     public static function artistFromName($name, $knownKeys = null)
     {
         $name = trim(preg_replace('/\s+/', ' ', (string) $name));
-        // Drop wrapping double-quotes (straight or curly) — a "Various - ..."
-        // style quoted title otherwise leaves a stray quote on the segment.
-        $name = trim($name, "\"\u{201C}\u{201D}");
-        $name = trim(preg_replace('/\s+/', ' ', $name));
-        if ($name === '') {
+        $clean = trim($name, "\"\u{201C}\u{201D}");
+        if (trim($clean) === '') {
             return ['artist' => '', 'title' => '', 'source' => '', 'confident' => false, 'reason' => 'empty name'];
         }
         if (stripos($name, 'retired') !== false) {
             return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'contains "retired" — left alone'];
         }
 
-        // Spaced slash first, then spaced hyphen. Only an exact two-part split
-        // is workable; 3+ segments (trailing edition, etc.) are flagged.
-        foreach ([['/', '/'], ['-', '-']] as $sep) {
-            $label = $sep[1];
-            if (!preg_match('/\s' . preg_quote($sep[0], '/') . '\s/', $name)) { continue; }
-            $parts = preg_split('/\s+' . preg_quote($sep[0], '/') . '\s+/', $name);
-            $parts = array_values(array_filter(array_map(function ($p) { return self::cleanSegment($p); }, $parts), function ($p) { return $p !== ''; }));
-            if (count($parts) !== 2) {
-                return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple "' . $label . '" segments — manual'];
-            }
-            return self::pickArtist($parts[0], $parts[1], $knownKeys, $label);
+        $seg = self::nameSegments($name);
+        if ($seg === null) {
+            // Either no separator or an ambiguous 3+ segment name.
+            return ['artist' => '', 'title' => trim($clean), 'source' => '', 'confident' => false, 'reason' => 'no clean two-part split'];
         }
-
-        return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'no separator'];
+        return self::pickArtist($seg[0], $seg[1], $knownKeys, $seg[2]);
     }
 
     /**
@@ -288,17 +308,14 @@ class ProductNameNormalizer
             if ($firstKnown && $secondKnown) {
                 return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are known artists — manual'];
             }
-            // Neither side is a known artist. The catalog is overwhelmingly
-            // "ARTIST / TITLE", so a spaced SLASH reliably means artist-first —
-            // fill it. A spaced DASH is unreliable (often a hyphenated title or
-            // "Title - Subtitle", e.g. "New Tales To Tell - A Tribute ..."), so
-            // without a known-artist match, flag it for manual review.
-            if ($label !== '/') {
-                return ['artist' => '', 'title' => trim($first . ' - ' . $second), 'source' => '', 'confident' => false, 'reason' => 'dash name, artist not recognized — manual'];
-            }
+            // Neither side is recognized. The catalog mixes BOTH "Artist / Title"
+            // (GLAIVE / ...) and "Title / Artist" (... / SHABOOZEY), so position
+            // can't tell us which is the artist — flag it rather than guess wrong.
+            return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'artist not recognized — manual'];
         }
 
-        // Default: artist is the first segment ("Artist / Title").
+        // No known-artist set given (shouldn't happen from the backfill): fall
+        // back to first-segment.
         return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
     }
 
