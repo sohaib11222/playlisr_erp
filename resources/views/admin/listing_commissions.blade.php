@@ -132,7 +132,7 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
             @php
-                $owedPeople = $people->filter(function ($p) { return $p->total_owed_now > 0; })->values();
+                $owedPeople = $people->filter(function ($p) { return abs($p->total_owed_now) >= 0.005; })->values();
                 $paidUpCount = $people->count() - $owedPeople->count();
             @endphp
             <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#23303d;">
@@ -142,7 +142,7 @@
                 <p style="font-size:15px; color:#2f7a4f; font-weight:600;">Everyone is paid up — nothing owed right now.</p>
                 @if($paidUpCount > 0)<p class="text-muted" style="margin:0;">{{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person' : 'people' }} on file, all settled. See the paid history below.</p>@endif
             @else
-                <p class="text-muted" style="margin-bottom:8px;">Showing only who still owes. {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} paid up (hidden).</p>
+                <p class="text-muted" style="margin-bottom:8px;">Showing who still owes or was overpaid (negative = credit). {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} settled (hidden).</p>
                 <table class="table table-striped" id="lc-people">
                     <thead>
                         <tr>
@@ -176,10 +176,10 @@
                                 <td class="lc-detail" style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if($p->sales_owed > 0)${{ number_format($p->sales_owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if($p->owed > 0)${{ number_format($p->owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
-                                <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
-                                    @if($p->total_owed_now > 0)
+                                    @if($p->total_owed_now > 0.004)
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-all-paid') }}"
                                           onsubmit="return confirm('Mark all commission paid for {{ $p->name }} (${{ number_format($p->total_owed_now, 2) }})?');"
                                           style="margin:0;">
@@ -188,6 +188,8 @@
                                         <input type="hidden" name="from" value="{{ $from }}">
                                         <button type="submit" class="btn btn-success btn-xs">Mark paid</button>
                                     </form>
+                                    @elseif($p->total_owed_now < -0.004)
+                                        <span style="color:#b3402e;">overpaid</span>
                                     @else
                                         <span class="text-muted">paid up</span>
                                     @endif
