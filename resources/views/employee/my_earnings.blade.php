@@ -66,33 +66,12 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             $total_owed = round($owed + (float) $sales_bonus['bonus'], 2);
         @endphp
         <div class="me-hero">
-            <div class="lbl">Total commission earned</div>
+            <div class="lbl">Total commission earned (all-time)</div>
             <div class="val">${{ number_format($total_earned, 2) }}</div>
-            <div class="sub">${{ number_format($earned, 2) }} listing pay + ${{ number_format($sales_bonus['bonus'], 2) }} sales bonus{{ $sales_bonus['live'] ? '' : ' (projected)' }}</div>
+            <div class="sub">${{ number_format($sales_bonus['bonus'], 2) }} sales bonus{{ $sales_bonus['live'] ? '' : ' (projected)' }} + ${{ number_format($earned, 2) }} listing pay</div>
         </div>
 
         <div class="me-card" style="margin-bottom:14px;">
-            <h3 style="margin-bottom:10px;">Listing commission — items you listed that sold</h3>
-        <div class="me-stats" style="margin-bottom:0;">
-            <div class="me-stat">
-                <div class="lbl">Earned all-time</div>
-                <div class="val">${{ number_format($earned, 2) }}</div>
-                <div class="sub">2% of {{ $sold_count }} of your listed items that have sold</div>
-            </div>
-            <div class="me-stat paid">
-                <div class="lbl">Paid out to you</div>
-                <div class="val">${{ number_format($paid_out, 2) }}</div>
-                <div class="sub">{{ $payouts->count() }} payout(s)</div>
-            </div>
-            <div class="me-stat owed">
-                <div class="lbl">This commission payment</div>
-                <div class="val">${{ number_format($owed, 2) }}</div>
-                <div class="sub">owed now · {{ $owed_count }} sold item(s) not yet paid</div>
-            </div>
-        </div>
-        </div>
-
-        <div class="me-card">
             <h3>Sales bonus</h3>
             <div class="me-stats" style="margin-bottom:0;">
                 <div class="me-stat owed">
@@ -117,6 +96,27 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     </tbody>
                 </table>
             @endif
+        </div>
+
+        <div class="me-card">
+            <h3 style="margin-bottom:10px;">Listing commission — items you listed that sold</h3>
+        <div class="me-stats" style="margin-bottom:0;">
+            <div class="me-stat">
+                <div class="lbl">Earned all-time</div>
+                <div class="val">${{ number_format($earned, 2) }}</div>
+                <div class="sub">2% of {{ $sold_count }} of your listed items that have sold</div>
+            </div>
+            <div class="me-stat paid">
+                <div class="lbl">Paid out to you</div>
+                <div class="val">${{ number_format($paid_out, 2) }}</div>
+                <div class="sub">{{ $payouts->count() }} payout(s)</div>
+            </div>
+            <div class="me-stat owed">
+                <div class="lbl">This commission payment</div>
+                <div class="val">${{ number_format($owed, 2) }}</div>
+                <div class="sub">owed now · {{ $owed_count }} sold item(s) not yet paid</div>
+            </div>
+        </div>
         </div>
 
         <div class="me-card">
