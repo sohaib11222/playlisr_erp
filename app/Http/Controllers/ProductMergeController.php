@@ -433,7 +433,8 @@ class ProductMergeController extends Controller
         // Live variations per product (id + product_variation_id). Groups where
         // any product isn't exactly single-variation are skipped.
         $varsByProduct = \DB::table('variations')->whereIn('product_id', $dupeIds)->whereNull('deleted_at')
-            ->select('id', 'product_id', 'product_variation_id')->get()->groupBy('product_id');
+            ->select('id', 'product_id', 'product_variation_id', 'sell_price_inc_tax', 'dpp_inc_tax')
+            ->get()->groupBy('product_id');
 
         // Store per product (product_locations is many-to-many). We only merge
         // within the SAME store, so the store signature = the sorted set of a
@@ -491,6 +492,11 @@ class ProductMergeController extends Controller
                 foreach ($storeRows as $r) {
                     $groupCatId = (int) $r->category_id;
                     $groupSubId = (int) $r->sub_category_id;
+                    // Prices from the (single) variation — same columns the
+                    // product list shows: sell_price_inc_tax + dpp_inc_tax.
+                    $var = optional($varsByProduct->get($r->id))->first();
+                    $sellPrice = $var ? (float) $var->sell_price_inc_tax : null;
+                    $purchasePrice = $var ? (float) $var->dpp_inc_tax : null;
                     $perLoc = $vldMap[(int) $r->id] ?? [];
                     // Store-scoped stock (this bucket's locations only) is used to
                     // RANK the survivor, so warehouse copies don't skew the pick.
@@ -516,6 +522,9 @@ class ProductMergeController extends Controller
                             && strpos((string) $r->name, ' / ') === false) ? 1 : 0,
                         'creator' => $userNames[(int) $r->created_by] ?? ('User #' . (int) $r->created_by),
                         'created_year' => $r->created_at ? substr((string) $r->created_at, 0, 4) : '',
+                        'created_date' => $r->created_at ? substr((string) $r->created_at, 0, 10) : '',
+                        'sell_price' => $sellPrice,
+                        'purchase_price' => $purchasePrice,
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
                         'current_stock' => (float) $stock,
                         'full_stock' => (float) $fullStock,

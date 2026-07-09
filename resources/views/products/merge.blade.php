@@ -196,11 +196,16 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             var summary = d.total_groups + ' duplicate set(s) found — ' + d.total_merges + ' product(s) will be deactivated after merging.';
             if (d.skipped > 0) { summary += ' ' + d.skipped + ' set(s) skipped (multiple variations — merge those manually).'; }
             document.getElementById('mgScanSummary').textContent = summary;
+            var money = function (v) { return (v === null || v === undefined) ? '' : '$' + Number(v).toFixed(2); };
             var by = function (x) {
-                if (!x.creator) return '';
-                var who = esc(x.creator) + (x.created_year ? ' · ' + esc(x.created_year) : '');
                 var color = x.is_untrusted ? '#B45309' : '#8E8273';
-                return '<br><small style="color:' + color + '">by ' + who + '</small>';
+                var bits = [];
+                if (x.sell_price !== null && x.sell_price !== undefined) { bits.push(money(x.sell_price) + ' sell'); }
+                if (x.purchase_price !== null && x.purchase_price !== undefined) { bits.push(money(x.purchase_price) + ' cost'); }
+                if (x.created_date) { bits.push(esc(x.created_date)); }
+                if (x.creator) { bits.push('by ' + esc(x.creator)); }
+                if (!bits.length) { return ''; }
+                return '<br><small style="color:' + color + '">' + bits.join(' · ') + '</small>';
             };
             var rows = d.preview.map(function (g) {
                 var mergeNames = g.merge_in.map(function (m) { return esc(m.name) + ' <small style="color:#8E8273">(SKU ' + esc(m.sku) + ')</small>' + by(m); }).join('<br>');
