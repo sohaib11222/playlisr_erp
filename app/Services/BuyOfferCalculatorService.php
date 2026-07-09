@@ -74,6 +74,7 @@ class BuyOfferCalculatorService
                 '4k_used' => ['label' => '4K Used', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'no_grading' => true],
                 'vhs_used' => ['label' => 'VHS Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
                 'vhs_horror_used' => ['label' => 'VHS Horror Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'no_grading' => true],
+                'laserdisc' => ['label' => 'LaserDisc', 'mode' => 'bulk_fixed', 'unit_rate' => 0.35, 'no_grading' => true],
 
                 'videogame_with_case' => ['label' => 'Video Game (with case)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
                 'videogame_no_case' => ['label' => 'Video Game (no case)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
@@ -129,6 +130,9 @@ class BuyOfferCalculatorService
         foreach ($rules['item_types'] as $key => $config) {
             $output[$key] = $config['label'];
         }
+        // Alphabetize the dropdown by label (natural, case-insensitive) so
+        // cashiers can scan the media types in order instead of by group.
+        asort($output, SORT_NATURAL | SORT_FLAG_CASE);
         return $output;
     }
 
