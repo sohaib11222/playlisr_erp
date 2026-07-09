@@ -42,13 +42,12 @@ class ProductNameController extends Controller
     // This parses it back out — Preview-first, confident-only, undoable via the
     // backfill-artist-from-name snapshot.
 
-    /** Main-category ids (for this business) that require an artist. */
+    /** Category ids (for this business) that denote a music format. */
     protected function musicCategoryIds($business_id)
     {
-        $music = \App\Http\Controllers\ProductController::musicArtistCategories();
         $ids = [];
         foreach (\DB::table('categories')->where('business_id', $business_id)->select('id', 'name')->get() as $c) {
-            if (in_array(strtolower(trim((string) $c->name)), $music, true)) {
+            if (\App\Http\Controllers\ProductController::isMusicCategoryName($c->name)) {
                 $ids[] = (int) $c->id;
             }
         }

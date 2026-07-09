@@ -122,6 +122,31 @@ class ProductNameNormalizer
     }
 
     /**
+     * Full clean-up for a parsed artist: flip "LASTNAME,FIRST" cataloguing order
+     * into natural order, then proper-case. This is what the backfill writes.
+     */
+    public static function cleanArtistValue($s)
+    {
+        return self::properArtistCase(self::flipLastFirst($s));
+    }
+
+    /**
+     * Record-store cataloguing often stores "Lastname,First" with NO space after
+     * the comma ("DAVIS,MILES" -> "Miles Davis", "COLE,NAT KING" -> "Nat King
+     * Cole"). Only flips a single-comma value where the comma has no trailing
+     * space, so natural names like "Earth, Wind & Fire" and "Tyler, The Creator"
+     * are left alone.
+     */
+    public static function flipLastFirst($s)
+    {
+        $s = trim((string) $s);
+        if (preg_match('/^([^,]+),(\S[^,]*)$/u', $s, $m)) {
+            return trim($m[2]) . ' ' . trim($m[1]);
+        }
+        return $s;
+    }
+
+    /**
      * Proper-case an artist so the field reads clean ("BURZUM"/"burzum" ->
      * "Burzum", "SUNNY DAY REAL ESTATE" -> "Sunny Day Real Estate"). Left alone
      * as likely stylizations:
@@ -207,11 +232,11 @@ class ProductNameNormalizer
             // the catalog only has an ALL-CAPS spelling, proper-case that.
             if ($firstKnown && !$secondKnown) {
                 $artist = is_string($knownKeys[$fk]) ? $knownKeys[$fk] : $first;
-                return self::validateParsedArtist(self::properArtistCase($artist), $second, 'Artist ' . $label . ' Title');
+                return self::validateParsedArtist(self::cleanArtistValue($artist), $second, 'Artist ' . $label . ' Title');
             }
             if ($secondKnown && !$firstKnown) {
                 $artist = is_string($knownKeys[$sk]) ? $knownKeys[$sk] : $second;
-                return self::validateParsedArtist(self::properArtistCase($artist), $first, 'Title ' . $label . ' Artist');
+                return self::validateParsedArtist(self::cleanArtistValue($artist), $first, 'Title ' . $label . ' Artist');
             }
             // Both sides are known artists (e.g. a split/collab) — genuinely
             // ambiguous, leave it for a human.
@@ -224,7 +249,7 @@ class ProductNameNormalizer
         }
 
         // Default: artist is the first segment ("Artist / Title" / "Artist - Title").
-        return self::validateParsedArtist(self::properArtistCase($first), $second, 'Artist ' . $label . ' Title');
+        return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
     }
 
     /**

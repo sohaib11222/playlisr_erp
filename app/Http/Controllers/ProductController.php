@@ -381,8 +381,7 @@ class ProductController extends Controller
                     // worth flagging as "N/A"; for non-music categories (trading
                     // cards, audio gear, DVD/Blu-Ray, toys, VHS, ...) there's no
                     // artist by nature, so show a neutral dash instead.
-                    $catName = strtolower(trim((string) ($row->category ?? '')));
-                    return in_array($catName, self::musicArtistCategories(), true) ? 'N/A' : '-';
+                    return self::isMusicCategoryName($row->category ?? '') ? 'N/A' : '-';
                 })
                 ->addColumn(
                     'action',
@@ -3248,13 +3247,14 @@ class ProductController extends Controller
      * vinyl, CD, cassette, 45s). Aliases kept liberal so upstream renames
      * don't silently break the check. Non-music categories (trading cards,
      * audio gear, DVD/Blu-Ray, toys, VHS, ...) are intentionally absent.
+     *
+     * NOTE: kept for the mass-create artist-required validation only. For
+     * deciding whether a category IS music (N/A display + artist backfill),
+     * use isMusicCategoryName(), which keyword-matches the real ERP names
+     * ("Vinyl - Sealed", "CD - Used", ...).
      */
     public static function musicArtistCategories()
     {
-        // These mirror Nivessa's real ERP top-level category names (the music
-        // formats from CostPriceRulesController::RULES). Non-music categories
-        // (VHS, DVD/Blu Ray, Movies, Trading Cards, Audio Gear, Toys, ...) are
-        // intentionally absent.
         return [
             // Vinyl
             'sealed vinyl', 'new vinyl', 'used vinyl',
@@ -3269,6 +3269,40 @@ class ProductController extends Controller
             // 8-track
             '8 track', '8-track', 'eight track',
         ];
+    }
+
+    /**
+     * Does this category name denote a music format that should carry an artist?
+     * The real ERP names are "{Format} - {Condition}" (e.g. "Vinyl - Sealed",
+     * "CD - Used"), so this keyword-matches the format rather than relying on an
+     * exact list. Non-music gear/media that happens to mention a format word
+     * ("Record Players", "Cassette Deck", "CD Player", "DVD", "VHS") is excluded
+     * first.
+     */
+    public static function isMusicCategoryName($name)
+    {
+        $n = strtolower(trim((string) $name));
+        if ($n === '') { return false; }
+
+        // Exclude non-music first (gear, players, other media).
+        $exclude = ['dvd', 'blu', 'vhs', 'laser', 'player', 'turntable', 'speaker',
+            'headphone', 'earphone', 'cable', 'gear', 'cleaner', 'sleeve', 'stand',
+            'needle', 'cartridge', 'stylus', ' amp', 'receiver', 'deck', 'card',
+            'toy', 'book', 'magazine', 'poster', 'picture', 'apparel', 'clothing',
+            'shirt', 'video game', 'gift', 'novelt', 'accessor', 'movie'];
+        foreach ($exclude as $x) {
+            if (strpos($n, $x) !== false) { return false; }
+        }
+
+        // Music-format keywords / patterns.
+        if (strpos($n, 'vinyl') !== false) { return true; }
+        if (strpos($n, 'cassette') !== false) { return true; }
+        if (strpos($n, '8 track') !== false || strpos($n, '8-track') !== false || strpos($n, 'eight track') !== false) { return true; }
+        if (preg_match('/\bcds?\b/', $n) || strpos($n, 'compact disc') !== false) { return true; }
+        if (strpos($n, '45 rpm') !== false || preg_match('/(^|[^0-9])45s?\b/', $n)) { return true; }
+        if (preg_match('/\b7\s*(?:inch|")/', $n)) { return true; }
+
+        return false;
     }
 
     public function massStore(Request $request)
