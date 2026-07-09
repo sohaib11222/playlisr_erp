@@ -26,6 +26,8 @@
                     <i class="fa fa-ellipsis-h"></i> Actions <span class="caret"></span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-right">
+                    <li><a href="javascript:void(0)" id="pin_products_sidebar_btn" title="Pin this page to your sidebar Favorites"><i class="fa fa-star-o"></i> <span>Pin this page to sidebar</span></a></li>
+                    <li class="divider"></li>
                     @if($is_admin)
                         <li><a href="{{action('ProductController@downloadExcel')}}"><i class="fa fa-download"></i> Export all to Excel</a></li>
                         <li><a href="javascript:void(0)" id="sync_discogs_listings_btn" title="Pull your Discogs For Sale inventory so listed items show as 'Listed'"><i class="fa fa-refresh"></i> Sync Discogs listings</a></li>
@@ -532,6 +534,24 @@
             // Array to track the ids of the details displayed rows
             var detailRows = [];
 
+
+            // Pin this page to the sidebar Favorites. Reuses the same toggle the
+            // sidebar's hover-star uses, with the exact same URL the "List
+            // Products" menu link registers, so the star state stays in sync.
+            var PRODUCTS_FAV_URL = @json(action('ProductController@index'));
+            function refreshPinLabel() {
+                var pinned = window.NivessaSidebarFav && window.NivessaSidebarFav.isPinned(PRODUCTS_FAV_URL);
+                $('#pin_products_sidebar_btn i').attr('class', pinned ? 'fa fa-star' : 'fa fa-star-o');
+                $('#pin_products_sidebar_btn span').text(pinned ? 'Unpin from sidebar' : 'Pin this page to sidebar');
+            }
+            refreshPinLabel();
+            $(document).on('click', '#pin_products_sidebar_btn', function(e) {
+                e.preventDefault();
+                if (!window.NivessaSidebarFav) { return; }
+                window.NivessaSidebarFav.toggle(PRODUCTS_FAV_URL, 'Products');
+                setTimeout(refreshPinLabel, 400);
+                if (window.toastr) { toastr.success('Updated your sidebar Favorites.'); }
+            });
 
             // Bulk Actions dropdown triggers
             $(document).on('click', '#bulk_action_bulk_category_update', function(e) {
