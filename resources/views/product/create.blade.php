@@ -24,15 +24,24 @@
                 <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('name', __('product.product_name') . ':*') !!}
-                        {!! Form::text('name', !empty($duplicate_product->name) ? $duplicate_product->name : null, ['class' => 'form-control title-autocomplete-input', 'required',
+                        {!! Form::text('name', old('name', !empty($duplicate_product->name) ? $duplicate_product->name : null), ['class' => 'form-control title-autocomplete-input', 'required',
                         'placeholder' => __('product.product_name')]) !!}
+                    </div>
+                </div>
+
+                <div class="col-sm-12">
+                    {{-- Real-time duplicate warning: populated by the live check in the script below. --}}
+                    <div id="duplicate_warning" class="alert alert-warning" style="display: none; border-left: 4px solid #f0ad4e;">
+                        <strong><i class="fa fa-exclamation-triangle"></i> Possible duplicate.</strong>
+                        <span id="duplicate_warning_msg"></span>
+                        <a id="duplicate_warning_link" href="#" target="_blank" class="btn btn-xs btn-primary" style="margin-left:6px;">Open existing product</a>
                     </div>
                 </div>
 
                 <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('sku', __('product.sku') . ':') !!} @show_tooltip(__('tooltip.sku'))
-                        {!! Form::text('sku', null, ['class' => 'form-control',
+                        {!! Form::text('sku', old('sku'), ['class' => 'form-control',
                           'placeholder' => __('product.sku')]) !!}
                     </div>
                 </div>
@@ -81,7 +90,7 @@
                 <div class="col-sm-12">
                     <div class="form-group">
                         {!! Form::label('artist', 'Artist' . ':') !!}
-                        {!! Form::text('artist', !empty($duplicate_product->artist) ? $duplicate_product->artist : null, ['class' => 'form-control artist-autocomplete-input',
+                        {!! Form::text('artist', old('artist', !empty($duplicate_product->artist) ? $duplicate_product->artist : null), ['class' => 'form-control artist-autocomplete-input',
                         'placeholder' => 'Artist']) !!}
                     </div>
                 </div>
@@ -281,6 +290,76 @@
 
     <script type="text/javascript">
         $(document).ready(function(){
+            // ---- Duplicate-product guard -------------------------------------
+            // Warn (and block save) the moment the name/artist/barcode being
+            // entered matches an existing active product. Server-side store()
+            // has the same check as a backstop; this just catches it early.
+            (function initDuplicateGuard() {
+                var $form = $('#product_add_form');
+                if (!$form.length) return;
+                var $warning = $('#duplicate_warning');
+                var $msg = $('#duplicate_warning_msg');
+                var $link = $('#duplicate_warning_link');
+                var hasDuplicate = false;
+                var timer = null;
+
+                function clearWarning() {
+                    hasDuplicate = false;
+                    $warning.hide();
+                }
+
+                function runCheck() {
+                    var name = $.trim($('#name').val() || '');
+                    var artist = $.trim($('#artist').val() || '');
+                    var sku = $.trim($('#sku').val() || '');
+                    if (name === '' && sku === '') { clearWarning(); return; }
+
+                    $.ajax({
+                        url: '{{ route('products.checkDuplicate') }}',
+                        type: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            name: name, artist: artist, sku: sku
+                        },
+                        dataType: 'json'
+                    }).done(function(res) {
+                        if (res && res.duplicate) {
+                            hasDuplicate = true;
+                            $msg.text(' ' + res.msg);
+                            if (res.product && res.product.url) {
+                                $link.attr('href', res.product.url).show();
+                            } else {
+                                $link.hide();
+                            }
+                            $warning.show();
+                        } else {
+                            clearWarning();
+                        }
+                    }).fail(function() { clearWarning(); });
+                }
+
+                function schedule() {
+                    if (timer) clearTimeout(timer);
+                    timer = setTimeout(runCheck, 400);
+                }
+
+                $('#name, #artist, #sku').on('input change blur', schedule);
+
+                // Block save while a duplicate is flagged. Users should add stock
+                // to the existing product instead of creating a second record.
+                $form.on('submit', function(e) {
+                    if (hasDuplicate) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        if (typeof toastr !== 'undefined') {
+                            toastr.error('This looks like a duplicate. Open the existing product and add stock instead.');
+                        }
+                        $('html, body').animate({ scrollTop: $warning.offset().top - 120 }, 250);
+                        return false;
+                    }
+                });
+            })();
+
             function tokenizeCategoryComboQuery(text) {
                 if (text === undefined || text === null) return [];
                 return String(text).toLowerCase().trim().split(/[^a-z0-9]+/g).filter(Boolean);

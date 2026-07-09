@@ -863,6 +863,24 @@ class ProductController extends Controller
                 $product_details['name'] = $nameCanon['name'];
             }
 
+            // Block obvious duplicates before they land. The create form already
+            // warns in real time; this is the server-side backstop for direct
+            // posts / stale pages. Same barcode or same "ARTIST - TITLE" as an
+            // existing active product -> send them back to add stock instead.
+            $dupService = app(\App\Services\ProductDuplicateService::class);
+            $conflict = $dupService->findConflict(
+                $business_id,
+                $product_details['name'] ?? '',
+                $product_details['artist'] ?? '',
+                $request->input('sku')
+            );
+            if (!empty($conflict)) {
+                return redirect()->back()->withInput()->with('status', [
+                    'success' => 0,
+                    'msg' => $dupService->conflictMessage($conflict),
+                ]);
+            }
+
             DB::beginTransaction();
 
 
@@ -2017,7 +2035,42 @@ class ProductController extends Controller
     }
 
     /**
-     * Validates multiple variation skus 
+     * Live duplicate check for the create form. Given the name/artist/barcode
+     * being typed, returns whether it collides with an existing active product
+     * (same barcode, or same canonical "ARTIST - TITLE") and a link to it so the
+     * lister can add stock to the real product instead of making a duplicate.
+     */
+    public function checkDuplicate(Request $request, \App\Services\ProductDuplicateService $dupService)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $conflict = $dupService->findConflict(
+            $business_id,
+            $request->input('name', ''),
+            $request->input('artist', ''),
+            $request->input('sku', ''),
+            $request->input('product_id') ?: null
+        );
+
+        if (empty($conflict)) {
+            return response()->json(['duplicate' => false]);
+        }
+
+        $p = $conflict['product'];
+        return response()->json([
+            'duplicate' => true,
+            'type' => $conflict['type'],
+            'msg' => $dupService->conflictMessage($conflict),
+            'product' => [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'sku' => trim((string) $p->sku),
+                'url' => action('ProductController@view', ['id' => $p->id]),
+            ],
+        ]);
+    }
+
+    /**
+     * Validates multiple variation skus
      *
      */
     public function validateVaritionSkus(Request $request)
@@ -2159,7 +2212,22 @@ class ProductController extends Controller
             }
 
             $product_details['warranty_id'] = !empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
-            
+
+            // Same duplicate guard as the full create form (barcode / name).
+            $dupService = app(\App\Services\ProductDuplicateService::class);
+            $conflict = $dupService->findConflict(
+                $business_id,
+                $product_details['name'] ?? '',
+                $request->input('artist'),
+                $request->input('sku')
+            );
+            if (!empty($conflict)) {
+                return [
+                    'success' => 0,
+                    'msg' => $dupService->conflictMessage($conflict),
+                ];
+            }
+
             DB::beginTransaction();
 
             $product = Product::create($product_details);
@@ -2169,7 +2237,7 @@ class ProductController extends Controller
                 $product->sku = $sku;
                 $product->save();
             }
-            
+
             $this->productUtil->createSingleProductVariation(
                 $product->id,
                 $product->sku,
