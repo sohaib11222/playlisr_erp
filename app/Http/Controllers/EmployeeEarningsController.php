@@ -166,7 +166,7 @@ class EmployeeEarningsController extends Controller
                 });
         }
 
-        return view('employee.my_earnings', [
+        return response()->view('employee.my_earnings', [
             'name'         => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? 'You'),
             'from'         => $from,
             'rate_pct'     => self::RATE * 100,
@@ -190,7 +190,8 @@ class EmployeeEarningsController extends Controller
             'daily'        => $daily,
             'daily_days'   => $dailyDays,
             'sales_bonus_live' => $salesBonus['live'] ?? false,
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache');
     }
 
     // Admin overview: a row per employee per day showing that day's sales and
