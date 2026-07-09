@@ -237,7 +237,7 @@ class ProductNameController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         try {
-            $data = $this->computeArtistBackfill($business_id, true, 300);
+            $data = $this->computeArtistBackfill($business_id, true, 3000);
             $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
@@ -276,22 +276,33 @@ class ProductNameController extends Controller
         }
 
         $knownKeys = $this->artistSignalKeys($business_id, $catIds);
+
+        // If the UI sent a specific set of product ids (checked rows), fill only
+        // those; otherwise fall back to filling up to `max` confident parses.
+        $ids = $request->input('ids');
+        $selected = is_array($ids)
+            ? array_slice(array_values(array_unique(array_filter(array_map('intval', $ids)))), 0, 5000)
+            : null;
+
         $batch = [];
-        $this->artistlessMusicQuery($business_id, $catIds)
+        $query = $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
-            ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$batch, $max, $knownKeys) {
-                foreach ($rows as $r) {
-                    $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
-                    if (!$res['confident']) { continue; }
-                    $batch[] = [
-                        'id' => (int) $r->id,
-                        'old' => (string) ($r->artist ?? ''),
-                        'new' => $res['artist'],
-                    ];
-                    if (count($batch) >= $max) { return false; }
-                }
-            });
+            ->orderBy('id');
+        if ($selected !== null) { $query->whereIn('id', $selected); }
+        $cap = $selected !== null ? count($selected) : $max;
+        if ($cap < 1) { $cap = 1; }
+        $query->chunk(2000, function ($rows) use (&$batch, $cap, $knownKeys) {
+            foreach ($rows as $r) {
+                $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
+                if (!$res['confident']) { continue; }
+                $batch[] = [
+                    'id' => (int) $r->id,
+                    'old' => (string) ($r->artist ?? ''),
+                    'new' => $res['artist'],
+                ];
+                if (count($batch) >= $cap) { return false; }
+            }
+        });
 
         if (empty($batch)) {
             return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'Nothing left to fill.']);
@@ -299,6 +310,7 @@ class ProductNameController extends Controller
 
         $timestamp = now()->format('Y-m-d_His');
         $filled = 0;
+        $filledIds = [];
 
         \DB::beginTransaction();
         try {
@@ -313,7 +325,7 @@ class ProductNameController extends Controller
                           ->orWhereRaw("LOWER(TRIM(artist)) REGEXP '^(n/?a|unknown|various|none|no artist)$'");
                     })
                     ->update(['artist' => $b['new']]);
-                if ($affected) { $filled++; }
+                if ($affected) { $filled++; $filledIds[] = $b['id']; }
             }
 
             \Storage::disk('local')->put(
@@ -345,6 +357,7 @@ class ProductNameController extends Controller
         return response()->json([
             'success' => true,
             'filled' => $filled,
+            'filled_ids' => $filledIds,
             'remaining' => $remaining,
             'msg' => "Filled {$filled}. {$remaining} remaining.",
         ]);

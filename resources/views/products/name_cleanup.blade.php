@@ -33,6 +33,12 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 .mgn-old { color: #B71C1C; }
 .mgn-new { color: #1B5E20; font-weight: 600; }
 .mgn-summary b { font-size: 17px; }
+.ar-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.ar-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.ar-sort:hover { color: #1F1B16; }
+.ar-arrow { font-size: 10px; color: #C9A227; }
+.ar-table tbody tr.ar-off { opacity: .45; }
+.ar-table td .ar-cb { cursor: pointer; }
 </style>
 
 <section class="content-header"><h1>Product Name Cleanup<br><small>Normalize names to "ARTIST - TITLE". Read-only scan first; fully undoable.</small></h1></section>
@@ -71,14 +77,21 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         </div>
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
-            <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
-                <table class="mgn-table">
-                    <thead><tr><th>Current name</th><th>Current artist</th><th>Parsed artist</th><th>From</th></tr></thead>
+            <div class="mgn-note" id="arSelInfo" style="margin-top:6px;"></div>
+            <div style="margin-top:10px;max-height:520px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table class="mgn-table ar-table">
+                    <thead><tr>
+                        <th style="width:34px;text-align:center"><input type="checkbox" id="arCheckAll" checked title="Select all"></th>
+                        <th class="ar-sort" data-key="name">Current name <span class="ar-arrow"></span></th>
+                        <th class="ar-sort" data-key="old">Current artist <span class="ar-arrow"></span></th>
+                        <th class="ar-sort" data-key="new">Parsed artist <span class="ar-arrow"></span></th>
+                        <th class="ar-sort" data-key="source">From <span class="ar-arrow"></span></th>
+                    </tr></thead>
                     <tbody id="arRows"></tbody>
                 </table>
             </div>
             <div class="mgn-actions" style="margin-top:16px;">
-                <button class="mgn-btn mgn-btn-primary" id="arApplyBtn" type="button">Fill all parsed artists</button>
+                <button class="mgn-btn mgn-btn-primary" id="arApplyBtn" type="button">Fill selected</button>
                 <span class="mgn-note" id="arProgress" style="margin-top:0"></span>
             </div>
             <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
@@ -243,6 +256,67 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     var arScanBtn = document.getElementById('arScanBtn');
     var arApplyBtn = document.getElementById('arApplyBtn');
     var arResult = document.getElementById('arResult');
+    var arRowsEl = document.getElementById('arRows');
+    var arCheckAll = document.getElementById('arCheckAll');
+    var arData = [];            // all previewed fixes {id,name,old,new,source, sel}
+    var arSort = { key: null, dir: 1 };
+
+    function curArtistHtml(old) {
+        return (old == null || String(old).trim() === '')
+            ? '<span style="color:#B9AE99">(blank)</span>' : esc(old);
+    }
+
+    function renderRows() {
+        var rows = arData.map(function (f) {
+            return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '">' +
+                '<td style="text-align:center"><input type="checkbox" class="ar-cb"' + (f.sel ? ' checked' : '') + '></td>' +
+                '<td class="mgn-old">' + esc(f.name) + '</td>' +
+                '<td style="color:#8E8273">' + curArtistHtml(f.old) + '</td>' +
+                '<td class="mgn-new">' + esc(f['new']) + '</td>' +
+                '<td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
+        }).join('');
+        arRowsEl.innerHTML = rows || '<tr><td colspan="5">Nothing to fill.</td></tr>';
+        updateSelInfo();
+    }
+
+    function updateSelInfo() {
+        var n = arData.filter(function (f) { return f.sel; }).length;
+        document.getElementById('arSelInfo').innerHTML = '<b>' + n + '</b> of ' + arData.length + ' shown selected to fill.';
+        arApplyBtn.textContent = 'Fill selected (' + n + ')';
+        arApplyBtn.disabled = n === 0;
+        arCheckAll.checked = n > 0 && n === arData.length;
+    }
+
+    function sortBy(key) {
+        if (arSort.key === key) { arSort.dir *= -1; } else { arSort.key = key; arSort.dir = 1; }
+        arData.sort(function (a, b) {
+            var x = String(a[key] || '').toLowerCase(), y = String(b[key] || '').toLowerCase();
+            return x < y ? -1 * arSort.dir : x > y ? 1 * arSort.dir : 0;
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('.ar-sort .ar-arrow'), function (s) { s.textContent = ''; });
+        var th = document.querySelector('.ar-sort[data-key="' + key + '"] .ar-arrow');
+        if (th) { th.textContent = arSort.dir > 0 ? '▲' : '▼'; }
+        renderRows();
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.ar-sort'), function (th) {
+        th.addEventListener('click', function () { sortBy(th.getAttribute('data-key')); });
+    });
+
+    // Delegate checkbox toggles (rows are re-rendered on sort).
+    arRowsEl.addEventListener('change', function (e) {
+        if (!e.target.classList.contains('ar-cb')) { return; }
+        var tr = e.target.closest('tr'); if (!tr) { return; }
+        var id = parseInt(tr.getAttribute('data-id'), 10);
+        var f = arData.find(function (x) { return x.id === id; });
+        if (f) { f.sel = e.target.checked; tr.classList.toggle('ar-off', !f.sel); }
+        updateSelInfo();
+    });
+
+    arCheckAll.addEventListener('change', function () {
+        arData.forEach(function (f) { f.sel = arCheckAll.checked; });
+        renderRows();
+    });
 
     arScanBtn.addEventListener('click', function () {
         clearMsg(); arResult.style.display = 'none';
@@ -251,17 +325,12 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
             document.getElementById('arSummary').innerHTML =
-                '<b>' + d.to_fill + '</b> artist(s) to fill &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review (no clear artist in the name).';
-            var rows = d.preview.map(function (f) {
-                var cur = (f.old == null || String(f.old).trim() === '')
-                    ? '<span style="color:#B9AE99">(blank)</span>'
-                    : esc(f.old);
-                return '<tr><td class="mgn-old">' + esc(f.name) + '</td><td style="color:#8E8273">' + cur + '</td><td class="mgn-new">' + esc(f['new']) + '</td><td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
-            }).join('');
-            if (d.to_fill > d.preview.length) {
-                rows += '<tr><td colspan="4" style="color:#8E8273">… and ' + (d.to_fill - d.preview.length) + ' more. All will be filled.</td></tr>';
-            }
-            document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="4">Nothing to fill.</td></tr>';
+                '<b>' + d.to_fill + '</b> artist(s) to fill &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review'
+                + (d.to_fill > d.preview.length ? ' &nbsp;·&nbsp; showing first ' + d.preview.length + ' — fill these, then re-scan for the rest' : '') + '.';
+            arData = d.preview.map(function (f) { f.sel = true; return f; });
+            arSort = { key: null, dir: 1 };
+            Array.prototype.forEach.call(document.querySelectorAll('.ar-sort .ar-arrow'), function (s) { s.textContent = ''; });
+            renderRows();
             arApplyBtn.style.display = d.to_fill > 0 ? '' : 'none';
 
             var bc = d.by_category || [];
@@ -292,25 +361,23 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         }).catch(function () { arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists'; showMsg('Scan failed — try again.', false); });
     });
 
-    function arBatch(total) {
-        post('{{ route('products.artist.apply') }}', { max: 500 }).then(function (d) {
-            if (!d.success) { arApplyBtn.disabled = false; showMsg(d.msg || 'Fill failed.', false); return; }
-            total += d.filled;
-            document.getElementById('arProgress').textContent = 'Filled ' + total + ' — ' + d.remaining + ' remaining…';
-            if (d.remaining > 0 && d.filled > 0) { arBatch(total); }
-            else {
-                arApplyBtn.disabled = false; arResult.style.display = 'none';
-                showMsg('Done — filled ' + total + ' artist(s). Run "Scan names" above to rename them to ARTIST - TITLE. Undo any batch at Admin Action History.', true);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        }).catch(function () { arApplyBtn.disabled = false; showMsg('Fill failed mid-run — re-scan to see what remains.', false); });
-    }
-
     arApplyBtn.addEventListener('click', function () {
-        if (!confirm('Fill the Artist field on all parsed music products? Only confident parses are written. Each batch is undoable from Admin Action History.')) return;
+        var ids = arData.filter(function (f) { return f.sel; }).map(function (f) { return f.id; });
+        if (!ids.length) { return; }
+        if (!confirm('Fill the Artist field on ' + ids.length + ' selected product(s)? Undoable from Admin Action History.')) return;
         clearMsg(); arApplyBtn.disabled = true;
-        document.getElementById('arProgress').textContent = 'Starting…';
-        arBatch(0);
+        document.getElementById('arProgress').textContent = 'Filling ' + ids.length + '…';
+        post('{{ route('products.artist.apply') }}', { ids: ids }).then(function (d) {
+            arApplyBtn.disabled = false;
+            if (!d.success) { showMsg(d.msg || 'Fill failed.', false); return; }
+            // Drop the filled rows from the table.
+            var filledSet = {}; (d.filled_ids || []).forEach(function (i) { filledSet[i] = 1; });
+            arData = arData.filter(function (f) { return !filledSet[f.id]; });
+            renderRows();
+            document.getElementById('arProgress').textContent = '';
+            showMsg('Filled ' + d.filled + ' artist(s). ' + d.remaining + ' still missing overall. Run "Scan names" above to rename to ARTIST - TITLE; undo at Admin Action History.', true);
+            if (!arData.length) { arResult.style.display = 'none'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        }).catch(function () { arApplyBtn.disabled = false; showMsg('Fill failed — re-scan to see what remains.', false); });
     });
 })();
 </script>
