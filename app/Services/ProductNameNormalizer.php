@@ -159,6 +159,9 @@ class ProductNameNormalizer
             // Willie Colón — catalogued as "Willie Colon" or "Colon,Willie".
             'williecolon' => 'Willie Colón',
             'colonwillie' => 'Willie Colón',
+            // Billie Eilish — "Billie Eilish" or "Eilish,Billie".
+            'billieeilish' => 'Billie Eilish',
+            'eilishbillie' => 'Billie Eilish',
         ];
     }
 
