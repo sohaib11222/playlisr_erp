@@ -2,12 +2,90 @@
 @section('title', 'Payroll')
 
 @section('content')
+
+{{-- Inter Tight, loaded non-blocking (same approach as POS create). --}}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap"></noscript>
+
+{{-- pos-v2 reskin, scoped to this page. Tokens lifted from
+     sale_pos/partials/_redesign_v2.blade.php so it matches POS create. --}}
+<style>
+.content-wrapper, .payroll-v2 section.content, .payroll-v2.content { background: #FAF6EE !important; }
+.payroll-v2 {
+    --pos-bg:#FAF6EE; --pos-surface:#FFFFFF; --pos-surface-2:#F7F1E3;
+    --pos-ink:#1F1B16; --pos-ink-2:#5A5045; --pos-ink-3:#8E8273;
+    --pos-line:#ECE3CF; --pos-line-2:#DFD2B3;
+    --pos-brand:#1F1B16; --pos-brand-ink:#FAF6EE;
+    --pos-accent:#FFF2B3; --pos-accent-deep:#E8CF68; --pos-accent-soft:#FFF9DB; --pos-accent-text:#5A4410;
+    --pos-radius:10px; --pos-radius-sm:8px;
+    --pos-shadow-sm:0 1px 2px rgba(31,27,22,.06); --pos-shadow-md:0 4px 14px rgba(31,27,22,.08);
+    font-family:"Inter Tight",system-ui,sans-serif; color:var(--pos-ink);
+    -webkit-font-smoothing:antialiased;
+}
+.payroll-v2, .payroll-v2 .btn, .payroll-v2 input, .payroll-v2 select, .payroll-v2 textarea, .payroll-v2 button, .payroll-v2 .box, .payroll-v2 table { font-family:inherit; }
+.payroll-v2 .content-header { padding:18px 4px 6px; }
+.payroll-v2 .content-header h1 { font-weight:800; letter-spacing:-.01em; color:var(--pos-ink); }
+.payroll-v2 .content-header h1 small { color:var(--pos-ink-3); font-weight:600; }
+
+/* Cards */
+.payroll-v2 .box, .payroll-v2 .box.box-solid {
+    background:var(--pos-surface); border:1px solid var(--pos-line);
+    border-radius:var(--pos-radius); box-shadow:var(--pos-shadow-sm); margin-bottom:16px;
+}
+.payroll-v2 .box > .box-header { border-bottom:1px solid var(--pos-line); padding:14px 18px 10px; }
+.payroll-v2 .box > .box-header .box-title {
+    font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--pos-ink-3);
+}
+.payroll-v2 .box-body { padding:16px 18px; }
+
+/* Tables */
+.payroll-v2 .table { background:var(--pos-surface); margin-bottom:0; }
+.payroll-v2 .table > thead > tr > th {
+    background:var(--pos-accent-soft) !important; border-color:var(--pos-line) !important;
+    color:var(--pos-ink-2); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+}
+.payroll-v2 .table > tbody > tr > td, .payroll-v2 .table > tfoot > tr > td { border-color:var(--pos-line) !important; vertical-align:middle; }
+.payroll-v2 .table > tfoot { background:var(--pos-surface-2); }
+.payroll-v2 .table-bordered { border-color:var(--pos-line); }
+
+/* Inputs */
+.payroll-v2 .form-control, .payroll-v2 textarea, .payroll-v2 select, .payroll-v2 input[type=date], .payroll-v2 input[type=number], .payroll-v2 input[type=text] {
+    border:1px solid var(--pos-line-2); border-radius:var(--pos-radius-sm); box-shadow:none; color:var(--pos-ink);
+}
+.payroll-v2 .form-control:focus { border-color:var(--pos-accent-deep); box-shadow:0 0 0 3px rgba(232,207,104,.25); }
+.payroll-v2 label { color:var(--pos-ink-3); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.payroll-v2 .input-group-addon { background:var(--pos-surface-2); border:1px solid var(--pos-line-2); color:var(--pos-ink-2); }
+
+/* Buttons */
+.payroll-v2 .btn { border-radius:var(--pos-radius-sm); font-weight:700; }
+.payroll-v2 .btn-primary { background:var(--pos-accent); border:1px solid var(--pos-accent-deep); color:var(--pos-accent-text); }
+.payroll-v2 .btn-primary:hover, .payroll-v2 .btn-primary:focus { background:var(--pos-accent-deep); border-color:var(--pos-accent-deep); color:var(--pos-accent-text); }
+.payroll-v2 .btn-success { background:var(--pos-brand); border:1px solid var(--pos-brand); color:var(--pos-brand-ink); }
+.payroll-v2 .btn-success:hover { background:#000; color:#fff; }
+.payroll-v2 .btn-default { background:var(--pos-surface); border:1px solid var(--pos-line-2); color:var(--pos-ink-2); }
+.payroll-v2 .btn-default:hover { background:var(--pos-surface-2); }
+.payroll-v2 .btn-danger { background:#fff; border:1px solid #E0B4AC; color:#8A3A2E; }
+.payroll-v2 .btn-danger:hover { background:#8A3A2E; color:#fff; }
+
+/* Bits */
+.payroll-v2 .label-warning { background:var(--pos-accent); color:var(--pos-accent-text); }
+.payroll-v2 .label-success { background:#E7F1E9; color:#2F6B3E; }
+.payroll-v2 .label-default { background:var(--pos-surface-2); color:var(--pos-ink-3); }
+.payroll-v2 .alert-success { background:var(--pos-accent-soft); border:1px solid var(--pos-accent-deep); color:var(--pos-accent-text); border-radius:var(--pos-radius-sm); }
+.payroll-v2 .alert-warning { background:#FFF9DB; border:1px solid var(--pos-accent-deep); color:#5A4410; border-radius:var(--pos-radius-sm); }
+.payroll-v2 .alert-danger { border-radius:var(--pos-radius-sm); }
+.payroll-v2 .text-muted { color:var(--pos-ink-3); }
+.payroll-v2 hr { border-top:1px solid var(--pos-line); }
+</style>
+
 @php
     $fmt  = function ($n) { return number_format((float) $n, 2); };
     $hh   = function ($n) { return rtrim(rtrim(number_format((float) $n, 2), '0'), '.'); };
-    $back = '/payroll?start=' . urlencode($start) . '&end=' . urlencode($end);
 @endphp
 
+<div class="payroll-v2">
 <section class="content-header">
     <h1>Payroll <small>{{ \Carbon::parse($start)->format('M j') }} – {{ \Carbon::parse($end)->format('M j, Y') }}</small></h1>
     <p class="text-muted" style="margin-top:6px;max-width:900px;">
@@ -97,8 +175,8 @@
   @component('components.widget', ['title' => 'Pay run'])
     @php $emptyCols = $can_see_rates ? 11 : 8; @endphp
     <div class="table-responsive">
-    <table class="table table-condensed table-bordered" style="background:#fff;">
-      <thead style="background:#FFF7CC;">
+    <table class="table table-condensed table-bordered">
+      <thead>
         <tr>
           <th>Name</th><th>Store</th>
           @if ($can_see_rates)<th class="text-right">Rate</th>@endif
@@ -135,7 +213,7 @@
         @endforelse
       </tbody>
       @if (!empty($people))
-      <tfoot style="background:#FBFBF6;font-weight:700;">
+      <tfoot style="font-weight:700;">
         <tr>
           <td colspan="2">Totals</td>
           @if ($can_see_rates)<td></td>@endif
@@ -186,8 +264,8 @@
       <span class="text-muted" style="margin-left:8px;font-size:12px;">Enter hours as payroll; sales &amp; listing commission as separate pay items. Freelancers are paid outside QB (below).</span>
     </div>
     <div class="table-responsive">
-    <table class="table table-condensed table-bordered" id="qb-table" style="background:#fff;">
-      <thead style="background:#FFF7CC;">
+    <table class="table table-condensed table-bordered" id="qb-table">
+      <thead>
         <tr><th>Name</th><th class="text-right">Regular hrs</th><th class="text-right">OT hrs</th><th class="text-right">DT hrs</th><th class="text-right">Sales commission</th><th class="text-right">Listing commission</th></tr>
       </thead>
       <tbody>
@@ -214,8 +292,8 @@
   @component('components.widget', ['title' => 'Freelancers / contractors'])
     <p class="text-muted" style="margin-bottom:8px;">Paid outside QuickBooks payroll (PayPal, payment link, etc.). Hourly or per-unit compute automatically; flat is a fixed amount.</p>
     <div class="table-responsive">
-    <table class="table table-condensed table-bordered" style="background:#fff;">
-      <thead style="background:#FFF7CC;">
+    <table class="table table-condensed table-bordered">
+      <thead>
         <tr><th>Name</th><th>Model</th><th class="text-right">Rate</th><th class="text-right">Qty</th><th class="text-right">Amount</th><th>Method</th><th>Note</th><th>Paid</th><th></th></tr>
       </thead>
       <tbody>
@@ -249,7 +327,7 @@
         @endforelse
       </tbody>
       @if (!empty($freelancers))
-      <tfoot style="background:#FBFBF6;font-weight:700;">
+      <tfoot style="font-weight:700;">
         <tr><td colspan="4">Total</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td colspan="4"></td></tr>
       </tfoot>
       @endif
@@ -277,7 +355,7 @@
         <div class="col-sm-2"><label>Note</label><input name="note" id="f-note" class="form-control input-sm"></div>
       </div>
       <div style="margin-top:8px;">
-        <label style="font-weight:normal;"><input type="checkbox" name="paid" id="f-paid" value="1"> Paid</label>
+        <label style="font-weight:normal;text-transform:none;letter-spacing:0;"><input type="checkbox" name="paid" id="f-paid" value="1"> Paid</label>
         <button type="submit" class="btn btn-primary btn-sm pull-right">Save freelancer</button>
         <button type="button" class="btn btn-default btn-sm pull-right" style="margin-right:6px;" onclick="payrollResetFreelancer()">Clear</button>
       </div>
@@ -303,8 +381,8 @@
 
       <p class="text-muted" style="margin-bottom:6px;">Hourly rate per person. Leave ERP user blank to auto-match by first name; set it only to override or fix an ambiguous name.</p>
       <div class="table-responsive">
-      <table class="table table-condensed table-bordered" style="background:#fff;">
-        <thead style="background:#FFF7CC;"><tr><th>Person</th><th style="width:160px;">Hourly rate</th><th style="width:160px;">Store</th><th style="width:180px;">ERP user id (optional)</th></tr></thead>
+      <table class="table table-condensed table-bordered">
+        <thead><tr><th>Person</th><th style="width:160px;">Hourly rate</th><th style="width:160px;">Store</th><th style="width:180px;">ERP user id (optional)</th></tr></thead>
         <tbody>
           @foreach ($people as $p)
             @if ($p['has_hours'])
@@ -328,6 +406,7 @@
 @endif
 
 </section>
+</div>
 
 <script>
 function payrollCopyTable(id) {
