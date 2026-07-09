@@ -288,9 +288,12 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     function renderRows() {
         var rows = arData.map(function (f) {
+            var sealedTag = f.sealed
+                ? '<span style="display:inline-block;margin-right:6px;padding:1px 6px;font-size:11px;font-weight:600;color:#1B5E20;background:#E4F2E4;border-radius:4px;vertical-align:middle">SEALED VINYL</span>'
+                : '';
             return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '" style="cursor:pointer">' +
                 '<td style="text-align:center"><input type="checkbox" class="ar-cb"' + (f.sel ? ' checked' : '') + '></td>' +
-                '<td class="mgn-old">' + esc(f.name) + '</td>' +
+                '<td class="mgn-old">' + sealedTag + esc(f.name) + '</td>' +
                 '<td style="color:#8E8273">' + curArtistHtml(f.old) + '</td>' +
                 '<td class="mgn-new">' + esc(f['new']) + '</td>' +
                 '<td style="color:#8E8273">' + esc(f.source) + '</td></tr>';

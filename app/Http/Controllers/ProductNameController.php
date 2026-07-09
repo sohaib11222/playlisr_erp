@@ -54,6 +54,18 @@ class ProductNameController extends Controller
         return $ids;
     }
 
+    /** Category ids that are sealed vinyl ("Vinyl - Sealed") — surfaced first. */
+    protected function sealedVinylCategoryIds($business_id)
+    {
+        $ids = [];
+        foreach (\DB::table('categories')->where('business_id', $business_id)->select('id', 'name')->get() as $c) {
+            if (preg_match('/vinyl/i', $c->name) && preg_match('/seal/i', $c->name)) {
+                $ids[] = (int) $c->id;
+            }
+        }
+        return $ids;
+    }
+
     /**
      * Set of artists that already exist somewhere in this business's catalog,
      * keyed by normalized artistKey(). Used to disambiguate which side of a
@@ -230,6 +242,7 @@ class ProductNameController extends Controller
 
         $filter = mb_strtolower(trim((string) $filter));
         $knownKeys = $this->artistSignalKeys($business_id, $catIds);
+        $sealedIds = array_flip($this->sealedVinylCategoryIds($business_id));
         $fixes = [];
         $flaggedRows = [];
         $toFill = 0;         // confident parses matching the filter
@@ -237,9 +250,9 @@ class ProductNameController extends Controller
         $flagged = 0;
 
         $this->artistlessMusicQuery($business_id, $catIds)
-            ->select('id', 'name', 'artist')
+            ->select('id', 'name', 'artist', 'category_id')
             ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter) {
+            ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter, $sealedIds) {
                 foreach ($rows as $r) {
                     $res = $this->parseArtistFromRow($r->name, $r->artist, $knownKeys);
                     if (!$res['confident']) {
@@ -271,13 +284,16 @@ class ProductNameController extends Controller
                             'new' => $res['artist'],
                             'source' => $res['source'],
                             'trust' => $res['trust'] ?? 'ok',
+                            'sealed' => isset($sealedIds[(int) $r->category_id]),
                         ];
                     }
                 }
             });
 
         if ($collectFixes) {
+            // Sealed vinyl first (Sarah works those first), then by parsed artist.
             usort($fixes, function ($a, $b) {
+                if ($a['sealed'] !== $b['sealed']) { return $a['sealed'] ? -1 : 1; }
                 $c = strcasecmp($a['new'], $b['new']);
                 return $c !== 0 ? $c : strcasecmp($a['name'], $b['name']);
             });
