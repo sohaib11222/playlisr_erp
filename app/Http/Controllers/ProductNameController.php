@@ -221,6 +221,42 @@ class ProductNameController extends Controller
         return ProductNameNormalizer::artistFromName($name, $knownKeys);
     }
 
+    /**
+     * Tag a parsed artist against the artists that ALREADY exist in the catalog's
+     * artist column (real, human-entered artists — not the softer name-segment
+     * signal), so the UI can tell Sarah two things she checks by hand today:
+     *   - 'known'  : this exact artist is already in the catalog (safe, real).
+     *   - 'typo'   : it's one edit off a real artist ("Hanz Zimmer" vs "Hans
+     *                Zimmer") — probably a spelling error; 'suggest' holds the
+     *                real spelling.
+     *   - 'new'    : not seen before — worth a glance to confirm it's real.
+     * $realArtists is keyed by artistKey(), value = the catalog's spelling.
+     */
+    protected function classifyParsedArtist($artist, array $realArtists)
+    {
+        $k = ProductNameNormalizer::artistKey($artist);
+        if ($k === '') { return ['known' => 'new', 'suggest' => null]; }
+        if (isset($realArtists[$k])) { return ['known' => 'known', 'suggest' => null]; }
+
+        // Nearest real artist within a small edit distance = likely typo. Guard
+        // hard against false matches: enough length, close length, same first
+        // letter, and never treat a prefix ("Hank Williams" vs "Hank Williams
+        // Jr") as a typo.
+        if (strlen($k) >= 7) {
+            $maxD = strlen($k) >= 9 ? 2 : 1;
+            $best = null; $bestD = $maxD + 1;
+            foreach ($realArtists as $rk => $spelling) {
+                if ($rk === '' || $rk[0] !== $k[0]) { continue; }
+                if (abs(strlen($rk) - strlen($k)) > $maxD) { continue; }
+                if (strpos($rk, $k) === 0 || strpos($k, $rk) === 0) { continue; }
+                $d = levenshtein($k, $rk);
+                if ($d < $bestD) { $bestD = $d; $best = $spelling; if ($d === 1) { break; } }
+            }
+            if ($best !== null) { return ['known' => 'typo', 'suggest' => $best]; }
+        }
+        return ['known' => 'new', 'suggest' => null];
+    }
+
     protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null, $filter = '')
     {
         $catIds = $this->musicCategoryIds($business_id);
@@ -282,6 +318,16 @@ class ProductNameController extends Controller
                 return $c !== 0 ? $c : strcasecmp($a['name'], $b['name']);
             });
             if ($limit !== null) { $fixes = array_slice($fixes, 0, $limit); }
+            // Tag the (small, sliced) preview against real catalog artists so the
+            // UI can flag known / new / likely-typo. Real = artist column only.
+            $realArtists = $this->knownArtistKeys($business_id);
+            foreach (ProductNameNormalizer::curatedArtists() as $ck => $cv) { $realArtists[$ck] = $cv; }
+            foreach ($fixes as &$fx) {
+                $cls = $this->classifyParsedArtist($fx['new'], $realArtists);
+                $fx['known'] = $cls['known'];
+                $fx['suggest'] = $cls['suggest'];
+            }
+            unset($fx);
         }
 
         return ['fixes' => $fixes, 'flagged_rows' => $flaggedRows, 'to_fill' => $toFill, 'total_to_fill' => $totalToFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
