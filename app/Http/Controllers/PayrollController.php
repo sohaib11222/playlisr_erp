@@ -261,7 +261,8 @@ class PayrollController extends Controller
             'qty'    => round((float) $request->input('qty', 0), 4),      // hours or unit count
             'amount' => round((float) $request->input('amount', 0), 2),   // used when model = flat
             'method' => trim((string) $request->input('method')),         // paypal / payment link / etc.
-            'paid'   => $request->boolean('paid'),
+            // Older Laravel here has no Request::boolean() — cast manually.
+            'paid'   => filter_var($request->input('paid'), FILTER_VALIDATE_BOOLEAN),
             'note'   => trim((string) $request->input('note')),
         ];
         if ($entry['name'] === '') {
@@ -316,13 +317,12 @@ class PayrollController extends Controller
 
         return response()->stream(function () use ($people) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Name', 'Regular Hours', 'OT Hours', 'Double-Time Hours', 'Sales Commission', 'Listing Commission']);
+            fputcsv($out, ['Name', 'Regular Hours', 'OT Hours', 'Sales Commission', 'Listing Commission']);
             foreach ($people as $p) {
                 fputcsv($out, [
                     $p['name'],
                     number_format($p['reg_hours'], 2, '.', ''),
                     number_format($p['ot_hours'], 2, '.', ''),
-                    number_format($p['dt_hours'], 2, '.', ''),
                     number_format($p['sales_comm'], 2, '.', ''),
                     number_format($p['listing_comm'], 2, '.', ''),
                 ]);
@@ -401,15 +401,14 @@ class PayrollController extends Controller
         return $people;
     }
 
-    // California daily split for one workday's hours.
+    // Daily split for one workday's hours: anything over the daily OT threshold
+    // (8h) is overtime at 1.5x. No double-time — Nivessa just pays OT over 8/day.
     private function splitDay($hours, array $s)
     {
         $otAfter = (float) $s['daily_ot_after'];
-        $dtAfter = (float) $s['daily_dt_after'];
         $reg = min($hours, $otAfter);
-        $ot  = max(0, min($hours, $dtAfter) - $otAfter);
-        $dt  = max(0, $hours - $dtAfter);
-        return [$reg, $ot, $dt];
+        $ot  = max(0, $hours - $otAfter);
+        return [$reg, $ot, 0.0];
     }
 
     // Compare one punch to the person's scheduled shift that day. Returns a
@@ -804,8 +803,12 @@ class PayrollController extends Controller
                 return isset($col[$k]) && isset($c[$col[$k]]) ? trim((string) $c[$col[$k]]) : '';
             };
 
+            // The Clover export repeats the person's name only on their first
+            // row; per-day rows carry a date (e.g. "04-July-26") in that first
+            // column. Treat blank / numeric / date-looking values as
+            // continuation of the person above so dates never become "people".
             $name = $get('name');
-            if ($name === '' || is_numeric($name)) { $name = $lastName; }
+            if ($name === '' || is_numeric($name) || $this->looksLikeDate($name)) { $name = $lastName; }
             else { $lastName = $name; }
             if ($name === '') { continue; }
 
@@ -871,6 +874,17 @@ class PayrollController extends Controller
         if ($date === '' && $time === '') { return ''; }
         try { return \Carbon::parse(trim($date . ' ' . $time))->toDateTimeString(); }
         catch (\Throwable $e) { return ''; }
+    }
+
+    // Does this cell look like a date rather than a person's name? Used so the
+    // per-day rows in a Clover export don't get treated as employees.
+    private function looksLikeDate($s)
+    {
+        $s = strtolower(trim((string) $s));
+        if ($s === '') { return false; }
+        if (preg_match('#^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$#', $s)) { return true; }              // 2026-07-08, 7/8/26
+        if (preg_match('/\d/', $s) && preg_match('/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/', $s)) { return true; } // 04-July-26
+        return false;
     }
 
     private function normDate($d)

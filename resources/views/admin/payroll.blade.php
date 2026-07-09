@@ -78,6 +78,15 @@
 .payroll-v2 .alert-danger { border-radius:var(--pos-radius-sm); }
 .payroll-v2 .text-muted { color:var(--pos-ink-3); }
 .payroll-v2 hr { border-top:1px solid var(--pos-line); }
+.pr-pin-btn {
+    flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; cursor:pointer;
+    font:inherit; font-size:13px; font-weight:700; color:#6b5a00; background:#FFF7CC;
+    border:1px solid #E6CE5A; border-radius:999px; padding:8px 14px; line-height:1;
+    transition:background .12s ease, box-shadow .12s ease;
+}
+.pr-pin-btn:hover { background:#FFF2B3; }
+.pr-pin-btn.is-on { background:#FFF2B3; box-shadow:inset 0 0 0 1px #E6CE5A; }
+.pr-pin-btn .fa { color:#C99A12; }
 </style>
 
 @php
@@ -85,15 +94,29 @@
     $hh   = function ($n) { return rtrim(rtrim(number_format((float) $n, 2), '0'), '.'); };
 @endphp
 
+@php
+    $pinUrl     = url('/payroll');
+    $pinLabel   = 'Payroll';
+    $pinAlready = \App\Http\Controllers\SidebarFavoriteController::isPinned(
+        session()->get('user.business_id'), session()->get('user.id'), $pinUrl
+    );
+@endphp
 <div class="payroll-v2">
-<section class="content-header">
+<section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+    <div>
     <h1>Payroll <small>{{ \Carbon::parse($start)->format('M j') }} – {{ \Carbon::parse($end)->format('M j, Y') }}</small></h1>
     <p class="text-muted" style="margin-top:6px;max-width:900px;">
         Hours come from your <strong>Clover</strong> clock in/out; late flags compare them to the <strong>Sling</strong> schedule.
-        Overtime is California daily rule ({{ $hh($settings['daily_ot_after']) }}h = {{ $hh($settings['ot_multiplier']) }}x,
-        {{ $hh($settings['daily_dt_after']) }}h = {{ $hh($settings['dt_multiplier']) }}x). Sales and listing commission are pulled
-        live from Commissions Owed. The QuickBooks panel at the bottom is what you type into QB.
+        Overtime is paid on anything over {{ $hh($settings['daily_ot_after']) }} hours in a single day, at {{ $hh($settings['ot_multiplier']) }}x.
+        Sales and listing commission are pulled live from Commissions Owed. The QuickBooks panel at the bottom is what you type into QB.
     </p>
+    </div>
+    <button type="button" class="pr-pin-btn {{ $pinAlready ? 'is-on' : '' }}"
+            data-pin-url="{{ $pinUrl }}" data-pin-label="{{ $pinLabel }}"
+            title="{{ $pinAlready ? 'Pinned to your sidebar' : 'Pin this page to your sidebar' }}">
+        <i class="fa {{ $pinAlready ? 'fa-star' : 'fa-star-o' }}"></i>
+        <span class="pin-text">{{ $pinAlready ? 'Pinned' : 'Star to sidebar' }}</span>
+    </button>
 </section>
 
 <section class="content">
@@ -173,7 +196,7 @@
 {{-- Summary --}}
 <div class="row"><div class="col-md-12">
   @component('components.widget', ['title' => 'Pay run'])
-    @php $emptyCols = $can_see_rates ? 14 : 10; @endphp
+    @php $emptyCols = $can_see_rates ? 13 : 9; @endphp
     @if ($can_see_rates)
       <div style="margin-bottom:10px;">
         <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline;"
@@ -193,7 +216,7 @@
         <tr>
           <th>Name</th><th>Store</th>
           @if ($can_see_rates)<th class="text-right">Rate</th>@endif
-          <th class="text-right">Reg h</th><th class="text-right">OT h</th><th class="text-right">DT h</th>
+          <th class="text-right">Reg h</th><th class="text-right">OT h</th>
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
           <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
           <th class="text-right">Comm earned</th><th class="text-right">Last comm paid</th>
@@ -209,7 +232,6 @@
             @if ($can_see_rates)<td class="text-right">{{ $p['rate'] > 0 ? '$' . $fmt($p['rate']) : '—' }}</td>@endif
             <td class="text-right">{{ $p['reg_hours'] ? $hh($p['reg_hours']) : '' }}</td>
             <td class="text-right">{{ $p['ot_hours'] ? $hh($p['ot_hours']) : '' }}</td>
-            <td class="text-right">{{ $p['dt_hours'] ? $hh($p['dt_hours']) : '' }}</td>
             @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
             <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
@@ -252,7 +274,6 @@
           @if ($can_see_rates)<td></td>@endif
           <td class="text-right">{{ $hh($totals['reg_hours']) }}</td>
           <td class="text-right">{{ $hh($totals['ot_hours']) }}</td>
-          <td class="text-right">{{ $hh($totals['dt_hours']) }}</td>
           @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['wages']) }}</td>@endif
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
@@ -301,16 +322,15 @@
     <div class="table-responsive">
     <table class="table table-condensed table-bordered" id="qb-table">
       <thead>
-        <tr><th>Name</th><th class="text-right">Regular hrs</th><th class="text-right">OT hrs</th><th class="text-right">DT hrs</th><th class="text-right">Sales commission</th><th class="text-right">Listing commission</th></tr>
+        <tr><th>Name</th><th class="text-right">Regular hrs</th><th class="text-right">OT hrs</th><th class="text-right">Sales commission</th><th class="text-right">Listing commission</th></tr>
       </thead>
       <tbody>
         @foreach ($people as $p)
-          @if ($p['reg_hours'] || $p['ot_hours'] || $p['dt_hours'] || $p['sales_comm'] || $p['listing_comm'])
+          @if ($p['reg_hours'] || $p['ot_hours'] || $p['sales_comm'] || $p['listing_comm'])
           <tr>
             <td>{{ $p['name'] }}</td>
             <td class="text-right">{{ $hh($p['reg_hours']) }}</td>
             <td class="text-right">{{ $hh($p['ot_hours']) }}</td>
-            <td class="text-right">{{ $hh($p['dt_hours']) }}</td>
             <td class="text-right">{{ $p['sales_comm'] ? $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? $fmt($p['listing_comm']) : '' }}</td>
           </tr>
@@ -433,11 +453,9 @@
       <input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
 
       <div class="row" style="margin-bottom:12px;">
-        <div class="col-sm-2"><label>OT after (h/day)</label><input name="daily_ot_after" type="number" step="0.25" value="{{ $settings['daily_ot_after'] }}" class="form-control input-sm"></div>
-        <div class="col-sm-2"><label>DT after (h/day)</label><input name="daily_dt_after" type="number" step="0.25" value="{{ $settings['daily_dt_after'] }}" class="form-control input-sm"></div>
-        <div class="col-sm-2"><label>OT multiplier</label><input name="ot_multiplier" type="number" step="0.1" value="{{ $settings['ot_multiplier'] }}" class="form-control input-sm"></div>
-        <div class="col-sm-2"><label>DT multiplier</label><input name="dt_multiplier" type="number" step="0.1" value="{{ $settings['dt_multiplier'] }}" class="form-control input-sm"></div>
-        <div class="col-sm-2"><label>Late grace (min)</label><input name="grace_minutes" type="number" step="1" value="{{ $settings['grace_minutes'] }}" class="form-control input-sm"></div>
+        <div class="col-sm-3"><label>Pay OT after (hours/day)</label><input name="daily_ot_after" type="number" step="0.25" value="{{ $settings['daily_ot_after'] }}" class="form-control input-sm"></div>
+        <div class="col-sm-3"><label>OT multiplier</label><input name="ot_multiplier" type="number" step="0.1" value="{{ $settings['ot_multiplier'] }}" class="form-control input-sm"></div>
+        <div class="col-sm-3"><label>Late grace (min)</label><input name="grace_minutes" type="number" step="1" value="{{ $settings['grace_minutes'] }}" class="form-control input-sm"></div>
       </div>
 
       <p class="text-muted" style="margin-bottom:6px;">Hourly rate per person. Leave ERP user blank to auto-match by first name; set it only to override or fix an ambiguous name.</p>
@@ -504,5 +522,28 @@ function payrollResetFreelancer() {
   document.getElementById('freelancer-form').reset();
   document.getElementById('f-id').value = '';
 }
+(function () {
+  var btn = document.querySelector('.pr-pin-btn[data-pin-url]');
+  if (!btn) { return; }
+  var url = btn.getAttribute('data-pin-url'), label = btn.getAttribute('data-pin-label');
+  function paint(on) {
+    btn.classList.toggle('is-on', on);
+    var ic = btn.querySelector('.fa'); if (ic) { ic.className = 'fa ' + (on ? 'fa-star' : 'fa-star-o'); }
+    var t = btn.querySelector('.pin-text'); if (t) { t.textContent = on ? 'Pinned' : 'Star to sidebar'; }
+  }
+  btn.addEventListener('click', function () {
+    if (window.NivessaSidebarFav && window.NivessaSidebarFav.toggle) {
+      var willBeOn = !window.NivessaSidebarFav.isPinned(url);
+      window.NivessaSidebarFav.toggle(url, label); paint(willBeOn); return;
+    }
+    var tokenEl = document.querySelector('meta[name="csrf-token"]');
+    var body = new FormData(); body.append('url', url); body.append('label', label);
+    fetch('{{ url('/sidebar-favorites/toggle') }}', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRF-TOKEN': tokenEl ? tokenEl.getAttribute('content') : '', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body
+    }).then(function (r) { return r.json(); }).then(function (d) { if (d && d.ok) { paint(d.starred); } }).catch(function () {});
+  });
+})();
 </script>
 @endsection
