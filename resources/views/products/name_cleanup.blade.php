@@ -85,8 +85,21 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             <div style="font-weight:600;color:#1B5E20;">Best option: fill blank artists from Discogs (accurate, no guessing)</div>
             <p class="sub" style="margin:6px 0 10px;">For every blank / "N/A" artist music product that has a Discogs release id, this writes the <b>true artist straight from Discogs</b> into the Artist field — no parsing, no guessing. <b>Sealed vinyl first.</b> Rate-limited (~55/min), runs in batches; leave the tab open. Fully undoable. Products with no release id won't be touched — use the scan below for those.</p>
             <div class="mgn-actions" style="margin-top:0;">
-                <button class="mgn-btn mgn-btn-primary" id="dgArtistBtn" type="button">Fill blank artists from Discogs</button>
-                <span class="mgn-note" id="dgArtistProgress" style="margin-top:0"></span>
+                <button class="mgn-btn mgn-btn-ghost" id="dgArtistScanBtn" type="button">Check + preview</button>
+                <span class="mgn-note" id="dgArtistScanNote" style="margin-top:0"></span>
+            </div>
+            <div id="dgArtistPreview" style="display:none;margin-top:14px;">
+                <div class="mgn-note mgn-summary" id="dgArtistSummary" style="margin-top:0;color:#1F1B16;"></div>
+                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #E1EFE1;border-radius:10px;background:#fff;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Current name</th><th>Artist it will write (from Discogs)</th></tr></thead>
+                        <tbody id="dgArtistRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-actions" style="margin-top:14px;">
+                    <button class="mgn-btn mgn-btn-primary" id="dgArtistBtn" type="button">Looks right — fill them all</button>
+                    <span class="mgn-note" id="dgArtistProgress" style="margin-top:0"></span>
+                </div>
             </div>
         </div>
         <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
@@ -457,6 +470,29 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     }
 
     arScanBtn.addEventListener('click', function () { doArScan(); });
+
+    // Preview first: show a live sample of "name -> Discogs artist" before filling.
+    var dgArtistScanBtn = document.getElementById('dgArtistScanBtn');
+    var dgArtistScanNote = document.getElementById('dgArtistScanNote');
+    dgArtistScanBtn.addEventListener('click', function () {
+        clearMsg();
+        dgArtistScanBtn.disabled = true; dgArtistScanBtn.textContent = 'Checking Discogs…';
+        dgArtistScanNote.textContent = 'Fetching a sample (~10s)…';
+        post('{{ route('products.artist.discogs.scan') }}', {}).then(function (d) {
+            dgArtistScanBtn.disabled = false; dgArtistScanBtn.textContent = 'Check + preview';
+            dgArtistScanNote.textContent = '';
+            if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
+            document.getElementById('dgArtistSummary').innerHTML =
+                '<b>' + d.total.toLocaleString() + '</b> blank-artist product(s) have a Discogs id and will be filled (sealed vinyl first). Sample:';
+            document.getElementById('dgArtistRows').innerHTML = (d.sample || []).length
+                ? d.sample.map(function (s) {
+                    return '<tr><td class="mgn-old">' + esc(s.name) + '</td><td class="mgn-new">' + esc(s.artist) + '</td></tr>';
+                }).join('')
+                : '<tr><td colspan="2" style="color:#8E8273">No sample rows (nothing to fill, or Discogs returned no artist).</td></tr>';
+            document.getElementById('dgArtistPreview').style.display = d.total > 0 ? 'block' : 'none';
+            if (d.total === 0) { showMsg('Nothing to fill — no blank-artist products with a Discogs id.', true); }
+        }).catch(function () { dgArtistScanBtn.disabled = false; dgArtistScanBtn.textContent = 'Check + preview'; dgArtistScanNote.textContent = ''; showMsg('Check failed — try again.', false); });
+    });
 
     // Accurate artist-column fill from Discogs — two passes (sealed vinyl, then
     // the rest), cursor-paged, rate-limited. Leaves per-batch snapshots.

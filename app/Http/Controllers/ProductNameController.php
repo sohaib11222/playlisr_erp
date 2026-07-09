@@ -932,4 +932,60 @@ class ProductNameController extends Controller
             'phase' => $phase,
         ]);
     }
+
+    /**
+     * Preview for discogsArtistFill: how many blank-artist products have a Discogs
+     * id, plus a small live sample (sealed vinyl first) of "name -> Discogs artist"
+     * so Sarah can see what it will write before committing.
+     */
+    public function discogsArtistScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        if (!\Schema::hasColumn('products', 'discogs_release_id')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id column on products.']);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return response()->json(['success' => true, 'total' => 0, 'sample' => []]);
+        }
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured (Business Settings > Integrations).']);
+        }
+
+        $sealedIds = $this->sealedVinylCategoryIds($business_id);
+        $base = function () use ($business_id, $catIds) {
+            return $this->artistlessMusicQuery($business_id, $catIds)
+                ->whereNotNull('discogs_release_id')->where('discogs_release_id', '>', 0);
+        };
+        $total = $base()->count();
+
+        // Sample sealed vinyl first, top up from the rest if fewer than 10.
+        $q = empty($sealedIds) ? $base() : $base()->whereIn('category_id', $sealedIds);
+        $rows = $q->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
+        if ($rows->count() < 10 && !empty($sealedIds)) {
+            $more = $base()->whereNotIn('category_id', $sealedIds)
+                ->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10 - $rows->count())->get();
+            $rows = $rows->concat($more);
+        }
+
+        $sample = [];
+        foreach ($rows as $r) {
+            if (stripos($r->name, 'retired') !== false) { continue; }
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) { continue; }
+            $artist = $this->artistFromRelease($res['data'] ?? null);
+            if ($artist !== null) {
+                if (preg_match('/^various$/i', trim($artist))) { $artist = 'Various Artists'; }
+                $sample[] = ['name' => $r->name, 'artist' => $artist];
+            }
+            usleep(1100000);
+        }
+
+        return response()->json(['success' => true, 'total' => $total, 'sample' => $sample]);
+    }
 }
