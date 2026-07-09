@@ -384,9 +384,12 @@ class ListingCommissionController extends Controller
     // like any payout. Use it to true-up a payout to the real amount paid.
     public function recordPayment(Request $request)
     {
-        $userId = (int) $request->input('user_id');
-        $amount = round((float) $request->input('amount'), 2);
-        $note   = trim((string) $request->input('note', ''));
+        $userId  = (int) $request->input('user_id');
+        $note    = trim((string) $request->input('note', ''));
+        // Listing + sales entered separately so split payments (e.g. Manolo's
+        // 6/25) land in the right ledger. Legacy single "amount" falls into sales.
+        $listing = round((float) $request->input('listing', 0), 2);
+        $sales   = round((float) $request->input('sales', $request->input('amount', 0)), 2);
 
         // Optional "date paid" so past payrolls can be logged on the day they
         // actually happened; blank = today.
@@ -395,34 +398,46 @@ class ListingCommissionController extends Controller
         $dateField = $isPastDate ? $paidOn : now()->toDateString();
         $markedAt  = $isPastDate ? ($paidOn . ' 12:00:00') : now()->toDateTimeString();
 
-        if ($userId <= 0 || $amount == 0.0) {
+        if ($userId <= 0 || ($listing == 0.0 && $sales == 0.0)) {
             return redirect('/admin/listing-commissions')
-                ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a non-zero dollar amount.']);
+                ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a listing or sales amount.']);
         }
 
         $u = DB::table('users')->where('id', $userId)->first();
         $name = $u
             ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId)))
             : ('User #' . $userId);
+        $noteVal = $note !== '' ? $note : 'Manual payment recorded';
 
-        $payouts = $this->loadSalesPayouts();
-        $payouts[] = [
-            'id'        => bin2hex(random_bytes(8)),
-            'user_id'   => $userId,
-            'name'      => $name,
-            'amount'    => $amount,
-            'from_date' => $dateField,
-            'to_date'   => $dateField,
-            'manual'    => true,
-            'note'      => $note !== '' ? $note : 'Manual payment recorded',
-            'marked_by' => $request->session()->get('user.id'),
-            'marked_at' => $markedAt,
-        ];
-        $this->saveSalesPayouts($payouts);
+        if ($sales != 0.0) {
+            $sp = $this->loadSalesPayouts();
+            $sp[] = [
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                'amount' => $sales, 'from_date' => $dateField, 'to_date' => $dateField,
+                'manual' => true, 'note' => $noteVal,
+                'marked_by' => $request->session()->get('user.id'), 'marked_at' => $markedAt,
+            ];
+            $this->saveSalesPayouts($sp);
+        }
+        if ($listing != 0.0) {
+            $lp = $this->loadPayouts();
+            $lp[] = [
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                'count' => 0, 'amount' => $listing, 'line_ids' => [],
+                'from_date' => $dateField, 'to_date' => $dateField,
+                'manual' => true, 'note' => $noteVal,
+                'marked_by' => $request->session()->get('user.id'), 'marked_at' => $markedAt,
+            ];
+            $this->savePayouts($lp);
+        }
+
+        $parts = [];
+        if ($listing != 0.0) { $parts[] = 'listing $' . number_format($listing, 2); }
+        if ($sales != 0.0)   { $parts[] = 'sales $' . number_format($sales, 2); }
 
         return redirect('/admin/listing-commissions')->with('status', [
             'success' => 1,
-            'msg'     => 'Recorded $' . number_format($amount, 2) . ' paid to ' . $name . '.',
+            'msg'     => 'Recorded ' . implode(' + ', $parts) . ' paid to ' . $name . '.',
         ]);
     }
 

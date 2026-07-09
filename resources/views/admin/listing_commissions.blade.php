@@ -219,9 +219,12 @@
                         <option value="">Person…</option>
                         @foreach($people as $p)<option value="{{ $p->user_id }}">{{ $p->name }}</option>@endforeach
                     </select>
-                    $<input type="number" step="0.01" name="amount" placeholder="0.00" class="form-control input-sm" style="width:90px; display:inline-block; margin:0 6px;" required>
+                    <label style="font-weight:400; margin:0 3px;">Listing $</label>
+                    <input type="number" step="0.01" name="listing" placeholder="0.00" class="form-control input-sm" style="width:80px; display:inline-block; margin-right:6px;">
+                    <label style="font-weight:400; margin:0 3px;">Sales $</label>
+                    <input type="number" step="0.01" name="sales" placeholder="0.00" class="form-control input-sm" style="width:80px; display:inline-block; margin-right:6px;">
                     <input type="date" name="paid_on" class="form-control input-sm" style="width:auto; display:inline-block; margin-right:6px;" max="{{ \Carbon::now()->toDateString() }}" title="Blank = today; set a past date for an old payroll">
-                    <input type="text" name="note" placeholder="note" class="form-control input-sm" style="width:150px; display:inline-block; margin-right:6px;">
+                    <input type="text" name="note" placeholder="note" class="form-control input-sm" style="width:140px; display:inline-block; margin-right:6px;">
                     <button type="submit" class="btn btn-primary btn-sm">Record</button>
                 </form>
 
