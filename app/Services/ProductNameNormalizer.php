@@ -106,11 +106,11 @@ class ProductNameNormalizer
 
     /**
      * Reverse of canonical(): guess the ARTIST out of a name when the artist
-     * column is blank. Two known name shapes carry the artist:
+     * column is blank. Both known name shapes put the artist FIRST:
      *
-     *   - Legacy imports: "Title / Artist"  -> artist is AFTER the spaced slash.
-     *   - Typed / canonical: "Artist - Title" -> artist is BEFORE the first
-     *     spaced " - ".
+     *   - Slash imports: "Artist / Title"  -> artist is BEFORE the spaced slash
+     *     (e.g. "BURZUM / HVIS LYSET TAR OSS", "GWAR / SCUMDOGS OF THE UNIVERSE").
+     *   - Dash / canonical: "Artist - Title" -> artist is BEFORE the spaced " - ".
      *
      * Only a spaced separator counts, so "AC/DC - Back In Black" is read as the
      * dash shape (artist "AC/DC"), not the slash shape. A plain title with no
@@ -131,14 +131,14 @@ class ProductNameNormalizer
             return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'contains "retired" — left alone'];
         }
 
-        // Legacy "Title / Artist" (spaced slash): artist is the second half.
-        // Only trust an exact two-part split — 3+ segments (e.g. a trailing
-        // edition) are ambiguous, so flag them for manual review.
+        // "Artist / Title" (spaced slash): artist is the first half. Only trust
+        // an exact two-part split — 3+ segments (e.g. a trailing edition) are
+        // ambiguous, so flag them for manual review.
         if (preg_match('/\s\/\s/', $name)) {
             $parts = preg_split('/\s+\/\s+/', $name);
             $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
             if (count($parts) === 2) {
-                return self::validateParsedArtist($parts[1], $parts[0], 'Title / Artist');
+                return self::validateParsedArtist($parts[0], $parts[1], 'Artist / Title');
             }
             return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple " / " segments — manual'];
         }
