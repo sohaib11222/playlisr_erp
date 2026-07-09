@@ -242,16 +242,43 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Listing commission — paid history'])
-            @if ($history->isEmpty())
+        @component('components.widget', ['title' => 'Paid history — listing + sales in one list'])
+            @php
+                // Merge both payout ledgers into one date-sorted list so every
+                // payment (listing or sales) shows in a single place.
+                $paidRows = collect();
+                foreach ($history as $h) {
+                    $paidRows->push([
+                        'type' => 'Listing', 'marked_at' => $h['marked_at'] ?? '',
+                        'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
+                        'items' => $h['count'] ?? null, 'amount' => (float) ($h['amount'] ?? 0),
+                        'from' => $h['from_date'] ?? '?', 'to' => $h['to_date'] ?? '?',
+                        'id' => $h['id'] ?? '', 'undo' => 'undo-payout',
+                    ]);
+                }
+                foreach ($sales_history as $h) {
+                    $paidRows->push([
+                        'type' => 'Sales', 'marked_at' => $h['marked_at'] ?? '',
+                        'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
+                        'items' => null, 'amount' => (float) ($h['amount'] ?? 0),
+                        'from' => $h['from_date'] ?? '?', 'to' => $h['to_date'] ?? '?',
+                        'id' => $h['id'] ?? '', 'undo' => 'undo-sales-payout',
+                    ]);
+                }
+                $paidRows = $paidRows->sortByDesc('marked_at')->values();
+                $grandPaid = round($total_paid + $total_sales_paid_all, 2);
+            @endphp
+            @if ($paidRows->isEmpty())
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
             @else
-                <p class="text-muted">Total paid to date: <strong>${{ number_format($total_paid, 2) }}</strong></p>
+                <p class="text-muted">Total paid to date: <strong>${{ number_format($grandPaid, 2) }}</strong>
+                    &nbsp;·&nbsp; Listing ${{ number_format($total_paid, 2) }} &nbsp;·&nbsp; Sales ${{ number_format($total_sales_paid_all, 2) }}</p>
                 <table class="table table-striped">
                     <thead>
                         <tr>
                             <th>Paid on</th>
                             <th>Person</th>
+                            <th>Type</th>
                             <th style="text-align:right;">Items</th>
                             <th style="text-align:right;">Amount</th>
                             <th>Covered</th>
@@ -259,62 +286,21 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($history as $h)
+                        @foreach ($paidRows as $h)
                             <tr>
-                                <td>{{ $h['marked_at'] ?? '—' }}</td>
-                                <td>{{ $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')) }}</td>
-                                <td style="text-align:right;">{{ number_format($h['count'] ?? 0) }}</td>
-                                <td style="text-align:right;">${{ number_format($h['amount'] ?? 0, 2) }}</td>
-                                <td>{{ $h['from_date'] ?? '?' }} → {{ $h['to_date'] ?? '?' }}</td>
+                                <td style="white-space:nowrap;">{{ $h['marked_at'] ?: '—' }}</td>
+                                <td>{{ $h['name'] }}</td>
+                                <td><span class="label {{ $h['type'] === 'Sales' ? 'label-primary' : 'label-default' }}">{{ $h['type'] }}</span></td>
+                                <td style="text-align:right;">{{ $h['items'] !== null ? number_format($h['items']) : '—' }}</td>
+                                <td style="text-align:right;">${{ number_format($h['amount'], 2) }}</td>
+                                <td style="white-space:nowrap;">{{ $h['from'] }} → {{ $h['to'] }}</td>
                                 <td style="text-align:right;">
-                                    <form method="POST" action="{{ url('/admin/listing-commissions/undo-payout') }}"
-                                          onsubmit="return confirm('Undo this payout? Those listings will be owed again.');"
+                                    <form method="POST" action="{{ url('/admin/listing-commissions/' . $h['undo']) }}"
+                                          onsubmit="return confirm('Undo this {{ strtolower($h['type']) }} payout? That commission will be owed again.');"
                                           style="margin:0;">
                                         @csrf
-                                        <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
+                                        <input type="hidden" name="id" value="{{ $h['id'] }}">
                                         <input type="hidden" name="from" value="{{ $from }}">
-                                        <button type="submit" class="btn btn-warning btn-xs">Undo</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
-        @endcomponent
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12">
-        @component('components.widget', ['title' => 'Sales commission — paid history'])
-            @if ($sales_history->isEmpty())
-                <p class="text-muted">No sales commission payouts recorded yet. Total paid: $0.00</p>
-            @else
-                <p class="text-muted">Total paid to date: <strong>${{ number_format($total_sales_paid_all, 2) }}</strong></p>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Paid on</th>
-                            <th>Person</th>
-                            <th style="text-align:right;">Amount</th>
-                            <th>Covered</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($sales_history as $h)
-                            <tr>
-                                <td>{{ $h['marked_at'] ?? '—' }}</td>
-                                <td>{{ $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')) }}</td>
-                                <td style="text-align:right;">${{ number_format($h['amount'] ?? 0, 2) }}</td>
-                                <td>{{ $h['from_date'] ?? '?' }} → {{ $h['to_date'] ?? '?' }}</td>
-                                <td style="text-align:right;">
-                                    <form method="POST" action="{{ url('/admin/listing-commissions/undo-sales-payout') }}"
-                                          onsubmit="return confirm('Undo this sales payout? That commission will be owed again.');"
-                                          style="margin:0;">
-                                        @csrf
-                                        <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
                                         <button type="submit" class="btn btn-warning btn-xs">Undo</button>
                                     </form>
                                 </td>
