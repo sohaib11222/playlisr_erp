@@ -102,7 +102,7 @@
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <div style="font-size:16px;">Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Owed now <strong>${{ number_format($total_owed_now, 2) }}</strong></div>
+                <div style="font-size:16px;">Total commission earned <strong>${{ number_format($total_commission, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Commission owed <strong>${{ number_format($total_owed_now, 2) }}</strong></div>
             </div>
         </div>
     </div>
@@ -275,8 +275,25 @@
 
 <div class="row">
     <div class="col-md-12">
-        @component('components.widget', ['title' => 'Paid history — listing + sales in one list'])
+        @component('components.widget', ['title' => 'Payment history'])
             @php $grandPaid = round($total_paid + $total_sales_paid_all, 2); @endphp
+            <details>
+                <summary style="cursor:pointer; font-weight:600; color:#5A5045; margin-bottom:10px;">Show payment history &amp; record a payment</summary>
+
+                <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
+                      onsubmit="return confirm('Record this payment?');"
+                      style="margin-bottom:14px; padding:10px 12px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:8px;">
+                    @csrf
+                    <strong style="color:#6b5a00; margin-right:8px;">Record a payment:</strong>
+                    <select name="user_id" class="form-control input-sm" style="width:auto; display:inline-block; margin-right:6px;" required>
+                        <option value="">Person…</option>
+                        @foreach($people as $p)<option value="{{ $p->user_id }}">{{ $p->name }}</option>@endforeach
+                    </select>
+                    $<input type="number" step="0.01" name="amount" placeholder="0.00" class="form-control input-sm" style="width:90px; display:inline-block; margin:0 6px;" required>
+                    <input type="date" name="paid_on" class="form-control input-sm" style="width:auto; display:inline-block; margin-right:6px;" max="{{ \Carbon::now()->toDateString() }}" title="Blank = today; set a past date for an old payroll">
+                    <input type="text" name="note" placeholder="note" class="form-control input-sm" style="width:150px; display:inline-block; margin-right:6px;">
+                    <button type="submit" class="btn btn-primary btn-sm">Record</button>
+                </form>
 
             @if (empty($paid_groups))
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
@@ -322,6 +339,7 @@
                     </tbody>
                 </table>
             @endif
+            </details>
         @endcomponent
     </div>
 </div>
