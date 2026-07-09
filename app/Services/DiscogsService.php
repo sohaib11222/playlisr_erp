@@ -212,62 +212,95 @@ class DiscogsService
 
     public function callApi($url, $method = 'GET', $data = [])
     {
-        try {
-            $ch = curl_init();
-            
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            
-            $headers = [
-                'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
-                'Accept: application/vnd.discogs.v2.plaintext+json',
-                'Accept-Language: en-US,en;q=0.9',
-                'Connection: keep-alive',
-                'Cache-Control: no-cache'
-            ];
-            
-            // Add token to URL for GET requests, or in Authorization header for POST
-            if ($method === 'POST' && !empty($this->token)) {
-                $headers[] = 'Authorization: Discogs token=' . $this->token;
-            }
-            
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        // Discogs rate-limits authenticated apps to ~60 requests/min and returns
+        // HTTP 429 once that's exceeded. The Bulk Discogs IDs importer used to
+        // fail every 429'd row outright (Zella lost 24/30 rows on 2026-07-08).
+        // Retry the request instead: wait the Retry-After the API asks for
+        // (falling back to exponential backoff), up to a few attempts, so a
+        // rate-limited row recovers on its own rather than failing.
+        $maxAttempts = 4;
+        $attempt = 0;
 
-            if ($method === 'POST') {
-                curl_setopt($ch, CURLOPT_POST, true);
-                if (!empty($data)) {
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        while (true) {
+            $attempt++;
+            try {
+                $ch = curl_init();
+
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+                $headers = [
+                    'User-Agent: NivessaPlaylist/1.0 +https://playlist.nivessa.com',
+                    'Accept: application/vnd.discogs.v2.plaintext+json',
+                    'Accept-Language: en-US,en;q=0.9',
+                    'Connection: keep-alive',
+                    'Cache-Control: no-cache'
+                ];
+
+                // Add token to URL for GET requests, or in Authorization header for POST
+                if ($method === 'POST' && !empty($this->token)) {
+                    $headers[] = 'Authorization: Discogs token=' . $this->token;
                 }
-            }
 
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $error = curl_error($ch);
-            
-            curl_close($ch);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-            if ($error) {
-                throw new \Exception('cURL Error: ' . $error);
-            }
-    
-            if ($httpCode !== 200 && $httpCode !== 201) {
-                throw new \Exception('HTTP Error: ' . $httpCode . ' Response: ' . $response);
-            }
+                // Capture the Retry-After response header so a 429 waits the
+                // exact time Discogs requests instead of guessing.
+                $retryAfter = null;
+                curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) use (&$retryAfter) {
+                    $parts = explode(':', $header, 2);
+                    if (count($parts) === 2 && strtolower(trim($parts[0])) === 'retry-after') {
+                        $retryAfter = (int) trim($parts[1]);
+                    }
+                    return strlen($header);
+                });
 
-            if (empty($response)) {
-                throw new \Exception('Empty Response');
-            }
+                if ($method === 'POST') {
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    if (!empty($data)) {
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+                    }
+                }
 
-            return [
-                'error' => false,
-                'message' => 'Success',
-                'data' => json_decode($response)
-            ];
-        } catch (\Exception $e) {
-            return [
-                "error" => true,
-                "message" => $e->getMessage()
-            ];
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = curl_error($ch);
+
+                curl_close($ch);
+
+                if ($error) {
+                    throw new \Exception('cURL Error: ' . $error);
+                }
+
+                // Rate limited: back off and retry unless we're out of attempts.
+                if ($httpCode === 429 && $attempt < $maxAttempts) {
+                    $wait = ($retryAfter && $retryAfter > 0) ? $retryAfter : (1 << $attempt); // 2s, 4s, 8s
+                    if ($wait > 10) {
+                        $wait = 10; // never hang a single request too long
+                    }
+                    sleep($wait);
+                    continue;
+                }
+
+                if ($httpCode !== 200 && $httpCode !== 201) {
+                    throw new \Exception('HTTP Error: ' . $httpCode . ' Response: ' . $response);
+                }
+
+                if (empty($response)) {
+                    throw new \Exception('Empty Response');
+                }
+
+                return [
+                    'error' => false,
+                    'message' => 'Success',
+                    'data' => json_decode($response)
+                ];
+            } catch (\Exception $e) {
+                return [
+                    "error" => true,
+                    "message" => $e->getMessage()
+                ];
+            }
         }
     }
 

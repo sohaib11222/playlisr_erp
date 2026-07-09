@@ -2952,7 +2952,10 @@
                 $('#discogs_fetch_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding CSV row (${added + failed + 1}/${total})...`);
                 handleCsv(entry).then(() => setTimeout(next, 50));
             } else {
-                handleDiscogs(entry).then(() => setTimeout(next, 250));
+                // Discogs allows ~60 lookups/min; space requests ~1.1s apart so
+                // a big paste stays under the limit instead of tripping HTTP 429.
+                // The server also retries any 429 with backoff as a safety net.
+                handleDiscogs(entry).then(() => setTimeout(next, 1100));
             }
         }
         next();
