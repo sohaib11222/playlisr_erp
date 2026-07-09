@@ -162,6 +162,8 @@ class ProductNameNormalizer
             // Billie Eilish — "Billie Eilish" or "Eilish,Billie".
             'billieeilish' => 'Billie Eilish',
             'eilishbillie' => 'Billie Eilish',
+            // Stylized casing.
+            'mfdoom' => 'MF Doom',
         ];
     }
 
