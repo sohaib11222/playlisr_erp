@@ -500,10 +500,11 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     var dgArtistProgress = document.getElementById('dgArtistProgress');
     function dgArtistBatch(afterId, total, phase) {
         var phaseLabel = phase === 'rest' ? 'everything else' : 'sealed vinyl';
-        post('{{ route('products.artist.discogs') }}', { after_id: afterId, max: 20, phase: phase }).then(function (d) {
+        post('{{ route('products.artist.discogs') }}', { after_id: afterId, max: 8, phase: phase }).then(function (d) {
             if (!d.success) { dgArtistBtn.disabled = false; showMsg(d.msg || 'Discogs fill failed.', false); dgArtistProgress.textContent = ''; return; }
             total += (d.filled || 0);
-            var note = 'Filled ' + total + ' (' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left)';
+            var tail = phase === 'sealed' ? ', then everything else' : '';
+            var note = 'Filled ' + total + ' so far · ' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left' + tail;
             if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
             dgArtistProgress.textContent = note + '…';
             if (d.done) {
