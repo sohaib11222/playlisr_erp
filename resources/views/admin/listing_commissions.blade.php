@@ -46,17 +46,19 @@
 .content-header p, .content p { font-size: 14px; color: #5b6470; }
 .content, .content .box, .content table { font-size: 14px; color: #23303d; }
 .content .box .box-title, .content .box-header .box-title { font-size: 15px; font-weight: 700; color: #23303d; }
-/* Uniform collapsible toggles */
+/* Uniform collapsible toggles — same dark text as everything else */
 .content details > summary {
     cursor: pointer; list-style: none; font-size: 14px; font-weight: 600;
-    color: #2f5a86; padding: 4px 0; margin: 0 0 8px;
+    color: #23303d; padding: 4px 0; margin: 0 0 8px;
 }
 .content details > summary::-webkit-details-marker { display: none; }
 .content details > summary::before { content: "▸"; margin-right: 7px; color: #9aa4b0; font-size: 12px; }
 .content details[open] > summary::before { content: "▾"; }
-/* Tables: even, readable rows */
+/* Tables: even, readable rows; links in dark text (no orange) */
 .content table.table th { font-size: 12px; font-weight: 700; text-transform: none; color: #5b6470; }
 .content table.table td, .content table.table th { padding: 9px 12px; vertical-align: middle; }
+.content table.table a { color: #23303d; text-decoration: none; }
+.content table.table a:hover { text-decoration: underline; }
 .content .btn-xs { font-size: 12px; }
 </style>
 <script>
@@ -133,7 +135,7 @@
                 $owedPeople = $people->filter(function ($p) { return $p->total_owed_now > 0; })->values();
                 $paidUpCount = $people->count() - $owedPeople->count();
             @endphp
-            <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#5A5045;">
+            <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#23303d;">
                 <input type="checkbox" id="lc-detail-toggle"> Show full breakdown (earned, paid, listings, goals)
             </label>
             @if ($owedPeople->isEmpty())
