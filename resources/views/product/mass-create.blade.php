@@ -2828,6 +2828,24 @@
         const failures = [];
         const warnings = [];
 
+        // Discogs 429 recovery. Verified 2026-07-08: once the ~60/min limit is
+        // tripped, Discogs keeps returning 429 for roughly a full minute and
+        // sends no Retry-After. So a rate-limited row can't be salvaged in the
+        // moment — instead we collect the 429'd entries, wait out the window,
+        // and retry them. Prevention (the ~1.1s spacing below) keeps a normal
+        // single batch under the limit; this is the safety net for when it
+        // still trips (e.g. a sync sharing the token).
+        let retryQueue = [];
+        let rateRound = 0;
+        const RATE_LIMIT_MAX_ROUNDS = 2;
+        const RATE_LIMIT_WAIT_MS = 65000;
+
+        function isRateLimited(msg, status) {
+            if (status === 429) return true;
+            msg = msg || '';
+            return /\b429\b/.test(msg) || /rate limit/i.test(msg);
+        }
+
         function renderList(title, items, cls) {
             if (!items.length) return '';
             const lis = items.map(f =>
@@ -2906,6 +2924,8 @@
                 .then(() => { added++; });
         }
 
+        // Resolves with true when the row was rate-limited (429) and should be
+        // re-queued for a later round; false when it's done (added or hard-failed).
         function handleDiscogs(entry) {
             return new Promise(function(resolve) {
                 const id = entry.id;
@@ -2917,18 +2937,21 @@
                     success: function(resp) {
                         if (resp && resp.success) {
                             addRowFromDiscogsData(resp.data, nextMassRowIndex(), price)
-                                .then(() => { added++; resolve(); });
+                                .then(() => { added++; resolve(false); });
                         } else {
-                            failed++;
                             const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
+                            if (isRateLimited(msg, 0)) { resolve(true); return; }
+                            failed++;
                             failures.push({ id: id, msg: msg });
                             console.warn('Discogs fetch failed for ' + id + ':', msg);
-                            resolve();
+                            resolve(false);
                         }
                     },
                     error: function(xhr) {
+                        const status = (xhr && xhr.status) ? xhr.status : 0;
+                        if (isRateLimited('', status)) { resolve(true); return; }
                         failed++;
-                        let msg = 'HTTP ' + (xhr && xhr.status ? xhr.status : '?');
+                        let msg = 'HTTP ' + (status || '?');
                         if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
                             msg += ' &mdash; ' + xhr.responseJSON.message;
                         } else if (xhr && xhr.responseText) {
@@ -2936,7 +2959,7 @@
                         }
                         failures.push({ id: id, msg: msg });
                         console.warn('Discogs fetch HTTP error for ' + id, xhr);
-                        resolve();
+                        resolve(false);
                     }
                 });
             });
@@ -2944,6 +2967,32 @@
 
         function next() {
             if (!queue.length) {
+                // Main pass drained. If Discogs throttled some rows, wait out the
+                // ~60s window and retry them rather than reporting them failed.
+                if (retryQueue.length && rateRound < RATE_LIMIT_MAX_ROUNDS) {
+                    rateRound++;
+                    const batch = retryQueue;
+                    retryQueue = [];
+                    const secs = Math.round(RATE_LIMIT_WAIT_MS / 1000);
+                    $('#discogs_fetch_status').html(
+                        `<span class="text-warning"><i class="fa fa-clock-o"></i> ` +
+                        `Discogs rate-limited ${batch.length} row${batch.length === 1 ? '' : 's'} — ` +
+                        `waiting ${secs}s for the limit to reset, then retrying (round ${rateRound}/${RATE_LIMIT_MAX_ROUNDS})...</span>`
+                    );
+                    setTimeout(function() {
+                        queue.push.apply(queue, batch);
+                        next();
+                    }, RATE_LIMIT_WAIT_MS);
+                    return;
+                }
+                // Out of rounds — anything still rate-limited is a real failure.
+                if (retryQueue.length) {
+                    retryQueue.forEach(function(e) {
+                        failed++;
+                        failures.push({ id: e.id, msg: 'Discogs rate limit (429) — still throttled after ' + RATE_LIMIT_MAX_ROUNDS + ' retry rounds.' });
+                    });
+                    retryQueue = [];
+                }
                 finish();
                 return;
             }
@@ -2953,9 +3002,11 @@
                 handleCsv(entry).then(() => setTimeout(next, 50));
             } else {
                 // Discogs allows ~60 lookups/min; space requests ~1.1s apart so
-                // a big paste stays under the limit instead of tripping HTTP 429.
-                // The server also retries any 429 with backoff as a safety net.
-                handleDiscogs(entry).then(() => setTimeout(next, 1100));
+                // a normal paste stays under the limit instead of tripping 429.
+                handleDiscogs(entry).then(function(rateLimited) {
+                    if (rateLimited) { retryQueue.push(entry); }
+                    setTimeout(next, 1100);
+                });
             }
         }
         next();

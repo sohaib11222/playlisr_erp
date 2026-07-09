@@ -213,12 +213,13 @@ class DiscogsService
     public function callApi($url, $method = 'GET', $data = [])
     {
         // Discogs rate-limits authenticated apps to ~60 requests/min and returns
-        // HTTP 429 once that's exceeded. The Bulk Discogs IDs importer used to
-        // fail every 429'd row outright (Zella lost 24/30 rows on 2026-07-08).
-        // Retry the request instead: wait the Retry-After the API asks for
-        // (falling back to exponential backoff), up to a few attempts, so a
-        // rate-limited row recovers on its own rather than failing.
-        $maxAttempts = 4;
+        // HTTP 429 once that's exceeded. Verified 2026-07-08 against the live
+        // API: it sends NO Retry-After header and keeps returning 429 for the
+        // full ~60s window, so a long server-side wait can't clear it without
+        // blowing the PHP timeout. We keep only ONE short retry here to absorb a
+        // brief blip; sustained rate limits are recovered on the client, which
+        // re-queues the row and waits out the ~60s window (see mass-create).
+        $maxAttempts = 2;
         $attempt = 0;
 
         while (true) {
