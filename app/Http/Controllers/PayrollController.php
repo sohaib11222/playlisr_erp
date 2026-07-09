@@ -131,7 +131,25 @@ class PayrollController extends Controller
             'can_see_rates' => $this->canSeeRates(),
             'hidden'       => $config['hidden'] ?? [],
             'last_run_at'  => $this->lastRunSavedAt($start, $end),
+            'erp_users'    => $this->erpUserOptions($businessId),
         ]);
+    }
+
+    // Active ERP staff as [{id, name}] for the "link to ERP user" dropdown in
+    // Rates & settings, so Sarah picks a person by name instead of hunting for
+    // a numeric id. Active = allow_login on, not soft-deleted.
+    private function erpUserOptions($businessId)
+    {
+        return DB::table('users')
+            ->where('business_id', $businessId)
+            ->whereNull('deleted_at')
+            ->where('allow_login', 1)
+            ->orderBy('first_name')->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name', 'surname'])
+            ->map(function ($u) {
+                $nm = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $u->id));
+                return ['id' => (int) $u->id, 'name' => $nm];
+            })->values()->all();
     }
 
     // Whether the current user may see explicit pay: hourly rates, wages, and

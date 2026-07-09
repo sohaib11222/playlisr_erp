@@ -364,7 +364,7 @@
     <p class="text-muted" style="margin-bottom:6px;">Hourly rate per person. Leave ERP user blank to auto-match by first name; set it only to fix an ambiguous name.</p>
     <div class="table-responsive">
     <table class="table table-condensed table-bordered">
-      <thead><tr><th>Person</th><th style="width:160px;">Hourly rate</th><th style="width:160px;">Store</th><th style="width:180px;">ERP user id (optional)</th></tr></thead>
+      <thead><tr><th>Person</th><th style="width:160px;">Hourly rate</th><th style="width:160px;">Store</th><th style="width:240px;">Linked ERP user (for commissions)</th></tr></thead>
       <tbody>
         @foreach ($people as $p)
           @if ($p['has_hours'])
@@ -372,7 +372,14 @@
             <td><strong>{{ $p['name'] }}</strong></td>
             <td><div class="input-group input-group-sm"><span class="input-group-addon">$</span><input name="rate[{{ $p['key'] }}]" type="number" step="0.01" value="{{ $p['rate'] ?: '' }}" class="form-control"></div></td>
             <td><input name="store[{{ $p['key'] }}]" value="{{ $p['store'] }}" class="form-control input-sm"></td>
-            <td><input name="user_id[{{ $p['key'] }}]" type="number" value="{{ $p['user_id'] }}" placeholder="auto: {{ $p['user_id'] ?: 'unmatched' }}" class="form-control input-sm"></td>
+            <td>
+              <select name="user_id[{{ $p['key'] }}]" class="form-control input-sm">
+                <option value="">Auto-match by name{{ $p['user_id'] ? '' : ' (unmatched)' }}</option>
+                @foreach ($erp_users as $eu)
+                  <option value="{{ $eu['id'] }}" {{ (int) $p['user_id'] === (int) $eu['id'] ? 'selected' : '' }}>{{ $eu['name'] }} (#{{ $eu['id'] }})</option>
+                @endforeach
+              </select>
+            </td>
           </tr>
           @endif
         @endforeach
