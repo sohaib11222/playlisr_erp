@@ -184,6 +184,10 @@ class ProductNameNormalizer
             'maroon5' => 'Maroon 5',
             'neworder' => 'New Order',
             'notoriousbig' => 'Notorious B.I.G.',
+            'fkatwigs' => 'FKA twigs',
+            'darylhalljohnoates' => 'Daryl Hall & John Oates',
+            'kinggizzardthelizardwizard' => 'King Gizzard & The Lizard Wizard',
+            'florencethemachine' => 'Florence & The Machine',
         ];
     }
 
@@ -259,9 +263,12 @@ class ProductNameNormalizer
         // "KING GIZZARD & THE LIZARD WIZARD" -> "King Gizzard & The Lizard Wizard".
         if (preg_match('#[/\\\\\d]#u', $s)) { return $s; }
         if (self::keepUpperCase(mb_strtolower($s))) { return $s; }
-        // Already mixed-case (has both an upper and a lower letter) -> assume it
-        // was deliberately cased ("Green Day", "iPhone"), leave it. Only all-one-
-        // case values (all-caps "TOOL" / all-lower "burzum") get title-cased.
+        // "Sentence case" — only the FIRST letter capitalised across a multi-word
+        // value ("Daft punk", "Deep purple") — is almost always bad catalog data,
+        // so Title Case it.
+        if (preg_match('/\s/u', $s) && preg_match('/^\p{Lu}\P{Lu}*$/u', $s)) { return self::titleCase($s); }
+        // Otherwise mixed-case (two+ capitals: "Green Day", "Toro Y Moi") is
+        // assumed deliberate. Only all-one-case ("TOOL"/"burzum") gets title-cased.
         if (preg_match('/\p{Lu}/u', $s) && preg_match('/\p{Ll}/u', $s)) { return $s; }
         return self::titleCase($s);
     }
