@@ -291,11 +291,14 @@ class ProductNameController extends Controller
             });
 
         if ($collectFixes) {
-            // Sealed vinyl first (Sarah works those first), then by parsed artist.
+            // Group ALL same-artist rows together, alphabetical, so a whole artist
+            // can be selected in one shot. Sealed vinyl floats to the top WITHIN
+            // each artist (kept together, not split off).
             usort($fixes, function ($a, $b) {
-                if ($a['sealed'] !== $b['sealed']) { return $a['sealed'] ? -1 : 1; }
                 $c = strcasecmp($a['new'], $b['new']);
-                return $c !== 0 ? $c : strcasecmp($a['name'], $b['name']);
+                if ($c !== 0) { return $c; }
+                if ($a['sealed'] !== $b['sealed']) { return $a['sealed'] ? -1 : 1; }
+                return strcasecmp($a['name'], $b['name']);
             });
             if ($limit !== null) { $fixes = array_slice($fixes, 0, $limit); }
         }
@@ -313,7 +316,9 @@ class ProductNameController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $filter = (string) $request->input('filter', '');
         try {
-            $data = $this->computeArtistBackfill($business_id, true, 40, $filter);
+            // Show a big page so whole artists group on screen and can be
+            // bulk-selected in one shot (grouped alphabetically by parsed artist).
+            $data = $this->computeArtistBackfill($business_id, true, 300, $filter);
             $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
