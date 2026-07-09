@@ -17,14 +17,7 @@
 <section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <div>
     <h1>Commissions Owed</h1>
-    <p class="text-muted">
-        One row per person. For payroll you only need the <strong>Pay now</strong> column — it's their
-        unpaid listing commission ({{ rtrim(rtrim(number_format($rate_pct, 2), '0'), '.') }}% of items they
-        listed that have since sold) <strong>plus</strong> their unpaid sales bonus, added up since the
-        program started and minus everything you've already paid. Pay that amount, then hit
-        <strong>Mark paid</strong> and it drops off so you can never pay it twice. Everything else is just
-        showing the math — tick <strong>Show full breakdown</strong> if you want to see it.
-    </p>
+    <p class="text-muted">Pay each person their <strong>Pay now</strong> amount, then hit <strong>Mark paid</strong>.</p>
     </div>
     <button type="button" class="lc-pin-btn {{ $pinAlready ? 'is-on' : '' }}"
             data-pin-url="{{ $pinUrl }}" data-pin-label="{{ $pinLabel }}"
@@ -109,12 +102,7 @@
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <div class="form-inline">
-                    <span><strong>Total owed now</strong> = unpaid listing commission + unpaid sales commission, across everyone.</span>
-                    <span class="pull-right" style="font-size:16px;">
-                        Total commission <strong>${{ number_format($total_commission, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Total owed now <strong>${{ number_format($total_owed_now, 2) }}</strong>
-                    </span>
-                </div>
+                <div style="font-size:16px;">Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Owed now <strong>${{ number_format($total_owed_now, 2) }}</strong></div>
             </div>
         </div>
     </div>
@@ -158,7 +146,7 @@
             <form method="POST" action="{{ url('/admin/listing-commissions/freeze') }}" onsubmit="return confirm('Freeze everyone\'s current amounts for this payroll run?');" style="margin-bottom:12px;">
                 @csrf
                 <button type="submit" class="btn btn-success">Freeze amounts for this payroll run</button>
-                <span class="text-muted" style="margin-left:8px;">Locks today's amounts into a list you pay against, so the sales bonus can't drift while you work.</span>
+                <span class="text-muted" style="margin-left:8px;">Locks amounts so they can't drift while you pay.</span>
             </form>
         @endif
     </div>
@@ -167,13 +155,8 @@
 <div class="row">
     <div class="col-md-12">
         @component('components.widget', ['title' => 'Spot-check: one day\'s sales bonus (not payroll)'])
-            <p style="margin:0 0 12px; padding:9px 12px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:6px; color:#6b5a00;">
-                <strong>This is just a lookup.</strong> Changing the date here does <strong>not</strong> change
-                what anyone gets paid — it only shows one single day's sales bonus for one person. To actually
-                pay people, use the <strong>Pay now</strong> column in the table below.
-            </p>
             <details>
-                <summary style="cursor:pointer; font-weight:600; color:#6b5a00; margin-bottom:10px;">Open the day lookup</summary>
+                <summary style="cursor:pointer; font-weight:600; color:#6b5a00; margin-bottom:10px;">Open the day lookup — a lookup only, doesn't change anyone's pay</summary>
             <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline" style="margin-bottom:12px;">
                 <label style="margin-right:6px;">Day</label>
                 <input type="date" name="day" value="{{ $bonus_day }}" class="form-control input-sm" max="{{ \Carbon::now()->toDateString() }}" style="margin-right:12px;">
@@ -294,49 +277,6 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'Paid history — listing + sales in one list'])
             @php $grandPaid = round($total_paid + $total_sales_paid_all, 2); @endphp
-
-            <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
-                  onsubmit="return confirm('Record this payment as actually made?');"
-                  style="margin-bottom:16px; padding:12px 14px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:8px;">
-                @csrf
-                <div style="font-weight:700; color:#6b5a00; margin-bottom:8px;">Record a payment you actually made</div>
-                <div class="form-inline">
-                    <select name="user_id" class="form-control input-sm" style="margin-right:8px;" required>
-                        <option value="">Person…</option>
-                        @foreach($people as $p)
-                            <option value="{{ $p->user_id }}">{{ $p->name }}</option>
-                        @endforeach
-                    </select>
-                    <span style="margin-right:2px;">$</span>
-                    <input type="number" step="0.01" min="0" name="amount" placeholder="0.00" class="form-control input-sm" style="width:100px; margin-right:8px;" required>
-                    <label style="margin-right:4px; font-weight:400;">Date paid</label>
-                    <input type="date" name="paid_on" class="form-control input-sm" style="margin-right:8px;" max="{{ \Carbon::now()->toDateString() }}" title="Leave blank for today; set a past date to log a previous payroll">
-                    <input type="text" name="note" placeholder="note (e.g. cash, June payroll)" class="form-control input-sm" style="width:220px; margin-right:8px;">
-                    <button type="submit" class="btn btn-primary btn-sm">Record payment</button>
-                </div>
-                <div class="text-muted" style="margin-top:6px; font-size:12px;">
-                    Use this to log the real dollars you paid someone — including past payrolls (set the <strong>Date paid</strong>). It shows in the history below and reduces what they're owed. Leave the date blank for today.
-                </div>
-            </form>
-
-            <form method="POST" action="{{ url('/admin/listing-commissions/bulk-record') }}"
-                  onsubmit="return confirm('Record this whole payroll? Anything already on file is skipped.');"
-                  style="margin-bottom:16px; padding:12px 14px; background:#EEF6FF; border:1px solid #B8D4F0; border-radius:8px;">
-                @csrf
-                <div style="font-weight:700; color:#2C5D8A; margin-bottom:8px;">Bulk-record a whole past payroll</div>
-                <div class="form-inline" style="margin-bottom:8px;">
-                    <label style="margin-right:4px; font-weight:400;">Payroll date</label>
-                    <input type="date" name="date" class="form-control input-sm" style="margin-right:10px;" max="{{ \Carbon::now()->toDateString() }}" required>
-                    <input type="text" name="note" placeholder="label (e.g. June 25 payroll)" class="form-control input-sm" style="width:240px;">
-                </div>
-                <textarea name="rows" class="form-control" rows="6" style="font-family:monospace; font-size:13px;"
-                          placeholder="One person per line:  Name, Listing$, Sales$&#10;Manolo, 15.88, 68.25&#10;Luis C, 10.46, 23.44&#10;Nick M, 0.64, 0"></textarea>
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Record this payroll</button>
-                <div class="text-muted" style="margin-top:6px; font-size:12px;">
-                    One line per person: <strong>Name, Listing$, Sales$</strong> (commas or tabs; put 0 where there's none).
-                    Already-recorded amounts are <strong>skipped</strong> so re-pasting can't double-count. Names it can't match are reported and left out — nothing is guessed.
-                </div>
-            </form>
 
             @if (empty($paid_groups))
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
