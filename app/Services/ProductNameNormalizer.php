@@ -442,7 +442,7 @@ class ProductNameNormalizer
         $sv = self::isVariousMarker($second);
         if ($fv !== $sv) {
             $title = $fv ? $second : $first;
-            return ['artist' => 'Various Artists', 'title' => $title, 'source' => 'Compilation', 'confident' => true, 'reason' => ''];
+            return ['artist' => 'Various Artists', 'title' => $title, 'source' => 'Compilation', 'confident' => true, 'reason' => '', 'trust' => 'high'];
         }
         if ($fv && $sv) {
             return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are "Various" — manual'];
@@ -457,9 +457,9 @@ class ProductNameNormalizer
         $ss = self::looksSurnameFirst($second);
         if ($fs !== $ss) {
             if ($fs) {
-                return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
+                return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title', 'high');
             }
-            return self::validateParsedArtist(self::cleanArtistValue($second), $first, 'Title ' . $label . ' Artist');
+            return self::validateParsedArtist(self::cleanArtistValue($second), $first, 'Title ' . $label . ' Artist', 'high');
         }
 
         if (is_array($knownKeys)) {
@@ -530,7 +530,7 @@ class ProductNameNormalizer
      * (unknown/various/n a), lone format/condition tokens, and bare catalog
      * numbers so those get flagged rather than written.
      */
-    protected static function validateParsedArtist($artist, $title, $source)
+    protected static function validateParsedArtist($artist, $title, $source, $trust = 'ok')
     {
         $fail = function ($reason) use ($title, $source) {
             return ['artist' => '', 'title' => $title, 'source' => $source, 'confident' => false, 'reason' => $reason];
@@ -565,7 +565,7 @@ class ProductNameNormalizer
             return $fail('looks like a number, not an artist');
         }
 
-        return ['artist' => $artist, 'title' => $title, 'source' => $source, 'confident' => true, 'reason' => ''];
+        return ['artist' => $artist, 'title' => $title, 'source' => $source, 'confident' => true, 'reason' => '', 'trust' => $trust];
     }
 
     /**

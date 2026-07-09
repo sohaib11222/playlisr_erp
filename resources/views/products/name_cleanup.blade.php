@@ -97,9 +97,18 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                     <tbody id="arRows"></tbody>
                 </table>
             </div>
-            <div class="mgn-actions" style="margin-top:16px;">
+            <div class="mgn-actions" style="margin-top:16px;flex-wrap:wrap;">
                 <button class="mgn-btn mgn-btn-primary" id="arApplyBtn" type="button">Fill selected</button>
+                <button class="mgn-btn mgn-btn-ghost" id="arSelHigh" type="button">Only the sure ones</button>
+                <button class="mgn-btn mgn-btn-ghost" id="arSelAll" type="button">Select all</button>
+                <button class="mgn-btn mgn-btn-ghost" id="arSelNone" type="button">Select none</button>
                 <span class="mgn-note" id="arProgress" style="margin-top:0"></span>
+            </div>
+            <div class="mgn-note" style="margin-top:8px;">
+                <span style="display:inline-block;width:10px;height:10px;background:#2E7D32;border-radius:2px;vertical-align:middle"></span>
+                <b>sure</b> (surname-first / compilation) &nbsp;·&nbsp;
+                <span style="display:inline-block;width:10px;height:10px;background:#E3C766;border-radius:2px;vertical-align:middle"></span>
+                <b>check</b> (a best guess — eyeball these). Tip: click a row to toggle it; <b>shift-click</b> a second checkbox to flip everything in between. Rows are grouped by parsed artist.
             </div>
             <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
 
@@ -275,12 +284,17 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     function renderRows() {
         var rows = arData.map(function (f) {
-            return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '">' +
+            var sure = f.trust === 'high';
+            var bar = sure ? '#2E7D32' : '#E3C766';
+            var badge = sure
+                ? '<span style="color:#2E7D32;font-weight:600">sure</span>'
+                : '<span style="color:#9A7B00;font-weight:600">check</span>';
+            return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '" style="cursor:pointer;box-shadow:inset 3px 0 0 ' + bar + '">' +
                 '<td style="text-align:center"><input type="checkbox" class="ar-cb"' + (f.sel ? ' checked' : '') + '></td>' +
                 '<td class="mgn-old">' + esc(f.name) + '</td>' +
                 '<td style="color:#8E8273">' + curArtistHtml(f.old) + '</td>' +
                 '<td class="mgn-new">' + esc(f['new']) + '</td>' +
-                '<td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
+                '<td style="color:#8E8273">' + esc(f.source) + ' &nbsp; ' + badge + '</td></tr>';
         }).join('');
         arRowsEl.innerHTML = rows || '<tr><td colspan="5">Nothing to fill.</td></tr>';
         updateSelInfo();
@@ -310,20 +324,45 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         th.addEventListener('click', function () { sortBy(th.getAttribute('data-key')); });
     });
 
-    // Delegate checkbox toggles (rows are re-rendered on sort).
-    arRowsEl.addEventListener('change', function (e) {
-        if (!e.target.classList.contains('ar-cb')) { return; }
-        var tr = e.target.closest('tr'); if (!tr) { return; }
-        var id = parseInt(tr.getAttribute('data-id'), 10);
-        var f = arData.find(function (x) { return x.id === id; });
-        if (f) { f.sel = e.target.checked; tr.classList.toggle('ar-off', !f.sel); }
-        updateSelInfo();
+    // Index of a row in arData by its product id (arData is what's on screen,
+    // in the current sort order).
+    var arLastIdx = null;
+    function arIdxById(id) { return arData.findIndex(function (x) { return x.id === id; }); }
+
+    // One click handler for the whole table:
+    //   - click a checkbox      -> toggle that row
+    //   - shift-click a checkbox -> set every row between it and the last click
+    //   - click anywhere else on the row -> toggle that row
+    arRowsEl.addEventListener('click', function (e) {
+        var tr = e.target.closest ? e.target.closest('tr') : null;
+        if (!tr || !tr.getAttribute('data-id')) { return; }
+        if (e.target.tagName === 'A') { return; }
+        var idx = arIdxById(parseInt(tr.getAttribute('data-id'), 10));
+        if (idx < 0) { return; }
+        var isCb = e.target.classList && e.target.classList.contains('ar-cb');
+
+        if (isCb && e.shiftKey && arLastIdx !== null && arLastIdx !== idx) {
+            var lo = Math.min(arLastIdx, idx), hi = Math.max(arLastIdx, idx);
+            var val = e.target.checked;
+            for (var i = lo; i <= hi; i++) { arData[i].sel = val; }
+            arLastIdx = idx;
+            renderRows();
+            return;
+        }
+
+        // Plain checkbox click already flipped its own state; a row click flips
+        // the model ourselves.
+        arData[idx].sel = isCb ? e.target.checked : !arData[idx].sel;
+        arLastIdx = idx;
+        if (isCb) { tr.classList.toggle('ar-off', !arData[idx].sel); updateSelInfo(); }
+        else { renderRows(); }
     });
 
-    arCheckAll.addEventListener('change', function () {
-        arData.forEach(function (f) { f.sel = arCheckAll.checked; });
-        renderRows();
-    });
+    function arSelectWhere(fn) { arData.forEach(function (f) { f.sel = fn(f); }); arLastIdx = null; renderRows(); }
+    arCheckAll.addEventListener('change', function () { arSelectWhere(function () { return arCheckAll.checked; }); });
+    document.getElementById('arSelAll').addEventListener('click', function () { arSelectWhere(function () { return true; }); });
+    document.getElementById('arSelNone').addEventListener('click', function () { arSelectWhere(function () { return false; }); });
+    document.getElementById('arSelHigh').addEventListener('click', function () { arSelectWhere(function (f) { return f.trust === 'high'; }); });
 
     var arFilterEl = document.getElementById('arFilter');
     var arAlphaEl = document.getElementById('arAlpha');

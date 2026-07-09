@@ -216,7 +216,7 @@ class ProductNameController extends Controller
     {
         $ca = trim((string) $currentArtist);
         if ($ca !== '' && preg_match('/^(various|v\/?a|compilation)\b/i', $ca)) {
-            return ['artist' => 'Various Artists', 'title' => $name, 'source' => 'Compilation (Various)', 'confident' => true, 'reason' => ''];
+            return ['artist' => 'Various Artists', 'title' => $name, 'source' => 'Compilation (Various)', 'confident' => true, 'reason' => '', 'trust' => 'high'];
         }
         return ProductNameNormalizer::artistFromName($name, $knownKeys);
     }
@@ -270,6 +270,7 @@ class ProductNameController extends Controller
                             'old' => (string) ($r->artist ?? ''),
                             'new' => $res['artist'],
                             'source' => $res['source'],
+                            'trust' => $res['trust'] ?? 'ok',
                         ];
                     }
                 }
