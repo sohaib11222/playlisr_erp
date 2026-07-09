@@ -208,6 +208,10 @@ class ProductNameNormalizer
             if (isset($curated[$ck])) { return $curated[$ck]; }
         }
         $out = self::properArtistCase(self::flipLastFirst($s));
+        // Possessive/contraction "'S" is always lowercase ("Herman'S Hermits" ->
+        // "Herman's Hermits"). Only touches a capital S at a word boundary, so
+        // "O'Brien"/"D'Angelo" are untouched.
+        $out = preg_replace("/'S\\b/u", "'s", $out);
         $k = self::key($out);
         if (isset($curated[$k])) { return $curated[$k]; }
         return $out;
