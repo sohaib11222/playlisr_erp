@@ -141,7 +141,7 @@
                 @endif
             </form>
             <p class="text-muted" style="margin-bottom:10px;">
-                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('D, M j, Y') }}</strong>{!! $bonus_person !== '' ? ', filtered to "<strong>' . e($bonus_person) . '</strong>"' : '' !!}.
+                Sales-goal bonus earned on <strong>{{ \Carbon::parse($bonus_day)->format('m/d/y') }}</strong>{!! $bonus_person !== '' ? ', filtered to "<strong>' . e($bonus_person) . '</strong>"' : '' !!}.
                 Same math as the Employee Leaderboard, scoped to that single day.
             </p>
             @if ($day_rows->isEmpty())
@@ -288,12 +288,12 @@
                     <tbody>
                         @foreach ($paidRows as $h)
                             <tr>
-                                <td style="white-space:nowrap;">{{ $h['marked_at'] ?: '—' }}</td>
+                                <td style="white-space:nowrap;">{{ $h['marked_at'] ? \Carbon::parse($h['marked_at'])->format('m/d/y g:ia') : '—' }}</td>
                                 <td>{{ $h['name'] }}</td>
                                 <td><span class="label {{ $h['type'] === 'Sales' ? 'label-primary' : 'label-default' }}">{{ $h['type'] }}</span></td>
                                 <td style="text-align:right;">{{ $h['items'] !== null ? number_format($h['items']) : '—' }}</td>
                                 <td style="text-align:right;">${{ number_format($h['amount'], 2) }}</td>
-                                <td style="white-space:nowrap;">{{ $h['from'] }} → {{ $h['to'] }}</td>
+                                <td style="white-space:nowrap;">{{ $h['from'] !== '?' ? \Carbon::parse($h['from'])->format('m/d/y') : '?' }} → {{ $h['to'] !== '?' ? \Carbon::parse($h['to'])->format('m/d/y') : '?' }}</td>
                                 <td style="text-align:right;">
                                     <form method="POST" action="{{ url('/admin/listing-commissions/' . $h['undo']) }}"
                                           onsubmit="return confirm('Undo this {{ strtolower($h['type']) }} payout? That commission will be owed again.');"

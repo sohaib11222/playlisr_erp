@@ -107,13 +107,13 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
                 <tbody>
                     @forelse($rows as $r)
                         <tr>
-                            <td class="li-muted">{{ \Carbon::parse($r->listed_at)->format('M j, Y') }}</td>
+                            <td class="li-muted">{{ \Carbon::parse($r->listed_at)->format('m/d/y') }}</td>
                             <td>{{ $r->name }}</td>
                             <td><code>{{ $r->sku }}</code></td>
                             <td class="li-muted">{{ $r->category }}@unless($r->eligible)<br><span class="li-inelig">not commission-eligible</span>@endunless</td>
                             <td>@if($r->list_price !== null)${{ number_format($r->list_price, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->units > 0)<span class="li-sold">{{ rtrim(rtrim(number_format($r->units,2),'0'),'.') }} sold</span>@else<span class="li-unsold">—</span>@endif</td>
-                            <td class="li-muted">@if($r->sold_at){{ \Carbon::parse($r->sold_at)->format('M j, Y') }}@else<span class="li-unsold">—</span>@endif</td>
+                            <td class="li-muted">@if($r->sold_at){{ \Carbon::parse($r->sold_at)->format('m/d/y') }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->sale_value > 0)${{ number_format($r->sale_value, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->commission > 0)<span class="li-sold">${{ number_format($r->commission, 2) }}</span>@else<span class="li-unsold">$0.00</span>@endif</td>
                         </tr>

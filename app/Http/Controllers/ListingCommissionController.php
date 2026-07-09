@@ -173,7 +173,7 @@ class ListingCommissionController extends Controller
             if ($p->sales_owed > 0) {
                 $memo[] = 'Sales bonus $' . number_format($p->sales_owed, 2)
                     . ' — 2% of register sales above your daily goal (4% during peak hours), added up day by day since '
-                    . \Carbon::parse(self::SALES_BONUS_FROM)->format('M j');
+                    . \Carbon::parse(self::SALES_BONUS_FROM)->format('m/d/y');
             }
             $p->payroll_memo = implode('  +  ', $memo);
         }
@@ -230,7 +230,10 @@ class ListingCommissionController extends Controller
         }
         $dayRows = $dayRows->sortByDesc('bonus')->values();
 
-        return view('admin.listing_commissions', [
+        // Never let a proxy/browser serve a stale copy of this page — the owed
+        // numbers must always reflect the latest payouts, or a just-paid person
+        // can appear to still owe money.
+        return response()->view('admin.listing_commissions', [
             'bonus_day'    => $bonusDay,
             'bonus_person' => $bonusPerson,
             'day_rows'     => $dayRows,
@@ -251,7 +254,8 @@ class ListingCommissionController extends Controller
             'total_paid_all'     => $people->sum('total_paid_all'),
             'total_owed_now'     => $people->sum('total_owed_now'),
             'sales_bonus_from'   => self::SALES_BONUS_FROM,
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache');
     }
 
     // Sales-goal bonus per user: earned (cumulative since go-live, from the
