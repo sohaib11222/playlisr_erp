@@ -228,29 +228,6 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         </div>
 
         <div class="me-card">
-            <h3>Payout history</h3>
-            @if($payouts->isEmpty())
-                <p class="me-muted">No payouts recorded yet. Anything in "Still owed" will show here once it's paid.</p>
-            @else
-                <table class="me-table">
-                    <thead>
-                        <tr><th>Date paid</th><th>Period</th><th>Items</th><th>Amount</th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach($payouts as $p)
-                            <tr>
-                                <td>{{ isset($p['marked_at']) ? \Carbon::parse($p['marked_at'])->format('M j, Y') : '—' }}</td>
-                                <td class="me-muted">{{ $p['from_date'] ?? '—' }} → {{ $p['to_date'] ?? '—' }}</td>
-                                <td>{{ $p['count'] ?? 0 }}</td>
-                                <td>${{ number_format((float)($p['amount'] ?? 0), 2) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
-        </div>
-
-        <div class="me-card">
             <h3>Your activity (for reference — not pay)</h3>
             <div class="me-chips">
                 <div class="me-chip"><div class="n">{{ number_format($listed_count) }}</div><div class="l">Items listed</div></div>
