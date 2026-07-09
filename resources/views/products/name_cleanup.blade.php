@@ -73,7 +73,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
             <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table class="mgn-table">
-                    <thead><tr><th>Current name</th><th>Parsed artist</th><th>From</th></tr></thead>
+                    <thead><tr><th>Current name</th><th>Current artist</th><th>Parsed artist</th><th>From</th></tr></thead>
                     <tbody id="arRows"></tbody>
                 </table>
             </div>
@@ -253,12 +253,15 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             document.getElementById('arSummary').innerHTML =
                 '<b>' + d.to_fill + '</b> artist(s) to fill &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review (no clear artist in the name).';
             var rows = d.preview.map(function (f) {
-                return '<tr><td class="mgn-old">' + esc(f.name) + '</td><td class="mgn-new">' + esc(f['new']) + '</td><td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
+                var cur = (f.old == null || String(f.old).trim() === '')
+                    ? '<span style="color:#B9AE99">(blank)</span>'
+                    : esc(f.old);
+                return '<tr><td class="mgn-old">' + esc(f.name) + '</td><td style="color:#8E8273">' + cur + '</td><td class="mgn-new">' + esc(f['new']) + '</td><td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
             }).join('');
             if (d.to_fill > d.preview.length) {
-                rows += '<tr><td colspan="3" style="color:#8E8273">… and ' + (d.to_fill - d.preview.length) + ' more. All will be filled.</td></tr>';
+                rows += '<tr><td colspan="4" style="color:#8E8273">… and ' + (d.to_fill - d.preview.length) + ' more. All will be filled.</td></tr>';
             }
-            document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="3">Nothing to fill.</td></tr>';
+            document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="4">Nothing to fill.</td></tr>';
             arApplyBtn.style.display = d.to_fill > 0 ? '' : 'none';
 
             var bc = d.by_category || [];
