@@ -280,6 +280,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Owner-only: backfill blank/"N/A" artist on music formats from the name.
     Route::post('/products/name-cleanup/artist-scan', 'ProductNameController@artistScan')->name('products.artist.scan');
     Route::post('/products/name-cleanup/artist-apply', 'ProductNameController@artistApply')->name('products.artist.apply');
+    // Owner-only: fill the artist COLUMN from Discogs (blank-artist products with
+    // a release id), sealed vinyl first.
+    Route::post('/products/name-cleanup/discogs-artist-fill', 'ProductNameController@discogsArtistFill')->name('products.artist.discogs');
 
     // Owner-only one-click fix: assign blank-genre audio gear (players,
     // boomboxes, turntables) to an "Audio Gear" category. Before the resource.
