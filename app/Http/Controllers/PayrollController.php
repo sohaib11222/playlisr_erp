@@ -80,10 +80,12 @@ class PayrollController extends Controller
         $hoursDoc = $this->loadHours($start, $end);
         $rows     = $hoursDoc['rows'] ?? [];
 
-        // Pull commissions once (keyed by ERP user_id). Owed = what you still
-        // owe right now — exactly what the Commissions Owed page shows.
-        $listing = $this->listingByUser($businessId);   // user_id => owed $
-        $sales   = $this->salesByUser($businessId);      // user_id => owed $
+        // Commission per user, from the Commissions Owed engine so the numbers
+        // line up: owed (still owe now) + cumulative earned. Plus the last
+        // commission payout and last paycheck for history columns.
+        $comm      = $this->commissionByUser($businessId);   // uid => {listing_owed, listing_earned, sales_owed, sales_earned}
+        $lastPaid  = $this->lastCommissionPaidByUser();      // uid => {amount, at}
+        $lastCheck = $this->lastPaycheckMap($start);         // ['byUid'=>[], 'byKey'=>[]]
 
         // Sling schedule for the window, indexed by erp_user_id + date, for late
         // detection.
@@ -92,11 +94,13 @@ class PayrollController extends Controller
         // Build one person row per distinct imported name.
         $people = $this->buildPeople($rows, $rates, $settings, $schedule);
 
-        // Attach commissions to people (resolve user_id per person), and make
-        // sure anyone owed commission but with no hours this period still shows.
-        $people = $this->attachCommissions($people, $rates, $listing, $sales, $businessId);
+        // Attach commissions + history, and append commission-only people.
+        $people = $this->attachCommissions($people, $comm, $lastPaid, $lastCheck, $businessId);
 
-        // Totals.
+        // Drop people who no longer work here (hidden list).
+        $people = $this->filterHidden($people, $config['hidden'] ?? []);
+
+        // Totals (after hiding departed staff).
         $totals = [
             'reg_hours'   => round(array_sum(array_column($people, 'reg_hours')), 2),
             'ot_hours'    => round(array_sum(array_column($people, 'ot_hours')), 2),
@@ -104,6 +108,7 @@ class PayrollController extends Controller
             'wages'       => round(array_sum(array_column($people, 'wages')), 2),
             'sales_comm'  => round(array_sum(array_column($people, 'sales_comm')), 2),
             'listing_comm'=> round(array_sum(array_column($people, 'listing_comm')), 2),
+            'comm_earned' => round(array_sum(array_column($people, 'comm_earned')), 2),
             'grand_total' => round(array_sum(array_column($people, 'grand_total')), 2),
             'flags'       => array_sum(array_map(function ($p) { return count($p['flags']); }, $people)),
         ];
@@ -124,6 +129,8 @@ class PayrollController extends Controller
             'unmatched'    => $this->unmatchedNames($people),
             'sling_ready'  => (new \App\Services\SlingClient())->isConfigured() || SlingShift::query()->exists(),
             'can_see_rates' => $this->canSeeRates(),
+            'hidden'       => $config['hidden'] ?? [],
+            'last_run_at'  => $this->lastRunSavedAt($start, $end),
         ]);
     }
 
@@ -298,7 +305,8 @@ class PayrollController extends Controller
         $hoursDoc = $this->loadHours($start, $end);
         $schedule = $this->scheduleIndex($start, $end);
         $people   = $this->buildPeople($hoursDoc['rows'] ?? [], $config['rates'], $config['settings'], $schedule);
-        $people   = $this->attachCommissions($people, $config['rates'], $this->listingByUser($businessId), $this->salesByUser($businessId), $businessId);
+        $people   = $this->attachCommissions($people, $this->commissionByUser($businessId), $this->lastCommissionPaidByUser(), $this->lastPaycheckMap($start), $businessId);
+        $people   = $this->filterHidden($people, $config['hidden'] ?? []);
 
         $filename = 'payroll-qb-' . $start . '_to_' . $end . '.csv';
         $headers = [
@@ -382,6 +390,9 @@ class PayrollController extends Controller
                 'wages'        => round($wages, 2),
                 'sales_comm'   => 0.0,
                 'listing_comm' => 0.0,
+                'comm_earned'  => 0.0,
+                'last_comm_paid' => null,
+                'last_paycheck'  => null,
                 'grand_total'  => round($wages, 2),
                 'flags'        => $p['flags'],
                 'has_hours'    => true,
@@ -473,9 +484,9 @@ class PayrollController extends Controller
         return $this->scheduleCache;
     }
 
-    // Attach listing + sales commission (owed) to each person, resolving their
-    // ERP user_id, and append commission-only people who had no hours.
-    private function attachCommissions(array $people, array $rates, $listing, $sales, $businessId)
+    // Attach listing + sales commission (owed + earned) and history to each
+    // person, resolving their ERP user_id, then append commission-only people.
+    private function attachCommissions(array $people, $comm, $lastPaid, $lastCheck, $businessId)
     {
         // Resolve user_id per person: explicit config override, else auto-match
         // by first name against ERP users.
@@ -484,22 +495,31 @@ class PayrollController extends Controller
             if (empty($p['user_id'])) {
                 $p['user_id'] = $usersByFirst[$key] ?? null;
             }
-            if ($p['user_id']) {
-                $p['sales_comm']   = round((float) ($sales[$p['user_id']] ?? 0), 2);
-                $p['listing_comm'] = round((float) ($listing[$p['user_id']] ?? 0), 2);
+            $c = $p['user_id'] ? ($comm[$p['user_id']] ?? null) : null;
+            if ($c) {
+                $p['sales_comm']   = round((float) $c->sales_owed, 2);
+                $p['listing_comm'] = round((float) $c->listing_owed, 2);
+                $p['comm_earned']  = round((float) $c->listing_earned + (float) $c->sales_earned, 2);
                 $p['grand_total']  = round($p['wages'] + $p['sales_comm'] + $p['listing_comm'], 2);
             }
+            if ($p['user_id']) {
+                $p['last_comm_paid'] = $lastPaid[$p['user_id']] ?? null;
+            }
+            // Last paycheck: prefer the ERP user link, fall back to the name key.
+            $p['last_paycheck'] = ($p['user_id'] ? ($lastCheck['byUid'][$p['user_id']] ?? null) : null)
+                ?? ($lastCheck['byKey'][$key] ?? null);
         }
         unset($p);
 
         // Anyone owed commission but with no punches this period still needs to
         // be paid — surface them as hours-less rows.
         $seenUids = array_filter(array_column($people, 'user_id'));
-        foreach (array_unique(array_merge(array_keys((array) $listing), array_keys((array) $sales))) as $uid) {
+        foreach ((array) $comm as $uid => $c) {
             $uid = (int) $uid;
             if ($uid <= 0 || in_array($uid, $seenUids)) { continue; }
-            $owedL = round((float) ($listing[$uid] ?? 0), 2);
-            $owedS = round((float) ($sales[$uid] ?? 0), 2);
+            $owedL = round((float) $c->listing_owed, 2);
+            $owedS = round((float) $c->sales_owed, 2);
+            $earned = round((float) $c->listing_earned + (float) $c->sales_earned, 2);
             if ($owedL <= 0 && $owedS <= 0) { continue; }
             $u = DB::table('users')->where('id', $uid)->first();
             $people['uid_' . $uid] = [
@@ -508,6 +528,9 @@ class PayrollController extends Controller
                 'user_id' => $uid, 'store' => '', 'rate' => 0,
                 'reg_hours' => 0, 'ot_hours' => 0, 'dt_hours' => 0, 'total_hours' => 0,
                 'wages' => 0, 'sales_comm' => $owedS, 'listing_comm' => $owedL,
+                'comm_earned' => $earned,
+                'last_comm_paid' => $lastPaid[$uid] ?? null,
+                'last_paycheck' => $lastCheck['byUid'][$uid] ?? null,
                 'grand_total' => round($owedL + $owedS, 2), 'flags' => [], 'has_hours' => false,
             ];
         }
@@ -553,30 +576,168 @@ class PayrollController extends Controller
 
     // ---- Commission sources (reuse existing engines) --------------------
 
-    private function listingByUser($businessId)
+    // Per-user commission: owed + cumulative earned for both listing and sales,
+    // straight from ListingCommissionController so it reconciles with the
+    // Commissions Owed page. Keyed by ERP user_id.
+    private function commissionByUser($businessId)
     {
+        $out = [];
         try {
-            $summary = app(ListingCommissionController::class)->summaryByUser($businessId);
-            $out = [];
-            foreach ($summary as $uid => $s) { $out[(int) $uid] = (float) $s->owed; }
-            return $out;
+            foreach (app(ListingCommissionController::class)->summaryByUser($businessId) as $uid => $s) {
+                $uid = (int) $uid;
+                $out[$uid] = (object) ['listing_owed' => (float) $s->owed, 'listing_earned' => (float) $s->earned, 'sales_owed' => 0.0, 'sales_earned' => 0.0];
+            }
         } catch (\Throwable $e) {
             \Log::warning('payroll listing pull failed: ' . $e->getMessage());
-            return [];
         }
-    }
-
-    private function salesByUser($businessId)
-    {
         try {
-            $summary = app(ListingCommissionController::class)->salesSummaryByUser($businessId);
-            $out = [];
-            foreach ($summary as $uid => $s) { $out[(int) $uid] = (float) $s->owed; }
-            return $out;
+            foreach (app(ListingCommissionController::class)->salesSummaryByUser($businessId) as $uid => $s) {
+                $uid = (int) $uid;
+                if (!isset($out[$uid])) { $out[$uid] = (object) ['listing_owed' => 0.0, 'listing_earned' => 0.0, 'sales_owed' => 0.0, 'sales_earned' => 0.0]; }
+                $out[$uid]->sales_owed   = (float) $s->owed;
+                $out[$uid]->sales_earned = (float) $s->earned;
+            }
         } catch (\Throwable $e) {
             \Log::warning('payroll sales pull failed: ' . $e->getMessage());
-            return [];
         }
+        return $out;
+    }
+
+    // Most recent commission payout per user (listing OR sales), read directly
+    // from the two payout ledgers ListingCommissionController writes. Returns
+    // uid => (object){amount, at}.
+    private function lastCommissionPaidByUser()
+    {
+        $out = [];
+        foreach (['listing-commission-payouts.json', 'sales-commission-payouts.json'] as $file) {
+            if (!Storage::disk('local')->exists($file)) { continue; }
+            $data = json_decode(Storage::disk('local')->get($file), true);
+            if (!is_array($data)) { continue; }
+            foreach ($data as $p) {
+                $uid = (int) ($p['user_id'] ?? 0);
+                if ($uid <= 0) { continue; }
+                $at = (string) ($p['marked_at'] ?? '');
+                if (!isset($out[$uid]) || strcmp($at, $out[$uid]->at) > 0) {
+                    $out[$uid] = (object) ['amount' => round((float) ($p['amount'] ?? 0), 2), 'at' => $at];
+                }
+            }
+        }
+        return $out;
+    }
+
+    // ---- Hidden (departed staff) ----------------------------------------
+
+    // Remove people on the hidden list (departed staff) from the pay run. Match
+    // on ERP user_id when known, else the name key, else the full display name.
+    private function filterHidden(array $people, array $hidden)
+    {
+        if (empty($hidden)) { return $people; }
+        $uids = []; $keys = []; $names = [];
+        foreach ($hidden as $h) {
+            if (!empty($h['user_id'])) { $uids[(int) $h['user_id']] = true; }
+            if (!empty($h['key']))     { $keys[$h['key']] = true; }
+            if (!empty($h['name']))    { $names[strtolower(trim($h['name']))] = true; }
+        }
+        return array_values(array_filter($people, function ($p) use ($uids, $keys, $names) {
+            if (!empty($p['user_id']) && isset($uids[(int) $p['user_id']])) { return false; }
+            if (!empty($p['key']) && isset($keys[$p['key']])) { return false; }
+            if (isset($names[strtolower(trim($p['name']))])) { return false; }
+            return true;
+        }));
+    }
+
+    public function hide(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $config = $this->loadConfig();
+        $entry = [
+            'id'      => bin2hex(random_bytes(6)),
+            'user_id' => (int) $request->input('user_id') ?: null,
+            'key'     => $this->nameKey($request->input('key', '')),
+            'name'    => trim((string) $request->input('name')),
+        ];
+        if (empty($entry['user_id']) && $entry['key'] === '' && $entry['name'] === '') {
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'Nothing to hide.']);
+        }
+        $config['hidden'][] = $entry;
+        $this->saveConfig($config);
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Hid ' . ($entry['name'] ?: 'that person') . ' — no longer shown on payroll.']);
+    }
+
+    public function unhide(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $id = preg_replace('/[^a-f0-9]/', '', (string) $request->input('id'));
+        $config = $this->loadConfig();
+        $config['hidden'] = array_values(array_filter($config['hidden'] ?? [], function ($h) use ($id) {
+            return ($h['id'] ?? '') !== $id;
+        }));
+        $this->saveConfig($config);
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Un-hid — they show on payroll again.']);
+    }
+
+    // ---- Saved runs (for "last paycheck") -------------------------------
+
+    // Snapshot this period's per-person totals so the NEXT run can show each
+    // person's last paycheck. Owner-only (it captures pay).
+    public function saveRun(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->canSeeRates()) { abort(403, 'Only owners can save a pay run.'); }
+        [$start, $end] = $this->resolvePeriod($request);
+        $businessId = $request->session()->get('user.business_id');
+
+        $config   = $this->loadConfig();
+        $hoursDoc = $this->loadHours($start, $end);
+        $schedule = $this->scheduleIndex($start, $end);
+        $people   = $this->buildPeople($hoursDoc['rows'] ?? [], $config['rates'], $config['settings'], $schedule);
+        $people   = $this->attachCommissions($people, $this->commissionByUser($businessId), $this->lastCommissionPaidByUser(), $this->lastPaycheckMap($start), $businessId);
+        $people   = $this->filterHidden($people, $config['hidden'] ?? []);
+
+        $snap = [];
+        foreach ($people as $p) {
+            $snap[] = ['key' => $p['key'], 'user_id' => $p['user_id'], 'name' => $p['name'], 'total' => $p['grand_total']];
+        }
+        Storage::disk('local')->put(
+            'payroll/runs/' . $start . '_' . $end . '.json',
+            json_encode(['start' => $start, 'end' => $end, 'saved_at' => now()->toDateTimeString(), 'people' => $snap], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Saved this pay run. It becomes the "last paycheck" reference for the next period.']);
+    }
+
+    // Most recent saved run that ENDED before $start → maps of prior totals.
+    private function lastPaycheckMap($start)
+    {
+        $out = ['byUid' => [], 'byKey' => []];
+        try {
+            $best = null;
+            foreach (Storage::disk('local')->files('payroll/runs') as $file) {
+                if (substr($file, -5) !== '.json') { continue; }
+                $doc = json_decode(Storage::disk('local')->get($file), true);
+                if (!is_array($doc) || empty($doc['end'])) { continue; }
+                if (strcmp($doc['end'], $start) >= 0) { continue; } // must end before this period
+                if ($best === null || strcmp($doc['end'], $best['end']) > 0) { $best = $doc; }
+            }
+            if ($best) {
+                foreach (($best['people'] ?? []) as $p) {
+                    if (!empty($p['user_id'])) { $out['byUid'][(int) $p['user_id']] = (float) $p['total']; }
+                    if (!empty($p['key']))     { $out['byKey'][$p['key']] = (float) $p['total']; }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('payroll last-paycheck lookup failed: ' . $e->getMessage());
+        }
+        return $out;
+    }
+
+    private function lastRunSavedAt($start, $end)
+    {
+        $f = 'payroll/runs/' . $start . '_' . $end . '.json';
+        if (!Storage::disk('local')->exists($f)) { return null; }
+        $doc = json_decode(Storage::disk('local')->get($f), true);
+        return is_array($doc) ? ($doc['saved_at'] ?? null) : null;
     }
 
     // first-name (name_key) => user_id, for auto-matching imported names to ERP
@@ -737,12 +898,13 @@ class PayrollController extends Controller
 
     private function loadConfig()
     {
-        $default = ['rates' => [], 'settings' => self::DEFAULTS, 'freelancers' => []];
+        $default = ['rates' => [], 'settings' => self::DEFAULTS, 'freelancers' => [], 'hidden' => []];
         if (!Storage::disk('local')->exists(self::CONFIG_FILE)) { return $default; }
         $data = json_decode(Storage::disk('local')->get(self::CONFIG_FILE), true);
         if (!is_array($data)) { return $default; }
         $data['rates']       = $data['rates'] ?? [];
         $data['freelancers'] = $data['freelancers'] ?? [];
+        $data['hidden']      = $data['hidden'] ?? [];
         $data['settings']    = array_merge(self::DEFAULTS, $data['settings'] ?? []);
         return $data;
     }

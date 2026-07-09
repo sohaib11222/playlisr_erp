@@ -173,7 +173,20 @@
 {{-- Summary --}}
 <div class="row"><div class="col-md-12">
   @component('components.widget', ['title' => 'Pay run'])
-    @php $emptyCols = $can_see_rates ? 11 : 8; @endphp
+    @php $emptyCols = $can_see_rates ? 14 : 10; @endphp
+    @if ($can_see_rates)
+      <div style="margin-bottom:10px;">
+        <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline;"
+              onsubmit="return confirm('Save this pay run as the last-paycheck reference for next period?');">
+          {{ csrf_field() }}
+          <input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+          <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-save"></i> Save pay run</button>
+        </form>
+        <span class="text-muted" style="margin-left:8px;font-size:12px;">
+          @if ($last_run_at) Saved {{ \Carbon::parse($last_run_at)->format('M j, g:ia') }}. @else Save once you've finalized — it becomes next period's "Last paycheck". @endif
+        </span>
+      </div>
+    @endif
     <div class="table-responsive">
     <table class="table table-condensed table-bordered">
       <thead>
@@ -183,7 +196,8 @@
           <th class="text-right">Reg h</th><th class="text-right">OT h</th><th class="text-right">DT h</th>
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
           <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
-          @if ($can_see_rates)<th class="text-right">Total</th>@endif
+          <th class="text-right">Comm earned</th><th class="text-right">Last comm paid</th>
+          @if ($can_see_rates)<th class="text-right">Total</th><th class="text-right">Last paycheck</th>@endif
           <th></th>
         </tr>
       </thead>
@@ -199,13 +213,32 @@
             @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
             <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
-            @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
-            <td class="text-center">
+            <td class="text-right">{{ $p['comm_earned'] ? '$' . $fmt($p['comm_earned']) : '' }}</td>
+            <td class="text-right">
+              @if (!empty($p['last_comm_paid']) && $p['last_comm_paid']->amount > 0)
+                ${{ $fmt($p['last_comm_paid']->amount) }}
+                @if (!empty($p['last_comm_paid']->at))<br><small class="text-muted">{{ \Carbon::parse($p['last_comm_paid']->at)->format('M j') }}</small>@endif
+              @endif
+            </td>
+            @if ($can_see_rates)
+              <td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
+              <td class="text-right">{{ !is_null($p['last_paycheck']) ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
+            @endif
+            <td class="text-center" style="white-space:nowrap;">
               @if (!empty($p['flags']))
                 <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;">
                   <i class="fa fa-clock-o"></i> {{ count($p['flags']) }}
                 </span>
               @endif
+              <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;"
+                    onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
+                {{ csrf_field() }}
+                <input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+                <input type="hidden" name="user_id" value="{{ $p['user_id'] }}">
+                <input type="hidden" name="key" value="{{ $p['key'] }}">
+                <input type="hidden" name="name" value="{{ $p['name'] }}">
+                <button type="submit" class="btn btn-xs btn-default" title="Hide (left the company)">Hide</button>
+              </form>
             </td>
           </tr>
         @empty
@@ -223,7 +256,9 @@
           @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['wages']) }}</td>@endif
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
-          @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['grand_total']) }}</td>@endif
+          <td class="text-right">${{ $fmt($totals['comm_earned']) }}</td>
+          <td></td>
+          @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['grand_total']) }}</td><td></td>@endif
           <td></td>
         </tr>
       </tfoot>
@@ -362,6 +397,32 @@
     </form>
   @endcomponent
 </div></div>
+
+{{-- Hidden people (owners only) --}}
+@if ($can_see_rates && !empty($hidden))
+<div class="row"><div class="col-md-12">
+  @component('components.widget', ['title' => 'Hidden people (left the company)'])
+    <p class="text-muted" style="margin-bottom:8px;">These are excluded from every pay run. Un-hide if someone returns.</p>
+    <table class="table table-condensed table-bordered">
+      <tbody>
+        @foreach ($hidden as $h)
+          <tr>
+            <td><strong>{{ $h['name'] ?? ($h['key'] ?? ('User #' . ($h['user_id'] ?? '?'))) }}</strong></td>
+            <td class="text-right" style="width:120px;">
+              <form method="POST" action="{{ url('/payroll/unhide') }}" style="display:inline;">
+                {{ csrf_field() }}
+                <input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+                <input type="hidden" name="id" value="{{ $h['id'] ?? '' }}">
+                <button type="submit" class="btn btn-xs btn-default">Un-hide</button>
+              </form>
+            </td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+  @endcomponent
+</div></div>
+@endif
 
 {{-- Rates & settings (owners only) --}}
 @if ($can_see_rates)
