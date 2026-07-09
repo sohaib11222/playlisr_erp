@@ -309,17 +309,15 @@
                 }
 
                 function runCheck() {
-                    var name = $.trim($('#name').val() || '');
-                    var artist = $.trim($('#artist').val() || '');
                     var sku = $.trim($('#sku').val() || '');
-                    if (name === '' && sku === '') { clearWarning(); return; }
+                    if (sku === '') { clearWarning(); return; }
 
                     $.ajax({
                         url: '{{ route('products.checkDuplicate') }}',
                         type: 'POST',
                         data: {
                             _token: '{{ csrf_token() }}',
-                            name: name, artist: artist, sku: sku
+                            sku: sku
                         },
                         dataType: 'json'
                     }).done(function(res) {
@@ -343,7 +341,7 @@
                     timer = setTimeout(runCheck, 400);
                 }
 
-                $('#name, #artist, #sku').on('input change blur', schedule);
+                $('#sku').on('input change blur', schedule);
 
                 // Block save while a duplicate is flagged. Users should add stock
                 // to the existing product instead of creating a second record.
