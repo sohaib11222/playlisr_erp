@@ -87,7 +87,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 
     <div class="mg-card">
         <h2>Or merge the whole catalog</h2>
-        <p class="sub">Scans every product and only groups duplicates that match on ALL of: a real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same title (word order ignored), the same store, and the same category. Each set merges into one — keeping the active copy with the most stock and combining stock + units sold onto it. Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
+        <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price and totaling stock + units sold onto it. Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
             <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
         </div>
@@ -95,7 +95,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
             <div class="mg-compare" style="display:block;margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table>
-                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Category</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
+                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Format</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
                     <tbody id="mgScanRows"></tbody>
                 </table>
             </div>

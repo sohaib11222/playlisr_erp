@@ -388,15 +388,18 @@ class ProductMergeController extends Controller
             if (strpos(strtolower($full), 'nerdy') !== false) { $untrustedSet[(int) $u->id] = true; }
         }
 
-        // Group by normalized SKU + title signature — BOTH must match, so
-        // records that only share a junk SKU aren't grouped.
+        // Group by normalized SKU (real barcode) only. The SKU is the source of
+        // truth: a shared real UPC means the same release, so we do NOT also
+        // require the title to match — that let title variants like
+        // "KORN / ISSUES" vs "KORN / ISSUES (X) (2LP/140G)" slip through as
+        // separate. Junk/placeholder SKUs are already rejected by skuKey (must
+        // be all-digit, 8+ chars), so grouping only ever happens on real
+        // barcodes. Bucketing by store + format (category) happens below.
         $byKey = [];
         foreach ($products as $p) {
             $sk = $this->skuKey($p->sku);
             if ($sk === '') { continue; }
-            $sig = $this->nameSig($p->name);
-            if ($sig === '') { continue; }
-            $byKey[$sk . '|' . $sig][] = $p;
+            $byKey[$sk][] = $p;
         }
         $dupeKeys = [];
         $dupeIds = [];
@@ -462,11 +465,14 @@ class ProductMergeController extends Controller
         $skipped = 0;
         $totalMerges = 0;
         foreach ($dupeKeys as $key => $rows) {
-            // Split this barcode+title group by store AND category, so copies
-            // at different stores or in different categories never merge.
+            // Split each barcode group by store AND format (category), so copies
+            // at different stores or in different formats never merge. Genre
+            // (sub-category) is intentionally NOT part of the key — the same
+            // album is often miscategorised (Rock vs Metal), and per Sarah we
+            // merge per listing + store + format regardless of genre.
             $byBucket = [];
             foreach ($rows as $r) {
-                $bucket = ($storeSig[(int) $r->id] ?? '') . '|cat|' . ((int) $r->category_id) . '-' . ((int) $r->sub_category_id);
+                $bucket = ($storeSig[(int) $r->id] ?? '') . '|cat|' . ((int) $r->category_id);
                 $byBucket[$bucket][] = $r;
             }
 
@@ -530,9 +536,11 @@ class ProductMergeController extends Controller
                         'full_stock' => (float) $fullStock,
                     ];
                 }
-                $catLabel = $groupSubId && isset($catNames[$groupSubId])
-                    ? $catNames[$groupSubId]
-                    : ($groupCatId && isset($catNames[$groupCatId]) ? $catNames[$groupCatId] : 'Uncategorized');
+                // Label with the FORMAT (category) — that's what the group is now
+                // keyed on. Genre (sub-category) can vary within a group.
+                $catLabel = $groupCatId && isset($catNames[$groupCatId])
+                    ? $catNames[$groupCatId]
+                    : 'Uncategorized';
                 // Survivor: active first, then trustworthy creator (never let a
                 // Nerdy Solutions record win), then the cleaner canonical name,
                 // then most stock, most sold, oldest id.
