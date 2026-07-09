@@ -943,6 +943,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/listing-commissions/undo-sales-payout', 'ListingCommissionController@undoSalesPayout');
     // One-click: mark listing + sales commission paid together.
     Route::post('/admin/listing-commissions/mark-all-paid', 'ListingCommissionController@markAllPaid');
+    // Record the exact amount actually handed to someone (e.g. cash), so the
+    // ledger matches reality even if the calculated figure had drifted.
+    Route::post('/admin/listing-commissions/record-payment', 'ListingCommissionController@recordPayment');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling

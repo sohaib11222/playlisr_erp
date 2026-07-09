@@ -372,6 +372,48 @@ class ListingCommissionController extends Controller
         ]);
     }
 
+    // Record a payment made by hand (e.g. cash) so the ledger matches what was
+    // actually disbursed, even when the calculated figure had drifted by the time
+    // you paid. Writes to the sales payout ledger (amount-based), so it reduces
+    // what the person is shown as owed and appears in the paid history. Undoable
+    // like any payout. Use it to true-up a payout to the real amount paid.
+    public function recordPayment(Request $request)
+    {
+        $userId = (int) $request->input('user_id');
+        $amount = round((float) $request->input('amount'), 2);
+        $note   = trim((string) $request->input('note', ''));
+
+        if ($userId <= 0 || $amount == 0.0) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a non-zero dollar amount.']);
+        }
+
+        $u = DB::table('users')->where('id', $userId)->first();
+        $name = $u
+            ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId)))
+            : ('User #' . $userId);
+
+        $payouts = $this->loadSalesPayouts();
+        $payouts[] = [
+            'id'        => bin2hex(random_bytes(8)),
+            'user_id'   => $userId,
+            'name'      => $name,
+            'amount'    => $amount,
+            'from_date' => now()->toDateString(),
+            'to_date'   => now()->toDateString(),
+            'manual'    => true,
+            'note'      => $note !== '' ? $note : 'Manual payment recorded',
+            'marked_by' => $request->session()->get('user.id'),
+            'marked_at' => now()->toDateTimeString(),
+        ];
+        $this->saveSalesPayouts($payouts);
+
+        return redirect('/admin/listing-commissions')->with('status', [
+            'success' => 1,
+            'msg'     => 'Recorded $' . number_format($amount, 2) . ' paid to ' . $name . '.',
+        ]);
+    }
+
     // Snapshot the person's currently-owed sales commission as a payout. Running
     // balance: owed always = cumulative earned − total paid, so marking paid
     // again only covers what's accrued since the last payout.

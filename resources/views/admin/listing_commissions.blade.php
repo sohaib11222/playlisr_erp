@@ -258,16 +258,40 @@
                 }
                 foreach ($sales_history as $h) {
                     $paidRows->push([
-                        'type' => 'Sales', 'marked_at' => $h['marked_at'] ?? '',
+                        'type' => ($h['manual'] ?? false) ? 'Manual' : 'Sales', 'marked_at' => $h['marked_at'] ?? '',
                         'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
                         'items' => null, 'amount' => (float) ($h['amount'] ?? 0),
                         'from' => $h['from_date'] ?? '?', 'to' => $h['to_date'] ?? '?',
+                        'note' => $h['note'] ?? '',
                         'id' => $h['id'] ?? '', 'undo' => 'undo-sales-payout',
                     ]);
                 }
                 $paidRows = $paidRows->sortByDesc('marked_at')->values();
                 $grandPaid = round($total_paid + $total_sales_paid_all, 2);
             @endphp
+
+            <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
+                  onsubmit="return confirm('Record this payment as actually made?');"
+                  style="margin-bottom:16px; padding:12px 14px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:8px;">
+                @csrf
+                <div style="font-weight:700; color:#6b5a00; margin-bottom:8px;">Record a payment you actually made</div>
+                <div class="form-inline">
+                    <select name="user_id" class="form-control input-sm" style="margin-right:8px;" required>
+                        <option value="">Person…</option>
+                        @foreach($people as $p)
+                            <option value="{{ $p->user_id }}">{{ $p->name }}</option>
+                        @endforeach
+                    </select>
+                    <span style="margin-right:2px;">$</span>
+                    <input type="number" step="0.01" min="0" name="amount" placeholder="0.00" class="form-control input-sm" style="width:110px; margin-right:8px;" required>
+                    <input type="text" name="note" placeholder="note (e.g. cash, true-up)" class="form-control input-sm" style="width:240px; margin-right:8px;">
+                    <button type="submit" class="btn btn-primary btn-sm">Record payment</button>
+                </div>
+                <div class="text-muted" style="margin-top:6px; font-size:12px;">
+                    Use this when you paid someone a different amount than the page showed. It logs the real dollars, shows in the history below, and reduces what they're owed.
+                </div>
+            </form>
+
             @if ($paidRows->isEmpty())
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
             @else
@@ -290,10 +314,10 @@
                             <tr>
                                 <td style="white-space:nowrap;">{{ $h['marked_at'] ? \Carbon::parse($h['marked_at'])->format('m/d/y g:ia') : '—' }}</td>
                                 <td>{{ $h['name'] }}</td>
-                                <td><span class="label {{ $h['type'] === 'Sales' ? 'label-primary' : 'label-default' }}">{{ $h['type'] }}</span></td>
+                                <td><span class="label {{ $h['type'] === 'Manual' ? 'label-warning' : ($h['type'] === 'Sales' ? 'label-primary' : 'label-default') }}">{{ $h['type'] }}</span></td>
                                 <td style="text-align:right;">{{ $h['items'] !== null ? number_format($h['items']) : '—' }}</td>
                                 <td style="text-align:right;">${{ number_format($h['amount'], 2) }}</td>
-                                <td style="white-space:nowrap;">{{ $h['from'] !== '?' ? \Carbon::parse($h['from'])->format('m/d/y') : '?' }} → {{ $h['to'] !== '?' ? \Carbon::parse($h['to'])->format('m/d/y') : '?' }}</td>
+                                <td style="white-space:nowrap;">@if($h['type'] === 'Manual'){{ $h['note'] ?? 'Manual payment' }}@else{{ $h['from'] !== '?' ? \Carbon::parse($h['from'])->format('m/d/y') : '?' }} → {{ $h['to'] !== '?' ? \Carbon::parse($h['to'])->format('m/d/y') : '?' }}@endif</td>
                                 <td style="text-align:right;">
                                     <form method="POST" action="{{ url('/admin/listing-commissions/' . $h['undo']) }}"
                                           onsubmit="return confirm('Undo this {{ strtolower($h['type']) }} payout? That commission will be owed again.');"
