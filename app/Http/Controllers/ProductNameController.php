@@ -205,6 +205,22 @@ class ProductNameController extends Controller
      * Split artist-less music products into: fillable (confident parse) and
      * flagged (needs manual). Returns counts + a capped preview of fillable.
      */
+    /**
+     * Parse the artist for one product row. A product already tagged "Various"
+     * (or "V/A" / "Compilation") is a compilation, so its artist is normalized
+     * to "Various Artists" rather than guessed out of the title — "Hardcore -
+     * Zoo Rave II" is not by the artist "Hardcore". A truly blank / "N/A" /
+     * "unknown" artist is still parsed from the name as before.
+     */
+    protected function parseArtistFromRow($name, $currentArtist, $knownKeys)
+    {
+        $ca = trim((string) $currentArtist);
+        if ($ca !== '' && preg_match('/^(various|v\/?a|compilation)\b/i', $ca)) {
+            return ['artist' => 'Various Artists', 'title' => $name, 'source' => 'Compilation (Various)', 'confident' => true, 'reason' => ''];
+        }
+        return ProductNameNormalizer::artistFromName($name, $knownKeys);
+    }
+
     protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null, $filter = '')
     {
         $catIds = $this->musicCategoryIds($business_id);
@@ -225,7 +241,7 @@ class ProductNameController extends Controller
             ->orderBy('id')
             ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter) {
                 foreach ($rows as $r) {
-                    $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
+                    $res = $this->parseArtistFromRow($r->name, $r->artist, $knownKeys);
                     if (!$res['confident']) {
                         $flagged++;
                         if ($collectFixes && ($limit === null || count($flaggedRows) < $limit)) {
@@ -338,7 +354,7 @@ class ProductNameController extends Controller
         if ($cap < 1) { $cap = 1; }
         $query->chunk(2000, function ($rows) use (&$batch, $cap, $knownKeys) {
             foreach ($rows as $r) {
-                $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
+                $res = $this->parseArtistFromRow($r->name, $r->artist, $knownKeys);
                 if (!$res['confident']) { continue; }
                 $batch[] = [
                     'id' => (int) $r->id,
