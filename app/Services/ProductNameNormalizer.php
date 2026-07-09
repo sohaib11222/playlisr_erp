@@ -207,6 +207,16 @@ class ProductNameNormalizer
             '100gecs' => '100 gecs',
             'e40' => 'E-40',
             'falloutboy' => 'Fall Out Boy',
+            // ZZ Top — stylized all-caps, must not become "Zz Top".
+            'zztop' => 'ZZ Top',
+            // Zac Brown Band — mis-sorted as "BROWN,ZAC BAND" (surname-first),
+            // which the last/first flip mangles into "Zac Band Brown".
+            'zacbrownband' => 'Zac Brown Band',
+            'brownzacband' => 'Zac Brown Band',
+            // Frank Zappa & The Mothers of Invention — catalogued surname-first
+            // with a "&", so the flip bails and leaves the raw "Zappa,Frank ...".
+            'frankzappathemothersofinvention' => 'Frank Zappa & The Mothers of Invention',
+            'zappafrankthemothersofinvention' => 'Frank Zappa & The Mothers of Invention',
         ];
     }
 
