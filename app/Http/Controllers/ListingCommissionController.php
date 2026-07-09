@@ -256,6 +256,7 @@ class ListingCommissionController extends Controller
             'total_owed_now'     => $people->sum('total_owed_now'),
             'sales_bonus_from'   => self::SALES_BONUS_FROM,
             'freeze'             => $this->loadFreeze(),
+            'paid_groups'        => $this->groupPaidHistory($history, $salesHistory),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
@@ -504,6 +505,65 @@ class ListingCommissionController extends Controller
         if (Storage::disk('local')->exists(self::FREEZE_FILE)) {
             Storage::disk('local')->delete(self::FREEZE_FILE);
         }
+    }
+
+    // Group both payout ledgers by payroll date, then by person, so the paid
+    // history reads like the payroll sheet: one row per person per run with
+    // Listing + Sales + Total (instead of a separate row per payout per type).
+    private function groupPaidHistory($history, $salesHistory)
+    {
+        $rows = [];
+        foreach ($history as $h) {
+            $rows[] = ['kind' => 'listing', 'date' => substr((string) ($h['marked_at'] ?? ''), 0, 10),
+                'uid' => (int) ($h['user_id'] ?? 0), 'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
+                'amount' => (float) ($h['amount'] ?? 0), 'items' => (int) ($h['count'] ?? 0),
+                'id' => $h['id'] ?? '', 'route' => 'undo-payout', 'note' => ''];
+        }
+        foreach ($salesHistory as $h) {
+            $manual = !empty($h['manual']);
+            $rows[] = ['kind' => $manual ? 'manual' : 'sales', 'date' => substr((string) ($h['marked_at'] ?? ''), 0, 10),
+                'uid' => (int) ($h['user_id'] ?? 0), 'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
+                'amount' => (float) ($h['amount'] ?? 0), 'items' => 0,
+                'id' => $h['id'] ?? '', 'route' => 'undo-sales-payout', 'note' => $h['note'] ?? ''];
+        }
+
+        $byDate = [];
+        foreach ($rows as $r) { $byDate[$r['date']][] = $r; }
+        krsort($byDate);
+
+        $groups = [];
+        foreach ($byDate as $date => $drows) {
+            $byUser = [];
+            foreach ($drows as $r) {
+                $uid = $r['uid'];
+                if (!isset($byUser[$uid])) {
+                    $byUser[$uid] = ['uid' => $uid, 'name' => $r['name'], 'listing' => 0.0, 'sales' => 0.0,
+                        'items' => 0, 'undos' => [], 'notes' => []];
+                }
+                if ($r['kind'] === 'listing') {
+                    $byUser[$uid]['listing'] += $r['amount'];
+                    $byUser[$uid]['items'] += $r['items'];
+                } else {
+                    $byUser[$uid]['sales'] += $r['amount'];
+                    if ($r['note'] !== '') { $byUser[$uid]['notes'][] = $r['note']; }
+                }
+                if ($r['id'] !== '') {
+                    $byUser[$uid]['undos'][] = ['id' => $r['id'], 'route' => $r['route'], 'label' => ucfirst($r['kind'])];
+                }
+            }
+            $out = [];
+            $dtotal = 0.0;
+            foreach ($byUser as $u) {
+                $u['listing'] = round($u['listing'], 2);
+                $u['sales']   = round($u['sales'], 2);
+                $u['total']   = round($u['listing'] + $u['sales'], 2);
+                $dtotal += $u['total'];
+                $out[] = $u;
+            }
+            usort($out, function ($a, $b) { return strcmp($a['name'], $b['name']); });
+            $groups[] = ['date' => $date, 'total' => round($dtotal, 2), 'rows' => $out];
+        }
+        return $groups;
     }
 
     // Snapshot the person's currently-owed sales commission as a payout. Running

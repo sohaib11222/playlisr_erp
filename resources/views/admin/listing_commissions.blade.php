@@ -287,32 +287,7 @@
 <div class="row">
     <div class="col-md-12">
         @component('components.widget', ['title' => 'Paid history — listing + sales in one list'])
-            @php
-                // Merge both payout ledgers into one date-sorted list so every
-                // payment (listing or sales) shows in a single place.
-                $paidRows = collect();
-                foreach ($history as $h) {
-                    $paidRows->push([
-                        'type' => 'Listing', 'marked_at' => $h['marked_at'] ?? '',
-                        'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
-                        'items' => $h['count'] ?? null, 'amount' => (float) ($h['amount'] ?? 0),
-                        'from' => $h['from_date'] ?? '?', 'to' => $h['to_date'] ?? '?',
-                        'id' => $h['id'] ?? '', 'undo' => 'undo-payout',
-                    ]);
-                }
-                foreach ($sales_history as $h) {
-                    $paidRows->push([
-                        'type' => ($h['manual'] ?? false) ? 'Manual' : 'Sales', 'marked_at' => $h['marked_at'] ?? '',
-                        'name' => $h['name'] ?? ('User #' . ($h['user_id'] ?? '?')),
-                        'items' => null, 'amount' => (float) ($h['amount'] ?? 0),
-                        'from' => $h['from_date'] ?? '?', 'to' => $h['to_date'] ?? '?',
-                        'note' => $h['note'] ?? '',
-                        'id' => $h['id'] ?? '', 'undo' => 'undo-sales-payout',
-                    ]);
-                }
-                $paidRows = $paidRows->sortByDesc('marked_at')->values();
-                $grandPaid = round($total_paid + $total_sales_paid_all, 2);
-            @endphp
+            @php $grandPaid = round($total_paid + $total_sales_paid_all, 2); @endphp
 
             <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
                   onsubmit="return confirm('Record this payment as actually made?');"
@@ -338,46 +313,51 @@
                 </div>
             </form>
 
-            @if ($paidRows->isEmpty())
+            @if (empty($paid_groups))
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
             @else
                 <p class="text-muted">Total paid to date: <strong>${{ number_format($grandPaid, 2) }}</strong>
                     &nbsp;·&nbsp; Listing ${{ number_format($total_paid, 2) }} &nbsp;·&nbsp; Sales ${{ number_format($total_sales_paid_all, 2) }}</p>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Paid on</th>
-                            <th>Person</th>
-                            <th>Type</th>
-                            <th style="text-align:right;">Items</th>
-                            <th style="text-align:right;">Amount</th>
-                            <th>Covered</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($paidRows as $h)
+
+                @foreach ($paid_groups as $g)
+                    <div style="margin:18px 0 6px; display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #E6CE5A; padding-bottom:4px;">
+                        <strong style="font-size:15px;">Paid {{ \Carbon::parse($g['date'])->format('m/d/y') }}</strong>
+                        <span class="text-muted">Run total <strong>${{ number_format($g['total'], 2) }}</strong></span>
+                    </div>
+                    <table class="table table-striped" style="margin-bottom:8px;">
+                        <thead>
                             <tr>
-                                <td style="white-space:nowrap;">{{ $h['marked_at'] ? \Carbon::parse($h['marked_at'])->format('m/d/y g:ia') : '—' }}</td>
-                                <td>{{ $h['name'] }}</td>
-                                <td><span class="label {{ $h['type'] === 'Manual' ? 'label-warning' : ($h['type'] === 'Sales' ? 'label-primary' : 'label-default') }}">{{ $h['type'] }}</span></td>
-                                <td style="text-align:right;">{{ $h['items'] !== null ? number_format($h['items']) : '—' }}</td>
-                                <td style="text-align:right;">${{ number_format($h['amount'], 2) }}</td>
-                                <td style="white-space:nowrap;">@if($h['type'] === 'Manual'){{ $h['note'] ?? 'Manual payment' }}@else{{ $h['from'] !== '?' ? \Carbon::parse($h['from'])->format('m/d/y') : '?' }} → {{ $h['to'] !== '?' ? \Carbon::parse($h['to'])->format('m/d/y') : '?' }}@endif</td>
-                                <td style="text-align:right;">
-                                    <form method="POST" action="{{ url('/admin/listing-commissions/' . $h['undo']) }}"
-                                          onsubmit="return confirm('Undo this {{ strtolower($h['type']) }} payout? That commission will be owed again.');"
-                                          style="margin:0;">
-                                        @csrf
-                                        <input type="hidden" name="id" value="{{ $h['id'] }}">
-                                        <input type="hidden" name="from" value="{{ $from }}">
-                                        <button type="submit" class="btn btn-warning btn-xs">Undo</button>
-                                    </form>
-                                </td>
+                                <th>Person</th>
+                                <th style="text-align:right;">Listing</th>
+                                <th style="text-align:right;">Sales</th>
+                                <th style="text-align:right;">Total</th>
+                                <th></th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach ($g['rows'] as $r)
+                                <tr>
+                                    <td>{{ $r['name'] }}@if(!empty($r['notes'])) <span class="text-muted" style="font-size:11px;">({{ implode('; ', $r['notes']) }})</span>@endif</td>
+                                    <td style="text-align:right;">@if($r['listing'] != 0)${{ number_format($r['listing'], 2) }}@if($r['items']) <span class="text-muted" style="font-size:11px;">· {{ number_format($r['items']) }} items</span>@endif @else<span class="text-muted">—</span>@endif</td>
+                                    <td style="text-align:right;">@if($r['sales'] != 0)${{ number_format($r['sales'], 2) }}@else<span class="text-muted">—</span>@endif</td>
+                                    <td style="text-align:right;"><strong>${{ number_format($r['total'], 2) }}</strong></td>
+                                    <td style="text-align:right; white-space:nowrap;">
+                                        @foreach ($r['undos'] as $u)
+                                            <form method="POST" action="{{ url('/admin/listing-commissions/' . $u['route']) }}"
+                                                  onsubmit="return confirm('Undo {{ $r['name'] }} {{ strtolower($u['label']) }} payout? That commission will be owed again.');"
+                                                  style="display:inline-block; margin:0 0 0 4px;">
+                                                @csrf
+                                                <input type="hidden" name="id" value="{{ $u['id'] }}">
+                                                <input type="hidden" name="from" value="{{ $from }}">
+                                                <button type="submit" class="btn btn-warning btn-xs">Undo {{ $u['label'] }}</button>
+                                            </form>
+                                        @endforeach
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endforeach
             @endif
         @endcomponent
     </div>
