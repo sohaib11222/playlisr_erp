@@ -8,9 +8,9 @@
         <tr>
             <th><input type="checkbox" id="select-all-row" data-table-id="product_table"></th>
             <th>@lang('messages.action')</th>
-            <th>@lang('purchase.business_location')</th>
-            <th>@lang('sale.product')</th>
+            <th>Store Location</th>
             <th>Artist</th>
+            <th>@lang('sale.product')</th>
             <th>@lang('product.category')</th>
             <th>@lang('product.sub_category')</th>
             @can('view_purchase_price')
@@ -23,9 +23,9 @@
             <th>Units Sold</th>
             <th>@lang('product.sku')</th>
             <th>Created at</th>
+            <th>Created by</th>
             <th>Last updated at</th>
             <th>Last updated by</th>
-            <th>Created by</th>
             <th>Discogs ID</th>
             <th>Discogs</th>
             <th>eBay</th>

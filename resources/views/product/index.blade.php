@@ -492,8 +492,8 @@
                         { data: 'mass_delete'  },
                         { data: 'action', name: 'action'},
                         { data: 'product_locations', name: 'product_locations'  },
-                        { data: 'product', name: 'products.name'  },
                         { data: 'artist', name: 'products.artist'},
+                        { data: 'product', name: 'products.name'  },
                         { data: 'category', name: 'c1.name'},
                         { data: 'subcategory', name: 'c2.name'},
                         @can('view_purchase_price')
@@ -506,12 +506,12 @@
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},
                         { data: 'created_at', name: 'products.created_at'},
+                        { data: 'created_by_name', name: 'u.first_name' },
                         // real_updated_at is a SELECT alias (GREATEST(...)), not a real
                         // column — MySQL rejects aliases in WHERE, so leaving this
                         // searchable made global search 500 and return zero rows.
                         { data: 'updated_at', name: 'real_updated_at', orderable: true, searchable: false},
                         { data: 'updated_by_name', name: 'updated_by_name', orderable: false, searchable: false},
-                        { data: 'created_by_name', name: 'u.first_name' },
                         { data: 'discogs_id', name: 'discogs_id', orderable: false, searchable: false },
                         { data: 'list_discogs', name: 'list_discogs', orderable: false, searchable: false },
                         { data: 'list_ebay', name: 'list_ebay', orderable: false, searchable: false },

@@ -501,8 +501,10 @@ class ProductController extends Controller
                     // navigating to the product view.
                     $rid = (int) ($row->discogs_release_id ?? 0);
                     if ($rid > 0) {
-                        return '<a href="#" class="edit-discogs-id" data-id="' . $row->id . '" data-release-id="' . $rid . '" title="Change / re-import from Discogs">'
-                            . '<span class="label label-info">#' . $rid . '</span></a> '
+                        // Plain-text release id (click to change / re-import), with a
+                        // small external link to open it on Discogs.
+                        return '<a href="#" class="edit-discogs-id" data-id="' . $row->id . '" data-release-id="' . $rid . '" title="Change / re-import from Discogs" style="color:inherit;">'
+                            . $rid . '</a> '
                             . '<a href="https://www.discogs.com/release/' . $rid . '" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Open on Discogs"><i class="fa fa-external-link"></i></a>';
                     }
                     return '<a href="#" class="edit-discogs-id" data-id="' . $row->id . '" data-release-id="" title="Add a Discogs release id">'

@@ -309,14 +309,59 @@ body.products-v2 .dataTables_length select {
 	padding: 0 10px;
 	background: var(--pl-surface);
 }
+/* Table header — cleaner font + a proper background band.
+   nowrap keeps two-word labels ("Store Location", "Purchase Price",
+   "Created by") on a single line instead of stacking one word per row. */
 body.products-v2 table.dataTable thead th {
 	background: var(--pl-surface-2);
-	color: var(--pl-ink);
+	color: var(--pl-ink-2);
+	font-family: "Inter Tight", system-ui, sans-serif;
 	font-weight: 700;
-	border-bottom: 1px solid var(--pl-line) !important;
+	font-size: 12px;
+	letter-spacing: .02em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	vertical-align: middle;
+	padding-top: 9px;
+	padding-bottom: 9px;
+	border-bottom: 1px solid var(--pl-line-2) !important;
+}
+body.products-v2 table.dataTable tbody td {
+	font-family: "Inter Tight", system-ui, sans-serif;
+	vertical-align: middle;
 }
 body.products-v2 table.dataTable tbody tr:hover {
 	background: var(--pl-accent-soft);
+}
+
+/* Smaller, subtler sort arrows. Shrinks both the classic background-image
+   indicators and the newer ::before/::after glyphs so neither looks oversized. */
+body.products-v2 table.dataTable thead th.sorting,
+body.products-v2 table.dataTable thead th.sorting_asc,
+body.products-v2 table.dataTable thead th.sorting_desc,
+body.products-v2 table.dataTable thead th.sorting_asc_disabled,
+body.products-v2 table.dataTable thead th.sorting_desc_disabled {
+	background-size: 11px auto !important;
+	background-position: center right 6px !important;
+	padding-right: 22px !important;
+}
+body.products-v2 table.dataTable thead th.sorting::before,
+body.products-v2 table.dataTable thead th.sorting::after,
+body.products-v2 table.dataTable thead th.sorting_asc::before,
+body.products-v2 table.dataTable thead th.sorting_asc::after,
+body.products-v2 table.dataTable thead th.sorting_desc::before,
+body.products-v2 table.dataTable thead th.sorting_desc::after {
+	font-size: .7em !important;
+	opacity: .35 !important;
+	right: 6px !important;
+}
+
+/* Give Artist + Product room so titles wrap a couple of words per line
+   instead of one word per line. (After the reorder: 3 = Store Location,
+   4 = Artist, 5 = Product.) */
+body.products-v2 #product_table td:nth-child(4),
+body.products-v2 #product_table td:nth-child(5) {
+	min-width: 170px;
 }
 
 /* Tab action buttons */
