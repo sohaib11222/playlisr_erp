@@ -226,6 +226,11 @@ class ProductNameNormalizer
             'abba' => 'ABBA',
             'aha' => 'A-HA',
             '50cent' => '50 Cent',
+            // Punctuation dropped by a catalog spelling that omits the "!".
+            'againstme' => 'Against Me!',
+            // Bob Weir — so "Ace / Bob Weir" (Ace is his album, and also a band
+            // name) stops resolving to "Ace" and is recognized as the artist.
+            'bobweir' => 'Bob Weir',
         ];
     }
 
