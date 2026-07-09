@@ -104,24 +104,33 @@ class ProductNameNormalizer
         return implode(' ', $words);
     }
 
+    /** Normalized lookup key for an artist string (alphanumeric, lowercased). */
+    public static function artistKey($s)
+    {
+        return self::key($s);
+    }
+
     /**
      * Reverse of canonical(): guess the ARTIST out of a name when the artist
-     * column is blank. Both known name shapes put the artist FIRST:
+     * column is blank. A name splits on a spaced "/" or " - " into exactly two
+     * segments — but the catalog is inconsistent about order ("BURZUM / HVIS
+     * LYSET TAR OSS" is artist-first, "American Idiot / Green Day" is artist-
+     * last), so position alone can't be trusted.
      *
-     *   - Slash imports: "Artist / Title"  -> artist is BEFORE the spaced slash
-     *     (e.g. "BURZUM / HVIS LYSET TAR OSS", "GWAR / SCUMDOGS OF THE UNIVERSE").
-     *   - Dash / canonical: "Artist - Title" -> artist is BEFORE the spaced " - ".
+     * Disambiguation uses $knownKeys — a set (assoc array keyed by artistKey())
+     * of artists that already exist elsewhere in the catalog:
+     *   - exactly one segment is a known artist -> that segment is the artist.
+     *   - both or neither known -> flagged for manual review (no guess).
+     * If $knownKeys is null, falls back to first-segment = artist.
      *
-     * Only a spaced separator counts, so "AC/DC - Back In Black" is read as the
-     * dash shape (artist "AC/DC"), not the slash shape. A plain title with no
-     * separator, or a parsed value that looks like a format/catalog token, is
-     * returned confident=false so the caller flags it for manual review rather
-     * than stamping a wrong artist.
+     * Only a spaced separator counts, so "AC/DC - Back In Black" splits on the
+     * dash. 3+ segments, no separator, or a format/catalog-looking value are
+     * returned confident=false so the caller flags them instead of guessing.
      *
      * Returns ['artist' => string, 'title' => string, 'source' => string,
      *          'confident' => bool, 'reason' => string].
      */
-    public static function artistFromName($name)
+    public static function artistFromName($name, $knownKeys = null)
     {
         $name = trim(preg_replace('/\s+/', ' ', (string) $name));
         if ($name === '') {
@@ -131,31 +140,45 @@ class ProductNameNormalizer
             return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'contains "retired" — left alone'];
         }
 
-        // "Artist / Title" (spaced slash): artist is the first half. Only trust
-        // an exact two-part split — 3+ segments (e.g. a trailing edition) are
-        // ambiguous, so flag them for manual review.
-        if (preg_match('/\s\/\s/', $name)) {
-            $parts = preg_split('/\s+\/\s+/', $name);
+        // Spaced slash first, then spaced hyphen. Only an exact two-part split
+        // is workable; 3+ segments (trailing edition, etc.) are flagged.
+        foreach ([['/', '/'], ['-', '-']] as $sep) {
+            $label = $sep[1];
+            if (!preg_match('/\s' . preg_quote($sep[0], '/') . '\s/', $name)) { continue; }
+            $parts = preg_split('/\s+' . preg_quote($sep[0], '/') . '\s+/', $name);
             $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
-            if (count($parts) === 2) {
-                return self::validateParsedArtist($parts[0], $parts[1], 'Artist / Title');
+            if (count($parts) !== 2) {
+                return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple "' . $label . '" segments — manual'];
             }
-            return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple " / " segments — manual'];
-        }
-
-        // "Artist - Title" (spaced hyphen): artist is the first half. Same
-        // two-part-only rule so "Title - Artist - Edition" style rows are
-        // flagged rather than mis-parsed.
-        if (preg_match('/\s-\s/', $name)) {
-            $parts = preg_split('/\s+-\s+/', $name);
-            $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
-            if (count($parts) === 2) {
-                return self::validateParsedArtist($parts[0], $parts[1], 'Artist - Title');
-            }
-            return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple " - " segments — manual'];
+            return self::pickArtist($parts[0], $parts[1], $knownKeys, $label);
         }
 
         return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'no separator'];
+    }
+
+    /**
+     * Given the two segments of a split name, decide which is the artist using
+     * the known-artist set (preferred) or first-segment position (fallback).
+     */
+    protected static function pickArtist($first, $second, $knownKeys, $label)
+    {
+        if (is_array($knownKeys)) {
+            $firstKnown = isset($knownKeys[self::key($first)]);
+            $secondKnown = isset($knownKeys[self::key($second)]);
+            if ($firstKnown && !$secondKnown) {
+                return self::validateParsedArtist($first, $second, 'Artist ' . $label . ' Title');
+            }
+            if ($secondKnown && !$firstKnown) {
+                return self::validateParsedArtist($second, $first, 'Title ' . $label . ' Artist');
+            }
+            $reason = ($firstKnown && $secondKnown)
+                ? 'both sides are known artists — manual'
+                : 'neither side is a known artist — manual';
+            return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => $reason];
+        }
+
+        // No known-artist set: assume artist-first.
+        return self::validateParsedArtist($first, $second, 'Artist ' . $label . ' Title');
     }
 
     /**

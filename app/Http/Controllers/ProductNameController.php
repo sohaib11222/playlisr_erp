@@ -55,6 +55,30 @@ class ProductNameController extends Controller
         return $ids;
     }
 
+    /**
+     * Set of artists that already exist somewhere in this business's catalog,
+     * keyed by normalized artistKey(). Used to disambiguate which side of a
+     * "A / B" name is the artist.
+     */
+    protected function knownArtistKeys($business_id)
+    {
+        $keys = [];
+        \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereNotNull('artist')
+            ->whereRaw("TRIM(artist) <> ''")
+            ->distinct()
+            ->pluck('artist')
+            ->each(function ($a) use (&$keys) {
+                $a = trim((string) $a);
+                // Skip non-artist placeholders so "N/A"/"Various" never counts.
+                if ($a === '' || preg_match('/^(n\/?a|unknown|various|none|no artist)$/i', $a)) { return; }
+                $k = ProductNameNormalizer::artistKey($a);
+                if ($k !== '') { $keys[$k] = true; }
+            });
+        return $keys;
+    }
+
     /** Products in a music category whose artist column is blank / "N/A"-ish. */
     protected function artistlessMusicQuery($business_id, $catIds)
     {
@@ -79,6 +103,7 @@ class ProductNameController extends Controller
             return ['fixes' => [], 'to_fill' => 0, 'flagged' => 0, 'cat_ids' => []];
         }
 
+        $knownKeys = $this->knownArtistKeys($business_id);
         $fixes = [];
         $toFill = 0;
         $flagged = 0;
@@ -86,9 +111,9 @@ class ProductNameController extends Controller
         $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
             ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$fixes, &$toFill, &$flagged, $collectFixes, $limit) {
+            ->chunk(2000, function ($rows) use (&$fixes, &$toFill, &$flagged, $collectFixes, $limit, $knownKeys) {
                 foreach ($rows as $r) {
-                    $res = ProductNameNormalizer::artistFromName($r->name);
+                    $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
                     if (!$res['confident']) { $flagged++; continue; }
                     $toFill++;
                     if ($collectFixes && ($limit === null || count($fixes) < $limit)) {
@@ -150,13 +175,14 @@ class ProductNameController extends Controller
             return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'No music categories found.']);
         }
 
+        $knownKeys = $this->knownArtistKeys($business_id);
         $batch = [];
         $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
             ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$batch, $max) {
+            ->chunk(2000, function ($rows) use (&$batch, $max, $knownKeys) {
                 foreach ($rows as $r) {
-                    $res = ProductNameNormalizer::artistFromName($r->name);
+                    $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
                     if (!$res['confident']) { continue; }
                     $batch[] = [
                         'id' => (int) $r->id,
