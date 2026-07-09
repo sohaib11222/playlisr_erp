@@ -34,6 +34,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 .mgn-new { color: #1B5E20; font-weight: 600; }
 .mgn-summary b { font-size: 17px; }
 .ar-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.ar-table td, .ar-table th { padding: 5px 10px; font-size: 12.5px; line-height: 1.25; }
 .ar-sort { cursor: pointer; user-select: none; white-space: nowrap; }
 .ar-sort:hover { color: #1F1B16; }
 .ar-arrow { font-size: 10px; color: #C9A227; }
@@ -78,7 +79,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
             <div class="mgn-note" id="arSelInfo" style="margin-top:6px;"></div>
-            <div style="margin-top:10px;max-height:520px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+            <div style="margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table class="mgn-table ar-table">
                     <thead><tr>
                         <th style="width:34px;text-align:center"><input type="checkbox" id="arCheckAll" checked title="Select all"></th>

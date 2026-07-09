@@ -118,6 +118,10 @@ class ProductNameNormalizer
     {
         $s = trim((string) $s);
         $s = trim($s, "\"\u{201C}\u{201D}\u{2018}\u{2019}");
+        // Drop Discogs disambiguation markers: a trailing "*" ("Peanuts*") and a
+        // trailing " (2)" numeric suffix ("Nirvana (2)").
+        $s = preg_replace('/\s*\*+$/', '', $s);
+        $s = preg_replace('/\s*\(\d+\)$/', '', $s);
         return trim(preg_replace('/\s+/', ' ', $s));
     }
 
@@ -164,6 +168,8 @@ class ProductNameNormalizer
             'eilishbillie' => 'Billie Eilish',
             // Stylized casing.
             'mfdoom' => 'MF Doom',
+            'xxxtentacion' => 'XXXTENTACION',
+            'maroon5' => 'Maroon 5',
         ];
     }
 

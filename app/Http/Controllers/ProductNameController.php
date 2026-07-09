@@ -59,8 +59,23 @@ class ProductNameController extends Controller
      * keyed by normalized artistKey(). Used to disambiguate which side of a
      * "A / B" name is the artist.
      */
+    /**
+     * Normalized keys of common non-artist TITLE phrases that must never count
+     * as an artist — even if a bad earlier fill wrote one into the artist column
+     * (which would otherwise poison the recognized-artist set).
+     */
+    protected function titleStopKeys()
+    {
+        return ['greatesthits' => 1, 'bestof' => 1, 'thebest' => 1, 'live' => 1,
+            'singles' => 1, 'thesingles' => 1, 'selftitled' => 1, 'hits' => 1, 'anthology' => 1,
+            'collection' => 1, 'compilation' => 1, 'various' => 1, 'variousartists' => 1,
+            'soundtrack' => 1, 'ost' => 1, 'deluxe' => 1, 'remastered' => 1, 'acoustic' => 1,
+            'demos' => 1, 'demo' => 1, 'ep' => 1, 'lp' => 1, 'untitled' => 1];
+    }
+
     protected function knownArtistKeys($business_id)
     {
+        $stop = $this->titleStopKeys();
         $keys = [];
         \DB::table('products')
             ->where('business_id', $business_id)
@@ -68,13 +83,13 @@ class ProductNameController extends Controller
             ->whereRaw("TRIM(artist) <> ''")
             ->distinct()
             ->pluck('artist')
-            ->each(function ($a) use (&$keys) {
+            ->each(function ($a) use (&$keys, $stop) {
                 $a = trim((string) $a);
                 // Skip non-artist placeholders so "N/A"/"Various"/compilations
                 // never count as a known artist.
                 if ($a === '' || preg_match('/^(n\/?a|unknown|various|v\/?a|compilation|soundtrack|o\.?s\.?t\.?|misc|none|no artist)\b/i', $a)) { return; }
                 $k = ProductNameNormalizer::artistKey($a);
-                if ($k === '') { return; }
+                if ($k === '' || isset($stop[$k])) { return; }
                 // Keep one canonical spelling per artist; prefer a mixed-case
                 // one ("Burzum") over an ALL-CAPS duplicate ("BURZUM").
                 if (!isset($keys[$k]) || (!preg_match('/\p{Ll}/u', $keys[$k]) && preg_match('/\p{Ll}/u', $a))) {
@@ -120,11 +135,7 @@ class ProductNameController extends Controller
             });
 
         // Repeated non-artist title phrases to never treat as an artist.
-        static $stop = ['greatesthits' => 1, 'bestof' => 1, 'thebest' => 1, 'live' => 1,
-            'singles' => 1, 'thesingles' => 1, 'selftitled' => 1, 'hits' => 1, 'anthology' => 1,
-            'collection' => 1, 'compilation' => 1, 'various' => 1, 'variousartists' => 1,
-            'soundtrack' => 1, 'ost' => 1, 'deluxe' => 1, 'remastered' => 1, 'acoustic' => 1,
-            'demos' => 1, 'demo' => 1, 'ep' => 1, 'lp' => 1, 'untitled' => 1];
+        $stop = $this->titleStopKeys();
 
         foreach ($counts as $k => $n) {
             if ($n >= 2 && !isset($keys[$k]) && !isset($stop[$k])) {
