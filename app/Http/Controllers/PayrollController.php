@@ -340,6 +340,11 @@ class PayrollController extends Controller
         // name_key => ['days' => [date => hours], 'store', 'flags', 'user_id', 'rate', 'name']
         $byPerson = [];
         foreach ($rows as $r) {
+            // Defensive: never treat a date-looking value as a person (guards
+            // against hours imported before the parser learned to skip the
+            // per-day date rows — those rows are dropped until a re-import
+            // re-attributes them to the right person).
+            if ($this->looksLikeDate($r['name']) || is_numeric(trim((string) $r['name']))) { continue; }
             $key = $this->nameKey($r['name']);
             if ($key === '') { continue; }
 
