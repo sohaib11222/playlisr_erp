@@ -280,7 +280,7 @@ class ProductNameController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $filter = (string) $request->input('filter', '');
         try {
-            $data = $this->computeArtistBackfill($business_id, true, 100, $filter);
+            $data = $this->computeArtistBackfill($business_id, true, 25, $filter);
             $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
