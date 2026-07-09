@@ -99,21 +99,12 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             </div>
             <div class="mgn-actions" style="margin-top:16px;flex-wrap:wrap;">
                 <button class="mgn-btn mgn-btn-primary" id="arApplyBtn" type="button">Fill selected</button>
-                <button class="mgn-btn mgn-btn-ghost" id="arSelHigh" type="button">Only the sure ones</button>
                 <button class="mgn-btn mgn-btn-ghost" id="arSelAll" type="button">Select all</button>
                 <button class="mgn-btn mgn-btn-ghost" id="arSelNone" type="button">Select none</button>
                 <span class="mgn-note" id="arProgress" style="margin-top:0"></span>
             </div>
-            <div class="mgn-note" style="margin-top:8px;line-height:1.9;">
-                <span style="display:inline-block;width:10px;height:10px;background:#2E7D32;border-radius:2px;vertical-align:middle"></span>
-                <b>known</b> (already an artist in the catalog) &nbsp;·&nbsp;
-                <span style="display:inline-block;width:10px;height:10px;background:#2E7D32;border-radius:2px;vertical-align:middle"></span>
-                <b>sure</b> (surname-first / compilation) &nbsp;·&nbsp;
-                <span style="display:inline-block;width:10px;height:10px;background:#E3C766;border-radius:2px;vertical-align:middle"></span>
-                <b>new - verify</b> (not seen before) &nbsp;·&nbsp;
-                <span style="display:inline-block;width:10px;height:10px;background:#B71C1C;border-radius:2px;vertical-align:middle"></span>
-                <b>looks like X?</b> (likely misspelling).
-                <br>Known + sure are pre-checked; new + typos start off. Tip: click a row to toggle it, or <b>shift-click</b> a checkbox to flip a whole range. Rows are grouped by parsed artist.
+            <div class="mgn-note" style="margin-top:8px;">
+                Everything is pre-checked. Tip: click a row to toggle it, or <b>shift-click</b> a checkbox to flip a whole range at once. Rows are grouped by parsed artist, so duplicates sit together.
             </div>
             <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
 
@@ -287,32 +278,14 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             ? '<span style="color:#B9AE99">(blank)</span>' : esc(old);
     }
 
-    // What kind of row is this? Drives colour + badge + default selection.
-    //   typo  = one edit off a real catalog artist (probably misspelled)
-    //   known = this artist already exists in the catalog (real, safe)
-    //   sure  = surname-first / compilation (structurally certain, maybe new)
-    //   new   = a best guess at a not-seen-before artist (worth a glance)
-    function arTier(f) {
-        if (f.known === 'typo') { return 'typo'; }
-        if (f.known === 'known') { return 'known'; }
-        if (f.trust === 'high') { return 'sure'; }
-        return 'new';
-    }
-    function arDefaultSel(f) { var t = arTier(f); return t === 'known' || t === 'sure'; }
-
     function renderRows() {
         var rows = arData.map(function (f) {
-            var t = arTier(f), bar, badge;
-            if (t === 'typo') { bar = '#B71C1C'; badge = '<span style="color:#B71C1C;font-weight:600">looks like ' + esc(f.suggest) + '?</span>'; }
-            else if (t === 'known') { bar = '#2E7D32'; badge = '<span style="color:#2E7D32;font-weight:600">known</span>'; }
-            else if (t === 'sure') { bar = '#2E7D32'; badge = '<span style="color:#2E7D32;font-weight:600">sure</span>'; }
-            else { bar = '#E3C766'; badge = '<span style="color:#9A7B00;font-weight:600">new - verify</span>'; }
-            return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '" style="cursor:pointer;box-shadow:inset 3px 0 0 ' + bar + '">' +
+            return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '" style="cursor:pointer">' +
                 '<td style="text-align:center"><input type="checkbox" class="ar-cb"' + (f.sel ? ' checked' : '') + '></td>' +
                 '<td class="mgn-old">' + esc(f.name) + '</td>' +
                 '<td style="color:#8E8273">' + curArtistHtml(f.old) + '</td>' +
                 '<td class="mgn-new">' + esc(f['new']) + '</td>' +
-                '<td style="color:#8E8273">' + esc(f.source) + ' &nbsp; ' + badge + '</td></tr>';
+                '<td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
         }).join('');
         arRowsEl.innerHTML = rows || '<tr><td colspan="5">Nothing to fill.</td></tr>';
         updateSelInfo();
@@ -380,7 +353,6 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     arCheckAll.addEventListener('change', function () { arSelectWhere(function () { return arCheckAll.checked; }); });
     document.getElementById('arSelAll').addEventListener('click', function () { arSelectWhere(function () { return true; }); });
     document.getElementById('arSelNone').addEventListener('click', function () { arSelectWhere(function () { return false; }); });
-    document.getElementById('arSelHigh').addEventListener('click', function () { arSelectWhere(arDefaultSel); });
 
     var arFilterEl = document.getElementById('arFilter');
     var arAlphaEl = document.getElementById('arAlpha');
@@ -432,7 +404,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 + (d.filter ? ' &nbsp;·&nbsp; ' + d.total_to_fill + ' total' : '')
                 + ' &nbsp;·&nbsp; ' + d.flagged + ' flagged'
                 + (d.to_fill > d.preview.length ? ' &nbsp;·&nbsp; showing first ' + d.preview.length : '') + '.';
-            arData = d.preview.map(function (f) { f.sel = arDefaultSel(f); return f; });
+            arData = d.preview.map(function (f) { f.sel = true; return f; });
             arSort = { key: null, dir: 1 };
             Array.prototype.forEach.call(document.querySelectorAll('.ar-sort .ar-arrow'), function (s) { s.textContent = ''; });
             renderRows();
