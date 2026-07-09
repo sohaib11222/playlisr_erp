@@ -245,7 +245,7 @@ class SellPosController extends Controller
             // to move inventory - they're paid online, never on the Clover
             // terminal - so counting them here falsely flags the store as "off".
             // Mirrors the per-sale off-register exclusion in the feed below.
-            ->whereRaw("LOWER(COALESCE(channel, '')) NOT IN ('web', 'discogs', 'ebay')")
+            ->whereRaw("LOWER(COALESCE(channel, '')) NOT IN ('web', 'discogs', 'ebay', 'prepaid_pickup')")
             ->where(function ($q) {
                 $q->whereNull('additional_notes')
                   ->orWhere(function ($q2) {
@@ -470,19 +470,37 @@ class SellPosController extends Controller
         $request->session()->put('pos_duty_location_label', $locLabel);
 
         $openingCash = null;
+        $openingCashDenoms = null;
         if ($duty === 'cashier') {
-            $openingCash = round((float) $request->input('opening_cash', 0), 2);
+            // The duty picker now counts the drawer by bill denomination
+            // (100/50/20/10/5/1). Recompute the total server-side from those
+            // counts so we don't trust the client-computed hidden field. Fall
+            // back to the raw opening_cash total if no breakdown was posted.
+            $denomInput = $request->input('denom');
+            if (is_array($denomInput)) {
+                $openingCashDenoms = [];
+                $denomTotal = 0.0;
+                foreach ([100, 50, 20, 10, 5, 1] as $face) {
+                    $qty = max(0, (int) ($denomInput[$face] ?? 0));
+                    $openingCashDenoms[$face] = $qty;
+                    $denomTotal += $face * $qty;
+                }
+                $openingCash = round($denomTotal, 2);
+            } else {
+                $openingCash = round((float) $request->input('opening_cash', 0), 2);
+            }
             $request->session()->put('pos_duty_opening_cash', $openingCash);
+            $request->session()->put('pos_duty_opening_cash_denoms', $openingCashDenoms);
             $request->session()->put('pos_duty_opening_cash_at', now()->toIso8601String());
         } else {
-            $request->session()->forget(['pos_duty_opening_cash', 'pos_duty_opening_cash_at']);
+            $request->session()->forget(['pos_duty_opening_cash', 'pos_duty_opening_cash_denoms', 'pos_duty_opening_cash_at']);
         }
 
         $this->businessUtil->activityLog(
             auth()->user(),
             'pos_duty',
             null,
-            ['duty' => $duty, 'location_id' => $locationId, 'opening_cash' => $openingCash],
+            ['duty' => $duty, 'location_id' => $locationId, 'opening_cash' => $openingCash, 'opening_cash_denoms' => $openingCashDenoms],
             false,
             $business_id
         );
@@ -1537,7 +1555,7 @@ class SellPosController extends Controller
             $isWeb = $chan === 'web'
                 || $cname === 'website customer'
                 || strpos($note, 'website order') === 0;
-            $isOffreg = in_array($chan, ['discogs', 'ebay'], true)
+            $isOffreg = in_array($chan, ['discogs', 'ebay', 'prepaid_pickup'], true)
                 || strpos($note, 'web order') === 0
                 || strpos($note, 'discogs order') === 0
                 || strpos($note, 'ebay order') === 0
