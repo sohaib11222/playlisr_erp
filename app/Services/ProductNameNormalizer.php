@@ -217,6 +217,15 @@ class ProductNameNormalizer
             // with a "&", so the flip bails and leaves the raw "Zappa,Frank ...".
             'frankzappathemothersofinvention' => 'Frank Zappa & The Mothers of Invention',
             'zappafrankthemothersofinvention' => 'Frank Zappa & The Mothers of Invention',
+            // Bad catalog spelling in the artist column leaks through: "A-Kon"
+            // (should be Akon), "3 lw" (should be 3LW).
+            'akon' => 'Akon',
+            '3lw' => '3LW',
+            // Stylized casing the auto title-caser gets wrong.
+            'afi' => 'AFI',
+            'abba' => 'ABBA',
+            'aha' => 'a-ha',
+            '50cent' => '50 Cent',
         ];
     }
 
@@ -224,6 +233,11 @@ class ProductNameNormalizer
     {
         // Strip Discogs markers (matched catalog spellings can carry "*"/"(2)").
         $s = self::stripMarkers(trim((string) $s));
+        // A stray, unbalanced straight double-quote is bad catalog data
+        // ('"Mott The Hoople'); drop it. Balanced quotes are a real stylization
+        // ('"Weird Al" Yankovic') and stay, as do leading apostrophes ("'Til
+        // Tuesday").
+        if (substr_count($s, '"') % 2 === 1) { $s = trim(str_replace('"', '', $s)); }
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
         $curated = self::curatedArtists();
@@ -530,6 +544,11 @@ class ProductNameNormalizer
         // Bare catalog number, e.g. "B0034289-01" or "12345".
         if (preg_match('/^[a-z]{0,4}[-\s]?\d{3,}[a-z0-9\-]*$/i', $artist)) {
             return $fail('looks like a catalog number');
+        }
+        // A pure number (optionally with trailing punctuation) is never an
+        // artist — a year off a compilation ("1987)") or a track no. ("27").
+        if (preg_match('/^\d+\W*$/u', $artist)) {
+            return $fail('looks like a number, not an artist');
         }
 
         return ['artist' => $artist, 'title' => $title, 'source' => $source, 'confident' => true, 'reason' => ''];
