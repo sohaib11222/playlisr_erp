@@ -132,7 +132,7 @@
 @endif
 
 {{-- ============ THE ONE TABLE: WHAT I OWE ============ --}}
-@php $cols = $can_see_rates ? 8 : 6; @endphp
+@php $cols = $can_see_rates ? 9 : 7; @endphp
 <div class="box box-solid">
   <div class="box-header"><span class="box-title">What I owe — {{ \Carbon::parse($start)->format('M j') }} to {{ \Carbon::parse($end)->format('M j, Y') }}</span></div>
   <div class="box-body">
@@ -147,6 +147,7 @@
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
           <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
           @if ($can_see_rates)<th class="text-right">Total owed</th>@endif
+          <th>Paycheck memo</th>
           <th></th>
         </tr>
       </thead>
@@ -160,7 +161,6 @@
                 <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;margin-left:4px;"><i class="fa fa-clock-o"></i> {{ count($p['flags']) }} late</span>
               @endif
               @unless($p['has_hours'])<br><small>commission only</small>@endunless
-              @if (!empty($p['memo']))<div class="text-muted" style="font-size:11.5px;margin-top:3px;line-height:1.35;">{{ $p['memo'] }}</div>@endif
             </td>
             <td>{{ $p['last_name'] }}</td>
             <td>{{ $p['store'] }}</td>
@@ -169,6 +169,7 @@
             <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
             @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
+            <td class="text-muted" style="font-size:11.5px;line-height:1.35;min-width:240px;">{{ $p['memo'] }}</td>
             <td class="text-center">
               <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;"
                     onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
@@ -190,6 +191,7 @@
               <td><strong>{{ $f['name'] }}</strong> <small class="text-muted">({{ ucfirst($f['model'] ?? 'flat') }}@if(!empty($f['method'])), {{ $f['method'] }}@endif)</small></td>
               <td colspan="6" class="text-muted"><small>{{ $f['note'] ?? '' }}</small></td>
               <td class="text-right"><strong>${{ $fmt($f['amount']) }}</strong></td>
+              <td></td>
               <td class="text-center">@if (!empty($f['paid']))<span class="label label-success">paid</span>@else<span class="label label-default">unpaid</span>@endif</td>
             </tr>
           @endforeach
@@ -203,10 +205,10 @@
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
           <td class="text-right" style="font-size:15px;">${{ $fmt($owedAll) }}</td>
-          <td></td>
+          <td></td><td></td>
         </tr>
         @if (!empty($freelancers))
-        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td></tr>
+        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td></tr>
         @endif
       </tfoot>
       @endif
