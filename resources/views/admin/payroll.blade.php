@@ -132,15 +132,18 @@
 @endif
 
 {{-- ============ THE ONE TABLE: WHAT I OWE ============ --}}
-@php $cols = $can_see_rates ? 7 : 5; @endphp
+@php $cols = $can_see_rates ? 8 : 6; @endphp
 <div class="box box-solid">
   <div class="box-header"><span class="box-title">What I owe — {{ \Carbon::parse($start)->format('M j') }} to {{ \Carbon::parse($end)->format('M j, Y') }}</span></div>
   <div class="box-body">
+    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Click <strong>First name</strong> or <strong>Last name</strong> to sort. The orange badge = number of late in/out flags that period.</p>
     <div class="table-responsive">
-    <table class="table table-condensed table-bordered">
+    <table class="table table-condensed table-bordered" id="owe-table">
       <thead>
         <tr>
-          <th>Name</th><th>Store</th><th class="text-right">Hours</th>
+          <th class="pr-sortable" onclick="payrollSort('first')" style="cursor:pointer;">First name <span class="pr-arrow">⇅</span></th>
+          <th class="pr-sortable" onclick="payrollSort('last')" style="cursor:pointer;">Last name <span class="pr-arrow">⇅</span></th>
+          <th>Store</th><th class="text-right">Hours</th>
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
           <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
           @if ($can_see_rates)<th class="text-right">Total owed</th>@endif
@@ -149,14 +152,17 @@
       </thead>
       <tbody>
         @forelse ($people as $p)
-          <tr class="{{ $p['has_hours'] ? '' : 'text-muted' }}">
+          <tr class="pr-person-row {{ $p['has_hours'] ? '' : 'text-muted' }}"
+              data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
             <td>
-              <strong>{{ $p['name'] }}</strong>
-              @unless($p['has_hours'])<br><small>commission only</small>@endunless
+              <strong>{{ $p['first_name'] }}</strong>
               @if (!empty($p['flags']))
-                <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;margin-left:4px;"><i class="fa fa-clock-o"></i> {{ count($p['flags']) }}</span>
+                <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;margin-left:4px;"><i class="fa fa-clock-o"></i> {{ count($p['flags']) }} late</span>
               @endif
+              @unless($p['has_hours'])<br><small>commission only</small>@endunless
+              @if (!empty($p['memo']))<div class="text-muted" style="font-size:11.5px;margin-top:3px;line-height:1.35;">{{ $p['memo'] }}</div>@endif
             </td>
+            <td>{{ $p['last_name'] }}</td>
             <td>{{ $p['store'] }}</td>
             <td class="text-right">{{ $p['total_hours'] ? $hh($p['total_hours']) : '' }}@if($p['ot_hours'])<br><small class="text-muted">{{ $hh($p['ot_hours']) }} OT</small>@endif</td>
             @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
@@ -178,11 +184,11 @@
         @endforelse
 
         @if ($can_see_rates && !empty($freelancers))
-          <tr><td colspan="{{ $cols + 1 }}" style="background:var(--pos-surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--pos-ink-3);">Freelancers / contractors</td></tr>
+          <tr class="pr-freelancer-sep"><td colspan="{{ $cols + 1 }}" style="background:var(--pos-surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--pos-ink-3);">Freelancers / contractors</td></tr>
           @foreach ($freelancers as $f)
             <tr>
               <td><strong>{{ $f['name'] }}</strong> <small class="text-muted">({{ ucfirst($f['model'] ?? 'flat') }}@if(!empty($f['method'])), {{ $f['method'] }}@endif)</small></td>
-              <td colspan="5" class="text-muted"><small>{{ $f['note'] ?? '' }}</small></td>
+              <td colspan="6" class="text-muted"><small>{{ $f['note'] ?? '' }}</small></td>
               <td class="text-right"><strong>${{ $fmt($f['amount']) }}</strong></td>
               <td class="text-center">@if (!empty($f['paid']))<span class="label label-success">paid</span>@else<span class="label label-default">unpaid</span>@endif</td>
             </tr>
@@ -192,7 +198,7 @@
       @if ($can_see_rates && (!empty($people) || !empty($freelancers)))
       <tfoot style="font-weight:700;">
         <tr>
-          <td colspan="3">Total owed everyone</td>
+          <td colspan="4">Total owed everyone</td>
           <td class="text-right">${{ $fmt($totals['wages']) }}</td>
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
@@ -200,7 +206,7 @@
           <td></td>
         </tr>
         @if (!empty($freelancers))
-        <tr><td colspan="6" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td></tr>
+        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td></tr>
         @endif
       </tfoot>
       @endif
@@ -440,6 +446,24 @@ function payrollEditFreelancer(f) {
 function payrollResetFreelancer() {
   document.getElementById('freelancer-form').reset();
   document.getElementById('f-id').value = '';
+}
+var payrollSortDir = {};
+function payrollSort(col) {
+  var tbody = document.querySelector('#owe-table tbody'); if (!tbody) { return; }
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr.pr-person-row'));
+  if (!rows.length) { return; }
+  var dir = payrollSortDir[col] === 1 ? -1 : 1; payrollSortDir = {}; payrollSortDir[col] = dir;
+  rows.sort(function (a, b) {
+    var av = (a.getAttribute('data-' + col) || ''), bv = (b.getAttribute('data-' + col) || '');
+    if (av === bv) { return 0; }
+    if (av === '') { return 1; } if (bv === '') { return -1; }  // blanks last
+    return av.localeCompare(bv) * dir;
+  });
+  var anchor = tbody.querySelector('tr.pr-freelancer-sep');
+  rows.forEach(function (r) { tbody.insertBefore(r, anchor); });
+  document.querySelectorAll('#owe-table th.pr-sortable .pr-arrow').forEach(function (s) { s.textContent = '⇅'; });
+  var th = document.querySelector('#owe-table th.pr-sortable[onclick*="' + col + '"] .pr-arrow');
+  if (th) { th.textContent = dir === 1 ? '▲' : '▼'; }
 }
 (function () {
   var btn = document.querySelector('.pr-pin-btn[data-pin-url]'); if (!btn) { return; }

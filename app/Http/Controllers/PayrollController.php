@@ -382,9 +382,12 @@ class PayrollController extends Controller
                 + $ot * $rate * (float) $settings['ot_multiplier']
                 + $dt * $rate * (float) $settings['dt_multiplier'];
 
+            [$fn, $ln] = $this->splitName($p['name']);
             $people[$key] = [
                 'key'          => $key,
                 'name'         => $p['name'],
+                'first_name'   => $fn,
+                'last_name'    => $ln,
                 'user_id'      => $p['user_id'],
                 'store'        => $p['store'],
                 'rate'         => $rate,
@@ -496,9 +499,18 @@ class PayrollController extends Controller
         // Resolve user_id per person: explicit config override, else auto-match
         // by first name against ERP users.
         $usersByFirst = $this->usersByFirstName($businessId);
+        $usersById = DB::table('users')->where('business_id', $businessId)
+            ->get(['id', 'first_name', 'last_name', 'surname'])->keyBy('id');
         foreach ($people as $key => &$p) {
             if (empty($p['user_id'])) {
                 $p['user_id'] = $usersByFirst[$key] ?? null;
+            }
+            // Prefer the ERP first/last name when linked (Clover only gives a
+            // first name), so the Last name column + sorting are meaningful.
+            if ($p['user_id'] && isset($usersById[$p['user_id']])) {
+                $uu = $usersById[$p['user_id']];
+                if (trim((string) ($uu->first_name ?? '')) !== '') { $p['first_name'] = trim((string) $uu->first_name); }
+                if (trim((string) ($uu->last_name ?? '')) !== '')  { $p['last_name']  = trim((string) $uu->last_name); }
             }
             $c = $p['user_id'] ? ($comm[$p['user_id']] ?? null) : null;
             if ($c) {
@@ -528,9 +540,13 @@ class PayrollController extends Controller
             $earned = round((float) $c->listing_earned + (float) $c->sales_earned, 2);
             if ($owedL <= 0 && $owedS <= 0) { continue; }
             $u = DB::table('users')->where('id', $uid)->first();
+            $nm = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid);
+            [$cfn, $cln] = $this->splitName($nm, $u);
             $people['uid_' . $uid] = [
                 'key' => 'uid_' . $uid,
-                'name' => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid),
+                'name' => $nm,
+                'first_name' => $cfn,
+                'last_name' => $cln,
                 'user_id' => $uid, 'store' => '', 'rate' => 0,
                 'reg_hours' => 0, 'ot_hours' => 0, 'dt_hours' => 0, 'total_hours' => 0,
                 'wages' => 0, 'sales_comm' => $owedS, 'listing_comm' => $owedL,
@@ -974,6 +990,18 @@ class PayrollController extends Controller
     }
 
     // ---- Misc ------------------------------------------------------------
+
+    // Split a display name into [first, last]. Prefers an ERP users row when
+    // given (authoritative), else splits on the first space.
+    private function splitName($full, $u = null)
+    {
+        if ($u && trim((string) ($u->first_name ?? '')) !== '') {
+            return [trim((string) $u->first_name), trim((string) ($u->last_name ?? ''))];
+        }
+        $full = trim((string) $full);
+        $parts = preg_split('/\s+/', $full, 2);
+        return [$parts[0] ?? $full, isset($parts[1]) ? trim($parts[1]) : ''];
+    }
 
     // Normalize a name to a match key = lowercased first token (Clover uses
     // first names; the rate/user maps key off the same).
