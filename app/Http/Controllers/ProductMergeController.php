@@ -501,6 +501,13 @@ class ProductMergeController extends Controller
                         'sku' => $r->sku,
                         'is_inactive' => (int) $r->is_inactive,
                         'is_untrusted' => isset($untrustedSet[(int) $r->created_by]) ? 1 : 0,
+                        // A clean canonical name is "ARTIST - TITLE" (spaced hyphen,
+                        // no " / "). Legacy reversed names use " / " (e.g.
+                        // "LAMAR,KENDRICK / DAMN"). Discogs rebuild fixes products
+                        // with a release id; this keeps the cleaner sibling as
+                        // survivor for the ones it can't (no Discogs id).
+                        'name_clean' => (strpos((string) $r->name, ' - ') !== false
+                            && strpos((string) $r->name, ' / ') === false) ? 1 : 0,
                         'creator' => $userNames[(int) $r->created_by] ?? ('User #' . (int) $r->created_by),
                         'created_year' => $r->created_at ? substr((string) $r->created_at, 0, 4) : '',
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
@@ -511,10 +518,12 @@ class ProductMergeController extends Controller
                     ? $catNames[$groupSubId]
                     : ($groupCatId && isset($catNames[$groupCatId]) ? $catNames[$groupCatId] : 'Uncategorized');
                 // Survivor: active first, then trustworthy creator (never let a
-                // Nerdy Solutions record win), then most stock, most sold, oldest id.
+                // Nerdy Solutions record win), then the cleaner canonical name,
+                // then most stock, most sold, oldest id.
                 usort($items, function ($a, $b) {
                     if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
                     if ($a['is_untrusted'] !== $b['is_untrusted']) { return $a['is_untrusted'] <=> $b['is_untrusted']; }
+                    if ($a['name_clean'] !== $b['name_clean']) { return $b['name_clean'] <=> $a['name_clean']; }
                     if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
                     if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
                     return $a['id'] <=> $b['id'];
