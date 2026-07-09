@@ -257,37 +257,75 @@
     opacity: .8;
     margin: 0 0 10px;
 }
-.pos-duty-shell .opening-cash .money {
-    display: inline-flex;
-    align-items: stretch;
-    max-width: 240px;
+/* Denomination grid — one row per bill: "$100 × [count] = $subtotal". */
+.pos-duty-shell .opening-cash .denoms {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.pos-duty-shell .denom-row {
+    display: grid;
+    grid-template-columns: 54px 14px 1fr 14px 92px;
+    align-items: center;
+    gap: 8px;
+}
+.pos-duty-shell .denom-face {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--d-accent-text);
+    text-align: right;
+}
+.pos-duty-shell .denom-op {
+    color: var(--d-accent-text);
+    opacity: .6;
+    font-size: 13px;
+    text-align: center;
+}
+.pos-duty-shell .denom-count {
+    height: 42px;
     width: 100%;
+    min-width: 0;
     border: 1px solid var(--d-accent-deep);
     border-radius: var(--d-radius-sm);
-    overflow: hidden;
-    background: #fff;
-}
-.pos-duty-shell .opening-cash .money .sym {
-    background: var(--d-accent-soft);
-    color: var(--d-accent-text);
-    font-weight: 700;
-    padding: 0 12px;
-    display: inline-flex;
-    align-items: center;
-    border-right: 1px solid var(--d-accent-deep);
-}
-.pos-duty-shell .opening-cash .money input {
-    flex: 1 1 auto;
-    border: none;
     outline: none;
-    height: 42px;
     padding: 0 12px;
     font-size: 16px;
     font-weight: 600;
     color: var(--d-ink);
     background: #fff;
     font-family: inherit;
-    min-width: 0;
+    text-align: center;
+}
+.pos-duty-shell .denom-count:focus {
+    box-shadow: 0 0 0 3px rgba(232,207,104,.35);
+}
+.pos-duty-shell .denom-sub {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--d-accent-text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.pos-duty-shell .denom-total-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 2px 2px;
+    margin-top: 4px;
+    border-top: 2px dashed var(--d-accent-deep);
+}
+.pos-duty-shell .denom-total-label {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--d-accent-text);
+}
+.pos-duty-shell .denom-total {
+    font-weight: 800;
+    font-size: 20px;
+    color: var(--d-ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
 }
 .pos-duty-shell .opening-cash .err {
     display: none;
@@ -384,24 +422,41 @@
 
             {{-- Opening cash count — only required when Cashier is picked.
                  Captured inline at duty selection so it can't be skipped on
-                 the way to /pos/create. --}}
+                 the way to /pos/create. Sarah 2026-07-09: count by bill
+                 denomination (100/50/20/10/5/1) instead of a single total —
+                 we add it up live so the cashier just enters counts. The
+                 computed total still feeds the existing `opening_cash` field
+                 the backend reads, so nothing downstream changes. --}}
             <div class="opening-cash" id="opening_cash_group" style="display:none;">
-                <label for="opening_cash">
+                <label>
                     <i class="fa fa-cash-register"></i>
-                    Count the drawer — how much cash is in it right now?
+                    Count the drawer — how many of each bill?
                 </label>
                 <p class="hint">
-                    Required before you can ring a sale. The closing count at end of shift gets checked against this.
+                    Enter the number of each bill; we add it up for you. The closing count at end of shift gets checked against this.
                 </p>
-                <div class="money">
-                    <span class="sym">$</span>
-                    <input type="number" name="opening_cash" id="opening_cash"
-                           step="0.01" min="0"
-                           placeholder="e.g. 200.00"
-                           autocomplete="off">
+                <div class="denoms">
+                    @foreach([100, 50, 20, 10, 5, 1] as $face)
+                        <div class="denom-row">
+                            <span class="denom-face">${{ $face }}</span>
+                            <span class="denom-op">&times;</span>
+                            <input type="number" class="denom-count"
+                                   name="denom[{{ $face }}]"
+                                   data-face="{{ $face }}"
+                                   min="0" step="1" inputmode="numeric"
+                                   placeholder="0" autocomplete="off">
+                            <span class="denom-op">=</span>
+                            <span class="denom-sub" data-sub="{{ $face }}">$0.00</span>
+                        </div>
+                    @endforeach
                 </div>
+                <div class="denom-total-row">
+                    <span class="denom-total-label">Total in drawer</span>
+                    <span class="denom-total" id="denom_total">$0.00</span>
+                </div>
+                <input type="hidden" name="opening_cash" id="opening_cash" value="0">
                 <div id="opening_cash_error" class="err">
-                    Please enter the cash amount in the drawer (zero is fine — but you must enter it).
+                    Please count the drawer (an empty drawer is fine — just leave the counts blank).
                 </div>
             </div>
 
@@ -417,6 +472,32 @@
                 var err = document.getElementById('opening_cash_error');
                 if (!group || !input) return;
 
+                // Live-sum the bill counts into the hidden opening_cash total.
+                var counts = Array.prototype.slice.call(group.querySelectorAll('.denom-count'));
+                var totalEl = document.getElementById('denom_total');
+                function fmt(n) {
+                    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                function recompute() {
+                    var total = 0;
+                    counts.forEach(function (c) {
+                        var face = parseInt(c.getAttribute('data-face'), 10) || 0;
+                        var qty = parseInt(c.value, 10);
+                        if (!isFinite(qty) || qty < 0) qty = 0;
+                        var sub = face * qty;
+                        total += sub;
+                        var subEl = group.querySelector('.denom-sub[data-sub="' + face + '"]');
+                        if (subEl) subEl.textContent = fmt(sub);
+                    });
+                    if (totalEl) totalEl.textContent = fmt(total);
+                    input.value = total.toFixed(2);
+                }
+                counts.forEach(function (c) {
+                    c.addEventListener('input', recompute);
+                    c.addEventListener('change', recompute);
+                });
+                recompute();
+
                 // Cashier locks out the "Both" store pill — a register sits
                 // at exactly one store, so Both isn't valid here.
                 var bothPill = document.querySelector('.store-pill[data-store="both"]');
@@ -426,10 +507,7 @@
                     var cashier = document.getElementById('duty_cashier');
                     var on = cashier && cashier.checked;
                     group.style.display = on ? 'block' : 'none';
-                    if (on) {
-                        input.setAttribute('required', 'required');
-                    } else {
-                        input.removeAttribute('required');
+                    if (!on) {
                         err.style.display = 'none';
                     }
                     if (bothPill && bothInput) {
@@ -456,13 +534,10 @@
                     form.addEventListener('submit', function (e) {
                         var cashier = document.getElementById('duty_cashier');
                         if (cashier && cashier.checked) {
-                            var v = String(input.value || '').trim();
-                            var num = Number(v);
-                            if (v === '' || !isFinite(num) || num < 0) {
-                                e.preventDefault();
-                                err.style.display = 'block';
-                                input.focus();
-                            }
+                            // Total is derived from the bill counts, so it's
+                            // always a valid number (an empty drawer = $0.00,
+                            // which is allowed). Just make sure it's current.
+                            recompute();
                             // Block Cashier + Both at the form level so the
                             // server doesn't have to bounce them back.
                             var locChecked = form.querySelector('input[name="location_id"]:checked');
