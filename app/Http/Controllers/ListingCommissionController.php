@@ -54,6 +54,22 @@ class ListingCommissionController extends Controller
     // above misses it. Also drop any account whose full name contains these.
     private $excludedNameContains = ['nerdy'];
 
+    // True if a display name belongs to an excluded person (owner/back-office or
+    // someone not currently working here). Matches the same first-name and
+    // name-contains rules the SQL uses, so a person dropped from the queries also
+    // can't slip back in through the sales-bonus / payout-ledger merge.
+    private function isExcludedName($name)
+    {
+        $name = strtolower(trim((string) $name));
+        if ($name === '') { return false; }
+        $first = explode(' ', $name)[0];
+        if (in_array($first, $this->excludedOwnerFirstNames, true)) { return true; }
+        foreach ($this->excludedNameContains as $needle) {
+            if (strpos($name, $needle) !== false) { return true; }
+        }
+        return false;
+    }
+
     public function index(Request $request)
     {
         // Fixed to the program start. "Owed" = everything unpaid since 2026-05-15,
@@ -162,7 +178,13 @@ class ListingCommissionController extends Controller
             $p->payroll_memo = implode('  +  ', $memo);
         }
 
-        $people = collect($byId)->values()->sortByDesc('total_owed_now')->values();
+        // Final safety net: drop excluded people no matter which path added them.
+        // The listing query already excludes them, but the sales-bonus / payout
+        // ledger merge above can re-add someone (e.g. Ece kept showing via an old
+        // sales payout). Filtering by name here guarantees they never render.
+        $people = collect($byId)->values()
+            ->reject(function ($p) { return $this->isExcludedName($p->name); })
+            ->sortByDesc('total_owed_now')->values();
 
         $history = collect($paid)->sortByDesc('marked_at')->values();
         $salesHistory = collect($this->loadSalesPayouts())->sortByDesc('marked_at')->values();
