@@ -45,7 +45,10 @@ class ListingCommissionController extends Controller
     // leaving them in inflates counts (e.g. Jon showed 48k listed items).
     // 'henry' left the company (Sarah 2026-06-02). Excluded by first name.
     // 'insha' does not get listing commission (Sarah 2026-07-09).
-    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'henry', 'insha'];
+    // 'jennifer' and 'ece' are not working here right now, so they're hidden and
+    // earn no commission while out (Sarah 2026-07-09). Ece is expected back —
+    // when she returns, remove 'ece' from this list to re-enable her.
+    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'henry', 'insha', 'jennifer', 'ece'];
 
     // Fatteen's ERP account is named "Nerdy Solutions", so the first-name list
     // above misses it. Also drop any account whose full name contains these.
