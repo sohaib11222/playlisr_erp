@@ -132,7 +132,34 @@ class PayrollController extends Controller
             'hidden'       => $config['hidden'] ?? [],
             'last_run_at'  => $this->lastRunSavedAt($start, $end),
             'erp_users'    => $this->erpUserOptions($businessId),
+            'notes'        => $this->loadNotes($start, $end),
         ]);
+    }
+
+    // Free-text notes per person per period (Fatteen can jot anything). Keyed by
+    // the person's row key. Separate JSON file per period, no migration.
+    private function notesFile($start, $end) { return 'payroll/notes-' . $start . '_' . $end . '.json'; }
+
+    private function loadNotes($start, $end)
+    {
+        $f = $this->notesFile($start, $end);
+        if (!Storage::disk('local')->exists($f)) { return []; }
+        $d = json_decode(Storage::disk('local')->get($f), true);
+        return is_array($d) ? $d : [];
+    }
+
+    public function saveNotes(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $out = [];
+        foreach ((array) $request->input('notes', []) as $k => $v) {
+            $k = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $k));
+            $v = trim((string) $v);
+            if ($k !== '' && $v !== '') { $out[$k] = mb_substr($v, 0, 500); }
+        }
+        Storage::disk('local')->put($this->notesFile($start, $end), json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Saved notes.']);
     }
 
     // Active ERP staff as [{id, name}] for the "link to ERP user" dropdown in
@@ -357,7 +384,7 @@ class PayrollController extends Controller
     {
         // name_key => ['days' => [date => hours], 'store', 'flags', 'user_id', 'rate', 'name']
         $byPerson = [];
-        foreach ($rows as $r) {
+        foreach ($rows as $idx => $r) {
             // Defensive: never treat a date-looking value as a person (guards
             // against hours imported before the parser learned to skip the
             // per-day date rows — those rows are dropped until a re-import
@@ -379,7 +406,10 @@ class PayrollController extends Controller
                 ];
             }
 
-            $day = $r['in_date'] ?: substr((string) $r['in'], 0, 10);
+            // Group hours by workday for the daily-OT split. If a row has no
+            // usable date, give it its own bucket so it can't merge with other
+            // days and fake overtime.
+            $day = $r['in_date'] ?: ($r['in'] ? substr((string) $r['in'], 0, 10) : ('row-' . $idx));
             $hrs = (float) $r['elapsed'];
             $byPerson[$key]['days'][$day] = ($byPerson[$key]['days'][$day] ?? 0) + $hrs;
 
@@ -432,7 +462,9 @@ class PayrollController extends Controller
     // (8h) is overtime at 1.5x. No double-time — Nivessa just pays OT over 8/day.
     private function splitDay($hours, array $s)
     {
+        // Guard: a blank/zero threshold must not turn every hour into OT.
         $otAfter = (float) $s['daily_ot_after'];
+        if ($otAfter <= 0) { $otAfter = 8; }
         $reg = min($hours, $otAfter);
         $ot  = max(0, $hours - $otAfter);
         return [$reg, $ot, 0.0];
@@ -865,21 +897,29 @@ class PayrollController extends Controller
             };
 
             // The Clover export repeats the person's name only on their first
-            // row; per-day rows carry a date (e.g. "04-July-26") in that first
-            // column. Treat blank / numeric / date-looking values as
-            // continuation of the person above so dates never become "people".
-            $name = $get('name');
-            if ($name === '' || is_numeric($name) || $this->looksLikeDate($name)) { $name = $lastName; }
-            else { $lastName = $name; }
+            // row; per-day rows carry the DATE (e.g. "04-July-26") in that same
+            // first column. So a date-looking value = continuation of the person
+            // above AND the workday for this row — capture it as the date so
+            // hours land on the right day (otherwise every day collapses into
+            // one bucket and triggers phantom overtime).
+            $rawName = $get('name');
+            $carriedDate = '';
+            if ($rawName === '' || is_numeric($rawName) || $this->looksLikeDate($rawName)) {
+                if ($rawName !== '' && $this->looksLikeDate($rawName)) { $carriedDate = $this->normDate($rawName); }
+                $name = $lastName;
+            } else {
+                $name = $rawName; $lastName = $name;
+            }
             if ($name === '') { continue; }
 
-            // Datetimes: prefer split date+time columns, else a combined column.
-            $inDate  = $this->normDate($get('in_date'));
+            // Datetimes: prefer split date+time columns, else the date carried in
+            // the first column, else a combined column.
+            $inDate  = $this->normDate($get('in_date')) ?: $carriedDate;
             $inTime  = $get('in_time');
-            $outDate = $this->normDate($get('out_date'));
+            $outDate = $this->normDate($get('out_date')) ?: $inDate;
             $outTime = $get('out_time');
             $in  = $this->joinDateTime($inDate, $inTime, $get('in'));
-            $out = $this->joinDateTime($outDate ?: $inDate, $outTime, $get('out'));
+            $out = $this->joinDateTime($outDate, $outTime, $get('out'));
 
             $elapsed = $this->parseHours($get('elapsed'));
             if ($elapsed <= 0 && $in && $out) {

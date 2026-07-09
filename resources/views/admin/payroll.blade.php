@@ -132,11 +132,11 @@
 @endif
 
 {{-- ============ THE ONE TABLE: WHAT I OWE ============ --}}
-@php $cols = $can_see_rates ? 9 : 7; @endphp
+@php $cols = $can_see_rates ? 10 : 8; @endphp
 <div class="box box-solid">
   <div class="box-header"><span class="box-title">What I owe — {{ \Carbon::parse($start)->format('M j') }} to {{ \Carbon::parse($end)->format('M j, Y') }}</span></div>
   <div class="box-body">
-    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Click <strong>First name</strong> or <strong>Last name</strong> to sort. The orange badge = number of late in/out flags that period.</p>
+    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Click <strong>First name</strong> or <strong>Last name</strong> to sort. Notes = auto commission + late info; the editable Notes column is yours to jot anything — click <strong>Save notes</strong> below.</p>
     <div class="table-responsive">
     <table class="table table-condensed table-bordered" id="owe-table">
       <thead>
@@ -147,7 +147,8 @@
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
           <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
           @if ($can_see_rates)<th class="text-right">Total owed</th>@endif
-          <th>Paycheck memo</th>
+          <th>Notes</th>
+          <th>Notes (editable)</th>
           <th></th>
         </tr>
       </thead>
@@ -157,9 +158,6 @@
               data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
             <td>
               <strong>{{ $p['first_name'] }}</strong>
-              @if (!empty($p['flags']))
-                <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;margin-left:4px;"><i class="fa fa-clock-o"></i> {{ count($p['flags']) }} late</span>
-              @endif
               @unless($p['has_hours'])<br><small>commission only</small>@endunless
             </td>
             <td>{{ $p['last_name'] }}</td>
@@ -169,7 +167,11 @@
             <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
             @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
-            <td class="text-muted" style="font-size:11.5px;line-height:1.35;min-width:240px;">{{ $p['memo'] }}</td>
+            <td class="text-muted" style="font-size:11.5px;line-height:1.35;min-width:220px;">
+              @if(!empty($p['memo'])){{ $p['memo'] }}@endif
+              @if(!empty($p['flags']))<div style="margin-top:3px;color:#8a6d3b;">Late: {{ implode('; ', $p['flags']) }}</div>@endif
+            </td>
+            <td style="min-width:190px;"><input form="notes-form" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" class="form-control input-sm" placeholder="Add a note"></td>
             <td class="text-center">
               <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;"
                     onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
@@ -191,7 +193,7 @@
               <td><strong>{{ $f['name'] }}</strong> <small class="text-muted">({{ ucfirst($f['model'] ?? 'flat') }}@if(!empty($f['method'])), {{ $f['method'] }}@endif)</small></td>
               <td colspan="6" class="text-muted"><small>{{ $f['note'] ?? '' }}</small></td>
               <td class="text-right"><strong>${{ $fmt($f['amount']) }}</strong></td>
-              <td></td>
+              <td></td><td></td>
               <td class="text-center">@if (!empty($f['paid']))<span class="label label-success">paid</span>@else<span class="label label-default">unpaid</span>@endif</td>
             </tr>
           @endforeach
@@ -205,15 +207,21 @@
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
           <td class="text-right" style="font-size:15px;">${{ $fmt($owedAll) }}</td>
-          <td></td><td></td>
+          <td></td><td></td><td></td>
         </tr>
         @if (!empty($freelancers))
-        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td></tr>
+        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td><td></td></tr>
         @endif
       </tfoot>
       @endif
     </table>
     </div>
+
+    <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}" style="margin-top:10px;">
+      {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+      <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-save"></i> Save notes</button>
+      <span class="text-muted" style="font-size:12px;margin-left:6px;">Saves the editable Notes column for this period (shared).</span>
+    </form>
 
     <div style="margin-top:12px;">
       <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm"><i class="fa fa-external-link"></i> Verify commissions</a>

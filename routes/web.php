@@ -954,6 +954,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/payroll/save-rates', 'PayrollController@saveRates');
     Route::post('/payroll/freelancer', 'PayrollController@saveFreelancer');
     Route::post('/payroll/freelancer/delete', 'PayrollController@deleteFreelancer');
+    Route::post('/payroll/save-notes', 'PayrollController@saveNotes');
     Route::post('/payroll/hide', 'PayrollController@hide');
     Route::post('/payroll/unhide', 'PayrollController@unhide');
     Route::post('/payroll/save-run', 'PayrollController@saveRun');
