@@ -44,7 +44,8 @@ class ListingCommissionController extends Controller
     // accounts are also the creator-of-record for bulk/imported listings, so
     // leaving them in inflates counts (e.g. Jon showed 48k listed items).
     // 'henry' left the company (Sarah 2026-06-02). Excluded by first name.
-    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'henry'];
+    // 'insha' does not get listing commission (Sarah 2026-07-09).
+    private $excludedOwnerFirstNames = ['jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'henry', 'insha'];
 
     // Fatteen's ERP account is named "Nerdy Solutions", so the first-name list
     // above misses it. Also drop any account whose full name contains these.
