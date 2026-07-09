@@ -213,13 +213,17 @@ class ProductNameNormalizer
                 $artist = is_string($knownKeys[$sk]) ? $knownKeys[$sk] : $second;
                 return self::validateParsedArtist(self::properArtistCase($artist), $first, 'Title ' . $label . ' Artist');
             }
-            $reason = ($firstKnown && $secondKnown)
-                ? 'both sides are known artists — manual'
-                : 'neither side is a known artist — manual';
-            return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => $reason];
+            // Both sides are known artists (e.g. a split/collab) — genuinely
+            // ambiguous, leave it for a human.
+            if ($firstKnown && $secondKnown) {
+                return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are known artists — manual'];
+            }
+            // Neither side is a known artist: fall through to the positional
+            // default below (artist-first), which matches the dominant catalog
+            // convention. Still gated by validateParsedArtist.
         }
 
-        // No known-artist set: assume artist-first.
+        // Default: artist is the first segment ("Artist / Title" / "Artist - Title").
         return self::validateParsedArtist(self::properArtistCase($first), $second, 'Artist ' . $label . ' Title');
     }
 

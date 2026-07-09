@@ -3251,14 +3251,23 @@ class ProductController extends Controller
      */
     public static function musicArtistCategories()
     {
+        // These mirror Nivessa's real ERP top-level category names (the music
+        // formats from CostPriceRulesController::RULES). Non-music categories
+        // (VHS, DVD/Blu Ray, Movies, Trading Cards, Audio Gear, Toys, ...) are
+        // intentionally absent.
         return [
-            'sealed vinyl', 'new vinyl',
-            'used vinyl',
+            // Vinyl
+            'sealed vinyl', 'new vinyl', 'used vinyl',
+            // CD
             'used cd', 'used cds', 'cds (used)',
             'sealed cd', 'cd (sealed)', 'new cd', 'new cds',
-            'used cassette', 'used cassettes', 'cassettes', 'cassettes (used)',
-            'sealed cassette', 'sealed cassettes', 'cassettes - sealed', 'new cassette', 'new cassettes',
+            // Cassette
+            'cassettes', 'used cassette', 'used cassettes', 'cassettes (used)',
+            'cassettes - sealed', 'sealed cassettes', 'new cassette', 'new cassettes',
+            // 45s / 7"
             '7", 45 rpm', '7"', '45 rpm', '7 inch', 'used 45s', 'new 45s', '45s',
+            // 8-track
+            '8 track', '8-track', 'eight track',
         ];
     }
 
