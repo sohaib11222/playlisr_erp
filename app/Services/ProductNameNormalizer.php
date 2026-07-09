@@ -222,19 +222,24 @@ class ProductNameNormalizer
     }
 
     /**
-     * Record-store cataloguing often stores "Lastname,First" with NO space after
-     * the comma ("DAVIS,MILES" -> "Miles Davis", "COLE,NAT KING" -> "Nat King
-     * Cole"). Only flips a single-comma value where the comma has no trailing
-     * space, so natural names like "Earth, Wind & Fire" and "Tyler, The Creator"
-     * are left alone.
+     * Un-flip record-store cataloguing order on single-comma names:
+     *   - "DAVIS,MILES" / "Jackson, Michael" -> "Michael Jackson" (with or
+     *     without a space after the comma),
+     *   - "Cure, The" / "BEATLES, THE" -> "The Cure" / "The Beatles".
+     * Left alone: collaborations ("Earth, Wind & Fire", "... and ..."), a real
+     * name whose second part starts with "The" ("Tyler, The Creator"), and
+     * anything with 0 or 2+ commas.
      */
     public static function flipLastFirst($s)
     {
         $s = trim((string) $s);
-        if (preg_match('/^([^,]+),(\S[^,]*)$/u', $s, $m)) {
-            return trim($m[2]) . ' ' . trim($m[1]);
-        }
-        return $s;
+        if (substr_count($s, ',') !== 1) { return $s; }
+        if (preg_match('/&|\+|\band\b/i', $s)) { return $s; }
+        list($a, $b) = array_map('trim', explode(',', $s));
+        if ($a === '' || $b === '') { return $s; }
+        if (strcasecmp($b, 'the') === 0) { return $b . ' ' . $a; }  // "Cure, The" -> "The Cure" (case fixed later)
+        if (preg_match('/^the\b/i', $b)) { return $s; }            // "Tyler, The Creator"
+        return $b . ' ' . $a;                                       // "Jackson, Michael" -> "Michael Jackson"
     }
 
     /**

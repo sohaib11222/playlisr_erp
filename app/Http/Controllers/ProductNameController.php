@@ -103,10 +103,12 @@ class ProductNameController extends Controller
      * Artists recognizable from the catalog, for disambiguating "A / B" names.
      * Combines two signals:
      *   1. the artist column (knownArtistKeys), plus
-     *   2. name segments that RECUR across >=2 music products — a store stocks
-     *      several albums per artist, so a repeated segment is almost always the
-     *      artist even when its artist column is blank. Common repeated title
-     *      phrases (Greatest Hits, Live, ...) are stop-listed out.
+     *   2. name segments that pair with >=2 DISTINCT other segments across music
+     *      products. A real artist appears with several different album titles
+     *      ("... / Iron Maiden" x2 with different titles), whereas a recurring
+     *      TITLE (dupes/reissues) pairs with only one artist ("Dancing In The
+     *      Street / David Bowie and Mick Jagger" x2) — counting DISTINCT partners
+     *      keeps the artist and drops the title. Stop-listed phrases never count.
      * Keyed by artistKey(), value = a representative spelling.
      */
     protected function artistSignalKeys($business_id, $catIds)
@@ -114,22 +116,26 @@ class ProductNameController extends Controller
         $keys = $this->knownArtistKeys($business_id);
         if (empty($catIds)) { return $keys; }
 
-        $counts = [];
+        $partners = [];   // key => [partnerKey => 1]
         $spell = [];
         \DB::table('products')
             ->where('business_id', $business_id)
             ->whereIn('category_id', $catIds)
             ->select('name')
             ->orderBy('id')
-            ->chunk(3000, function ($rows) use (&$counts, &$spell) {
+            ->chunk(3000, function ($rows) use (&$partners, &$spell) {
                 foreach ($rows as $r) {
                     $seg = ProductNameNormalizer::nameSegments($r->name);
                     if ($seg === null) { continue; }
-                    foreach ([$seg[0], $seg[1]] as $s) {
-                        $k = ProductNameNormalizer::artistKey($s);
-                        if ($k === '') { continue; }
-                        $counts[$k] = ($counts[$k] ?? 0) + 1;
-                        if (!isset($spell[$k])) { $spell[$k] = $s; }
+                    $k0 = ProductNameNormalizer::artistKey($seg[0]);
+                    $k1 = ProductNameNormalizer::artistKey($seg[1]);
+                    if ($k0 !== '') {
+                        if (!isset($spell[$k0])) { $spell[$k0] = $seg[0]; }
+                        if ($k1 !== '') { $partners[$k0][$k1] = 1; }
+                    }
+                    if ($k1 !== '') {
+                        if (!isset($spell[$k1])) { $spell[$k1] = $seg[1]; }
+                        if ($k0 !== '') { $partners[$k1][$k0] = 1; }
                     }
                 }
             });
@@ -137,8 +143,8 @@ class ProductNameController extends Controller
         // Repeated non-artist title phrases to never treat as an artist.
         $stop = $this->titleStopKeys();
 
-        foreach ($counts as $k => $n) {
-            if ($n >= 2 && !isset($keys[$k]) && !isset($stop[$k])) {
+        foreach ($partners as $k => $set) {
+            if (count($set) >= 2 && !isset($keys[$k]) && !isset($stop[$k])) {
                 $keys[$k] = $spell[$k];
             }
         }
