@@ -950,6 +950,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // numbers can't drift while you pay them.
     Route::post('/admin/listing-commissions/freeze', 'ListingCommissionController@freeze');
     Route::post('/admin/listing-commissions/unfreeze', 'ListingCommissionController@unfreeze');
+    // Bulk-record a past payroll from pasted rows (name, listing, sales). Skips
+    // anything already on the ledger so re-pasting can't double-count.
+    Route::post('/admin/listing-commissions/bulk-record', 'ListingCommissionController@bulkRecord');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling

@@ -488,6 +488,116 @@ class ListingCommissionController extends Controller
         ]);
     }
 
+    // Bulk-record a past payroll. Paste one person per line:
+    //   Name, Listing $, Sales $   (comma OR tab separated)
+    // Everything is stamped with the chosen date. Entries that already exist for
+    // that person+date+amount are SKIPPED, so pasting a payroll that's partly on
+    // the ledger can't double-count. Unmatched names are reported, never guessed.
+    public function bulkRecord(Request $request)
+    {
+        $businessId = $request->session()->get('user.business_id');
+        $date = trim((string) $request->input('date', ''));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Pick a valid payroll date first.']);
+        }
+        $raw = (string) $request->input('rows', '');
+        $note = trim((string) $request->input('note', '')) ?: ('Payroll ' . $date);
+
+        $candidates = DB::table('users')->where('business_id', $businessId)
+            ->select('id', 'first_name', 'last_name', 'surname')->get();
+
+        $matchUser = function ($name) use ($candidates) {
+            $name = strtolower(trim($name));
+            if ($name === '') { return null; }
+            $tokens = preg_split('/\s+/', $name);
+            $first = $tokens[0];
+            $lastInit = isset($tokens[1]) ? substr($tokens[1], 0, 1) : null;
+            $hits = [];
+            foreach ($candidates as $c) {
+                $cf = strtolower(trim($c->first_name ?? ''));
+                if ($cf === '') { continue; }
+                if ($cf === $first || strpos($cf, $first) === 0 || strpos($first, $cf) === 0) { $hits[] = $c; }
+            }
+            if (count($hits) === 1) { return $hits[0]; }
+            if (count($hits) > 1 && $lastInit) {
+                $narrow = array_values(array_filter($hits, function ($c) use ($lastInit) {
+                    return strtolower(substr(trim($c->last_name ?? ''), 0, 1)) === $lastInit;
+                }));
+                if (count($narrow) === 1) { return $narrow[0]; }
+            }
+            return null;
+        };
+
+        $paid  = $this->loadPayouts();
+        $sales = $this->loadSalesPayouts();
+
+        $exists = function ($ledger, $uid, $amount) use ($date) {
+            foreach ($ledger as $p) {
+                $pdate = substr((string) ($p['from_date'] ?? $p['marked_at'] ?? ''), 0, 10);
+                if ((int) ($p['user_id'] ?? 0) === $uid && $pdate === $date
+                    && abs((float) ($p['amount'] ?? 0) - $amount) < 0.005) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $recorded = 0; $skipped = 0; $unmatched = [];
+        $markedBy = $request->session()->get('user.id');
+        $markedAt = $date . ' 12:00:00';
+
+        foreach (preg_split('/\r\n|\r|\n/', $raw) as $line) {
+            $line = trim($line);
+            if ($line === '') { continue; }
+            $parts = preg_split('/\t|,/', $line);
+            $parts = array_map('trim', $parts);
+            $name = $parts[0] ?? '';
+            if ($name === '') { continue; }
+            $listing = isset($parts[1]) ? (float) preg_replace('/[^0-9.\-]/', '', $parts[1]) : 0.0;
+            $salesAmt = isset($parts[2]) ? (float) preg_replace('/[^0-9.\-]/', '', $parts[2]) : 0.0;
+
+            $u = $matchUser($name);
+            if (!$u) { $unmatched[] = $name; continue; }
+            $uid = (int) $u->id;
+            $full = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid));
+
+            if ($listing > 0) {
+                if ($exists($paid, $uid, round($listing, 2))) { $skipped++; }
+                else {
+                    $paid[] = [
+                        'id' => bin2hex(random_bytes(8)), 'user_id' => $uid, 'name' => $full,
+                        'count' => 0, 'amount' => round($listing, 2), 'line_ids' => [],
+                        'from_date' => $date, 'to_date' => $date, 'manual' => true, 'note' => $note,
+                        'marked_by' => $markedBy, 'marked_at' => $markedAt,
+                    ];
+                    $recorded++;
+                }
+            }
+            if ($salesAmt > 0) {
+                if ($exists($sales, $uid, round($salesAmt, 2))) { $skipped++; }
+                else {
+                    $sales[] = [
+                        'id' => bin2hex(random_bytes(8)), 'user_id' => $uid, 'name' => $full,
+                        'amount' => round($salesAmt, 2), 'from_date' => $date, 'to_date' => $date,
+                        'manual' => true, 'note' => $note, 'marked_by' => $markedBy, 'marked_at' => $markedAt,
+                    ];
+                    $recorded++;
+                }
+            }
+        }
+
+        $this->savePayouts($paid);
+        $this->saveSalesPayouts($sales);
+
+        $msg = "Recorded {$recorded} entr" . ($recorded === 1 ? 'y' : 'ies') . " for {$date}.";
+        if ($skipped > 0) { $msg .= " Skipped {$skipped} already on file (no double-count)."; }
+        if (!empty($unmatched)) { $msg .= ' Could not match (nothing recorded for these — fix the name and re-paste): ' . implode(', ', array_unique($unmatched)) . '.'; }
+
+        return redirect('/admin/listing-commissions')
+            ->with('status', ['success' => empty($unmatched) ? 1 : 0, 'msg' => $msg]);
+    }
+
     private function loadFreeze()
     {
         if (!Storage::disk('local')->exists(self::FREEZE_FILE)) { return null; }

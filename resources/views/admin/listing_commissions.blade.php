@@ -313,6 +313,25 @@
                 </div>
             </form>
 
+            <form method="POST" action="{{ url('/admin/listing-commissions/bulk-record') }}"
+                  onsubmit="return confirm('Record this whole payroll? Anything already on file is skipped.');"
+                  style="margin-bottom:16px; padding:12px 14px; background:#EEF6FF; border:1px solid #B8D4F0; border-radius:8px;">
+                @csrf
+                <div style="font-weight:700; color:#2C5D8A; margin-bottom:8px;">Bulk-record a whole past payroll</div>
+                <div class="form-inline" style="margin-bottom:8px;">
+                    <label style="margin-right:4px; font-weight:400;">Payroll date</label>
+                    <input type="date" name="date" class="form-control input-sm" style="margin-right:10px;" max="{{ \Carbon::now()->toDateString() }}" required>
+                    <input type="text" name="note" placeholder="label (e.g. June 25 payroll)" class="form-control input-sm" style="width:240px;">
+                </div>
+                <textarea name="rows" class="form-control" rows="6" style="font-family:monospace; font-size:13px;"
+                          placeholder="One person per line:  Name, Listing$, Sales$&#10;Manolo, 15.88, 68.25&#10;Luis C, 10.46, 23.44&#10;Nick M, 0.64, 0"></textarea>
+                <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Record this payroll</button>
+                <div class="text-muted" style="margin-top:6px; font-size:12px;">
+                    One line per person: <strong>Name, Listing$, Sales$</strong> (commas or tabs; put 0 where there's none).
+                    Already-recorded amounts are <strong>skipped</strong> so re-pasting can't double-count. Names it can't match are reported and left out — nothing is guessed.
+                </div>
+            </form>
+
             @if (empty($paid_groups))
                 <p class="text-muted">No payouts recorded yet. Total paid: $0.00</p>
             @else
