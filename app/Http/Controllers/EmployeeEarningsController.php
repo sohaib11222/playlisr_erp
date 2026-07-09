@@ -269,6 +269,7 @@ class EmployeeEarningsController extends Controller
             'category'   => 'c.name',
             'list'       => 'list_price',
             'sold'       => 'units_val',
+            'sold_date'  => 'sold_at',
             'sale'       => 'sale_val',
             'commission' => 'comm_val',
         ];
@@ -292,14 +293,17 @@ class EmployeeEarningsController extends Controller
         $unitsExpr = 'COALESCE(s.units, 0)';
         $commExpr  = "CASE WHEN NOT {$ineligible} AND {$saleExpr} > 0 THEN {$saleExpr} * " . self::RATE . " ELSE 0 END";
 
-        $soldSub = "(SELECT tsl.product_id, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) units, SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) sale_value"
+        $soldSub = "(SELECT tsl.product_id, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) units, MAX(t.transaction_date) last_sold, SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) sale_value"
             . " FROM transaction_sell_lines tsl JOIN transactions t ON t.id = tsl.transaction_id"
             . " WHERE t.type = 'sell' AND t.status = 'final' AND t.import_source IS NULL AND t.business_id = {$bizId}"
             . " AND t.transaction_date >= '{$start}' AND t.transaction_date <= '{$end}' GROUP BY tsl.product_id) s";
 
-        // Filter: 'sold' shows only items that have sold (units > 0); 'all'
-        // (default) shows everything they listed.
-        $filter = $request->input('filter') === 'sold' ? 'sold' : 'all';
+        // Filter: 'sold' = items that have sold (units > 0); 'eligible' =
+        // commission-eligible category only; 'sold_eligible' = both (the items
+        // that actually earn commission); 'all' (default) = everything listed.
+        $allowedFilters = ['all', 'sold', 'eligible', 'sold_eligible'];
+        $filter = in_array($request->input('filter'), $allowedFilters, true)
+            ? $request->input('filter') : 'all';
 
         $base = DB::table('products as p')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
@@ -312,8 +316,11 @@ class EmployeeEarningsController extends Controller
 
         // Everything past here joins the per-product sold aggregate.
         $withSold = (clone $base)->leftJoin(DB::raw($soldSub), 's.product_id', '=', 'p.id');
-        if ($filter === 'sold') {
+        if ($filter === 'sold' || $filter === 'sold_eligible') {
             $withSold->whereRaw("{$unitsExpr} > 0");
+        }
+        if ($filter === 'eligible' || $filter === 'sold_eligible') {
+            $withSold->whereRaw("NOT {$ineligible}");
         }
 
         // Totals across the WHOLE filtered set (not just the visible page), so
@@ -352,7 +359,7 @@ class EmployeeEarningsController extends Controller
             });
 
         $products = (clone $withSold)
-            ->selectRaw("p.name, p.sku, p.created_at, c.name as cat, sc.name as subcat,"
+            ->selectRaw("p.name, p.sku, p.created_at, s.last_sold as sold_at, c.name as cat, sc.name as subcat,"
                 . " (SELECT MAX(v.sell_price_inc_tax) FROM variations v WHERE v.product_id = p.id AND v.deleted_at IS NULL) as list_price,"
                 . " {$unitsExpr} as units_val, {$saleExpr} as sale_val, {$commExpr} as comm_val,"
                 . " CASE WHEN {$ineligible} THEN 0 ELSE 1 END as elig")
@@ -365,6 +372,7 @@ class EmployeeEarningsController extends Controller
             return (object) [
                 'name' => $p->name, 'sku' => $p->sku,
                 'listed_at' => $p->created_at,
+                'sold_at' => $p->sold_at,
                 'category' => trim(($p->cat ?? '') . ($p->subcat ? ' › ' . $p->subcat : '')) ?: '—',
                 'list_price' => $p->list_price !== null ? (float) $p->list_price : null,
                 'eligible' => (int) $p->elig === 1,

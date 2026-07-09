@@ -76,10 +76,12 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
         <div class="li-bar">
             <div class="li-filters">
                 <a class="li-tab {{ $filter === 'all' ? 'active' : '' }}" href="{{ $filterBase.'&filter=all' }}">All listed</a>
-                <a class="li-tab {{ $filter === 'sold' ? 'active' : '' }}" href="{{ $filterBase.'&filter=sold' }}">Sold only</a>
+                <a class="li-tab {{ $filter === 'sold' ? 'active' : '' }}" href="{{ $filterBase.'&filter=sold' }}">Sold</a>
+                <a class="li-tab {{ $filter === 'eligible' ? 'active' : '' }}" href="{{ $filterBase.'&filter=eligible' }}">Commission-eligible</a>
+                <a class="li-tab {{ $filter === 'sold_eligible' ? 'active' : '' }}" href="{{ $filterBase.'&filter=sold_eligible' }}">Sold + eligible</a>
             </div>
             <div class="li-totals">
-                <div class="li-tot"><div class="n">{{ number_format($shown_count) }}</div><div class="l">{{ $filter === 'sold' ? 'Sold' : 'Items' }}</div></div>
+                <div class="li-tot"><div class="n">{{ number_format($shown_count) }}</div><div class="l">{{ in_array($filter, ['sold','sold_eligible']) ? 'Sold' : 'Items' }}</div></div>
                 <div class="li-tot"><div class="n">${{ number_format($tot_sale, 2) }}</div><div class="l">Sale total</div></div>
                 <div class="li-tot comm"><div class="n">${{ number_format($tot_comm, 2) }}</div><div class="l">Commission</div></div>
             </div>
@@ -88,14 +90,14 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
             <table class="li-table">
                 <thead>
                     @php
-                        $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','list'=>'List price','sold'=>'Sold','sale'=>'Sale value','commission'=>'Commission'];
+                        $cols = ['listed'=>'Listed','item'=>'Item','sku'=>'SKU','category'=>'Category','list'=>'List price','sold'=>'Sold','sold_date'=>'Sold date','sale'=>'Sale value','commission'=>'Commission'];
                         $sortBase = url('/my-earnings/items').'?user_id='.$user_id.'&filter='.$filter;
                     @endphp
                     <tr>
                         @foreach($cols as $key => $label)
                             @php
                                 $active = $sort === $key;
-                                $next = $active ? ($dir === 'asc' ? 'desc' : 'asc') : (in_array($key, ['sold','sale','commission','listed']) ? 'desc' : 'asc');
+                                $next = $active ? ($dir === 'asc' ? 'desc' : 'asc') : (in_array($key, ['sold','sold_date','sale','commission','listed']) ? 'desc' : 'asc');
                                 $arrow = $active ? ($dir === 'asc' ? ' ↑' : ' ↓') : '';
                             @endphp
                             <th><a href="{{ $sortBase.'&sort='.$key.'&dir='.$next }}" style="color:inherit;text-decoration:none;white-space:nowrap;">{{ $label }}{{ $arrow }}</a></th>
@@ -111,11 +113,12 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
                             <td class="li-muted">{{ $r->category }}@unless($r->eligible)<br><span class="li-inelig">not commission-eligible</span>@endunless</td>
                             <td>@if($r->list_price !== null)${{ number_format($r->list_price, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->units > 0)<span class="li-sold">{{ rtrim(rtrim(number_format($r->units,2),'0'),'.') }} sold</span>@else<span class="li-unsold">—</span>@endif</td>
+                            <td class="li-muted">@if($r->sold_at){{ \Carbon::parse($r->sold_at)->format('M j, Y') }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->sale_value > 0)${{ number_format($r->sale_value, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->commission > 0)<span class="li-sold">${{ number_format($r->commission, 2) }}</span>@else<span class="li-unsold">$0.00</span>@endif</td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
+                        <tr><td colspan="9" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
                     @endforelse
                 </tbody>
             </table>
