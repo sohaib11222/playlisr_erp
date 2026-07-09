@@ -123,7 +123,22 @@ class PayrollController extends Controller
             'row_count'    => count($rows),
             'unmatched'    => $this->unmatchedNames($people),
             'sling_ready'  => (new \App\Services\SlingClient())->isConfigured() || SlingShift::query()->exists(),
+            'can_see_rates' => $this->canSeeRates(),
         ]);
+    }
+
+    // Whether the current user may see explicit pay: hourly rates, wages, and
+    // the Rates & settings editor. Owners only (whitelist by first name) so
+    // whoever PREPS payroll (e.g. Fatteen / "Nerdy Solutions") can still enter
+    // hours + commissions into QuickBooks without seeing what people are paid.
+    private function canSeeRates()
+    {
+        $u = auth()->user();
+        if (!$u) { return false; }
+        $first = strtolower(trim((string) $u->first_name));
+        $last  = strtolower(trim((string) $u->last_name));
+        if ($first === 'jonathan' && $last === 'hedvat') { return true; }
+        return in_array($first, ['jon', 'jonathan', 'sarah'], true);
     }
 
     // ---- Hours import ----------------------------------------------------
@@ -189,6 +204,7 @@ class PayrollController extends Controller
     public function saveRates(Request $request)
     {
         $this->ensureAdmin();
+        if (!$this->canSeeRates()) { abort(403, 'Only owners can change pay rates.'); }
         [$start, $end] = $this->resolvePeriod($request);
 
         $config = $this->loadConfig();

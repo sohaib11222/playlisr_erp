@@ -72,8 +72,8 @@
   </div>
 </div>
 
-{{-- Needs attention --}}
-@if (!empty($unmatched))
+{{-- Needs attention (rate/link setup — owners only) --}}
+@if ($can_see_rates && !empty($unmatched))
   <div class="row"><div class="col-md-12">
     <div class="alert alert-warning" style="margin-bottom:15px;">
       <strong>Needs setup before these are correct:</strong>
@@ -95,14 +95,18 @@
 {{-- Summary --}}
 <div class="row"><div class="col-md-12">
   @component('components.widget', ['title' => 'Pay run'])
+    @php $emptyCols = $can_see_rates ? 11 : 8; @endphp
     <div class="table-responsive">
     <table class="table table-condensed table-bordered" style="background:#fff;">
       <thead style="background:#FFF7CC;">
         <tr>
-          <th>Name</th><th>Store</th><th class="text-right">Rate</th>
+          <th>Name</th><th>Store</th>
+          @if ($can_see_rates)<th class="text-right">Rate</th>@endif
           <th class="text-right">Reg h</th><th class="text-right">OT h</th><th class="text-right">DT h</th>
-          <th class="text-right">Wages</th><th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
-          <th class="text-right">Total</th><th></th>
+          @if ($can_see_rates)<th class="text-right">Wages</th>@endif
+          <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
+          @if ($can_see_rates)<th class="text-right">Total</th>@endif
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -110,14 +114,14 @@
           <tr class="{{ $p['has_hours'] ? '' : 'text-muted' }}">
             <td><strong>{{ $p['name'] }}</strong>@unless($p['has_hours'])<br><small>commission only (no hours this period)</small>@endunless</td>
             <td>{{ $p['store'] }}</td>
-            <td class="text-right">{{ $p['rate'] > 0 ? '$' . $fmt($p['rate']) : '—' }}</td>
+            @if ($can_see_rates)<td class="text-right">{{ $p['rate'] > 0 ? '$' . $fmt($p['rate']) : '—' }}</td>@endif
             <td class="text-right">{{ $p['reg_hours'] ? $hh($p['reg_hours']) : '' }}</td>
             <td class="text-right">{{ $p['ot_hours'] ? $hh($p['ot_hours']) : '' }}</td>
             <td class="text-right">{{ $p['dt_hours'] ? $hh($p['dt_hours']) : '' }}</td>
-            <td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>
+            @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
             <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
             <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
-            <td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
+            @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
             <td class="text-center">
               @if (!empty($p['flags']))
                 <span class="label label-warning" title="{{ implode(' | ', $p['flags']) }}" style="cursor:help;">
@@ -127,20 +131,21 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="11" class="text-center text-muted" style="padding:24px;">No hours imported for this period. Paste the Clover export above.</td></tr>
+          <tr><td colspan="{{ $emptyCols }}" class="text-center text-muted" style="padding:24px;">No hours imported for this period. Paste the Clover export above.</td></tr>
         @endforelse
       </tbody>
       @if (!empty($people))
       <tfoot style="background:#FBFBF6;font-weight:700;">
         <tr>
-          <td colspan="3">Totals</td>
+          <td colspan="2">Totals</td>
+          @if ($can_see_rates)<td></td>@endif
           <td class="text-right">{{ $hh($totals['reg_hours']) }}</td>
           <td class="text-right">{{ $hh($totals['ot_hours']) }}</td>
           <td class="text-right">{{ $hh($totals['dt_hours']) }}</td>
-          <td class="text-right">${{ $fmt($totals['wages']) }}</td>
+          @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['wages']) }}</td>@endif
           <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
           <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
-          <td class="text-right">${{ $fmt($totals['grand_total']) }}</td>
+          @if ($can_see_rates)<td class="text-right">${{ $fmt($totals['grand_total']) }}</td>@endif
           <td></td>
         </tr>
       </tfoot>
@@ -280,7 +285,8 @@
   @endcomponent
 </div></div>
 
-{{-- Rates & settings --}}
+{{-- Rates & settings (owners only) --}}
+@if ($can_see_rates)
 <div class="row" id="rates"><div class="col-md-12">
   @component('components.widget', ['title' => 'Rates & settings'])
     <form method="POST" action="{{ url('/payroll/save-rates') }}">
@@ -319,6 +325,7 @@
     </form>
   @endcomponent
 </div></div>
+@endif
 
 </section>
 
