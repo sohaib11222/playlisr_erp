@@ -113,6 +113,17 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings sales bonus failed: ' . $e->getMessage());
         }
 
+        // Reconciled paid/owed that INCLUDES manual payments (from both ledgers),
+        // matching the admin Commissions page: owed = total earned − total paid,
+        // and can go negative when overpaid.
+        $salesPaid = 0.0;
+        foreach ($this->loadSalesPayouts() as $sp) {
+            if ((int) ($sp['user_id'] ?? 0) === $userId) { $salesPaid += (float) ($sp['amount'] ?? 0); }
+        }
+        $salesPaid = round($salesPaid, 2);
+        $totalPaidAll = round($paidOut + $salesPaid, 2);
+        $totalOwedNow = round(($earned + (float) $salesBonus['bonus']) - $totalPaidAll, 2);
+
         // Productivity context (NOT pay): items listed + items put out (labeled).
         $listedCount = $this->listedCount($businessId, $userId, $start);
         $labeledCount = $this->labeledCount($businessId, $userId, $start, $end);
@@ -155,7 +166,7 @@ class EmployeeEarningsController extends Controller
                 });
         }
 
-        return view('employee.my_earnings', [
+        return response()->view('employee.my_earnings', [
             'name'         => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? 'You'),
             'from'         => $from,
             'rate_pct'     => self::RATE * 100,
@@ -168,6 +179,8 @@ class EmployeeEarningsController extends Controller
             'labeled_count'=> $labeledCount,
             'payouts'      => $myPayouts,
             'payment_history' => $myPaymentHistory,
+            'total_paid_all'  => $totalPaidAll,
+            'total_owed_now'  => $totalOwedNow,
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
             'viewing_other'=> $viewingOther,
@@ -177,7 +190,8 @@ class EmployeeEarningsController extends Controller
             'daily'        => $daily,
             'daily_days'   => $dailyDays,
             'sales_bonus_live' => $salesBonus['live'] ?? false,
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache');
     }
 
     // Admin overview: a row per employee per day showing that day's sales and

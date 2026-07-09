@@ -69,6 +69,12 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             <div class="lbl">Total commission earned (all-time)</div>
             <div class="val">${{ number_format($total_earned, 2) }}</div>
             <div class="sub">${{ number_format($sales_bonus['bonus'], 2) }} sales bonus{{ $sales_bonus['live'] ? '' : ' (projected)' }} + ${{ number_format($earned, 2) }} listing pay</div>
+            <div class="sub" style="margin-top:6px;">
+                Paid to you <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp;
+                @if($total_owed_now > 0.004)Still owed <strong>${{ number_format($total_owed_now, 2) }}</strong>
+                @elseif($total_owed_now < -0.004)Overpaid <strong>${{ number_format(abs($total_owed_now), 2) }}</strong> (credit)
+                @else<strong>Fully paid up</strong>@endif
+            </div>
         </div>
 
         <div class="me-card" style="margin-bottom:14px;">

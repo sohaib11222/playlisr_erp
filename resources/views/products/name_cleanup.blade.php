@@ -82,11 +82,24 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                    style="height:44px;padding:0 14px;border:1px solid #ECE3D2;border-radius:10px;font-family:inherit;font-size:14px;width:280px;background:#fff;">
         </div>
         <div style="margin-top:14px;padding:14px;border:1px solid #CDE3CD;background:#F3F9F3;border-radius:10px;">
-            <div style="font-weight:600;color:#1B5E20;">One-click: fill the safe ones automatically</div>
-            <p class="sub" style="margin:6px 0 10px;">Fills every <b>surname-first name</b> (e.g. "SMITH,PATTI GROUP" &rarr; Patti Smith Group) and every <b>compilation</b> across the whole catalog, all letters at once — these don't need a human eye. What's left to review by hand is only the ambiguous "Title / Artist" guesses. Runs in batches; leave the tab open. Fully undoable.</p>
+            <div style="font-weight:600;color:#1B5E20;">Best option: fill blank artists from Discogs (accurate, no guessing)</div>
+            <p class="sub" style="margin:6px 0 10px;">For every blank / "N/A" artist music product that has a Discogs release id, this writes the <b>true artist straight from Discogs</b> into the Artist field — no parsing, no guessing. <b>Sealed vinyl first.</b> Rate-limited (~55/min), runs in batches; leave the tab open. Fully undoable. Products with no release id won't be touched — use the scan below for those.</p>
             <div class="mgn-actions" style="margin-top:0;">
-                <button class="mgn-btn mgn-btn-primary" id="arAutoBtn" type="button">Auto-fill surname-first + compilations</button>
-                <span class="mgn-note" id="arAutoProgress" style="margin-top:0"></span>
+                <button class="mgn-btn mgn-btn-ghost" id="dgArtistScanBtn" type="button">Check + preview</button>
+                <span class="mgn-note" id="dgArtistScanNote" style="margin-top:0"></span>
+            </div>
+            <div id="dgArtistPreview" style="display:none;margin-top:14px;">
+                <div class="mgn-note mgn-summary" id="dgArtistSummary" style="margin-top:0;color:#1F1B16;"></div>
+                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #E1EFE1;border-radius:10px;background:#fff;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Current name</th><th>Artist it will write (from Discogs)</th></tr></thead>
+                        <tbody id="dgArtistRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-actions" style="margin-top:14px;">
+                    <button class="mgn-btn mgn-btn-primary" id="dgArtistBtn" type="button">Looks right — fill them all</button>
+                    <span class="mgn-note" id="dgArtistProgress" style="margin-top:0"></span>
+                </div>
             </div>
         </div>
         <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
@@ -458,28 +471,64 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     arScanBtn.addEventListener('click', function () { doArScan(); });
 
-    // One-click auto-fill of the structural parses (surname-first + compilations)
-    // across the whole catalog, in batches, until none remain.
-    var arAutoBtn = document.getElementById('arAutoBtn');
-    var arAutoProgress = document.getElementById('arAutoProgress');
-    arAutoBtn.addEventListener('click', function () {
-        if (!confirm('Auto-fill every surname-first name and compilation across the whole catalog? Runs in batches; undoable from Admin Action History.')) { return; }
+    // Preview first: show a live sample of "name -> Discogs artist" before filling.
+    var dgArtistScanBtn = document.getElementById('dgArtistScanBtn');
+    var dgArtistScanNote = document.getElementById('dgArtistScanNote');
+    dgArtistScanBtn.addEventListener('click', function () {
         clearMsg();
-        arAutoBtn.disabled = true; arScanBtn.disabled = true;
-        var total = 0;
-        function step() {
-            arAutoProgress.textContent = 'Filling… ' + total + ' done so far.';
-            post('{{ route('products.artist.apply') }}', { only: 'high', max: 1000 }).then(function (d) {
-                if (!d.success) { arAutoBtn.disabled = false; arScanBtn.disabled = false; showMsg(d.msg || 'Auto-fill failed.', false); arAutoProgress.textContent = ''; return; }
-                total += (d.filled || 0);
-                if (d.filled > 0) { step(); return; }
-                arAutoBtn.disabled = false; arScanBtn.disabled = false;
-                arAutoProgress.textContent = '';
-                showMsg('Auto-filled ' + total + ' artist(s) (surname-first + compilations). Now scan a letter to review the remaining "Title / Artist" ones. Undo at Admin Action History.', true);
-                if (arResult.style.display !== 'none' && arFilter !== '') { doArScan(); }
-            }).catch(function () { arAutoBtn.disabled = false; arScanBtn.disabled = false; showMsg('Auto-fill stopped — re-run to continue where it left off.', false); arAutoProgress.textContent = ''; });
-        }
-        step();
+        dgArtistScanBtn.disabled = true; dgArtistScanBtn.textContent = 'Checking Discogs…';
+        dgArtistScanNote.textContent = 'Fetching a sample (~10s)…';
+        post('{{ route('products.artist.discogs.scan') }}', {}).then(function (d) {
+            dgArtistScanBtn.disabled = false; dgArtistScanBtn.textContent = 'Check + preview';
+            dgArtistScanNote.textContent = '';
+            if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
+            document.getElementById('dgArtistSummary').innerHTML =
+                '<b>' + d.total.toLocaleString() + '</b> blank-artist product(s) have a Discogs id and will be filled (sealed vinyl first). Sample:';
+            document.getElementById('dgArtistRows').innerHTML = (d.sample || []).length
+                ? d.sample.map(function (s) {
+                    return '<tr><td class="mgn-old">' + esc(s.name) + '</td><td class="mgn-new">' + esc(s.artist) + '</td></tr>';
+                }).join('')
+                : '<tr><td colspan="2" style="color:#8E8273">No sample rows (nothing to fill, or Discogs returned no artist).</td></tr>';
+            document.getElementById('dgArtistPreview').style.display = d.total > 0 ? 'block' : 'none';
+            if (d.total === 0) { showMsg('Nothing to fill — no blank-artist products with a Discogs id.', true); }
+        }).catch(function () { dgArtistScanBtn.disabled = false; dgArtistScanBtn.textContent = 'Check + preview'; dgArtistScanNote.textContent = ''; showMsg('Check failed — try again.', false); });
+    });
+
+    // Accurate artist-column fill from Discogs — two passes (sealed vinyl, then
+    // the rest), cursor-paged, rate-limited. Leaves per-batch snapshots.
+    var dgArtistBtn = document.getElementById('dgArtistBtn');
+    var dgArtistProgress = document.getElementById('dgArtistProgress');
+    function dgArtistBatch(afterId, total, phase) {
+        var phaseLabel = phase === 'rest' ? 'everything else' : 'sealed vinyl';
+        post('{{ route('products.artist.discogs') }}', { after_id: afterId, max: 8, phase: phase }).then(function (d) {
+            if (!d.success) { dgArtistBtn.disabled = false; showMsg(d.msg || 'Discogs fill failed.', false); dgArtistProgress.textContent = ''; return; }
+            total += (d.filled || 0);
+            var tail = phase === 'sealed' ? ', then everything else' : '';
+            var note = 'Filled ' + total + ' so far · ' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left' + tail;
+            if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
+            dgArtistProgress.textContent = note + '…';
+            if (d.done) {
+                if (phase === 'sealed') {
+                    dgArtistProgress.textContent = 'Sealed vinyl done (' + total + '). Now everything else…';
+                    dgArtistBatch(0, total, 'rest');
+                    return;
+                }
+                dgArtistBtn.disabled = false; dgArtistProgress.textContent = '';
+                showMsg('Filled ' + total + ' artist(s) from Discogs (sealed vinyl first). Undo any batch at Admin Action History.', true);
+                return;
+            }
+            var wait = d.rate_limited ? 60000 : 300;
+            setTimeout(function () { dgArtistBatch(d.after_id, total, phase); }, wait);
+        }).catch(function () {
+            dgArtistProgress.textContent = 'Hiccup — retrying in 10s…';
+            setTimeout(function () { dgArtistBatch(afterId, total, phase); }, 10000);
+        });
+    }
+    dgArtistBtn.addEventListener('click', function () {
+        if (!confirm('Fill the Artist field from Discogs for every blank-artist product that has a release id, sealed vinyl first? Runs in batches; undoable from Admin Action History.')) { return; }
+        clearMsg(); dgArtistBtn.disabled = true;
+        dgArtistProgress.textContent = 'Starting with sealed vinyl…';
+        dgArtistBatch(0, 0, 'sealed');
     });
 
     arApplyBtn.addEventListener('click', function () {
