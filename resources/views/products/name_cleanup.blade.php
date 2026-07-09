@@ -82,6 +82,17 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 <span class="mgn-note" id="arProgress" style="margin-top:0"></span>
             </div>
             <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
+
+            <div id="arFlaggedWrap" style="display:none;margin-top:22px;">
+                <div class="mgn-note mgn-summary" id="arFlaggedSummary" style="margin-top:0;color:#1F1B16;"></div>
+                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Current name</th><th>Why it's flagged</th></tr></thead>
+                        <tbody id="arFlaggedRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-note">These are left untouched — fix the Artist field by hand on each product's edit page.</div>
+            </div>
         </div>
     </div>
 
@@ -238,6 +249,18 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             }
             document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="3">Nothing to fill.</td></tr>';
             arApplyBtn.style.display = d.to_fill > 0 ? '' : 'none';
+
+            var fp = d.flagged_preview || [];
+            if (fp.length) {
+                document.getElementById('arFlaggedSummary').innerHTML =
+                    '<b>' + d.flagged + '</b> flagged for manual review' + (d.flagged > fp.length ? ' (showing first ' + fp.length + ')' : '') + ':';
+                document.getElementById('arFlaggedRows').innerHTML = fp.map(function (f) {
+                    return '<tr><td>' + esc(f.name) + '</td><td style="color:#8E8273">' + esc(f.reason) + '</td></tr>';
+                }).join('');
+                document.getElementById('arFlaggedWrap').style.display = 'block';
+            } else {
+                document.getElementById('arFlaggedWrap').style.display = 'none';
+            }
             arResult.style.display = 'block';
         }).catch(function () { arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists'; showMsg('Scan failed — try again.', false); });
     });

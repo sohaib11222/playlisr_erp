@@ -105,16 +105,27 @@ class ProductNameController extends Controller
 
         $knownKeys = $this->knownArtistKeys($business_id);
         $fixes = [];
+        $flaggedRows = [];
         $toFill = 0;
         $flagged = 0;
 
         $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
             ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$fixes, &$toFill, &$flagged, $collectFixes, $limit, $knownKeys) {
+            ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$flagged, $collectFixes, $limit, $knownKeys) {
                 foreach ($rows as $r) {
                     $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
-                    if (!$res['confident']) { $flagged++; continue; }
+                    if (!$res['confident']) {
+                        $flagged++;
+                        if ($collectFixes && ($limit === null || count($flaggedRows) < $limit)) {
+                            $flaggedRows[] = [
+                                'id' => (int) $r->id,
+                                'name' => $r->name,
+                                'reason' => $res['reason'],
+                            ];
+                        }
+                        continue;
+                    }
                     $toFill++;
                     if ($collectFixes && ($limit === null || count($fixes) < $limit)) {
                         $fixes[] = [
@@ -128,7 +139,7 @@ class ProductNameController extends Controller
                 }
             });
 
-        return ['fixes' => $fixes, 'to_fill' => $toFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
+        return ['fixes' => $fixes, 'flagged_rows' => $flaggedRows, 'to_fill' => $toFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
     }
 
     public function artistScan(Request $request)
@@ -151,6 +162,7 @@ class ProductNameController extends Controller
             'to_fill' => $data['to_fill'],
             'flagged' => $data['flagged'],
             'preview' => $data['fixes'],
+            'flagged_preview' => $data['flagged_rows'],
         ]);
     }
 
