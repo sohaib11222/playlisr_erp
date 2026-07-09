@@ -278,6 +278,17 @@ class ProductNameNormalizer
         if ($a === '' || $b === '') { return $s; }
         if (strcasecmp($b, 'the') === 0) { return $b . ' ' . $a; }  // "Cure, The" -> "The Cure" (case fixed later)
         if (preg_match('/^the\b/i', $b)) { return $s; }            // "Tyler, The Creator"
+        // A band sorted under a member's surname ends in a group word: the
+        // surname slots in just before that word, not at the very end —
+        // "SMITH,PATTI GROUP" -> "Patti Smith Group", "BROWN,ZAC BAND" -> "Zac
+        // Brown Band". A person (with or without a middle name) keeps the
+        // surname last: "PRESLEY,ELVIS AARON" -> "Elvis Aaron Presley".
+        $bWords = preg_split('/\s+/', $b);
+        static $groupWords = ['group', 'band', 'orchestra', 'ensemble', 'trio', 'quartet', 'quintet', 'sextet', 'septet', 'project', 'experience', 'singers', 'choir'];
+        if (count($bWords) >= 2 && in_array(mb_strtolower(end($bWords)), $groupWords, true)) {
+            $suffix = array_pop($bWords);
+            return implode(' ', $bWords) . ' ' . $a . ' ' . $suffix;
+        }
         return $b . ' ' . $a;                                       // "Jackson, Michael" -> "Michael Jackson"
     }
 
@@ -292,10 +303,10 @@ class ProductNameNormalizer
      *     Fire", "Hamilton, Joe Frank & Reynolds"),
      *   - no space after the comma (a spaced "Last, First" is left to the normal
      *     known-artist logic),
-     *   - both sides start with a letter (not catalog numbers),
-     *   - the given-name side is a single token — a person ("WINTER,CAMERON");
-     *     a multi-word tail ("BROWN,ZAC BAND") is a mis-sorted band, left to the
-     *     known-artist set / curated list rather than flipped into "Zac Band …".
+     *   - both sides start with a letter (not catalog numbers).
+     * A multi-word tail is fine — "WINTER,CAMERON" (a person) and "SMITH,PATTI
+     * GROUP" / "BROWN,ZAC BAND" (a band sorted under a member's surname) are all
+     * the artist side; flipLastFirst puts the surname in the right place.
      */
     protected static function looksSurnameFirst($seg)
     {
@@ -306,7 +317,6 @@ class ProductNameNormalizer
         list($last, $first) = array_map('trim', explode(',', $seg));
         if ($last === '' || $first === '') { return false; }
         if (!preg_match('/^\p{L}/u', $last) || !preg_match('/^\p{L}/u', $first)) { return false; }
-        if (preg_match('/\s/u', $first)) { return false; }
         return true;
     }
 
