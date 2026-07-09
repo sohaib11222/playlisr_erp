@@ -199,7 +199,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             document.getElementById('mgScanSummary').textContent = summary;
             var money = function (v) { return (v === null || v === undefined) ? '' : '$' + Number(v).toFixed(2); };
             var by = function (x) {
-                var color = x.is_untrusted ? '#B45309' : '#8E8273';
+                var color = '#8E8273';
                 var bits = [];
                 if (x.sell_price !== null && x.sell_price !== undefined) { bits.push(money(x.sell_price) + ' sell'); }
                 if (x.purchase_price !== null && x.purchase_price !== undefined) { bits.push(money(x.purchase_price) + ' cost'); }
