@@ -118,10 +118,13 @@ class ProductNameNormalizer
     {
         $s = trim((string) $s);
         $s = trim($s, "\"\u{201C}\u{201D}\u{2018}\u{2019}");
-        // Drop Discogs disambiguation markers: a trailing "*" ("Peanuts*") and a
-        // trailing " (2)" numeric suffix ("Nirvana (2)").
+        // Drop Discogs disambiguation markers: a trailing "*" ("Peanuts*").
         $s = preg_replace('/\s*\*+$/', '', $s);
-        $s = preg_replace('/\s*\(\d+\)$/', '', $s);
+        // Drop trailing parenthetical note(s): format/pressing/alias tails like
+        // "(2LP)", "(TRANSPARENT ORANGE VINYL)", "YUSUF (CAT STEVENS)" -> "YUSUF".
+        // Keep the original if stripping would empty the segment (e.g. "(Sandy)").
+        $stripped = preg_replace('/(?:\s*\([^)]*\))+\s*$/u', '', $s);
+        if (trim((string) $stripped) !== '') { $s = $stripped; }
         return trim(preg_replace('/\s+/', ' ', $s));
     }
 
@@ -362,6 +365,9 @@ class ProductNameNormalizer
         if ($artist === '') { return $fail('empty artist segment'); }
         if (mb_strlen($artist) > 120) { return $fail('artist segment too long'); }
         if (!self::isRealArtist($artist)) { return $fail('not a real artist (unknown/various/n a)'); }
+        // Multi-artist collabs joined by ";" (e.g. "Colon,Willie; Hector Lavoe")
+        // don't flip cleanly — flag them for a human rather than mangle.
+        if (strpos($artist, ';') !== false) { return $fail('multiple artists (;) — manual'); }
         // Non-Latin (Japanese, etc.) with no English alias mapped yet — don't
         // write katakana into the artist field; flag it so it can be mapped.
         if (self::hasNonLatinScript($artist)) { return $fail('non-Latin name — needs an English artist (manual)'); }
