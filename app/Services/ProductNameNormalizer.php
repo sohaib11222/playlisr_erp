@@ -196,6 +196,8 @@ class ProductNameNormalizer
             'yusuf' => 'Cat Stevens',
             'yusufislam' => 'Cat Stevens',
             'yusufcatstevens' => 'Cat Stevens',
+            '2chainz' => '2 Chainz',
+            '100gecs' => '100 gecs',
         ];
     }
 
