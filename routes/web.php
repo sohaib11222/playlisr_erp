@@ -275,6 +275,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/name-cleanup/apply', 'ProductNameController@apply')->name('products.name.apply');
     Route::post('/products/name-cleanup/discogs-scan', 'ProductNameController@discogsScan')->name('products.name.discogs.scan');
     Route::post('/products/name-cleanup/discogs-rebuild', 'ProductNameController@discogsRebuild')->name('products.name.discogs.rebuild');
+    // Owner-only: backfill blank/"N/A" artist on music formats from the name.
+    Route::post('/products/name-cleanup/artist-scan', 'ProductNameController@artistScan')->name('products.artist.scan');
+    Route::post('/products/name-cleanup/artist-apply', 'ProductNameController@artistApply')->name('products.artist.apply');
 
     // Owner-only one-click fix: assign blank-genre audio gear (players,
     // boomboxes, turntables) to an "Audio Gear" category. Before the resource.

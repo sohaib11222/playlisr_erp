@@ -35,6 +35,195 @@ class ProductNameController extends Controller
         return view('products.name_cleanup');
     }
 
+    // ===================== ARTIST BACKFILL (from name) =====================
+    // Music formats (vinyl/CD/cassette/45s) require an artist, but a lot of
+    // legacy/imported rows have a blank or "N/A" artist column with the artist
+    // still sitting inside the name ("Title / Artist" or "Artist - Title").
+    // This parses it back out — Preview-first, confident-only, undoable via the
+    // backfill-artist-from-name snapshot.
+
+    /** Main-category ids (for this business) that require an artist. */
+    protected function musicCategoryIds($business_id)
+    {
+        $music = \App\Http\Controllers\ProductController::musicArtistCategories();
+        $ids = [];
+        foreach (\DB::table('categories')->where('business_id', $business_id)->select('id', 'name')->get() as $c) {
+            if (in_array(strtolower(trim((string) $c->name)), $music, true)) {
+                $ids[] = (int) $c->id;
+            }
+        }
+        return $ids;
+    }
+
+    /** Products in a music category whose artist column is blank / "N/A"-ish. */
+    protected function artistlessMusicQuery($business_id, $catIds)
+    {
+        return \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereIn('category_id', $catIds)
+            ->where(function ($q) {
+                $q->whereNull('artist')
+                  ->orWhereRaw("TRIM(artist) = ''")
+                  ->orWhereRaw("LOWER(TRIM(artist)) REGEXP '^(n/?a|unknown|various|none|no artist)$'");
+            });
+    }
+
+    /**
+     * Split artist-less music products into: fillable (confident parse) and
+     * flagged (needs manual). Returns counts + a capped preview of fillable.
+     */
+    protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null)
+    {
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return ['fixes' => [], 'to_fill' => 0, 'flagged' => 0, 'cat_ids' => []];
+        }
+
+        $fixes = [];
+        $toFill = 0;
+        $flagged = 0;
+
+        $this->artistlessMusicQuery($business_id, $catIds)
+            ->select('id', 'name', 'artist')
+            ->orderBy('id')
+            ->chunk(2000, function ($rows) use (&$fixes, &$toFill, &$flagged, $collectFixes, $limit) {
+                foreach ($rows as $r) {
+                    $res = ProductNameNormalizer::artistFromName($r->name);
+                    if (!$res['confident']) { $flagged++; continue; }
+                    $toFill++;
+                    if ($collectFixes && ($limit === null || count($fixes) < $limit)) {
+                        $fixes[] = [
+                            'id' => (int) $r->id,
+                            'name' => $r->name,
+                            'old' => (string) ($r->artist ?? ''),
+                            'new' => $res['artist'],
+                            'source' => $res['source'],
+                        ];
+                    }
+                }
+            });
+
+        return ['fixes' => $fixes, 'to_fill' => $toFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
+    }
+
+    public function artistScan(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        try {
+            $data = $this->computeArtistBackfill($business_id, true, 300);
+        } catch (\Throwable $e) {
+            \Log::error('artist-backfill scan failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Scan failed: ' . $e->getMessage()]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'to_fill' => $data['to_fill'],
+            'flagged' => $data['flagged'],
+            'preview' => $data['fixes'],
+        ]);
+    }
+
+    /**
+     * Fill one batch of artists (up to `max`, default 500) from the name and
+     * report how many remain. Writes one backfill-artist-from-name snapshot per
+     * batch; undoable at /admin/admin-action-history.
+     */
+    public function artistApply(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $max = (int) $request->input('max', 500);
+        if ($max < 1) { $max = 500; }
+
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'No music categories found.']);
+        }
+
+        $batch = [];
+        $this->artistlessMusicQuery($business_id, $catIds)
+            ->select('id', 'name', 'artist')
+            ->orderBy('id')
+            ->chunk(2000, function ($rows) use (&$batch, $max) {
+                foreach ($rows as $r) {
+                    $res = ProductNameNormalizer::artistFromName($r->name);
+                    if (!$res['confident']) { continue; }
+                    $batch[] = [
+                        'id' => (int) $r->id,
+                        'old' => (string) ($r->artist ?? ''),
+                        'new' => $res['artist'],
+                    ];
+                    if (count($batch) >= $max) { return false; }
+                }
+            });
+
+        if (empty($batch)) {
+            return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'Nothing left to fill.']);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        $filled = 0;
+
+        \DB::beginTransaction();
+        try {
+            foreach ($batch as $b) {
+                // Only fill if the artist is still blank/"N/A"-ish, so a concurrent
+                // edit isn't clobbered.
+                $affected = \DB::table('products')
+                    ->where('id', $b['id'])
+                    ->where(function ($q) {
+                        $q->whereNull('artist')
+                          ->orWhereRaw("TRIM(artist) = ''")
+                          ->orWhereRaw("LOWER(TRIM(artist)) REGEXP '^(n/?a|unknown|various|none|no artist)$'");
+                    })
+                    ->update(['artist' => $b['new']]);
+                if ($affected) { $filled++; }
+            }
+
+            \Storage::disk('local')->put(
+                "admin-snapshots/backfill-artist-from-name-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'backfill-artist-from-name',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => $filled . ' artist(s) parsed from name',
+                    'target_name' => 'products.artist',
+                    'rows' => array_map(function ($b) {
+                        return ['id' => $b['id'], 'old' => $b['old'], 'new' => $b['new']];
+                    }, $batch),
+                ], JSON_PRETTY_PRINT)
+            );
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            if (\Storage::disk('local')->exists("admin-snapshots/backfill-artist-from-name-{$timestamp}.json")) {
+                \Storage::disk('local')->delete("admin-snapshots/backfill-artist-from-name-{$timestamp}.json");
+            }
+            \Log::emergency('artist-backfill failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Fill failed — nothing was changed.']);
+        }
+
+        $remaining = $this->computeArtistBackfill($business_id, false)['to_fill'];
+
+        return response()->json([
+            'success' => true,
+            'filled' => $filled,
+            'remaining' => $remaining,
+            'msg' => "Filled {$filled}. {$remaining} remaining.",
+        ]);
+    }
+
     /**
      * Walk the catalog and split into: to-fix (confident, off-standard) and
      * flagged (needs manual). Returns counts + a capped preview of to-fix.

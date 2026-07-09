@@ -104,6 +104,11 @@ class AdminActionHistoryController extends Controller
             return $this->undoProductNameCleanup($data, $key);
         }
 
+        // backfill-artist-from-name: restore each product's previous artist value.
+        if ($action === 'backfill-artist-from-name') {
+            return $this->undoBackfillArtist($data, $key);
+        }
+
         // ams-invoice-import: snapshot holds the purchase transaction id created
         // from an AMS PDF (no 'rows'). These are logged at status=ordered (never
         // received), so there's no stock to reverse — undo just deletes the
@@ -176,7 +181,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -747,6 +752,41 @@ class AdminActionHistoryController extends Controller
         }
 
         $msg = "Restored {$restored} product name(s)";
+        $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Reverse an artist backfill: put each product's artist column back to what
+    // it was (blank / "N/A"), but only where it still holds the value we filled,
+    // so a later manual edit isn't clobbered.
+    protected function undoBackfillArtist(array $data, $key)
+    {
+        $rows = $data['rows'] ?? [];
+        if (empty($rows)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot has no artists to restore.']);
+        }
+
+        $restored = 0;
+        $skipped = 0;
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $id = (int) ($r['id'] ?? 0);
+                if (!$id || !array_key_exists('old', $r) || !array_key_exists('new', $r)) { continue; }
+                $affected = DB::table('products')->where('id', $id)->where('artist', $r['new'])
+                    ->update(['artist' => $r['old']]);
+                if ($affected) { $restored++; } else { $skipped++; }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+        }
+
+        $msg = "Restored {$restored} artist value(s)";
         $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => $msg]);

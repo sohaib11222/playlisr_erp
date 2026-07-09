@@ -105,6 +105,92 @@ class ProductNameNormalizer
     }
 
     /**
+     * Reverse of canonical(): guess the ARTIST out of a name when the artist
+     * column is blank. Two known name shapes carry the artist:
+     *
+     *   - Legacy imports: "Title / Artist"  -> artist is AFTER the spaced slash.
+     *   - Typed / canonical: "Artist - Title" -> artist is BEFORE the first
+     *     spaced " - ".
+     *
+     * Only a spaced separator counts, so "AC/DC - Back In Black" is read as the
+     * dash shape (artist "AC/DC"), not the slash shape. A plain title with no
+     * separator, or a parsed value that looks like a format/catalog token, is
+     * returned confident=false so the caller flags it for manual review rather
+     * than stamping a wrong artist.
+     *
+     * Returns ['artist' => string, 'title' => string, 'source' => string,
+     *          'confident' => bool, 'reason' => string].
+     */
+    public static function artistFromName($name)
+    {
+        $name = trim(preg_replace('/\s+/', ' ', (string) $name));
+        if ($name === '') {
+            return ['artist' => '', 'title' => '', 'source' => '', 'confident' => false, 'reason' => 'empty name'];
+        }
+        if (stripos($name, 'retired') !== false) {
+            return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'contains "retired" — left alone'];
+        }
+
+        // Legacy "Title / Artist" (spaced slash): artist is the second half.
+        // Only trust an exact two-part split — 3+ segments (e.g. a trailing
+        // edition) are ambiguous, so flag them for manual review.
+        if (preg_match('/\s\/\s/', $name)) {
+            $parts = preg_split('/\s+\/\s+/', $name);
+            $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
+            if (count($parts) === 2) {
+                return self::validateParsedArtist($parts[1], $parts[0], 'Title / Artist');
+            }
+            return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple " / " segments — manual'];
+        }
+
+        // "Artist - Title" (spaced hyphen): artist is the first half. Same
+        // two-part-only rule so "Title - Artist - Edition" style rows are
+        // flagged rather than mis-parsed.
+        if (preg_match('/\s-\s/', $name)) {
+            $parts = preg_split('/\s+-\s+/', $name);
+            $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
+            if (count($parts) === 2) {
+                return self::validateParsedArtist($parts[0], $parts[1], 'Artist - Title');
+            }
+            return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'multiple " - " segments — manual'];
+        }
+
+        return ['artist' => '', 'title' => $name, 'source' => '', 'confident' => false, 'reason' => 'no separator'];
+    }
+
+    /**
+     * Sanity-gate a parsed artist string. Rejects blanks, non-artist words
+     * (unknown/various/n a), lone format/condition tokens, and bare catalog
+     * numbers so those get flagged rather than written.
+     */
+    protected static function validateParsedArtist($artist, $title, $source)
+    {
+        $fail = function ($reason) use ($title, $source) {
+            return ['artist' => '', 'title' => $title, 'source' => $source, 'confident' => false, 'reason' => $reason];
+        };
+
+        $artist = trim($artist);
+        if ($artist === '') { return $fail('empty artist segment'); }
+        if (mb_strlen($artist) > 120) { return $fail('artist segment too long'); }
+        if (!self::isRealArtist($artist)) { return $fail('not a real artist (unknown/various/n a)'); }
+
+        $lc = mb_strtolower($artist);
+        static $tokens = [
+            'lp', 'lps', 'cd', 'cds', 'cassette', 'cassettes', 'vinyl', 'ep',
+            '7"', '10"', '12"', '45', '45 rpm', '33 rpm', 'box set', 'boxset',
+            'single', 'sealed', 'used', 'new', 'reissue', 'promo', 'test pressing',
+            'soundtrack', 'ost', 'compilation', 'various', 'various artists',
+        ];
+        if (in_array($lc, $tokens, true)) { return $fail('looks like a format/condition token'); }
+        // Bare catalog number, e.g. "B0034289-01" or "12345".
+        if (preg_match('/^[a-z]{0,4}[-\s]?\d{3,}[a-z0-9\-]*$/i', $artist)) {
+            return $fail('looks like a catalog number');
+        }
+
+        return ['artist' => $artist, 'title' => $title, 'source' => $source, 'confident' => true, 'reason' => ''];
+    }
+
+    /**
      * Pull the title out of the current name given the known artist. Splits on
      * "/" or " - ", drops the segment that IS the artist (order-insensitive),
      * and returns the rest.

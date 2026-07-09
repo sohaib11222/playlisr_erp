@@ -63,6 +63,28 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         </div>
     </div>
 
+    <div class="mgn-card" style="border-color:#2E7D32;">
+        <h2>Backfill missing Artist <span style="color:#8E8273;font-weight:400">(music formats only)</span></h2>
+        <p class="sub">Music products (vinyl, CD, cassette, 45s) with a blank or "N/A" artist, where the artist is still sitting inside the name. Parses it from "Title / Artist" or "Artist - Title" and fills the Artist field. Only confident parses are filled; anything unclear is flagged for you to do by hand. Scanning changes nothing. Fully undoable.</p>
+        <div class="mgn-actions">
+            <button class="mgn-btn mgn-btn-ghost" id="arScanBtn" type="button">Scan missing artists</button>
+        </div>
+        <div id="arResult" style="display:none;margin-top:18px;">
+            <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
+            <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table class="mgn-table">
+                    <thead><tr><th>Current name</th><th>Parsed artist</th><th>From</th></tr></thead>
+                    <tbody id="arRows"></tbody>
+                </table>
+            </div>
+            <div class="mgn-actions" style="margin-top:16px;">
+                <button class="mgn-btn mgn-btn-primary" id="arApplyBtn" type="button">Fill all parsed artists</button>
+                <span class="mgn-note" id="arProgress" style="margin-top:0"></span>
+            </div>
+            <div class="mgn-note">Fills the Artist field only — run "Scan names" above afterward to rename them to "ARTIST - TITLE". Undo any batch at <a href="/admin/admin-action-history">Admin Action History</a>.</div>
+        </div>
+    </div>
+
     <div class="mgn-card" style="border-color:#C9A227;">
         <h2>Rebuild from Discogs <span style="color:#8E8273;font-weight:400">(accurate — recommended)</span></h2>
         <p class="sub">The Artist field is unreliable (often holds the title), so this pulls the true artist + title straight from Discogs using each product's release id, and rewrites the name as "ARTIST - TITLE". Rate-limited (~55/min), runs in batches, undoable. Only products with a Discogs release id are touched; "retired" is skipped.</p>
@@ -193,6 +215,52 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         clearMsg(); dgRunBtn.disabled = true;
         document.getElementById('dgProgress').textContent = 'Starting…';
         dgBatch(0, 0);
+    });
+
+    // ---- Backfill missing artist (from name) ----
+    var arScanBtn = document.getElementById('arScanBtn');
+    var arApplyBtn = document.getElementById('arApplyBtn');
+    var arResult = document.getElementById('arResult');
+
+    arScanBtn.addEventListener('click', function () {
+        clearMsg(); arResult.style.display = 'none';
+        arScanBtn.disabled = true; arScanBtn.textContent = 'Scanning…';
+        post('{{ route('products.artist.scan') }}').then(function (d) {
+            arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists';
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            document.getElementById('arSummary').innerHTML =
+                '<b>' + d.to_fill + '</b> artist(s) to fill &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review (no clear artist in the name).';
+            var rows = d.preview.map(function (f) {
+                return '<tr><td class="mgn-old">' + esc(f.name) + '</td><td class="mgn-new">' + esc(f['new']) + '</td><td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
+            }).join('');
+            if (d.to_fill > d.preview.length) {
+                rows += '<tr><td colspan="3" style="color:#8E8273">… and ' + (d.to_fill - d.preview.length) + ' more. All will be filled.</td></tr>';
+            }
+            document.getElementById('arRows').innerHTML = rows || '<tr><td colspan="3">Nothing to fill.</td></tr>';
+            arApplyBtn.style.display = d.to_fill > 0 ? '' : 'none';
+            arResult.style.display = 'block';
+        }).catch(function () { arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists'; showMsg('Scan failed — try again.', false); });
+    });
+
+    function arBatch(total) {
+        post('{{ route('products.artist.apply') }}', { max: 500 }).then(function (d) {
+            if (!d.success) { arApplyBtn.disabled = false; showMsg(d.msg || 'Fill failed.', false); return; }
+            total += d.filled;
+            document.getElementById('arProgress').textContent = 'Filled ' + total + ' — ' + d.remaining + ' remaining…';
+            if (d.remaining > 0 && d.filled > 0) { arBatch(total); }
+            else {
+                arApplyBtn.disabled = false; arResult.style.display = 'none';
+                showMsg('Done — filled ' + total + ' artist(s). Run "Scan names" above to rename them to ARTIST - TITLE. Undo any batch at Admin Action History.', true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }).catch(function () { arApplyBtn.disabled = false; showMsg('Fill failed mid-run — re-scan to see what remains.', false); });
+    }
+
+    arApplyBtn.addEventListener('click', function () {
+        if (!confirm('Fill the Artist field on all parsed music products? Only confident parses are written. Each batch is undoable from Admin Action History.')) return;
+        clearMsg(); arApplyBtn.disabled = true;
+        document.getElementById('arProgress').textContent = 'Starting…';
+        arBatch(0);
     });
 })();
 </script>
