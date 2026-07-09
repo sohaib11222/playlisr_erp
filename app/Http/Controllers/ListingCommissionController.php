@@ -25,6 +25,7 @@ class ListingCommissionController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
     const SALES_PAYOUTS_FILE = 'sales-commission-payouts.json';
+    const FREEZE_FILE = 'commission-freeze.json';
     const DEFAULT_FROM = '2026-05-15';
     const SALES_BONUS_FROM = '2026-06-15'; // sales-goal bonus go-live (matches leaderboard)
     const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
@@ -254,6 +255,7 @@ class ListingCommissionController extends Controller
             'total_paid_all'     => $people->sum('total_paid_all'),
             'total_owed_now'     => $people->sum('total_owed_now'),
             'sales_bonus_from'   => self::SALES_BONUS_FROM,
+            'freeze'             => $this->loadFreeze(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
@@ -412,6 +414,89 @@ class ListingCommissionController extends Controller
             'success' => 1,
             'msg'     => 'Recorded $' . number_format($amount, 2) . ' paid to ' . $name . '.',
         ]);
+    }
+
+    // Freeze a payroll run: snapshot everyone's CURRENT owed (listing + sales)
+    // into a locked list you pay against, so the sales bonus can't drift under
+    // you mid-payroll. Read-only reference — it does not touch the payout ledgers.
+    public function freeze(Request $request)
+    {
+        $businessId = $request->session()->get('user.business_id');
+        $from = self::DEFAULT_FROM;
+
+        $paid = $this->loadPayouts();
+        $paidSet = array_flip($this->paidLineIds($paid));
+
+        $listing = [];
+        $names = [];
+        foreach ($this->ownedSoldLines($businessId, $from, []) as $row) {
+            if (isset($paidSet[(int) $row->line_id])) { continue; }
+            $uid = (int) $row->user_id;
+            $listing[$uid] = ($listing[$uid] ?? 0) + (float) $row->sale_amount * self::RATE;
+            $names[$uid] = $this->personName($row);
+        }
+
+        $sales = $this->salesSummaryByUser($businessId);
+
+        $uids = array_unique(array_merge(array_keys($listing), array_map('intval', $sales->keys()->all())));
+        $people = [];
+        foreach ($uids as $uid) {
+            $uid = (int) $uid;
+            $name = $names[$uid] ?? null;
+            if ($name === null) {
+                $u = DB::table('users')->where('id', $uid)->first();
+                $name = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid);
+            }
+            if ($this->isExcludedName($name)) { continue; }
+            $lo = round($listing[$uid] ?? 0, 2);
+            $s = $sales->get($uid);
+            $so = $s ? round((float) $s->owed, 2) : 0.0;
+            if ($lo <= 0 && $so <= 0) { continue; }
+            $people[] = [
+                'user_id' => $uid, 'name' => $name,
+                'listing_owed' => $lo, 'sales_owed' => $so, 'total' => round($lo + $so, 2),
+            ];
+        }
+        usort($people, function ($a, $b) { return $b['total'] <=> $a['total']; });
+
+        $this->saveFreeze([
+            'frozen_at' => now()->toDateTimeString(),
+            'frozen_by' => $request->session()->get('user.id'),
+            'people'    => $people,
+        ]);
+
+        return redirect('/admin/listing-commissions')->with('status', [
+            'success' => 1,
+            'msg'     => 'Payroll amounts frozen. Pay against the locked list — it will not move.',
+        ]);
+    }
+
+    public function unfreeze(Request $request)
+    {
+        $this->clearFreeze();
+        return redirect('/admin/listing-commissions')->with('status', [
+            'success' => 1,
+            'msg'     => 'Freeze cleared — the page is back to live amounts.',
+        ]);
+    }
+
+    private function loadFreeze()
+    {
+        if (!Storage::disk('local')->exists(self::FREEZE_FILE)) { return null; }
+        $data = json_decode(Storage::disk('local')->get(self::FREEZE_FILE), true);
+        return is_array($data) ? $data : null;
+    }
+
+    private function saveFreeze(array $data)
+    {
+        Storage::disk('local')->put(self::FREEZE_FILE, json_encode($data, JSON_PRETTY_PRINT));
+    }
+
+    private function clearFreeze()
+    {
+        if (Storage::disk('local')->exists(self::FREEZE_FILE)) {
+            Storage::disk('local')->delete(self::FREEZE_FILE);
+        }
     }
 
     // Snapshot the person's currently-owed sales commission as a payout. Running

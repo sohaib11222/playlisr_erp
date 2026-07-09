@@ -946,6 +946,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Record the exact amount actually handed to someone (e.g. cash), so the
     // ledger matches reality even if the calculated figure had drifted.
     Route::post('/admin/listing-commissions/record-payment', 'ListingCommissionController@recordPayment');
+    // Freeze/unfreeze a payroll run: lock everyone's owed into a snapshot so the
+    // numbers can't drift while you pay them.
+    Route::post('/admin/listing-commissions/freeze', 'ListingCommissionController@freeze');
+    Route::post('/admin/listing-commissions/unfreeze', 'ListingCommissionController@unfreeze');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling

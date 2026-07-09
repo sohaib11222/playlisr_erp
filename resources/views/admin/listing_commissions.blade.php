@@ -122,6 +122,50 @@
 
 <div class="row">
     <div class="col-md-12">
+        @if(!empty($freeze) && !empty($freeze['people']))
+            <div class="box box-solid" style="border:2px solid #2F6B3E;">
+                <div class="box-body">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                        <div>
+                            <strong style="color:#2F6B3E; font-size:16px;">FROZEN payroll run</strong>
+                            <span class="text-muted"> — locked {{ \Carbon::parse($freeze['frozen_at'])->format('m/d/y g:ia') }}. Pay these exact amounts; they will not move.</span>
+                        </div>
+                        <form method="POST" action="{{ url('/admin/listing-commissions/unfreeze') }}" onsubmit="return confirm('Clear the freeze and go back to live amounts?');" style="margin:0;">
+                            @csrf
+                            <button type="submit" class="btn btn-default btn-sm">Unfreeze</button>
+                        </form>
+                    </div>
+                    <table class="table table-striped">
+                        <thead><tr><th>Person</th><th style="text-align:right;">Sales owed</th><th style="text-align:right;">Listing owed</th><th style="text-align:right;">Pay now</th></tr></thead>
+                        <tbody>
+                            @php $fTotal = 0; @endphp
+                            @foreach($freeze['people'] as $fp)
+                                @php $fTotal += $fp['total']; @endphp
+                                <tr>
+                                    <td>{{ $fp['name'] }}</td>
+                                    <td style="text-align:right;">${{ number_format($fp['sales_owed'], 2) }}</td>
+                                    <td style="text-align:right;">${{ number_format($fp['listing_owed'], 2) }}</td>
+                                    <td style="text-align:right; background:#FFE9A8;"><strong>${{ number_format($fp['total'], 2) }}</strong></td>
+                                </tr>
+                            @endforeach
+                            <tr><td><strong>Total</strong></td><td></td><td></td><td style="text-align:right; background:#FFE9A8;"><strong>${{ number_format($fTotal, 2) }}</strong></td></tr>
+                        </tbody>
+                    </table>
+                    <p class="text-muted" style="margin:0;">Pay each person their frozen amount, then hit Mark paid on their row in the live table below. This locked list stays put until you Unfreeze.</p>
+                </div>
+            </div>
+        @else
+            <form method="POST" action="{{ url('/admin/listing-commissions/freeze') }}" onsubmit="return confirm('Freeze everyone\'s current amounts for this payroll run?');" style="margin-bottom:12px;">
+                @csrf
+                <button type="submit" class="btn btn-success">Freeze amounts for this payroll run</button>
+                <span class="text-muted" style="margin-left:8px;">Locks today's amounts into a list you pay against, so the sales bonus can't drift while you work.</span>
+            </form>
+        @endif
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
         @component('components.widget', ['title' => 'Spot-check: one day\'s sales bonus (not payroll)'])
             <p style="margin:0 0 12px; padding:9px 12px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:6px; color:#6b5a00;">
                 <strong>This is just a lookup.</strong> Changing the date here does <strong>not</strong> change
