@@ -142,18 +142,30 @@ class ProductController extends Controller
             // as a single grouped query rather than joined into the main query so
             // the 50k+ product list stays fast. Products never edited since this
             // shipped won't appear here and fall back to the creator below.
-            $latestProductActivity = DB::table('activity_log')
-                ->select('subject_id', DB::raw('MAX(id) as max_id'))
-                ->where('subject_type', 'App\\Product')
-                ->whereNotNull('causer_id')
-                ->groupBy('subject_id');
+            //
+            // Cached 5 min per business (same pattern/tradeoff as the sold-totals
+            // aggregate above): this grouped scan of the whole activity_log ran on
+            // EVERY filter click / page change / search keystroke and was a big
+            // part of what made /products slow. A just-edited product's "updated
+            // by" name now lags at most 5 min, which is fine for a display column.
+            $updatedByMap = \Cache::remember(
+                'products_index_updated_by:' . $business_id,
+                300,
+                function () {
+                    $latestProductActivity = DB::table('activity_log')
+                        ->select('subject_id', DB::raw('MAX(id) as max_id'))
+                        ->where('subject_type', 'App\\Product')
+                        ->whereNotNull('causer_id')
+                        ->groupBy('subject_id');
 
-            $updatedByMap = DB::table('activity_log as al')
-                ->joinSub($latestProductActivity, 'la', 'al.id', '=', 'la.max_id')
-                ->leftJoin('users as au', 'al.causer_id', '=', 'au.id')
-                ->select('al.subject_id', DB::raw("TRIM(CONCAT(COALESCE(au.first_name, ''), ' ', COALESCE(au.last_name, ''))) as updated_by_name"))
-                ->pluck('updated_by_name', 'subject_id')
-                ->toArray();
+                    return DB::table('activity_log as al')
+                        ->joinSub($latestProductActivity, 'la', 'al.id', '=', 'la.max_id')
+                        ->leftJoin('users as au', 'al.causer_id', '=', 'au.id')
+                        ->select('al.subject_id', DB::raw("TRIM(CONCAT(COALESCE(au.first_name, ''), ' ', COALESCE(au.last_name, ''))) as updated_by_name"))
+                        ->pluck('updated_by_name', 'subject_id')
+                        ->toArray();
+                }
+            );
 
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
