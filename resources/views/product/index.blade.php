@@ -906,8 +906,41 @@
                 } else{
                     $('input#selected_products').val('');
                     swal('@lang("lang_v1.no_row_selected")');
-                }    
+                }
             })
+
+            $(document).on('click', '#merge-selected', function(e){
+                e.preventDefault();
+                var selected = getSelectedProductIds();
+                if (!selected || selected.length < 2) {
+                    swal('Select at least 2 products (the duplicates) to merge.');
+                    return;
+                }
+                swal({
+                    title: 'Merge ' + selected.length + ' products?',
+                    text: 'Keeps the cleanest, most-trusted copy (never a Nerdy Solutions record) and combines stock + sales onto it. Fully undoable from Admin Action History.',
+                    icon: 'warning',
+                    buttons: true,
+                    dangerMode: true,
+                }).then((ok) => {
+                    if (!ok) return;
+                    $.ajax({
+                        method: 'POST',
+                        url: '{{ route('products.merge.selected') }}',
+                        dataType: 'json',
+                        data: { _token: '{{ csrf_token() }}', product_ids: selected },
+                        success: function(result){
+                            if (result && result.success) {
+                                toastr.success(result.msg);
+                                product_table.ajax.reload();
+                            } else {
+                                toastr.error(result && result.msg ? result.msg : 'Merge failed.');
+                            }
+                        },
+                        error: function(){ toastr.error('Merge failed.'); }
+                    });
+                });
+            });
 
             $(document).on('click', '#send-to-purchase-selected', function(e){
                 e.preventDefault();

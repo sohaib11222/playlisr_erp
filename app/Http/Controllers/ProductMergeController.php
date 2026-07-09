@@ -730,4 +730,154 @@ class ProductMergeController extends Controller
             'msg' => "Merged {$done} duplicate(s) this batch. {$remaining} remaining.",
         ]);
     }
+
+    /**
+     * Quick merge of an explicit set of product ids selected on the Products
+     * page. The survivor is auto-picked with the same ranking as the sweep
+     * (active > non-Nerdy > clean name > most floor stock > most sold > oldest)
+     * unless keep_id is passed. Combines stock + sales onto the survivor;
+     * undoable as a "merge-products-bulk" snapshot. Owner-only.
+     */
+    public function mergeSelected(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+
+        $ids = $request->input('product_ids');
+        if (is_string($ids)) { $ids = explode(',', $ids); }
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) $ids))));
+        if (count($ids) < 2) {
+            return response()->json(['success' => false, 'msg' => 'Select at least 2 products to merge.']);
+        }
+
+        $products = \DB::table('products')->where('business_id', $business_id)->whereIn('id', $ids)
+            ->select('id', 'name', 'sku', 'is_inactive', 'not_for_selling', 'created_by')->get();
+        if (count($products) < 2) {
+            return response()->json(['success' => false, 'msg' => 'Could not find those products.']);
+        }
+
+        $varsByProduct = \DB::table('variations')->whereIn('product_id', $ids)->whereNull('deleted_at')
+            ->select('id', 'product_id', 'product_variation_id')->get()->groupBy('product_id');
+        foreach ($products as $p) {
+            $vs = $varsByProduct->get($p->id);
+            if (!$vs || count($vs) !== 1) {
+                return response()->json(['success' => false, 'msg' => 'One of these has multiple variations — merge it manually on the Merge page.']);
+            }
+        }
+
+        $untrustedSet = array_flip(
+            \DB::table('users')
+                ->whereRaw("LOWER(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) LIKE '%nerdy%'")
+                ->pluck('id')->map(function ($v) { return (int) $v; })->all()
+        );
+
+        $locNames = \DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id');
+        $floorLocIds = [];
+        foreach ($locNames as $lid => $lname) {
+            if (stripos((string) $lname, 'warehouse') === false) { $floorLocIds[(int) $lid] = true; }
+        }
+        $vldMap = [];
+        foreach (\DB::table('variation_location_details')->whereIn('product_id', $ids)
+            ->select('product_id', 'location_id', \DB::raw('SUM(qty_available) as qty'))
+            ->groupBy('product_id', 'location_id')->get() as $r) {
+            $vldMap[(int) $r->product_id][(int) $r->location_id] = (float) $r->qty;
+        }
+        $soldMap = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->whereIn('tsl.product_id', $ids)->groupBy('tsl.product_id')
+            ->select('tsl.product_id', \DB::raw('SUM(tsl.quantity) as qty'))->pluck('qty', 'product_id');
+
+        $items = [];
+        foreach ($products as $p) {
+            $perLoc = $vldMap[(int) $p->id] ?? [];
+            $floor = 0.0;
+            foreach ($perLoc as $locId => $qty) {
+                if (isset($floorLocIds[(int) $locId])) { $floor += (float) $qty; }
+            }
+            $items[] = [
+                'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku,
+                'is_inactive' => (int) $p->is_inactive, 'not_for_selling' => (int) $p->not_for_selling,
+                'is_untrusted' => isset($untrustedSet[(int) $p->created_by]) ? 1 : 0,
+                'name_clean' => (strpos((string) $p->name, ' - ') !== false && strpos((string) $p->name, ' / ') === false) ? 1 : 0,
+                'current_stock' => $floor, 'units_sold' => (float) ($soldMap[$p->id] ?? 0),
+            ];
+        }
+
+        $keepId = (int) $request->input('keep_id', 0);
+        if ($keepId && in_array($keepId, array_map(function ($i) { return $i['id']; }, $items), true)) {
+            // Owner explicitly chose the survivor — put it first, keep the rest.
+            usort($items, function ($a, $b) use ($keepId) {
+                return (($b['id'] === $keepId) ? 1 : 0) <=> (($a['id'] === $keepId) ? 1 : 0);
+            });
+        } else {
+            usort($items, function ($a, $b) {
+                if ($a['is_inactive'] !== $b['is_inactive']) { return $a['is_inactive'] <=> $b['is_inactive']; }
+                if ($a['is_untrusted'] !== $b['is_untrusted']) { return $a['is_untrusted'] <=> $b['is_untrusted']; }
+                if ($a['name_clean'] !== $b['name_clean']) { return $b['name_clean'] <=> $a['name_clean']; }
+                if ($a['current_stock'] !== $b['current_stock']) { return $b['current_stock'] <=> $a['current_stock']; }
+                if ($a['units_sold'] !== $b['units_sold']) { return $b['units_sold'] <=> $a['units_sold']; }
+                return $a['id'] <=> $b['id'];
+            });
+        }
+
+        $keep = $items[0];
+        $mergeIn = array_slice($items, 1);
+        $targetVar = $varsByProduct->get($keep['id'])->first();
+
+        $merges = [];
+        $failed = 0;
+        foreach ($mergeIn as $src) {
+            $srcVar = $varsByProduct->get($src['id'])->first();
+            \DB::beginTransaction();
+            try {
+                $merges[] = $this->performMerge(
+                    (int) $src['id'], (int) $keep['id'],
+                    (int) $srcVar->id, (int) $targetVar->id, (int) $targetVar->product_variation_id,
+                    (int) $src['is_inactive'], (int) $src['not_for_selling'],
+                    $src['name'], $keep['name'], $business_id
+                );
+                \DB::commit();
+            } catch (\Throwable $e) {
+                \DB::rollBack();
+                \Log::emergency('merge-selected pair failed (src=' . $src['id'] . ' -> keep=' . $keep['id'] . '): ' . $e->getMessage());
+                $failed++;
+            }
+        }
+
+        if (empty($merges)) {
+            return response()->json(['success' => false, 'msg' => 'Merge failed — nothing was changed.']);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        \Storage::disk('local')->put(
+            "admin-snapshots/merge-products-bulk-{$timestamp}.json",
+            json_encode([
+                'timestamp' => $timestamp,
+                'action' => 'merge-products-bulk',
+                'user_id' => auth()->id(),
+                'business_id' => $business_id,
+                'source_name' => count($merges) . ' selected product(s)',
+                'target_name' => $keep['name'],
+                'merges' => $merges,
+                'rows' => array_map(function ($m) { return ['id' => $m['source_id']]; }, $merges),
+            ], JSON_PRETTY_PRINT)
+        );
+        \Cache::forget('products_index_sold_totals:' . $business_id);
+
+        $msg = 'Kept "' . $keep['name'] . '" and merged in ' . count($merges) . ' product(s). Stock + sales combined.';
+        if ($failed > 0) { $msg .= ' ' . $failed . ' failed.'; }
+        $msg .= ' Undo at Admin Action History.';
+
+        return response()->json([
+            'success' => true,
+            'msg' => $msg,
+            'kept' => ['id' => $keep['id'], 'name' => $keep['name'], 'sku' => $keep['sku']],
+            'merged' => count($merges),
+        ]);
+    }
 }
