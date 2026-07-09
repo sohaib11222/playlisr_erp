@@ -192,6 +192,10 @@ class ProductNameNormalizer
             'rem' => 'R.E.M.',
             'eazye' => 'Eazy-E',
             'gbh' => 'G.B.H.',
+            // Yusuf / Yusuf Islam is Cat Stevens.
+            'yusuf' => 'Cat Stevens',
+            'yusufislam' => 'Cat Stevens',
+            'yusufcatstevens' => 'Cat Stevens',
         ];
     }
 
