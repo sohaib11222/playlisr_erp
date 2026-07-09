@@ -264,6 +264,35 @@ class ProductNameNormalizer
     }
 
     /**
+     * Does this segment look like a record-store "LASTNAME,FIRST" catalog entry
+     * (a tight comma with no space after: "WINTER,CAMERON", "DAVIS,MILES")? That
+     * shape is a reliable artist signal, so the parser can trust it over a genre
+     * or common word matching on the other side of the name.
+     *
+     * Kept deliberately narrow to avoid mangling non-person values:
+     *   - exactly one comma, no "&"/"and" (those are bands/lists: "Earth,Wind &
+     *     Fire", "Hamilton, Joe Frank & Reynolds"),
+     *   - no space after the comma (a spaced "Last, First" is left to the normal
+     *     known-artist logic),
+     *   - both sides start with a letter (not catalog numbers),
+     *   - the given-name side is a single token — a person ("WINTER,CAMERON");
+     *     a multi-word tail ("BROWN,ZAC BAND") is a mis-sorted band, left to the
+     *     known-artist set / curated list rather than flipped into "Zac Band …".
+     */
+    protected static function looksSurnameFirst($seg)
+    {
+        $seg = trim((string) $seg);
+        if (substr_count($seg, ',') !== 1) { return false; }
+        if (preg_match('/&|\+|\band\b/i', $seg)) { return false; }
+        if (!preg_match('/\S,\S/u', $seg)) { return false; }
+        list($last, $first) = array_map('trim', explode(',', $seg));
+        if ($last === '' || $first === '') { return false; }
+        if (!preg_match('/^\p{L}/u', $last) || !preg_match('/^\p{L}/u', $first)) { return false; }
+        if (preg_match('/\s/u', $first)) { return false; }
+        return true;
+    }
+
+    /**
      * All-caps band names that are genuine stylizations and should NOT be
      * title-cased. Most short band names (TOOL, KORN, RUSH, MUSE, DIO) are just
      * upper-cased catalog data and DO want title-casing, so we keep only a
@@ -389,6 +418,20 @@ class ProductNameNormalizer
         }
         if ($fv && $sv) {
             return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are "Various" — manual'];
+        }
+
+        // Record-store "LASTNAME,FIRST" order (tight comma, no space after) is a
+        // strong artist signal — stronger than a genre/common word matching the
+        // known-artist set on the other side ("WINTER,CAMERON / HEAVY METAL" is
+        // Cameron Winter, not "Heavy Metal"). If exactly one side is shaped that
+        // way, it's the artist; ties fall through to the known-artist logic.
+        $fs = self::looksSurnameFirst($first);
+        $ss = self::looksSurnameFirst($second);
+        if ($fs !== $ss) {
+            if ($fs) {
+                return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
+            }
+            return self::validateParsedArtist(self::cleanArtistValue($second), $first, 'Title ' . $label . ' Artist');
         }
 
         if (is_array($knownKeys)) {
