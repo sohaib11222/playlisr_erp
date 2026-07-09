@@ -243,12 +243,17 @@ class ProductNameNormalizer
             if ($firstKnown && $secondKnown) {
                 return ['artist' => '', 'title' => trim($first . ' ' . $label . ' ' . $second), 'source' => '', 'confident' => false, 'reason' => 'both sides are known artists — manual'];
             }
-            // Neither side is a known artist: fall through to the positional
-            // default below (artist-first), which matches the dominant catalog
-            // convention. Still gated by validateParsedArtist.
+            // Neither side is a known artist. The catalog is overwhelmingly
+            // "ARTIST / TITLE", so a spaced SLASH reliably means artist-first —
+            // fill it. A spaced DASH is unreliable (often a hyphenated title or
+            // "Title - Subtitle", e.g. "New Tales To Tell - A Tribute ..."), so
+            // without a known-artist match, flag it for manual review.
+            if ($label !== '/') {
+                return ['artist' => '', 'title' => trim($first . ' - ' . $second), 'source' => '', 'confident' => false, 'reason' => 'dash name, artist not recognized — manual'];
+            }
         }
 
-        // Default: artist is the first segment ("Artist / Title" / "Artist - Title").
+        // Default: artist is the first segment ("Artist / Title").
         return self::validateParsedArtist(self::cleanArtistValue($first), $second, 'Artist ' . $label . ' Title');
     }
 
