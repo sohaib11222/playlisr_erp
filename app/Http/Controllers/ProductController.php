@@ -373,7 +373,9 @@ class ProductController extends Controller
                     return $row->sub_category ?? '';
                 })
                 ->editColumn('artist', function ($row) {
-                    return $row->artist ?? 'N/A';
+                    // Trading cards, audio gear, etc. have no artist; show a
+                    // neutral dash instead of "N/A" so the column reads clean.
+                    return trim((string) ($row->artist ?? '')) !== '' ? $row->artist : '-';
                 })
                 ->addColumn(
                     'action',
