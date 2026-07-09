@@ -369,3 +369,90 @@ body.products-v2 .tab-pane .btn {
 	border-radius: var(--pl-radius-sm);
 	font-weight: 600;
 }
+
+/* ============ HEADER: title left, actions right ============ */
+body.products-v2 .content-header .ph-head-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+body.products-v2 .content-header .ph-head-row > h1 {
+	margin: 0;
+}
+body.products-v2 .ph-head-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 4px;
+}
+body.products-v2 .ph-head-actions .btn {
+	height: 42px;
+	border-radius: var(--pl-radius);
+	font-weight: 600;
+	border: 1px solid var(--pl-line-2);
+	background: var(--pl-surface);
+	color: var(--pl-ink);
+	padding: 0 16px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	box-shadow: var(--pl-shadow-sm);
+}
+body.products-v2 .ph-head-actions .btn:hover {
+	background: var(--pl-surface-2);
+	border-color: var(--pl-line-2);
+}
+body.products-v2 .ph-head-actions .btn-primary {
+	background: var(--pl-ink);
+	color: var(--pl-bg);
+	border-color: var(--pl-ink);
+	font-weight: 700;
+}
+body.products-v2 .ph-head-actions .btn-primary:hover {
+	background: #2c2620;
+	border-color: #2c2620;
+	color: var(--pl-bg);
+}
+/* Actions dropdown menu */
+body.products-v2 .ph-head-actions .dropdown-menu {
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius);
+	box-shadow: var(--pl-shadow-md);
+	padding: 6px;
+	margin-top: 6px;
+}
+body.products-v2 .ph-head-actions .dropdown-menu > li > a {
+	border-radius: var(--pl-radius-sm);
+	padding: 8px 12px;
+	font-weight: 600;
+	color: var(--pl-ink-2);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+body.products-v2 .ph-head-actions .dropdown-menu > li > a:hover {
+	background: var(--pl-surface-2);
+	color: var(--pl-ink);
+}
+body.products-v2 .ph-head-actions .dropdown-menu .divider {
+	background: var(--pl-line);
+	margin: 6px 4px;
+}
+
+/* ============ TABLE TOOLBAR: keep only Column visibility ============ */
+/* Full-catalog export lives in the header Actions menu now, matching the
+   app's report convention (report.js keeps just colvis). The per-view
+   Copy/CSV/Excel/PDF/Print buttons were redundant clutter here. */
+body.products-v2 #product_list_tab .dt-buttons .buttons-copy,
+body.products-v2 #product_list_tab .dt-buttons .buttons-csv,
+body.products-v2 #product_list_tab .dt-buttons .buttons-excel,
+body.products-v2 #product_list_tab .dt-buttons .buttons-pdf,
+body.products-v2 #product_list_tab .dt-buttons .buttons-print {
+	display: none !important;
+}
+body.products-v2 #product_list_tab .dt-buttons .buttons-colvis {
+	border-radius: var(--pl-radius-sm);
+	font-weight: 600;
+}

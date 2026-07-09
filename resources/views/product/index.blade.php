@@ -16,13 +16,37 @@
 
 <!-- Content Header (Page header) -->
 <section class="content-header">
-    <h1>@lang('sale.products')
-        <small>@lang('lang_v1.manage_products')</small>
-    </h1>
-    <!-- <ol class="breadcrumb">
-        <li><a href="#"><i class="fa fa-dashboard"></i> Level</a></li>
-        <li class="active">Here</li>
-    </ol> -->
+    <div class="ph-head-row">
+        <h1>@lang('sale.products')
+            <small>@lang('lang_v1.manage_products')</small>
+        </h1>
+        <div class="ph-head-actions">
+            <div class="btn-group">
+                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fa fa-ellipsis-h"></i> Actions <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-right">
+                    @if($is_admin)
+                        <li><a href="{{action('ProductController@downloadExcel')}}"><i class="fa fa-download"></i> Export all to Excel</a></li>
+                        <li><a href="javascript:void(0)" id="sync_discogs_listings_btn" title="Pull your Discogs For Sale inventory so listed items show as 'Listed'"><i class="fa fa-refresh"></i> Sync Discogs listings</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#" id="bulk_action_bulk_category_update">Bulk update categories</a></li>
+                        <li><a href="{{action('ProductController@importSoldItems')}}">Import sold items as products</a></li>
+                        <li><a href="{{url('import-products')}}">Import products</a></li>
+                    @endif
+                    @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
+                        <li><a href="#" id="bulk_action_bulk_edit">Bulk edit</a></li>
+                    @endif
+                    <li><a href="#" id="bulk_action_download_barcodes">Download barcodes</a></li>
+                </ul>
+            </div>
+            @can('product.create')
+                <a class="btn btn-primary" href="{{action('ProductController@create')}}">
+                    <i class="fa fa-plus"></i> @lang('messages.add')
+                </a>
+            @endcan
+        </div>
+    </div>
 </section>
 
 <!-- Main content -->
@@ -47,7 +71,7 @@
 
 <div id="product_filters_bar">
     <div class="row" style="margin-bottom: 5px;">
-        <div class="col-md-8 col-sm-12">
+        <div class="col-md-12 col-sm-12">
             <div class="form-group" style="position: relative;">
                 <input type="text"
                        id="product_search_main"
@@ -55,39 +79,6 @@
                        autocomplete="off"
                        placeholder="Search products by artist, title, SKU, or barcode…">
                 <ul id="product_search_recent" class="dropdown-menu" style="display:none; width:100%; max-height:280px; overflow-y:auto;"></ul>
-            </div>
-        </div>
-        <div class="col-md-4 col-sm-12 text-right">
-            <div class="btn-toolbar" style="justify-content: flex-end; display: flex; gap: 5px;">
-                @if($is_admin)
-                    <a class="btn btn-default" href="{{action('ProductController@downloadExcel')}}">
-                        <i class="fa fa-download"></i> Export
-                    </a>
-                    <button type="button" class="btn btn-default" id="sync_discogs_listings_btn" title="Pull your Discogs For Sale inventory so listed items show as 'Listed'">
-                        <i class="fa fa-refresh"></i> Sync Discogs listings
-                    </button>
-                @endif
-                <div class="btn-group">
-                    <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        Bulk Actions <span class="caret"></span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-right">
-                        @if($is_admin)
-                            <li><a href="#" id="bulk_action_bulk_category_update">Bulk Update Categories</a></li>
-                            <li><a href="{{action('ProductController@importSoldItems')}}">Import Sold Items as Products</a></li>
-                            <li><a href="{{url('import-products')}}">Import Products</a></li>
-                        @endif
-                        @if(config('constants.enable_product_bulk_edit') && ($is_admin || auth()->user()->can('product.update')))
-                            <li><a href="#" id="bulk_action_bulk_edit">Bulk Edit</a></li>
-                        @endif
-                        <li><a href="#" id="bulk_action_download_barcodes">Download Barcodes</a></li>
-                    </ul>
-                </div>
-                @can('product.create')                            
-                    <a class="btn btn-primary" href="{{action('ProductController@create')}}">
-                        <i class="fa fa-plus"></i> @lang('messages.add')
-                    </a>
-                @endcan
             </div>
         </div>
     </div>
