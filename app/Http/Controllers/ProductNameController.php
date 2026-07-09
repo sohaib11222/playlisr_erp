@@ -682,13 +682,26 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Discogs API token not configured.']);
         }
 
-        $rows = $this->candidateQuery($business_id)
+        // Two passes so sealed vinyl (the most valuable stock) gets rebuilt first,
+        // then everything else. The client runs 'sealed' to completion, then 'rest'.
+        $phase = $request->input('phase') === 'rest' ? 'rest' : 'sealed';
+        $sealedIds = $this->sealedVinylCategoryIds($business_id);
+        // No sealed-vinyl categories at all -> skip straight to the rest.
+        if ($phase === 'sealed' && empty($sealedIds)) {
+            return response()->json(['success' => true, 'renamed' => 0, 'failed' => 0, 'rate_limited' => false, 'done' => true, 'after_id' => 0, 'remaining' => 0, 'phase' => 'sealed']);
+        }
+        $scope = function ($q) use ($phase, $sealedIds) {
+            if (empty($sealedIds)) { return $q; }
+            return $phase === 'sealed' ? $q->whereIn('category_id', $sealedIds) : $q->whereNotIn('category_id', $sealedIds);
+        };
+
+        $rows = $scope($this->candidateQuery($business_id))
             ->where('id', '>', $afterId)
             ->select('id', 'name', 'discogs_release_id')
             ->orderBy('id')->limit($max)->get();
 
         if ($rows->isEmpty()) {
-            return response()->json(['success' => true, 'renamed' => 0, 'failed' => 0, 'done' => true, 'after_id' => $afterId, 'remaining' => 0]);
+            return response()->json(['success' => true, 'renamed' => 0, 'failed' => 0, 'rate_limited' => false, 'done' => true, 'after_id' => $afterId, 'remaining' => 0, 'phase' => $phase]);
         }
 
         $timestamp = now()->format('Y-m-d_His');
@@ -754,7 +767,7 @@ class ProductNameController extends Controller
             \Cache::forget('products_index_sold_totals:' . $business_id);
         }
 
-        $remaining = $this->candidateQuery($business_id)->where('id', '>', $lastId)->count();
+        $remaining = $scope($this->candidateQuery($business_id))->where('id', '>', $lastId)->count();
 
         return response()->json([
             'success' => true,
@@ -764,6 +777,7 @@ class ProductNameController extends Controller
             'after_id' => $lastId,
             'remaining' => $remaining,
             'done' => ($remaining === 0 && !$rateLimited),
+            'phase' => $phase,
         ]);
     }
 }

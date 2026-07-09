@@ -243,33 +243,40 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         }).catch(function () { dgScanBtn.disabled = false; dgScanBtn.textContent = 'Check + sample'; showMsg('Check failed — try again.', false); });
     });
 
-    function dgBatch(afterId, totalRenamed) {
-        post('{{ route('products.name.discogs.rebuild') }}', { after_id: afterId, max: 20 }).then(function (d) {
+    function dgBatch(afterId, totalRenamed, phase) {
+        var phaseLabel = phase === 'rest' ? 'everything else' : 'sealed vinyl';
+        post('{{ route('products.name.discogs.rebuild') }}', { after_id: afterId, max: 20, phase: phase }).then(function (d) {
             if (!d.success) { dgRunBtn.disabled = false; showMsg(d.msg || 'Rebuild failed.', false); return; }
             totalRenamed += d.renamed;
-            var note = 'Rebuilt ' + totalRenamed + ' — ' + d.remaining.toLocaleString() + ' remaining';
+            var note = 'Rebuilt ' + totalRenamed + ' (' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left)';
             if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
             document.getElementById('dgProgress').textContent = note + '…';
             if (d.done) {
+                if (phase === 'sealed') {
+                    // Sealed vinyl finished — roll straight into everything else.
+                    document.getElementById('dgProgress').textContent = 'Sealed vinyl done (' + totalRenamed + '). Now everything else…';
+                    dgBatch(0, totalRenamed, 'rest');
+                    return;
+                }
                 dgRunBtn.disabled = false; dgResult.style.display = 'none';
-                showMsg('Done — rebuilt ' + totalRenamed + ' name(s) from Discogs. Undo any batch at Admin Action History.', true);
+                showMsg('Done — rebuilt ' + totalRenamed + ' name(s) from Discogs (sealed vinyl first). Undo any batch at Admin Action History.', true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
             }
             var wait = d.rate_limited ? 60000 : 300;
-            setTimeout(function () { dgBatch(d.after_id, totalRenamed); }, wait);
+            setTimeout(function () { dgBatch(d.after_id, totalRenamed, phase); }, wait);
         }).catch(function () {
             // Network/timeout — wait and retry from the same cursor.
             document.getElementById('dgProgress').textContent = 'Hiccup — retrying in 10s…';
-            setTimeout(function () { dgBatch(afterId, totalRenamed); }, 10000);
+            setTimeout(function () { dgBatch(afterId, totalRenamed, phase); }, 10000);
         });
     }
 
     dgRunBtn.addEventListener('click', function () {
-        if (!confirm('Rebuild all Discogs-backed product names from Discogs? Runs in the background in batches (may take a while at Discogs rate limits). Each batch is undoable.')) return;
+        if (!confirm('Rebuild all Discogs-backed product names from Discogs, sealed vinyl first? Runs in the background in batches (may take a while at Discogs rate limits). Each batch is undoable.')) return;
         clearMsg(); dgRunBtn.disabled = true;
-        document.getElementById('dgProgress').textContent = 'Starting…';
-        dgBatch(0, 0);
+        document.getElementById('dgProgress').textContent = 'Starting with sealed vinyl…';
+        dgBatch(0, 0, 'sealed');
     });
 
     // ---- Backfill missing artist (from name) ----
