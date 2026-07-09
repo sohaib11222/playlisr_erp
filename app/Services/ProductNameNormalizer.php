@@ -122,11 +122,35 @@ class ProductNameNormalizer
     }
 
     /**
-     * Full clean-up for a parsed artist: flip "LASTNAME,FIRST" cataloguing order
-     * into natural order, then proper-case. This is what the backfill writes.
+     * Non-Latin (mostly Japanese katakana) artist spellings mapped to their
+     * canonical English name. General transliteration is unreliable for artist
+     * names (プリンス romanizes to "purinsu", not "Prince"), so this is a curated
+     * lookup — extend it as more turn up. Keyed by the raw trimmed string.
+     */
+    protected static function artistAliasMap()
+    {
+        return [
+            'プリンス' => 'Prince',
+        ];
+    }
+
+    /** True if the string carries CJK / kana / full-width characters. */
+    public static function hasNonLatinScript($s)
+    {
+        return (bool) preg_match('/[\x{3040}-\x{30FF}\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}\x{FF00}-\x{FFEF}\x{AC00}-\x{D7AF}]/u', (string) $s);
+    }
+
+    /**
+     * Full clean-up for a parsed artist: map a known non-Latin alias to English,
+     * else flip "LASTNAME,FIRST" order and proper-case. This is what the backfill
+     * writes. Unmapped non-Latin names are left as-is here and rejected later by
+     * validateParsedArtist so they get flagged for manual review.
      */
     public static function cleanArtistValue($s)
     {
+        $s = trim((string) $s);
+        $map = self::artistAliasMap();
+        if (isset($map[$s])) { return $map[$s]; }
         return self::properArtistCase(self::flipLastFirst($s));
     }
 
@@ -293,6 +317,9 @@ class ProductNameNormalizer
         if ($artist === '') { return $fail('empty artist segment'); }
         if (mb_strlen($artist) > 120) { return $fail('artist segment too long'); }
         if (!self::isRealArtist($artist)) { return $fail('not a real artist (unknown/various/n a)'); }
+        // Non-Latin (Japanese, etc.) with no English alias mapped yet — don't
+        // write katakana into the artist field; flag it so it can be mapped.
+        if (self::hasNonLatinScript($artist)) { return $fail('non-Latin name — needs an English artist (manual)'); }
 
         $lc = mb_strtolower($artist);
         static $tokens = [
