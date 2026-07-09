@@ -39,6 +39,9 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 .ar-sort:hover { color: #1F1B16; }
 .ar-arrow { font-size: 10px; color: #C9A227; }
 .ar-table tbody tr.ar-off { opacity: .45; }
+.ar-alpha-btn { min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid #ECE3D2; background: #fff; border-radius: 7px; font-family: inherit; font-size: 13px; font-weight: 600; color: #1F1B16; cursor: pointer; }
+.ar-alpha-btn:hover { background: #F3ECDD; }
+.ar-alpha-btn.on { background: #1F1B16; color: #FFF2B3; border-color: #1F1B16; }
 .ar-table td .ar-cb { cursor: pointer; }
 </style>
 
@@ -75,7 +78,10 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         <p class="sub">Music products (vinyl, CD, cassette, 45s) with a blank or "N/A" artist, where the artist is still sitting inside the name. Parses it from "Title / Artist" or "Artist - Title" and fills the Artist field. Only confident parses are filled; anything unclear is flagged for you to do by hand. Scanning changes nothing. Fully undoable.</p>
         <div class="mgn-actions">
             <button class="mgn-btn mgn-btn-ghost" id="arScanBtn" type="button">Scan missing artists</button>
+            <input type="text" id="arFilter" placeholder="Filter by artist (e.g. A, or Beat…)" autocomplete="off"
+                   style="height:44px;padding:0 14px;border:1px solid #ECE3D2;border-radius:10px;font-family:inherit;font-size:14px;width:280px;background:#fff;">
         </div>
+        <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
             <div class="mgn-note" id="arSelInfo" style="margin-top:6px;"></div>
@@ -319,15 +325,56 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         renderRows();
     });
 
-    arScanBtn.addEventListener('click', function () {
+    var arFilterEl = document.getElementById('arFilter');
+    var arAlphaEl = document.getElementById('arAlpha');
+    var arFilter = '';
+
+    // Build the A-Z / 0-9 quick filter bar once.
+    (function buildAlpha() {
+        var letters = ['All', '#', 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+        arAlphaEl.innerHTML = letters.map(function (l) {
+            var val = l === 'All' ? '' : l;
+            return '<button type="button" class="ar-alpha-btn" data-val="' + esc(val) + '">' + esc(l) + '</button>';
+        }).join('');
+        Array.prototype.forEach.call(arAlphaEl.querySelectorAll('.ar-alpha-btn'), function (b) {
+            b.addEventListener('click', function () {
+                arFilter = b.getAttribute('data-val');
+                arFilterEl.value = (arFilter === '#') ? '' : arFilter;
+                doArScan();
+            });
+        });
+    })();
+
+    function markAlpha() {
+        var cur = (arFilter || 'All');
+        Array.prototype.forEach.call(arAlphaEl.querySelectorAll('.ar-alpha-btn'), function (b) {
+            var v = b.getAttribute('data-val') || 'All';
+            b.classList.toggle('on', v === cur);
+        });
+    }
+
+    // Debounced free-text filter.
+    var arFilterTimer = null;
+    arFilterEl.addEventListener('input', function () {
+        arFilter = arFilterEl.value.trim();
+        clearTimeout(arFilterTimer);
+        arFilterTimer = setTimeout(doArScan, 350);
+    });
+
+    function doArScan() {
         clearMsg(); arResult.style.display = 'none';
         arScanBtn.disabled = true; arScanBtn.textContent = 'Scanning…';
-        post('{{ route('products.artist.scan') }}').then(function (d) {
+        markAlpha();
+        post('{{ route('products.artist.scan') }}', { filter: arFilter }).then(function (d) {
             arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            arAlphaEl.style.display = 'flex';
+            var filterNote = d.filter ? ' matching "' + esc(d.filter) + '"' : '';
             document.getElementById('arSummary').innerHTML =
-                '<b>' + d.to_fill + '</b> artist(s) to fill &nbsp;·&nbsp; ' + d.flagged + ' flagged for manual review'
-                + (d.to_fill > d.preview.length ? ' &nbsp;·&nbsp; showing first ' + d.preview.length + ' — fill these, then re-scan for the rest' : '') + '.';
+                '<b>' + d.to_fill + '</b> to fill' + filterNote
+                + (d.filter ? ' &nbsp;·&nbsp; ' + d.total_to_fill + ' total' : '')
+                + ' &nbsp;·&nbsp; ' + d.flagged + ' flagged'
+                + (d.to_fill > d.preview.length ? ' &nbsp;·&nbsp; showing first ' + d.preview.length : '') + '.';
             arData = d.preview.map(function (f) { f.sel = true; return f; });
             arSort = { key: null, dir: 1 };
             Array.prototype.forEach.call(document.querySelectorAll('.ar-sort .ar-arrow'), function (s) { s.textContent = ''; });
@@ -360,7 +407,9 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             }
             arResult.style.display = 'block';
         }).catch(function () { arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists'; showMsg('Scan failed — try again.', false); });
-    });
+    }
+
+    arScanBtn.addEventListener('click', function () { doArScan(); });
 
     arApplyBtn.addEventListener('click', function () {
         var ids = arData.filter(function (f) { return f.sel; }).map(function (f) { return f.id; });

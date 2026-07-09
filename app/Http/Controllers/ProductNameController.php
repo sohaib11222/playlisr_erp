@@ -199,23 +199,25 @@ class ProductNameController extends Controller
      * Split artist-less music products into: fillable (confident parse) and
      * flagged (needs manual). Returns counts + a capped preview of fillable.
      */
-    protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null)
+    protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null, $filter = '')
     {
         $catIds = $this->musicCategoryIds($business_id);
         if (empty($catIds)) {
-            return ['fixes' => [], 'to_fill' => 0, 'flagged' => 0, 'cat_ids' => []];
+            return ['fixes' => [], 'flagged_rows' => [], 'to_fill' => 0, 'total_to_fill' => 0, 'flagged' => 0, 'cat_ids' => []];
         }
 
+        $filter = mb_strtolower(trim((string) $filter));
         $knownKeys = $this->artistSignalKeys($business_id, $catIds);
         $fixes = [];
         $flaggedRows = [];
-        $toFill = 0;
+        $toFill = 0;         // confident parses matching the filter
+        $totalToFill = 0;    // all confident parses (ignores the filter)
         $flagged = 0;
 
         $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
             ->orderBy('id')
-            ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$flagged, $collectFixes, $limit, $knownKeys) {
+            ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter) {
                 foreach ($rows as $r) {
                     $res = ProductNameNormalizer::artistFromName($r->name, $knownKeys);
                     if (!$res['confident']) {
@@ -229,8 +231,17 @@ class ProductNameController extends Controller
                         }
                         continue;
                     }
+                    $totalToFill++;
+                    // Filter by the PARSED artist (prefix match) so the caller can
+                    // work alphabetically or search a name.
+                    if ($filter !== '' && strpos(mb_strtolower($res['artist']), $filter) !== 0) {
+                        continue;
+                    }
                     $toFill++;
-                    if ($collectFixes && ($limit === null || count($fixes) < $limit)) {
+                    // Collect all matches (a letter/prefix subset is small); we
+                    // sort by parsed artist and slice to `limit` after the walk so
+                    // same-name artists group together and the page is alphabetical.
+                    if ($collectFixes) {
                         $fixes[] = [
                             'id' => (int) $r->id,
                             'name' => $r->name,
@@ -242,7 +253,15 @@ class ProductNameController extends Controller
                 }
             });
 
-        return ['fixes' => $fixes, 'flagged_rows' => $flaggedRows, 'to_fill' => $toFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
+        if ($collectFixes) {
+            usort($fixes, function ($a, $b) {
+                $c = strcasecmp($a['new'], $b['new']);
+                return $c !== 0 ? $c : strcasecmp($a['name'], $b['name']);
+            });
+            if ($limit !== null) { $fixes = array_slice($fixes, 0, $limit); }
+        }
+
+        return ['fixes' => $fixes, 'flagged_rows' => $flaggedRows, 'to_fill' => $toFill, 'total_to_fill' => $totalToFill, 'flagged' => $flagged, 'cat_ids' => $catIds];
     }
 
     public function artistScan(Request $request)
@@ -253,8 +272,9 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
         $business_id = $request->session()->get('user.business_id');
+        $filter = (string) $request->input('filter', '');
         try {
-            $data = $this->computeArtistBackfill($business_id, true, 100);
+            $data = $this->computeArtistBackfill($business_id, true, 100, $filter);
             $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
@@ -264,10 +284,12 @@ class ProductNameController extends Controller
         return response()->json([
             'success' => true,
             'to_fill' => $data['to_fill'],
+            'total_to_fill' => $data['total_to_fill'],
             'flagged' => $data['flagged'],
             'preview' => $data['fixes'],
             'flagged_preview' => $data['flagged_rows'],
             'by_category' => $byCategory,
+            'filter' => $filter,
         ]);
     }
 
