@@ -588,8 +588,62 @@ class ProductMergeController extends Controller
             'total_groups' => $data['total_groups'],
             'total_merges' => $data['total_merges'],
             'skipped' => $data['skipped'],
-            'preview' => array_slice($data['groups'], 0, 300),
+            'preview' => array_slice($data['groups'], 0, 2000),
         ]);
+    }
+
+    /**
+     * Download EVERY merge set as a CSV — one row per product involved, with
+     * store, format, floor stock, sold, price and creator, so Sarah can review
+     * all of them (not just the on-screen preview) before merging. Read-only.
+     */
+    public function scanExport(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            abort(403, 'Owner-only.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $data = $this->scanData($business_id);
+
+        $filename = 'merge-preview-' . now()->format('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $groups = $data['groups'];
+        return response()->stream(function () use ($groups) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Set #', 'Role', 'Product', 'SKU', 'Store', 'Format',
+                'Floor stock', 'Units sold', 'Sell price', 'Cost',
+                'Created', 'Created by',
+            ]);
+            $setNo = 0;
+            foreach ($groups as $g) {
+                $setNo++;
+                $rows = array_merge([$g['keep']], $g['merge_in']);
+                foreach ($rows as $i => $it) {
+                    fputcsv($out, [
+                        $setNo,
+                        $i === 0 ? 'KEEP' : 'MERGE IN',
+                        $it['name'],
+                        $it['sku'],
+                        $g['store'],
+                        $g['category'],
+                        $it['current_stock'],
+                        $it['units_sold'],
+                        $it['sell_price'] === null ? '' : number_format((float) $it['sell_price'], 2, '.', ''),
+                        $it['purchase_price'] === null ? '' : number_format((float) $it['purchase_price'], 2, '.', ''),
+                        $it['created_date'] ?? '',
+                        $it['creator'] ?? '',
+                    ]);
+                }
+            }
+            fclose($out);
+        }, 200, $headers);
     }
 
     /**

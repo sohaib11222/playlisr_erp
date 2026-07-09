@@ -90,6 +90,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price and totaling stock + units sold onto it. Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
             <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
+            <a class="mg-btn mg-btn-ghost" href="{{ route('products.merge.scan-export') }}" style="text-decoration:none;display:inline-flex;align-items:center;">Download full list (CSV)</a>
         </div>
         <div id="mgScanResult" style="display:none;margin-top:18px;">
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
