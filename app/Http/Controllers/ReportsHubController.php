@@ -94,6 +94,7 @@ class ReportsHubController extends Controller
                 'icon'  => 'fa-users',
                 'reports' => [
                     ['key' => 'employee-leaderboard',  'name' => 'Daily Store Dashboard',  'icon' => 'fa-trophy',             'action' => 'ReportController@employeeLeaderboard',        'desc' => 'Live store KPIs (revenue vs goal, LFL, tx, ATV) plus staff ranked by $ / hour.', 'admin_only' => true],
+                    ['key' => 'payroll',               'name' => 'Payroll Calculator',    'icon' => 'fa-calculator',         'action' => 'PayrollController@index',                    'desc' => 'Bi-weekly pay run: Clover hours + CA overtime + late flags vs Sling + sales & listing commission + QuickBooks entry.', 'admin_only' => true],
                     ['key' => 'employee-productivity', 'name' => 'Employee Productivity', 'icon' => 'fa-user-clock',         'action' => 'ReportController@productEntryProductivity',   'desc' => 'Products priced + purchases entered.'],
                     ['key' => 'revenue-by-employee-barcoding', 'name' => 'Revenue by Employee (Barcoded)', 'icon' => 'fa-barcode', 'action' => 'ReportController@revenueByEmployeeBarcoding', 'desc' => 'Items each employee barcoded that sold + the revenue they generated.'],
                     ['key' => 'help-searches',         'name' => 'Handbook Searches',     'icon' => 'fa-search',             'action' => 'HelpReportController@index',                  'desc' => 'What employees look up in the handbook + zero-result queries.', 'admin_only' => true],

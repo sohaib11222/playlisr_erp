@@ -944,6 +944,17 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // One-click: mark listing + sales commission paid together.
     Route::post('/admin/listing-commissions/mark-all-paid', 'ListingCommissionController@markAllPaid');
 
+    // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
+    // uploaded per pay period), OT via CA daily rule, late flags vs the Sling
+    // schedule, plus live listing + sales commission, and a QuickBooks entry
+    // panel. Config + hours live in storage/app/payroll/* (no migration).
+    Route::get('/payroll', 'PayrollController@index');
+    Route::get('/payroll/export.csv', 'PayrollController@exportCsv');
+    Route::post('/payroll/import-hours', 'PayrollController@importHours');
+    Route::post('/payroll/save-rates', 'PayrollController@saveRates');
+    Route::post('/payroll/freelancer', 'PayrollController@saveFreelancer');
+    Route::post('/payroll/freelancer/delete', 'PayrollController@deleteFreelancer');
+
     // One-shot cleanup: historical xlsx import wrote some transactions with
     // future dates (typos / no-year rows defaulting to 2026). Rewrites them
     // to the 1st of the month encoded in the import source slug.
