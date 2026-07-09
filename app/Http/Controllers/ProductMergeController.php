@@ -367,7 +367,7 @@ class ProductMergeController extends Controller
         $products = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereNotNull('sku')->where('sku', '!=', '')
-            ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id', 'created_by')
+            ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id', 'created_by', 'created_at')
             ->get();
 
         // Records created by Fatteen's "Nerdy Solutions" account are frequently
@@ -376,11 +376,17 @@ class ProductMergeController extends Controller
         // exclusion convention in ListingCommissionController). Stock + sales
         // still combine onto whichever record survives, so demoting these loses
         // nothing — it only keeps the trustworthy record's name/price/cost.
-        $untrustedSet = array_flip(
-            \DB::table('users')
-                ->whereRaw("LOWER(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) LIKE '%nerdy%'")
-                ->pluck('id')->map(function ($v) { return (int) $v; })->all()
-        );
+        // Also build a creator name map so the scan can show who made each row
+        // (KEEP vs MERGING IN) and Sarah can eyeball that it kept the right one.
+        $userRows = \DB::table('users')
+            ->select('id', 'first_name', 'last_name')->get();
+        $userNames = [];
+        $untrustedSet = [];
+        foreach ($userRows as $u) {
+            $full = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            $userNames[(int) $u->id] = $full !== '' ? $full : ('User #' . $u->id);
+            if (strpos(strtolower($full), 'nerdy') !== false) { $untrustedSet[(int) $u->id] = true; }
+        }
 
         // Group by normalized SKU + title signature — BOTH must match, so
         // records that only share a junk SKU aren't grouped.
@@ -495,6 +501,8 @@ class ProductMergeController extends Controller
                         'sku' => $r->sku,
                         'is_inactive' => (int) $r->is_inactive,
                         'is_untrusted' => isset($untrustedSet[(int) $r->created_by]) ? 1 : 0,
+                        'creator' => $userNames[(int) $r->created_by] ?? ('User #' . (int) $r->created_by),
+                        'created_year' => $r->created_at ? substr((string) $r->created_at, 0, 4) : '',
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
                         'current_stock' => (float) $stock,
                     ];
