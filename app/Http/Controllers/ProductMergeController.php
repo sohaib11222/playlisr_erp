@@ -444,6 +444,14 @@ class ProductMergeController extends Controller
         // product's location ids. Products at different stores stay separate.
         $locNames = \DB::table('business_locations')->where('business_id', $business_id)
             ->pluck('name', 'id');
+        // "Store floor" locations = every location EXCEPT the Discogs Warehouse
+        // (mirrors the reports convention: name NOT LIKE '%warehouse%'). Combined
+        // stock must count only these, so online/warehouse copies don't inflate
+        // what we claim is on the sales floor.
+        $floorLocIds = [];
+        foreach ($locNames as $lid => $lname) {
+            if (stripos((string) $lname, 'warehouse') === false) { $floorLocIds[(int) $lid] = true; }
+        }
         $storeSig = [];      // product_id => "id,id"
         $storeLabel = [];    // product_id => "Hollywood, Pico"
         $plRows = \DB::table('product_locations')->whereIn('product_id', $dupeIds)
@@ -479,12 +487,6 @@ class ProductMergeController extends Controller
             foreach ($byBucket as $bucketKey => $storeRows) {
                 if (count($storeRows) < 2) { continue; }
 
-                // Store location ids for this bucket (from the store part of the
-                // key). Stock is counted only at these locations, so warehouse
-                // copies don't inflate the store total. Empty = no store set →
-                // fall back to all locations.
-                $storeLocs = array_values(array_filter(array_map('intval', explode(',', explode('|cat|', $bucketKey)[0]))));
-
                 $singleOk = true;
                 foreach ($storeRows as $r) {
                     $vs = $varsByProduct->get($r->id);
@@ -504,15 +506,15 @@ class ProductMergeController extends Controller
                     $sellPrice = $var ? (float) $var->sell_price_inc_tax : null;
                     $purchasePrice = $var ? (float) $var->dpp_inc_tax : null;
                     $perLoc = $vldMap[(int) $r->id] ?? [];
-                    // Store-scoped stock (this bucket's locations only) is used to
-                    // RANK the survivor, so warehouse copies don't skew the pick.
-                    $stock = empty($storeLocs)
-                        ? array_sum($perLoc)
-                        : array_sum(array_map(function ($l) use ($perLoc) { return $perLoc[$l] ?? 0; }, $storeLocs));
-                    // Full all-location stock is what performMerge actually moves
-                    // onto the survivor, so the COMBINED STOCK column must use this
-                    // (the scoped number under-reports the real post-merge on-hand).
-                    $fullStock = array_sum($perLoc);
+                    // Store-floor stock = sum of qty at every non-warehouse
+                    // location. Used both to rank the survivor and (summed across
+                    // the group) as the COMBINED STOCK shown — so the number
+                    // matches the product list's floor stock and never counts the
+                    // Discogs Warehouse.
+                    $floorStock = 0.0;
+                    foreach ($perLoc as $locId => $qty) {
+                        if (isset($floorLocIds[(int) $locId])) { $floorStock += (float) $qty; }
+                    }
                     $items[] = [
                         'id' => (int) $r->id,
                         'name' => $r->name,
@@ -532,8 +534,7 @@ class ProductMergeController extends Controller
                         'sell_price' => $sellPrice,
                         'purchase_price' => $purchasePrice,
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
-                        'current_stock' => (float) $stock,
-                        'full_stock' => (float) $fullStock,
+                        'current_stock' => (float) $floorStock,
                     ];
                 }
                 // Label with the FORMAT (category) — that's what the group is now
@@ -562,7 +563,7 @@ class ProductMergeController extends Controller
                     'category' => $catLabel,
                     'keep' => $keep,
                     'merge_in' => $mergeIn,
-                    'combined_stock' => array_sum(array_map(function ($i) { return $i['full_stock']; }, $items)),
+                    'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
                     'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
                 ];
             }
