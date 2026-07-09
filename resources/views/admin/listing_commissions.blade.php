@@ -327,12 +327,14 @@
                         @endforeach
                     </select>
                     <span style="margin-right:2px;">$</span>
-                    <input type="number" step="0.01" min="0" name="amount" placeholder="0.00" class="form-control input-sm" style="width:110px; margin-right:8px;" required>
-                    <input type="text" name="note" placeholder="note (e.g. cash, true-up)" class="form-control input-sm" style="width:240px; margin-right:8px;">
+                    <input type="number" step="0.01" min="0" name="amount" placeholder="0.00" class="form-control input-sm" style="width:100px; margin-right:8px;" required>
+                    <label style="margin-right:4px; font-weight:400;">Date paid</label>
+                    <input type="date" name="paid_on" class="form-control input-sm" style="margin-right:8px;" max="{{ \Carbon::now()->toDateString() }}" title="Leave blank for today; set a past date to log a previous payroll">
+                    <input type="text" name="note" placeholder="note (e.g. cash, June payroll)" class="form-control input-sm" style="width:220px; margin-right:8px;">
                     <button type="submit" class="btn btn-primary btn-sm">Record payment</button>
                 </div>
                 <div class="text-muted" style="margin-top:6px; font-size:12px;">
-                    Use this when you paid someone a different amount than the page showed. It logs the real dollars, shows in the history below, and reduces what they're owed.
+                    Use this to log the real dollars you paid someone — including past payrolls (set the <strong>Date paid</strong>). It shows in the history below and reduces what they're owed. Leave the date blank for today.
                 </div>
             </form>
 

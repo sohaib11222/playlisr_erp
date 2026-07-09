@@ -385,6 +385,13 @@ class ListingCommissionController extends Controller
         $amount = round((float) $request->input('amount'), 2);
         $note   = trim((string) $request->input('note', ''));
 
+        // Optional "date paid" so past payrolls can be logged on the day they
+        // actually happened; blank = today.
+        $paidOn = trim((string) $request->input('paid_on', ''));
+        $isPastDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $paidOn);
+        $dateField = $isPastDate ? $paidOn : now()->toDateString();
+        $markedAt  = $isPastDate ? ($paidOn . ' 12:00:00') : now()->toDateTimeString();
+
         if ($userId <= 0 || $amount == 0.0) {
             return redirect('/admin/listing-commissions')
                 ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a non-zero dollar amount.']);
@@ -401,12 +408,12 @@ class ListingCommissionController extends Controller
             'user_id'   => $userId,
             'name'      => $name,
             'amount'    => $amount,
-            'from_date' => now()->toDateString(),
-            'to_date'   => now()->toDateString(),
+            'from_date' => $dateField,
+            'to_date'   => $dateField,
             'manual'    => true,
             'note'      => $note !== '' ? $note : 'Manual payment recorded',
             'marked_by' => $request->session()->get('user.id'),
-            'marked_at' => now()->toDateTimeString(),
+            'marked_at' => $markedAt,
         ];
         $this->saveSalesPayouts($payouts);
 
