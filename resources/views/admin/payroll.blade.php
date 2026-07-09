@@ -197,6 +197,11 @@
 <div class="row"><div class="col-md-12">
   @component('components.widget', ['title' => 'Pay run'])
     @php $emptyCols = $can_see_rates ? 13 : 9; @endphp
+    <div style="margin-bottom:10px;">
+      <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm">
+        <i class="fa fa-external-link"></i> Verify commissions in Commissions Owed
+      </a>
+    </div>
     @if ($can_see_rates)
       <div style="margin-bottom:10px;">
         <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline;"
@@ -339,6 +344,39 @@
       </tbody>
     </table>
     </div>
+  @endcomponent
+</div></div>
+
+{{-- Paycheck memos (commission explanation) --}}
+@php $memoPeople = array_filter($people, function ($p) { return !empty($p['memo']); }); @endphp
+<div class="row"><div class="col-md-12">
+  @component('components.widget', ['title' => 'Paycheck memos - commission explanation'])
+    <div style="margin-bottom:10px;">
+      <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm">
+        <i class="fa fa-external-link"></i> Verify in Commissions Owed report
+      </a>
+      <button type="button" class="btn btn-default btn-sm" onclick="payrollCopyMemos()"><i class="fa fa-copy"></i> Copy memos</button>
+    </div>
+    <div style="background:var(--pos-accent-soft);border:1px solid var(--pos-accent-deep);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;">
+      <strong>How commission works</strong>
+      <ul style="margin:6px 0 0 18px;">
+        <li><strong>Sales bonus</strong> — 2% of your register sales above your daily goal, or <strong>4% during peak hours</strong>, added up day by day (since {{ \Carbon::parse(\App\Http\Controllers\ListingCommissionController::SALES_BONUS_FROM)->format('M j, Y') }}).</li>
+        <li><strong>Listing commission</strong> — 2% of the sale price of each <strong>used</strong> item you listed/barcoded that has since sold (listings since {{ \Carbon::parse(\App\Http\Controllers\ListingCommissionController::DEFAULT_FROM)->format('M j, Y') }}; excludes sealed/new stock, gear, apparel, etc.).</li>
+      </ul>
+    </div>
+    @if (empty($memoPeople))
+      <p class="text-muted">No commission owed this period.</p>
+    @else
+      <div id="memo-list">
+      @foreach ($memoPeople as $p)
+        <div style="padding:8px 0;border-bottom:1px solid var(--pos-line);">
+          <strong>{{ $p['name'] }}</strong>
+          @if ($can_see_rates)<span class="text-muted"> — owes ${{ $fmt($p['sales_comm'] + $p['listing_comm']) }} this period</span>@endif
+          <div class="text-muted" style="font-size:13px;margin-top:2px;">{{ $p['memo'] }}</div>
+        </div>
+      @endforeach
+      </div>
+    @endif
   @endcomponent
 </div></div>
 
@@ -521,6 +559,18 @@ function payrollEditFreelancer(f) {
 function payrollResetFreelancer() {
   document.getElementById('freelancer-form').reset();
   document.getElementById('f-id').value = '';
+}
+function payrollCopyMemos() {
+  var el = document.getElementById('memo-list');
+  if (!el) { return; }
+  var text = el.innerText.trim();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { alert('Copied memos.'); });
+  } else {
+    var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand('copy'); alert('Copied.'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
 }
 (function () {
   var btn = document.querySelector('.pr-pin-btn[data-pin-url]');

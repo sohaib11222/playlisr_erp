@@ -393,6 +393,7 @@ class PayrollController extends Controller
                 'comm_earned'  => 0.0,
                 'last_comm_paid' => null,
                 'last_paycheck'  => null,
+                'memo'         => '',
                 'grand_total'  => round($wages, 2),
                 'flags'        => $p['flags'],
                 'has_hours'    => true,
@@ -500,6 +501,7 @@ class PayrollController extends Controller
                 $p['listing_comm'] = round((float) $c->listing_owed, 2);
                 $p['comm_earned']  = round((float) $c->listing_earned + (float) $c->sales_earned, 2);
                 $p['grand_total']  = round($p['wages'] + $p['sales_comm'] + $p['listing_comm'], 2);
+                $p['memo']         = $this->commissionMemo($p['sales_comm'], $p['listing_comm']);
             }
             if ($p['user_id']) {
                 $p['last_comm_paid'] = $lastPaid[$p['user_id']] ?? null;
@@ -530,6 +532,7 @@ class PayrollController extends Controller
                 'comm_earned' => $earned,
                 'last_comm_paid' => $lastPaid[$uid] ?? null,
                 'last_paycheck' => $lastCheck['byUid'][$uid] ?? null,
+                'memo' => $this->commissionMemo($owedS, $owedL),
                 'grand_total' => round($owedL + $owedS, 2), 'flags' => [], 'has_hours' => false,
             ];
         }
@@ -622,6 +625,25 @@ class PayrollController extends Controller
             }
         }
         return $out;
+    }
+
+    // Plain-English pay-stub memo so each person understands what their
+    // commission is for, per our rules. Mirrors the wording on the Commissions
+    // Owed page. Uses this period's owed (what they're being paid now).
+    private function commissionMemo($salesOwed, $listingOwed)
+    {
+        $listFrom  = \Carbon::parse(ListingCommissionController::DEFAULT_FROM)->format('M j, Y');
+        $salesFrom = \Carbon::parse(ListingCommissionController::SALES_BONUS_FROM)->format('M j, Y');
+        $parts = [];
+        if ($listingOwed > 0) {
+            $parts[] = 'Listing commission $' . number_format($listingOwed, 2)
+                . ' - 2% of the sale price of each used item you listed/barcoded that has since sold (listings since ' . $listFrom . ').';
+        }
+        if ($salesOwed > 0) {
+            $parts[] = 'Sales bonus $' . number_format($salesOwed, 2)
+                . ' - 2% of your register sales above your daily goal, or 4% during peak hours, added up day by day (since ' . $salesFrom . ').';
+        }
+        return implode('  ', $parts);
     }
 
     // ---- Hidden (departed staff) ----------------------------------------
