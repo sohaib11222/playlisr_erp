@@ -147,21 +147,42 @@ class ProductNameNormalizer
     }
 
     /**
+     * All-caps band names that are genuine stylizations and should NOT be
+     * title-cased. Most short band names (TOOL, KORN, RUSH, MUSE, DIO) are just
+     * upper-cased catalog data and DO want title-casing, so we keep only a
+     * curated allowlist rather than blanket-preserving short tokens.
+     */
+    protected static function keepUpperCase($lower)
+    {
+        static $keep = [
+            'kiss', 'gwar', 'elo', 'abba', 'mgmt', 'nofx', 'devo', 'xtc', 'inxs',
+            'omd', 'ufo', 'dmx', 'sza', 'mia', 'asap', 'jpegmafia', 'mstrkrft',
+            'sbtrkt', 'mndr', 'hyukoh', 'idles', 'health', 'sophie', 'clipping',
+            'girl', 'ho99o9', 'sault', 'brockhampton', 'bts', 'nct', 'exo',
+            'wu', 'rtj', 'nin', 'gza', 'rza', 'mf', 'dj', 'mc', 'lcd', 'kmfdm',
+        ];
+        return in_array($lower, $keep, true);
+    }
+
+    /**
      * Proper-case an artist so the field reads clean ("BURZUM"/"burzum" ->
-     * "Burzum", "SUNNY DAY REAL ESTATE" -> "Sunny Day Real Estate"). Left alone
-     * as likely stylizations:
-     *   - a short single-word token (<= 4 chars: "GWAR", "KISS", "U2", "MF"),
+     * "Burzum", "TOOL" -> "Tool", "SUNNY DAY REAL ESTATE" -> "Sunny Day Real
+     * Estate"). Left alone:
      *   - anything containing punctuation or digits ("AC/DC", "R.E.M.",
-     *     "deadmau5", "Blink-182", "Godspeed You! Black Emperor").
-     * Everything else is Title Cased, so both ALL-CAPS and all-lowercase inputs
-     * come out properly cased.
+     *     "deadmau5", "Blink-182", "2Pac", "Godspeed You! Black Emperor"),
+     *   - a curated allowlist of all-caps stylizations (KISS, GWAR, ...),
+     *   - values that already carry a lowercase letter (assumed correct).
      */
     public static function properArtistCase($s)
     {
         $s = trim(preg_replace('/\s+/', ' ', (string) $s));
         if ($s === '') { return $s; }
-        if (strpos($s, ' ') === false && mb_strlen($s) <= 4) { return $s; }
         if (preg_match('/[^\p{L}\s]/u', $s)) { return $s; }
+        if (self::keepUpperCase(mb_strtolower($s))) { return $s; }
+        // Already mixed-case (has both an upper and a lower letter) -> assume it
+        // was deliberately cased ("Green Day", "iPhone"), leave it. Only all-one-
+        // case values (all-caps "TOOL" / all-lower "burzum") get title-cased.
+        if (preg_match('/\p{Lu}/u', $s) && preg_match('/\p{Ll}/u', $s)) { return $s; }
         return self::titleCase($s);
     }
 
