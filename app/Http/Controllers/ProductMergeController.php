@@ -619,7 +619,7 @@ class ProductMergeController extends Controller
             fputcsv($out, [
                 'Set #', 'Role', 'Product', 'SKU', 'Store', 'Format',
                 'Floor stock', 'Units sold', 'Sell price', 'Cost',
-                'Created', 'Created by',
+                'Created', 'Created by', 'Verify link',
             ]);
             $setNo = 0;
             foreach ($groups as $g) {
@@ -639,6 +639,7 @@ class ProductMergeController extends Controller
                         $it['purchase_price'] === null ? '' : number_format((float) $it['purchase_price'], 2, '.', ''),
                         $it['created_date'] ?? '',
                         $it['creator'] ?? '',
+                        url('/products/' . (int) $it['id'] . '/edit'),
                     ]);
                 }
             }

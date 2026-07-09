@@ -208,9 +208,14 @@ body.merge-v2 .content { padding: 0 16px 60px; }
                 if (!bits.length) { return ''; }
                 return '<br><small style="color:' + color + '">' + bits.join(' · ') + '</small>';
             };
+            var prodUrl = function (id) { return '{{ url('/products') }}/' + id + '/edit'; };
+            var link = function (x) {
+                return '<a href="' + prodUrl(x.id) + '" target="_blank" rel="noopener" style="color:#1F1B16;text-decoration:underline;">' + esc(x.name) + '</a>'
+                    + ' <small style="color:#8E8273">(SKU ' + esc(x.sku) + ')</small>';
+            };
             var rows = d.preview.map(function (g) {
-                var mergeNames = g.merge_in.map(function (m) { return esc(m.name) + ' <small style="color:#8E8273">(SKU ' + esc(m.sku) + ')</small>' + by(m); }).join('<br>');
-                return '<tr><td>' + esc(g.keep.name) + ' <small style="color:#8E8273">(SKU ' + esc(g.keep.sku) + ')</small>' + by(g.keep) + '</td>' +
+                var mergeNames = g.merge_in.map(function (m) { return link(m) + by(m); }).join('<br>');
+                return '<tr><td>' + link(g.keep) + by(g.keep) + '</td>' +
                     '<td>' + esc(g.store) + '</td>' +
                     '<td>' + esc(g.category) + '</td>' +
                     '<td>' + mergeNames + '</td>' +
