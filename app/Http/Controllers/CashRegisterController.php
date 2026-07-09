@@ -1326,6 +1326,19 @@ class CashRegisterController extends Controller
             $input['status'] = 'close';
             $input['denominations'] = !empty(request()->input('denominations')) ? json_encode(request()->input('denominations')) : null;
 
+            // The close screen counts the drawer by bill denomination and
+            // computes the total client-side. Recompute it server-side from
+            // the posted counts so we don't trust the hidden closing_amount
+            // field; falls back to the posted total when no counts are sent.
+            $closeDenoms = request()->input('denominations');
+            if (is_array($closeDenoms)) {
+                $denomTotal = 0.0;
+                foreach ($closeDenoms as $face => $qty) {
+                    $denomTotal += ((float) $face) * max(0, (int) $qty);
+                }
+                $input['closing_amount'] = round($denomTotal, 2);
+            }
+
             // Capture how much cash the cashier moved to the safe at close.
             // Additive against whatever was already dropped at open
             // (Sarah 2026-05-08) so the column tracks total drops for the

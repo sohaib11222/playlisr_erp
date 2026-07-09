@@ -76,6 +76,47 @@
 	}
 	.cr-hero-input::placeholder { color: #c9b670; }
 
+	/* Denomination grid — one row per bill: "$100 × [count] = $subtotal".
+	   Mirrors the opening count on the duty picker. */
+	.cr-denom-grid {
+		display: flex; flex-direction: column; gap: 8px;
+	}
+	.cr-denom-row {
+		display: grid;
+		grid-template-columns: 56px 16px 1fr 16px 104px;
+		align-items: center; gap: 10px;
+	}
+	.cr-denom-face {
+		font-weight: 800; font-size: 17px; color: #5A4410; text-align: right;
+	}
+	.cr-denom-op {
+		color: #5A4410; opacity: .6; font-size: 14px; text-align: center;
+	}
+	.cr-denom-count {
+		height: 46px; width: 100%; min-width: 0;
+		border: 2px solid #E8CF68; border-radius: 10px; outline: none;
+		padding: 0 12px; font-family: inherit; font-size: 20px; font-weight: 700;
+		color: #1F1B16; background: #fff; text-align: center;
+		font-variant-numeric: tabular-nums;
+	}
+	.cr-denom-count:focus { box-shadow: 0 0 0 3px rgba(232,207,104,.4); }
+	.cr-denom-sub {
+		font-weight: 700; font-size: 16px; color: #5A4410; text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+	.cr-denom-total-row {
+		display: flex; align-items: center; justify-content: space-between;
+		margin-top: 12px; padding-top: 12px;
+		border-top: 2px dashed #E8CF68;
+	}
+	.cr-denom-total-label {
+		font-weight: 700; font-size: 15px; color: #5A4410;
+	}
+	.cr-denom-total {
+		font-weight: 800; font-size: 30px; color: #1F1B16;
+		font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+	}
+
 	/* Secondary: card slips (kept, smaller). */
 	.cr-card-slips {
 		margin-top: 18px; display: flex; align-items: center; gap: 14px;
@@ -307,18 +348,78 @@
 
 		<div class="modal-body">
 
-			{{-- HERO: count the drawer --}}
+			{{-- HERO: count the drawer.
+				 Sarah 2026-07-09: count by bill denomination (100/50/20/10/5/1)
+				 to match the opening count on the duty picker. We add it up live
+				 and feed the total into the hidden closing_amount the backend
+				 reads; the counts also persist to the denominations column. --}}
 			<div class="cr-hero">
-				<div class="cr-hero-label">Closing balance — total cash in the drawer</div>
+				<div class="cr-hero-label">Closing balance — count the drawer</div>
 				<div class="cr-hero-hint">
-					Count every bill &amp; coin in the register right now and enter the total here. This is what gets reconciled against ERP cash sales.
+					Enter how many of each bill; we add it up for you. This is what gets reconciled against ERP cash sales.
 				</div>
-				<div class="cr-hero-inputwrap">
-					<span class="cr-hero-currency">$</span>
-					{!! Form::text('closing_amount',
-						@num_format($register_details->cash_in_hand + $register_details->total_cash - $register_details->total_cash_refund - $register_details->total_cash_expense),
-						['class' => 'cr-hero-input input_number', 'id' => 'cr_closing_amount', 'required', 'placeholder' => '0.00', 'autofocus', 'data-decimal' => '1']) !!}
+				<div class="cr-denom-grid">
+					@foreach([100, 50, 20, 10, 5, 1] as $face)
+						<div class="cr-denom-row">
+							<span class="cr-denom-face">${{ $face }}</span>
+							<span class="cr-denom-op">&times;</span>
+							{!! Form::number("denominations[$face]", null, [
+								'class' => 'cr-denom-count',
+								'data-face' => $face,
+								'min' => 0, 'step' => 1, 'inputmode' => 'numeric',
+								'placeholder' => '0', 'autocomplete' => 'off',
+								'id' => 'cr_denom_' . $face,
+							] + ($face === 100 ? ['autofocus'] : [])) !!}
+							<span class="cr-denom-op">=</span>
+							<span class="cr-denom-sub" data-sub="{{ $face }}">$0.00</span>
+						</div>
+					@endforeach
 				</div>
+				<div class="cr-denom-total-row">
+					<span class="cr-denom-total-label">Total counted</span>
+					<span class="cr-denom-total" id="cr_denom_total">$0.00</span>
+				</div>
+				{!! Form::hidden('closing_amount', 0, ['id' => 'cr_closing_amount']) !!}
+
+				<script>
+				/* Live-sum the bill counts into the hidden closing_amount, then
+				   nudge the over-$500 safe-drop alert (which watches
+				   #cr_closing_amount) to re-check against the new total. */
+				(function () {
+					var grid = document.querySelector('.cr-denom-grid');
+					var hidden = document.getElementById('cr_closing_amount');
+					var totalEl = document.getElementById('cr_denom_total');
+					if (!grid || !hidden) return;
+					var counts = Array.prototype.slice.call(grid.querySelectorAll('.cr-denom-count'));
+					function fmt(n) {
+						return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+					}
+					function recompute() {
+						var total = 0;
+						counts.forEach(function (c) {
+							var face = parseInt(c.getAttribute('data-face'), 10) || 0;
+							var qty = parseInt(c.value, 10);
+							if (!isFinite(qty) || qty < 0) qty = 0;
+							var sub = face * qty;
+							total += sub;
+							var subEl = grid.querySelector('.cr-denom-sub[data-sub="' + face + '"]');
+							if (subEl) subEl.textContent = fmt(sub);
+						});
+						if (totalEl) totalEl.textContent = fmt(total);
+						hidden.value = total.toFixed(2);
+						// Fire input/change so the safe-drop alert recomputes
+						// off the new total (it binds to #cr_closing_amount).
+						if (window.jQuery) {
+							window.jQuery(hidden).trigger('input').trigger('change');
+						}
+					}
+					counts.forEach(function (c) {
+						c.addEventListener('input', recompute);
+						c.addEventListener('change', recompute);
+					});
+					recompute();
+				})();
+				</script>
 
 				<div class="cr-safe-alert" id="cr-safe-alert">
 					<span class="cr-safe-alert-tag">⚠ Heads up — safe drop</span>
@@ -613,39 +714,10 @@
 				<div class="cr-ref-body">
 					@include('cash_register.payment_details')
 
-					@if(!empty($pos_settings['cash_denominations']))
-					<div class="cr-denom">
-						<h4>Cash denominations (optional)</h4>
-						<table class="table table-slim" style="margin:0;">
-							<thead>
-								<tr>
-									<th width="20%" class="text-right">@lang('lang_v1.denomination')</th>
-									<th width="20%">&nbsp;</th>
-									<th width="20%" class="text-center">@lang('lang_v1.count')</th>
-									<th width="20%">&nbsp;</th>
-									<th width="20%" class="text-left">@lang('sale.subtotal')</th>
-								</tr>
-							</thead>
-							<tbody>
-								@foreach(explode(',', $pos_settings['cash_denominations']) as $dnm)
-								<tr>
-									<td class="text-right">{{$dnm}}</td>
-									<td class="text-center">X</td>
-									<td>{!! Form::number("denominations[$dnm]", null, ['class' => 'form-control cash_denomination input-sm', 'min' => 0, 'data-denomination' => $dnm, 'style' => 'width: 100px; margin:auto;' ]); !!}</td>
-									<td class="text-center">=</td>
-									<td class="text-left"><span class="denomination_subtotal">0</span></td>
-								</tr>
-								@endforeach
-							</tbody>
-							<tfoot>
-								<tr>
-									<th colspan="4" class="text-center">@lang('sale.total')</th>
-									<td><span class="denomination_total">0</span></td>
-								</tr>
-							</tfoot>
-						</table>
-					</div>
-					@endif
+					{{-- Legacy per-denomination table removed 2026-07-09: the
+					     drawer is now counted by bill denomination up top in the
+					     hero (feeds closing_amount + the denominations column),
+					     so this second counter was redundant. --}}
 
 					<div style="margin-top:10px; font-size:11px; color:#8E8273;">
 						User: {{ $register_details->user_name }} · Location: {{ $register_details->location_name }}
