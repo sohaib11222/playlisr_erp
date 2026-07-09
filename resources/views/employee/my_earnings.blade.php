@@ -120,6 +120,34 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         </div>
 
         <div class="me-card">
+            <h3 style="margin-bottom:10px;">Your payments</h3>
+            @if(empty($payment_history))
+                <p class="me-muted" style="margin:0;">No payments recorded yet.</p>
+            @else
+                <table class="me-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Paid on</th>
+                            <th style="text-align:right;">Sales</th>
+                            <th style="text-align:right;">Listing</th>
+                            <th style="text-align:right;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($payment_history as $ph)
+                            <tr>
+                                <td>{{ \Carbon::parse($ph->date)->format('m/d/y') }}</td>
+                                <td style="text-align:right;">@if($ph->sales != 0)${{ number_format($ph->sales, 2) }}@else<span class="me-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($ph->listing != 0)${{ number_format($ph->listing, 2) }}@else<span class="me-muted">—</span>@endif</td>
+                                <td style="text-align:right;"><strong>${{ number_format($ph->total, 2) }}</strong></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        </div>
+
+        <div class="me-card">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                 <h3 style="margin-bottom:2px;">Daily breakdown — last {{ $daily_days }} days</h3>
                 @if(!empty($is_admin))

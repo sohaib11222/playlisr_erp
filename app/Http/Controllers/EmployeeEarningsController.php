@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Storage;
 class EmployeeEarningsController extends Controller
 {
     const PAYOUTS_FILE = 'listing-commission-payouts.json';
+    const SALES_PAYOUTS_FILE = 'sales-commission-payouts.json';
     const DEFAULT_FROM = '2026-05-15';
     const RATE = 0.02;
 
@@ -84,6 +85,10 @@ class EmployeeEarningsController extends Controller
         $earned = round($earnedSales * self::RATE, 2);
         $owed   = round($owedSales * self::RATE, 2);
         $paidOut = round($myPayouts->sum('amount'), 2);
+
+        // This person's full payment history (listing + sales), grouped by the
+        // date they were paid, so they can see what they got and when.
+        $myPaymentHistory = $this->paymentHistoryForUser($payoutsAll, $this->loadSalesPayouts(), $userId);
 
         // Sales goal bonus — reuse the leaderboard's exact per-day target math.
         // Only paid since it went live (2026-06-15), so the bonus window starts
@@ -162,6 +167,7 @@ class EmployeeEarningsController extends Controller
             'listed_count' => $listedCount,
             'labeled_count'=> $labeledCount,
             'payouts'      => $myPayouts,
+            'payment_history' => $myPaymentHistory,
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
             'viewing_other'=> $viewingOther,
@@ -507,5 +513,45 @@ class EmployeeEarningsController extends Controller
         }
         $data = json_decode(Storage::disk('local')->get(self::PAYOUTS_FILE), true);
         return is_array($data) ? $data : [];
+    }
+
+    private function loadSalesPayouts()
+    {
+        if (!Storage::disk('local')->exists(self::SALES_PAYOUTS_FILE)) {
+            return [];
+        }
+        $data = json_decode(Storage::disk('local')->get(self::SALES_PAYOUTS_FILE), true);
+        return is_array($data) ? $data : [];
+    }
+
+    // One person's payments (listing + sales), grouped by the date paid, newest
+    // first — powers the "Your payments" list on My Earnings.
+    private function paymentHistoryForUser($listingPayouts, $salesPayouts, $userId)
+    {
+        $userId = (int) $userId;
+        $byDate = [];
+        $add = function ($rows, $key) use (&$byDate, $userId) {
+            foreach ($rows as $p) {
+                if ((int) ($p['user_id'] ?? 0) !== $userId) { continue; }
+                $d = substr((string) ($p['marked_at'] ?? $p['from_date'] ?? ''), 0, 10);
+                if ($d === '') { continue; }
+                if (!isset($byDate[$d])) { $byDate[$d] = ['listing' => 0.0, 'sales' => 0.0]; }
+                $byDate[$d][$key] += (float) ($p['amount'] ?? 0);
+            }
+        };
+        $add($listingPayouts, 'listing');
+        $add($salesPayouts, 'sales');
+        krsort($byDate);
+
+        $out = [];
+        foreach ($byDate as $d => $v) {
+            $out[] = (object) [
+                'date'    => $d,
+                'listing' => round($v['listing'], 2),
+                'sales'   => round($v['sales'], 2),
+                'total'   => round($v['listing'] + $v['sales'], 2),
+            ];
+        }
+        return $out;
     }
 }
