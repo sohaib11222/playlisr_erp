@@ -40,6 +40,24 @@
 .lc-pin-btn .fa { color: #C99A12; }
 .lc-detail { display: none; }
 #lc-people.show-detail .lc-detail { display: table-cell; }
+
+/* --- One consistent, calm type system for this page --- */
+.content-header h1 { font-size: 24px; font-weight: 700; color: #23303d; letter-spacing: -0.2px; }
+.content-header p, .content p { font-size: 14px; color: #5b6470; }
+.content, .content .box, .content table { font-size: 14px; color: #23303d; }
+.content .box .box-title, .content .box-header .box-title { font-size: 15px; font-weight: 700; color: #23303d; }
+/* Uniform collapsible toggles */
+.content details > summary {
+    cursor: pointer; list-style: none; font-size: 14px; font-weight: 600;
+    color: #2f5a86; padding: 4px 0; margin: 0 0 8px;
+}
+.content details > summary::-webkit-details-marker { display: none; }
+.content details > summary::before { content: "▸"; margin-right: 7px; color: #9aa4b0; font-size: 12px; }
+.content details[open] > summary::before { content: "▾"; }
+/* Tables: even, readable rows */
+.content table.table th { font-size: 12px; font-weight: 700; text-transform: none; color: #5b6470; }
+.content table.table td, .content table.table th { padding: 9px 12px; vertical-align: middle; }
+.content .btn-xs { font-size: 12px; }
 </style>
 <script>
 (function () {
@@ -156,7 +174,7 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'Spot-check: one day\'s sales bonus (not payroll)'])
             <details>
-                <summary style="cursor:pointer; font-weight:600; color:#6b5a00; margin-bottom:10px;">Open the day lookup — a lookup only, doesn't change anyone's pay</summary>
+                <summary>Open the day lookup — a lookup only, doesn't change anyone's pay</summary>
             <form method="GET" action="{{ url('/admin/listing-commissions') }}" class="form-inline" style="margin-bottom:12px;">
                 <label style="margin-right:6px;">Day</label>
                 <input type="date" name="day" value="{{ $bonus_day }}" class="form-control input-sm" max="{{ \Carbon::now()->toDateString() }}" style="margin-right:12px;">
@@ -211,7 +229,7 @@
                 <input type="checkbox" id="lc-detail-toggle"> Show full breakdown (earned, paid, listings, goals)
             </label>
             @if ($owedPeople->isEmpty())
-                <p style="font-size:16px; color:#2F6B3E; font-weight:700;">Everyone is paid up — nothing owed right now.</p>
+                <p style="font-size:15px; color:#2f7a4f; font-weight:600;">Everyone is paid up — nothing owed right now.</p>
                 @if($paidUpCount > 0)<p class="text-muted" style="margin:0;">{{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person' : 'people' }} on file, all settled. See the paid history below.</p>@endif
             @else
                 <p class="text-muted" style="margin-bottom:8px;">Showing only who still owes. {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} paid up (hidden).</p>
@@ -278,7 +296,7 @@
         @component('components.widget', ['title' => 'Payment history'])
             @php $grandPaid = round($total_paid + $total_sales_paid_all, 2); @endphp
             <details>
-                <summary style="cursor:pointer; font-weight:600; color:#5A5045; margin-bottom:10px;">Show payment history &amp; record a payment</summary>
+                <summary>Show payment history &amp; record a payment</summary>
 
                 <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
                       onsubmit="return confirm('Record this payment?');"
