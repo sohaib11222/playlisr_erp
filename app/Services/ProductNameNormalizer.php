@@ -204,7 +204,7 @@ class ProductNameNormalizer
             'yusufislam' => 'Cat Stevens',
             'yusufcatstevens' => 'Cat Stevens',
             '2chainz' => '2 Chainz',
-            '100gecs' => '100 gecs',
+            '100gecs' => '100 Gecs',
             'e40' => 'E-40',
             'falloutboy' => 'Fall Out Boy',
             // ZZ Top — stylized all-caps, must not become "Zz Top".
@@ -224,7 +224,7 @@ class ProductNameNormalizer
             // Stylized casing the auto title-caser gets wrong.
             'afi' => 'AFI',
             'abba' => 'ABBA',
-            'aha' => 'a-ha',
+            'aha' => 'A-HA',
             '50cent' => '50 Cent',
         ];
     }
@@ -233,11 +233,10 @@ class ProductNameNormalizer
     {
         // Strip Discogs markers (matched catalog spellings can carry "*"/"(2)").
         $s = self::stripMarkers(trim((string) $s));
-        // A stray, unbalanced straight double-quote is bad catalog data
-        // ('"Mott The Hoople'); drop it. Balanced quotes are a real stylization
-        // ('"Weird Al" Yankovic') and stay, as do leading apostrophes ("'Til
-        // Tuesday").
-        if (substr_count($s, '"') % 2 === 1) { $s = trim(str_replace('"', '', $s)); }
+        // Double-quotes never belong in an artist value ('"Mott The Hoople',
+        // '"Weird Al" Yankovic'); drop them all. Leading apostrophes are part of
+        // the name ("'Til Tuesday") and stay.
+        if (strpos($s, '"') !== false) { $s = trim(str_replace('"', '', $s)); }
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
         $curated = self::curatedArtists();
