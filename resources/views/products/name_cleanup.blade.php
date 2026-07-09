@@ -81,6 +81,14 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             <input type="text" id="arFilter" placeholder="Filter by artist (e.g. A, or Beat…)" autocomplete="off"
                    style="height:44px;padding:0 14px;border:1px solid #ECE3D2;border-radius:10px;font-family:inherit;font-size:14px;width:280px;background:#fff;">
         </div>
+        <div style="margin-top:14px;padding:14px;border:1px solid #CDE3CD;background:#F3F9F3;border-radius:10px;">
+            <div style="font-weight:600;color:#1B5E20;">One-click: fill the safe ones automatically</div>
+            <p class="sub" style="margin:6px 0 10px;">Fills every <b>surname-first name</b> (e.g. "SMITH,PATTI GROUP" &rarr; Patti Smith Group) and every <b>compilation</b> across the whole catalog, all letters at once — these don't need a human eye. What's left to review by hand is only the ambiguous "Title / Artist" guesses. Runs in batches; leave the tab open. Fully undoable.</p>
+            <div class="mgn-actions" style="margin-top:0;">
+                <button class="mgn-btn mgn-btn-primary" id="arAutoBtn" type="button">Auto-fill surname-first + compilations</button>
+                <span class="mgn-note" id="arAutoProgress" style="margin-top:0"></span>
+            </div>
+        </div>
         <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
@@ -439,6 +447,30 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     }
 
     arScanBtn.addEventListener('click', function () { doArScan(); });
+
+    // One-click auto-fill of the structural parses (surname-first + compilations)
+    // across the whole catalog, in batches, until none remain.
+    var arAutoBtn = document.getElementById('arAutoBtn');
+    var arAutoProgress = document.getElementById('arAutoProgress');
+    arAutoBtn.addEventListener('click', function () {
+        if (!confirm('Auto-fill every surname-first name and compilation across the whole catalog? Runs in batches; undoable from Admin Action History.')) { return; }
+        clearMsg();
+        arAutoBtn.disabled = true; arScanBtn.disabled = true;
+        var total = 0;
+        function step() {
+            arAutoProgress.textContent = 'Filling… ' + total + ' done so far.';
+            post('{{ route('products.artist.apply') }}', { only: 'high', max: 1000 }).then(function (d) {
+                if (!d.success) { arAutoBtn.disabled = false; arScanBtn.disabled = false; showMsg(d.msg || 'Auto-fill failed.', false); arAutoProgress.textContent = ''; return; }
+                total += (d.filled || 0);
+                if (d.filled > 0) { step(); return; }
+                arAutoBtn.disabled = false; arScanBtn.disabled = false;
+                arAutoProgress.textContent = '';
+                showMsg('Auto-filled ' + total + ' artist(s) (surname-first + compilations). Now scan a letter to review the remaining "Title / Artist" ones. Undo at Admin Action History.', true);
+                if (arResult.style.display !== 'none' && arFilter !== '') { doArScan(); }
+            }).catch(function () { arAutoBtn.disabled = false; arScanBtn.disabled = false; showMsg('Auto-fill stopped — re-run to continue where it left off.', false); arAutoProgress.textContent = ''; });
+        }
+        step();
+    });
 
     arApplyBtn.addEventListener('click', function () {
         var ids = arData.filter(function (f) { return f.sel; }).map(function (f) { return f.id; });

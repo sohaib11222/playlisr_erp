@@ -346,6 +346,11 @@ class ProductNameController extends Controller
             ? array_slice(array_values(array_unique(array_filter(array_map('intval', $ids)))), 0, 5000)
             : null;
 
+        // only=high fills ONLY the structural parses (surname-first "LAST,FIRST"
+        // and compilations) — the ones that don't need a human eye — across the
+        // whole catalog in batches, so they never have to be reviewed by hand.
+        $onlyHigh = $request->input('only') === 'high';
+
         $batch = [];
         $query = $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
@@ -353,10 +358,11 @@ class ProductNameController extends Controller
         if ($selected !== null) { $query->whereIn('id', $selected); }
         $cap = $selected !== null ? count($selected) : $max;
         if ($cap < 1) { $cap = 1; }
-        $query->chunk(2000, function ($rows) use (&$batch, $cap, $knownKeys) {
+        $query->chunk(2000, function ($rows) use (&$batch, $cap, $knownKeys, $onlyHigh) {
             foreach ($rows as $r) {
                 $res = $this->parseArtistFromRow($r->name, $r->artist, $knownKeys);
                 if (!$res['confident']) { continue; }
+                if ($onlyHigh && ($res['trust'] ?? 'ok') !== 'high') { continue; }
                 $batch[] = [
                     'id' => (int) $r->id,
                     'old' => (string) ($r->artist ?? ''),
@@ -414,14 +420,16 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Fill failed — nothing was changed.']);
         }
 
-        $remaining = $this->computeArtistBackfill($business_id, false)['to_fill'];
+        // The full remaining recount walks the whole catalog — skip it during the
+        // auto-fill loop (it calls back many times and only cares about `filled`).
+        $remaining = $onlyHigh ? null : $this->computeArtistBackfill($business_id, false)['to_fill'];
 
         return response()->json([
             'success' => true,
             'filled' => $filled,
             'filled_ids' => $filledIds,
             'remaining' => $remaining,
-            'msg' => "Filled {$filled}. {$remaining} remaining.",
+            'msg' => $remaining === null ? "Filled {$filled}." : "Filled {$filled}. {$remaining} remaining.",
         ]);
     }
 
