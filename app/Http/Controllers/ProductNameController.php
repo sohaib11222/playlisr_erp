@@ -129,47 +129,17 @@ class ProductNameController extends Controller
      */
     protected function artistSignalKeys($business_id, $catIds)
     {
+        // Only curated artists are trusted as a "known artist" signal.
+        //
+        // We used to also treat any name segment that paired with >=2 distinct
+        // partners as a known artist, but that INVERTS on common album titles:
+        // "Rebel", "Respect", "Record", "Rock & Roll" appear across many DIFFERENT
+        // artists, so they rack up >=2 distinct partners and get mistaken for the
+        // artist — beating the real name on "Title / Artist" rows. Dropping it
+        // means the parser only auto-fills what it's STRUCTURALLY sure of
+        // (surname-first "LAST,FIRST", compilations, curated). Everything else is
+        // flagged for the hand-fill grid rather than mis-filled.
         $keys = [];
-        if (empty($catIds)) {
-            foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) { $keys[$k] = $spelling; }
-            return $keys;
-        }
-
-        $partners = [];   // key => [partnerKey => 1]
-        $spell = [];
-        \DB::table('products')
-            ->where('business_id', $business_id)
-            ->whereIn('category_id', $catIds)
-            ->select('name')
-            ->orderBy('id')
-            ->chunk(3000, function ($rows) use (&$partners, &$spell) {
-                foreach ($rows as $r) {
-                    $seg = ProductNameNormalizer::nameSegments($r->name);
-                    if ($seg === null) { continue; }
-                    $k0 = ProductNameNormalizer::artistKey($seg[0]);
-                    $k1 = ProductNameNormalizer::artistKey($seg[1]);
-                    if ($k0 !== '') {
-                        if (!isset($spell[$k0])) { $spell[$k0] = $seg[0]; }
-                        if ($k1 !== '') { $partners[$k0][$k1] = 1; }
-                    }
-                    if ($k1 !== '') {
-                        if (!isset($spell[$k1])) { $spell[$k1] = $seg[1]; }
-                        if ($k0 !== '') { $partners[$k1][$k0] = 1; }
-                    }
-                }
-            });
-
-        // Repeated non-artist title phrases to never treat as an artist.
-        $stop = $this->titleStopKeys();
-
-        foreach ($partners as $k => $set) {
-            if (count($set) >= 2 && !isset($keys[$k]) && !isset($stop[$k])) {
-                $keys[$k] = $spell[$k];
-            }
-        }
-
-        // Hand-fixed artists are always recognized (and spelled canonically),
-        // so a one-off like Willie Colón is never flagged.
         foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) {
             $keys[$k] = $spelling;
         }
