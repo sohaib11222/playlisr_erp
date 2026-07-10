@@ -247,6 +247,7 @@ class ProductNameNormalizer
             'czarfacemfdoom' => 'Czarface & MF Doom',
             // Mangled multi-artist jazz credit ("Sonny Side Up").
             'gillespiedizzysonnystittsonnyrollins' => 'Dizzy Gillespie, Sonny Stitt & Sonny Rollins',
+            'chetbaker' => 'Chet Baker',
         ];
     }
 
