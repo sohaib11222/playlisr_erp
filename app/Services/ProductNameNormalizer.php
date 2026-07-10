@@ -191,7 +191,7 @@ class ProductNameNormalizer
             'maroon5' => 'Maroon 5',
             'neworder' => 'New Order',
             'notoriousbig' => 'Notorious B.I.G.',
-            'fkatwigs' => 'FKA twigs',
+            'fkatwigs' => 'FKA Twigs',
             'darylhalljohnoates' => 'Daryl Hall & John Oates',
             'kinggizzardthelizardwizard' => 'King Gizzard & The Lizard Wizard',
             'florencethemachine' => 'Florence & The Machine',
