@@ -31,18 +31,21 @@ class CreateStoreCreditLogsTable extends Migration
             // manual_add  = green "Add Store Credit" button (no purchase form)
             // manual_adjust = signed adjustment (no purchase form)
             // buy_from_customer = accepted buy-from-customer payout (has form)
-            $table->enum('source', ['manual_add', 'manual_adjust', 'buy_from_customer'])
+            // redeem = store credit SPENT on a sale (negative amount)
+            $table->enum('source', ['manual_add', 'manual_adjust', 'buy_from_customer', 'redeem'])
                 ->default('manual_add');
             $table->decimal('amount', 22, 4)->default(0);        // signed: +add / -subtract
             $table->decimal('balance_after', 22, 4)->default(0);
             $table->text('reason')->nullable();
             $table->unsignedBigInteger('buy_customer_offer_id')->nullable();
+            $table->unsignedInteger('transaction_id')->nullable(); // the sell, for redemptions
             $table->timestamps();
 
             $table->index(['business_id', 'created_at']);
             $table->index(['user_id']);
             $table->index(['contact_id']);
             $table->index(['source']);
+            $table->index(['transaction_id']);
         });
     }
 

@@ -19,6 +19,7 @@ class StoreCreditLog extends Model
         'balance_after',
         'reason',
         'buy_customer_offer_id',
+        'transaction_id',
     ];
 
     protected $casts = [

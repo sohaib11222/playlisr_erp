@@ -4521,6 +4521,30 @@ class SellPosController extends Controller
                         $contact = \App\Contact::find($contact_id);
                         if ($contact) {
                             $this->transactionUtil->updateContactBalance($contact, $store_credit_used, 'deduct');
+
+                            // Structured redemption row so this spend is auditable
+                            // per customer + per employee (previously it only lowered
+                            // the balance with no linked record). Idempotent per sale
+                            // so re-saving/editing a sale doesn't double-count.
+                            try {
+                                if (\Illuminate\Support\Facades\Schema::hasTable('store_credit_logs')
+                                    && \Illuminate\Support\Facades\Schema::hasColumn('store_credit_logs', 'transaction_id')) {
+                                    \App\StoreCreditLog::where('transaction_id', (int) $transaction->id)
+                                        ->where('source', 'redeem')->delete();
+                                    \App\StoreCreditLog::create([
+                                        'business_id' => (int) $contact->business_id,
+                                        'contact_id' => (int) $contact->id,
+                                        'user_id' => auth()->id(),
+                                        'source' => 'redeem',
+                                        'amount' => -1 * (float) $store_credit_used,
+                                        'balance_after' => (float) $contact->balance,
+                                        'reason' => 'store credit used on sale ' . ($transaction->invoice_no ?? ('#' . $transaction->id)),
+                                        'transaction_id' => (int) $transaction->id,
+                                    ]);
+                                }
+                            } catch (\Exception $e) {
+                                \Log::warning('store_credit_logs redeem write failed: ' . $e->getMessage());
+                            }
                         }
                     }
                 }
