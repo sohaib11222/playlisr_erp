@@ -9,6 +9,9 @@
         state here before applying changes. Click <strong>Undo</strong> to
         restore the affected rows to their previous values.
     </p>
+    <a href="{{ url('/admin/admin-action-history/artist-fills') }}" class="btn btn-primary btn-sm">
+        See all artist fills (combined &amp; searchable)
+    </a>
 </section>
 
 <section class="content">

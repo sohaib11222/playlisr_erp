@@ -103,6 +103,53 @@ class AdminActionHistoryController extends Controller
         ]);
     }
 
+    /**
+     * One combined page of EVERY artist backfill row (Product, Before, After,
+     * source) across all backfill-artist-from-name snapshots — so the whole
+     * Discogs artist fill can be reviewed at once instead of batch-by-batch.
+     */
+    public function artistFills()
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $files = collect(Storage::disk('local')->files('admin-snapshots'))
+            ->filter(function ($f) {
+                return str_ends_with($f, '.json') && str_contains($f, 'backfill-artist-from-name');
+            })
+            ->sortByDesc(function ($f) {
+                preg_match('/(\d{4}-\d{2}-\d{2}_\d{6})/', $f, $m);
+                return $m[1] ?? '';
+            })
+            ->values();
+
+        $rows = [];
+        $cap = 8000; // plenty to review; guards the page from an unbounded catalog
+        foreach ($files as $f) {
+            if (count($rows) >= $cap) { break; }
+            $data = json_decode(Storage::disk('local')->get($f), true);
+            if (!$data || empty($data['rows']) || !is_array($data['rows'])) { continue; }
+            $source = str_contains(strtolower((string) ($data['source_name'] ?? '')), 'discogs') ? 'Discogs' : 'Name';
+            $ts = $data['timestamp'] ?? null;
+            foreach ($data['rows'] as $r) {
+                if (!isset($r['id'])) { continue; }
+                $rows[] = ['id' => (int) $r['id'], 'old' => $r['old'] ?? null, 'new' => $r['new'] ?? null, 'source' => $source, 'ts' => $ts];
+                if (count($rows) >= $cap) { break; }
+            }
+        }
+
+        $ids = array_column($rows, 'id');
+        $names = empty($ids) ? [] : DB::table('products')->whereIn('id', $ids)->pluck('name', 'id')->toArray();
+        foreach ($rows as &$r) { $r['name'] = $names[$r['id']] ?? '(deleted product)'; }
+        unset($r);
+
+        return view('admin.admin_action_artist_fills', [
+            'rows' => $rows,
+            'capped' => count($rows) >= $cap,
+            'cap' => $cap,
+        ]);
+    }
+
     public function undo(Request $request)
     {
         @set_time_limit(0);

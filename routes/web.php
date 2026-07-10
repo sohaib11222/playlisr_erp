@@ -1087,6 +1087,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // History of destructive admin backfills with one-click Undo. Every /admin/*
     // /run endpoint that mutates rows in bulk should write a snapshot here first.
     Route::get('/admin/admin-action-history', 'AdminActionHistoryController@index');
+    Route::get('/admin/admin-action-history/artist-fills', 'AdminActionHistoryController@artistFills');
     Route::get('/admin/admin-action-history/view/{key}', 'AdminActionHistoryController@show');
     Route::post('/admin/admin-action-history/undo', 'AdminActionHistoryController@undo');
 
