@@ -239,6 +239,7 @@ class ProductNameNormalizer
             // All-caps group stylizations title-casing gets wrong.
             'ugk' => 'UGK',
             'usda' => 'USDA',
+            'qkumbazoo' => 'Qkumba Zoo',
         ];
     }
 
