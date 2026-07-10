@@ -71,9 +71,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             <div class="sub">${{ number_format($sales_bonus['bonus'], 2) }} sales bonus{{ $sales_bonus['live'] ? '' : ' (projected)' }} + ${{ number_format($earned, 2) }} listing pay</div>
             <div class="sub" style="margin-top:6px;">
                 Paid to you <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp;
-                @if($total_owed_now > 0.004)Still owed <strong>${{ number_format($total_owed_now, 2) }}</strong>
-                @elseif($total_owed_now < -0.004)Overpaid <strong>${{ number_format(abs($total_owed_now), 2) }}</strong> (credit)
-                @else<strong>Fully paid up</strong>@endif
+                <strong>{{ $total_owed_now > 0.004 ? 'Still owed $' . number_format($total_owed_now, 2) : ($total_owed_now < -0.004 ? 'Overpaid $' . number_format(abs($total_owed_now), 2) . ' (credit)' : 'Fully paid up') }}</strong>
             </div>
         </div>
 
@@ -101,7 +99,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                 <div class="me-stat">
                     <div class="lbl">Paid out to you</div>
                     <div class="val" style="font-size:24px;">${{ number_format($sales_paid, 2) }}</div>
-                    <div class="sub">@if($salesOwed < -0.004)overpaid ${{ number_format(abs($salesOwed), 2) }} (credit)@elseif($salesOwed > 0.004)still owed ${{ number_format($salesOwed, 2) }}@else fully paid @endif</div>
+                    <div class="sub">{{ $salesOwed < -0.004 ? 'overpaid $' . number_format(abs($salesOwed), 2) . ' (credit)' : ($salesOwed > 0.004 ? 'still owed $' . number_format($salesOwed, 2) : 'fully paid') }}</div>
                 </div>
             </div>
             <p class="me-note" style="margin-top:14px;">You earn 2% of every dollar you ring above your daily sales target (the target comes from the store's own hourly history). It's added up day by day.@unless($sales_bonus['live']) This bonus isn't live yet — the figure above is a projection.@endunless</p>
@@ -130,10 +128,11 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                 <div class="val">${{ number_format($paid_out, 2) }}</div>
                 <div class="sub">{{ $payouts->count() }} payout(s)</div>
             </div>
+            @php $owedNeg = $owed < -0.004; @endphp
             <div class="me-stat owed">
                 <div class="lbl">Listing still owed</div>
-                <div class="val">@if($owed < -0.004)-${{ number_format(abs($owed), 2) }}@else${{ number_format($owed, 2) }}@endif</div>
-                <div class="sub">@if($owed < -0.004)overpaid — credit@elseearned minus paid@endif</div>
+                <div class="val">{{ $owedNeg ? '-$' . number_format(abs($owed), 2) : '$' . number_format($owed, 2) }}</div>
+                <div class="sub">{{ $owedNeg ? 'overpaid — credit' : 'earned minus paid' }}</div>
             </div>
         </div>
         </div>
