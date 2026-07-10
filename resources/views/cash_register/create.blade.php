@@ -11,6 +11,16 @@
     if (session('pos_duty') === 'cashier' && session('pos_duty_opening_cash') !== null) {
         $prefillAmount = number_format((float) session('pos_duty_opening_cash'), 2, '.', '');
     }
+    // Sarah 2026-07-10: this page now counts the drawer by bill denomination
+    // (same 100/50/20/10/5/1 grid as the POS duty picker) instead of a single
+    // total, so cashiers who open a register straight from the Cash Register
+    // page — skipping the duty picker — still count by bill. If they DID come
+    // through the picker, prefill each bill count from that session so they
+    // don't recount. Keyed by face value; missing = empty (0) count.
+    $prefillDenoms = [];
+    if (session('pos_duty') === 'cashier' && is_array(session('pos_duty_opening_cash_denoms'))) {
+        $prefillDenoms = session('pos_duty_opening_cash_denoms');
+    }
     $prefillLoc = session('pos_duty_location_id');
     if ($prefillLoc !== null && $prefillLoc !== '' && !$business_locations->has((int) $prefillLoc)) {
         $prefillLoc = null;
@@ -122,6 +132,59 @@
     background: #1F1B16; color: #FAF6EE; border-color: #1F1B16;
     box-shadow: 0 4px 14px rgba(31,27,22,.20);
   }
+
+  /* Denomination grid (Sarah 2026-07-10) — one row per bill:
+     "$100 × [count] = $subtotal". Mirrors the POS duty-picker grid so the
+     open-register flow counts by bill no matter which entry point the
+     cashier used. Live-summed into the hidden #cash_in_hand_amount field. */
+  .ocr-denoms {
+    max-width: 520px;
+    background: #fff;
+    border: 3px solid #E8CF68;
+    border-radius: 14px;
+    padding: 14px 20px;
+    box-shadow: 0 0 0 4px rgba(232, 207, 104, .25),
+                0 4px 12px rgba(0, 0, 0, .06);
+  }
+  .ocr-denom-row {
+    display: grid;
+    grid-template-columns: 64px 16px 1fr 16px 120px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .ocr-denom-row + .ocr-denom-row { border-top: 1px solid #F2E9CE; }
+  .ocr-denom-face {
+    font-size: 24px; font-weight: 800; color: #5A4410;
+    font-variant-numeric: tabular-nums;
+  }
+  .ocr-denom-op { font-size: 20px; font-weight: 700; color: #C9B670; text-align: center; }
+  .ocr-denom-count {
+    width: 100%;
+    border: 1.5px solid #DFD2B3; outline: none; background: #FFFDF6;
+    border-radius: 10px; padding: 10px 12px;
+    font-family: inherit; font-size: 24px; font-weight: 800;
+    color: #1F1B16; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .ocr-denom-count::placeholder { color: #c9b670; }
+  .ocr-denom-count:focus { box-shadow: 0 0 0 3px rgba(232,207,104,.35); border-color: #E8CF68; }
+  .ocr-denom-sub {
+    font-size: 20px; font-weight: 700; color: #1F1B16; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .ocr-denom-total-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: 12px; padding-top: 12px; border-top: 2px solid #E8CF68;
+  }
+  .ocr-denom-total-label {
+    font-size: 13px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .08em; color: #5A4410;
+  }
+  .ocr-denom-total {
+    font-size: 32px; font-weight: 800; color: #1F1B16;
+    letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+  }
 </style>
 <!-- Content Header (Page header) -->
 <section class="content-header">
@@ -204,22 +267,41 @@
         @if($business_locations->count() > 0)
         <div class="col-sm-8 col-sm-offset-2">
           <div class="form-group">
-            <label for="cash_in_hand_amount" class="ocr-hero-label">
-              Cash in hand <span style="color:#b91c1c;">*</span>
+            <label class="ocr-hero-label">
+              Count the drawer — how many of each bill? <span style="color:#b91c1c;">*</span>
             </label>
-            <div class="ocr-hero-wrap">
-              <span class="ocr-hero-currency">$</span>
-              {!! Form::text('amount', $prefillAmount, [
-                'class' => 'ocr-hero-input input_number',
-                'id' => 'cash_in_hand_amount',
-                'placeholder' => '0.00',
-                'required',
-                'autofocus',
-                'data-decimal' => '1',
-              ]); !!}
+            {{-- Bill-count grid (Sarah 2026-07-10). The cashier enters the
+                 number of each bill; JS sums it live into the hidden
+                 #cash_in_hand_amount below, which the backend and the
+                 over-$500 safe-drop alert both read. Prefilled from the duty
+                 picker's counts when the cashier came through there. --}}
+            <div class="ocr-denoms" id="ocr-denoms">
+              @foreach([100, 50, 20, 10, 5, 1] as $face)
+                <div class="ocr-denom-row">
+                  <span class="ocr-denom-face">${{ $face }}</span>
+                  <span class="ocr-denom-op">&times;</span>
+                  <input type="number" class="ocr-denom-count"
+                         data-face="{{ $face }}"
+                         value="{{ !empty($prefillDenoms[$face]) ? (int) $prefillDenoms[$face] : '' }}"
+                         min="0" step="1" inputmode="numeric"
+                         placeholder="0" autocomplete="off"
+                         @if($face === 100) autofocus @endif>
+                  <span class="ocr-denom-op">=</span>
+                  <span class="ocr-denom-sub" data-sub="{{ $face }}">$0.00</span>
+                </div>
+              @endforeach
+              <div class="ocr-denom-total-row">
+                <span class="ocr-denom-total-label">Cash in hand</span>
+                <span class="ocr-denom-total" id="ocr-denom-total">$0.00</span>
+              </div>
             </div>
+            {{-- Hidden total the backend reads. Kept id/name so store() and
+                 the safe-drop alert JS need no changes — the grid just feeds
+                 this value and dispatches an input event. --}}
+            <input type="hidden" name="amount" id="cash_in_hand_amount"
+                   value="{{ $prefillAmount ?? '' }}">
             <p class="ocr-hero-help">
-              Count the drawer right now. After your safe drop below, the rest is your opening balance for the shift.
+              Count the drawer right now, bill by bill. After your safe drop below, the rest is your opening balance for the shift.
             </p>
 
             {{-- Over-$500 safe alert (Sarah 2026-05-07): if the cashier
@@ -344,6 +426,42 @@
 <!-- /.content -->
 
 <script>
+  /* Bill-count grid → hidden total (Sarah 2026-07-10). Sums the per-bill
+     counts into #cash_in_hand_amount and dispatches an 'input' event so the
+     safe-drop alert below (which watches that field) recomputes. The hidden
+     field is the single source of truth the form posts. */
+  (function () {
+    var grid = document.getElementById('ocr-denoms');
+    var amount = document.getElementById('cash_in_hand_amount');
+    if (!grid || !amount) return;
+    var counts = Array.prototype.slice.call(grid.querySelectorAll('.ocr-denom-count'));
+    var totalEl = document.getElementById('ocr-denom-total');
+    function fmt(n) {
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function recompute() {
+      var total = 0;
+      counts.forEach(function (c) {
+        var face = parseInt(c.getAttribute('data-face'), 10) || 0;
+        var qty = parseInt(c.value, 10);
+        if (!isFinite(qty) || qty < 0) qty = 0;
+        var sub = face * qty;
+        total += sub;
+        var subEl = grid.querySelector('.ocr-denom-sub[data-sub="' + face + '"]');
+        if (subEl) subEl.textContent = fmt(sub);
+      });
+      if (totalEl) totalEl.textContent = fmt(total);
+      amount.value = total.toFixed(2);
+      // Let the safe-drop alert (and its polling fallback) see the new total.
+      amount.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    counts.forEach(function (c) {
+      c.addEventListener('input', recompute);
+      c.addEventListener('change', recompute);
+    });
+    recompute();
+  })();
+
   /* Safe-drop alert + location pill picker — vanilla JS so we don't depend
      on jQuery ready timing or the input_number plugin's event handling
      (the previous jQuery `$('...').on('input', ...)` version didn't fire
