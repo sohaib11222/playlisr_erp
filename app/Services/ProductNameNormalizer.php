@@ -346,6 +346,9 @@ class ProductNameNormalizer
         list($last, $first) = array_map('trim', explode(',', $seg));
         if ($last === '' || $first === '') { return false; }
         if (!preg_match('/^\p{L}/u', $last) || !preg_match('/^\p{L}/u', $first)) { return false; }
+        // Real "Last,First" names have multi-letter parts; a single-letter side
+        // ("I,I" — an album title) is not a surname-first person.
+        if (mb_strlen($last) < 2 || mb_strlen($first) < 2) { return false; }
         return true;
     }
 

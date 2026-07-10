@@ -82,7 +82,8 @@ class ProductNameController extends Controller
             'singles' => 1, 'thesingles' => 1, 'selftitled' => 1, 'hits' => 1, 'anthology' => 1,
             'collection' => 1, 'compilation' => 1, 'various' => 1, 'variousartists' => 1,
             'soundtrack' => 1, 'ost' => 1, 'deluxe' => 1, 'remastered' => 1, 'acoustic' => 1,
-            'demos' => 1, 'demo' => 1, 'ep' => 1, 'lp' => 1, 'untitled' => 1];
+            'demos' => 1, 'demo' => 1, 'ep' => 1, 'lp' => 1, 'untitled' => 1,
+            'instrumentals' => 1, 'instrumental' => 1];
     }
 
     protected function knownArtistKeys($business_id)
