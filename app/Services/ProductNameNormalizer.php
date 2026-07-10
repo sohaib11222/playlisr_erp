@@ -233,6 +233,9 @@ class ProductNameNormalizer
             'bobweir' => 'Bob Weir',
             // A mangled "kanYeWest" in one artist column poisoned every Kanye row.
             'kanyewest' => 'Kanye West',
+            // Bad catalog spellings (extra/missing spaces).
+            'buffalospringfield' => 'Buffalo Springfield',
+            'bloodhoundgang' => 'Bloodhound Gang',
         ];
     }
 
@@ -275,6 +278,14 @@ class ProductNameNormalizer
     {
         $s = trim((string) $s);
         if (substr_count($s, ',') !== 1) { return $s; }
+        // "LAST,FIRST & Collaborator" — flip just the leading tight "Last,First"
+        // and keep the rest: "Cruz,Celia & Johnny Pacheco" -> "Celia Cruz &
+        // Johnny Pacheco", "Baker,Chet & Art Pepper" -> "Chet Baker & Art Pepper".
+        // The TIGHT comma (no space after) is required, so a comma-list like
+        // "Earth, Wind & Fire" (space after comma) is left untouched.
+        if (preg_match('/^([^\s,]+),([^\s,]+)(\s+(?:&|\+|and)\s+.*)$/i', $s, $m)) {
+            return $m[2] . ' ' . $m[1] . $m[3];
+        }
         if (preg_match('/&|\+|\band\b/i', $s)) { return $s; }
         list($a, $b) = array_map('trim', explode(',', $s));
         if ($a === '' || $b === '') { return $s; }
