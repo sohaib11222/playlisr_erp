@@ -16,10 +16,16 @@ class AdminActionHistoryController extends Controller
 {
     public function index()
     {
+        // Take the 200 MOST RECENT files. Sorting by filename would order by the
+        // action-name prefix (so "backfill-*" sorts below "product-*"/"recategorize-*"
+        // and gets cut off by the cap) — sort by the timestamp embedded in the
+        // name instead so newest actions always show regardless of action name.
         $files = collect(Storage::disk('local')->files('admin-snapshots'))
             ->filter(function ($f) { return str_ends_with($f, '.json'); })
-            ->sort()
-            ->reverse()
+            ->sortByDesc(function ($f) {
+                preg_match('/(\d{4}-\d{2}-\d{2}_\d{6})/', $f, $m);
+                return $m[1] ?? '';
+            })
             ->take(200)
             ->values();
 
@@ -34,7 +40,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
