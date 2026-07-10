@@ -63,6 +63,46 @@ class AdminActionHistoryController extends Controller
         return view('admin.admin_action_history', ['snapshots' => $snapshots]);
     }
 
+    /**
+     * Show the actual row-by-row changes in one snapshot (product name, before ->
+     * after), so an admin can see exactly what a backfill did — e.g. which artists
+     * the Discogs fill wrote.
+     */
+    public function show($key)
+    {
+        $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string) $key);
+        $path = "admin-snapshots/{$key}.json";
+        if ($key === '' || !Storage::disk('local')->exists($path)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot not found.']);
+        }
+        $data = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        $rows = is_array($data['rows'] ?? null) ? $data['rows'] : [];
+
+        // Resolve product names for rows that carry a product id.
+        $ids = [];
+        foreach ($rows as $r) { if (isset($r['id'])) { $ids[] = (int) $r['id']; } }
+        $names = empty($ids) ? [] : DB::table('products')->whereIn('id', $ids)->pluck('name', 'id')->toArray();
+
+        $view = [];
+        foreach ($rows as $r) {
+            $view[] = [
+                'id' => $r['id'] ?? null,
+                'name' => isset($r['id']) ? ($names[(int) $r['id']] ?? '(deleted product)') : null,
+                'old' => $r['old'] ?? null,
+                'new' => $r['new'] ?? null,
+            ];
+        }
+
+        return view('admin.admin_action_history_detail', [
+            'key' => $key,
+            'action' => $data['action'] ?? '?',
+            'timestamp' => $data['timestamp'] ?? null,
+            'detail' => ($data['source_name'] ?? null),
+            'rows' => $view,
+        ]);
+    }
+
     public function undo(Request $request)
     {
         @set_time_limit(0);

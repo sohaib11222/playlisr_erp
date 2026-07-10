@@ -45,10 +45,12 @@
                                     <td>{{ $s->detail ?? '—' }}</td>
                                     <td style="text-align:right;"><strong>{{ number_format($s->rows_count) }}</strong></td>
                                     <td><code>{{ $s->key }}</code></td>
-                                    <td>
+                                    <td style="white-space:nowrap;">
+                                        <a href="{{ url('/admin/admin-action-history/view/' . $s->key) }}"
+                                           class="btn btn-default btn-xs" style="margin-right:4px;">View changes</a>
                                         <form method="POST" action="{{ url('/admin/admin-action-history/undo') }}"
                                               onsubmit="return confirm('Restore {{ $s->rows_count }} rows from snapshot {{ $s->key }}? This will overwrite current values for those rows.');"
-                                              style="margin:0;">
+                                              style="margin:0;display:inline-block;">
                                             @csrf
                                             <input type="hidden" name="key" value="{{ $s->key }}">
                                             <button type="submit" class="btn btn-warning btn-xs">Undo</button>
