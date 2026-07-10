@@ -243,6 +243,10 @@ class ProductNameNormalizer
             // Keep initials (title-casing would lowercase them: "Pj Harvey").
             'pjharvey' => 'PJ Harvey',
             'mjlenderman' => 'MJ Lenderman',
+            // MF DOOM collab keeps "MF" caps (title-caser makes it "Mf Doom").
+            'czarfacemfdoom' => 'Czarface & MF Doom',
+            // Mangled multi-artist jazz credit ("Sonny Side Up").
+            'gillespiedizzysonnystittsonnyrollins' => 'Dizzy Gillespie, Sonny Stitt & Sonny Rollins',
         ];
     }
 
