@@ -231,6 +231,8 @@ class ProductNameNormalizer
             // Bob Weir — so "Ace / Bob Weir" (Ace is his album, and also a band
             // name) stops resolving to "Ace" and is recognized as the artist.
             'bobweir' => 'Bob Weir',
+            // A mangled "kanYeWest" in one artist column poisoned every Kanye row.
+            'kanyewest' => 'Kanye West',
         ];
     }
 
@@ -308,6 +310,22 @@ class ProductNameNormalizer
      * GROUP" / "BROWN,ZAC BAND" (a band sorted under a member's surname) are all
      * the artist side; flipLastFirst puts the surname in the right place.
      */
+    /**
+     * Choose between the catalog's stored artist spelling and the raw name
+     * segment. Normally the catalog spelling wins (it's usually Discogs-clean),
+     * but if it's a camelCase run with no spaces ("kanYeWest" — one product's
+     * mangled artist column that poisons the recognized set) and the name segment
+     * is a normal multi-word name ("Kanye West"), trust the segment instead.
+     */
+    protected static function pickBetterSpelling($known, $segment)
+    {
+        $k = trim((string) $known);
+        $seg = trim((string) $segment);
+        $knownJunk = $k !== '' && !preg_match('/\s/u', $k) && preg_match('/\p{Ll}\p{Lu}/u', $k);
+        if ($knownJunk && $seg !== '' && preg_match('/\s/u', $seg)) { return $seg; }
+        return $k;
+    }
+
     protected static function looksSurnameFirst($seg)
     {
         $seg = trim((string) $seg);
@@ -472,11 +490,11 @@ class ProductNameNormalizer
             // Discogs-clean / proper-cased) instead of the raw name segment. If
             // the catalog only has an ALL-CAPS spelling, proper-case that.
             if ($firstKnown && !$secondKnown) {
-                $artist = is_string($knownKeys[$fk]) ? $knownKeys[$fk] : $first;
+                $artist = self::pickBetterSpelling(is_string($knownKeys[$fk]) ? $knownKeys[$fk] : $first, $first);
                 return self::validateParsedArtist(self::cleanArtistValue($artist), $second, 'Artist ' . $label . ' Title');
             }
             if ($secondKnown && !$firstKnown) {
-                $artist = is_string($knownKeys[$sk]) ? $knownKeys[$sk] : $second;
+                $artist = self::pickBetterSpelling(is_string($knownKeys[$sk]) ? $knownKeys[$sk] : $second, $second);
                 return self::validateParsedArtist(self::cleanArtistValue($artist), $first, 'Title ' . $label . ' Artist');
             }
             // Both sides are known artists (e.g. a split/collab) — genuinely
