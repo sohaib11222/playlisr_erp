@@ -114,20 +114,26 @@ class ProductNameController extends Controller
 
     /**
      * Artists recognizable from the catalog, for disambiguating "A / B" names.
-     * Combines two signals:
-     *   1. the artist column (knownArtistKeys), plus
-     *   2. name segments that pair with >=2 DISTINCT other segments across music
-     *      products. A real artist appears with several different album titles
-     *      ("... / Iron Maiden" x2 with different titles), whereas a recurring
-     *      TITLE (dupes/reissues) pairs with only one artist ("Dancing In The
-     *      Street / David Bowie and Mick Jagger" x2) — counting DISTINCT partners
-     *      keeps the artist and drops the title. Stop-listed phrases never count.
+     *
+     * NOTE: we deliberately do NOT seed this from the products.artist column.
+     * That column is unreliable and frequently holds the TITLE, so using it as a
+     * known-artist source poisoned the parser — album titles ("Seven Year Ache",
+     * "Wake Up Again", "Watch The Throne") got recognized as artists and beat the
+     * real name. Instead we recognize an artist only from a stronger structural
+     * signal: a name segment that pairs with >=2 DISTINCT other segments across
+     * music products (a real artist appears with several different album titles;
+     * a recurring TITLE pairs with only one artist). Stop-listed phrases never
+     * count, and curated artists are always trusted. A one-off artist that can't
+     * be corroborated this way is left for manual review rather than mis-filled.
      * Keyed by artistKey(), value = a representative spelling.
      */
     protected function artistSignalKeys($business_id, $catIds)
     {
-        $keys = $this->knownArtistKeys($business_id);
-        if (empty($catIds)) { return $keys; }
+        $keys = [];
+        if (empty($catIds)) {
+            foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) { $keys[$k] = $spelling; }
+            return $keys;
+        }
 
         $partners = [];   // key => [partnerKey => 1]
         $spell = [];
