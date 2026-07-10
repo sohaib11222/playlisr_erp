@@ -872,9 +872,10 @@ class ProductNameController extends Controller
 
             if (stripos($r->name, 'retired') === false) {
                 $artist = $this->artistFromRelease($res['data'] ?? null);
-                if ($artist !== null) {
-                    // Discogs is authoritative; just tidy its compilation marker.
-                    if (preg_match('/^various$/i', trim($artist))) { $artist = 'Various Artists'; }
+                // Only write a REAL single artist. Skip Discogs' "Various" —
+                // filling comps with "Various Artists" isn't useful and just
+                // clutters; leave those blank.
+                if ($artist !== null && !preg_match('/^various\b/i', trim($artist))) {
                     $changes[] = ['id' => (int) $r->id, 'old' => (string) ($r->artist ?? ''), 'new' => $artist];
                 }
             }
@@ -979,8 +980,7 @@ class ProductNameController extends Controller
             $res = $svc->getReleaseById($r->discogs_release_id);
             if (!empty($res['error'])) { continue; }
             $artist = $this->artistFromRelease($res['data'] ?? null);
-            if ($artist !== null) {
-                if (preg_match('/^various$/i', trim($artist))) { $artist = 'Various Artists'; }
+            if ($artist !== null && !preg_match('/^various\b/i', trim($artist))) {
                 $sample[] = ['name' => $r->name, 'artist' => $artist];
             }
             usleep(1100000);
