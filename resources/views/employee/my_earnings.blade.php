@@ -90,6 +90,12 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <div class="val" style="font-size:24px;">${{ number_format($sales_bonus['revenue'], 2) }}</div>
                     <div class="sub">non-Whatnot, counted toward target</div>
                 </div>
+                @php $salesOwed = round((float) $sales_bonus['bonus'] - (float) $sales_paid, 2); @endphp
+                <div class="me-stat">
+                    <div class="lbl">Paid out to you</div>
+                    <div class="val" style="font-size:24px;">${{ number_format($sales_paid, 2) }}</div>
+                    <div class="sub">@if($salesOwed < -0.004)overpaid ${{ number_format(abs($salesOwed), 2) }} (credit)@elseif($salesOwed > 0.004)still owed ${{ number_format($salesOwed, 2) }}@else fully paid @endif</div>
+                </div>
             </div>
             <p class="me-note" style="margin-top:14px;">You earn 2% of every dollar you ring above your daily sales target (the target comes from the store's own hourly history). It's added up day by day.@unless($sales_bonus['live']) This bonus isn't live yet — the figure above is a projection.@endunless</p>
             @if(count($sales_bonus['per_location']) > 1)

@@ -183,6 +183,7 @@ class EmployeeEarningsController extends Controller
             'payment_history' => $myPaymentHistory,
             'total_paid_all'  => $totalPaidAll,
             'total_owed_now'  => $totalOwedNow,
+            'sales_paid'      => $salesPaid,
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
             'viewing_other'=> $viewingOther,
