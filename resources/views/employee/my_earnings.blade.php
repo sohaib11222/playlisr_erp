@@ -77,6 +77,13 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             </div>
         </div>
 
+        @if($total_owed_now < -0.004)
+            <div class="me-card" style="background:#FDECEA; border-color:#E7B7AE; margin-bottom:14px;">
+                <strong style="color:#b3402e; font-size:16px;">Heads up — you were overpaid ${{ number_format(abs($total_owed_now), 2) }} by mistake.</strong>
+                <div style="margin-top:4px; color:#7a3b31;">This isn't money owed to you. It's a credit that will be applied against your future commission until it's used up.</div>
+            </div>
+        @endif
+
         <div class="me-card" style="margin-bottom:14px;">
             <h3>Sales bonus</h3>
             <div class="me-stats" style="margin-bottom:0;">
