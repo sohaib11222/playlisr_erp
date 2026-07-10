@@ -28,8 +28,10 @@
                 </div>
             </form>
             <p class="text-muted small" style="margin-top:8px;">
-                Date range filters sales. <strong>Items barcoded</strong> is lifetime per employee;
-                <strong>items sold</strong> and <strong>revenue</strong> are restricted to the window.
+                Date range filters sales. <strong>Items barcoded</strong> and <strong>sell-through</strong> are
+                lifetime per employee; <strong>items sold</strong> and <strong>revenue</strong> are restricted to the
+                window. So an employee can show 100% sell-through with 0 items sold in the period — all their barcoded
+                items sold at some point, just not inside the selected dates.
             </p>
         </div>
     </div>
@@ -43,7 +45,7 @@
                         <th>Employee</th>
                         <th class="text-right">Items Barcoded (lifetime)</th>
                         <th class="text-right">Items Sold (in period)</th>
-                        <th class="text-right" title="Lifetime: items sold ÷ items barcoded">Sell-through</th>
+                        <th class="text-right" title="Lifetime: items sold ÷ items barcoded — ignores the date range">Sell-through (lifetime)</th>
                         <th class="text-right" title="Total revenue ÷ items sold">Revenue / Item Sold</th>
                         <th class="text-right" title="Total revenue ÷ items barcoded (lifetime)">Revenue / Item Listed</th>
                         <th class="text-right">Total Revenue</th>
