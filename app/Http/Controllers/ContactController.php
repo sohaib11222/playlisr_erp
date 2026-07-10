@@ -1923,6 +1923,11 @@ class ContactController extends Controller
             }
             $contact->save();
 
+            // Structured audit row so this credit is attributable by user_id
+            // (not just a first name) and shows up in /admin/store-credit-log.
+            // This path has no purchase form, so buy_customer_offer_id stays null.
+            $this->logStoreCredit($contact, $amount, $newBalance, 'manual_add', trim((string) $request->input('reason', '')));
+
             if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
                 app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
                     (string) $contact->email,
@@ -1996,6 +2001,9 @@ class ContactController extends Controller
             $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
             $contact->save();
 
+            // Structured audit row (signed amount). No purchase form here.
+            $this->logStoreCredit($contact, $delta, $newBalance, 'manual_adjust', $reason);
+
             if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
                 app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
                     (string) $contact->email,
@@ -2014,6 +2022,33 @@ class ContactController extends Controller
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
             return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Write a structured store-credit ledger row. Best-effort: if the table
+     * hasn't been migrated yet we silently skip (the balance_notes audit line
+     * is still written by the caller), so a missing migration never blocks a
+     * credit from being applied.
+     */
+    protected function logStoreCredit($contact, $amount, $balanceAfter, $source, $reason, $offerId = null)
+    {
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('store_credit_logs')) {
+                return;
+            }
+            \App\StoreCreditLog::create([
+                'business_id' => (int) $contact->business_id,
+                'contact_id' => (int) $contact->id,
+                'user_id' => auth()->id(),
+                'source' => $source,
+                'amount' => (float) $amount,
+                'balance_after' => (float) $balanceAfter,
+                'reason' => $reason !== '' ? $reason : null,
+                'buy_customer_offer_id' => $offerId,
+            ]);
+        } catch (\Exception $e) {
+            \Log::warning('store_credit_logs write failed: ' . $e->getMessage());
         }
     }
 }

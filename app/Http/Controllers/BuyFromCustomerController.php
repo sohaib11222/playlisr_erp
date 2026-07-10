@@ -867,6 +867,25 @@ class BuyFromCustomerController extends Controller
         }
         $contact->save();
 
+        // Structured ledger row — this credit IS backed by a purchase form, so
+        // record the linking offer id. Best-effort; balance_notes is the fallback.
+        try {
+            if (Schema::hasTable('store_credit_logs')) {
+                \App\StoreCreditLog::create([
+                    'business_id' => (int) $contact->business_id,
+                    'contact_id' => (int) $contact->id,
+                    'user_id' => auth()->id(),
+                    'source' => 'buy_from_customer',
+                    'amount' => (float) $amount,
+                    'balance_after' => (float) $newBalance,
+                    'reason' => 'buy-from-customer payout (offer ' . $offer->id . ', record ' . $offer->buy_record_number . ')',
+                    'buy_customer_offer_id' => (int) $offer->id,
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::warning('store_credit_logs write failed: ' . $e->getMessage());
+        }
+
         // Push the delta to the storefront so the online balance matches the ERP.
         if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
             app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
