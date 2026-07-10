@@ -236,6 +236,9 @@ class ProductNameNormalizer
             // Bad catalog spellings (extra/missing spaces).
             'buffalospringfield' => 'Buffalo Springfield',
             'bloodhoundgang' => 'Bloodhound Gang',
+            // All-caps group stylizations title-casing gets wrong.
+            'ugk' => 'UGK',
+            'usda' => 'USDA',
         ];
     }
 
