@@ -28,10 +28,12 @@
                 </div>
             </form>
             <p class="text-muted small" style="margin-top:8px;">
-                Date range filters sales. <strong>Items barcoded</strong> and <strong>sell-through</strong> are
-                lifetime per employee; <strong>items sold</strong> and <strong>revenue</strong> are restricted to the
-                window. So an employee can show 100% sell-through with 0 items sold in the period — all their barcoded
-                items sold at some point, just not inside the selected dates.
+                Date range filters sales. <strong>Items barcoded</strong> and <strong>sell-through (lifetime)</strong>
+                are lifetime per employee; <strong>items sold</strong> and <strong>revenue</strong> are restricted to the
+                window. Lifetime sell-through can read 100% with 0 items sold in the period — all their barcoded items
+                sold at some point, just not inside the selected dates. <strong>Sell-through (period)</strong> is items
+                sold in the window ÷ items barcoded in the window, so it tracks the date range and can exceed 100% when
+                selling down older stock.
             </p>
         </div>
     </div>
@@ -46,6 +48,7 @@
                         <th class="text-right">Items Barcoded (lifetime)</th>
                         <th class="text-right">Items Sold (in period)</th>
                         <th class="text-right" title="Lifetime: items sold ÷ items barcoded — ignores the date range">Sell-through (lifetime)</th>
+                        <th class="text-right" title="Period: items sold in period ÷ items barcoded in period — can exceed 100% when selling older stock; “—” means nothing was barcoded in the window">Sell-through (period)</th>
                         <th class="text-right" title="Total revenue ÷ items sold">Revenue / Item Sold</th>
                         <th class="text-right" title="Total revenue ÷ items barcoded (lifetime)">Revenue / Item Listed</th>
                         <th class="text-right">Total Revenue</th>
@@ -63,13 +66,14 @@
                             <td class="text-right">{{ number_format($r->barcoded_count) }}</td>
                             <td class="text-right">{{ number_format($r->items_sold) }}</td>
                             <td class="text-right">{{ number_format($r->sell_through_pct, 1) }}%</td>
+                            <td class="text-right">{{ is_null($r->sell_through_period_pct) ? '—' : number_format($r->sell_through_period_pct, 1) . '%' }}</td>
                             <td class="text-right">${{ number_format($r->revenue_per_item, 2) }}</td>
                             <td class="text-right">${{ number_format($r->revenue_per_listed_item, 2) }}</td>
                             <td class="text-right"><strong>${{ number_format($r->total_revenue, 2) }}</strong></td>
                             <td class="text-right">{{ ($r->hours_worked ?? 0) > 0 ? number_format($r->hours_worked, 1) . 'h' : '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center text-muted">No data found for this range.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">No data found for this range.</td></tr>
                     @endforelse
                 </tbody>
                 @if($rows->isNotEmpty())
@@ -78,12 +82,16 @@
                         $tot_bar = $rows->sum('barcoded_count');
                         $tot_life_sold = $rows->sum('lifetime_items_sold');
                         $overall_st = $tot_bar > 0 ? ($tot_life_sold / $tot_bar) * 100 : 0;
+                        $tot_bar_period = $rows->sum('barcoded_period');
+                        $tot_sold_period = $rows->sum('items_sold');
+                        $overall_st_period = $tot_bar_period > 0 ? ($tot_sold_period / $tot_bar_period) * 100 : null;
                     @endphp
                     <tr>
                         <th>Total</th>
                         <th class="text-right">{{ number_format($tot_bar) }}</th>
                         <th class="text-right">{{ number_format($rows->sum('items_sold')) }}</th>
                         <th class="text-right">{{ number_format($overall_st, 1) }}%</th>
+                        <th class="text-right">{{ is_null($overall_st_period) ? '—' : number_format($overall_st_period, 1) . '%' }}</th>
                         <th></th>
                         <th></th>
                         <th class="text-right">${{ number_format($rows->sum('total_revenue'), 2) }}</th>

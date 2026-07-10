@@ -7032,6 +7032,17 @@ class ReportController extends Controller
             ->groupBy('created_by')
             ->pluck('total', 'created_by');
 
+        // Items barcoded WITHIN the window — denominator for the period
+        // sell-through (throughput) metric: units sold in window ÷ units
+        // listed in window. Windowed on both sides so it tracks the date tool.
+        $barcoded_window = Product::where('business_id', $business_id)
+            ->whereNotNull('created_by')
+            ->whereDate('created_at', '>=', $start_date)
+            ->whereDate('created_at', '<=', $end_date)
+            ->select('created_by', DB::raw('COUNT(*) as total'))
+            ->groupBy('created_by')
+            ->pluck('total', 'created_by');
+
         $sales = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
             ->join('products as p', 'tsl.product_id', '=', 'p.id')
@@ -7070,8 +7081,9 @@ class ReportController extends Controller
         // the report can show $-per-hour-equivalent context next to revenue.
         $hours_raw = $this->getHoursWorkedByUser($users, $start_date, $end_date, $business_id);
 
-        $rows = $users->map(function ($u) use ($barcoded_total, $sales, $lifetime_sold, $hours_raw) {
+        $rows = $users->map(function ($u) use ($barcoded_total, $barcoded_window, $sales, $lifetime_sold, $hours_raw) {
             $barcoded = (int) ($barcoded_total[$u->id] ?? 0);
+            $barcoded_period = (int) ($barcoded_window[$u->id] ?? 0);
             $row = $sales[$u->id] ?? null;
             $items_sold = $row ? (int) $row->items_sold : 0;
             $revenue = $row ? (float) $row->revenue : 0.0;
@@ -7081,12 +7093,16 @@ class ReportController extends Controller
                 'user_id' => $u->id,
                 'employee' => trim((string) $u->full_name),
                 'barcoded_count' => $barcoded,
+                'barcoded_period' => $barcoded_period,
                 'items_sold' => $items_sold,
                 'revenue_per_item' => $items_sold > 0 ? $revenue / $items_sold : 0.0,
                 'revenue_per_listed_item' => $barcoded > 0 ? $revenue / $barcoded : 0.0,
                 'total_revenue' => $revenue,
                 'lifetime_items_sold' => $sold_lifetime,
                 'sell_through_pct' => $barcoded > 0 ? ($sold_lifetime / $barcoded) * 100 : 0.0,
+                // Null (not 0) when nothing was listed in-window: the ratio is
+                // undefined, so the view shows "—" rather than a false 0%.
+                'sell_through_period_pct' => $barcoded_period > 0 ? ($items_sold / $barcoded_period) * 100 : null,
                 'hours_worked' => $hours,
             ];
         })->filter(function ($r) {
@@ -7750,6 +7766,18 @@ class ReportController extends Controller
                     $label = 'Whatnot - Pico';
                 } else {
                     $label = 'Whatnot - ' . ucwords($loc_name);
+                }
+                $loc_id_display = $r->location_id;
+            } elseif ($channel === 'prepaid_pickup') {
+                // Paid-ahead in-store collections. Kept out of the plain
+                // "<Store> Store" bucket so they don't read as register sales.
+                $key = $r->location_id . '|prepaid_pickup';
+                if ($is_hollywood) {
+                    $label = 'Prepaid Pickup - Hollywood';
+                } elseif ($is_pico) {
+                    $label = 'Prepaid Pickup - Pico';
+                } else {
+                    $label = 'Prepaid Pickup - ' . ucwords($loc_name);
                 }
                 $loc_id_display = $r->location_id;
             } else { // in_store
@@ -11084,7 +11112,7 @@ class ReportController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $txnId = (int) $request->input('transaction_id');
         $newChannel = $request->input('channel');
-        if (!$txnId || !in_array($newChannel, ['in_store','whatnot','discogs','ebay'], true)) {
+        if (!$txnId || !in_array($newChannel, ['in_store','whatnot','discogs','ebay','prepaid_pickup'], true)) {
             return response()->json(['success' => false, 'msg' => 'invalid params'], 422);
         }
         $existing = \DB::table('transactions')
