@@ -101,6 +101,7 @@ class ReportsHubController extends Controller
                     ['key' => 'customer-wants',        'name' => 'Customer Wants',        'icon' => 'fa-heart',              'action' => 'CustomerWantController@index',                'desc' => 'Call-me-when-it-comes-in list.'],
                     ['key' => 'customer-groups',       'name' => 'Customer Groups Report','icon' => 'fa-users-cog',          'action' => 'ReportController@getCustomerGroupsReport',    'desc' => 'Sales by customer group.', 'admin_only' => true],
                     ['key' => 'supplier-customer',     'name' => 'Supplier & Customer Report', 'icon' => 'fa-handshake',     'action' => 'ReportController@getCustomerSuppliers',       'desc' => 'Supplier + customer rollup.'],
+                    ['key' => 'store-credit-log',      'name' => 'Store Credit Log',      'icon' => 'fa-wallet',             'action' => 'StoreCreditLogController@index',             'desc' => 'Every store credit issued to customers, by employee — flags credits given without a buy-from-customer purchase form.', 'admin_only' => true],
                 ],
             ],
             'operations' => [
