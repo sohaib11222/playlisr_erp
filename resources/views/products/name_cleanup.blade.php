@@ -110,6 +110,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 <table class="mgn-table ar-table">
                     <thead><tr>
                         <th style="width:34px;text-align:center"><input type="checkbox" id="arCheckAll" checked title="Select all"></th>
+                        <th class="ar-sort" data-key="sku">SKU <span class="ar-arrow"></span></th>
                         <th class="ar-sort" data-key="name">Current name <span class="ar-arrow"></span></th>
                         <th class="ar-sort" data-key="old">Current artist <span class="ar-arrow"></span></th>
                         <th class="ar-sort" data-key="new">Parsed artist <span class="ar-arrow"></span></th>
@@ -313,12 +314,13 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 : '';
             return '<tr class="' + (f.sel ? '' : 'ar-off') + '" data-id="' + f.id + '" style="cursor:pointer">' +
                 '<td style="text-align:center"><input type="checkbox" class="ar-cb"' + (f.sel ? ' checked' : '') + '></td>' +
+                '<td style="color:#8E8273;white-space:nowrap">' + esc(f.sku || '') + '</td>' +
                 '<td class="mgn-old">' + sealedTag + esc(f.name) + '</td>' +
                 '<td style="color:#8E8273">' + curArtistHtml(f.old) + '</td>' +
                 '<td class="mgn-new">' + esc(f['new']) + '</td>' +
                 '<td style="color:#8E8273">' + esc(f.source) + '</td></tr>';
         }).join('');
-        arRowsEl.innerHTML = rows || '<tr><td colspan="5">Nothing to fill.</td></tr>';
+        arRowsEl.innerHTML = rows || '<tr><td colspan="6">Nothing to fill.</td></tr>';
         updateSelInfo();
     }
 

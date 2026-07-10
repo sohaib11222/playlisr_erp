@@ -251,7 +251,7 @@ class ProductNameController extends Controller
         $flagged = 0;
 
         $this->artistlessMusicQuery($business_id, $catIds)
-            ->select('id', 'name', 'artist', 'category_id')
+            ->select('id', 'name', 'artist', 'category_id', 'sku')
             ->orderBy('id')
             ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter, $sealedIds) {
                 foreach ($rows as $r) {
@@ -286,6 +286,7 @@ class ProductNameController extends Controller
                             'source' => $res['source'],
                             'trust' => $res['trust'] ?? 'ok',
                             'sealed' => isset($sealedIds[(int) $r->category_id]),
+                            'sku' => trim((string) ($r->sku ?? '')),
                         ];
                     }
                 }
