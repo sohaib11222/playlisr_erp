@@ -265,10 +265,23 @@ class ProductNameController extends Controller
                     if (!$res['confident']) {
                         $flagged++;
                         if ($collectFixes && ($limit === null || count($flaggedRows) < $limit)) {
+                            // Candidate artists (each cleaned side of the name) so
+                            // the UI can offer one-click buttons to hand-fill.
+                            $cands = [];
+                            $seg = ProductNameNormalizer::nameSegments($r->name);
+                            if ($seg !== null) {
+                                foreach ([$seg[0], $seg[1]] as $s) {
+                                    $c = trim((string) ProductNameNormalizer::cleanArtistValue($s));
+                                    if ($c !== '') { $cands[] = $c; }
+                                }
+                                $cands = array_values(array_unique($cands));
+                            }
                             $flaggedRows[] = [
                                 'id' => (int) $r->id,
                                 'name' => $r->name,
                                 'reason' => $res['reason'],
+                                'sku' => trim((string) ($r->sku ?? '')),
+                                'candidates' => $cands,
                             ];
                         }
                         continue;
@@ -459,6 +472,90 @@ class ProductNameController extends Controller
             'filled_ids' => $filledIds,
             'remaining' => $remaining,
             'msg' => $remaining === null ? "Filled {$filled}." : "Filled {$filled}. {$remaining} remaining.",
+        ]);
+    }
+
+    /**
+     * Write EXPLICIT artist values the user typed/picked for flagged products
+     * (the ones the parser couldn't do). Body: rows = [{id, artist}, ...]. Only
+     * fills rows whose artist is still blank/"N/A"-ish; snapshotted + undoable
+     * via the same backfill-artist-from-name path.
+     */
+    public function artistManualApply(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+
+        $rows = $request->input('rows');
+        if (!is_array($rows)) {
+            return response()->json(['success' => false, 'msg' => 'No rows sent.']);
+        }
+        // Clean + cap the incoming edits.
+        $edits = [];
+        foreach (array_slice($rows, 0, 2000) as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $artist = trim((string) ($row['artist'] ?? ''));
+            if ($id < 1 || $artist === '' || mb_strlen($artist) > 120) { continue; }
+            $edits[$id] = $artist;
+        }
+        if (empty($edits)) {
+            return response()->json(['success' => true, 'filled' => 0, 'msg' => 'Nothing to fill.']);
+        }
+
+        // Snapshot current (blank) values for undo.
+        $current = \DB::table('products')->where('business_id', $business_id)
+            ->whereIn('id', array_keys($edits))->pluck('artist', 'id')->toArray();
+
+        $timestamp = now()->format('Y-m-d_His');
+        $filled = 0;
+        $snapshotRows = [];
+        \DB::beginTransaction();
+        try {
+            foreach ($edits as $id => $artist) {
+                $affected = \DB::table('products')
+                    ->where('id', $id)
+                    ->where('business_id', $business_id)
+                    ->where(function ($q) {
+                        $q->whereNull('artist')
+                          ->orWhereRaw("TRIM(artist) = ''")
+                          ->orWhereRaw("LOWER(TRIM(artist)) REGEXP '^(n/?a|unknown|various|none|no artist)$'");
+                    })
+                    ->update(['artist' => $artist]);
+                if ($affected) {
+                    $filled++;
+                    $snapshotRows[] = ['id' => $id, 'old' => (string) ($current[$id] ?? ''), 'new' => $artist];
+                }
+            }
+            if (!empty($snapshotRows)) {
+                \Storage::disk('local')->put(
+                    "admin-snapshots/backfill-artist-from-name-{$timestamp}.json",
+                    json_encode([
+                        'timestamp' => $timestamp,
+                        'action' => 'backfill-artist-from-name',
+                        'user_id' => auth()->id(),
+                        'business_id' => $business_id,
+                        'source_name' => $filled . ' artist(s) entered by hand',
+                        'target_name' => 'products.artist',
+                        'rows' => $snapshotRows,
+                    ], JSON_PRETTY_PRINT)
+                );
+            }
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::emergency('artist-manual-apply failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Fill failed — nothing changed.']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'filled' => $filled,
+            'filled_ids' => array_column($snapshotRows, 'id'),
+            'msg' => "Filled {$filled} by hand.",
         ]);
     }
 

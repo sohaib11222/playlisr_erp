@@ -143,13 +143,17 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
             <div id="arFlaggedWrap" style="display:none;margin-top:22px;">
                 <div class="mgn-note mgn-summary" id="arFlaggedSummary" style="margin-top:0;color:#1F1B16;"></div>
-                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <div class="mgn-note" style="margin-top:4px;">Type the artist (or click a name-part button to drop it in), then Fill. Blank boxes are skipped. Undoable.</div>
+                <div style="margin-top:10px;max-height:60vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                     <table class="mgn-table">
-                        <thead><tr><th>Current name</th><th>Why it's flagged</th></tr></thead>
+                        <thead><tr><th style="min-width:220px;">Current name</th><th>SKU</th><th style="min-width:280px;">Artist to save</th></tr></thead>
                         <tbody id="arFlaggedRows"></tbody>
                     </table>
                 </div>
-                <div class="mgn-note">These are left untouched — fix the Artist field by hand on each product's edit page.</div>
+                <div class="mgn-actions" style="margin-top:14px;">
+                    <button class="mgn-btn mgn-btn-primary" id="arFlaggedFillBtn" type="button">Fill the ones I typed</button>
+                    <span class="mgn-note" id="arFlaggedProgress" style="margin-top:0"></span>
+                </div>
             </div>
         </div>
     </div>
@@ -459,9 +463,18 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             var fp = d.flagged_preview || [];
             if (fp.length) {
                 document.getElementById('arFlaggedSummary').innerHTML =
-                    '<b>' + d.flagged + '</b> flagged for manual review' + (d.flagged > fp.length ? ' (showing first ' + fp.length + ')' : '') + ':';
+                    '<b>' + d.flagged + '</b> the parser couldn\'t do' + (d.flagged > fp.length ? ' (showing first ' + fp.length + ')' : '') + ' — fill by hand:';
                 document.getElementById('arFlaggedRows').innerHTML = fp.map(function (f) {
-                    return '<tr><td>' + esc(f.name) + '</td><td style="color:#8E8273">' + esc(f.reason) + '</td></tr>';
+                    var chips = (f.candidates || []).map(function (c) {
+                        return '<button type="button" class="ar-cand" data-v="' + esc(c) + '" style="margin:0 4px 4px 0;padding:2px 8px;font-size:12px;border:1px solid #D8CBB0;background:#FBF6EA;border-radius:6px;cursor:pointer;">' + esc(c) + '</button>';
+                    }).join('');
+                    return '<tr data-id="' + f.id + '">' +
+                        '<td>' + esc(f.name) + '</td>' +
+                        '<td style="color:#8E8273;white-space:nowrap">' + esc(f.sku || '') + '</td>' +
+                        '<td>' + chips +
+                        '<input type="text" class="ar-flag-input" value="" placeholder="artist…" ' +
+                        'style="width:100%;height:34px;padding:0 10px;border:1px solid #ECE3D2;border-radius:8px;font-family:inherit;font-size:13px;background:#fff;">' +
+                        '</td></tr>';
                 }).join('');
                 document.getElementById('arFlaggedWrap').style.display = 'block';
             } else {
@@ -472,6 +485,40 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     }
 
     arScanBtn.addEventListener('click', function () { doArScan(); });
+
+    // Flagged (parser-couldn't-do) manual fill: click a name-part chip to drop it
+    // into that row's box, then fill everything typed.
+    var arFlaggedRowsEl = document.getElementById('arFlaggedRows');
+    arFlaggedRowsEl.addEventListener('click', function (e) {
+        if (!e.target.classList.contains('ar-cand')) { return; }
+        var tr = e.target.closest('tr'); if (!tr) { return; }
+        var input = tr.querySelector('.ar-flag-input');
+        if (input) { input.value = e.target.getAttribute('data-v'); input.focus(); }
+    });
+    var arFlaggedFillBtn = document.getElementById('arFlaggedFillBtn');
+    var arFlaggedProgress = document.getElementById('arFlaggedProgress');
+    arFlaggedFillBtn.addEventListener('click', function () {
+        var rows = [];
+        Array.prototype.forEach.call(arFlaggedRowsEl.querySelectorAll('tr'), function (tr) {
+            var id = parseInt(tr.getAttribute('data-id'), 10);
+            var input = tr.querySelector('.ar-flag-input');
+            var v = input ? input.value.trim() : '';
+            if (id && v) { rows.push({ id: id, artist: v }); }
+        });
+        if (!rows.length) { showMsg('Type an artist in at least one box first.', false); return; }
+        if (!confirm('Fill ' + rows.length + ' artist(s) by hand? Undoable from Admin Action History.')) { return; }
+        arFlaggedFillBtn.disabled = true; arFlaggedProgress.textContent = 'Filling ' + rows.length + '…';
+        post('{{ route('products.artist.manual') }}', { rows: rows }).then(function (d) {
+            arFlaggedFillBtn.disabled = false; arFlaggedProgress.textContent = '';
+            if (!d.success) { showMsg(d.msg || 'Fill failed.', false); return; }
+            // Drop the filled rows from the flagged table.
+            var done = {}; (d.filled_ids || []).forEach(function (i) { done[i] = 1; });
+            Array.prototype.forEach.call(arFlaggedRowsEl.querySelectorAll('tr'), function (tr) {
+                if (done[parseInt(tr.getAttribute('data-id'), 10)]) { tr.parentNode.removeChild(tr); }
+            });
+            showMsg('Filled ' + d.filled + ' by hand. Re-scan to load the next batch of flagged ones. Undo at Admin Action History.', true);
+        }).catch(function () { arFlaggedFillBtn.disabled = false; arFlaggedProgress.textContent = ''; showMsg('Fill failed — try again.', false); });
+    });
 
     // Preview first: show a live sample of "name -> Discogs artist" before filling.
     var dgArtistScanBtn = document.getElementById('dgArtistScanBtn');

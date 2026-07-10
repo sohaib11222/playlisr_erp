@@ -280,6 +280,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Owner-only: backfill blank/"N/A" artist on music formats from the name.
     Route::post('/products/name-cleanup/artist-scan', 'ProductNameController@artistScan')->name('products.artist.scan');
     Route::post('/products/name-cleanup/artist-apply', 'ProductNameController@artistApply')->name('products.artist.apply');
+    // Owner-only: write explicit hand-entered artists for flagged products.
+    Route::post('/products/name-cleanup/artist-manual-apply', 'ProductNameController@artistManualApply')->name('products.artist.manual');
     // Owner-only: fill the artist COLUMN from Discogs (blank-artist products with
     // a release id), sealed vinyl first.
     Route::post('/products/name-cleanup/discogs-artist-scan', 'ProductNameController@discogsArtistScan')->name('products.artist.discogs.scan');
