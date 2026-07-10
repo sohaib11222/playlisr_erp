@@ -254,6 +254,10 @@ class ProductNameNormalizer
         // '"Weird Al" Yankovic'); drop them all. Leading apostrophes are part of
         // the name ("'Til Tuesday") and stay.
         if (strpos($s, '"') !== false) { $s = trim(str_replace('"', '', $s)); }
+        // Drop a trailing "from <band>" member descriptor: "Eric Carr from Kiss"
+        // and "CARR,ERIC FROM KISS" both mean the artist Eric Carr.
+        $stripped = trim(preg_replace('/\s+from\s+.+$/iu', '', $s));
+        if ($stripped !== '') { $s = $stripped; }
         $map = self::artistAliasMap();
         if (isset($map[$s])) { return $map[$s]; }
         $curated = self::curatedArtists();
