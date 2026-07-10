@@ -8606,17 +8606,19 @@ class SellPosController extends Controller
     /**
      * Sarah 2026-07-10: automatic store-credit loyalty reward.
      *
-     * Every full $100 of qualifying PRE-TAX spend earns the customer $5 store
-     * credit. Qualifying spend = transactions.total_before_tax MINUS any store
-     * credit used to pay, because store credit spent on a sale must not count
-     * toward earning more store credit:
-     *   qualifying $0–99 -> $0    $100–199 -> $5    $200–299 -> $10   ...
+     * Every full "reward_per" of qualifying PRE-TAX spend earns the customer
+     * "reward_amount" in store credit — both admin-editable in Settings →
+     * Store Credit Rewards (business.spend_credit_reward_amount / _per), and
+     * the whole feature can be toggled off (enable_spend_credit_reward). The
+     * defaults are the original $5-per-$100 rule.
      *
-     * So a $150 pre-tax sale paid with $40 store credit + $110 cash qualifies
-     * on $110 and earns $5; the same sale paid entirely with store credit
-     * qualifies on $0 and earns nothing. Walk-in (is_default) customers are
-     * skipped because they have no real account to credit. The grant is
-     * idempotent per sale — a re-save can't double-credit.
+     * Qualifying spend = transactions.total_before_tax MINUS any store credit
+     * used to pay, because store credit spent on a sale must not count toward
+     * earning more store credit. At the $5/$100 default, a $150 pre-tax sale
+     * paid with $40 store credit + $110 cash qualifies on $110 and earns $5;
+     * the same sale paid entirely with store credit earns nothing. Walk-in
+     * (is_default) customers are skipped because they have no real account to
+     * credit. The grant is idempotent per sale — a re-save can't double-credit.
      *
      * The credit is added via TransactionUtil::updateContactBalance() (which
      * also syncs the balance to the Nivessa backend by email) and recorded in
@@ -8629,11 +8631,24 @@ class SellPosController extends Controller
      */
     private function grantSpendReward($transaction, $store_credit_used_total)
     {
-        // $5 store credit for every full $100 of qualifying pre-tax spend.
-        $reward_per = 100;
-        $reward_amount = 5;
-
         try {
+            // Rate is admin-editable in Settings → Store Credit Rewards; fall
+            // back to the original $5-per-$100 rule if unset or before the
+            // settings migration has run. Loaded fresh from the business row so
+            // a stale session copy can't apply an old rate.
+            $business = \App\Business::find($transaction->business_id);
+            $enabled = $business ? ($business->enable_spend_credit_reward ?? 1) : 1;
+            if (!$enabled) {
+                return; // feature turned off for this business
+            }
+            $reward_amount = ($business && $business->spend_credit_reward_amount !== null)
+                ? (float) $business->spend_credit_reward_amount : 5;
+            $reward_per = ($business && (float) $business->spend_credit_reward_per > 0)
+                ? (float) $business->spend_credit_reward_per : 100;
+            if ($reward_amount <= 0) {
+                return; // nothing to grant
+            }
+
             $contact = Contact::find($transaction->contact_id);
             if (!$contact || $contact->is_default == 1) {
                 return; // no real customer account (walk-in)

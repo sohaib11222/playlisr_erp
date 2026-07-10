@@ -363,12 +363,21 @@ class BusinessController extends Controller
                 'redeem_amount_per_unit_rp', 'min_order_total_for_redeem',
                 'min_redeem_point', 'max_redeem_point', 'rp_expiry_period',
                 'rp_expiry_type', 'custom_labels', 'weighing_scale_setting',
-                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision', 'streetpulse_acronym']);
+                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision', 'streetpulse_acronym',
+                'spend_credit_reward_amount', 'spend_credit_reward_per']);
 
             if (!empty($request->input('enable_rp')) &&  $request->input('enable_rp') == 1) {
                 $business_details['enable_rp'] = 1;
             } else {
                 $business_details['enable_rp'] = 0;
+            }
+
+            // Store credit spend reward (Settings → Store Credit Rewards).
+            $business_details['enable_spend_credit_reward'] = !empty($request->input('enable_spend_credit_reward')) && $request->input('enable_spend_credit_reward') == 1 ? 1 : 0;
+            $business_details['spend_credit_reward_amount'] = !empty($business_details['spend_credit_reward_amount']) ? $this->businessUtil->num_uf($business_details['spend_credit_reward_amount']) : 5;
+            $business_details['spend_credit_reward_per'] = !empty($business_details['spend_credit_reward_per']) ? $this->businessUtil->num_uf($business_details['spend_credit_reward_per']) : 100;
+            if ($business_details['spend_credit_reward_per'] <= 0) {
+                $business_details['spend_credit_reward_per'] = 100; // never divide by zero downstream
             }
 
             $business_details['amount_for_unit_rp'] = !empty($business_details['amount_for_unit_rp']) ? $this->businessUtil->num_uf($business_details['amount_for_unit_rp']) : 1;
