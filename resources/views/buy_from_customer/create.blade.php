@@ -666,13 +666,47 @@ HTML;
                                                 <input type="hidden" name="lines[{{$li}}][{{$lk}}]" value="{{ $lv }}">
                                             @endforeach
                                         @endforeach
-                                    @elseif(!is_array($v))
+                                    {{-- payment_method is chosen fresh on the accept step below, so
+                                         don't carry the step-1 value in as a duplicate hidden field. --}}
+                                    @elseif(!is_array($v) && $k !== 'payment_method')
                                         <input type="hidden" name="{{$k}}" value="{{ $v }}">
                                     @endif
                                 @endforeach
 
                                 <div class="well bfc-accept-well" style="margin-top:15px; max-width:920px;">
-                                    <h4>Final price &amp; override</h4>
+                                    {{-- Sarah 2026-07-09: capture the amount actually handed over
+                                         (cash / store credit / Zelle-Venmo) in one blank field. This is
+                                         the number that gets recorded — it overrides the suggestions above. --}}
+                                    <h4>Final payment <small class="text-muted">— what the seller actually got; this is the amount recorded</small></h4>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Paid by</label>
+                                                <select name="payment_method" id="bfc_accept_pm" class="form-control">
+                                                    <option value="cash_in_store" @if($pmVal === 'cash_in_store') selected @endif>Cash (in store)</option>
+                                                    <option value="store_credit" @if($pmVal === 'store_credit') selected @endif>Store credit</option>
+                                                    <option value="zelle_venmo" @if($pmVal === 'zelle_venmo') selected @endif>Zelle / Venmo (Jon)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Final amount paid <span class="text-danger">*</span></label>
+                                                <div class="input-group">
+                                                    <span class="input-group-addon">$</span>
+                                                    {!! Form::number('final_amount_paid', null, ['class' => 'form-control', 'id' => 'bfc_accept_final_amount', 'step' => '0.01', 'min' => '0', 'placeholder' => 'amount handed over']) !!}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <p class="help-block small" style="margin-top:24px;">
+                                                Suggested — Cash <strong>${{ number_format((float) data_get($calc, 'final_offer_cash', 0), 2) }}</strong>
+                                                · Credit <strong>${{ number_format((float) data_get($calc, 'final_offer_credit', 0), 2) }}</strong>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <hr style="margin:6px 0 14px;">
+                                    <h4>Override</h4>
                                     <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
                                     <div class="form-group">
                                         <label>Override reason <span id="override_required_label" class="text-danger" style="display:none;">(required)</span></label>
@@ -1403,6 +1437,23 @@ HTML;
                 }
                 if (!hasSignature) {
                     problems.push('Seller must sign in the signature box.');
+                }
+                // Sarah 2026-07-09: the actual amount paid must be entered here —
+                // it's the number that gets recorded.
+                var finalAmt = parseFloat($('#bfc_accept_final_amount').val());
+                if (!isFinite(finalAmt) || finalAmt <= 0) {
+                    problems.push('Enter the final amount actually paid.');
+                }
+                // Mirror the server's override gate: if the amount paid differs
+                // from the suggested final for the selected payment method, a
+                // reason is required (matches validateRequest()).
+                var acceptPm = $('#bfc_accept_pm').val();
+                var autoForPm = parseFloat(acceptPm === 'store_credit'
+                    ? $('#bfc_final_credit').data('auto')
+                    : $('#bfc_final_cash').data('auto'));
+                if (isFinite(finalAmt) && isFinite(autoForPm) && Math.abs(finalAmt - autoForPm) > 0.009
+                    && !$.trim($('textarea[name="price_override_reason"]').val())) {
+                    problems.push('Final amount differs from the suggestion — add an override reason.');
                 }
                 if (problems.length) {
                     e.preventDefault();

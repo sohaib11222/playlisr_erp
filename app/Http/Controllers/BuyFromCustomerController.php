@@ -348,6 +348,9 @@ class BuyFromCustomerController extends Controller
             'final_offer_credit' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:5000',
             'price_override_reason' => 'nullable|string|max:500',
+            // Sarah 2026-07-09: the accept step captures the actual amount paid
+            // in one field, tagged with the payment method chosen there.
+            'final_amount_paid' => 'nullable|numeric|min:0',
         ];
 
         if ($requireFinal) {
@@ -368,7 +371,12 @@ class BuyFromCustomerController extends Controller
             $autoCalc = $this->calculator->calculate($request->input('lines', []), []);
             $pm = $request->input('payment_method');
             $autoFinal = $pm === 'store_credit' ? (float) $autoCalc['final_offer_credit'] : (float) $autoCalc['final_offer_cash'];
-            $final = $pm === 'store_credit' ? (float) $request->input('final_offer_credit') : (float) $request->input('final_offer_cash');
+            // Prefer the amount the cashier typed on the accept step; fall back
+            // to the negotiated final from the offer table otherwise.
+            $finalAmountPaid = $request->input('final_amount_paid');
+            $final = is_numeric($finalAmountPaid)
+                ? (float) $finalAmountPaid
+                : ($pm === 'store_credit' ? (float) $request->input('final_offer_credit') : (float) $request->input('final_offer_cash'));
             if (abs($final - $autoFinal) > 0.009) {
                 $request->validate([
                     'price_override_reason' => 'required|string|max:500',
@@ -467,6 +475,20 @@ class BuyFromCustomerController extends Controller
         $offer->final_offer_credit = is_numeric($submittedFinalCredit)
             ? (float) $submittedFinalCredit
             : $calculation['final_offer_credit'];
+        // Sarah 2026-07-09: on the accept step the cashier types the single
+        // amount actually handed over into "Final amount paid", tagged with the
+        // payment method chosen there. That entered amount is authoritative — it
+        // overrides the negotiated final for whichever payout type applies, so
+        // History, the created purchase, and any store-credit added all record
+        // what was really paid.
+        $finalAmountPaid = $request->input('final_amount_paid');
+        if (is_numeric($finalAmountPaid)) {
+            if ($payment['payout_type'] === 'store_credit') {
+                $offer->final_offer_credit = (float) $finalAmountPaid;
+            } else {
+                $offer->final_offer_cash = (float) $finalAmountPaid;
+            }
+        }
         $offer->rejection_reason = $request->input('rejection_reason');
         $offer->notes = $request->input('notes');
         $offer->price_override_reason = $request->input('price_override_reason') ?: null;
