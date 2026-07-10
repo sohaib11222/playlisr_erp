@@ -240,6 +240,8 @@ class ProductNameNormalizer
             'ugk' => 'UGK',
             'usda' => 'USDA',
             'qkumbazoo' => 'Qkumba Zoo',
+            // Keep the "PJ" initials (title-casing would make it "Pj Harvey").
+            'pjharvey' => 'PJ Harvey',
         ];
     }
 
