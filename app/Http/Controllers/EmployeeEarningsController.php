@@ -83,8 +83,10 @@ class EmployeeEarningsController extends Controller
         }
 
         $earned = round($earnedSales * self::RATE, 2);
-        $owed   = round($owedSales * self::RATE, 2);
         $paidOut = round($myPayouts->sum('amount'), 2);
+        // Listing still owed = earned minus what's actually been paid on listing
+        // (dollar-based so manual payments reconcile; negative when overpaid).
+        $owed   = round($earned - $paidOut, 2);
 
         // This person's full payment history (listing + sales), grouped by the
         // date they were paid, so they can see what they got and when.

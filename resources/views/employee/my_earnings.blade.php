@@ -118,9 +118,9 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                 <div class="sub">{{ $payouts->count() }} payout(s)</div>
             </div>
             <div class="me-stat owed">
-                <div class="lbl">This commission payment</div>
-                <div class="val">${{ number_format($owed, 2) }}</div>
-                <div class="sub">owed now · {{ $owed_count }} sold item(s) not yet paid</div>
+                <div class="lbl">Listing still owed</div>
+                <div class="val">@if($owed < -0.004)-${{ number_format(abs($owed), 2) }}@else${{ number_format($owed, 2) }}@endif</div>
+                <div class="sub">@if($owed < -0.004)overpaid — credit@elseearned minus paid@endif</div>
             </div>
         </div>
         </div>
