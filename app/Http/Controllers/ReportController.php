@@ -48,6 +48,14 @@ class ReportController extends Controller
     const SALES_BONUS_LIVE_DATE = '2026-06-15 00:00:00';
 
     /**
+     * Date the sales bonus switches from the per-cashier calc to the shared
+     * team-pool model (Sarah 2026-07-12): the store's hourly overage is split
+     * across the floor staff on shift, by the hours each worked while the
+     * overage was being rung. Days before this keep the old per-cashier bonus.
+     */
+    const POOLED_BONUS_START_DATE = '2026-07-10';
+
+    /**
      * All Utils instance.
      *
      */
@@ -13313,10 +13321,12 @@ class ReportController extends Controller
         $opts = ['with_commission' => true, 'exclude_owners' => true];
         $stores = [];
         foreach ($locations as $lid => $lname) {
-            // Current (live) model: per-cashier goal_bonus, exact leaderboard math.
+            // "Current" column = the PRE-switch per-cashier math, always, so the
+            // projection stays a real before/after even after the cutover date
+            // (legacyOnly bypasses the pooled splice inside attachHourTargets).
             $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
             $rows = $this->applyStoreRoster($rows, $lname);
-            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str, true);
             $current = [];
             foreach ($rows as $r) {
                 $current[(int) $r->user_id] = ['name' => $r->employee, 'bonus' => (float) ($r->goal_bonus ?? 0)];
@@ -13426,7 +13436,9 @@ class ReportController extends Controller
         // per-store cross-exclusions ("Clyde really works HW", "Luis is old
         // Pico") here, because Sling already tells us which store's shift it was.
         // If someone has a published shift at this store, they were on the floor.
-        $nonFloor = ['nerdy', 'viper', 'henry', 'nick'];
+        // Owners (same list buildLeaderboardRows' exclude_owners uses) are also
+        // out — they don't share floor overage.
+        $nonFloor = ['nerdy', 'viper', 'henry', 'nick', 'jon', 'jonathan', 'sarah', 'sohaib', 'fatteen'];
         $shiftUids = $shifts->pluck('erp_user_id')->map(function ($v) { return (int) $v; })->unique()->filter()->values();
         $erpNames = [];
         if ($shiftUids->isNotEmpty()) {
@@ -14121,7 +14133,7 @@ class ReportController extends Controller
      * Sum = "expected for the hours you worked"; target = expected + a stretch.
      * Also reports how many of their hours fell in peak vs off-peak slots.
      */
-    private function attachHourTargets($rows, $business_id, $location_id, $start, $end)
+    private function attachHourTargets($rows, $business_id, $location_id, $start, $end, $legacyOnly = false)
     {
         if ($rows->isEmpty()) { return $rows; }
 
@@ -14207,7 +14219,62 @@ class ReportController extends Controller
         // the person beat goal (Sarah: "we started sales bonuses on June 15").
         $bonus_start_date = substr(self::SALES_BONUS_LIVE_DATE, 0, 10);
 
-        return $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales, $bonus_start_date) {
+        // On/after POOLED_BONUS_START_DATE the per-cashier calc below is replaced
+        // by the shared team-pool model (Sarah 2026-07-12): the store's hourly
+        // overage is split across the floor staff on shift, by the hours each
+        // worked while it was rung. We compute those pooled shares once for this
+        // location — delegating to the exact code the projection page uses, so
+        // live pay and the projection stay identical — and splice them in for
+        // on/after-cut days. $legacyOnly bypasses the switch so the projection's
+        // "current" column can still show the pre-switch number to compare.
+        $cut = self::POOLED_BONUS_START_DATE;
+        $pooledShare = [];   // [uid][date] => share (on/after cut only)
+        $pooledUsers = [];   // uid => pooled record (to add rows for non-sellers)
+        $usePooled = !$legacyOnly && strcmp($endC->toDateString(), $cut) >= 0;
+        if ($usePooled) {
+            // Defensive: if the pooled computation ever throws, fall back to the
+            // legacy per-cashier calc rather than breaking every page that shows a
+            // bonus (leaderboard, payables, /my-earnings). A silent fallback is
+            // visible as a mismatch on the projection page, not an outage.
+            try {
+                $pooledStartC = (strcmp($startC->toDateString(), $cut) < 0)
+                    ? \Carbon::parse($cut . ' 00:00:00')
+                    : $startC->copy();
+
+                // Store daily goal G = sum of the cashiers' own per-day targets
+                // (the same ERP goal figures the leaderboard shows).
+                $goalByDate = [];
+                foreach ($userCov as $uid => $cov) {
+                    $byDate = [];
+                    foreach ($cov as $c) {
+                        $d = substr($c['inst'], 0, 10);
+                        $head = max(1, count($slotStaff[$c['inst']] ?? []));
+                        $byDate[$d] = ($byDate[$d] ?? 0) + ($rate[$c['key']] ?? 0) * $c['frac'] / $head;
+                    }
+                    foreach ($byDate as $d => $exp) {
+                        if ($exp > 0) { $goalByDate[$d] = ($goalByDate[$d] ?? 0) + $exp * (1 + $stretch); }
+                    }
+                }
+
+                $lname = \DB::table('business_locations')->where('id', $location_id)->value('name') ?: '';
+                $matchAll = \DB::table('business_locations')
+                    ->where('business_id', $business_id)->where('is_active', 1)->count() <= 1;
+                $pooled = $this->slingPooledBonusForLocation($business_id, $location_id, $lname, $pooledStartC, $endC, $matchAll, $goalByDate);
+                foreach ($pooled['users'] as $uid => $u) {
+                    foreach (($u['daily'] ?? []) as $date => $share) {
+                        if (strcmp($date, $cut) >= 0) { $pooledShare[(int) $uid][$date] = (float) $share; }
+                    }
+                }
+                $pooledUsers = $pooled['users'];
+            } catch (\Throwable $e) {
+                \Log::warning('pooled sales-bonus fell back to legacy for location ' . $location_id . ': ' . $e->getMessage());
+                $usePooled = false;
+                $pooledShare = [];
+                $pooledUsers = [];
+            }
+        }
+
+        $mapped = $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales, $bonus_start_date, $cut, $usePooled, $pooledShare) {
             $cov = $userCov[$r->user_id] ?? [];
             $peakH = 0.0; $offH = 0.0;
             $dayExpected = [];     // Y-m-d => expected store-rate $ for hours worked that day
@@ -14232,30 +14299,41 @@ class ReportController extends Controller
             $r->hour_peak = round($peakH, 1);
             $r->hour_offpeak = round($offH, 1);
 
-            // Per-day bonus: 2% of each day's sales above that day's target,
-            // summed. No target on a day (sparse store history / no clocked
-            // hours) => that day earns nothing. goal_bonus is the PROJECTED
-            // amount (always computed so targets can be solidified before
-            // launch); sales_bonus_live says whether it's actually paid yet.
+            // Per-day bonus. Legacy days (< cut): 4% peak / 2% off-peak of each
+            // day's sales above that day's target. Pooled days (>= cut): the
+            // person's share of the team pool for that day (0 if they weren't on
+            // the floor). Union register-covered days with any pooled-share days
+            // so a floor lead who rang nothing still gets their pooled days.
             $bonus = 0.0; $anyTarget = false;
             $daily = []; // Y-m-d => ['target','sold','bonus'] for this location
-            foreach ($dayExpected as $date => $exp) {
-                if ($exp <= 0) { continue; }
-                $anyTarget = true;
-                $dayTarget = $exp * (1 + $stretch);
+            $dates = array_keys($dayExpected);
+            if ($usePooled && !empty($pooledShare[$r->user_id])) {
+                $dates = array_unique(array_merge($dates, array_keys($pooledShare[$r->user_id])));
+            }
+            sort($dates);
+            foreach ($dates as $date) {
+                $exp = $dayExpected[$date] ?? 0.0;
+                if ($exp > 0) { $anyTarget = true; }
+                $dayTarget = $exp > 0 ? $exp * (1 + $stretch) : 0.0;
                 $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
-                $dayBonus = 0.0;
-                if ($sold > $dayTarget) {
-                    // Over-target dollars pay 4% on the peak share of the day and
-                    // 2% off-peak, to pull staff onto the register when it's busy
-                    // (Sarah 2026-06-22). Peak share = how much of that day's
-                    // target came from peak slots.
-                    $over = $sold - $dayTarget;
-                    $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
-                    $dayBonus = $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
+
+                $isPooled = $usePooled && strcmp($date, $cut) >= 0;
+                if ($isPooled) {
+                    // Team-pool share for that day; measured against the store goal
+                    // hour by hour, so overage rung before this person clocked in
+                    // is never theirs.
+                    $dayBonus = (float) ($pooledShare[$r->user_id][$date] ?? 0);
+                } else {
+                    $dayBonus = 0.0;
+                    if ($exp > 0 && $sold > $dayTarget) {
+                        $over = $sold - $dayTarget;
+                        $peakShare = min(1.0, max(0.0, ($dayPeakExpected[$date] ?? 0) / $exp));
+                        $dayBonus = $over * $peakShare * 0.04 + $over * (1 - $peakShare) * 0.02;
+                    }
+                    if (strcmp($date, $bonus_start_date) < 0) { $dayBonus = 0.0; }
                 }
-                // No sales bonus before go-live, regardless of performance.
-                if (strcmp($date, $bonus_start_date) < 0) { $dayBonus = 0.0; }
+                // Nothing to show on a day with no target and no pooled share.
+                if ($exp <= 0 && !$isPooled) { continue; }
                 $bonus += $dayBonus;
                 $daily[$date] = [
                     'target' => round($dayTarget, 2),
@@ -14276,6 +14354,49 @@ class ReportController extends Controller
             $r->total_commission = round((float) $r->barcoding_commission + ($sales_bonus_live ? $r->goal_bonus : 0.0), 2);
             return $r;
         });
+
+        // Add rows for floor staff who earned a pooled share but rang no sales
+        // (product leads / associates). They never appear in the sales-built
+        // $rows, so without this they'd be paid nothing — which is the entire
+        // point of the switch.
+        if ($usePooled && !empty($pooledUsers)) {
+            $have = $mapped->pluck('user_id')->map(function ($v) { return (int) $v; })->flip();
+            $extra = [];
+            foreach ($pooledUsers as $uid => $u) {
+                $uid = (int) $uid;
+                if (isset($have[$uid])) { continue; }
+                $daily = []; $bonus = 0.0;
+                foreach (($u['daily'] ?? []) as $date => $share) {
+                    if (strcmp($date, $cut) < 0) { continue; }
+                    $daily[$date] = ['target' => 0.0, 'sold' => 0.0, 'bonus' => round((float) $share, 2)];
+                    $bonus += (float) $share;
+                }
+                if (empty($daily)) { continue; }
+                $extra[] = (object) [
+                    'user_id' => $uid,
+                    'employee' => $u['name'] ?? ('User #' . $uid),
+                    'tx_count' => 0, 'items_rung' => 0,
+                    'revenue' => 0.0, 'whatnot_revenue' => 0.0, 'non_whatnot_revenue' => 0.0,
+                    'avg_tx' => 0.0, 'priced_count' => 0, 'priced_revenue' => 0.0,
+                    'hours_worked' => round((float) ($u['hours'] ?? 0), 2),
+                    'revenue_per_hour' => null, 'items_per_hour' => null,
+                    'tx_per_hour' => null, 'priced_per_hour' => null,
+                    'barcoding_commission' => 0.0,
+                    'listing_earned' => 0.0, 'listing_paid' => 0.0, 'listing_owed' => 0.0,
+                    'hour_expected' => 0.0, 'hour_target' => null, 'hour_target_stretch_pct' => null,
+                    'hour_pace_pct' => null, 'hour_peak' => 0.0, 'hour_offpeak' => 0.0,
+                    'daily' => $daily,
+                    'goal' => null, 'goal_stretch_pct' => null,
+                    'goal_bonus' => round($bonus, 2),
+                    'goal_hit' => $bonus > 0,
+                    'sales_bonus_live' => $sales_bonus_live,
+                    'total_commission' => round($sales_bonus_live ? $bonus : 0.0, 2),
+                ];
+            }
+            if (!empty($extra)) { $mapped = $mapped->concat($extra)->values(); }
+        }
+
+        return $mapped;
     }
 
     /**
