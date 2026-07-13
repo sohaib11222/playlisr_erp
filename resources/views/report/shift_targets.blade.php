@@ -72,6 +72,7 @@
                     </form>
                 </div>
                 <div class="col-md-6 text-right">
+                    <a href="{{ url('/reports/sling-pooled-bonus') }}?period={{ $period }}" class="btn" style="margin-top:22px; margin-right:6px; border:1px solid #DFD2B3; border-radius:8px; font-weight:700;">Try the Sling-pooled what-if &rarr;</a>
                     <button type="button" class="btn btn-primary" onclick="window.print()" style="margin-top:22px;">Print this list</button>
                 </div>
             </div>

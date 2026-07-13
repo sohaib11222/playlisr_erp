@@ -614,6 +614,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // the store's historical take for that slot. Linked from a name on the
     // Shift Targets list.
     Route::get('/reports/shift-targets/breakdown', 'ReportController@shiftTargetBreakdown');
+    // SHADOW / PROJECTION: current per-cashier sales bonus vs a proposed
+    // Sling-pooled model (store overage split by Sling hours). Pays no one.
+    Route::get('/reports/sling-pooled-bonus', 'ReportController@slingPooledBonus');
 
     // Reports hub — organized index of all reports with per-user favorites
     Route::get('/reports', 'ReportsHubController@index')->name('reports.hub');

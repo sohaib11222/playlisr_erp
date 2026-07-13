@@ -13258,6 +13258,318 @@ class ReportController extends Controller
     }
 
     /**
+     * SHADOW / PROJECTION ONLY — does NOT pay anyone (Sarah 2026-07-12).
+     *
+     * Side-by-side of the current per-cashier sales bonus vs a proposed
+     * "Sling-pooled" model, so the difference can be eyeballed before any real
+     * pay changes. The proposed model fixes two problems with the live one:
+     *   1. The live bonus credits sales to whoever *rang them up* (created_by),
+     *      so a product lead who preps records all shift but rings nothing earns
+     *      ~$0 no matter how hard they worked.
+     *   2. The live bonus reads "who was on the floor" from open register
+     *      sessions (cash_registers) — someone with a Sling shift who never
+     *      opens a register is invisible.
+     *
+     * Proposed model (this method): each day, take the STORE's overage —
+     * (all non-whatnot sales that day) minus (the store's historical target for
+     * the hours it was staffed, + a 10% stretch) — pay a flat 4% of that
+     * overage into a pool, and split the pool among everyone with a PUBLISHED
+     * SLING SHIFT that day, weighted by their Sling hours. No register login and
+     * no created_by attribution required. Admin-only.
+     */
+    public function slingPooledBonus(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+        $business_id = $request->session()->get('user.business_id');
+        $period = $request->input('period', 'this_month');
+
+        $now = \Carbon::now();
+        switch ($period) {
+            case 'today':      $start = $now->copy()->startOfDay();              $end = $now->copy()->endOfDay(); break;
+            case 'yesterday':  $start = $now->copy()->subDay()->startOfDay();    $end = $now->copy()->subDay()->endOfDay(); break;
+            case 'this_week':  $start = $now->copy()->startOfWeek();             $end = $now->copy()->endOfDay(); break;
+            case 'last_week':  $start = $now->copy()->subWeek()->startOfWeek();  $end = $now->copy()->subWeek()->endOfWeek(); break;
+            case 'last_7':     $start = $now->copy()->subDays(6)->startOfDay();  $end = $now->copy()->endOfDay(); break;
+            case 'last_30':    $start = $now->copy()->subDays(29)->startOfDay(); $end = $now->copy()->endOfDay(); break;
+            case 'last_month': $start = $now->copy()->startOfMonth()->subMonth(); $end = $start->copy()->endOfMonth(); break;
+            default:           $start = $now->copy()->startOfMonth();            $end = $now->copy()->endOfDay(); $period = 'this_month'; break;
+        }
+        $start_str = $start->toDateTimeString();
+        $end_str   = $end->toDateTimeString();
+
+        $locations = \DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->pluck('name', 'id');
+        // Single-store Sling accounts often leave location_name blank; when there
+        // is only one active ERP location there's nothing to disambiguate, so
+        // attribute every published shift to it.
+        $matchAll = $locations->count() <= 1;
+
+        $opts = ['with_commission' => true, 'exclude_owners' => true];
+        $stores = [];
+        foreach ($locations as $lid => $lname) {
+            // Current (live) model: per-cashier goal_bonus, exact leaderboard math.
+            $rows = $this->buildLeaderboardRows($business_id, $start_str, $end_str, null, $lid, $opts);
+            $rows = $this->applyStoreRoster($rows, $lname);
+            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start_str, $end_str);
+            $current = [];
+            foreach ($rows as $r) {
+                $current[(int) $r->user_id] = ['name' => $r->employee, 'bonus' => (float) ($r->goal_bonus ?? 0)];
+            }
+
+            // Proposed model: Sling-pooled projection.
+            $pooled = $this->slingPooledBonusForLocation($business_id, $lid, $lname, $start, $end, $matchAll);
+
+            $uids = array_unique(array_merge(array_keys($current), array_keys($pooled['users'])));
+            $urows = [];
+            foreach ($uids as $uid) {
+                $inSling = isset($pooled['users'][$uid]);
+                $name = $inSling ? $pooled['users'][$uid]['name'] : ($current[$uid]['name'] ?? ('User #' . $uid));
+                $cur  = (float) ($current[$uid]['bonus'] ?? 0);
+                $newB = $inSling ? (float) $pooled['users'][$uid]['bonus'] : 0.0;
+                $hrs  = $inSling ? (float) $pooled['users'][$uid]['hours'] : 0.0;
+                $urows[] = (object) [
+                    'user_id'     => $uid,
+                    'name'        => $name,
+                    'sling_hours' => $hrs,
+                    'current'     => $cur,
+                    'pooled'      => $newB,
+                    'delta'       => $newB - $cur,
+                    'in_sling'    => $inSling,
+                    'has_sales'   => isset($current[$uid]),
+                ];
+            }
+            usort($urows, function ($a, $b) { return $b->pooled <=> $a->pooled; });
+
+            $days = array_values($pooled['store_days']);
+            $stores[] = [
+                'id'          => $lid,
+                'name'        => $lname,
+                'rows'        => $urows,
+                'days'        => $days,
+                'tot_current' => array_sum(array_map(function ($r) { return $r->current; }, $urows)),
+                'tot_pooled'  => array_sum(array_map(function ($r) { return $r->pooled; }, $urows)),
+                'no_sling'    => empty($pooled['users']),
+            ];
+        }
+
+        return view('report.sling_pooled_bonus')->with(compact('stores', 'period', 'start', 'end', 'matchAll'));
+    }
+
+    /**
+     * Compute the proposed Sling-pooled bonus for one location over [$start,$end].
+     * Returns ['store_days' => [date => summary...], 'users' => [uid => ...]].
+     * Pure projection — see slingPooledBonus() for the model description.
+     */
+    private function slingPooledBonusForLocation($business_id, $location_id, $lname, $startC, $endC, $matchAll = false)
+    {
+        $profile = $this->storeHourlyProfile($business_id, $location_id, 12);
+        $rate = $profile['rate'];
+        $stretch  = 0.10; // same 10% stretch the live target uses
+        $poolRate = 0.04; // flat 4% of store overage (Sarah 2026-07-12)
+
+        $start_str = $startC->toDateTimeString();
+        $end_str   = $endC->toDateTimeString();
+        $now = \Carbon::now();
+
+        // Published Sling *shifts* (not time-off / availability) overlapping the
+        // window that resolved to an ERP user. Location match is fuzzy: Sling's
+        // location_name ("Nivessa Hollywood") need not byte-match the ERP name
+        // ("Hollywood"). matchAll bypasses it for single-store accounts.
+        $shifts = \App\SlingShift::where('event_type', \App\SlingShift::TYPE_SHIFT)
+            ->where('published', 1)
+            ->whereNotNull('erp_user_id')
+            ->where('dtstart', '<=', $end_str)
+            ->where(function ($q) use ($start_str) {
+                $q->where('dtend', '>=', $start_str)->orWhereNull('dtend');
+            })
+            ->get();
+
+        if (!$matchAll) {
+            $lkey = strtolower(trim((string) $lname));
+            $lfirst = strtolower(trim(explode(' ', $lkey)[0] ?? ''));
+            $shifts = $shifts->filter(function ($s) use ($lkey, $lfirst) {
+                $sl = strtolower(trim((string) ($s->location_name ?? '')));
+                if ($sl === '') { return false; }
+                return $sl === $lkey
+                    || strpos($sl, $lkey) !== false
+                    || strpos($lkey, $sl) !== false
+                    || ($lfirst !== '' && strpos($sl, $lfirst) !== false);
+            });
+        }
+
+        // Non-floor accounts never share the pool no matter what Sling says:
+        // online fulfillment (Nick), system/non-human accounts, and departed
+        // staff. Same global names the leaderboard roster hides
+        // (applyStoreRoster's '*' list) — but we deliberately DON'T apply the
+        // per-store cross-exclusions ("Clyde really works HW", "Luis is old
+        // Pico") here, because Sling already tells us which store's shift it was.
+        // If someone has a published shift at this store, they were on the floor.
+        $nonFloor = ['nerdy', 'viper', 'henry', 'nick'];
+        $shiftUids = $shifts->pluck('erp_user_id')->map(function ($v) { return (int) $v; })->unique()->filter()->values();
+        $erpNames = [];
+        if ($shiftUids->isNotEmpty()) {
+            foreach (\DB::table('users')->whereIn('id', $shiftUids->all())->get(['id', 'first_name', 'last_name']) as $u) {
+                $erpNames[(int) $u->id] = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            }
+        }
+        $firstNameOf = function ($uid, $slingName) use ($erpNames) {
+            $full = $erpNames[$uid] ?? '';
+            if ($full === '') { $full = (string) $slingName; }
+            return strtolower(trim(explode(' ', trim($full))[0] ?? ''));
+        };
+        $shifts = $shifts->filter(function ($s) use ($firstNameOf, $nonFloor) {
+            $first = $firstNameOf((int) $s->erp_user_id, $s->user_name);
+            if ($first === '') { return true; }
+            foreach ($nonFloor as $tok) {
+                if ($first === $tok || strpos($first, $tok) === 0) { return false; }
+            }
+            return true;
+        });
+
+        // Per user+date hours (Sling `hours` already nets breaks; scale it by the
+        // fraction of the shift that falls inside the window), plus the raw
+        // clipped intervals per date for the store-open union.
+        $userDayHours = [];   // [uid][date] => hours
+        $userName = [];       // uid => display name
+        $dayIntervals = [];   // date => [ [Carbon s, Carbon e], ... ]
+        foreach ($shifts as $s) {
+            $ss = \Carbon::parse($s->dtstart);
+            $se = $s->dtend ? \Carbon::parse($s->dtend) : $now->copy();
+            $fullSpan = max(1, $ss->diffInSeconds($se));
+            if ($ss->lt($startC)) { $ss = $startC->copy(); }
+            if ($se->gt($endC)) { $se = $endC->copy(); }
+            if ($se->lte($ss)) { continue; }
+            $clipSpan = $ss->diffInSeconds($se);
+
+            $baseHours = (float) ($s->hours ?? 0);
+            if ($baseHours <= 0) { $baseHours = $clipSpan / 3600.0; }
+            $effHours = $baseHours * min(1.0, $clipSpan / $fullSpan);
+
+            $uid = (int) $s->erp_user_id;
+            $date = $ss->toDateString();
+            $userDayHours[$uid][$date] = ($userDayHours[$uid][$date] ?? 0) + $effHours;
+            if (!isset($userName[$uid])) {
+                $userName[$uid] = ($erpNames[$uid] ?? '') !== '' ? $erpNames[$uid] : ($s->user_name ?: ('User #' . $uid));
+            }
+            $dayIntervals[$date][] = [$ss, $se];
+        }
+
+        // Store "expected" per day = historical store-rate over the union of
+        // staffed hours (merge intervals so overlapping shifts aren't double
+        // counted), then the day's target adds the 10% stretch.
+        $storeExpected = [];
+        foreach ($dayIntervals as $date => $intervals) {
+            usort($intervals, function ($a, $b) { return $a[0]->timestamp <=> $b[0]->timestamp; });
+            $merged = [];
+            foreach ($intervals as $iv) {
+                if (empty($merged)) { $merged[] = [$iv[0]->copy(), $iv[1]->copy()]; continue; }
+                $li = count($merged) - 1;
+                if ($iv[0]->lte($merged[$li][1])) {
+                    if ($iv[1]->gt($merged[$li][1])) { $merged[$li][1] = $iv[1]->copy(); }
+                } else {
+                    $merged[] = [$iv[0]->copy(), $iv[1]->copy()];
+                }
+            }
+            $exp = 0.0;
+            foreach ($merged as $m) {
+                $cursor = $m[0]->copy();
+                while ($cursor->lt($m[1])) {
+                    $slotEnd = $cursor->copy()->startOfHour()->addHour();
+                    $chunkEnd = $slotEnd->lt($m[1]) ? $slotEnd : $m[1];
+                    $frac = $cursor->diffInSeconds($chunkEnd) / 3600.0;
+                    $key = ($cursor->dayOfWeek + 1) . '-' . $cursor->hour;
+                    $exp += ((float) ($rate[$key] ?? 0)) * $frac;
+                    $cursor = $chunkEnd;
+                }
+            }
+            $storeExpected[$date] = $exp;
+        }
+
+        // Store actual per day = ALL non-whatnot final sales at this location
+        // (every user combined) — same pre-tax / net-of-returns basis as the board.
+        $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+        $actualByDay = [];
+        foreach (\DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $location_id)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start_str, $end_str])
+            ->selectRaw("DATE(t.transaction_date) as d, COALESCE(SUM($net_pretax), 0) as rev")
+            ->groupBy(\DB::raw('DATE(t.transaction_date)'))
+            ->get() as $r) {
+            $actualByDay[$r->d] = (float) $r->rev;
+        }
+
+        // Seed users with their total Sling hours (so people show up even on days
+        // the store didn't beat goal).
+        $users = [];
+        foreach ($userDayHours as $uid => $days) {
+            $users[$uid] = ['name' => $userName[$uid] ?? ('User #' . $uid), 'hours' => 0.0, 'bonus' => 0.0, 'daily' => []];
+            foreach ($days as $h) { $users[$uid]['hours'] += $h; }
+        }
+
+        // Total participant hours per day (the pool denominator).
+        $dayTotalHours = [];
+        $dayParticipants = [];
+        foreach ($userDayHours as $uid => $days) {
+            foreach ($days as $date => $h) {
+                $dayTotalHours[$date] = ($dayTotalHours[$date] ?? 0) + $h;
+                $dayParticipants[$date] = ($dayParticipants[$date] ?? 0) + 1;
+            }
+        }
+
+        $bonus_start = substr(self::SALES_BONUS_LIVE_DATE, 0, 10);
+        $allDates = array_values(array_unique(array_merge(
+            array_keys($storeExpected), array_keys($actualByDay), array_keys($dayTotalHours)
+        )));
+        sort($allDates);
+
+        $storeDays = [];
+        foreach ($allDates as $date) {
+            $expected = $storeExpected[$date] ?? 0.0;
+            $target   = $expected * (1 + $stretch);
+            $actual   = $actualByDay[$date] ?? 0.0;
+            $overage  = max(0.0, $actual - $target);
+            // No bonus before the program went live, regardless of performance.
+            if (strcmp($date, $bonus_start) < 0) { $overage = 0.0; }
+            $pool = $overage * $poolRate;
+            $partHours = $dayTotalHours[$date] ?? 0.0;
+
+            if ($pool > 0 && $partHours > 0) {
+                foreach ($userDayHours as $uid => $days) {
+                    if (!isset($days[$date])) { continue; }
+                    $share = $pool * ($days[$date] / $partHours);
+                    $users[$uid]['bonus'] += $share;
+                    $users[$uid]['daily'][$date] = ['hours' => $days[$date], 'share' => $share];
+                }
+            }
+
+            $storeDays[$date] = [
+                'date'         => $date,
+                'expected'     => round($expected, 2),
+                'target'       => round($target, 2),
+                'actual'       => round($actual, 2),
+                'overage'      => round($overage, 2),
+                'pool'         => round($pool, 2),
+                'part_hours'   => round($partHours, 2),
+                'participants' => $dayParticipants[$date] ?? 0,
+            ];
+        }
+
+        foreach ($users as $uid => $u) {
+            $users[$uid]['bonus'] = round($u['bonus'], 2);
+            $users[$uid]['hours'] = round($u['hours'], 2);
+        }
+
+        return ['store_days' => $storeDays, 'users' => $users];
+    }
+
+    /**
      * Why one person's goal is what it is: for each hour they were clocked in,
      * show what the store HISTORICALLY rings in that weekday+hour slot (the same
      * 12-week rate that drives the target), their fair share of it, and how the
