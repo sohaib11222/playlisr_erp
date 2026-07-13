@@ -93,7 +93,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                 <div class="me-stat">
                     <div class="lbl">Your sales (this bonus)</div>
                     <div class="val" style="font-size:24px;">${{ number_format($sales_bonus['revenue'], 2) }}</div>
-                    <div class="sub">non-Whatnot, counted toward target</div>
+                    <div class="sub">non-Whatnot; your sales feed the store goal</div>
                 </div>
                 @php $salesOwed = round((float) $sales_bonus['bonus'] - (float) $sales_paid, 2); @endphp
                 <div class="me-stat">
@@ -102,7 +102,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <div class="sub">{{ $salesOwed < -0.004 ? 'overpaid $' . number_format(abs($salesOwed), 2) . ' (credit)' : ($salesOwed > 0.004 ? 'still owed $' . number_format($salesOwed, 2) : 'fully paid') }}</div>
                 </div>
             </div>
-            <p class="me-note" style="margin-top:14px;">You earn 2% of every dollar you ring above your daily sales target (the target comes from the store's own hourly history). It's added up day by day.@unless($sales_bonus['live']) This bonus isn't live yet — the figure above is a projection.@endunless</p>
+            <p class="me-note" style="margin-top:14px;"><strong>How this works:</strong> when the store beats its daily goal, <strong>4% of everything it rings above that goal</strong> is shared among everyone who worked the floor that day, split by the hours you were on. It doesn't matter who rang the sale — if you were on the floor, you share it. Overage is counted as it's earned through the day, so it's shared with whoever's working at the time (clock in after the store already beat goal and you share only what's rung during your shift). <span class="me-muted">Through July 9 the bonus was figured the older way — a share of what you personally rang above your own target.</span>@unless($sales_bonus['live']) This bonus isn't live yet — the figure above is a projection.@endunless</p>
             @if(count($sales_bonus['per_location']) > 1)
                 <table class="me-table" style="margin-top:12px;">
                     <thead><tr><th>Store</th><th>Sales</th><th>Bonus</th></tr></thead>
@@ -172,7 +172,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <a href="{{ url('/my-earnings/daily') }}" style="font-size:13px;font-weight:700;text-decoration:none;color:#6B5E2E;">All employees, day by day &rarr;</a>
                 @endif
             </div>
-            <p class="me-muted" style="margin:2px 0 12px;">Each day's sales and what you earned. Sales bonus is 2%/4% of what you rang over that day's target; listing pay is 2% of items you listed that sold that day.</p>
+            <p class="me-muted" style="margin:2px 0 12px;">Each day's sales and what you earned. From July 10, your <strong>sales bonus</strong> is your share of the store's overage that day (4% of what the store rang over goal, split across the floor by hours) — so it won't always line up with your own sales or goal, which are shown here just for context. Before July 10 it was a share of what you personally rang over your target. Listing pay is 2% of items you listed that sold that day.</p>
             @if(empty($daily))
                 <p class="me-muted">No sales or listed-item sales in this window yet.</p>
             @else
