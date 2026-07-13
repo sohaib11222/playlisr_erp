@@ -93,9 +93,10 @@
             <ul style="margin-bottom:0; padding-left:18px;">
                 <li><strong>This is a what-if, not pay.</strong> Nobody is paid from this page. It shows what each person <em>would</em> earn under a pooled model next to what the current per-cashier bonus gives them.</li>
                 <li><strong>Current</strong> = today's live bonus: each person earns 4%/2% on the sales <em>they personally rang</em> above their own hour-based target. A product lead who rings nothing earns nothing.</li>
-                <li><strong>Pooled</strong> = the proposal: each day the whole store's overage (all non-whatnot sales &minus; the store's historical target for its staffed hours, +10% stretch) pays a flat <strong>4%</strong> into a pot, split among everyone with a <strong>published Sling shift</strong> that day, weighted by their Sling hours. No register login or "who rang it" needed.</li>
+                <li><strong>Pooled</strong> = the proposal: the store has a daily <strong>goal</strong> (the cashiers' own ERP targets). Every dollar the store rings <em>above</em> that goal is overage, and a flat <strong>4%</strong> of it is shared with the floor. Same $ total as the cashier would've earned solo &mdash; just split by hours.</li>
+                <li><strong>Credited hour by hour.</strong> Overage is shared with whoever's on the floor <em>at the time it's rung</em>, weighted by the hours they worked then. So someone who clocks in <em>after</em> the store already beat goal only shares what's rung during their shift &mdash; a dead night earns them nothing. See "Goal beaten" in the daily math for when the store crossed the line.</li>
                 <li><strong>&Delta;</strong> is pooled &minus; current. Green = they'd earn more under pooling (usually the product lead); red = less (usually the person who rang everything).</li>
-                <li><strong>Non-floor accounts are left out</strong> of the pool (online fulfillment like Nick, system accounts, departed staff) &mdash; a Sling shift alone doesn't put them in. Per-store cross-assignments are <em>not</em> applied: whoever Sling shows on this store's floor that day shares, so a floor lead who rang nothing still gets a cut.</li>
+                <li><strong>Non-floor accounts are left out</strong> of the pool (online fulfillment like Nick, system accounts, departed staff) &mdash; a Sling shift alone doesn't put them in. Per-store cross-assignments are <em>not</em> applied: whoever Sling shows on this store's floor that day shares. If no cashier rings a sale, there's no overage and no bonus for anyone.</li>
             </ul>
         </div>
     </div>
@@ -164,12 +165,13 @@
                     <thead>
                         <tr>
                             <th style="text-align:left;">Date</th>
-                            <th class="num">Staffed target</th>
+                            <th class="num">Goal</th>
                             <th class="num">Actual sales</th>
+                            <th class="num">Goal beaten</th>
                             <th class="num">Overage</th>
                             <th class="num">Pool (4%)</th>
                             <th class="num">Staff on</th>
-                            <th class="num">Pool hrs</th>
+                            <th class="num">Floor hrs</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -178,6 +180,7 @@
                             <td style="text-align:left;">{{ \Carbon::parse($d['date'])->format('D M j') }}</td>
                             <td class="num">${{ number_format($d['target'], 0) }}</td>
                             <td class="num">${{ number_format($d['actual'], 0) }}</td>
+                            <td class="num @if(!is_null($d['cross_hour'])) up @else flat @endif">{{ is_null($d['cross_hour']) ? '—' : \Carbon::createFromTime($d['cross_hour'])->format('g a') }}</td>
                             <td class="num @if($d['overage'] > 0) up @else flat @endif">${{ number_format($d['overage'], 0) }}</td>
                             <td class="num">${{ number_format($d['pool'], 2) }}</td>
                             <td class="num">{{ $d['participants'] }}</td>
