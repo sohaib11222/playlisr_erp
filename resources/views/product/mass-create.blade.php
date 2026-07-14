@@ -445,6 +445,43 @@
                 <small class="text-muted" style="display:block; margin-top:6px;">
                     Swap <code>a, b, c, d, e</code> for your actual items &mdash; add the format (LP, CD, cassette) and condition (sealed, VG+, etc.) where you can, so the price is accurate. The reply comes back in the CSV format above, ready to paste into the box below.
                 </small>
+
+                {{-- Sarah 2026-07-14: worked example of the ChatGPT/Claude flow, styled
+                     like a chat so staff can see exactly what to type and get back. --}}
+                <div style="margin-top:14px; background:#fff; border:1px solid #cfe8d4; border-radius:6px; padding:12px;">
+                    <div style="font-size:12px; color:#777; margin-bottom:10px;">
+                        <i class="fa fa-comments-o"></i> Example &mdash; what this looks like in ChatGPT or Claude
+                    </div>
+
+                    <!-- what the employee types -->
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <div style="flex:0 0 34px; height:26px; line-height:26px; text-align:center; background:#e7f0fb; color:#2a6bb5; border-radius:13px; font-size:11px; font-weight:bold;">You</div>
+                        <div style="flex:1; background:#f5f7fa; border:1px solid #e1e6ec; border-radius:8px; padding:9px 11px; font-size:12.5px; line-height:1.55; color:#333;">
+                            Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:<br>
+                            <span style="font-family:'Courier New', monospace; font-size:11.5px; color:#666;">Product Name,Artist,Category,Subcategory,SKU,Price,</span><br><br>
+                            Items:<br>
+                            Rumours (LP, VG+), Thriller (sealed LP), Kind of Blue (used CD), Nevermind (cassette)
+                        </div>
+                    </div>
+
+                    <!-- what the AI sends back -->
+                    <div style="display:flex; gap:8px;">
+                        <div style="flex:0 0 34px; height:26px; line-height:26px; text-align:center; background:#eee; color:#555; border-radius:13px; font-size:13px;"><i class="fa fa-magic"></i></div>
+                        <div style="flex:1;">
+                            <div style="font-size:12.5px; color:#333; margin-bottom:8px;">Here you go &mdash; ready to paste into the box below:</div>
+                            <div style="background:#f5f7fa; border:1px solid #e1e6ec; border-radius:8px; padding:9px 11px; font-family:'Courier New', monospace; font-size:11.5px; line-height:1.85; color:#222; overflow-x:auto; white-space:nowrap;">
+                                Rumours,Fleetwood Mac,Used Vinyl,Rock,,32.00,<br>
+                                Thriller,Michael Jackson,Sealed Vinyl,Pop,,45.00,<br>
+                                Kind of Blue,Miles Davis,Used CD,Jazz,,12.00,<br>
+                                Nevermind,Nirvana,Cassettes,Rock,,18.00,
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:10px; font-size:12px; color:#3c763d;">
+                        <i class="fa fa-clipboard"></i> Copy that block, paste it into the Bulk Product Entry box, then click <strong>Preview</strong> and <strong>Parse &amp; Add</strong>.
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label for="bulk_product_text">
