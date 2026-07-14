@@ -420,6 +420,32 @@
             </div>
         </div>
         <div class="box-body" style="display: none;">
+            {{-- Sarah 2026-07-14: quick how-to for staff using Bulk Product Entry. --}}
+            <div class="alert alert-success" style="margin-bottom: 15px; padding: 12px;">
+                <strong><i class="fa fa-graduation-cap"></i> How to use Bulk Product Entry</strong>
+                <ol style="margin-bottom: 0; margin-top: 8px; padding-left: 20px;">
+                    <li>Type or paste your products in the box below &mdash; <strong>one product per line</strong>.</li>
+                    <li>Use any of the formats shown below. The simplest is just <code>Product Name - Artist</code>.</li>
+                    <li>Click <strong>Preview Parsed Data</strong> first to check the rows look right.</li>
+                    <li>Click <strong>Parse &amp; Add Products</strong> to load them into the table.</li>
+                    <li>Fill in anything left blank in the table (price, category, location), then hit <strong>Save All Products</strong> at the bottom.</li>
+                </ol>
+                <hr style="margin: 10px 0;">
+                <strong><i class="fa fa-magic"></i> Tip: let ChatGPT or Claude price &amp; format your list</strong>
+                <p style="margin: 6px 0;">
+                    Paste your rough list of items into <strong>ChatGPT</strong> or <strong>Claude</strong> and ask it to price them for the store, then paste its answer straight back here. For example:
+                </p>
+                <div style="background:#fff; border:1px solid #cfe8d4; border-radius:4px; padding:10px; font-family:'Courier New', monospace; font-size:12px; line-height:1.5;">
+                    Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:<br>
+                    <code>Product Name,Artist,Category,Subcategory,SKU,Price,</code><br>
+                    <br>
+                    Items:<br>
+                    a, b, c, d, e
+                </div>
+                <small class="text-muted" style="display:block; margin-top:6px;">
+                    Swap <code>a, b, c, d, e</code> for your actual items &mdash; add the format (LP, CD, cassette) and condition (sealed, VG+, etc.) where you can, so the price is accurate. The reply comes back in the CSV format above, ready to paste into the box below.
+                </small>
+            </div>
             <div class="form-group">
                 <label for="bulk_product_text">
                     <strong>Paste products here (one per line).</strong> Smart parser supports multiple formats:
