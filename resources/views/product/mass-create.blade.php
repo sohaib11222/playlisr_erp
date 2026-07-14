@@ -430,6 +430,18 @@
                     <li>Click <strong>Parse &amp; Add Products</strong> to load them into the table.</li>
                     <li>Fill in anything left blank in the table (price, category, location), then hit <strong>Save All Products</strong> at the bottom.</li>
                 </ol>
+                <hr style="margin: 10px 0;">
+                <strong><i class="fa fa-magic"></i> Tip: let ChatGPT or Claude price &amp; format your list</strong>
+                <p style="margin: 6px 0;">
+                    Paste your rough list of items into <strong>ChatGPT</strong> or <strong>Claude</strong> and ask it to price them for the store, then paste its answer straight back here. For example:
+                </p>
+                <div style="background:#fff; border:1px solid #cfe8d4; border-radius:4px; padding:10px; font-family:'Courier New', monospace; font-size:12px; line-height:1.5;">
+                    Price these items a, b, c, d, e for a Hollywood or Pico Blvd retail store in this exact format, one per line:<br>
+                    <code>Product Name,Artist,Category,Subcategory,SKU,Price,</code>
+                </div>
+                <small class="text-muted" style="display:block; margin-top:6px;">
+                    Just swap <code>a, b, c, d, e</code> for your actual product names. The reply comes back in the CSV format above, ready to paste into the box below.
+                </small>
             </div>
             <div class="form-group">
                 <label for="bulk_product_text">
