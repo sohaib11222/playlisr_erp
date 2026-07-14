@@ -413,10 +413,12 @@
                         <input type="radio" name="duty" value="discogs" id="duty_discogs">
                         <span class="opt-title">Discogs</span>
                     </label>
+                    @if(!empty($is_admin))
                     <label class="duty-option">
                         <input type="radio" name="duty" value="admin" id="duty_admin">
                         <span class="opt-title">Admin</span>
                     </label>
+                    @endif
                 </div>
             </div>
 

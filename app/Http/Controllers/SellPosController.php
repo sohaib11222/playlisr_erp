@@ -424,7 +424,11 @@ class SellPosController extends Controller
             }
         }
 
-        return view('sale_pos.select_pos_duty', compact('business_locations', 'intended'));
+        // Only ERP admins get the "Admin" duty option — non-admin staff
+        // (cashier/shipping/discogs) shouldn't even see it on the picker.
+        $is_admin = $this->businessUtil->is_admin(auth()->user(), $business_id);
+
+        return view('sale_pos.select_pos_duty', compact('business_locations', 'intended', 'is_admin'));
     }
 
     /**
@@ -444,6 +448,12 @@ class SellPosController extends Controller
 
         $business_id = (int) $request->session()->get('user.business_id');
         $duty = $request->input('duty');
+
+        // Only ERP admins may take the "Admin" duty. The option is hidden on
+        // the picker for non-admins, but reject a directly-posted value too.
+        if ($duty === 'admin' && !$this->businessUtil->is_admin(auth()->user(), $business_id)) {
+            return back()->with('status', ['success' => 0, 'msg' => 'You are not authorized to select the Admin role.'])->withInput();
+        }
         $locationId = $request->input('location_id');
         if ($locationId !== null && $locationId !== '') {
             $ok = BusinessLocation::where('business_id', $business_id)->where('id', $locationId)->exists();
