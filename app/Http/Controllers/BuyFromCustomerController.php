@@ -79,6 +79,85 @@ class BuyFromCustomerController extends Controller
         return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget'));
     }
 
+    /**
+     * Reopen a saved draft in the create form so the cashier can keep
+     * negotiating instead of starting over. The whole create view is driven by
+     * an $input_data array shaped like the form request, so we rehydrate that
+     * from the stored offer + its lines and hand back the offer id via
+     * saved_offer_id — which fills the hidden offer_id field, so subsequent
+     * Calculate / Save / Accept clicks UPDATE this same BFC rather than spawning
+     * a duplicate (the "one BFC per quote" rule the save path already enforces).
+     * Only drafts can be reopened; accepted/rejected offers are finalized.
+     */
+    public function edit($id)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::with('lines')
+            ->where('business_id', $business_id)
+            ->findOrFail($id);
+
+        if ($offer->status !== 'draft') {
+            return redirect()->route('buy-from-customer.history')
+                ->with('status', ['success' => 0, 'msg' => 'Only draft offers can be continued — this one is already ' . $offer->status . '.']);
+        }
+
+        $lines = $offer->lines
+            ->sortBy('line_order')
+            ->values()
+            ->map(function ($line) {
+                return [
+                    'item_type' => $line->item_type,
+                    'title' => $line->title,
+                    'genre' => $line->genre,
+                    'condition_grade' => $line->condition_grade,
+                    'quantity' => $line->quantity,
+                    'discogs_median_price' => $line->discogs_median_price,
+                    'standard_multiplier' => $line->standard_multiplier,
+                ];
+            })->all();
+
+        $input_data = [
+            'location_id' => $offer->location_id,
+            'seller_mode' => $offer->seller_mode ?: 'phone',
+            'contact_id' => $offer->contact_id,
+            'payment_method' => $offer->payment_method ?: ($offer->payout_type === 'store_credit' ? 'store_credit' : 'cash_in_store'),
+            'seller_first_name' => $offer->seller_first_name,
+            'seller_last_name' => $offer->seller_last_name,
+            'seller_name' => $offer->seller_name,
+            'seller_phone' => $offer->seller_phone,
+            'seller_email' => $offer->seller_email,
+            'seller_id_type' => $offer->seller_id_type,
+            'seller_id_last_four' => $offer->seller_id_last_four,
+            'notes' => $offer->notes,
+            'lines' => $lines,
+        ];
+
+        // Recompute the calculator so the offer ladder / totals panel shows the
+        // draft's numbers on load. Best-effort — a calc failure must never block
+        // reopening a draft, so fall back to the bare form.
+        $calculation = null;
+        try {
+            $calculation = $this->calculator->calculate($lines, $input_data);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('BFC draft reopen calc failed', ['offer_id' => $offer->id, 'err' => $e->getMessage()]);
+        }
+
+        $locations = BusinessLocation::forDropdown($business_id, false, true);
+        $contacts = Contact::contactDropdown($business_id, false, true, true);
+        $itemTypes = $this->calculator->getItemTypesForDropdown();
+        $grades = $this->calculator->getGradesForDropdown();
+        $purchaseBudget = $this->usedBudgetBar();
+
+        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget'))
+            ->with('input_data', $input_data)
+            ->with('calculation', $calculation)
+            ->with('saved_offer_id', $offer->id);
+    }
+
     public function calculate(Request $request)
     {
         if (!auth()->user()->can('purchase.create')) {

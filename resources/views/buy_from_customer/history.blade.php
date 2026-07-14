@@ -102,6 +102,11 @@
                             </td>
                             <td>{{ $offer->rejection_reason ?: '-' }}</td>
                             <td>
+                                @if($offer->status === 'draft')
+                                    <a href="{{ route('buy-from-customer.edit', $offer->id) }}" class="btn btn-primary btn-xs" title="Reopen this draft to keep negotiating">
+                                        <i class="fa fa-pencil"></i> Continue
+                                    </a>
+                                @endif
                                 @if($offer->status === 'accepted')
                                     <span class="text-muted small" title="Accepted offers can't be deleted — void the linked purchase first">locked</span>
                                 @elseif(!empty($is_admin))
