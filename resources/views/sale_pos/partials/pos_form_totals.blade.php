@@ -195,6 +195,24 @@
     .pos-pretax-bar .pretax-amt > span {
         font: inherit; color: inherit; line-height: inherit; letter-spacing: inherit;
     }
+    /* Original pre-tax (before store credit), struck through and muted. Its
+       own smaller size + normal weight so it reads as the "was" price next to
+       the big highlighted "now" figure. Includes its own $ glyph. */
+    .pos-pretax-bar .pretax-orig {
+        font-size: 15px; font-weight: 600;
+        color: #9C8A55;
+        text-decoration: line-through;
+        text-decoration-thickness: 2px;
+        margin-right: 8px;
+        white-space: nowrap;
+    }
+    /* When store credit is applied, make the reduced (after-credit) figure pop
+       so the cashier keys THAT into Clover — deeper mustard + subtle glow. */
+    .pos-pretax-bar.has-credit .pretax-cur,
+    .pos-pretax-bar.has-credit #pre_tax_amount {
+        color: #7A5A00;
+        text-shadow: 0 0 1px rgba(122, 90, 0, .25);
+    }
 
     /* Grand total row */
     .pos-receipt .r-row.grand { padding: 6px 0 2px; }
@@ -592,7 +610,15 @@
                     <span>Pre-Tax → Clover</span>
                     <span class="pretax-sub">Type this amount into the Clover terminal</span>
                 </div>
-                <div class="pretax-amt"><span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span></div>
+                <div class="pretax-amt">
+                    {{-- Shown only when store credit is applied: the pre-tax
+                         amount BEFORE the deduction, struck through, so the
+                         cashier can see what changed and key the reduced
+                         (highlighted) number into Clover. Populated by
+                         apply_store_credit_to_order_totals_display() in pos.js. --}}
+                    <span class="pretax-orig" id="pre_tax_original" style="display:none;"></span>
+                    <span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span>
+                </div>
             </div>
 
             {{-- Tax row --}}

@@ -3580,6 +3580,16 @@ function calculate_billing_details(price_total) {
     var shown_pre_tax = pre_tax_rounded * curr_exchange_rate;
     $('span#pre_tax_amount').text(__currency_trans_from_en(shown_pre_tax, false));
 
+    // Reset the store-credit strike-through each recalc. Stash the full
+    // (pre-credit) pre-tax so apply_store_credit_to_order_totals_display()
+    // can show it struck through when credit is applied. Default state = no
+    // credit: hide the original, drop the highlight.
+    var $preTaxOrig = $('#pre_tax_original');
+    if ($preTaxOrig.length) {
+        $preTaxOrig.data('full', shown_pre_tax).hide().text('');
+    }
+    $('.pos-pretax-bar').removeClass('has-credit');
+
     var total_payable = price_total + order_tax - discount + shipping_charges + packing_charge + additional_expense;
     var round_off_data = __round(total_payable, rounding_multiple);
     var total_payable_rounded = round_off_data.number;
@@ -3818,6 +3828,19 @@ function apply_store_credit_to_order_totals_display() {
     var remainingPreTax = remainingTotalWithTax - remainingOrderTax;
 
     $preTax.text(__currency_trans_from_en(remainingPreTax, false));
+
+    // Show the original pre-tax (before store credit) struck through, and
+    // highlight the reduced figure the cashier should key into Clover. The
+    // full pre-tax was stashed by calculate_billing_details each recalc.
+    var $preTaxOrig = $('#pre_tax_original');
+    if ($preTaxOrig.length) {
+        var fullPreTax = $preTaxOrig.data('full');
+        if (typeof fullPreTax === 'number' && fullPreTax > remainingPreTax) {
+            $preTaxOrig.text('$' + __currency_trans_from_en(fullPreTax, false)).show();
+            $('.pos-pretax-bar').addClass('has-credit');
+        }
+    }
+
     if ($orderTaxDisplay.length) {
         $orderTaxDisplay.text(__currency_trans_from_en(remainingOrderTax, false));
     }
