@@ -13460,6 +13460,20 @@ class ReportController extends Controller
             return true;
         });
 
+        // Non-selling SHIFTS don't share the floor pool, even for someone who
+        // sells on other days (Sarah 2026-07-13). Matched on the Sling position,
+        // so it's per-shift: a Discogs/shipping/warehouse shift is out; the same
+        // person's cashier shift the next day is still in.
+        $excludedPositions = ['discogs', 'shipping', 'warehouse', 'fulfillment'];
+        $shifts = $shifts->filter(function ($s) use ($excludedPositions) {
+            $pos = strtolower(trim((string) ($s->position_name ?? '')));
+            if ($pos === '') { return true; } // untagged shift => treat as floor
+            foreach ($excludedPositions as $tok) {
+                if (strpos($pos, $tok) !== false) { return false; }
+            }
+            return true;
+        });
+
         // Expand each floor shift into per-hour presence fractions. Presence
         // (clipped clock time) drives the hour-by-hour overage split; the summed
         // hours show as "Sling hrs". A shift is bucketed under its start date
