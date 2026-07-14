@@ -436,11 +436,14 @@
                     Paste your rough list of items into <strong>ChatGPT</strong> or <strong>Claude</strong> and ask it to price them for the store, then paste its answer straight back here. For example:
                 </p>
                 <div style="background:#fff; border:1px solid #cfe8d4; border-radius:4px; padding:10px; font-family:'Courier New', monospace; font-size:12px; line-height:1.5;">
-                    Price these items a, b, c, d, e for a Hollywood or Pico Blvd retail store in this exact format, one per line:<br>
-                    <code>Product Name,Artist,Category,Subcategory,SKU,Price,</code>
+                    Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:<br>
+                    <code>Product Name,Artist,Category,Subcategory,SKU,Price,</code><br>
+                    <br>
+                    Items:<br>
+                    a, b, c, d, e
                 </div>
                 <small class="text-muted" style="display:block; margin-top:6px;">
-                    Just swap <code>a, b, c, d, e</code> for your actual product names. The reply comes back in the CSV format above, ready to paste into the box below.
+                    Swap <code>a, b, c, d, e</code> for your actual items &mdash; add the format (LP, CD, cassette) and condition (sealed, VG+, etc.) where you can, so the price is accurate. The reply comes back in the CSV format above, ready to paste into the box below.
                 </small>
             </div>
             <div class="form-group">
