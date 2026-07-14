@@ -420,6 +420,17 @@
             </div>
         </div>
         <div class="box-body" style="display: none;">
+            {{-- Sarah 2026-07-14: quick how-to for staff using Bulk Product Entry. --}}
+            <div class="alert alert-success" style="margin-bottom: 15px; padding: 12px;">
+                <strong><i class="fa fa-graduation-cap"></i> How to use Bulk Product Entry</strong>
+                <ol style="margin-bottom: 0; margin-top: 8px; padding-left: 20px;">
+                    <li>Type or paste your products in the box below &mdash; <strong>one product per line</strong>.</li>
+                    <li>Use any of the formats shown below. The simplest is just <code>Product Name - Artist</code>.</li>
+                    <li>Click <strong>Preview Parsed Data</strong> first to check the rows look right.</li>
+                    <li>Click <strong>Parse &amp; Add Products</strong> to load them into the table.</li>
+                    <li>Fill in anything left blank in the table (price, category, location), then hit <strong>Save All Products</strong> at the bottom.</li>
+                </ol>
+            </div>
             <div class="form-group">
                 <label for="bulk_product_text">
                     <strong>Paste products here (one per line).</strong> Smart parser supports multiple formats:
