@@ -54,6 +54,7 @@
                         <th>Final Cash</th>
                         <th>Final Credit</th>
                         <th>Payment</th>
+                        <th>Final Accepted</th>
                         <th>Purchase Ref</th>
                         <th>Rejected Reason</th>
                         <th></th>
@@ -71,6 +72,12 @@
                                 'store_credit' => 'Store credit',
                                 'zelle_venmo' => 'Zelle / Venmo',
                             ][$pmKey] ?? ucfirst(str_replace('_', ' ', $offer->payout_type));
+                            // The single "accepted" figure: store-credit payouts
+                            // settle in credit, everything else (cash / Zelle) in
+                            // cash. Shows the negotiated final for every row.
+                            $finalAccepted = $offer->payout_type === 'store_credit'
+                                ? $offer->final_offer_credit
+                                : $offer->final_offer_cash;
                         @endphp
                         <tr>
                             <td>{{ $offer->buy_record_number }}</td>
@@ -91,6 +98,10 @@
                             <td>@format_currency($offer->final_offer_cash)</td>
                             <td>@format_currency($offer->final_offer_credit)</td>
                             <td>{{ $pmLabel }}</td>
+                            <td>
+                                <strong>@format_currency($finalAccepted)</strong>
+                                <br><small class="text-muted">{{ $pmLabel }}</small>
+                            </td>
                             <td>
                                 @if($offer->acceptedPurchase)
                                     <a href="{{ action('PurchaseController@show', [$offer->acceptedPurchase->id]) }}" target="_blank">
@@ -120,7 +131,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 12 : 11 }}" class="text-center">No records yet.</td></tr>
+                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 13 : 12 }}" class="text-center">No records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
