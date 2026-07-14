@@ -426,7 +426,11 @@ class SellPosController extends Controller
 
         // Only ERP admins get the "Admin" duty option — non-admin staff
         // (cashier/shipping/discogs) shouldn't even see it on the picker.
-        $is_admin = $this->businessUtil->is_admin(auth()->user(), $business_id);
+        // Match the reconciliation gate: is_admin() OR the named admins
+        // (Sarah / Jon / Fatteen), since Jon's account isn't flagged with the
+        // Admin# role but is treated as an admin everywhere else.
+        $is_admin = $this->businessUtil->is_admin(auth()->user(), $business_id)
+            || self::canFixPaymentMethod();
 
         return view('sale_pos.select_pos_duty', compact('business_locations', 'intended', 'is_admin'));
     }
@@ -451,7 +455,10 @@ class SellPosController extends Controller
 
         // Only ERP admins may take the "Admin" duty. The option is hidden on
         // the picker for non-admins, but reject a directly-posted value too.
-        if ($duty === 'admin' && !$this->businessUtil->is_admin(auth()->user(), $business_id)) {
+        // Same gate as the picker: is_admin() OR the named admins.
+        $can_be_admin = $this->businessUtil->is_admin(auth()->user(), $business_id)
+            || self::canFixPaymentMethod();
+        if ($duty === 'admin' && !$can_be_admin) {
             return back()->with('status', ['success' => 0, 'msg' => 'You are not authorized to select the Admin role.'])->withInput();
         }
         $locationId = $request->input('location_id');
