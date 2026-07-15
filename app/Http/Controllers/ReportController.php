@@ -14280,6 +14280,21 @@ class ReportController extends Controller
                     }
                 }
                 $pooledUsers = $pooled['users'];
+
+                // Safety net: if NO published Sling shifts matched this store for
+                // the window, the pool has no members and every pooled day would
+                // pay $0 — silently wiping the sales bonus store-wide the moment
+                // pooling went live (2026-07-10). Until the Sling sync/linking is
+                // healthy, fall back to the legacy per-cashier bonus so nobody
+                // loses pay. A store with matched shifts but no overage keeps the
+                // pooled path (members present, $0 is correct there). Sarah
+                // 2026-07-14.
+                if (empty($pooledUsers)) {
+                    \Log::warning('pooled sales-bonus: no matched Sling shifts for location ' . $location_id . ' — falling back to legacy per-cashier bonus.');
+                    $usePooled = false;
+                    $pooledShare = [];
+                    $pooledUsers = [];
+                }
             } catch (\Throwable $e) {
                 \Log::warning('pooled sales-bonus fell back to legacy for location ' . $location_id . ': ' . $e->getMessage());
                 $usePooled = false;
