@@ -55,6 +55,15 @@ class ReportController extends Controller
      */
     const POOLED_BONUS_START_DATE = '2026-07-10';
 
+    // Master kill-switch for LIVE pooled PAY. When false, actual pay
+    // (leaderboard / my-earnings / payables) uses the legacy per-cashier bonus
+    // — the trusted "whoever rang it earns it" model — regardless of the start
+    // date above. The /reports/sling-pooled-bonus projection page still shows
+    // the pooled model side-by-side so it can be validated without paying it.
+    // Held OFF until the Sling roster is clean (bad shift rows redistribute real
+    // commission) and the model is signed off. Sarah 2026-07-14.
+    const POOLED_BONUS_PAY_LIVE = false;
+
     /**
      * All Utils instance.
      *
@@ -14246,7 +14255,7 @@ class ReportController extends Controller
         $cut = self::POOLED_BONUS_START_DATE;
         $pooledShare = [];   // [uid][date] => share (on/after cut only)
         $pooledUsers = [];   // uid => pooled record (to add rows for non-sellers)
-        $usePooled = !$legacyOnly && strcmp($endC->toDateString(), $cut) >= 0;
+        $usePooled = !$legacyOnly && self::POOLED_BONUS_PAY_LIVE && strcmp($endC->toDateString(), $cut) >= 0;
         if ($usePooled) {
             // Defensive: if the pooled computation ever throws, fall back to the
             // legacy per-cashier calc rather than breaking every page that shows a
