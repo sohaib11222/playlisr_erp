@@ -3945,6 +3945,13 @@ function reset_pos_form(){
 	set_default_customer();
 	set_location();
 
+	// Hide the customer account snapshot (name + Credit/Gift Cards balances)
+	// after a sale finishes. It's only meant to appear while a real customer is
+	// actively selected — leaving it up past checkout made cashiers think they
+	// were about to apply credit to the previous (wrong) customer. The sidebar
+	// mirror (#sidebar_customer_panel) watches this element and hides itself too.
+	$('#customer_account_info').hide();
+
 	$('tr.product_row').remove();
 	$('span.total_quantity, span.price_total, span#total_discount, span#order_tax, span#order_tax_display, span#total_payable, span#total_with_tax, span#shipping_charges_amount').text(0);
 	$('span.total_payable_span', 'span.total_paying', 'span.balance_due').text(0);
