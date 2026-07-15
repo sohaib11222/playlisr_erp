@@ -68,6 +68,26 @@ class SyncSlingShifts extends Command
             }
         }
 
+        // Sling models locations AND positions as "groups"; calendar shifts
+        // only reference them by id ("location": {"id": 19993180}), never by
+        // name. Build id→name maps so each shift gets a real store + position
+        // name — without this, location_name is blank and the pooled-bonus
+        // store match finds nothing (Sarah 2026-07-14).
+        $locationNameById = [];
+        $positionNameById = [];
+        foreach ($client->groups() as $g) {
+            $gid = (string) ($g['id'] ?? '');
+            if ($gid === '') continue;
+            $gname = trim((string) ($g['name'] ?? ''));
+            if ($gname === '') continue;
+            $gtype = strtolower(trim((string) ($g['type'] ?? '')));
+            if ($gtype === 'location') {
+                $locationNameById[$gid] = $gname;
+            } elseif ($gtype === 'position') {
+                $positionNameById[$gid] = $gname;
+            }
+        }
+
         // ERP user roster — map lowercased email→user_id, with username
         // as a fallback because the users table allows email to be NULL
         // and many staff get registered with email-as-username only.
@@ -140,10 +160,17 @@ class SyncSlingShifts extends Command
                     $published = (bool) $shift['published'];
                 }
 
+                // Sling calendar entries carry location/position as id-only
+                // references; resolve to names via the group map, keeping any
+                // inline name if a future endpoint ever provides one.
+                $locId = (string) ($shift['location']['id'] ?? '');
                 $locationName = $shift['location']['name']
-                    ?? ($shift['locationName'] ?? null);
+                    ?? ($shift['locationName']
+                        ?? ($locId !== '' ? ($locationNameById[$locId] ?? null) : null));
+                $posId = (string) ($shift['position']['id'] ?? '');
                 $positionName = $shift['position']['name']
-                    ?? ($shift['positionName'] ?? null);
+                    ?? ($shift['positionName']
+                        ?? ($posId !== '' ? ($positionNameById[$posId] ?? null) : null));
 
                 $eventType = $this->detectEventType($shift);
 

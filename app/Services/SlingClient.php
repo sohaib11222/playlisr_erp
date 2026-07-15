@@ -54,6 +54,24 @@ class SlingClient
     }
 
     /**
+     * Fetch the org's "groups" — Sling models locations AND positions as
+     * groups, each with {id, type: 'location'|'position'|..., name}. Calendar
+     * shifts only reference these by id ("location": {"id": 19993180}), so we
+     * need this map to turn those ids into the store/position names the sync
+     * stores. Endpoint is un-versioned and not org-scoped (confirmed via the
+     * Sling Diagnose probe): GET https://api.getsling.com/groups.
+     */
+    public function groups()
+    {
+        if (!$this->isConfigured()) return [];
+        $body = $this->get('https://api.getsling.com/groups');
+        if (!is_array($body)) return [];
+        if (isset($body[0])) return $body;
+        if (isset($body['groups']) && is_array($body['groups'])) return $body['groups'];
+        return [];
+    }
+
+    /**
      * Calendar shifts in a date range. Per Sling's published bash examples
      * (getsling/getsling-api-docs), the canonical endpoint is per-user:
      *   GET https://api.getsling.com/calendar/{orgId}/users/{userId}?dates={start}/{end}
