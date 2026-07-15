@@ -446,42 +446,55 @@
                     Swap <code>a, b, c, d, e</code> for your actual items &mdash; add the format (LP, CD, cassette) and condition (sealed, VG+, etc.) where you can, so the price is accurate. The reply comes back in the CSV format above, ready to paste into the box below.
                 </small>
 
-                {{-- Sarah 2026-07-14: worked example of the ChatGPT/Claude flow, styled
-                     like a chat so staff can see exactly what to type and get back. --}}
-                <div style="margin-top:14px; background:#fff; border:1px solid #cfe8d4; border-radius:6px; padding:12px;">
-                    <div style="font-size:12px; color:#777; margin-bottom:10px;">
-                        <i class="fa fa-comments-o"></i> Example &mdash; what this looks like in ChatGPT or Claude
+                {{-- Sarah 2026-07-14: worked example styled to look like a real
+                     ChatGPT window (browser chrome + OpenAI avatar + dark code block)
+                     so staff recognise it at a glance. --}}
+                <p style="font-size:12px; color:#777; margin:14px 0 6px;">
+                    <i class="fa fa-picture-o"></i> Here's what it looks like in ChatGPT:
+                </p>
+                <div style="max-width:600px; border:1px solid #d9d9e3; border-radius:12px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.10); font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                    <!-- browser/window chrome -->
+                    <div style="display:flex; align-items:center; padding:9px 13px; background:#f7f7f8; border-bottom:1px solid #ececf1;">
+                        <span style="width:11px; height:11px; border-radius:50%; background:#ff5f57; display:inline-block; margin-right:7px;"></span>
+                        <span style="width:11px; height:11px; border-radius:50%; background:#febc2e; display:inline-block; margin-right:7px;"></span>
+                        <span style="width:11px; height:11px; border-radius:50%; background:#28c840; display:inline-block;"></span>
+                        <span style="margin:0 auto; font-size:12px; color:#6e6e80; font-weight:600; letter-spacing:.2px;">ChatGPT</span>
                     </div>
 
-                    <!-- what the employee types -->
-                    <div style="display:flex; gap:8px; margin-bottom:12px;">
-                        <div style="flex:0 0 34px; height:26px; line-height:26px; text-align:center; background:#e7f0fb; color:#2a6bb5; border-radius:13px; font-size:11px; font-weight:bold;">You</div>
-                        <div style="flex:1; background:#f5f7fa; border:1px solid #e1e6ec; border-radius:8px; padding:9px 11px; font-size:12.5px; line-height:1.55; color:#333;">
+                    <!-- user turn -->
+                    <div style="display:flex; gap:12px; padding:16px 16px 14px; background:#ffffff;">
+                        <div style="flex:0 0 30px; height:30px; border-radius:4px; background:#ab68ff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">S</div>
+                        <div style="font-size:13.5px; line-height:1.6; color:#343541;">
                             Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:<br>
-                            <span style="font-family:'Courier New', monospace; font-size:11.5px; color:#666;">Product Name,Artist,Category,Subcategory,SKU,Price,</span><br><br>
-                            Items:<br>
-                            Rumours (LP, VG+), Thriller (sealed LP), Kind of Blue (used CD), Nevermind (cassette)
+                            <span style="font-family:'Courier New',monospace; font-size:12px; color:#6e6e80;">Product Name,Artist,Category,Subcategory,SKU,Price,</span><br><br>
+                            Items: Rumours (LP, VG+), Thriller (sealed LP), Kind of Blue (used CD), Nevermind (cassette)
                         </div>
                     </div>
 
-                    <!-- what the AI sends back -->
-                    <div style="display:flex; gap:8px;">
-                        <div style="flex:0 0 34px; height:26px; line-height:26px; text-align:center; background:#eee; color:#555; border-radius:13px; font-size:13px;"><i class="fa fa-magic"></i></div>
-                        <div style="flex:1;">
-                            <div style="font-size:12.5px; color:#333; margin-bottom:8px;">Here you go &mdash; ready to paste into the box below:</div>
-                            <div style="background:#f5f7fa; border:1px solid #e1e6ec; border-radius:8px; padding:9px 11px; font-family:'Courier New', monospace; font-size:11.5px; line-height:1.85; color:#222; overflow-x:auto; white-space:nowrap;">
-                                Rumours,Fleetwood Mac,Used Vinyl,Rock,,32.00,<br>
-                                Thriller,Michael Jackson,Sealed Vinyl,Pop,,45.00,<br>
-                                Kind of Blue,Miles Davis,Used CD,Jazz,,12.00,<br>
-                                Nevermind,Nirvana,Cassettes,Rock,,18.00,
+                    <!-- assistant turn -->
+                    <div style="display:flex; gap:12px; padding:16px; background:#f7f7f8; border-top:1px solid #ececf1;">
+                        <div style="flex:0 0 30px; height:30px; border-radius:4px; background:#10a37f; display:flex; align-items:center; justify-content:center;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.1419.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.1419.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:13.5px; line-height:1.6; color:#343541; margin-bottom:10px;">Here you go &mdash; ready to paste into the box below:</div>
+                            <!-- dark code block, ChatGPT style -->
+                            <div style="border-radius:6px; overflow:hidden;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:#2f2f2f; color:#b4b4c4; font-size:11px;">
+                                    <span>csv</span>
+                                    <span><i class="fa fa-clipboard"></i> Copy code</span>
+                                </div>
+                                <pre style="margin:0; padding:12px; background:#0d0d0d; color:#e6e6e6; font-family:'Courier New',monospace; font-size:12px; line-height:1.85; overflow-x:auto; white-space:pre;">Rumours,Fleetwood Mac,Used Vinyl,Rock,,32.00,
+Thriller,Michael Jackson,Sealed Vinyl,Pop,,45.00,
+Kind of Blue,Miles Davis,Used CD,Jazz,,12.00,
+Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                             </div>
                         </div>
                     </div>
-
-                    <div style="margin-top:10px; font-size:12px; color:#3c763d;">
-                        <i class="fa fa-clipboard"></i> Copy that block, paste it into the Bulk Product Entry box, then click <strong>Preview</strong> and <strong>Parse &amp; Add</strong>.
-                    </div>
                 </div>
+                <p style="margin-top:10px; font-size:12px; color:#3c763d;">
+                    <i class="fa fa-clipboard"></i> Copy the CSV it gives you, paste it into the Bulk Product Entry box below, then click <strong>Preview</strong> and <strong>Parse &amp; Add</strong>.
+                </p>
             </div>
             <div class="form-group">
                 <label for="bulk_product_text">

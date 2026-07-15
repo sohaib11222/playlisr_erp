@@ -596,7 +596,18 @@ class BuyFromCustomerController extends Controller
         // Direct picker — existing contact was chosen.
         $mode = $request->input('seller_mode');
         if ($mode === 'contact' && !empty($request->input('contact_id'))) {
-            return Contact::where('business_id', $business_id)->find($request->input('contact_id'));
+            $picked = Contact::where('business_id', $business_id)->find($request->input('contact_id'));
+            // A supplier-only contact picked here is being bought from AND must
+            // stay findable in POS customer search (which filters type IN
+            // customer, both). Apply the same upgrade the walk-in match path
+            // does below — otherwise picking an existing supplier leaves them
+            // invisible on /pos/create. Only on the real save/accept path
+            // ($createIfMissing), never on background autosave keystrokes.
+            if ($picked && $createIfMissing && in_array($picked->type, ['customer', 'supplier'], true)) {
+                $picked->type = 'both';
+                $picked->save();
+            }
+            return $picked;
         }
 
         // Background autosave passes $createIfMissing = false: a half-typed
