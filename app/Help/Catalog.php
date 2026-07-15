@@ -1261,6 +1261,58 @@ HTML,
 </div>
 HTML,
             ],
+            [
+                'slug' => 'floor-sales-lead',
+                'title' => 'Floor Sales Lead (Peak Shifts)',
+                'section' => 'Customer Experience',
+                'sort' => 5,
+                'summary' => 'The second-person floor selling role on busy Hollywood weekend shifts.',
+                'page_keys' => ['pos.create', 'sell.create', 'pos'],
+                'body_html' => <<<'HTML'
+<p>On our busiest Hollywood shifts we put a <strong>second person on the floor</strong> whose job is to sell, not to run the register. Right now about <strong>83 out of every 100 people leave without buying</strong>. The Floor Sales Lead is here to change that. Every browser you turn into a buyer is more revenue for the store and more commission for you.</p>
+
+<h3>When This Shift Runs</h3>
+<p>Hollywood only, when the floor is fullest:</p>
+<ul>
+    <li><strong>Friday</strong> 5:00 - 10:00 PM</li>
+    <li><strong>Saturday</strong> 2:00 - 8:00 PM</li>
+    <li><strong>Sunday</strong> 1:00 - 6:30 PM</li>
+</ul>
+<p>These hours run 35 to 70 people on the floor at a time, which is more than one person can sell to. In slower months these shorten toward Saturday and Sunday only.</p>
+
+<h3>What You Do</h3>
+<ul>
+    <li>Stay <strong>on the floor</strong>, never parked behind the desk. Greet everyone within a minute of them walking in.</li>
+    <li>Ask what they are into, pull records for them, make recommendations, and get them to the listening station.</li>
+    <li>Read the room. Get to the people who look ready to buy, or ready to walk, first.</li>
+    <li>Close the sale.</li>
+</ul>
+
+<h3>During Lulls</h3>
+<ul>
+    <li>Face and restock the bins and tidy the listening station so the floor stays shoppable.</li>
+    <li>Stay visible as a loss-prevention presence while it is crowded.</li>
+</ul>
+
+<div class="help-tip">
+    <strong>Talk to customers, not coworkers.</strong> Save the catch-up with other staff for after your shift. On the clock, a full floor is money on the table, and every few minutes spent chatting is a sale, and your own commission, walking out the door.
+</div>
+
+<h3>Getting Credit for Your Sales</h3>
+<p>The sales bonus goes to whoever <strong>rings</strong> the sale. So when you close someone, ring it up under <strong>your own login</strong> so the credit is yours. With two people on a shift, the daily target is split between you, so each of you has a fair, reachable goal.</p>
+
+<div class="help-info">
+    Take turns at the register: each person rings the sales they personally closed. If one person stays logged in and rings everything, that person gets all the bonus and the other gets none.
+</div>
+
+<h3>Do Not</h3>
+<ul>
+    <li>Do not camp at the register.</li>
+    <li>Do not disappear to the back.</li>
+    <li>Do not get stuck 20 minutes on one customer when the floor is full.</li>
+</ul>
+HTML,
+            ],
         ];
 
         // Merge in manager-added entries from the self-serve knowledge editor
