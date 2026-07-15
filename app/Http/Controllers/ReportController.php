@@ -13464,7 +13464,7 @@ class ReportController extends Controller
         // sells on other days (Sarah 2026-07-13). Matched on the Sling position,
         // so it's per-shift: a Discogs/shipping/warehouse shift is out; the same
         // person's cashier shift the next day is still in.
-        $excludedPositions = ['discogs', 'shipping', 'warehouse', 'fulfillment'];
+        $excludedPositions = ['discogs', 'shipping', 'warehouse', 'fulfillment', 'inventory'];
         $shifts = $shifts->filter(function ($s) use ($excludedPositions) {
             $pos = strtolower(trim((string) ($s->position_name ?? '')));
             if ($pos === '') { return true; } // untagged shift => treat as floor
