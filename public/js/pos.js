@@ -3755,10 +3755,11 @@ function calculate_balance_due() {
     $('span.balance_due').text(__currency_trans_from_en(bal_due, true));
 
     // Bottom "Total Payable" should match visible top totals.
-    // When store credit is applied, show invoice total minus store credit used.
+    // When store credit is applied (via the "Use it" chip OR an advance
+    // payment row), show invoice total minus the store credit applied.
     if ($('span#total_payable').length) {
         var invoice_total = __read_number($('input#final_total_input'));
-        var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+        var store_credit_used_amount = get_applied_store_credit();
         var payable_display = invoice_total;
         if (store_credit_used_amount > 0) {
             payable_display = invoice_total - store_credit_used_amount;
@@ -3769,36 +3770,59 @@ function calculate_balance_due() {
         $('span#total_payable').text(__currency_trans_from_en(payable_display, false));
     }
 
+    // Keep the "Pre-Tax → Clover" bar (and tax / total spans) in sync with the
+    // applied store credit no matter how it was entered — this fires on every
+    // payment-amount change, so setting an advance row reduces the bar too.
+    apply_store_credit_to_order_totals_display();
+
     __highlight(bal_due * -1, $('span.balance_due'));
     __highlight(change_return * -1, $('span.change_return_span'));
 }
 
 /**
- * Store credit in POS is treated like a payment (advance) and only affects remaining due.
- * However, the visible order summary lines ("Without Tax / Tax / Total (with Tax)")
- * can be expected to reflect remaining due too. This updates only those spans.
+ * How much store credit is applied to this sale, regardless of how the cashier
+ * applied it. Store credit is redeemed as an `advance` payment line, so the
+ * ground truth is the sum of advance payment-row amounts (the "bottom row"
+ * path). Falls back to the #store_credit_used_amount field the "Use it" chip
+ * sets. Validation limits the cart to a single advance row, but we sum to be
+ * safe. Returns a base-currency amount (before exchange rate).
+ */
+function get_applied_store_credit() {
+    var fromRows = 0;
+    $('#payment_rows_div .payment_row').each(function() {
+        var method = $(this).find('select.payment_types_dropdown').first().val();
+        if (method === 'advance') {
+            var amt = __read_number($(this).find('input.payment-amount').first());
+            if (!isNaN(amt)) {
+                fromRows += amt;
+            }
+        }
+    });
+    var fromField = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
+    var applied = Math.max(fromRows, fromField);
+    return isNaN(applied) ? 0 : applied;
+}
+
+/**
+ * Store credit in POS is redeemed as an `advance` payment and reduces what the
+ * customer still owes. This rewrites the visible order-summary lines — most
+ * importantly the "Pre-Tax → Clover" bar, so the cashier keys the AFTER-credit
+ * amount into the terminal — and shows the original pre-tax struck through.
+ *
+ * Idempotent: every figure is derived from source-of-truth inputs (the full
+ * invoice total in #final_total_input and the full pre-tax stashed on
+ * #pre_tax_original), never from the possibly-already-reduced display text.
+ * That makes it safe to call on every recalc / payment change without the
+ * credit being subtracted more than once.
  */
 function apply_store_credit_to_order_totals_display() {
-    var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
-    if (store_credit_used_amount <= 0) {
-        return;
-    }
-
     var $totalWithTax = $('span#total_with_tax');
     var $preTax = $('span#pre_tax_amount');
     var $orderTaxDisplay = $('span#order_tax_display');
     var $orderTax = $('span#order_tax');
+    var $preTaxOrig = $('#pre_tax_original');
 
-    if (!$totalWithTax.length || !$preTax.length) {
-        return;
-    }
-
-    var totalWithTaxDisp = 0;
-    try {
-        totalWithTaxDisp = __number_uf($totalWithTax.text(), false);
-    } catch (e) {}
-
-    if (!totalWithTaxDisp || totalWithTaxDisp <= 0) {
+    if (!$preTax.length) {
         return;
     }
 
@@ -3807,38 +3831,58 @@ function apply_store_credit_to_order_totals_display() {
         exchangeRate = __read_number($('#exchange_rate'));
     }
 
-    var creditDisp = store_credit_used_amount * exchangeRate;
-    var remainingTotalWithTax = totalWithTaxDisp - creditDisp;
-    if (remainingTotalWithTax < 0) {
-        remainingTotalWithTax = 0;
-    }
+    // Source-of-truth full totals (never the reduced display text).
+    var fullTotalWithTax = __read_number($('input#final_total_input')) * exchangeRate;
+    var fullPreTax = ($preTaxOrig.length && typeof $preTaxOrig.data('full') === 'number')
+        ? $preTaxOrig.data('full')
+        : null;
+    var creditDisp = get_applied_store_credit() * exchangeRate;
 
-    var orderTaxDisp = 0;
-    if ($orderTaxDisplay.length) {
-        try {
-            orderTaxDisp = __number_uf($orderTaxDisplay.text(), false);
-        } catch (e) {
-            orderTaxDisp = 0;
+    // No credit applied (or nothing to reduce): restore the full figures and
+    // clear the strike-through / highlight. This branch also runs when credit
+    // is REMOVED (the chip's cash-reset fires calculate_balance_due only, so
+    // the tax/total spans must be restored here — calculate_billing_details
+    // isn't guaranteed to have re-run).
+    if (creditDisp <= 0 || fullTotalWithTax <= 0) {
+        if (fullPreTax !== null) {
+            $preTax.text(__currency_trans_from_en(fullPreTax, false));
+            var fullTax = Math.max(0, fullTotalWithTax - fullPreTax);
+            if ($orderTaxDisplay.length) {
+                $orderTaxDisplay.text(__currency_trans_from_en(fullTax, false));
+            }
+            if ($orderTax.length) {
+                $orderTax.text(__currency_trans_from_en(fullTax, false));
+            }
+            if ($totalWithTax.length) {
+                $totalWithTax.text(__currency_trans_from_en(fullTotalWithTax, false));
+            }
         }
+        if ($preTaxOrig.length) {
+            $preTaxOrig.hide().text('');
+        }
+        $('.pos-pretax-bar').removeClass('has-credit');
+        return;
     }
 
-    // Reduce tax proportionally so: pre-tax + tax = total-with-tax.
-    var taxRatio = totalWithTaxDisp > 0 ? orderTaxDisp / totalWithTaxDisp : 0;
+    var remainingTotalWithTax = Math.max(0, fullTotalWithTax - creditDisp);
+
+    // Full order tax from source = full total − full pre-tax. Reduce it
+    // proportionally so pre-tax + tax still equals the remaining total.
+    var fullOrderTax = (fullPreTax !== null) ? Math.max(0, fullTotalWithTax - fullPreTax) : 0;
+    var taxRatio = fullTotalWithTax > 0 ? fullOrderTax / fullTotalWithTax : 0;
     var remainingOrderTax = remainingTotalWithTax * taxRatio;
     var remainingPreTax = remainingTotalWithTax - remainingOrderTax;
 
     $preTax.text(__currency_trans_from_en(remainingPreTax, false));
 
     // Show the original pre-tax (before store credit) struck through, and
-    // highlight the reduced figure the cashier should key into Clover. The
-    // full pre-tax was stashed by calculate_billing_details each recalc.
-    var $preTaxOrig = $('#pre_tax_original');
-    if ($preTaxOrig.length) {
-        var fullPreTax = $preTaxOrig.data('full');
-        if (typeof fullPreTax === 'number' && fullPreTax > remainingPreTax) {
-            $preTaxOrig.text('$' + __currency_trans_from_en(fullPreTax, false)).show();
-            $('.pos-pretax-bar').addClass('has-credit');
-        }
+    // highlight the reduced figure the cashier should key into Clover.
+    if ($preTaxOrig.length && fullPreTax !== null && fullPreTax > remainingPreTax) {
+        $preTaxOrig.text('$' + __currency_trans_from_en(fullPreTax, false)).show();
+        $('.pos-pretax-bar').addClass('has-credit');
+    } else if ($preTaxOrig.length) {
+        $preTaxOrig.hide().text('');
+        $('.pos-pretax-bar').removeClass('has-credit');
     }
 
     if ($orderTaxDisplay.length) {
@@ -3847,7 +3891,9 @@ function apply_store_credit_to_order_totals_display() {
     if ($orderTax.length) {
         $orderTax.text(__currency_trans_from_en(remainingOrderTax, false));
     }
-    $totalWithTax.text(__currency_trans_from_en(remainingTotalWithTax, false));
+    if ($totalWithTax.length) {
+        $totalWithTax.text(__currency_trans_from_en(remainingTotalWithTax, false));
+    }
 }
 
 function isValidPosForm() {
