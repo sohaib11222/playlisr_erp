@@ -13460,18 +13460,20 @@ class ReportController extends Controller
             return true;
         });
 
-        // Non-selling SHIFTS don't share the floor pool, even for someone who
-        // sells on other days (Sarah 2026-07-13). Matched on the Sling position,
-        // so it's per-shift: a Discogs/shipping/warehouse shift is out; the same
-        // person's cashier shift the next day is still in.
-        $excludedPositions = ['discogs', 'shipping', 'warehouse', 'fulfillment', 'inventory'];
-        $shifts = $shifts->filter(function ($s) use ($excludedPositions) {
+        // Only the selling floor positions share the pool — a strict whitelist,
+        // per-shift on the Sling position (Sarah 2026-07-14: "Front Desk, Event
+        // Lead, Floor Sales"). Everything else — inventory, shipping, warehouse,
+        // opening checklist, restock, trash, handyman — is out, even for someone
+        // who sells on other days; their cashier shift the next day still counts.
+        // Untagged shifts don't share either (positions are tagged in Sling).
+        $sellingPositions = ['front desk', 'event lead', 'floor sales'];
+        $shifts = $shifts->filter(function ($s) use ($sellingPositions) {
             $pos = strtolower(trim((string) ($s->position_name ?? '')));
-            if ($pos === '') { return true; } // untagged shift => treat as floor
-            foreach ($excludedPositions as $tok) {
-                if (strpos($pos, $tok) !== false) { return false; }
+            if ($pos === '') { return false; }
+            foreach ($sellingPositions as $tok) {
+                if (strpos($pos, $tok) !== false) { return true; }
             }
-            return true;
+            return false;
         });
 
         // Expand each floor shift into per-hour presence fractions. Presence
