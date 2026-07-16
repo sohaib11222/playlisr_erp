@@ -331,6 +331,26 @@ $(document).ready(function() {
         update_grand_total();
     });
 
+    // Copy the "unit cost (before discount)" of this row down into every row
+    // below it, so a shared cost only has to be typed once. Triggering change
+    // on each target lets the existing handler recalc discount/tax/totals.
+    $(document).on('click', '.copy_cost_down', function() {
+        var row = $(this).closest('tr');
+        var cost_val = row.find('.purchase_unit_cost_without_discount').val();
+        var rows_below = row.nextAll('tr');
+
+        if (rows_below.length === 0) {
+            return;
+        }
+
+        rows_below.each(function() {
+            var input = $(this).find('.purchase_unit_cost_without_discount');
+            if (input.length) {
+                input.val(cost_val).trigger('change');
+            }
+        });
+    });
+
     $(document).on('change', '.inline_discounts', function() {
         var row = $(this).closest('tr');
 

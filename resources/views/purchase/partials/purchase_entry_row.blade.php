@@ -105,6 +105,8 @@
             {!! Form::text('purchases[' . $row_count . '][pp_without_discount]',
             number_format($pp_without_discount, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_without_discount input_number', 'required', 'style' => 'display: inline-block; width: 80px;']) !!}
 
+            <i class="fa fa-angle-double-down copy_cost_down text-primary" title="Copy this cost down to all rows below" style="cursor: pointer; margin-left: 4px;"></i>
+
             @if(!empty($last_purchase_line))
                 <small class="text-muted" style="display: block; font-size: 10px; margin-top: 2px;">@lang('lang_v1.prev_unit_price'): @format_currency($last_purchase_line->pp_without_discount)</small>
             @endif
