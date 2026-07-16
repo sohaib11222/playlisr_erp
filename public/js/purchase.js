@@ -71,11 +71,17 @@ $(document).ready(function() {
     //Quick add supplier
     $(document).on('click', '.add_new_supplier', function() {
         $('#supplier_id').select2('close');
-        var name = $(this).data('name');
-        $('.contact_modal')
-            .find('input#name')
-            .val(name);
-        $('.contact_modal')
+        // Modal was redesigned to first_name/last_name (no single #name
+        // field), so the typed name never loaded. Split on whitespace:
+        // first token -> first_name, remainder -> last_name.
+        var name = ($(this).data('name') || '').toString().trim();
+        var $modal = $('.contact_modal');
+        var nameParts = name.split(/\s+/).filter(Boolean);
+        var firstName = nameParts.shift() || '';
+        var lastName = nameParts.join(' ');
+        $modal.find('input#first_name').val(firstName);
+        $modal.find('input#last_name').val(lastName);
+        $modal
             .find('select#contact_type')
             .val('supplier')
             .closest('div.contact_type_div')
