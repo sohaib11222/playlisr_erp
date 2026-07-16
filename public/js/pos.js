@@ -3775,6 +3775,24 @@ function calculate_balance_due() {
     // payment-amount change, so setting an advance row reduces the bar too.
     apply_store_credit_to_order_totals_display();
 
+    // "Total + Tax" (lowest line) = the Clover pre-tax amount + sales tax, so
+    // the cashier sees the after-tax total the customer actually pays. POS
+    // order tax is $0 here (Clover applies the tax), so we add it from the
+    // store's configured rate (#tax_calculation_amount, e.g. 9.75). The pre-tax
+    // bar already reflects any store credit, so this figure follows it down.
+    // Falls back to the plain #total_payable set above when no rate is present.
+    if ($('span#total_payable').length && $('span#pre_tax_amount').length) {
+        var sales_tax_rate = parseFloat($('#tax_calculation_amount').val());
+        var clover_pre_tax = 0;
+        try {
+            clover_pre_tax = __number_uf($('span#pre_tax_amount').text(), false);
+        } catch (e) {}
+        if (!isNaN(sales_tax_rate) && sales_tax_rate > 0 && clover_pre_tax > 0) {
+            var after_tax_total = clover_pre_tax * (1 + sales_tax_rate / 100);
+            $('span#total_payable').text(__currency_trans_from_en(after_tax_total, false));
+        }
+    }
+
     __highlight(bal_due * -1, $('span.balance_due'));
     __highlight(change_return * -1, $('span.change_return_span'));
 }
