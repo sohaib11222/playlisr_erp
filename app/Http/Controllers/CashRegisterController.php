@@ -920,6 +920,39 @@ class CashRegisterController extends Controller
             ->whereBetween('t.transaction_date', [$open_time, $close_time])
             ->count();
 
+        // New customer accounts created this shift. contacts.created_by is the
+        // cashier who added them. Counts walk-in customer signups plus buy-desk
+        // sellers (BuyFromCustomer saves those as type 'both'), i.e. every new
+        // person this cashier put into the system.
+        $customer_accounts_created = (int) \DB::table('contacts')
+            ->where('business_id', $business_id)
+            ->where('created_by', $user_id)
+            ->whereIn('type', ['customer', 'both'])
+            ->whereBetween('created_at', [$open_time, $close_time])
+            ->count();
+
+        // Buy-from-customer purchases accepted this shift + total paid out. The
+        // payout is cash or store credit per payout_type; sum whichever applies
+        // (final_amount_paid is written into the matching final_offer_* column
+        // on accept, so this is what was actually handed over). Guarded on the
+        // table existing so servers pre-dating BFC don't error.
+        $buys_count = 0;
+        $buys_amount = 0.0;
+        if (\Schema::hasTable('buy_customer_offers')) {
+            $accepted = \DB::table('buy_customer_offers')
+                ->where('business_id', $business_id)
+                ->where('created_by', $user_id)
+                ->where('status', 'accepted')
+                ->whereBetween('accepted_at', [$open_time, $close_time])
+                ->get(['payout_type', 'final_offer_cash', 'final_offer_credit']);
+            $buys_count = (int) $accepted->count();
+            foreach ($accepted as $o) {
+                $buys_amount += $o->payout_type === 'store_credit'
+                    ? (float) $o->final_offer_credit
+                    : (float) $o->final_offer_cash;
+            }
+        }
+
         // Labels printed = products put out from the supplier this shift.
         // LabelsController@preview logs one activity_log row per print run
         // with qty + value + category mix in properties.
@@ -983,6 +1016,9 @@ class CashRegisterController extends Controller
             'transactions_count' => $transactions_count,
             'mass_add_count' => $mass_add_count,
             'purchase_add_count' => $purchase_add_count,
+            'customer_accounts_created' => $customer_accounts_created,
+            'buys_count' => $buys_count,
+            'buys_amount' => round($buys_amount, 2),
             'labels_printed_count' => $labels_printed_count,
             'labels_value' => round($labels_value, 2),
             'labels_value_sealed' => round($labels_value_sealed, 2),
@@ -1120,10 +1156,32 @@ class CashRegisterController extends Controller
         // stays clean. Cashier shifts always have sales, so this is a no-op
         // for them.
         if ((float) ($s['sales'] ?? 0) > 0 || !empty($s['transactions_count'])) {
-            $lines[] = 'Sales: $' . number_format((float) ($s['sales'] ?? 0), 2)
-                . (!empty($s['transactions_count'])
-                    ? ' · ' . (int) $s['transactions_count'] . ' transaction' . ($s['transactions_count'] == 1 ? '' : 's')
+            $txns = (int) ($s['transactions_count'] ?? 0);
+            $sales = (float) ($s['sales'] ?? 0);
+            $lines[] = 'Sales: $' . number_format($sales, 2)
+                . ($txns > 0
+                    ? ' · ' . $txns . ' transaction' . ($txns == 1 ? '' : 's')
+                        // Average spend per transaction — what the average
+                        // customer rang up this shift.
+                        . ' · $' . number_format($sales / $txns, 2) . '/txn avg'
                     : '');
+        }
+
+        // New customer accounts opened this shift (walk-in signups + buy-desk
+        // sellers). Surfaced only when non-zero so quiet shifts stay clean.
+        if (!empty($s['customer_accounts_created'])) {
+            $n = (int) $s['customer_accounts_created'];
+            $lines[] = 'New customer' . ($n == 1 ? '' : 's') . ': ' . $n;
+        }
+
+        // Buy-from-customer purchases: count, total paid out, and average paid
+        // per purchase. Only shown when the buy desk actually bought something.
+        if (!empty($s['buys_count'])) {
+            $bc = (int) $s['buys_count'];
+            $ba = (float) ($s['buys_amount'] ?? 0);
+            $lines[] = 'Bought in: ' . $bc . ' purchase' . ($bc == 1 ? '' : 's')
+                . ' · $' . number_format($ba, 2) . ' paid out'
+                . ' · $' . number_format($ba / $bc, 2) . '/purchase avg';
         }
 
         $cats = $s['labels_categories'] ?? [];

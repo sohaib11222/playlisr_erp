@@ -121,7 +121,19 @@
 				@if((float) ($shift_summary['sales'] ?? 0) > 0)
 				<div class="sne-stat">
 					<span class="sne-num">${{ number_format((float) $shift_summary['sales'], 2) }}</span>
-					<span class="sne-cap">Sales · {{ (int) $shift_summary['transactions_count'] }} transactions</span>
+					<span class="sne-cap">Sales · {{ (int) $shift_summary['transactions_count'] }} transactions{{ (int) ($shift_summary['transactions_count'] ?? 0) > 0 ? ' · $' . number_format((float) $shift_summary['sales'] / (int) $shift_summary['transactions_count'], 2) . '/txn avg' : '' }}</span>
+				</div>
+				@endif
+				@if(!empty($shift_summary['customer_accounts_created']))
+				<div class="sne-stat">
+					<span class="sne-num">{{ (int) $shift_summary['customer_accounts_created'] }}</span>
+					<span class="sne-cap">New customer accounts</span>
+				</div>
+				@endif
+				@if(!empty($shift_summary['buys_count']))
+				<div class="sne-stat">
+					<span class="sne-num">{{ (int) $shift_summary['buys_count'] }}</span>
+					<span class="sne-cap">Bought in · ${{ number_format((float) ($shift_summary['buys_amount'] ?? 0), 2) }} paid · ${{ number_format((float) ($shift_summary['buys_amount'] ?? 0) / (int) $shift_summary['buys_count'], 2) }}/purchase avg</span>
 				</div>
 				@endif
 			</div>

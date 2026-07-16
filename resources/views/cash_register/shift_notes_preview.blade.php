@@ -59,8 +59,20 @@
 				</div>
 				<div class="snp-stat">
 					<span class="snp-num">{{ (int) $shift_summary['transactions_count'] }}</span>
-					<span class="snp-cap">Transactions rung</span>
+					<span class="snp-cap">Transactions rung{{ (int) ($shift_summary['transactions_count'] ?? 0) > 0 ? ' · $' . number_format((float) $shift_summary['sales'] / (int) $shift_summary['transactions_count'], 2) . '/txn avg' : '' }}</span>
 				</div>
+					@if(!empty($shift_summary['customer_accounts_created']))
+					<div class="snp-stat">
+						<span class="snp-num">{{ (int) $shift_summary['customer_accounts_created'] }}</span>
+						<span class="snp-cap">New customer accounts</span>
+					</div>
+					@endif
+					@if(!empty($shift_summary['buys_count']))
+					<div class="snp-stat">
+						<span class="snp-num">{{ (int) $shift_summary['buys_count'] }}</span>
+						<span class="snp-cap">Bought in · ${{ number_format((float) ($shift_summary['buys_amount'] ?? 0), 2) }} paid · ${{ number_format((float) ($shift_summary['buys_amount'] ?? 0) / (int) $shift_summary['buys_count'], 2) }}/purchase avg</span>
+					</div>
+					@endif
 				<div class="snp-stat">
 					<span class="snp-num">{{ (int) $shift_summary['labels_printed_count'] }}</span>
 					<span class="snp-cap">Labels printed (items put out){{ $shift_summary['labels_value'] > 0 ? ' · $' . number_format((float) $shift_summary['labels_value'], 2) . ' value' : '' }}</span>
