@@ -1091,6 +1091,19 @@ class EventsController extends Controller
         return $out;
     }
 
+    /** True when an ordered matrix holds no quantities (all blank/null/zero). */
+    public static function orderedIsEmpty(array $ordered): bool
+    {
+        foreach ($ordered as $row) {
+            foreach ((array) $row as $v) {
+                if ($v !== null && $v !== '' && (int) $v > 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     protected function validatedFields(Request $request): array
     {
         $request->validate([
@@ -1349,23 +1362,37 @@ class EventsController extends Controller
                 if (mb_strpos($name, $kw) === false) {
                     continue;
                 }
-                if (!$snapshotted) {
-                    self::snapshot($business_id, $data, 'events-seed-orders');
-                    $snapshotted = true;
+                // Everything below seeds ONLY when the event doesn't already
+                // have that value. This runs on every deploy, so it must never
+                // overwrite an edit Sarah made in the ERP (e.g. changing what we
+                // ordered). Snapshot + count only when we actually change data.
+                $changed = false;
+
+                // Ordered matrix: seed only if the event has no quantities yet.
+                if (self::orderedIsEmpty((array) ($ev['ordered'] ?? []))) {
+                    $data['items'][$id]['ordered'] = self::cleanOrdered($stores);
+                    $changed = true;
                 }
-                $data['items'][$id]['ordered'] = self::cleanOrdered($stores);
-                if (!empty($streets[$kw])) {
+                // Street date: seed only if unset.
+                if (!empty($streets[$kw]) && empty($ev['streetDate'])) {
                     $data['items'][$id]['streetDate'] = $streets[$kw];
+                    $changed = true;
                 }
-                // Seed the version list for ERP reference ONLY when none exists
-                // yet. Never touch preorderEnabled or overwrite an existing
-                // products list — preorders are Sarah's to control in the ERP
-                // now, and this runs on every deploy (it must not revert her).
-                if (isset($preorderSeed[$kw]) && empty((array) ($data['items'][$id]['preorderProducts'] ?? []))) {
+                // Version list: seed only when none exists yet. Never touch
+                // preorderEnabled or overwrite an existing products list.
+                if (isset($preorderSeed[$kw]) && empty((array) ($ev['preorderProducts'] ?? []))) {
                     $data['items'][$id]['preorderProducts'] = $preorderSeed[$kw];
+                    $changed = true;
                 }
-                $data['items'][$id]['updatedAt'] = date('c');
-                $matched++;
+
+                if ($changed) {
+                    if (!$snapshotted) {
+                        self::snapshot($business_id, $data, 'events-seed-orders');
+                        $snapshotted = true;
+                    }
+                    $data['items'][$id]['updatedAt'] = date('c');
+                    $matched++;
+                }
                 break;
             }
         }
