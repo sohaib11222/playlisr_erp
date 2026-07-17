@@ -589,8 +589,17 @@ class EventsController extends Controller
     }
 
     /** Normalize an event name for case-insensitive count matching. */
-    protected static function normName(?string $s): string
+    public static function normName(?string $s): string
     {
+        // Lowercase, then collapse non-breaking spaces and any run of
+        // whitespace down to a single space before trimming. Event names
+        // imported into the ERP pick up nbsp / double spaces, which left
+        // RSVPs grouped under a name that only DIFFERED by whitespace, so the
+        // per-event counts (attending, vinyl/CD) missed them even though the
+        // whitespace-tolerant RSVP list showed them. Mirror that tolerance
+        // here so counts and list agree.
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF"], ' ', (string) $s); // nbsp, narrow nbsp
+        $s = preg_replace('/\s+/u', ' ', $s);
         return mb_strtolower(trim((string) $s));
     }
 
@@ -761,15 +770,34 @@ class EventsController extends Controller
         $out['rsvps'] = $rsvpResp['data'] ?? $rsvpResp['rsvps'] ?? [];
         $out['preorders'] = $preResp['data'] ?? $preResp['preorders'] ?? [];
 
-        // Stats endpoint returns per-event rows; pick this event's row.
+        // Stats endpoint returns per-event rows keyed by the exact stored
+        // event name. Match on the whitespace/nbsp-tolerant normalized name and
+        // SUM every matching row, so RSVPs collected under casing/whitespace
+        // variants of the same party count toward this event's totals (matching
+        // the tolerant RSVP list above and the index cards).
         $statsRows = $statsResp['data'] ?? $statsResp['stats'] ?? [];
         if (is_array($statsRows)) {
+            $target = self::normName($eventName);
+            $sumKeys = [
+                'totalRSVPs', 'totalGuests', 'totalAttendees', 'yesCount',
+                'maybeCount', 'yesGuests', 'attendingCount', 'vinylRequests',
+                'cdRequests', 'cassetteRequests', 'hwVinyl', 'hwCd', 'picoVinyl',
+                'picoCd', 'hwAttending', 'picoAttending',
+            ];
+            $agg = null;
             foreach ($statsRows as $row) {
-                if (($row['eventName'] ?? null) === $eventName) {
-                    $out['stats'] = $row;
-                    break;
+                if (self::normName($row['eventName'] ?? null) !== $target) {
+                    continue;
+                }
+                if ($agg === null) {
+                    $agg = $row;
+                    continue;
+                }
+                foreach ($sumKeys as $sk) {
+                    $agg[$sk] = (int) ($agg[$sk] ?? 0) + (int) ($row[$sk] ?? 0);
                 }
             }
+            $out['stats'] = $agg;
         }
         return $out;
     }

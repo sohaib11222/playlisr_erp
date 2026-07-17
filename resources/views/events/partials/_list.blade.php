@@ -29,7 +29,10 @@
         $evStreetDate = !empty($ev['streetDate']) ? date('m/d/y', strtotime($ev['streetDate'])) : '—';
         $evTime = !empty($ev['time']) ? date('g:i A', strtotime($ev['time'])) : '';
         $evName = $ev['name'] ?? '';
-        $nk = mb_strtolower(trim($evName));
+        // Match the whitespace/nbsp-tolerant key the bridge counts are keyed by
+        // (see EventsController::normName), so a name with a stray double space
+        // or nbsp still lines up with its RSVP counts.
+        $nk = \App\Http\Controllers\EventsController::normName($evName);
         $rsvpCount = ($rsvpCounts ?? [])[$nk] ?? null;
         $vinylCount = ($vinylCounts ?? [])[$nk] ?? null;
         $cdCount = ($cdCounts ?? [])[$nk] ?? null;
