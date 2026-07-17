@@ -60,10 +60,18 @@
     $eventLocsAll = array_values(array_filter((array) ($event['location'] ?? [])));
     $multiStoreEvent = count($eventLocsAll) > 1;
     $scopedToStore = $multiStoreEvent && in_array($storeScope, ['hollywood', 'pico'], true);
+    // Full (both-store) totals captured BEFORE the scope filter runs, so a
+    // store-scoped view can show "X of TOTAL" and can never be mistaken for the
+    // whole guest list. (A scoped view once showed 3 of 64 RSVPs with no hint
+    // the other 61 were filtered out — guests with no store picked, or the
+    // other store, silently vanish when scoped.)
+    $fullRsvpCount = count($rsvps);
+    $hiddenByScope = 0;
     if ($scopedToStore) {
       $rsvps = array_values(array_filter($rsvps, function ($r) use ($storeScope) {
         return ($r['eventLocationKey'] ?? '') === $storeScope;
       }));
+      $hiddenByScope = $fullRsvpCount - count($rsvps);
       // Rebuild the headline counts from the scoped list — the bridge stats
       // row is a both-store total, so it can't be used as-is here.
       $sYes = 0; $sMaybe = 0; $sGuests = 0;
@@ -267,7 +275,12 @@
         @if($storeScope === 'all')
           Showing RSVPs, check-in and the giveaway spin for <strong>both stores</strong>. Pick a store so each store's host manages just their own guests - share that page's link with them.
         @else
-          Showing <strong>{{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }}</strong> only. RSVPs, check-in and the spin below are limited to this store. Share this page's link with the {{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }} host.
+          Showing <strong>{{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }}</strong> only &mdash; <strong>{{ count($rsvps) }} of {{ $fullRsvpCount }}</strong> RSVPs. RSVPs, check-in and the spin below are limited to this store.
+          @if($hiddenByScope > 0)
+            <div style="margin-top:6px;padding:8px 12px;border-radius:8px;background:#FEF3C7;border:1px solid #FCD34D;font-weight:700;color:#92400E;">
+              {{ $hiddenByScope }} RSVP{{ $hiddenByScope === 1 ? ' is' : 's are' }} hidden here (the other store, or no store picked at RSVP). Switch to <strong>Both stores</strong> above to see everyone.
+            </div>
+          @endif
         @endif
       </div>
     </div>
@@ -326,7 +339,7 @@
     </div>
     @if($stats)
       <div class="total-owed" style="margin-bottom:12px;">
-        {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending
+        {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending@if($scopedToStore) <span class="ev-meta">({{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }} only &mdash; {{ count($rsvps) }} of {{ $fullRsvpCount }} RSVPs)</span>@endif
         <span class="ev-meta">&middot; {{ $stats['yesCount'] ?? 0 }} yes, {{ $stats['maybeCount'] ?? 0 }} maybe &middot; {{ $stats['totalGuests'] ?? 0 }} guests</span>
         @if($showStoreSplit && count($attendSplitParts))
           <div class="ev-meta" style="margin-top:3px;font-weight:600;">By store: {{ implode(' · ', $attendSplitParts) }}</div>
