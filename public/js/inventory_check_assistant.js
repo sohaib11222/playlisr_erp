@@ -982,47 +982,38 @@
             body: fd,
         };
         if (controller) fetchOpts.signal = controller.signal;
-        // The endpoint STREAMS plain text now (heartbeat dots + the artisan
-        // command's output) instead of a single JSON blob — a portal walk
-        // runs for minutes and used to die on the web-request timeout. We
-        // read the whole stream to completion via r.text(); the streamed
-        // bytes keep the connection alive the entire time.
+        // The endpoint returns JSON { success, exit_code, output } after a
+        // bounded (<~1min) fetch. r.json() matches that shape.
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, fetchOpts)
-            .then((r) => r.text())
-            .then((out) => {
+            .then((r) => r.json())
+            .then((resp) => {
                 clearInterval(ticker); clearTimeout(timeout);
-                out = out || '';
-                console.log('[ICA] fetch resp', key, out);
-                const exitM = out.match(/\[exit code:\s*(\d+)\]/i);
-                const exit = exitM ? parseInt(exitM[1], 10) : null;
-                const hardErr = /\[error:/i.test(out);
-                const needsCreds = /missing credential|credential keys|missing portal|not set|not configured|set them in \.env/i.test(out);
-                // Row count from the command's "[key] fetched N rows." line.
-                const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
-                const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
-
-                if (needsCreds) {
-                    btn.disabled = false; btn.textContent = origLabel;
-                    showInlineCredsForm(btn, key);
-                    return;
-                }
-                // Success = the process exited 0, printed no [error:], and
-                // reported a positive row count.
-                if (exit === 0 && !hardErr && fetched !== null && fetched > 0) {
-                    btn.textContent = '✓ Pulled ' + fetched.toLocaleString() + ' rows — rebuilding…';
+                console.log('[ICA] fetch resp', key, resp);
+                const out = (resp && resp.output) || '';
+                if (resp && resp.success) {
+                    // A "successful" run can still return ZERO rows (login
+                    // bounced or the catalog HTML changed). Pull the row count
+                    // out of the command output and, if zero, say so loudly.
+                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+                    if (fetched === 0) {
+                        btn.disabled = false;
+                        btn.textContent = origLabel;
+                        showInlineError(btn, key, key.toUpperCase() + ' returned 0 rows. The portal login likely bounced or the catalog page changed — prices can\'t populate. Re-save the portal credentials below and retry.');
+                        return;
+                    }
+                    btn.textContent = '✓ Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — rebuilding…';
                     const activeBtn = document.querySelector('.ica-store-btn.is-active');
                     if (activeBtn) activeBtn.click();
                     return;
                 }
-                // Ran but produced nothing usable — say so loudly rather than
-                // pretending it worked and leaving every column empty.
-                btn.disabled = false; btn.textContent = origLabel;
-                if (fetched === 0 || exit === 0) {
-                    showInlineError(btn, key, key.toUpperCase() + ' returned 0 rows. The portal login likely bounced or the catalog page changed — prices can\'t populate. Re-save the portal credentials below and retry.');
+                btn.disabled = false;
+                btn.textContent = origLabel;
+                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
+                if (needsCreds) {
+                    showInlineCredsForm(btn, key);
                 } else {
-                    // Surface the tail of the command output (the real error).
-                    const lines = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== '.');
-                    showInlineError(btn, key, lines.slice(-4).join(' ') || 'unknown error');
+                    showInlineError(btn, key, out || (resp && resp.message) || 'unknown error');
                 }
             })
             .catch((err) => {
@@ -2041,42 +2032,37 @@
         if (statusEl) statusEl.textContent = 'Running…';
         const fd = new FormData();
         fd.append('supplier_key', key);
-        // The endpoint STREAMS plain text (heartbeats + artisan output), not
-        // JSON — read it to completion with r.text() and parse the tail.
+        // The endpoint returns JSON { success, exit_code, output }.
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
             method: 'POST',
-            headers: { 'Accept': 'text/plain', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
             body: fd,
         })
-            .then((r) => r.text())
-            .then((out) => {
+            .then((r) => r.json())
+            .then((resp) => {
                 btn.disabled = false;
                 btn.textContent = orig;
-                out = out || '';
-                console.log('[ICA] widget auto-fetch resp', key, out);
-                const exitM = out.match(/\[exit code:\s*(\d+)\]/i);
-                const exit = exitM ? parseInt(exitM[1], 10) : null;
-                const hardErr = /\[error:/i.test(out);
-                const needsCreds = /missing credential|credential keys|missing portal|not set|not configured|set them in \.env/i.test(out);
-                const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
-                const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
-
-                if (needsCreds) {
-                    if (statusEl) statusEl.textContent = 'No portal login saved yet — open "Credentials" below, save it, then retry.';
-                    return;
-                }
-                if (exit === 0 && !hardErr && fetched !== null && fetched > 0) {
-                    if (statusEl) statusEl.textContent = 'Pulled ' + fetched.toLocaleString() + ' rows — refreshing feeds…';
+                console.log('[ICA] widget auto-fetch resp', key, resp);
+                const out = (resp && resp.output) || (resp && resp.message) || '';
+                if (resp && resp.success) {
+                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+                    if (fetched === 0) {
+                        if (statusEl) statusEl.textContent = 'Ran, but returned 0 rows — portal login likely bounced or the catalog page changed. Re-save credentials below and retry.';
+                        return;
+                    }
+                    if (statusEl) statusEl.textContent = 'Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — refreshing feeds…';
                     setTimeout(loadSupplierFeeds, 300);
                     return;
                 }
-                if (fetched === 0 || exit === 0) {
-                    if (statusEl) statusEl.textContent = 'Ran, but returned 0 rows — portal login likely bounced or the catalog page changed. Re-save credentials below and retry.';
-                    return;
+                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
+                const firstLine = String(out).split('\n').map((l) => l.trim()).filter(Boolean)[0] || 'Fetch failed.';
+                if (statusEl) {
+                    statusEl.textContent = needsCreds
+                        ? 'No portal login saved yet — open "Credentials" below, save it, then retry.'
+                        : ('Fetch failed: ' + firstLine);
                 }
-                const lines = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== '.');
-                if (statusEl) statusEl.textContent = 'Fetch failed: ' + (lines.slice(-3).join(' ') || 'unknown error');
             })
             .catch((err) => {
                 btn.disabled = false;

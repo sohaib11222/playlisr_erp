@@ -166,7 +166,7 @@ class AmsFetcher extends AbstractHttpFetcher
     protected function lookupByBarcodes(array $eans, float $startedAt): array
     {
         if (empty($eans)) return [];
-        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 95);
+        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 45);
         $concurrency = max(1, (int) env('AMS_BARCODE_CONCURRENCY', 12));
 
         $out = [];
@@ -339,7 +339,7 @@ class AmsFetcher extends AbstractHttpFetcher
         if (empty($parsed)) return [];
         $absorb($parsed);
 
-        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 95);
+        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 45);
         for ($p = 2; $p <= $maxPages; $p++) {
             // Bound the page walk by the same wall-clock budget as the
             // barcode lookups — without this the walk could run dozens of

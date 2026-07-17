@@ -27,7 +27,7 @@ namespace App\Services\SupplierFetchers;
  * Tunables (env, all optional):
  *   REDEYE_LIST_PAGES=8       # max ?page=N per listing section to walk
  *   REDEYE_DETAIL_CONCURRENCY=12
- *   REDEYE_FETCH_BUDGET_SEC=95  # wall-clock cap so the sync button returns
+ *   REDEYE_FETCH_BUDGET_SEC=45  # wall-clock cap so the sync button returns
  */
 class RedeyeFetcher extends AbstractHttpFetcher
 {
@@ -290,7 +290,7 @@ class RedeyeFetcher extends AbstractHttpFetcher
     /** Wall-clock budget for the whole synchronous fetch. */
     protected function budget(): float
     {
-        return (float) env('REDEYE_FETCH_BUDGET_SEC', 95);
+        return (float) env('REDEYE_FETCH_BUDGET_SEC', 45);
     }
 
     /**

@@ -824,85 +824,55 @@ class InventoryCheckController extends Controller
     }
 
     /**
-     * Trigger the auto-fetch for one supplier from the browser.
+     * Trigger the auto-fetch for one supplier from the browser. Returns
+     * JSON { success, exit_code, output } — the shape the ICA JS parses.
      *
-     * 2026-07-17 Sarah: the buttons "never fetched" — even AMS. Root cause:
-     * a portal walk is dozens of sequential cURL calls that run for minutes,
-     * and it was executed INSIDE the web request via Artisan::call(). nginx /
-     * PHP-FPM close the request long before it finishes, so the browser's
-     * fetch() just spun until its 120s abort — the run never returned.
+     * 2026-07-17 Sarah: the buttons "never fetched" — even AMS. Root cause
+     * was NOT the transport: it was that a portal walk ran essentially
+     * unbounded (AmsFetcher paged the whole catalog + hundreds of barcode
+     * lookups) for minutes inside the web request, so nginx/PHP-FPM closed
+     * the request long before it finished and the browser fetch() just span.
      *
-     * Fix: run the artisan command as its own OS process and STREAM its
-     * output back with periodic heartbeat dots (same pattern as
-     * ChannelSalesSyncController). Continuous bytes + `X-Accel-Buffering: no`
-     * keep nginx from timing the connection out, so the run completes and the
-     * final "[key] fetched N rows." line reaches the client. The command
-     * itself persists the feed + status sidecar, so even if the browser tab
-     * is closed mid-run the data still lands.
+     * Fix is two-part: (1) every fetcher is now bounded by a wall-clock
+     * budget (AMS_/REDEYE_FETCH_BUDGET_SEC, ~45s) so a single run always
+     * returns quickly with whatever it pulled — repeat runs + the Monday
+     * cron advance into the rest of the catalog via the "skip already
+     * priced" logic; (2) this endpoint stays a plain synchronous JSON call
+     * so it works with the JS already cached in the browser (a streamed
+     * variant needed a JS update that the asset cache wouldn't pick up).
      */
     public function runSupplierAutoFetch(Request $request)
     {
         $request->validate(['supplier_key' => 'required|string|max:32']);
         $supplierKey = strtolower(trim((string) $request->input('supplier_key')));
-        // Validate against the known set — the key becomes an argv element,
-        // so never let an arbitrary string through.
+        // Validate against the known set — the key becomes an artisan arg.
         $known = $this->inventoryCheckService->knownSuppliers();
         if (!isset($known[$supplierKey])) {
-            return response('[error: unknown supplier ' . $supplierKey . "]\n", 422)
-                ->header('Content-Type', 'text/plain; charset=utf-8');
+            return response()->json(['success' => false, 'output' => 'Unknown supplier: ' . $supplierKey], 422);
         }
         $business_id = (int) $request->session()->get('user.business_id');
         // Release the session lock so other lazy AJAX keeps working while
-        // this long stream is in flight.
+        // this (bounded) HTTP-out call is in flight.
         $request->session()->save();
+        // Budgets keep the fetch well under a minute, but give PHP headroom
+        // over its 30s default so a slow login can't kill it mid-run.
+        @set_time_limit(150);
 
-        $phpPath = (new \Symfony\Component\Process\PhpExecutableFinder())->find(false) ?: 'php';
-
-        return response()->stream(function () use ($phpPath, $supplierKey, $business_id) {
-            echo '[fetching ' . strtoupper($supplierKey) . " from portal — this can take a couple of minutes]\n\n";
-            @ob_flush(); @flush();
-
-            try {
-                $args = [
-                    $phpPath,
-                    base_path('artisan'),
-                    'supplier-prices:fetch',
-                    $supplierKey,
-                    '--business-id=' . $business_id,
-                ];
-                $process = new \Symfony\Component\Process\Process($args, base_path());
-                $process->setTimeout(null);
-                $process->setIdleTimeout(null);
-                $process->start();
-
-                $lastHeartbeat = time();
-                while ($process->isRunning()) {
-                    $chunk = $process->getIncrementalOutput() . $process->getIncrementalErrorOutput();
-                    if ($chunk !== '') {
-                        echo $chunk;
-                        $lastHeartbeat = time();
-                    } elseif (time() - $lastHeartbeat >= 15) {
-                        // Heartbeat keeps nginx from closing an idle stream
-                        // during the long silent portal walk.
-                        echo '.';
-                        $lastHeartbeat = time();
-                    }
-                    @ob_flush(); @flush();
-                    usleep(400000);
-                }
-                $tail = $process->getIncrementalOutput() . $process->getIncrementalErrorOutput();
-                if ($tail !== '') { echo $tail; }
-                echo "\n[exit code: " . $process->getExitCode() . "]\n";
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error('ICA supplier auto-fetch failed', ['err' => $e->getMessage()]);
-                echo "\n[error: " . $e->getMessage() . "]\n";
-            }
-            @ob_flush(); @flush();
-        }, 200, [
-            'Content-Type' => 'text/plain; charset=utf-8',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'X-Accel-Buffering' => 'no',
-        ]);
+        try {
+            $exit = \Illuminate\Support\Facades\Artisan::call('supplier-prices:fetch', [
+                'supplier' => $supplierKey,
+                '--business-id' => $business_id,
+            ]);
+            $output = \Illuminate\Support\Facades\Artisan::output();
+            return response()->json([
+                'success' => $exit === 0,
+                'exit_code' => $exit,
+                'output' => $output,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('ICA supplier auto-fetch failed', ['err' => $e->getMessage()]);
+            return response()->json(['success' => false, 'output' => $e->getMessage()], 500);
+        }
     }
 
     /**
