@@ -339,7 +339,8 @@
     </div>
     @if($stats)
       <div class="total-owed" style="margin-bottom:12px;">
-        {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending@if($scopedToStore) <span class="ev-meta">({{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }} only &mdash; {{ count($rsvps) }} of {{ $fullRsvpCount }} RSVPs)</span>@endif
+        {{ $stats['attendingCount'] ?? $stats['totalAttendees'] ?? count($rsvps) }} attending
+        @if($scopedToStore)<span class="ev-meta">({{ $storeLabels[$storeScope] ?? ucfirst($storeScope) }} only &mdash; {{ count($rsvps) }} of {{ $fullRsvpCount }} RSVPs)</span>@endif
         <span class="ev-meta">&middot; {{ $stats['yesCount'] ?? 0 }} yes, {{ $stats['maybeCount'] ?? 0 }} maybe &middot; {{ $stats['totalGuests'] ?? 0 }} guests</span>
         @if($showStoreSplit && count($attendSplitParts))
           <div class="ev-meta" style="margin-top:3px;font-weight:600;">By store: {{ implode(' · ', $attendSplitParts) }}</div>
