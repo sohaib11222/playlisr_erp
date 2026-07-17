@@ -876,6 +876,109 @@ class InventoryCheckController extends Controller
     }
 
     /**
+     * On-page diagnostic for "prices won't fetch". Runs entirely on the
+     * server (same network + same encrypted creds the fetchers use) and
+     * returns a plain-text report so the exact blocker is visible without
+     * SSH: (1) is PHP cURL present, (2) can the server actually reach each
+     * portal (outbound egress — the #1 suspect for a months-long, every-
+     * portal failure), (3) are credentials saved, (4) what did the last
+     * auto-fetch actually say. Never prints or returns any secret value.
+     */
+    public function supplierDiagnostics(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $request->session()->save();
+
+        $probeUrls = [
+            'ams'      => 'https://www.allmediasupply.com/Account/LogOn',
+            'alliance' => 'https://webami.aent.com/',
+            'secretly' => 'https://b2b.secretlydistribution.com/login',
+            'beggars'  => 'https://beggars.com/',
+            'redeye'   => 'https://b2b.redeyeworldwide.com/login',
+            'vp'       => 'https://vprecords.com/',
+        ];
+        $known = $this->inventoryCheckService->knownSuppliers();
+
+        // Last-run status sidecar the fetch command writes.
+        $statusPath = storage_path('app/supplier-fetch-status-' . $business_id . '.json');
+        $status = is_file($statusPath) ? (json_decode((string) file_get_contents($statusPath), true) ?: []) : [];
+
+        $L = [];
+        $L[] = 'SUPPLIER FETCH DIAGNOSTICS — ' . Carbon::now()->toDayDateTimeString();
+        $L[] = 'business_id: ' . $business_id;
+        $L[] = 'PHP cURL extension: ' . (function_exists('curl_init') ? 'available' : 'MISSING (fetch cannot work at all)');
+        $L[] = '';
+        $L[] = 'OUTBOUND INTERNET (server → distributor portal):';
+        $anyOk = false; $anyBlocked = false;
+        foreach ($probeUrls as $key => $url) {
+            $p = $this->egressProbe($url);
+            $host = parse_url($url, PHP_URL_HOST);
+            if ($p['code'] >= 200 && $p['code'] < 500 && $p['err'] === '') {
+                $verdict = 'OK'; $anyOk = true;
+            } else {
+                $verdict = 'BLOCKED / UNREACHABLE'; $anyBlocked = true;
+            }
+            $L[] = sprintf('  %-9s %-28s HTTP %-3d %5.1fs  [%s]%s',
+                strtoupper($key), $host, $p['code'], $p['time'], $verdict,
+                $p['err'] !== '' ? '  ' . $p['err'] : '');
+        }
+        $L[] = '';
+        $L[] = 'CREDENTIALS SAVED (encrypted on server — values never shown):';
+        foreach ($known as $key => $meta) {
+            $st = $this->inventoryCheckService->supplierCredentialsStatus($business_id, $key);
+            $keys = array_keys(array_filter($st['configured_keys'] ?? []));
+            $L[] = sprintf('  %-9s %s%s',
+                strtoupper($key),
+                $st['configured'] ? ('YES (' . implode(', ', $keys) . ')') : 'NO — no portal login saved',
+                !empty($st['updated_at']) ? ('  · saved ' . substr($st['updated_at'], 0, 10)) : '');
+        }
+        $L[] = '';
+        $L[] = 'LAST AUTO-FETCH RESULT (from the status log):';
+        if (empty($status)) {
+            $L[] = '  (no run recorded yet)';
+        } else {
+            foreach ($status as $key => $s) {
+                $L[] = sprintf('  %-9s %s — %s  · %s',
+                    strtoupper($key),
+                    ($s['ok'] ?? false) ? 'OK' : 'FAIL',
+                    (string) ($s['message'] ?? ''),
+                    substr((string) ($s['at'] ?? ''), 0, 19));
+            }
+        }
+        $L[] = '';
+        $L[] = 'READING:';
+        if (!$anyOk && $anyBlocked) {
+            $L[] = '  Every portal is unreachable from the server → this is an OUTBOUND FIREWALL / egress block on';
+            $L[] = '  the ERP box. No scraper can work until the server is allowed to reach these hosts. This is an';
+            $L[] = '  infra change on the server (or run the pull from a host that has internet and push results in).';
+        } elseif ($anyOk) {
+            $L[] = '  The server CAN reach the portals, so egress is fine. If a supplier still returns 0 rows, the';
+            $L[] = '  cause is per-supplier: credentials not saved (see above), a bounced login, or a changed page.';
+        }
+
+        return response()->json(['report' => implode("\n", $L)]);
+    }
+
+    /** Short outbound HTTP probe used only by supplierDiagnostics(). */
+    protected function egressProbe(string $url): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_CONNECTTIMEOUT => 6,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+        ]);
+        curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $time = (float) curl_getinfo($ch, CURLINFO_TOTAL_TIME);
+        $err = (string) curl_error($ch);
+        curl_close($ch);
+        return ['code' => $code, 'time' => $time, 'err' => $err];
+    }
+
+    /**
      * Save supplier portal credentials from the UI form. Sarah 2026-05-
      * 21 lost SSH access so .env can't be hand-edited anymore — the
      * encrypted creds file (storage/app/supplier-creds-{biz}-{key}.enc)

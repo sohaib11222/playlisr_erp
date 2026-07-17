@@ -505,6 +505,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/inventory-check-assistant/frozen-stock-update', 'InventoryCheckController@frozenStockUpdate');
     Route::get('/reports/inventory-check-assistant/manager-picks-bucket', 'InventoryCheckController@managerPicksBucket');
     Route::get('/reports/inventory-check-assistant/ume-spotlights-bucket', 'InventoryCheckController@umeSpotlightsBucket');
+    Route::get('/reports/inventory-check-assistant/supplier-diagnostics', 'InventoryCheckController@supplierDiagnostics');
     Route::get('/reports/inventory-check-assistant/supplier-feeds', 'InventoryCheckController@listSupplierFeeds');
     Route::post('/reports/inventory-check-assistant/supplier-feeds', 'InventoryCheckController@uploadSupplierFeed');
     Route::post('/reports/inventory-check-assistant/supplier-auto-fetch', 'InventoryCheckController@runSupplierAutoFetch');
