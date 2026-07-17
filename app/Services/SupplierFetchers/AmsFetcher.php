@@ -69,7 +69,7 @@ class AmsFetcher extends AbstractHttpFetcher
 
         $rows = [];
         foreach ([['Vinyl', $vinylPages, 'LP'], ['CD', $cdPages, 'CD']] as [$path, $pages, $defaultFormat]) {
-            foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp) as $row) {
+            foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp, $startedAt) as $row) {
                 $rows[] = $row;
             }
         }
@@ -308,7 +308,7 @@ class AmsFetcher extends AbstractHttpFetcher
      *
      * @return array<int, array<string,mixed>>
      */
-    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp): array
+    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp, float $startedAt = 0.0): array
     {
         $base = 'https://www.allmediasupply.com/Search/' . $path . '?sort=SalesRank&ipp=' . $ipp;
         $rows = [];
@@ -339,7 +339,14 @@ class AmsFetcher extends AbstractHttpFetcher
         if (empty($parsed)) return [];
         $absorb($parsed);
 
+        $budget = (float) env('AMS_FETCH_BUDGET_SEC', 95);
         for ($p = 2; $p <= $maxPages; $p++) {
+            // Bound the page walk by the same wall-clock budget as the
+            // barcode lookups — without this the walk could run dozens of
+            // sequential pages for minutes and blow past the request window
+            // (the "never fetches" bug). Whatever we have so far is saved;
+            // the next run's "skip already priced" logic advances further.
+            if ($startedAt > 0.0 && (microtime(true) - $startedAt) > $budget) break;
             $params = $pageParam !== null ? [$pageParam] : ['pg', 'page', 'p'];
             $advanced = false;
             foreach ($params as $param) {

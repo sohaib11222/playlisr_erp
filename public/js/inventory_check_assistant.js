@@ -972,7 +972,7 @@
         const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         const timeout = setTimeout(() => {
             if (controller) controller.abort();
-        }, 120000);
+        }, 300000);
         const fd = new FormData();
         fd.append('supplier_key', key);
         const fetchOpts = {
@@ -982,40 +982,47 @@
             body: fd,
         };
         if (controller) fetchOpts.signal = controller.signal;
+        // The endpoint STREAMS plain text now (heartbeat dots + the artisan
+        // command's output) instead of a single JSON blob — a portal walk
+        // runs for minutes and used to die on the web-request timeout. We
+        // read the whole stream to completion via r.text(); the streamed
+        // bytes keep the connection alive the entire time.
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, fetchOpts)
-            .then((r) => r.json())
-            .then((resp) => {
+            .then((r) => r.text())
+            .then((out) => {
                 clearInterval(ticker); clearTimeout(timeout);
-                console.log('[ICA] fetch resp', key, resp);
-                const out = (resp && resp.output) || '';
-                if (resp && resp.success) {
-                    // A "successful" run can still return ZERO rows (portal
-                    // login silently bounced, or the catalog HTML changed and
-                    // the parser matched nothing). That used to flash
-                    // "rebuilding…" and leave every price column empty —
-                    // indistinguishable from a dead click. Pull the row count
-                    // out of the command output and, if it's zero, say so
-                    // loudly instead of pretending it worked.
-                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
-                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
-                    if (fetched === 0) {
-                        btn.disabled = false;
-                        btn.textContent = origLabel;
-                        showInlineError(btn, key, key.toUpperCase() + ' returned 0 rows. The portal login likely bounced or the catalog page changed — prices can\'t populate. Re-save the portal credentials below and retry; if it still returns 0, the AMS portal layout changed and the parser needs updating.');
-                        return;
-                    }
-                    btn.textContent = '✓ Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — rebuilding…';
+                out = out || '';
+                console.log('[ICA] fetch resp', key, out);
+                const exitM = out.match(/\[exit code:\s*(\d+)\]/i);
+                const exit = exitM ? parseInt(exitM[1], 10) : null;
+                const hardErr = /\[error:/i.test(out);
+                const needsCreds = /missing credential|credential keys|missing portal|not set|not configured|set them in \.env/i.test(out);
+                // Row count from the command's "[key] fetched N rows." line.
+                const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+
+                if (needsCreds) {
+                    btn.disabled = false; btn.textContent = origLabel;
+                    showInlineCredsForm(btn, key);
+                    return;
+                }
+                // Success = the process exited 0, printed no [error:], and
+                // reported a positive row count.
+                if (exit === 0 && !hardErr && fetched !== null && fetched > 0) {
+                    btn.textContent = '✓ Pulled ' + fetched.toLocaleString() + ' rows — rebuilding…';
                     const activeBtn = document.querySelector('.ica-store-btn.is-active');
                     if (activeBtn) activeBtn.click();
                     return;
                 }
-                btn.disabled = false;
-                btn.textContent = origLabel;
-                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
-                if (needsCreds) {
-                    showInlineCredsForm(btn, key);
+                // Ran but produced nothing usable — say so loudly rather than
+                // pretending it worked and leaving every column empty.
+                btn.disabled = false; btn.textContent = origLabel;
+                if (fetched === 0 || exit === 0) {
+                    showInlineError(btn, key, key.toUpperCase() + ' returned 0 rows. The portal login likely bounced or the catalog page changed — prices can\'t populate. Re-save the portal credentials below and retry.');
                 } else {
-                    showInlineError(btn, key, out || (resp && resp.message) || 'unknown error');
+                    // Surface the tail of the command output (the real error).
+                    const lines = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== '.');
+                    showInlineError(btn, key, lines.slice(-4).join(' ') || 'unknown error');
                 }
             })
             .catch((err) => {
