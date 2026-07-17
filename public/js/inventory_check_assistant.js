@@ -2041,40 +2041,42 @@
         if (statusEl) statusEl.textContent = 'Running…';
         const fd = new FormData();
         fd.append('supplier_key', key);
+        // The endpoint STREAMS plain text (heartbeats + artisan output), not
+        // JSON — read it to completion with r.text() and parse the tail.
         fetch(window.ICA_SUPPLIER_AUTOFETCH_URL, {
             method: 'POST',
-            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 'Accept': 'text/plain', 'X-CSRF-TOKEN': window.ICA_CSRF, 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
             body: fd,
         })
-            .then((r) => r.json())
-            .then((resp) => {
+            .then((r) => r.text())
+            .then((out) => {
                 btn.disabled = false;
                 btn.textContent = orig;
-                console.log('[ICA] widget auto-fetch resp', key, resp);
-                const out = (resp && resp.output) || (resp && resp.message) || '';
-                if (resp && resp.success) {
-                    const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
-                    const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
-                    if (fetched === 0) {
-                        if (statusEl) statusEl.textContent = 'Ran, but returned 0 rows — portal login likely bounced or the catalog page changed. Re-save credentials below and retry.';
-                        return;
-                    }
-                    if (statusEl) statusEl.textContent = 'Pulled ' + (fetched !== null ? (fetched.toLocaleString() + ' rows') : '') + ' — refreshing feeds…';
+                out = out || '';
+                console.log('[ICA] widget auto-fetch resp', key, out);
+                const exitM = out.match(/\[exit code:\s*(\d+)\]/i);
+                const exit = exitM ? parseInt(exitM[1], 10) : null;
+                const hardErr = /\[error:/i.test(out);
+                const needsCreds = /missing credential|credential keys|missing portal|not set|not configured|set them in \.env/i.test(out);
+                const m = out.match(/fetched\s+([0-9][0-9,]*)\s+rows/i) || out.match(/([0-9][0-9,]*)\s+rows\s+fetched/i);
+                const fetched = m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+
+                if (needsCreds) {
+                    if (statusEl) statusEl.textContent = 'No portal login saved yet — open "Credentials" below, save it, then retry.';
+                    return;
+                }
+                if (exit === 0 && !hardErr && fetched !== null && fetched > 0) {
+                    if (statusEl) statusEl.textContent = 'Pulled ' + fetched.toLocaleString() + ' rows — refreshing feeds…';
                     setTimeout(loadSupplierFeeds, 300);
                     return;
                 }
-                // 200 OK but the fetch itself failed (exit != 0) — surface
-                // WHY so the click never looks like a no-op. Most common
-                // cause is missing portal credentials → point Sarah at the
-                // Credentials form right below in the same panel.
-                const needsCreds = /credential|env|missing portal|not set|not configured/i.test(out);
-                const firstLine = String(out).split('\n').map((l) => l.trim()).filter(Boolean)[0] || 'Fetch failed.';
-                if (statusEl) {
-                    statusEl.textContent = needsCreds
-                        ? 'No portal login saved yet — open "Credentials" below, save it, then retry.'
-                        : ('Fetch failed: ' + firstLine);
+                if (fetched === 0 || exit === 0) {
+                    if (statusEl) statusEl.textContent = 'Ran, but returned 0 rows — portal login likely bounced or the catalog page changed. Re-save credentials below and retry.';
+                    return;
                 }
+                const lines = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== '.');
+                if (statusEl) statusEl.textContent = 'Fetch failed: ' + (lines.slice(-3).join(' ') || 'unknown error');
             })
             .catch((err) => {
                 btn.disabled = false;
