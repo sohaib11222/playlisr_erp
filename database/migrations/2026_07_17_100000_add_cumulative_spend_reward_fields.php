@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  *                                        to this customer (guards re-grants)
  *   business.spend_reward_start_date     program cutoff — sales before this
  *                                        date don't accrue. Seeded to the
- *                                        launch date (2026-07-10) so years of
+ *                                        program start (2026-07-05) so years of
  *                                        old history don't retro-pay; editable
  *                                        in Settings → Store Credit Rewards.
  *
@@ -35,10 +35,10 @@ class AddCumulativeSpendRewardFields extends Migration
                 $table->date('spend_reward_start_date')->nullable();
             });
 
-            // Seed the cutoff to the program launch date for existing businesses
+            // Seed the cutoff to the program start date for existing businesses
             // so cumulative accrual starts there, not from all-time history.
             DB::table('business')->whereNull('spend_reward_start_date')->update([
-                'spend_reward_start_date' => '2026-07-10',
+                'spend_reward_start_date' => '2026-07-05',
             ]);
         }
     }
