@@ -379,6 +379,17 @@ class BusinessController extends Controller
             if ($business_details['spend_credit_reward_per'] <= 0) {
                 $business_details['spend_credit_reward_per'] = 100; // never divide by zero downstream
             }
+            // Cumulative rewards start date — only purchases on/after this accrue.
+            // Parse leniently; a blank field leaves the existing cutoff untouched
+            // (so saving other settings can't silently wipe the start date).
+            $sd = trim((string) $request->input('spend_reward_start_date', ''));
+            if ($sd !== '') {
+                try {
+                    $business_details['spend_reward_start_date'] = \Carbon\Carbon::parse($sd)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    // ignore unparseable input; keep the existing value
+                }
+            }
 
             $business_details['amount_for_unit_rp'] = !empty($business_details['amount_for_unit_rp']) ? $this->businessUtil->num_uf($business_details['amount_for_unit_rp']) : 1;
             $business_details['min_order_total_for_rp'] = !empty($business_details['min_order_total_for_rp']) ? $this->businessUtil->num_uf($business_details['min_order_total_for_rp']) : 1;

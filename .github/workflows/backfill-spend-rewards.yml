@@ -1,0 +1,72 @@
+# One-click cumulative store-credit reward catch-up on production.
+#
+# Runs `php artisan rewards:backfill-spend`. DRY RUN by default — it only
+# reports the total credit that WOULD be granted and who gets it. Tick the
+# "commit" input to actually grant. Highlights any "Sandoval" in the output.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Backfill spend rewards
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Actually grant credit? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Share the deploy group so this can't race a Deploy production run.
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run rewards:backfill-spend
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run — granting credit ==="
+              php artisan rewards:backfill-spend --commit --highlight="Sandoval"
+            else
+              echo "=== DRY RUN — no changes ==="
+              php artisan rewards:backfill-spend --highlight="Sandoval"
+            fi
+            echo "=== done ==="

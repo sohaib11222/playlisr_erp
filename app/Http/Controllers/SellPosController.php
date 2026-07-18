@@ -4591,20 +4591,12 @@ class SellPosController extends Controller
                     if (!empty($input['contact_id'])) {
                         $this->updateCustomerLoyalty($input['contact_id'], $business_id, $transaction->final_total);
 
-                        // Sarah 2026-07-10: $5-per-$100 store-credit reward.
-                        // Store credit spent on a sale does NOT count toward
-                        // earning more credit, so tally every dollar of store
-                        // credit used and exclude it from the qualifying spend.
-                        // Both payment paths count: the 'advance' payment method
-                        // and the store_credit_used_amount path handled above
-                        // (in practice only one is ever non-zero).
-                        $store_credit_paid = (float) $store_credit_used;
-                        foreach ($input['payment'] ?? [] as $p) {
-                            if (empty($p['is_return']) && !empty($p['method']) && $p['method'] == 'advance') {
-                                $store_credit_paid += (float) $this->transactionUtil->num_uf($p['amount'] ?? 0);
-                            }
-                        }
-                        $this->grantSpendReward($transaction, $store_credit_paid);
+                        // Sarah 2026-07-17: cumulative store-credit reward. The
+                        // service recomputes this customer's running qualifying
+                        // spend from their sales (this one included — already
+                        // persisted above) and grants any newly-earned bracket.
+                        // Store credit used is subtracted inside the service.
+                        $this->grantSpendReward($transaction);
                     }
                     
                     // Update product sale dates
@@ -8621,112 +8613,27 @@ class SellPosController extends Controller
     }
 
     /**
-     * Sarah 2026-07-10: automatic store-credit loyalty reward.
+     * Sarah 2026-07-17: automatic CUMULATIVE store-credit loyalty reward.
      *
-     * Every full "reward_per" of qualifying PRE-TAX spend earns the customer
-     * "reward_amount" in store credit — both admin-editable in Settings →
-     * Store Credit Rewards (business.spend_credit_reward_amount / _per), and
-     * the whole feature can be toggled off (enable_spend_credit_reward). The
-     * defaults are the original $5-per-$100 rule.
+     * Delegates to SpendRewardService, which recomputes the customer's running
+     * qualifying pre-tax spend — across all their sales since the program start
+     * date, minus any store credit used — and grants one reward per newly-
+     * crossed bracket ($5 per $100 by default; all editable in Settings →
+     * Store Credit Rewards). Walk-in customers are skipped, and because the
+     * total is recomputed from the transactions table each time, a re-saved
+     * sale can't double-credit. This sale is already persisted (transaction +
+     * payment + redeem rows) by the time we get here, so it's counted.
      *
-     * Qualifying spend = transactions.total_before_tax MINUS any store credit
-     * used to pay, because store credit spent on a sale must not count toward
-     * earning more store credit. At the $5/$100 default, a $150 pre-tax sale
-     * paid with $40 store credit + $110 cash qualifies on $110 and earns $5;
-     * the same sale paid entirely with store credit earns nothing. Walk-in
-     * (is_default) customers are skipped because they have no real account to
-     * credit. The grant is idempotent per sale — a re-save can't double-credit.
-     *
-     * The credit is added via TransactionUtil::updateContactBalance() (which
-     * also syncs the balance to the Nivessa backend by email) and recorded in
-     * the customer's history two ways, matching how manual grants/redemptions
-     * are logged: a structured store_credit_logs row (source 'spend_reward')
-     * and an appended contacts.balance_notes audit line.
-     *
-     * @param  \App\Transaction  $transaction              the finalized sell
-     * @param  float             $store_credit_used_total  store credit used to pay this sale
+     * @param  \App\Transaction  $transaction  the finalized sell
      */
-    private function grantSpendReward($transaction, $store_credit_used_total)
+    private function grantSpendReward($transaction)
     {
         try {
-            // Rate is admin-editable in Settings → Store Credit Rewards; fall
-            // back to the original $5-per-$100 rule if unset or before the
-            // settings migration has run. Loaded fresh from the business row so
-            // a stale session copy can't apply an old rate.
-            $business = \App\Business::find($transaction->business_id);
-            $enabled = $business ? ($business->enable_spend_credit_reward ?? 1) : 1;
-            if (!$enabled) {
-                return; // feature turned off for this business
-            }
-            $reward_amount = ($business && $business->spend_credit_reward_amount !== null)
-                ? (float) $business->spend_credit_reward_amount : 5;
-            $reward_per = ($business && (float) $business->spend_credit_reward_per > 0)
-                ? (float) $business->spend_credit_reward_per : 100;
-            if ($reward_amount <= 0) {
-                return; // nothing to grant
-            }
-
             $contact = Contact::find($transaction->contact_id);
-            if (!$contact || $contact->is_default == 1) {
-                return; // no real customer account (walk-in)
+            if (!$contact) {
+                return;
             }
-
-            // Store credit spent on the sale doesn't count toward earning more.
-            $qualifying_spend = (float) $transaction->total_before_tax - (float) $store_credit_used_total;
-            $brackets = (int) floor($qualifying_spend / $reward_per);
-            if ($brackets < 1) {
-                return; // under $100 of non-store-credit pre-tax spend
-            }
-            $reward = $brackets * $reward_amount;
-
-            $sale_ref = $transaction->invoice_no ?? ('#' . $transaction->id);
-
-            // Idempotent: never grant twice for the same sale (e.g. a re-save).
-            $can_log = \Illuminate\Support\Facades\Schema::hasTable('store_credit_logs')
-                && \Illuminate\Support\Facades\Schema::hasColumn('store_credit_logs', 'transaction_id');
-            if ($can_log) {
-                $already = \App\StoreCreditLog::where('transaction_id', (int) $transaction->id)
-                    ->where('source', 'spend_reward')
-                    ->exists();
-                if ($already) {
-                    return;
-                }
-            }
-
-            // Grant the credit (also syncs to the Nivessa backend by email).
-            $this->transactionUtil->updateContactBalance($contact, $reward, 'add');
-
-            // Customer history — structured ledger row.
-            if ($can_log) {
-                try {
-                    \App\StoreCreditLog::create([
-                        'business_id' => (int) $contact->business_id,
-                        'contact_id' => (int) $contact->id,
-                        'user_id' => auth()->id(),
-                        'source' => 'spend_reward',
-                        'amount' => (float) $reward,
-                        'balance_after' => (float) $contact->balance,
-                        'reason' => '$' . number_format($reward, 2) . ' loyalty reward for $'
-                            . number_format($qualifying_spend, 2) . ' qualifying pre-tax spend on sale ' . $sale_ref,
-                        'transaction_id' => (int) $transaction->id,
-                    ]);
-                } catch (\Exception $e) {
-                    \Log::warning('store_credit_logs spend_reward write failed: ' . $e->getMessage());
-                }
-            }
-
-            // Customer history — free-text balance_notes trail, matching the
-            // format used by manual store-credit adjustments.
-            try {
-                if (\Illuminate\Support\Facades\Schema::hasColumn('contacts', 'balance_notes')) {
-                    $line = '[' . $transaction->transaction_date . '] store-credit +$' . number_format($reward, 2)
-                        . ' spend reward (sale ' . $sale_ref . ') → new balance $' . number_format($contact->balance, 2);
-                    $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
-                    $contact->save();
-                }
-            } catch (\Exception $e) {
-                \Log::warning('balance_notes spend_reward write failed: ' . $e->getMessage());
-            }
+            app(\App\Services\SpendRewardService::class)->applyForContact($contact, $transaction);
         } catch (\Exception $e) {
             \Log::error('Error granting spend reward: ' . $e->getMessage());
         }
