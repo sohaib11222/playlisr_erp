@@ -956,7 +956,15 @@ class InventoryCheckController extends Controller
             $L[] = '  cause is per-supplier: credentials not saved (see above), a bounced login, or a changed page.';
         }
 
-        return response()->json(['report' => implode("\n", $L)]);
+        // Return plain text so this GET URL can be opened directly in the
+        // browser and read/screenshotted — no JS, no asset cache to fight.
+        // (?json=1 still returns JSON for the in-page button.)
+        if (filter_var($request->input('json'), FILTER_VALIDATE_BOOLEAN)) {
+            return response()->json(['report' => implode("\n", $L)]);
+        }
+        return response(implode("\n", $L), 200)
+            ->header('Content-Type', 'text/plain; charset=utf-8')
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
     /** Short outbound HTTP probe used only by supplierDiagnostics(). */

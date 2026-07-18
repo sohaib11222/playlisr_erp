@@ -495,7 +495,7 @@ HTML;
                         b.disabled = true; b.textContent = 'Diagnosing… (up to ~40s)';
                         out.style.display = 'block';
                         out.textContent = 'Running server-side connectivity + credential checks…';
-                        fetch("{{ url('reports/inventory-check-assistant/supplier-diagnostics') }}", {
+                        fetch("{{ url('reports/inventory-check-assistant/supplier-diagnostics') }}?json=1", {
                             headers: { 'X-CSRF-TOKEN': (window.ICA_CSRF || ''), 'X-Requested-With': 'XMLHttpRequest' },
                             credentials: 'same-origin'
                         })
