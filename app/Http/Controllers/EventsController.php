@@ -288,7 +288,7 @@ class EventsController extends Controller
         // Live RSVP + preorder data from the website bridge (source of those
         // records). Degrades gracefully: $bridge['ready'] is false when the
         // key isn't configured or the website is unreachable.
-        $bridge = $this->bridgeData($event['name'] ?? '');
+        $bridge = $this->bridgeData($event['name'] ?? '', $event['id'] ?? null);
 
         return view('events.edit', [
             'event'      => $event,
@@ -745,10 +745,10 @@ class EventsController extends Controller
     }
 
     /** Fetch RSVPs (+stats) and preorders for one event from the website. */
-    protected function bridgeData(string $eventName): array
+    protected function bridgeData(string $eventName, ?string $eventId = null): array
     {
         $out = ['ready' => false, 'error' => null, 'rsvps' => [], 'stats' => null, 'preorders' => []];
-        if ($eventName === '') {
+        if ($eventName === '' && (string) $eventId === '') {
             return $out;
         }
         if ($this->erpApiKey() === '') {
@@ -756,7 +756,15 @@ class EventsController extends Controller
             return $out;
         }
 
-        $q = '?eventName=' . rawurlencode($eventName) . '&limit=500';
+        // Look RSVPs/preorders up by the stable event id when we have one, so a
+        // hidden non-breaking space or rename in the event title (e.g. "Tyla
+        // Listening Party") can't make the name match miss records that are in
+        // fact attached to this event. Name stays as the fallback for events
+        // that predate ids. Stats is fetched whole and matched by name below.
+        $q = ((string) $eventId !== ''
+                ? '?eventId=' . rawurlencode((string) $eventId)
+                : '?eventName=' . rawurlencode($eventName))
+            . '&limit=500';
         $rsvpResp  = $this->websiteApi('GET', '/erp/rsvps' . $q);
         $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
         $preResp   = $this->websiteApi('GET', '/erp/preorders' . $q);
