@@ -80,8 +80,17 @@
                                 ? $offer->final_offer_credit
                                 : $offer->final_offer_cash;
                         @endphp
+                        @php $bfcItemCount = $offer->meaningful_lines->count(); @endphp
                         <tr>
-                            <td>{{ $offer->buy_record_number }}</td>
+                            <td>
+                                {{ $offer->buy_record_number }}
+                                @if($bfcItemCount > 0)
+                                    <br>
+                                    <button type="button" class="btn btn-xs btn-default bfc-items-toggle" data-target="bfc-lines-{{ $offer->id }}" style="margin-top:4px;">
+                                        <i class="fa fa-list"></i> Items ({{ $bfcItemCount }})
+                                    </button>
+                                @endif
+                            </td>
                             @if(!empty($diagnostics['show_all'])) <td>{{ $offer->business_id }}</td> @endif
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
                             <td>{{ optional($offer->location)->name ?? '—' }}</td>
@@ -132,6 +141,14 @@
                                 @endif
                             </td>
                         </tr>
+                        @if($bfcItemCount > 0)
+                            <tr id="bfc-lines-{{ $offer->id }}" class="bfc-lines-row" style="display:none;">
+                                <td colspan="{{ !empty($diagnostics['show_all']) ? 14 : 13 }}" style="background:#fafafa;">
+                                    <strong>Items entered for {{ $offer->buy_record_number }}</strong>
+                                    @include('buy_from_customer.partials.line_breakdown', ['offer' => $offer])
+                                </td>
+                            </tr>
+                        @endif
                     @empty
                         <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 14 : 13 }}" class="text-center">No records yet.</td></tr>
                     @endforelse
@@ -140,6 +157,19 @@
             {{ $offers->links() }}
         </div>
     </div>
+
+    <script>
+        // Toggle the itemized-lines row under each buy record. Plain JS so it
+        // doesn't depend on any particular Bootstrap collapse version.
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.bfc-items-toggle');
+            if (!btn) { return; }
+            var row = document.getElementById(btn.getAttribute('data-target'));
+            if (!row) { return; }
+            var hidden = (row.style.display === 'none' || row.style.display === '');
+            row.style.display = hidden ? 'table-row' : 'none';
+        });
+    </script>
 </section>
 @endsection
 

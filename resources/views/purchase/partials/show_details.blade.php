@@ -254,6 +254,21 @@
       </div>
     </div>
   </div>
+
+  {{-- Buy-from-customer: the calculator lines the cashier entered. Shown when
+       this purchase is linked to a BFC offer — bulk/untitled buys don't create
+       inventory line items, so this is the record of what was actually bought. --}}
+  @if(!empty($bfc_offer))
+    <div class="row">
+      <div class="col-sm-12 col-xs-12">
+        <h4>Buy from customer — items entered
+          <small>({{ $bfc_offer->buy_record_number }})</small>
+        </h4>
+        @include('buy_from_customer.partials.line_breakdown', ['offer' => $bfc_offer])
+      </div>
+    </div>
+  @endif
+
   <br>
   <div class="row">
     @if(!empty($purchase->type == 'purchase'))
