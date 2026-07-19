@@ -57,16 +57,26 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
-          script_stop: true
+          script_stop: false
           command_timeout: 30m
           script: |
-            set -e
-            cd /www/playlist.nivessa.com/app
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
             if [ "${{ github.event.inputs.commit }}" = "true" ]; then
               echo "=== COMMIT run — granting credit ==="
-              php artisan rewards:backfill-spend --commit --highlight="Sandoval"
+              php artisan rewards:backfill-spend --commit --highlight="Sandoval" 2>&1
             else
               echo "=== DRY RUN — no changes ==="
-              php artisan rewards:backfill-spend --highlight="Sandoval"
+              php artisan rewards:backfill-spend --highlight="Sandoval" 2>&1
+            fi
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              echo "=== tail laravel log (for the stack) ==="
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
             fi
             echo "=== done ==="
+            # Always exit 0 so drone-ssh flushes the output above; the printed
+            # exit code tells us whether the command actually succeeded.
+            exit 0
