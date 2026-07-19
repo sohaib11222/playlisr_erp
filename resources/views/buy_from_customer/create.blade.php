@@ -1429,6 +1429,25 @@ HTML;
             // (see $errors block) — this is the first line of defense.
             $('#accept_buy_offer_form').on('submit', function (e) {
                 var problems = [];
+                // Sarah 2026-07-19: hard gate — a payout must be tied to an
+                // identified seller. Mirrors validateSellerIdentified() on the
+                // server so the cashier sees it inline instead of a round-trip.
+                if ($('#seller_mode').val() === 'contact') {
+                    if (!$.trim($('#contact_id').val())) {
+                        problems.push('Pick the customer you\'re buying from (or switch to "New / walk-in" and enter their details).');
+                    }
+                } else {
+                    var sName = ($.trim($('input[name="seller_first_name"]').val()) + ' ' + $.trim($('input[name="seller_last_name"]').val())).trim()
+                        || $.trim($('input[name="seller_name"]').val());
+                    var sPhone = $.trim($('input[name="seller_phone"]').val());
+                    var sEmail = $.trim($('input[name="seller_email"]').val());
+                    if (!sName) {
+                        problems.push('Enter the seller\'s name — a payout can\'t be recorded against an anonymous seller.');
+                    }
+                    if (!sPhone && !sEmail) {
+                        problems.push('Enter a phone number or email for the seller so the account is reachable later.');
+                    }
+                }
                 if (!$('input[name="compliance_items_owned"]').is(':checked')) {
                     problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
                 }

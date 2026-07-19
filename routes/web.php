@@ -620,6 +620,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Sling-pooled model (store overage split by Sling hours). Pays no one.
     Route::get('/reports/sling-pooled-bonus', 'ReportController@slingPooledBonus');
 
+    // Per-cashier customer-capture rate — % of in-store sales that got a Nivessa
+    // account attached, plus the decline reasons. Admin-only.
+    Route::get('/reports/customer-capture', 'ReportController@customerCaptureReport')->name('reports.customer-capture');
+
     // Reports hub — organized index of all reports with per-user favorites
     Route::get('/reports', 'ReportsHubController@index')->name('reports.hub');
     Route::post('/reports/favorite', 'ReportsHubController@toggleFavorite')->name('reports.favorite');

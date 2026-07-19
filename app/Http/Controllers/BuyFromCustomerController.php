@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class BuyFromCustomerController extends Controller
 {
@@ -278,6 +279,7 @@ class BuyFromCustomerController extends Controller
         }
 
         $this->validateRequest($request, true);
+        $this->validateSellerIdentified($request);
         $this->validateAcceptCompliance($request);
 
         $offerId = $id ?? ($request->input('offer_id') ?: null);
@@ -461,6 +463,61 @@ class BuyFromCustomerController extends Controller
                     'price_override_reason' => 'required|string|max:500',
                 ]);
             }
+        }
+    }
+
+    /**
+     * Hard gate (Sarah 2026-07-19): a buy-from-customer payout MUST be tied to
+     * an identified seller. Money is leaving the drawer / store credit is being
+     * issued — an anonymous acceptance is never acceptable, and previously
+     * nothing enforced it (seller_mode was required but contact_id / phone /
+     * name / email were all nullable, so accept could record a payout against
+     * nobody, then resolveSellerContact silently returned null).
+     *
+     * We require, at the moment of acceptance, EITHER:
+     *   - an existing contact was picked (seller_mode = contact + real
+     *     contact_id that resolves in this business), OR
+     *   - enough walk-in identity to create a real contact: a name AND at
+     *     least one reachable identifier (phone or email). Name-only isn't
+     *     enough to ever find them again; a bare phone with no name is the junk
+     *     record we don't want either.
+     */
+    protected function validateSellerIdentified(Request $request)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $mode = $request->input('seller_mode');
+
+        if ($mode === 'contact') {
+            $contactId = $request->input('contact_id');
+            $exists = !empty($contactId)
+                && Contact::where('business_id', $business_id)->whereKey($contactId)->exists();
+            if (!$exists) {
+                throw ValidationException::withMessages([
+                    'contact_id' => 'Pick the customer you\'re buying from before accepting — or switch to "new seller" and enter their name and phone/email.',
+                ]);
+            }
+            return;
+        }
+
+        // Walk-in / phone mode: mirror the create-conditions in
+        // resolveSellerContact so the gate can't pass on data that would
+        // resolve to a null contact.
+        $first = trim((string) $request->input('seller_first_name', ''));
+        $last  = trim((string) $request->input('seller_last_name', ''));
+        $legacyName = trim((string) $request->input('seller_name', ''));
+        $name = trim($first . ' ' . $last) !== '' ? trim($first . ' ' . $last) : $legacyName;
+        $phone = trim((string) $request->input('seller_phone', ''));
+        $email = trim((string) $request->input('seller_email', ''));
+
+        if ($name === '') {
+            throw ValidationException::withMessages([
+                'seller_name' => 'Enter the seller\'s name before accepting — a payout can\'t be recorded against an anonymous seller.',
+            ]);
+        }
+        if ($phone === '' && $email === '') {
+            throw ValidationException::withMessages([
+                'seller_phone' => 'Enter a phone number or email for the seller before accepting, so the account is reachable and findable later.',
+            ]);
         }
     }
 

@@ -123,6 +123,13 @@
 				@endif
 				{!! Form::select('contact_id',
 					[], null, ['class' => 'form-control mousetrap', 'id' => 'customer_id', 'placeholder' => 'Phone # (or name / email)…', 'style' => 'width: 100%;']) !!}
+				{{-- Sarah 2026-07-19: customer-capture gate. An in-store register
+				     sale can't finalize on the Walk-In default unless a real
+				     account is attached OR the cashier explicitly records that the
+				     customer declined (+reason). These carry that decision to the
+				     server; both default blank and reset() clears them each ring. --}}
+				<input type="hidden" name="customer_declined" id="customer_declined" value="">
+				<input type="hidden" name="customer_declined_reason" id="customer_declined_reason" value="">
 			</div>
 			<div style="margin-top: 10px;">
 				<button type="button" class="btn add_new_customer" data-name="" @if(!auth()->user()->can('customer.create')) disabled @endif title="Create a new Nivessa customer account">
@@ -618,3 +625,46 @@
 
 @include('sale_pos.partials.price_override_modal')
 @include('sale_pos.partials.quick_receive_modal')
+
+{{-- Sarah 2026-07-19: customer-capture gate modal. Fires when a cashier tries
+     to finalize an in-store sale still on the Walk-In default. Two ways out —
+     attach/create a real account, or record that the customer declined (with a
+     reason, which is logged per cashier so we can measure the skip). --}}
+<div class="modal fade" id="customer_capture_modal" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
+	<div class="modal-dialog modal-sm" role="document">
+		<div class="modal-content">
+			<div class="modal-header" style="background:#fff7e6; border-bottom:1px solid #f0d9a8;">
+				<h4 class="modal-title" style="font-weight:700; color:#8a6d3b;">
+					<i class="fa fa-user-plus"></i>&nbsp; Add the customer first
+				</h4>
+			</div>
+			<div class="modal-body">
+				<p style="margin-bottom:14px;">This in-store sale has no Nivessa account attached. Look them up (phone / name / email) or sign them up — it takes a few seconds and builds their rewards + history.</p>
+
+				<button type="button" class="btn btn-primary btn-block btn-lg" id="cc_attach_account">
+					<i class="fa fa-search"></i>&nbsp; Look up / create account
+				</button>
+
+				<div style="text-align:center; margin:12px 0 8px; color:#999;">— or —</div>
+
+				<div id="cc_decline_wrap">
+					<label class="control-label" for="cc_decline_reason" style="font-weight:600;">Customer declined? Pick a reason:</label>
+					<select id="cc_decline_reason" class="form-control" style="margin-bottom:10px;">
+						<option value="">Choose a reason…</option>
+						<option value="Just browsing / quick cash sale">Just browsing / quick cash sale</option>
+						<option value="Customer declined to give info">Customer declined to give info</option>
+						<option value="Has an account — couldn't find it">Has an account — couldn't find it</option>
+						<option value="Busy / line too long">Busy / line too long</option>
+						<option value="Other">Other</option>
+					</select>
+					<button type="button" class="btn btn-default btn-block" id="cc_decline_confirm" disabled>
+						Continue without an account
+					</button>
+				</div>
+			</div>
+			<div class="modal-footer" style="border-top:none; padding-top:0;">
+				<button type="button" class="btn btn-link text-muted" data-dismiss="modal">Cancel</button>
+			</div>
+		</div>
+	</div>
+</div>
