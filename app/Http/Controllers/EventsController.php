@@ -604,6 +604,22 @@ class EventsController extends Controller
     }
 
     /**
+     * Clean an event title for STORAGE (case preserved, unlike normName which
+     * lowercases for matching). Turns non-breaking spaces, narrow non-breaking
+     * spaces and tabs into ordinary spaces, collapses any run of whitespace to
+     * one, and trims. Titles pasted or imported into the ERP carry these hidden
+     * characters (e.g. "Tyla\xC2\xA0Listening Party"), which then broke
+     * name-based RSVP/preorder lookups, counts and search. Applied on every
+     * create/update so no event is ever stored with invisible whitespace again.
+     */
+    public static function cleanEventName(?string $s): string
+    {
+        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\t"], ' ', (string) $s);
+        $s = preg_replace('/\s+/u', ' ', (string) $s);
+        return trim((string) $s);
+    }
+
+    /**
      * Map of event id => is-published (live on the website). The published
      * flag lives in the website's Mongo; its public /events/allEvents?all=1
      * feed returns every event (incl. unpublished) with a `published` bool.
@@ -1174,7 +1190,7 @@ class EventsController extends Controller
         }
 
         return [
-            'name'             => trim($request->input('name')),
+            'name'             => self::cleanEventName($request->input('name')),
             'eventType'        => $request->input('eventType'),
             'genre'            => $genre,
             'artistSoundsLike' => trim((string) $request->input('artistSoundsLike', '')),
