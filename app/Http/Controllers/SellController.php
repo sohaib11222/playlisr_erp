@@ -307,7 +307,7 @@ class SellController extends Controller
                 $channels = collect(explode(',', (string) request()->input('channel')))
                     ->map(function ($c) { return trim($c); })
                     ->filter(function ($c) {
-                        return in_array($c, ['in_store', 'whatnot', 'discogs', 'ebay'], true);
+                        return in_array($c, ['in_store', 'whatnot', 'discogs', 'ebay', 'prepaid_pickup'], true);
                     })
                     ->values()
                     ->all();
