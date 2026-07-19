@@ -182,27 +182,31 @@
             <tr>
               <td>{{ $loop->iteration }}</td>
               <td>
-                {{ $purchase_line->product->name }}
-                 @if( $purchase_line->product->type == 'variable')
-                  - {{ $purchase_line->variations->product_variation->name}}
-                  - {{ $purchase_line->variations->name}}
-                 @endif
+                @if(!empty($purchase_line->product))
+                  {{ $purchase_line->product->name }}
+                  @if( $purchase_line->product->type == 'variable' && !empty($purchase_line->variations))
+                   - {{ optional($purchase_line->variations->product_variation)->name }}
+                   - {{ $purchase_line->variations->name }}
+                  @endif
+                @else
+                  <span class="text-muted">—</span>
+                @endif
               </td>
               <td>
-                 @if( $purchase_line->product->type == 'variable')
-                  {{ $purchase_line->variations->sub_sku}}
+                 @if( !empty($purchase_line->product) && $purchase_line->product->type == 'variable')
+                  {{ optional($purchase_line->variations)->sub_sku }}
                   @else
-                  {{ $purchase_line->product->sku }}
+                  {{ optional($purchase_line->product)->sku }}
                  @endif
               </td>
               @if($purchase->type == 'purchase_order')
               <td>
-                <span class="display_currency" data-is_quantity="true" data-currency_symbol="false">{{ $purchase_line->quantity - $purchase_line->po_quantity_purchased }}</span> @if(!empty($purchase_line->sub_unit)) {{$purchase_line->sub_unit->short_name}} @else {{$purchase_line->product->unit->short_name}} @endif
+                <span class="display_currency" data-is_quantity="true" data-currency_symbol="false">{{ $purchase_line->quantity - $purchase_line->po_quantity_purchased }}</span> @if(!empty($purchase_line->sub_unit)) {{$purchase_line->sub_unit->short_name}} @else {{ optional(optional($purchase_line->product)->unit)->short_name }} @endif
               </td>
               @endif
-              <td><span class="display_currency" data-is_quantity="true" data-currency_symbol="false">{{ $purchase_line->quantity }}</span> @if(!empty($purchase_line->sub_unit)) {{$purchase_line->sub_unit->short_name}} @else {{$purchase_line->product->unit->short_name}} @endif
+              <td><span class="display_currency" data-is_quantity="true" data-currency_symbol="false">{{ $purchase_line->quantity }}</span> @if(!empty($purchase_line->sub_unit)) {{$purchase_line->sub_unit->short_name}} @else {{ optional(optional($purchase_line->product)->unit)->short_name }} @endif
 
-                @if(!empty($purchase_line->product->second_unit) && $purchase_line->secondary_unit_quantity != 0)
+                @if(!empty($purchase_line->product) && !empty($purchase_line->product->second_unit) && $purchase_line->secondary_unit_quantity != 0)
                     <br>
                     <span class="display_currency" data-is_quantity="true" data-currency_symbol="false">{{ $purchase_line->secondary_unit_quantity }}</span> {{$purchase_line->product->second_unit->short_name}}
                 @endif
@@ -216,7 +220,7 @@
               <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->purchase_price_inc_tax }}</span></td>
               @if($purchase->type != 'purchase_order')
               @php
-                $sp = $purchase_line->variations->default_sell_price;
+                $sp = optional($purchase_line->variations)->default_sell_price ?? 0;
                 if(!empty($purchase_line->sub_unit->base_unit_multiplier)) {
                   $sp = $sp * $purchase_line->sub_unit->base_unit_multiplier;
                 }
