@@ -49,6 +49,7 @@
                         @if(!empty($diagnostics['show_all'])) <th>Biz</th> @endif
                         <th>Date</th>
                         <th>Store</th>
+                        <th>Employee</th>
                         <th>Seller</th>
                         <th>Status</th>
                         <th>Final Cash</th>
@@ -84,6 +85,7 @@
                             @if(!empty($diagnostics['show_all'])) <td>{{ $offer->business_id }}</td> @endif
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
                             <td>{{ optional($offer->location)->name ?? '—' }}</td>
+                            <td>{{ optional($offer->createdBy)->user_full_name ?? optional($offer->createdBy)->username ?? '—' }}</td>
                             <td>
                                 @if($offer->seller_first_name || $offer->seller_last_name)
                                     {{ trim($offer->seller_first_name . ' ' . $offer->seller_last_name) }}
@@ -131,7 +133,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 13 : 12 }}" class="text-center">No records yet.</td></tr>
+                        <tr><td colspan="{{ !empty($diagnostics['show_all']) ? 14 : 13 }}" class="text-center">No records yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
