@@ -4297,6 +4297,32 @@ class SellPosController extends Controller
                 $input['sub_status'] = 'proforma';
             }
 
+            // Sarah 2026-07-19: customer-capture gate. A finalized in-store
+            // register sale must have a real customer attached — otherwise the
+            // cashier has to explicitly record that the customer declined (with
+            // a reason, logged per cashier below). This backstops the client
+            // capture modal so a bypassed / scripted POST can't slip an
+            // anonymous walk-in sale through. Online channels (Discogs / Whatnot
+            // / eBay / prepaid pickup) have no counter shopper, and the
+            // back-office direct-sale screen isn't the register — both exempt.
+            if (($input['status'] ?? '') === 'final'
+                && !$is_direct_sale
+                && ($input['channel'] ?? 'in_store') === 'in_store') {
+                $capture_business_id = $request->session()->get('user.business_id');
+                $walk_in = $this->contactUtil->getWalkInCustomer($capture_business_id, false);
+                $walk_in_id = $walk_in->id ?? null;
+                $picked = $input['contact_id'] ?? null;
+                $has_real_customer = !empty($picked) && (int) $picked !== (int) $walk_in_id;
+                $capture_declined = !empty($input['customer_declined'])
+                    && trim((string) ($input['customer_declined_reason'] ?? '')) !== '';
+                if (!$has_real_customer && !$capture_declined) {
+                    return [
+                        'success' => 0,
+                        'msg' => 'Attach a customer account to finalize this sale — or mark "Customer declined" and pick a reason.',
+                    ];
+                }
+            }
+
             //Add change return
             $change_return = $this->dummyPaymentLine;
             if (!empty($input['payment']['change_return'])) {
@@ -4758,6 +4784,29 @@ class SellPosController extends Controller
 
                 DB::commit();
 
+                // Sarah 2026-07-19: log a customer-capture decline. Post-commit
+                // garnish — best-effort, never lets a logging hiccup fail a sale
+                // that already saved. Only writes when the cashier explicitly
+                // chose "customer declined"; attached-account sales need no row
+                // (the metric derives those from contact_id). Self-heals the
+                // table so it works even if `artisan migrate` hasn't run.
+                try {
+                    if (!empty($input['customer_declined'])
+                        && trim((string) ($input['customer_declined_reason'] ?? '')) !== ''
+                        && ($input['channel'] ?? 'in_store') === 'in_store'
+                        && !$is_direct_sale) {
+                        $this->logCustomerCaptureDecline(
+                            $business_id,
+                            $transaction->id,
+                            $transaction->location_id,
+                            $user_id,
+                            trim((string) $input['customer_declined_reason'])
+                        );
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning('customer-capture decline log failed: ' . $e->getMessage());
+                }
+
                 // Nivessa (Jon 2026-07-03): the sale is COMMITTED now.
                 // Everything below — receipt render, print redirect,
                 // whatsapp link — is post-commit garnish. Previously a
@@ -4874,6 +4923,45 @@ class SellPosController extends Controller
                     ->with('status', $output);
             }
         }
+    }
+
+    /**
+     * Record that a cashier finalized an in-store sale without attaching a
+     * customer account, and why. One row per declined sale — attached-account
+     * sales are derivable from transactions.contact_id, so only the exceptions
+     * are stored. Feeds the per-cashier customer-capture rate report.
+     *
+     * Sarah 2026-07-19: self-heals the table (CREATE TABLE IF NOT EXISTS)
+     * because prod doesn't reliably run `artisan migrate` — same pattern used
+     * for the BFC purchase FK columns. Idempotent and cheap.
+     */
+    private function logCustomerCaptureDecline($business_id, $transaction_id, $location_id, $user_id, $reason)
+    {
+        DB::statement(
+            "CREATE TABLE IF NOT EXISTS `customer_capture_declines` ("
+            . "`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+            . "`business_id` INT NOT NULL, "
+            . "`transaction_id` INT NOT NULL, "
+            . "`location_id` INT NULL, "
+            . "`created_by` INT NOT NULL, "
+            . "`reason` VARCHAR(191) NOT NULL, "
+            . "`created_at` TIMESTAMP NULL DEFAULT NULL, "
+            . "INDEX `ccd_business_created_idx` (`business_id`, `created_at`), "
+            . "INDEX `ccd_cashier_idx` (`business_id`, `created_by`), "
+            . "UNIQUE KEY `ccd_transaction_uq` (`transaction_id`)"
+            . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        // insertOrIgnore so a resubmit / retry of the same sale can't stack
+        // duplicate decline rows (the unique transaction_id key backs this).
+        DB::table('customer_capture_declines')->insertOrIgnore([
+            'business_id'    => $business_id,
+            'transaction_id' => $transaction_id,
+            'location_id'    => $location_id,
+            'created_by'     => $user_id,
+            'reason'         => mb_substr($reason, 0, 191),
+            'created_at'     => now(),
+        ]);
     }
 
     /**
