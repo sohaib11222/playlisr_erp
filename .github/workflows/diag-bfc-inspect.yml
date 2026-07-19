@@ -1,0 +1,84 @@
+# READ-ONLY diagnostic: for a given purchase transaction id, find the
+# buy-from-customer offer behind it and dump whether its calculator line
+# inputs were persisted (buy_customer_offer_lines + calculation_snapshot),
+# plus whether the purchase materialized any inventory lines. No writes.
+name: Diag BFC inspect
+
+on:
+  workflow_dispatch:
+    inputs:
+      tx_id:
+        description: "Purchase transaction id to inspect"
+        required: true
+        default: "167427"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect offer + lines (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            TX_ID="${{ github.event.inputs.tx_id }}"
+            echo "=== inspecting BFC data behind purchase $TX_ID ==="
+            php artisan tinker --no-ansi <<PHP
+            \$id = (int) "$TX_ID";
+            \$tx = \App\Transaction::find(\$id);
+            if (!\$tx) { echo "TX NOT FOUND\n"; }
+            else {
+              echo "TX ".\$id.": type=".\$tx->type." status=".\$tx->status." ref_no=".(\$tx->ref_no ?: 'NULL')." final_total=".\$tx->final_total."\n";
+              echo "purchase_lines on tx = ".\$tx->purchase_lines()->count()."\n";
+              echo "additional_notes: ".\$tx->additional_notes."\n";
+              \$offer = \App\BuyCustomerOffer::where('accepted_purchase_id', \$id)->first();
+              if (!\$offer && preg_match('/Buy from customer (\d+)/', (string) \$tx->additional_notes, \$m)) {
+                \$offer = \App\BuyCustomerOffer::find((int) \$m[1]);
+                echo "(linked offer via additional_notes id ".\$m[1].")\n";
+              }
+              if (!\$offer) { echo "NO OFFER found for this tx\n"; }
+              else {
+                echo "OFFER ".\$offer->id.": buy_record=".\$offer->buy_record_number." status=".\$offer->status." created_by=".\$offer->created_by." payout=".\$offer->payout_type."\n";
+                echo "calc_cash=".\$offer->calculated_cash_total." final_cash=".\$offer->final_offer_cash." final_credit=".\$offer->final_offer_credit."\n";
+                echo "calculation_snapshot length = ".strlen((string) \$offer->calculation_snapshot)."\n";
+                \$lines = \$offer->lines()->get();
+                echo "buy_customer_offer_lines = ".\$lines->count()."\n";
+                foreach (\$lines as \$i => \$l) {
+                  echo "  line ".\$i.": title=[".\$l->title."] type=".\$l->item_type." grade=".\$l->condition_grade." qty=".\$l->quantity." discogs=".\$l->discogs_median_price." unit_rate=".\$l->unit_rate." cash=".\$l->line_cash_total." credit=".\$l->line_credit_total." product_id=".(\$l->product_id ?? '-')."\n";
+                }
+              }
+            }
+            PHP
+            echo "=== done ==="
