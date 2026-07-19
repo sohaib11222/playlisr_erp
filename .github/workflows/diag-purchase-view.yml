@@ -1,0 +1,85 @@
+# READ-ONLY diagnostic: inspect purchase transaction 167427 (a buy-from-customer
+# purchase whose /purchases/{id} detail view throws a 500). Loads the exact same
+# eager-loaded relations PurchaseController@show uses and reports which relation
+# is null per purchase line, then tails the laravel log. No writes, no restarts.
+name: Diag purchase view
+
+on:
+  workflow_dispatch:
+    inputs:
+      tx_id:
+        description: "Transaction id to inspect"
+        required: true
+        default: "167427"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect transaction relations + tail log
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: TX_ID
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            TX_ID="${{ github.event.inputs.tx_id }}"
+            echo "=== inspecting transaction $TX_ID ==="
+            php artisan tinker --no-ansi <<PHP
+            \$id = (int) "$TX_ID";
+            \$p = \App\Transaction::where('id', \$id)->with('contact','purchase_lines','purchase_lines.product','purchase_lines.product.unit','purchase_lines.variations','purchase_lines.variations.product_variation','location','payment_lines','tax')->first();
+            if (!\$p) { echo "TX NOT FOUND\n"; }
+            else {
+              echo "type=".\$p->type." status=".\$p->status." location_id=".\$p->location_id." contact_id=".\$p->contact_id."\n";
+              echo "location=".(\$p->location?'ok':'NULL')."  contact=".(\$p->contact?'ok':'NULL')."  tax_id=".\$p->tax_id."  lines=".\$p->purchase_lines->count()."\n";
+              foreach (\$p->purchase_lines as \$i => \$pl) {
+                echo "line ".\$i.": product_id=".\$pl->product_id." variation_id=".\$pl->variation_id
+                  ." | product=".(\$pl->product?'ok':'NULL')
+                  ." product.type=".(\$pl->product?\$pl->product->type:'-')
+                  ." product.unit_id=".(\$pl->product?\$pl->product->unit_id:'-')
+                  ." product.unit=".((\$pl->product && \$pl->product->unit)?'ok':'NULL')
+                  ." variations=".(\$pl->variations?'ok':'NULL')
+                  ." variations.product_variation=".((\$pl->variations && \$pl->variations->product_variation)?'ok':'NULL')
+                  ." sub_unit_id=".\$pl->sub_unit_id."\n";
+              }
+            }
+            PHP
+            echo
+            echo "=== laravel log lines mentioning $TX_ID or recent purchase errors ==="
+            LOG="\$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+            echo "latest log: \$LOG"
+            grep -nE "purchases/$TX_ID|PurchaseController|show_details" "\$LOG" 2>/dev/null | tail -25
+            echo "--- last 30 ERROR lines ---"
+            grep -nE "production\.ERROR" "\$LOG" 2>/dev/null | tail -30
+            echo "=== done ==="
