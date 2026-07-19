@@ -743,6 +743,12 @@ class BuyFromCustomerController extends Controller
             $offer->buy_record_number,
             $finalAmount
         );
+        // Generate a purchase reference number the same way PurchaseController
+        // does. Without this the transaction saves with ref_no = null, which
+        // later crashes the /purchases/{id} detail view (the C128 barcode can't
+        // encode an empty string) and leaves the buy with no human identifier.
+        $ref_count = $this->productUtil->setAndGetReferenceCount('purchase');
+        $purchase->ref_no = $this->productUtil->generateReferenceNumber('purchase', $ref_count);
         $purchase->save();
 
         // Materialize each offer line into a real Product + Variation + PurchaseLine.
