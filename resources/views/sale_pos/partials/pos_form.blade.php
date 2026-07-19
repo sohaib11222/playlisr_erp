@@ -308,9 +308,10 @@
 				<div class="pos-channel-picker" role="radiogroup" aria-label="Sales channel">
 					@php
 						$pos_channels = [
-							'in_store' => ['label' => 'In Store', 'icon' => 'fa-store'],
-							'discogs'  => ['label' => 'Discogs',  'icon' => null],
-							'whatnot'  => ['label' => 'Whatnot',  'icon' => null],
+							'in_store'       => ['label' => 'In Store',       'icon' => 'fa-store'],
+							'discogs'        => ['label' => 'Discogs',        'icon' => null],
+							'whatnot'        => ['label' => 'Whatnot',        'icon' => null],
+							'prepaid_pickup' => ['label' => 'Prepaid Pickup', 'icon' => 'fa-box'],
 						];
 					@endphp
 					@foreach($pos_channels as $value => $meta)
@@ -367,6 +368,11 @@
 				}
 				.pos-channel-chip.is-active[data-channel="discogs"] {
 					background: #16a34a; border: 1px solid #15803d; color: #fff; font-weight: 700;
+				}
+				/* Prepaid Pickup — paid ahead, collected in store. Blue so it
+				   reads as distinct from the register-cash channels. */
+				.pos-channel-chip.is-active[data-channel="prepaid_pickup"] {
+					background: #2563eb; border: 1px solid #1d4ed8; color: #fff; font-weight: 700;
 				}
 				.pos-channel-chip.is-active i { opacity: 1; }
 			</style>

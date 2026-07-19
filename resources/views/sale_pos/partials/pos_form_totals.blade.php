@@ -1045,7 +1045,7 @@
                     return String($('#is_whatnot').val()) === '1' ? 'whatnot' : 'in_store';
                 }
                 function syncPayModeForChannel() {
-                    var offRegister = ['whatnot', 'discogs'].indexOf(currentPosChannel()) !== -1;
+                    var offRegister = ['whatnot', 'discogs', 'prepaid_pickup'].indexOf(currentPosChannel()) !== -1;
                     $('.pos-pay-row').toggleClass('channel-offregister', offRegister);
                 }
                 syncPayModeForChannel();

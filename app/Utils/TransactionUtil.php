@@ -64,7 +64,7 @@ class TransactionUtil extends Util
         // Sarah 2026-04-22: derive channel once so we can conditionally
         // include it in the insert only if the migration has run. See
         // migration 2026_04_22_063000_add_channel_to_transactions_table.
-        $resolved_channel = in_array($input['channel'] ?? null, ['in_store', 'whatnot', 'discogs', 'ebay'], true)
+        $resolved_channel = in_array($input['channel'] ?? null, ['in_store', 'whatnot', 'discogs', 'ebay', 'prepaid_pickup'], true)
             ? $input['channel']
             : (!empty($input['is_whatnot']) ? 'whatnot' : 'in_store');
 
