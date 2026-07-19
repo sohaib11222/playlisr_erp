@@ -86,6 +86,14 @@ class StoreCreditLogController extends Controller
             $events[] = $r;
         }
 
+        // Credit REWARDED (positive) — automatic cumulative spend rewards, read
+        // straight from the structured log. Their balance_notes lines don't
+        // match the parser above (system-generated, no "by <employee>"), so
+        // without this they'd be invisible in this report.
+        foreach ($this->collectSpendRewards($business_id) as $r) {
+            $events[] = $r;
+        }
+
         // Apply filters
         $events = array_filter($events, function ($e) use ($employee, $customer, $from, $to, $onlyNoForm) {
             if ($employee !== '' && stripos($e['employee'], $employee) === false) {
@@ -115,6 +123,9 @@ class StoreCreditLogController extends Controller
         // Per-employee rollup
         $byEmployee = [];
         foreach ($events as $e) {
+            if ($e['type'] === 'reward') {
+                continue; // system-granted, not employee-issued — keep it out of the employee rollup
+            }
             $name = $e['employee'] !== '' ? $e['employee'] : 'unknown';
             if (!isset($byEmployee[$name])) {
                 $byEmployee[$name] = [
@@ -152,6 +163,49 @@ class StoreCreditLogController extends Controller
             'only_no_form' => $onlyNoForm,
             'has_structured' => Schema::hasTable('store_credit_logs'),
         ]);
+    }
+
+    /**
+     * Store credit GRANTED by the automatic cumulative spend reward
+     * (SpendRewardService), as positive-amount events read straight from the
+     * structured store_credit_logs rows (source='spend_reward'). Reading the
+     * table directly — rather than the free-text balance_notes — means every
+     * reward, past and future, shows up here with its real timestamp, amount,
+     * running balance, and "reached $X cumulative" reason.
+     */
+    protected function collectSpendRewards($business_id)
+    {
+        $out = [];
+        if (!Schema::hasTable('store_credit_logs')) {
+            return $out;
+        }
+
+        StoreCreditLog::where('business_id', $business_id)
+            ->where('source', 'spend_reward')
+            ->with('contact:id,name,email')
+            ->orderBy('id')
+            ->chunk(1000, function ($rows) use (&$out) {
+                foreach ($rows as $row) {
+                    $out[] = [
+                        'type'          => 'reward',
+                        'ts'            => $row->created_at ? $row->created_at->format('Y-m-d H:i') : '',
+                        'contact_id'    => (int) $row->contact_id,
+                        'contact_name'  => optional($row->contact)->name,
+                        'email'         => optional($row->contact)->email,
+                        'employee'      => 'Rewards (system)',
+                        'employee_id'   => null,
+                        'amount'        => (float) $row->amount,   // positive
+                        'balance_after' => $row->balance_after,
+                        'reason'        => (string) $row->reason,
+                        'has_form'      => true,                   // not a manual "no form" issuance
+                        'offer_id'      => null,
+                        'sale_id'       => $row->transaction_id ? (int) $row->transaction_id : null,
+                        'invoice_no'    => null,
+                    ];
+                }
+            });
+
+        return $out;
     }
 
     /**

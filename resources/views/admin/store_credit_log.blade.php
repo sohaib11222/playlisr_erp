@@ -97,7 +97,7 @@
                 </thead>
                 <tbody>
                     @forelse($events as $e)
-                        <tr @if($e['type'] === 'redeem') style="background:#eef6fb;" @elseif(!$e['has_form']) style="background:#fcf8e3;" @endif>
+                        <tr @if($e['type'] === 'redeem') style="background:#eef6fb;" @elseif($e['type'] === 'reward') style="background:#eafaf1;" @elseif(!$e['has_form']) style="background:#fcf8e3;" @endif>
                             <td style="white-space:nowrap;">{{ $e['ts'] }}</td>
                             <td>{{ $e['employee'] !== '' ? $e['employee'] : 'unknown' }}</td>
                             <td>
@@ -115,6 +115,8 @@
                             <td>
                                 @if($e['type'] === 'redeem')
                                     <span class="label label-info">Used on sale</span>
+                                @elseif($e['type'] === 'reward')
+                                    <span class="label label-primary">Spend reward</span>
                                 @elseif($e['has_form'])
                                     <span class="label label-success">Issued &mdash; with form @if($e['offer_id'])(#{{ $e['offer_id'] }})@endif</span>
                                 @else
