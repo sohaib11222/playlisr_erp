@@ -513,7 +513,7 @@
       <div style="margin-bottom:12px;">
         <input type="search" id="rsvp-search" placeholder="Type in a name to check in a guest or to add a preorder…" autocomplete="off"
                style="width:100%;max-width:520px;padding:14px 16px;font-size:16px;border:2px solid var(--pos-line,#ECE3CF);border-radius:12px;">
-        <div style="margin-top:10px;{{ $autoShowAll ? 'display:none;' : '' }}"><button type="button" id="rsvp-show-all" style="display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:15px;padding:12px 22px;border:none;border-radius:12px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);"><span style="font-size:18px;line-height:1;">☰</span> Show full guest list</button></div>
+        <div style="margin-top:10px;{{ $autoShowAll ? 'display:none;' : '' }}"><button type="button" id="rsvp-show-all" style="display:inline-flex;align-items:center;gap:8px;background:#1c2150;color:#fff;font-weight:800;font-size:15px;padding:12px 22px;border:none;border-radius:12px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12);">Show full guest list</button></div>
       </div>
       <div id="rsvp-hint" class="empty" style="{{ $autoShowAll ? 'display:none;' : '' }}">Start typing a name above to pull someone up — then check them in or add their preorder.</div>
       <script>window.__rsvpAutoShow = @json($autoShowAll);</script>
