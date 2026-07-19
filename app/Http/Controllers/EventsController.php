@@ -761,15 +761,20 @@ class EventsController extends Controller
         // Listening Party") can't make the name match miss records that are in
         // fact attached to this event. Name stays as the fallback for events
         // that predate ids. Stats is fetched whole and matched by name below.
-        // Pull the whole guest list in one page. The limit must sit above the
-        // largest real event (our biggest listening party to date is under
-        // 600 RSVPs) or the fetch truncates and every count below - the "X of
-        // Y" total, the per-store split, "hidden here" - is computed from a
-        // partial list and reads wrong.
-        $q = ((string) $eventId !== ''
-                ? '?eventId=' . rawurlencode((string) $eventId)
-                : '?eventName=' . rawurlencode($eventName))
-            . '&limit=10000';
+        // Always send BOTH the id and the name. The website prefers the stable
+        // eventId when it supports it (immune to a non-breaking space / rename
+        // in the title); a website that doesn't yet know the eventId param
+        // falls back to the name filter. Sending id alone would make an older
+        // website ignore the (unknown) param and return EVERY RSVP - filter
+        // by name too so it can never dump the whole collection.
+        // Limit sits above the largest real event (biggest listening party to
+        // date is under 600 RSVPs) so the list never truncates - a partial
+        // list makes the "X of Y" total, per-store split and "hidden" counts
+        // all read wrong.
+        $params = ['limit' => 10000];
+        if ($eventName !== '')            { $params['eventName'] = $eventName; }
+        if ((string) $eventId !== '')     { $params['eventId'] = (string) $eventId; }
+        $q = '?' . http_build_query($params);
         $rsvpResp  = $this->websiteApi('GET', '/erp/rsvps' . $q);
         $statsResp = $this->websiteApi('GET', '/erp/rsvps/stats');
         $preResp   = $this->websiteApi('GET', '/erp/preorders' . $q);
