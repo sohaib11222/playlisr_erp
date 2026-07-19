@@ -1665,98 +1665,9 @@ $(document).ready(function() {
         });
     });
 
-    // Sarah 2026-07-19: customer-capture gate helpers. Only in-store register
-    // sales are gated — online channels (Discogs/Whatnot/eBay/prepaid pickup)
-    // have no shopper at the counter, and the back-office "Add Sale" (direct
-    // sale) screen isn't the register.
-    function pos_customer_capture_ok() {
-        // Editing an existing sale isn't gated — the policy applies to new
-        // rings, and an old pre-gate walk-in sale must still be editable. (The
-        // server gate lives in store(), which edits don't hit anyway.)
-        if ($('form#edit_pos_sell_form').length) { return true; }
-
-        var $channel = $('.pos-channel-picker input[name="channel"]:checked');
-        var channel = $channel.length ? $channel.val() : 'in_store';
-        if (channel && channel !== 'in_store') { return true; }
-
-        var $direct = $('input[name="is_direct_sale"]');
-        if ($direct.length && String($direct.val()) === '1') { return true; }
-
-        var walkInId = String($('#default_customer_id').val() || '');
-        var selected = String($('#customer_id').val() || '');
-        var hasRealCustomer = selected !== '' && selected !== walkInId;
-        if (hasRealCustomer) { return true; }
-
-        // Cashier already recorded a decline (+reason) for this ring.
-        if (String($('#customer_declined').val()) === '1'
-            && $.trim($('#customer_declined_reason').val()) !== '') {
-            return true;
-        }
-        return false;
-    }
-
-    function pos_show_customer_capture_modal() {
-        // Fresh state every time it opens.
-        $('#cc_decline_reason').val('');
-        $('#cc_decline_confirm').prop('disabled', true);
-        $('#customer_capture_modal').modal('show');
-    }
-
-    // Enable "Continue without an account" only once a reason is chosen.
-    $(document).on('change', '#cc_decline_reason', function() {
-        $('#cc_decline_confirm').prop('disabled', $.trim($(this).val()) === '');
-    });
-
-    // "Look up / create account" — close the modal and drop the cashier straight
-    // into the customer search so attaching an account is the path of least
-    // resistance.
-    $(document).on('click', '#cc_attach_account', function() {
-        $('#customer_capture_modal').modal('hide');
-        setTimeout(function() {
-            try { $('#customer_id').select2('open'); }
-            catch (e) { $('.add_new_customer').first().trigger('click'); }
-        }, 250);
-    });
-
-    // "Continue without an account" — record the decision on the form and
-    // re-fire finalize. The gate now passes and the decline is sent to the
-    // server, which logs it per cashier.
-    $(document).on('click', '#cc_decline_confirm', function() {
-        var reason = $.trim($('#cc_decline_reason').val());
-        if (reason === '') { return; }
-        $('#customer_declined').val('1');
-        $('#customer_declined_reason').val(reason);
-        $('#customer_capture_modal').modal('hide');
-        // Re-fire the same submit path. The payment rows / totals the finalize
-        // button already built are still in place, so re-submitting the form
-        // replays validation + submitHandler (the gate now passes) exactly the
-        // way the express-finalize buttons themselves do.
-        setTimeout(function() { pos_form_obj.submit(); }, 250);
-    });
-
-    // If the cashier attaches a real customer after a decline was recorded,
-    // clear the decline so the sale is attributed correctly.
-    $('#customer_id').on('change', function() {
-        var walkInId = String($('#default_customer_id').val() || '');
-        var selected = String($(this).val() || '');
-        if (selected !== '' && selected !== walkInId) {
-            $('#customer_declined').val('');
-            $('#customer_declined_reason').val('');
-        }
-    });
-
     pos_form_validator = pos_form_obj.validate({
         submitHandler: function(form) {
             if (window.pos_submit_in_progress) {
-                return false;
-            }
-            // Sarah 2026-07-19: customer-capture gate. An in-store register sale
-            // can't finalize on the Walk-In default unless a real account is
-            // attached or the cashier records that the customer declined. When it
-            // fails we pop the capture modal and abort this submit; the modal
-            // re-triggers finalize once the cashier resolves it.
-            if (!pos_customer_capture_ok()) {
-                pos_show_customer_capture_modal();
                 return false;
             }
             window.pos_submit_in_progress = true;
@@ -4057,11 +3968,6 @@ function reset_pos_form(){
 	}
 	set_default_customer();
 	set_location();
-
-	// Sarah 2026-07-19: clear the customer-capture decline flags so a decline on
-	// the last ring never silently carries onto the next customer.
-	$('#customer_declined').val('');
-	$('#customer_declined_reason').val('');
 
 	// Hide the customer account snapshot (name + Credit/Gift Cards balances)
 	// after a sale finishes. It's only meant to appear while a real customer is
