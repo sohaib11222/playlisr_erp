@@ -581,10 +581,10 @@
             @foreach($agRaw as $gi => $g)
               @php $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? '')); $gci = !empty($g['checkedIn']); @endphp
               @if($gn !== '')
-                <tr style="background:var(--pos-line-soft,#FBF7EC);">
-                  <td class="ev-name" style="padding-left:22px;">
-                    &middot; {{ $gn }}
-                    <span class="ev-meta" style="font-weight:500;">guest of {{ $primaryName }}</span>
+                <tr>
+                  <td class="ev-name">
+                    {{ $gn }}
+                    <div class="ev-meta" style="font-weight:500;margin-top:3px;">guest of {{ $primaryName }}</div>
                   </td>
                   <td class="ev-meta">{{ $g['email'] ?? '' }}</td>
                   <td><span class="ev-meta">—</span></td>
@@ -599,7 +599,14 @@
                     </form>
                     @endif
                   </td>
-                  @if($preordersOn)<td><span class="ev-meta">—</span></td>@endif
+                  @if($preordersOn)
+                  <td>
+                    <button type="button" class="btn-ghost preorder-add-btn"
+                      data-fn="{{ $g['firstName'] ?? '' }}" data-ln="{{ $g['lastName'] ?? '' }}"
+                      data-email="{{ $g['email'] ?? '' }}" data-phone="{{ $r['phone'] ?? '' }}" data-paid="1"
+                      style="padding:5px 12px;font-size:12px;">+ Add preorder</button>
+                  </td>
+                  @endif
                 </tr>
               @endif
             @endforeach
