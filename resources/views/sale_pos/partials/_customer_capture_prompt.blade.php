@@ -60,7 +60,22 @@
 </div>
 
 <script>
-$(function () {
+// NOTE: this partial renders inside the page <body>, but jQuery/Bootstrap/
+// select2 are all loaded at the BOTTOM of the layout (@yield('javascript')).
+// So we must NOT touch `$` at parse time — defer until DOMContentLoaded (by
+// which point those scripts have run), with a short poll as a safety net.
+(function () {
+    function boot() {
+        // jQuery is loaded at the bottom of the body — wait for it if needed.
+        if (window.jQuery) { initCustomerCapture(window.jQuery); }
+        else { setTimeout(boot, 50); }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else { boot(); }
+})();
+
+function initCustomerCapture($) {
     // Only prompt on a fresh walk-in sale — never on edit/draft resume where a
     // real customer may already be attached.
     var isFreshSale = /\/pos\/create\b/.test(window.location.pathname);
@@ -104,6 +119,6 @@ $(function () {
     $modal.on('hidden.bs.modal', function () {
         showStep('cc_step_ask');
     });
-});
+}
 </script>
 @endif
