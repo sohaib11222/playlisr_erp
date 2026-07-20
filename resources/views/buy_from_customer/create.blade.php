@@ -116,6 +116,10 @@
         .bfc-create .bfc-compliance-row label { font-size: 13px; color: #333; text-transform: none; letter-spacing: 0; font-weight: 500; margin-bottom: 0; cursor: pointer; }
         .bfc-create .bfc-compliance-row .bfc-compliance-cb { margin-right: 6px; transform: scale(1.1); }
         .bfc-create #buy_signature_box { border: 2px dashed #c0392b !important; }
+        /* Sarah 2026-07-19: items + quote are locked until the seller is
+           identified. Banner explains why; disabled inputs grey out on their own. */
+        .bfc-create .bfc-items-gate-hint { padding: 10px 14px; margin-bottom: 12px; background: #fff7f6; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; font-size: 13px; color: #842029; }
+        .bfc-create .bfc-items-gate-hint .fa { margin-right: 6px; }
         /* Used buying-budget bars by store — mirrors the ICA banner figures so
            the cashier knows how much of this week's per-store Used (35% cap)
            budget is left before quoting. Buys are used inventory, so only the
@@ -420,6 +424,9 @@ HTML;
 
                     <hr>
                     <h4>Items brought in</h4>
+                    <div id="bfc_items_gate_hint" class="bfc-items-gate-hint" style="display:none;">
+                        <i class="fa fa-lock"></i> Enter the seller first — pick an existing account, or fill in the walk-in seller's first name and phone above. Items unlock once the seller is identified.
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-bordered" id="offer_lines_table">
                             <thead>
@@ -779,7 +786,33 @@ HTML;
         }
 
         $(document).on('change', '#seller_mode', toggleSellerMode);
+
+        // Sarah 2026-07-19: hard-gate the items + quote behind seller capture.
+        // Until the seller is identified — an existing account picked, or a
+        // walk-in's first name + phone entered — the item table, Add line,
+        // negotiation offers, notes and the Save-quote button are all disabled.
+        // Mirrors the server-side required_if rule in validateRequest, and uses
+        // the same bfcSellerGate() check the submit handler does, so the client
+        // and server agree on what "identified" means. "The contact is the asset."
+        function bfcSellerReady() {
+            return !bfcSellerGate();
+        }
+        function bfcApplyItemsGate() {
+            var locked = !bfcSellerReady();
+            $('#offer_lines_table :input')
+                .add('#add_line_btn')
+                .add('.bfc-offer-table :input')
+                .add('#buy_offer_form textarea[name="notes"]')
+                .add('#buy_offer_form button[type="submit"]')
+                .prop('disabled', locked);
+            $('#bfc_items_gate_hint').toggle(locked);
+        }
+        $(document).on('input change',
+            '#buy_offer_form input[name="seller_first_name"], #buy_offer_form input[name="seller_phone"], #contact_id, #seller_mode',
+            bfcApplyItemsGate);
+
         toggleSellerMode();
+        bfcApplyItemsGate();
 
         // View account: load the selected contact's store credit, gift cards,
         // preorders and purchase history into the shared POS customer modal so
