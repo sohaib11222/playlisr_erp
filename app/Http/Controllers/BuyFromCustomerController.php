@@ -238,6 +238,15 @@ class BuyFromCustomerController extends Controller
      */
     protected function autosaveHasContent(Request $request)
     {
+        // Sarah 2026-07-19: a returning seller is identified by their existing
+        // account alone, so picking one (even before any items are entered) is
+        // enough to persist the draft — mirrors the walk-in path, which saves as
+        // soon as a name / phone / email is typed. Guarded on seller_mode so a
+        // leftover contact_id from a prior selection can't trigger it once the
+        // cashier has switched to walk-in.
+        if ($request->input('seller_mode') === 'contact' && trim((string) $request->input('contact_id', '')) !== '') {
+            return true;
+        }
         foreach (['seller_first_name', 'seller_last_name', 'seller_name', 'seller_phone', 'seller_email'] as $f) {
             if (trim((string) $request->input($f, '')) !== '') {
                 return true;
