@@ -343,7 +343,7 @@ HTML;
                         </div>
                         <div class="col-md-3 seller-contact-block">
                             <div class="form-group">
-                                <label>Existing contact</label>
+                                <label>Existing contact <span class="text-danger">*</span></label>
                                 {!! Form::select('contact_id', $contacts, $input['contact_id'] ?? null, ['class' => 'form-control select2', 'style' => 'width:100%;']) !!}
                                 <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
                                     <i class="fa fa-user"></i> View account (store credit &amp; history)
@@ -361,7 +361,7 @@ HTML;
                     <div class="row seller-phone-block">
                         <div class="col-md-3">
                             <div class="form-group">
-                                <label>Seller first name</label>
+                                <label>Seller first name <span class="text-danger">*</span></label>
                                 {!! Form::text('seller_first_name', $input['seller_first_name'] ?? null, ['class' => 'form-control']) !!}
                             </div>
                         </div>
@@ -373,7 +373,7 @@ HTML;
                         </div>
                         <div class="col-md-3">
                             <div class="form-group">
-                                <label>Phone</label>
+                                <label>Phone <span class="text-danger">*</span></label>
                                 {!! Form::text('seller_phone', $input['seller_phone'] ?? null, ['class' => 'form-control', 'placeholder' => 'Phone number']) !!}
                             </div>
                         </div>
@@ -1037,7 +1037,43 @@ HTML;
             }
         });
 
+        // Sarah 2026-07-19: the seller must be identified before a quote can be
+        // produced. Returning seller → pick an existing account; new / walk-in →
+        // first name + phone at minimum. Mirrors the server-side required_if
+        // gate in BuyFromCustomerController::validateRequest so the cashier gets
+        // an instant, clear message instead of a round-trip.
+        function bfcSellerGate() {
+            var mode = $('#seller_mode').val();
+            if (mode === 'contact') {
+                if (!$('#contact_id').val()) {
+                    return { field: '#contact_id', msg: 'Select the seller\'s existing account before getting a quote.' };
+                }
+                return null;
+            }
+            // New / walk-in
+            if (!$.trim($('input[name="seller_first_name"]').val())) {
+                return { field: 'input[name="seller_first_name"]', msg: 'Enter the seller\'s first name before getting a quote.' };
+            }
+            if (!$.trim($('input[name="seller_phone"]').val())) {
+                return { field: 'input[name="seller_phone"]', msg: 'Enter the seller\'s phone number before getting a quote.' };
+            }
+            return null;
+        }
+
         $('#buy_offer_form').on('submit', function (e) {
+            var sellerErr = bfcSellerGate();
+            if (sellerErr) {
+                e.preventDefault();
+                $('#bfc_calc_error').html('<strong>' + sellerErr.msg + '</strong>').show();
+                var $f = $(sellerErr.field);
+                if ($f.length) {
+                    $('html, body').animate({ scrollTop: $f.offset().top - 140 }, 200);
+                    // select2-backed contact picker opens on .select2-open; a plain
+                    // input just focuses.
+                    if ($f.hasClass('select2')) { $f.select2('open'); } else { $f.trigger('focus'); }
+                }
+                return false;
+            }
             if (bfcFlagMissingMedians() > 0) {
                 e.preventDefault();
                 $('#bfc_calc_error').html(
