@@ -1283,6 +1283,11 @@ HTML;
             var timer = null, inFlight = false, pending = false, submitting = false;
 
             function hasContent() {
+                // Returning seller: an existing account selected is enough on its
+                // own to save a draft (matches the server's autosaveHasContent).
+                if ($('#seller_mode').val() === 'contact' && ($form.find('[name="contact_id"]').val() || '').toString().trim() !== '') {
+                    return true;
+                }
                 var seller = ['seller_first_name', 'seller_last_name', 'seller_name', 'seller_phone', 'seller_email'].some(function (n) {
                     return ($form.find('[name="' + n + '"]').val() || '').trim() !== '';
                 });
