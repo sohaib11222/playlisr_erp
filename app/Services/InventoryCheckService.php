@@ -141,13 +141,13 @@ class InventoryCheckService
             return null;
         }
 
-        // Count spend the moment an order is placed — Sarah: "the AMS orders we
-        // put in this week ARE what we spent." So include open distributor
-        // orders ('ordered'/'pending') alongside received stock and
-        // buy-from-customer collections ('draft'). Pico's buying is mostly open
-        // AMS orders, so excluding those wrongly made Pico look near-empty.
-        // Duplicates are handled by the dupe flag, not by hiding orders.
-        // (Sarah 2026-06-20)
+        // NEW spend now counts distributor orders at the OPEN 'ordered' stage
+        // only — see the $newRows classification loop below. (Sarah 2026-07-19,
+        // supersedes the 2026-06-20 "count every status" rule for New.)
+        //
+        // $countableStatuses drives the category BREAKDOWN reconciliation query
+        // (line ~573) only, NOT the New/Used spend split, so it still spans every
+        // status a real weekly outlay can carry.
         $countableStatuses = ['received', 'draft', 'ordered', 'pending'];
 
         // Top-line spend is computed from the per-transaction loop below, which
@@ -241,10 +241,19 @@ class InventoryCheckService
         $newRows = collect();
         foreach ($purRows as $r) {
             if ((float) $r->final_total <= 0) { continue; } // skip $0 noise rows
-            if ($this->isDistributorSupplier($r->supplier)) {
-                $newRows->push($r);                       // distributor order = New
+            // New = distributor orders at the OPEN 'ordered' stage ONLY. Once an
+            // order is checked in (status 'received') it drops out of the weekly
+            // New tally, so the figure reflects only orders still on the books.
+            // (Sarah 2026-07-19 — supersedes the 2026-06-20 "count every status"
+            // rule for New: received/pending/draft distributor rows no longer
+            // count here. Note this figure recovers through the week as orders
+            // are received.)
+            if ($this->isDistributorSupplier($r->supplier)
+                && strtolower((string) ($r->status ?? '')) === 'ordered') {
+                $newRows->push($r);                       // open distributor order = New
             }
-            // else: BFC purchase (counted via its offer) or warehouse add → not here.
+            // else: received/draft distributor rows, BFC purchase (counted via its
+            // offer), or warehouse add → not counted as New here.
         }
         $usedRows = $offerRows->filter(function ($o) {
             $amt = ($o->payout_type === 'store_credit') ? (float) $o->final_offer_credit : (float) $o->final_offer_cash;
