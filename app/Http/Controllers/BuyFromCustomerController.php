@@ -405,11 +405,17 @@ class BuyFromCustomerController extends Controller
         $rules = [
             'location_id' => 'nullable|integer',
             'seller_mode' => 'required|in:contact,phone',
-            'contact_id' => 'nullable|integer',
+            // Sarah 2026-07-19: the seller must be identified before a quote can
+            // be produced ("the contact is the asset"). Returning seller → an
+            // existing account must be picked; new / walk-in → at minimum a name
+            // and phone so the buy is tied to a real, reachable person. These
+            // run on calculate (quote), store, and accept, so the gate holds at
+            // every step, not just the first Calculate.
+            'contact_id' => 'nullable|integer|required_if:seller_mode,contact',
             'seller_name' => 'nullable|string|max:255',
-            'seller_first_name' => 'nullable|string|max:120',
+            'seller_first_name' => 'nullable|string|max:120|required_if:seller_mode,phone',
             'seller_last_name' => 'nullable|string|max:120',
-            'seller_phone' => 'nullable|string|max:30',
+            'seller_phone' => 'nullable|string|max:30|required_if:seller_mode,phone',
             'seller_email' => 'nullable|email|max:191',
             'seller_id_type' => 'nullable|string|max:60',
             'seller_id_last_four' => 'nullable|regex:/^[0-9]{1,4}$/',
@@ -437,7 +443,11 @@ class BuyFromCustomerController extends Controller
             $rules['final_offer_credit'] = 'required|numeric|min:0';
         }
 
-        $request->validate($rules);
+        $request->validate($rules, [
+            'contact_id.required_if' => 'Select the seller\'s existing account before getting a quote.',
+            'seller_first_name.required_if' => 'Enter the seller\'s first name before getting a quote.',
+            'seller_phone.required_if' => 'Enter the seller\'s phone number before getting a quote.',
+        ]);
 
         if ($requireFinal) {
             // Sarah 2026-05-19: starting / 2nd / final offers are editable again,
