@@ -46,7 +46,7 @@
             <div class="modal-body cc-step" id="cc_step_pitch" style="padding: 22px 20px; display:none;">
                 <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color:#8a9ba8; font-weight:700; margin-bottom:6px;">Say to the customer</p>
                 <p style="font-size: 18px; font-weight: 600; color:#1f2937; line-height:1.4; margin-bottom:18px;">
-                    &ldquo;Did you know you get <strong style="color:#b45309;">{{ $ccSym }}{{ $ccAmountF }} in store credit</strong> after spending a total of <strong style="color:#b45309;">{{ $ccSym }}{{ $ccPerF }}</strong> with us over time? It&rsquo;s a free rewards program — want me to set you up? I just need your phone number.&rdquo;
+                    &ldquo;Spend <strong style="color:#b45309;">{{ $ccSym }}{{ $ccPerF }}</strong> with us over time and get <strong style="color:#b45309;">{{ $ccSym }}{{ $ccAmountF }} in store credit</strong> — it&rsquo;s a free rewards program! Want me to sign you up? I just need your name and phone number.&rdquo;
                 </p>
                 <button type="button" class="btn btn-block cc-btn-signup" style="background:#f59e0b; color:#78350f; font-weight:800; padding:12px; border-radius:8px; font-size:15px; margin-bottom:10px;">
                     <i class="fa fa-user-plus"></i>&nbsp; Sign them up
