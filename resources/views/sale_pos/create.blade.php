@@ -20,6 +20,9 @@
      when Clover swiped a card in the last 5 min without a matching ERP
      ring. Non-dismissible — auto-clears the moment the ring goes in. --}}
 @include('sale_pos.partials._clover_orphan_nag')
+{{-- Sarah 2026-07-19: opening script for walk-ins — "do you have an account?"
+     → look up by phone, or pitch the spend-reward program. Fires on load. --}}
+@include('sale_pos.partials._customer_capture_prompt')
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))
