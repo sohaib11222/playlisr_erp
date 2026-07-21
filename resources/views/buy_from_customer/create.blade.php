@@ -808,8 +808,17 @@ HTML;
             $('#bfc_items_gate_hint').toggle(locked);
         }
         $(document).on('input change',
-            '#buy_offer_form input[name="seller_first_name"], #buy_offer_form input[name="seller_phone"], #contact_id, #seller_mode',
+            '#buy_offer_form input[name="seller_first_name"], #buy_offer_form input[name="seller_phone"], #seller_mode',
             bfcApplyItemsGate);
+        // #contact_id is a select2 picker. In this app a select2 selection
+        // surfaces via the select2:select / :unselect / :clear events — a plain
+        // delegated `change` isn't fired reliably (parts of the app trigger the
+        // namespaced `change.select2`, which a plain `change` handler never
+        // sees), so picking a returning account left the items locked. Bind the
+        // select2 events (plus change, for keyboard/programmatic sets) directly
+        // to the element so choosing an account re-evaluates the gate and
+        // unlocks the pricing tools. (Sarah 2026-07-20)
+        $('#contact_id').on('select2:select select2:unselect select2:clear change', bfcApplyItemsGate);
 
         toggleSellerMode();
         bfcApplyItemsGate();
