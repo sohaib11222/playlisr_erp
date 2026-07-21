@@ -68,7 +68,13 @@ class BuyFromCustomerController extends Controller
 
         $business_id = request()->session()->get('user.business_id');
 
-        $locations = BusinessLocation::forDropdown($business_id, false, true);
+        // Plain [id => name] list. Passing receipt_printer_type_attribute=true
+        // makes forDropdown return ['locations'=>…, 'attributes'=>…]; this form
+        // fed that array straight into Form::select, which rendered "locations"/
+        // "attributes" optgroup garbage in the Store Location picker (and broke
+        // page-wide select2 init). This screen doesn't use the printer/price-group
+        // data-attributes, so ask for the flat list. (Sarah 2026-07-20)
+        $locations = BusinessLocation::forDropdown($business_id, false);
         // Sellers can be customers as well as suppliers (a customer can sell us
         // their collection), so load all contacts (excludes leads), not just suppliers.
         $contacts = Contact::contactDropdown($business_id, false, true, true);
@@ -146,7 +152,13 @@ class BuyFromCustomerController extends Controller
             \Illuminate\Support\Facades\Log::warning('BFC draft reopen calc failed', ['offer_id' => $offer->id, 'err' => $e->getMessage()]);
         }
 
-        $locations = BusinessLocation::forDropdown($business_id, false, true);
+        // Plain [id => name] list. Passing receipt_printer_type_attribute=true
+        // makes forDropdown return ['locations'=>…, 'attributes'=>…]; this form
+        // fed that array straight into Form::select, which rendered "locations"/
+        // "attributes" optgroup garbage in the Store Location picker (and broke
+        // page-wide select2 init). This screen doesn't use the printer/price-group
+        // data-attributes, so ask for the flat list. (Sarah 2026-07-20)
+        $locations = BusinessLocation::forDropdown($business_id, false);
         $contacts = Contact::contactDropdown($business_id, false, true, true);
         $itemTypes = $this->calculator->getItemTypesForDropdown();
         $grades = $this->calculator->getGradesForDropdown();
@@ -185,7 +197,13 @@ class BuyFromCustomerController extends Controller
         $request->merge(['offer_id' => $saved->id]);
 
         $business_id = request()->session()->get('user.business_id');
-        $locations = BusinessLocation::forDropdown($business_id, false, true);
+        // Plain [id => name] list. Passing receipt_printer_type_attribute=true
+        // makes forDropdown return ['locations'=>…, 'attributes'=>…]; this form
+        // fed that array straight into Form::select, which rendered "locations"/
+        // "attributes" optgroup garbage in the Store Location picker (and broke
+        // page-wide select2 init). This screen doesn't use the printer/price-group
+        // data-attributes, so ask for the flat list. (Sarah 2026-07-20)
+        $locations = BusinessLocation::forDropdown($business_id, false);
         // Sellers can be customers as well as suppliers (a customer can sell us
         // their collection), so load all contacts (excludes leads), not just suppliers.
         $contacts = Contact::contactDropdown($business_id, false, true, true);
