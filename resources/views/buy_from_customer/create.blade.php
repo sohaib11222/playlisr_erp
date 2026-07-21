@@ -807,15 +807,20 @@ HTML;
                 .prop('disabled', locked);
             $('#bfc_items_gate_hint').toggle(locked);
         }
-        // Re-evaluate the gate on any seller-field change. #contact_id is a
-        // select2 picker whose selection surfaces via select2:select / :unselect
-        // / :clear (a plain `change` isn't fired reliably here); those events
-        // bubble, so a single delegated binding from document catches them
-        // regardless of when select2 initializes — and still works if select2
-        // fails to init at all (the native `change` fires). (Sarah 2026-07-20)
-        $(document).on('input change select2:select select2:unselect select2:clear',
-            '#buy_offer_form input[name="seller_first_name"], #buy_offer_form input[name="seller_phone"], #contact_id, #seller_mode',
+        // Re-evaluate the gate on any seller-field change (plain inputs + the
+        // mode dropdown fire input/change and delegate fine from document).
+        $(document).on('input change',
+            '#buy_offer_form input[name="seller_first_name"], #buy_offer_form input[name="seller_phone"], #seller_mode',
             bfcApplyItemsGate);
+        // #contact_id is a select2 picker. Its select2:select event does NOT
+        // reliably bubble to a delegated document handler in this build (an
+        // earlier delegated binding left the items greyed), so bind DIRECTLY to
+        // the element — the same pattern pos.js uses for #customer_id — plus a
+        // delegated native `change` as a fallback in case select2 isn't
+        // initialized. One of these fires whenever an account is picked, so the
+        // gate re-runs and unlocks the items. (Sarah 2026-07-21)
+        $('#contact_id').on('select2:select select2:unselect select2:clear change', bfcApplyItemsGate);
+        $(document).on('change', '#contact_id', bfcApplyItemsGate);
 
         toggleSellerMode();
         bfcApplyItemsGate();
