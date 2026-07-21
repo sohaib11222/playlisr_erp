@@ -336,7 +336,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>Store location</label>
-                                {!! Form::select('location_id', $locations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'style' => 'width:100%;']) !!}
+                                {!! Form::select('location_id', $locations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'id' => 'location_id', 'style' => 'width:100%;']) !!}
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -348,7 +348,7 @@ HTML;
                         <div class="col-md-3 seller-contact-block">
                             <div class="form-group">
                                 <label>Existing contact <span class="text-danger">*</span></label>
-                                {!! Form::select('contact_id', $contacts, $input['contact_id'] ?? null, ['class' => 'form-control select2', 'style' => 'width:100%;']) !!}
+                                {!! Form::select('contact_id', $contacts, $input['contact_id'] ?? null, ['class' => 'form-control select2', 'id' => 'contact_id', 'style' => 'width:100%;']) !!}
                                 <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
                                     <i class="fa fa-user"></i> View account (store credit &amp; history)
                                 </button>
