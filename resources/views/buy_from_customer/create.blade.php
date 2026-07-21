@@ -336,7 +336,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>Store location</label>
-                                {!! Form::select('location_id', $locations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'style' => 'width:100%;']) !!}
+                                {!! Form::select('location_id', $locations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'id' => 'location_id', 'style' => 'width:100%;']) !!}
                             </div>
                         </div>
                         <div class="col-md-3">
