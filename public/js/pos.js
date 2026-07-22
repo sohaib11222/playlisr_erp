@@ -3619,7 +3619,18 @@ function calculate_billing_details(price_total) {
 
     //Check if edit form then don't update price.
     if ($('form#edit_pos_sell_form').length == 0 && $('form#edit_sell_form').length == 0) {
-        __write_number($('.payment-amount').first(), total_payable_rounded);
+        // Don't clobber an applied store-credit line. Store credit is redeemed
+        // as an `advance` payment on the first payment row (the "Use it" chip
+        // sets it there). Auto-filling the full total over that row makes
+        // get_applied_store_credit() read the whole total as credit, zeroing
+        // the order — e.g. unchecking the Bag Fee after Use sent a $125 sale to
+        // $0. Only auto-fill when the first row is NOT a store-credit advance.
+        var $firstPayment = $('.payment-amount').first();
+        var firstPaymentMethod = $firstPayment.closest('.payment_row')
+            .find('select.payment_types_dropdown').first().val();
+        if (firstPaymentMethod !== 'advance') {
+            __write_number($firstPayment, total_payable_rounded);
+        }
     }
 
     $(document).trigger('invoice_total_calculated');
