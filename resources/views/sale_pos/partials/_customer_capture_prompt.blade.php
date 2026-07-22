@@ -86,13 +86,45 @@ function initCustomerCapture($) {
 
     var $modal = $('#customer_capture_modal');
 
-    // Bootstrap 3 modal; show once the POS screen has settled.
-    setTimeout(function () { $modal.modal({ backdrop: true, keyboard: true }); }, 350);
-
     function showStep(id) {
         $modal.find('.cc-step').hide();
         $modal.find('#' + id).show();
     }
+
+    // Reset to the ask step and (re)open the prompt. Used on first load AND
+    // after every completed sale.
+    function openPrompt() {
+        showStep('cc_step_ask');
+        $modal.modal({ backdrop: true, keyboard: true });
+    }
+
+    // Bootstrap 3 modal; show once the POS screen has settled.
+    setTimeout(openPrompt, 350);
+
+    // Re-open the prompt for the NEXT walk-in after a sale finalizes. The POS
+    // clears the cart with reset_pos_form() (a top-level global — see pos.js)
+    // in place, with NO page reload, so DOMContentLoaded never fires again to
+    // re-trigger the modal. Wrap that global so the prompt comes back. Poll
+    // briefly in case pos.js hasn't defined it yet at this point.
+    (function installResetHook(attempts) {
+        if (typeof window.reset_pos_form === 'function') {
+            if (!window.__cc_reset_wrapped) {
+                window.__cc_reset_wrapped = true;
+                var _ccOrigReset = window.reset_pos_form;
+                window.reset_pos_form = function () {
+                    var ret = _ccOrigReset.apply(this, arguments);
+                    // Skip the edit-page branch — it navigates away on its own,
+                    // and the fresh /pos/create load there re-shows the prompt.
+                    if ($('form#edit_pos_sell_form').length === 0) {
+                        setTimeout(openPrompt, 500);
+                    }
+                    return ret;
+                };
+            }
+        } else if (attempts > 0) {
+            setTimeout(function () { installResetHook(attempts - 1); }, 100);
+        }
+    })(20);
 
     // Yes → close and drop the cashier straight into the phone/name search.
     $modal.on('click', '.cc-btn-yes', function () {
