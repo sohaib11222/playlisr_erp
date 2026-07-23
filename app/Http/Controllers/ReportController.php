@@ -62,7 +62,7 @@ class ReportController extends Controller
     // the pooled model side-by-side so it can be validated without paying it.
     // Held OFF until the Sling roster is clean (bad shift rows redistribute real
     // commission) and the model is signed off. Sarah 2026-07-14.
-    const POOLED_BONUS_PAY_LIVE = true;
+    const POOLED_BONUS_PAY_LIVE = false;
 
     /**
      * All Utils instance.
