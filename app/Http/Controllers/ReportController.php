@@ -13534,6 +13534,43 @@ class ReportController extends Controller
             $hourSales[$r->d][(int) $r->h] = (float) $r->rev;
         }
 
+        // Who actually RANG each hour's sales (register cashier = created_by).
+        // The overage pool must always include the person who rang it, so a
+        // seller whose Sling shift didn't match/publish (e.g. Mica) still earns
+        // for the hours they rang, and an hour's overage is never left
+        // unassigned and unpaid. Non-floor/owner accounts stay excluded.
+        $hourUserSales = []; // [date][hour][uid] => $ rung
+        $ringerUids = [];
+        foreach (\DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $location_id)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start_str, $end_str])
+            ->whereNotNull('t.created_by')
+            ->selectRaw("DATE(t.transaction_date) as d, HOUR(t.transaction_date) as h, t.created_by as uid, COALESCE(SUM($net_pretax), 0) as rev")
+            ->groupBy(\DB::raw('DATE(t.transaction_date)'), \DB::raw('HOUR(t.transaction_date)'), 't.created_by')
+            ->get() as $r) {
+            $uid = (int) $r->uid;
+            $hourUserSales[$r->d][(int) $r->h][$uid] = (float) $r->rev;
+            $ringerUids[$uid] = true;
+        }
+        // Resolve ringer names and drop non-floor/owner accounts up front, so an
+        // owner ringing a sale (or Nick's online fulfillment) never joins the pool.
+        $ringerName = [];
+        if (!empty($ringerUids)) {
+            foreach (\DB::table('users')->whereIn('id', array_keys($ringerUids))->get(['id', 'first_name', 'last_name']) as $u) {
+                $first = strtolower(trim(explode(' ', trim((string) ($u->first_name ?? '')))[0] ?? ''));
+                $isNon = false;
+                foreach ($nonFloor as $tok) {
+                    if ($first !== '' && ($first === $tok || strpos($first, $tok) === 0)) { $isNon = true; break; }
+                }
+                if ($isNon) { continue; }
+                $ringerName[(int) $u->id] = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ('User #' . $u->id);
+            }
+        }
+
         // Seed users with total presence hours (so they show up even on days the
         // store never crossed goal).
         $users = [];
@@ -13576,16 +13613,28 @@ class ReportController extends Controller
                 $dayOver += $overHour;
 
                 // Split this hour's 4% among whoever was on the floor THIS hour,
-                // weighted by how much of the hour they worked. Overage rung in an
-                // hour nobody's clocked for (e.g. missing Sling data) stays
-                // unassigned — dayPool tracks only what actually pays out.
-                $present = $hourFrac[$date][$h] ?? [];
-                $tot = array_sum($present);
+                // weighted by how much of the hour they worked — PLUS whoever
+                // actually rang sales this hour. Floor staff on a matched Sling
+                // shift are weighted by clocked time; a ringer with no matched
+                // shift is weighted as a full hour on the floor. Including the
+                // ringer guarantees a seller is never zeroed by dirty Sling data
+                // and the overage is always paid out (never silently lost).
+                $weights = $hourFrac[$date][$h] ?? [];
+                foreach (($hourUserSales[$date][$h] ?? []) as $uid => $amt) {
+                    if ($amt <= 0 || !isset($ringerName[$uid])) { continue; } // non-floor ringers already dropped
+                    if (($weights[$uid] ?? 0) <= 0) { $weights[$uid] = 1.0; }
+                }
+                $tot = array_sum($weights);
                 if ($tot <= 0) { continue; }
                 $poolHour = $overHour * $poolRate;
                 $dayPool += $poolHour;
-                foreach ($present as $uid => $frac) {
-                    if (!isset($users[$uid])) { continue; }
+                foreach ($weights as $uid => $frac) {
+                    if (!isset($users[$uid])) {
+                        // Ringer not seeded from Sling shifts — add them so their
+                        // share is paid (name from ERP; 0 clocked Sling hours).
+                        $users[$uid] = ['name' => $userName[$uid] ?? ($ringerName[$uid] ?? ('User #' . $uid)),
+                            'hours' => 0.0, 'bonus' => 0.0, 'daily' => []];
+                    }
                     $share = $poolHour * ($frac / $tot);
                     $users[$uid]['bonus'] += $share;
                     $users[$uid]['daily'][$date] = ($users[$uid]['daily'][$date] ?? 0) + $share;
