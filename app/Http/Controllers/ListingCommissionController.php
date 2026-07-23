@@ -845,12 +845,17 @@ class ListingCommissionController extends Controller
                 if ($overage <= 0) { continue; }
                 $cashierOverage[$cuid] = ($cashierOverage[$cuid] ?? 0) + $overage;
                 $present = $presentAt(\Carbon::parse($r->transaction_date)->timestamp);
-                if (count($present) > 1) {
+                $ringerOn = in_array($cuid, $present, true);
+                if ($ringerOn && count($present) > 1) {
+                    // The person who rang it is on a floor shift alongside others —
+                    // this is genuine shared-floor selling, so split it.
                     $each = $overage / count($present);
                     foreach ($present as $uid) { $wParty[$cuid][$uid] = ($wParty[$cuid][$uid] ?? 0) + $each; }
                 } else {
-                    $who = count($present) === 1 ? $present[0] : $cuid;
-                    $wSolo[$cuid][$who] = ($wSolo[$cuid][$who] ?? 0) + $overage;
+                    // Ringer working solo — or still ringing after their own floor
+                    // shift ended (a hand-off). Keep it theirs; never hand it to
+                    // whoever else happens to be clocked in at that moment.
+                    $wSolo[$cuid][$cuid] = ($wSolo[$cuid][$cuid] ?? 0) + $overage;
                 }
             }
         }
