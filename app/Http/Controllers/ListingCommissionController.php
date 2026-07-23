@@ -173,19 +173,31 @@ class ListingCommissionController extends Controller
             $p->total_owed_now = round($p->total_comm - $p->total_paid_all, 2);
 
             // Plain-English payroll memo so whoever pays them knows what the
-            // money is for (and the person can see it on their pay stub).
+            // money is for (and the person can see it on their pay stub). Built
+            // from the NET per type (earned minus paid) so it always explains the
+            // actual Pay now — including a CREDIT when someone was overpaid.
             $memo = [];
-            if ($p->owed > 0) {
-                $memo[] = 'Listing commission $' . number_format($p->owed, 2)
-                    . ' — 2% of the sale price of ' . number_format($p->count) . ' item' . ($p->count == 1 ? '' : 's')
-                    . ' you listed that sold';
-            }
-            if ($p->sales_owed > 0) {
-                $memo[] = 'Sales bonus $' . number_format($p->sales_owed, 2)
+            if ($p->sales_net > 0.004) {
+                $memo[] = 'Sales bonus $' . number_format($p->sales_net, 2)
                     . ' — 2% of register sales above your daily goal (4% during peak hours), added up day by day since '
                     . \Carbon::parse(self::SALES_BONUS_FROM)->format('m/d/y');
+            } elseif ($p->sales_net < -0.004) {
+                $memo[] = 'Sales credit -$' . number_format(abs($p->sales_net), 2)
+                    . ' — overpaid sales bonus from a past run, subtracted here';
             }
-            $p->payroll_memo = implode('  +  ', $memo);
+            if ($p->listing_net > 0.004) {
+                $memo[] = 'Listing commission $' . number_format($p->listing_net, 2)
+                    . ' — 2% of the sale price of items you listed that sold';
+            } elseif ($p->listing_net < -0.004) {
+                $memo[] = 'Listing credit -$' . number_format(abs($p->listing_net), 2)
+                    . ' — overpaid listing commission from a past run, subtracted here';
+            }
+            $p->payroll_memo = implode('  +  ', $memo)
+                . ((abs($p->sales_net) > 0.004 && abs($p->listing_net) > 0.004) || $p->total_owed_now < -0.004
+                    ? '  =  ' . ($p->total_owed_now < -0.004
+                        ? 'net credit -$' . number_format(abs($p->total_owed_now), 2)
+                        : 'net $' . number_format($p->total_owed_now, 2))
+                    : '');
         }
 
         // Final safety net: drop excluded people no matter which path added them.
