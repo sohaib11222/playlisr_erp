@@ -469,9 +469,27 @@ class ListingCommissionController extends Controller
                 return $u;
             });
 
+        // Times come in as 12-hour parts (hour 1-12 / minute / AM-PM) so the UI is
+        // always 12h; assemble them into 24h "HH:MM" for the query. Default the
+        // window to 6:00 PM - 8:00 PM (the listening-party slot).
+        $build12 = function ($h, $m, $ap) {
+            if ($h === null || $h === '') { return ''; }
+            $h = (int) $h; $m = (int) $m; $ap = strtoupper(trim((string) $ap));
+            if ($h < 1 || $h > 12) { return ''; }
+            $h24 = $ap === 'PM' ? ($h % 12) + 12 : ($h % 12);
+            return sprintf('%02d:%02d', $h24, $m);
+        };
+        $submitted = $request->has('date');
+        $fromH  = $submitted ? $request->input('from_h')  : 6;
+        $fromM  = $submitted ? $request->input('from_m', '00') : '00';
+        $fromAp = $submitted ? $request->input('from_ap', 'PM') : 'PM';
+        $toH    = $submitted ? $request->input('to_h')    : 8;
+        $toM    = $submitted ? $request->input('to_m', '00')   : '00';
+        $toAp   = $submitted ? $request->input('to_ap', 'PM')  : 'PM';
+
         $date       = trim((string) $request->input('date', ''));
-        $fromTime   = trim((string) $request->input('from_time', ''));
-        $toTime     = trim((string) $request->input('to_time', ''));
+        $fromTime   = $build12($fromH, $fromM, $fromAp);
+        $toTime     = $build12($toH, $toM, $toAp);
         $locationId = (int) $request->input('location_id');
         $percent    = (float) $request->input('percent', 0);
         $selected   = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('staff', [])))));
@@ -537,8 +555,8 @@ class ListingCommissionController extends Controller
             'locations'   => $locations,
             'staff'       => $staff,
             'date'        => $date,
-            'from_time'   => $fromTime,
-            'to_time'     => $toTime,
+            'from_h'      => $fromH, 'from_m' => str_pad((string) (int) $fromM, 2, '0', STR_PAD_LEFT), 'from_ap' => strtoupper((string) $fromAp),
+            'to_h'        => $toH,   'to_m'   => str_pad((string) (int) $toM,   2, '0', STR_PAD_LEFT), 'to_ap'   => strtoupper((string) $toAp),
             'location_id' => $locationId,
             'percent'     => $percent ?: '',
             'selected'    => $selected,

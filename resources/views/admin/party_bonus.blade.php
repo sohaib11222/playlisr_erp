@@ -42,8 +42,20 @@
 <form method="GET" action="{{ url('/admin/party-bonus') }}" class="pb-card">
     <div class="pb-grid">
         <div class="pb-field"><label>Party date</label><input type="date" name="date" value="{{ $date }}"></div>
-        <div class="pb-field"><label>Start time</label><input type="time" name="from_time" value="{{ $from_time }}"></div>
-        <div class="pb-field"><label>End time</label><input type="time" name="to_time" value="{{ $to_time }}"></div>
+        <div class="pb-field"><label>Start time</label>
+            <div style="display:flex; gap:6px;">
+                <select name="from_h">@for($h=1;$h<=12;$h++)<option value="{{ $h }}" {{ (int) $from_h === $h ? 'selected' : '' }}>{{ $h }}</option>@endfor</select>
+                <select name="from_m">@foreach(['00','15','30','45'] as $m)<option value="{{ $m }}" {{ $from_m === $m ? 'selected' : '' }}>{{ $m }}</option>@endforeach</select>
+                <select name="from_ap">@foreach(['AM','PM'] as $ap)<option value="{{ $ap }}" {{ $from_ap === $ap ? 'selected' : '' }}>{{ $ap }}</option>@endforeach</select>
+            </div>
+        </div>
+        <div class="pb-field"><label>End time</label>
+            <div style="display:flex; gap:6px;">
+                <select name="to_h">@for($h=1;$h<=12;$h++)<option value="{{ $h }}" {{ (int) $to_h === $h ? 'selected' : '' }}>{{ $h }}</option>@endfor</select>
+                <select name="to_m">@foreach(['00','15','30','45'] as $m)<option value="{{ $m }}" {{ $to_m === $m ? 'selected' : '' }}>{{ $m }}</option>@endforeach</select>
+                <select name="to_ap">@foreach(['AM','PM'] as $ap)<option value="{{ $ap }}" {{ $to_ap === $ap ? 'selected' : '' }}>{{ $ap }}</option>@endforeach</select>
+            </div>
+        </div>
         <div class="pb-field"><label>Store</label>
             <select name="location_id">
                 <option value="">- pick store -</option>
