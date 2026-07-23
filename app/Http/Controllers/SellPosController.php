@@ -3530,9 +3530,19 @@ class SellPosController extends Controller
         // Sarah 2026-05-13: when month-scoped, bump the cap so a full
         // calendar month doesn't get silently truncated to the latest
         // ~1000 rows. 30k covers the busiest store-month plus headroom.
-        $isMonthScoped = !empty($start_date) && !empty($end_date) && $start_date !== $end_date;
+        // Sarah 2026-07-23: any explicit date scope (single day OR month)
+        // must export the FULL scope, not the page's $limit (default 30).
+        // The page shows the whole day (2000 cap) but the export was still
+        // capping single-day fetches at $limit, so a busy day silently
+        // exported only its newest ~30 sales. Only the unscoped "recent N"
+        // export (no date/month at all) still honors $limit.
+        $isDateScoped  = !empty($start_date) && !empty($end_date);
+        $isMonthScoped = $isDateScoped && $start_date !== $end_date;
         if ($isMonthScoped) {
             $fetchLimit = 30000;
+        } elseif ($isDateScoped) {
+            // Single-day scope — mirror the page's 2000-row day cap.
+            $fetchLimit = 2000;
         } else {
             $fetchLimit = $discrepancy ? min(max($limit, 50) * 20, 2000) : $limit;
         }
@@ -3846,7 +3856,13 @@ class SellPosController extends Controller
                 if ($discrepancy === 'no_clover')  return $isNoClover;
                 if ($discrepancy === 'any')        return $isMismatch || $isNoClover;
                 return true;
-            })->take($limit)->values();
+            })->values();
+            // Sarah 2026-07-23: only cap the unscoped "recent N" export.
+            // A date/month-scoped export must return every discrepant sale in
+            // the window, not just the newest $limit of them.
+            if (!$isDateScoped) {
+                $sales = $sales->take($limit)->values();
+            }
         }
 
         // Mirror the page: include orphan Clover charges in the export when
