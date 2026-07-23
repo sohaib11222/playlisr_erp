@@ -459,15 +459,27 @@ class ListingCommissionController extends Controller
             ->where('business_id', $businessId)->where('is_active', 1)
             ->orderBy('name')->pluck('name', 'id');
 
+        // Current staff only: active AND able to log in (the ERP's definition of
+        // a current employee), then drop owners/back-office/system/departed
+        // accounts by name — the same exclusion the Commissions page uses, plus
+        // known non-floor accounts (Nick=fulfillment, Viper, Guest, Fahrul left).
+        $extraNonFloor = ['nick', 'viper', 'guest', 'fahrul', 'fatten'];
         $staff = DB::table('users')
             ->where('business_id', $businessId)
             ->where('status', 'active')
+            ->where('allow_login', 1)
             ->orderBy('first_name')->orderBy('last_name')
             ->get(['id', 'first_name', 'last_name', 'surname'])
             ->map(function ($u) {
                 $u->label = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $u->id));
                 return $u;
-            });
+            })
+            ->reject(function ($u) use ($extraNonFloor) {
+                if ($this->isExcludedName($u->label)) { return true; }
+                $first = strtolower(trim(explode(' ', trim((string) $u->label))[0] ?? ''));
+                return in_array($first, $extraNonFloor, true);
+            })
+            ->values();
 
         // Times come in as 12-hour parts (hour 1-12 / minute / AM-PM) so the UI is
         // always 12h; assemble them into 24h "HH:MM" for the query. Default the
