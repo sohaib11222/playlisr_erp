@@ -199,36 +199,22 @@ class ListingCommissionController extends Controller
             // money is for (and the person can see it on their pay stub). Built
             // from the NET per type (earned minus paid) so it always explains the
             // actual Pay now — including a CREDIT when someone was overpaid.
+            // Short, plain note: one label per line, matching the columns, that
+            // adds up to Pay now. (Sales bonus line excludes the party, which is
+            // its own line.)
             $memo = [];
-            // Sales-bonus line EXCLUDES the party split (shown on its own line
-            // below) so the memo adds up to Pay now instead of double-counting.
-            $salesBonusOnly = round($p->sales_net - $p->party_split, 2);
-            if ($salesBonusOnly > 0.004) {
-                $memo[] = 'Sales bonus $' . number_format($salesBonusOnly, 2)
-                    . ' — 2% of register sales above your daily goal (4% during peak hours), added up day by day since '
-                    . \Carbon::parse(self::SALES_BONUS_FROM)->format('m/d/y');
-            } elseif ($salesBonusOnly < -0.004) {
-                $memo[] = 'Sales credit -$' . number_format(abs($salesBonusOnly), 2)
-                    . ' — overpaid sales bonus from a past run, subtracted here';
+            $salesLine = round($p->sales_net - ($p->party_earned ?? 0), 2);
+            if ($salesLine > 0.004)      { $memo[] = 'Sales bonus $' . number_format($salesLine, 2); }
+            elseif ($salesLine < -0.004) { $memo[] = 'Sales credit -$' . number_format(abs($salesLine), 2); }
+            if (($p->party_earned ?? 0) > 0.004) { $memo[] = 'Listening party $' . number_format($p->party_earned, 2); }
+            if ($p->listing_net > 0.004)      { $memo[] = 'Listing $' . number_format($p->listing_net, 2); }
+            elseif ($p->listing_net < -0.004) { $memo[] = 'Listing credit -$' . number_format(abs($p->listing_net), 2); }
+            $p->payroll_memo = implode(' + ', $memo);
+            if (count($memo) > 1 || $p->total_owed_now < -0.004) {
+                $p->payroll_memo .= ' = ' . ($p->total_owed_now < -0.004
+                    ? '-$' . number_format(abs($p->total_owed_now), 2) . ' credit'
+                    : '$' . number_format($p->total_owed_now, 2));
             }
-            if (abs($p->party_split) > 0.004) {
-                $memo[] = ($p->party_split > 0
-                    ? 'Listening party commission +$' . number_format($p->party_split, 2) . ' — your share of the bonus while you worked the floor together'
-                    : 'Listening party split -$' . number_format(abs($p->party_split), 2) . ' — the floor helper\'s share of the party bonus, moved to them');
-            }
-            if ($p->listing_net > 0.004) {
-                $memo[] = 'Listing commission $' . number_format($p->listing_net, 2)
-                    . ' — 2% of the sale price of items you listed that sold';
-            } elseif ($p->listing_net < -0.004) {
-                $memo[] = 'Listing credit -$' . number_format(abs($p->listing_net), 2)
-                    . ' — overpaid listing commission from a past run, subtracted here';
-            }
-            $p->payroll_memo = implode('  +  ', $memo)
-                . ((abs($p->sales_net) > 0.004 && abs($p->listing_net) > 0.004) || $p->total_owed_now < -0.004
-                    ? '  =  ' . ($p->total_owed_now < -0.004
-                        ? 'net credit -$' . number_format(abs($p->total_owed_now), 2)
-                        : 'net $' . number_format($p->total_owed_now, 2))
-                    : '');
         }
 
         // Final safety net: drop excluded people no matter which path added them.
