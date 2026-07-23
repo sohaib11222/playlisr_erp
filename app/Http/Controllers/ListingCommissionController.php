@@ -150,7 +150,9 @@ class ListingCommissionController extends Controller
                 ];
             }
         }
+        $stores = $this->primaryStoreByUser($businessId);
         foreach ($byId as $uid => $p) {
+            $p->store = $stores[(int) $uid] ?? '';
             $s = $salesSummary->get($uid);
             $p->sales_earned   = $s ? (float) $s->earned   : 0.0;
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
@@ -925,6 +927,36 @@ class ListingCommissionController extends Controller
         }
 
         return $rows;
+    }
+
+    // Each person's home store = the business location where they've rung the
+    // most final sell transactions (transactions.created_by). Purely a
+    // display/sort aid on this page, keyed by user_id => store name. A back-room
+    // lister who never rings sales shows no store (blank), which sorts last.
+    private function primaryStoreByUser($businessId)
+    {
+        $rows = DB::table('transactions as t')
+            ->join('business_locations as bl', 'bl.id', '=', 't.location_id')
+            ->where('t.business_id', $businessId)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereNotNull('t.created_by')
+            ->groupBy('t.created_by', 'bl.id', 'bl.name')
+            ->selectRaw('t.created_by as user_id, bl.name as store, COUNT(*) as cnt')
+            ->get();
+
+        $best = [];
+        foreach ($rows as $r) {
+            $uid = (int) $r->user_id;
+            $cnt = (int) $r->cnt;
+            if (!isset($best[$uid]) || $cnt > $best[$uid]['cnt']) {
+                $best[$uid] = ['store' => $r->store, 'cnt' => $cnt];
+            }
+        }
+        $out = [];
+        foreach ($best as $uid => $b) { $out[$uid] = $b['store']; }
+        return $out;
     }
 
     // Items each person LISTED on/after $from (regardless of whether they've

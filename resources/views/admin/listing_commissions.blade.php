@@ -147,7 +147,9 @@
                     <thead>
                         <tr>
                             <th>Person</th>
-                            <th class="lc-detail" style="text-align:right;" title="Listing earned + sales earned (total commission earned)">Total commission</th>
+                            <th title="Home store — where this person rings the most sales">Store</th>
+                            <th style="text-align:right;" title="Total commission earned this year — listing + sales">Earned YTD</th>
+                            <th style="text-align:right;" title="Total commission paid out this year — listing + sales">Paid YTD</th>
                             <th class="lc-detail" style="text-align:right;" title="Items this person has listed since {{ $from }}"># Listings</th>
                             <th class="lc-detail" style="text-align:right;" title="Listing commission earned since {{ $from }}">Listing earned</th>
                             <th class="lc-detail" style="text-align:right;" title="Listing commission already paid out">Listing paid</th>
@@ -166,7 +168,9 @@
                         @foreach ($owedPeople as $p)
                             <tr>
                                 <td><a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" title="See {{ $p->name }}'s full earnings page (what they see)">{{ $p->name }}</a></td>
-                                <td class="lc-detail" style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td>@if(!empty($p->store)){{ $p->store }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->total_comm > 0)${{ number_format($p->total_comm, 2) }}@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right;">@if($p->total_paid_all > 0)<span class="text-muted">${{ number_format($p->total_paid_all, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->listed_count > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}">{{ number_format($p->listed_count) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->earned > 0)<a href="{{ url('/my-earnings/items') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: items {{ $p->name }} listed that sold">${{ number_format($p->earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->paid > 0)<span class="text-muted">${{ number_format($p->paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
