@@ -159,7 +159,7 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#FFF3C4;" title="Listening party commission to pay — a floor helper's share (+) or the share moved off the cashier (-). QuickBooks line.">Listening party owed</th>
+                            <th style="text-align:right; background:#FFF3C4;" title="Listening party commission earned — each person's equal share for the party. Pulled out of the Sales column. QuickBooks line.">Listening party owed</th>
                             <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed + Listening party owed = what you hand this person this run">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
@@ -179,10 +179,10 @@
                                 <td class="lc-detail" style="text-align:right;">@if($p->sales_goal > 0)<span class="text-muted">${{ number_format($p->sales_goal, 0) }}</span>@else <span class="text-muted">—</span>@endif</td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->sales_earned > 0)<a href="{{ url('/my-earnings') }}?user_id={{ $p->user_id }}" target="_blank" title="Breakdown: {{ $p->name }}'s day-by-day sales vs goal">${{ number_format($p->sales_earned, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td class="lc-detail" style="text-align:right;">@if($p->sales_paid > 0)<span class="text-muted">${{ number_format($p->sales_paid, 2) }}</span>@else <span class="text-muted">—</span>@endif</td>
-                                @php $salesQb = round($p->sales_net - $p->party_split, 2); @endphp
+                                @php $salesQb = round($p->sales_net - ($p->party_earned ?? 0), 2); @endphp
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if(abs($salesQb) < 0.005)<span class="text-muted">—</span>@elseif($salesQb > 0)${{ number_format($salesQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($salesQb), 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if(abs($p->listing_net) < 0.005)<span class="text-muted">—</span>@elseif($p->listing_net > 0)${{ number_format($p->listing_net, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($p->listing_net), 2) }}</span>@endif</td>
-                                <td style="text-align:right; background:#FFF3C4;">@if(abs($p->party_split ?? 0) < 0.005)<span class="text-muted">—</span>@elseif($p->party_split > 0)<span style="color:#2f7a4f; font-weight:600;">+${{ number_format($p->party_split, 2) }}</span>@else <span style="color:#b3402e;">-${{ number_format(abs($p->party_split), 2) }}</span>@endif</td>
+                                <td style="text-align:right; background:#FFF3C4;">@if(abs($p->party_earned ?? 0) < 0.005)<span class="text-muted">—</span>@else <span style="color:#2f7a4f; font-weight:600;">${{ number_format($p->party_earned, 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
