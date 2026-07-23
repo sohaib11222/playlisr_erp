@@ -773,58 +773,75 @@ class ListingCommissionController extends Controller
             $shiftSpan[$uid]['pos'][ucwords($pos)] = true;
         }
 
-        // Split each receipt among the floor staff on at its exact time. When 2+
-        // share the floor, it's the "party" (shared) portion; when one person is
-        // on, it's their solo. A sale rung when nobody has a matched floor shift
-        // goes to whoever actually rang it (so nothing is lost to Sling gaps).
-        $attributed = []; $party = []; $solo = [];
-        foreach ($txns as $r) {
-            $net = (float) $r->net;
-            if ($net == 0.0) { continue; }
-            $ts = \Carbon::parse($r->transaction_date)->timestamp;
-            $present = [];
-            foreach ($intervals as $uid => $ivs) {
-                foreach ($ivs as $iv) { if ($ts >= $iv[0] && $ts < $iv[1]) { $present[] = $uid; break; } }
-            }
-            if (!empty($present)) {
-                $shared = count($present) > 1;
-                $share = $net / count($present);
-                foreach ($present as $uid) {
-                    $attributed[$uid] = ($attributed[$uid] ?? 0) + $share;
-                    if ($shared) { $party[$uid] = ($party[$uid] ?? 0) + $share; }
-                    else { $solo[$uid] = ($solo[$uid] ?? 0) + $share; }
-                }
-            } else {
-                $uid = (int) $r->uid;
-                if ($uid > 0) {
-                    $attributed[$uid] = ($attributed[$uid] ?? 0) + $net;
-                    $solo[$uid] = ($solo[$uid] ?? 0) + $net;
-                }
-            }
-        }
-
-        // The ERP's own per-person goal + achieved for that day (so the goal
-        // bonus matches what each employee is shown).
+        // Goals + each cashier's ACTUAL per-cashier sales bonus, straight from the
+        // ERP. We REDISTRIBUTE this exact bonus — never add to it — so the store
+        // total is unchanged; the helper's share comes OUT of the cashier's.
         $goals = collect();
         $goalNote = null;
         try {
             $goals = app(\App\Http\Controllers\ReportController::class)->salesBonusByUser($businessId, $date, $date);
         } catch (\Throwable $e) {
-            $goalNote = 'Goal numbers unavailable (' . $e->getMessage() . ') — showing base 2% only.';
+            $goalNote = 'Bonus/goal numbers unavailable (' . $e->getMessage() . ').';
+        }
+
+        $presentAt = function ($ts) use ($intervals) {
+            $on = [];
+            foreach ($intervals as $uid => $ivs) {
+                foreach ($ivs as $iv) { if ($ts >= $iv[0] && $ts < $iv[1]) { $on[] = $uid; break; } }
+            }
+            return $on;
+        };
+
+        // Walk each cashier's receipts in time order. The part of each sale ABOVE
+        // their running goal is "overage" — the only thing the bonus is paid on.
+        // Overage rung while 2+ share the floor is SPLIT among them; solo overage
+        // stays the cashier's. Weights are in overage dollars.
+        $byCashier = [];
+        foreach ($txns as $r) { $byCashier[(int) $r->uid][] = $r; }
+
+        $wSolo = []; $wParty = []; $cashierOverage = [];
+        foreach ($byCashier as $cuid => $rows) {
+            $g = $goals->get($cuid);
+            $goal = $g ? (float) $g->goal : 0.0;
+            $cum = 0.0;
+            foreach ($rows as $r) {
+                $net = (float) $r->net;
+                if ($net <= 0) { $cum += $net; continue; }
+                $cum += $net;
+                $overage = $cum > $goal ? min($net, $cum - $goal) : 0.0;
+                if ($overage <= 0) { continue; }
+                $cashierOverage[$cuid] = ($cashierOverage[$cuid] ?? 0) + $overage;
+                $present = $presentAt(\Carbon::parse($r->transaction_date)->timestamp);
+                if (count($present) > 1) {
+                    $each = $overage / count($present);
+                    foreach ($present as $uid) { $wParty[$cuid][$uid] = ($wParty[$cuid][$uid] ?? 0) + $each; }
+                } else {
+                    $who = count($present) === 1 ? $present[0] : $cuid;
+                    $wSolo[$cuid][$who] = ($wSolo[$cuid][$who] ?? 0) + $overage;
+                }
+            }
+        }
+
+        // Hand out each cashier's real bonus in those proportions. Sum over
+        // everyone == the cashier's own bonus, so nothing is created or lost.
+        $ownBonus = []; $partyBonus = [];
+        foreach ($cashierOverage as $cuid => $tot) {
+            $g = $goals->get($cuid);
+            $B = $g ? (float) $g->bonus : 0.0;
+            if ($tot <= 0 || $B <= 0) { continue; }
+            foreach (($wSolo[$cuid] ?? []) as $uid => $wt)  { $ownBonus[$uid]   = ($ownBonus[$uid] ?? 0)   + $B * ($wt / $tot); }
+            foreach (($wParty[$cuid] ?? []) as $uid => $wt) { $partyBonus[$uid] = ($partyBonus[$uid] ?? 0) + $B * ($wt / $tot); }
         }
 
         $people = [];
-        $uids = array_unique(array_merge(array_keys($attributed), array_keys($shiftSpan)));
+        $uids = array_unique(array_merge(array_keys($ownBonus), array_keys($partyBonus), array_keys($shiftSpan)));
         foreach ($uids as $uid) {
             $uid = (int) $uid;
-            $attr = round($attributed[$uid] ?? 0, 2);
+            $own    = round($ownBonus[$uid] ?? 0, 2);
+            $partyC = round($partyBonus[$uid] ?? 0, 2);
+            $total  = round($own + $partyC, 2);
+            if ($total <= 0 && !isset($shiftSpan[$uid])) { continue; }
             $g = $goals->get($uid);
-            $goal = $g ? round((float) $g->goal, 2) : 0.0;
-            $achieved = $g ? round((float) $g->achieved, 2) : round($ownRung[$uid] ?? 0, 2);
-            $partyComm = round(($party[$uid] ?? 0) * self::SHIFT_BASE_RATE, 2);
-            $soloBase  = round(($solo[$uid] ?? 0) * self::SHIFT_BASE_RATE, 2);
-            $over = ($goal > 0 && $achieved > $goal) ? round($achieved - $goal, 2) : 0.0;
-            $bonus = round($over * self::SHIFT_GOAL_BONUS_RATE, 2);
             $span = $shiftSpan[$uid] ?? null;
             $people[] = [
                 'uid' => $uid,
@@ -832,17 +849,11 @@ class ListingCommissionController extends Controller
                 'shift' => $span ? ($span['from']->format('g:i A') . ' - ' . $span['to']->format('g:i A')) : '(no floor shift)',
                 'positions' => $span ? implode(', ', array_keys($span['pos'])) : '',
                 'own_rung' => round($ownRung[$uid] ?? 0, 2),
-                'attributed' => $attr,
-                'goal' => $goal,
-                'achieved' => $achieved,
-                'over' => $over,
-                // Regular sales commission = solo-floor base + individual over-goal
-                // bonus. Party commission = the shared-floor base (split 50/50).
-                'sales_comm' => round($soloBase + $bonus, 2),
-                'party_comm' => $partyComm,
-                'solo_base'  => $soloBase,
-                'bonus' => $bonus,
-                'total' => round($soloBase + $partyComm + $bonus, 2),
+                'goal' => $g ? round((float) $g->goal, 2) : 0.0,
+                'raw_bonus' => $g ? round((float) $g->bonus, 2) : 0.0, // their bonus BEFORE the party split
+                'own_bonus' => $own,      // their solo-hours bonus (kept)
+                'party_bonus' => $partyC, // their share of shared-hours bonus
+                'total' => $total,        // what they actually get after the split
             ];
         }
         usort($people, function ($a, $b) { return $b['total'] <=> $a['total']; });
@@ -852,6 +863,7 @@ class ListingCommissionController extends Controller
             'people' => $people, 'names' => $nameOf,
             'goal_note' => $goalNote,
             'store_sales' => round(array_sum($ownRung), 2),
+            'total_bonus' => round(array_sum(array_map(function ($p) { return $p['total']; }, $people)), 2),
         ];
     }
 

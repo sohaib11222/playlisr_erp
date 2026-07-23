@@ -54,11 +54,10 @@ details > summary { cursor:pointer; font-weight:600; color:#23303d; margin:10px 
                     <th>Person</th>
                     <th>Floor shift</th>
                     <th title="What this person personally rang">Rang</th>
-                    <th title="Their personal goal for the day (from the ERP)">Goal</th>
-                    <th title="Amount they rang over their goal">Over</th>
-                    <th title="Their solo-floor 2% + their individual 2% over-goal bonus (not split)">Sales comm</th>
-                    <th title="2% of the sales rung while they shared the floor, split evenly — the listening-party portion">Party comm</th>
-                    <th>Total</th>
+                    <th title="Their bonus if they kept 100% (before the party split)">Bonus before split</th>
+                    <th title="Bonus from hours they worked the floor alone — kept">Own (solo)</th>
+                    <th title="Their share of the bonus earned while they shared the floor">Party share</th>
+                    <th title="What they actually get after the split">Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -67,16 +66,19 @@ details > summary { cursor:pointer; font-weight:600; color:#23303d; margin:10px 
                         <td>{{ $p['name'] }}<br><span class="muted" style="font-size:11px;">{{ $p['positions'] }}</span></td>
                         <td style="text-align:left;">{{ $p['shift'] }}</td>
                         <td>${{ number_format($p['own_rung'], 2) }}</td>
-                        <td>@if($p['goal'] > 0)${{ number_format($p['goal'], 2) }}@else<span class="muted">—</span>@endif</td>
-                        <td>@if($p['over'] > 0)${{ number_format($p['over'], 2) }}@else<span class="muted">—</span>@endif</td>
-                        <td>${{ number_format($p['sales_comm'], 2) }}<br><span class="muted" style="font-size:11px;">base ${{ number_format($p['solo_base'], 2) }} + goal ${{ number_format($p['bonus'], 2) }}</span></td>
-                        <td>@if($p['party_comm'] > 0)${{ number_format($p['party_comm'], 2) }}@else<span class="muted">—</span>@endif</td>
+                        <td>@if($p['raw_bonus'] > 0)<span class="muted">${{ number_format($p['raw_bonus'], 2) }}</span>@else<span class="muted">—</span>@endif</td>
+                        <td>@if($p['own_bonus'] > 0)${{ number_format($p['own_bonus'], 2) }}@else<span class="muted">—</span>@endif</td>
+                        <td>@if($p['party_bonus'] > 0)${{ number_format($p['party_bonus'], 2) }}@else<span class="muted">—</span>@endif</td>
                         <td class="total">${{ number_format($p['total'], 2) }}</td>
                     </tr>
                 @endforeach
+                <tr>
+                    <td colspan="6" style="text-align:right; font-weight:700;">Store total (unchanged by the split)</td>
+                    <td class="total">${{ number_format($result['total_bonus'], 2) }}</td>
+                </tr>
             </tbody>
         </table>
-        <p class="muted" style="font-size:12px; margin-top:8px;"><strong>Sales comm</strong> = their solo-floor 2% + their individual over-goal bonus (2% on what they rang above their goal — not split). <strong>Party comm</strong> = 2% of the sales rung while they shared the one register with another floor person, split evenly. Goal &amp; Rang come from the ERP's own sales-commission calc.</p>
+        <p class="muted" style="font-size:12px; margin-top:8px;">Each cashier's real sales bonus is <strong>redistributed</strong>, never added to: the bonus earned while two shared the floor is split evenly; solo hours stay the cashier's. So the cashier's <strong>Total</strong> drops and the helper's is their share — the <strong>Store total is identical</strong> to before. Bonus &amp; goal come from the ERP's own calc.</p>
         @endif
     </div>
 @endif
