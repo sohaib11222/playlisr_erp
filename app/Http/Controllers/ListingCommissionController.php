@@ -351,65 +351,67 @@ class ListingCommissionController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Missing person.']);
         }
 
-        $parts = [];
-        $total = 0.0;
-        $name = null;
+        $u = DB::table('users')->where('id', $userId)->first();
+        $name = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId))) : ('User #' . $userId);
 
-        // Listing commission.
-        $paid = $this->loadPayouts();
-        $lines = $this->ownedSoldLines($businessId, $from, $this->paidLineIds($paid))
-            ->where('user_id', $userId)->values();
-        if ($lines->isNotEmpty()) {
-            $amount = 0.0; $lineIds = [];
-            foreach ($lines as $row) { $amount += (float) $row->sale_amount * self::RATE; $lineIds[] = (int) $row->line_id; }
-            $name = $this->personName($lines->first());
-            $paid[] = [
-                'id'        => bin2hex(random_bytes(8)),
-                'user_id'   => $userId,
-                'name'      => $name,
-                'count'     => count($lineIds),
-                'amount'    => round($amount, 2),
-                'line_ids'  => $lineIds,
-                'from_date' => $from,
-                'to_date'   => now()->toDateString(),
-                'marked_by' => $request->session()->get('user.id'),
-                'marked_at' => now()->toDateTimeString(),
-            ];
-            $this->savePayouts($paid);
-            $parts[] = 'listing $' . number_format($amount, 2);
-            $total += $amount;
+        // Record EXACTLY the net owed the page shows in Pay now (earned minus
+        // paid, per type, with the listening-party split included). That way
+        // paid == what was owed and the person settles to $0 — instead of the old
+        // behaviour (line-based listing + floored sales, ignoring party/credits)
+        // which recorded the wrong amount and drifted to a phantom overpayment.
+        $listingEarned = 0.0;
+        foreach ($this->ownedSoldLines($businessId, $from, [])->where('user_id', $userId) as $row) {
+            $listingEarned += (float) $row->sale_amount * self::RATE;
+        }
+        $listingPaid = 0.0;
+        foreach ($this->loadPayouts() as $p) {
+            if ((int) ($p['user_id'] ?? 0) === $userId) { $listingPaid += (float) ($p['amount'] ?? 0); }
+        }
+        $listingNet = round($listingEarned - $listingPaid, 2);
+
+        $sales = $this->salesSummaryByUser($businessId)->get($userId);
+        $partyAdj = $this->partySplitAdjustmentsByUser();
+        $salesEarned = ($sales ? (float) $sales->earned : 0.0) + (float) ($partyAdj[$userId] ?? 0);
+        $salesPaid   = $sales ? (float) $sales->paid : 0.0;
+        $salesNet    = round($salesEarned - $salesPaid, 2);
+
+        if (round($listingNet + $salesNet, 2) <= 0.005) {
+            return redirect('/admin/listing-commissions')
+                ->with('status', ['success' => 0, 'msg' => 'Nothing outstanding for that person (they\'re settled or in credit).']);
         }
 
-        // Sales commission.
-        $summary = $this->salesSummaryByUser($businessId)->get($userId);
-        $owedSales = $summary ? (float) $summary->owed : 0.0;
-        if ($owedSales > 0) {
-            $u = DB::table('users')->where('id', $userId)->first();
-            $name = $name ?: ($u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $userId))) : ('User #' . $userId));
+        $now = now()->toDateTimeString();
+        $today = now()->toDateString();
+        $parts = []; $total = 0.0;
+
+        // Record each side at its net (a negative side is a credit being cleared
+        // by this run, so the two together always equal Pay now).
+        if (abs($listingNet) > 0.005) {
+            $lp = $this->loadPayouts();
+            $lp[] = [
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                'count' => 0, 'amount' => $listingNet, 'line_ids' => [], 'from_date' => $today, 'to_date' => $today,
+                'manual' => true, 'note' => 'Payroll — settle listing', 'marked_by' => $request->session()->get('user.id'), 'marked_at' => $now,
+            ];
+            $this->savePayouts($lp);
+            $parts[] = 'listing $' . number_format($listingNet, 2);
+            $total += $listingNet;
+        }
+        if (abs($salesNet) > 0.005) {
             $sp = $this->loadSalesPayouts();
             $sp[] = [
-                'id'        => bin2hex(random_bytes(8)),
-                'user_id'   => $userId,
-                'name'      => $name,
-                'amount'    => round($owedSales, 2),
-                'from_date' => self::SALES_BONUS_FROM,
-                'to_date'   => now()->toDateString(),
-                'marked_by' => $request->session()->get('user.id'),
-                'marked_at' => now()->toDateTimeString(),
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                'amount' => $salesNet, 'from_date' => $today, 'to_date' => $today,
+                'manual' => true, 'note' => 'Payroll — settle sales', 'marked_by' => $request->session()->get('user.id'), 'marked_at' => $now,
             ];
             $this->saveSalesPayouts($sp);
-            $parts[] = 'sales $' . number_format($owedSales, 2);
-            $total += $owedSales;
-        }
-
-        if (empty($parts)) {
-            return redirect('/admin/listing-commissions')
-                ->with('status', ['success' => 0, 'msg' => 'Nothing outstanding for that person.']);
+            $parts[] = 'sales $' . number_format($salesNet, 2);
+            $total += $salesNet;
         }
 
         return redirect('/admin/listing-commissions')->with('status', [
             'success' => 1,
-            'msg'     => 'Marked paid for ' . ($name ?: 'that person') . ': ' . implode(' + ', $parts) . ' = $' . number_format($total, 2) . '.',
+            'msg'     => 'Marked paid for ' . $name . ': ' . implode(' + ', $parts) . ' = $' . number_format($total, 2) . '.',
         ]);
     }
 
