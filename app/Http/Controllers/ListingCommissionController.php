@@ -536,6 +536,21 @@ class ListingCommissionController extends Controller
                     ->sum(DB::raw($net_pretax));
                 $sales = round((float) $sales, 2);
 
+                // The actual sales that make up that total — one row per receipt,
+                // so the number is fully auditable (time, cashier, amount).
+                $txns = DB::table('transactions as t')
+                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+                    ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+                    ->where('t.business_id', $businessId)
+                    ->where('t.location_id', $locationId)
+                    ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+                    ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                    ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
+                    ->groupBy('t.id', 't.invoice_no', 't.transaction_date', 'u.first_name', 'u.last_name')
+                    ->orderBy('t.transaction_date')
+                    ->selectRaw('t.invoice_no, t.transaction_date, u.first_name, u.last_name, COALESCE(SUM(' . $net_pretax . '), 0) as net')
+                    ->get();
+
                 $pool = round($sales * ($percent / 100), 2);
                 $n = max(1, count($selected));
                 $per = round($pool / $n, 2);
@@ -635,6 +650,190 @@ class ListingCommissionController extends Controller
         $msg = 'Paid ' . $paid . ' ' . ($paid === 1 ? 'person' : 'people') . ' $' . number_format($total, 2) . ' for the ' . $note . '.';
         if ($skipped > 0) { $msg .= ' Skipped ' . $skipped . ' already on the ledger (no double-pay).'; }
         return redirect('/admin/party-bonus')->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Shift Commission report (read-only). Implements the exact store rule:
+    //   * 2% of sales — the base, SPLIT among the floor staff sharing the one
+    //     register (Front Desk / Event Lead / Sales Floor Lead) hour by hour.
+    //   * +2% (=> 4%) on the amount each INDIVIDUAL rang OVER their own per-shift
+    //     goal — individual, NOT split. Uses the ERP's own goal/achieved numbers
+    //     (salesBonusByUser) so it agrees with what each employee sees.
+    // Shows every input so it can be verified before anyone is paid.
+    const SHIFT_BASE_RATE = 0.02;
+    const SHIFT_GOAL_BONUS_RATE = 0.02;
+    private $floorPositions = ['front desk', 'event lead', 'floor sales', 'sales floor lead'];
+
+    public function shiftCommission(Request $request)
+    {
+        $businessId = $request->session()->get('user.business_id');
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)->where('is_active', 1)
+            ->orderBy('name')->pluck('name', 'id');
+
+        $date = trim((string) $request->input('date', ''));
+        $locationId = (int) $request->input('location_id');
+        $result = null; $error = null;
+
+        if ($request->has('date')) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $locationId <= 0) {
+                $error = 'Pick a valid date and store.';
+            } else {
+                try {
+                    $result = $this->computeShiftCommission($businessId, $date, $locationId, $locations[$locationId] ?? ('Store #' . $locationId));
+                } catch (\Throwable $e) {
+                    \Log::warning('shiftCommission failed: ' . $e->getMessage());
+                    $error = 'Could not compute: ' . $e->getMessage();
+                }
+            }
+        }
+
+        return response()->view('admin.shift_commission', [
+            'locations' => $locations, 'date' => $date, 'location_id' => $locationId,
+            'result' => $result, 'error' => $error,
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache');
+    }
+
+    private function computeShiftCommission($businessId, $date, $locationId, $lname)
+    {
+        $start = $date . ' 00:00:00';
+        $end   = $date . ' 23:59:59';
+        $net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+
+        // Register sales per (hour, cashier) at this store for the day.
+        $rows = DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $businessId)->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$start, $end])
+            ->groupBy(DB::raw('HOUR(t.transaction_date)'), 't.created_by', 'u.first_name', 'u.last_name')
+            ->selectRaw("HOUR(t.transaction_date) as h, t.created_by as uid, u.first_name, u.last_name, COALESCE(SUM($net), 0) as rev")
+            ->get();
+
+        $hourSales = [];       // h => total store sales that hour
+        $hourCashierRev = [];  // h => [uid => rev they rang]
+        $ownRung = [];         // uid => total rung that day
+        $nameOf = [];
+        foreach ($rows as $r) {
+            $h = (int) $r->h; $uid = (int) $r->uid; $rev = (float) $r->rev;
+            $hourSales[$h] = ($hourSales[$h] ?? 0) + $rev;
+            $hourCashierRev[$h][$uid] = ($hourCashierRev[$h][$uid] ?? 0) + $rev;
+            $ownRung[$uid] = ($ownRung[$uid] ?? 0) + $rev;
+            $nameOf[$uid] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: ('User #' . $uid);
+        }
+
+        // Whitelisted floor shifts (Front Desk / Event Lead / Sales Floor Lead)
+        // published in Sling for this store on this day.
+        $shifts = \App\SlingShift::where('event_type', \App\SlingShift::TYPE_SHIFT)
+            ->where('published', 1)->whereNotNull('erp_user_id')
+            ->whereDate('dtstart', $date)->get();
+
+        $matchAll = DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1)->count() <= 1;
+        $lkey = strtolower(trim((string) $lname));
+        $lfirst = strtolower(trim(explode(' ', $lkey)[0] ?? ''));
+
+        $hourFrac = [];   // h => [uid => fraction of that clock-hour on a floor shift]
+        $shiftSpan = [];  // uid => [start, end, positions[]]
+        foreach ($shifts as $s) {
+            $pos = strtolower(trim((string) ($s->position_name ?? '')));
+            $isFloor = false;
+            foreach ($this->floorPositions as $fp) { if ($pos !== '' && strpos($pos, $fp) !== false) { $isFloor = true; break; } }
+            if (!$isFloor) { continue; }
+            if (!$matchAll) {
+                $sl = strtolower(trim((string) ($s->location_name ?? '')));
+                $lm = ($sl !== '' && ($sl === $lkey || strpos($sl, $lkey) !== false || strpos($lkey, $sl) !== false || ($lfirst !== '' && strpos($sl, $lfirst) !== false)));
+                if (!$lm) { continue; }
+            }
+            $uid = (int) $s->erp_user_id;
+            $nameOf[$uid] = ($nameOf[$uid] ?? '') ?: ($s->user_name ?: ('User #' . $uid));
+            $ss = \Carbon::parse($s->dtstart);
+            $se = $s->dtend ? \Carbon::parse($s->dtend) : $ss->copy()->endOfDay();
+            if (!isset($shiftSpan[$uid])) { $shiftSpan[$uid] = ['from' => $ss->copy(), 'to' => $se->copy(), 'pos' => []]; }
+            if ($ss->lt($shiftSpan[$uid]['from'])) { $shiftSpan[$uid]['from'] = $ss->copy(); }
+            if ($se->gt($shiftSpan[$uid]['to'])) { $shiftSpan[$uid]['to'] = $se->copy(); }
+            $shiftSpan[$uid]['pos'][ucwords($pos)] = true;
+
+            $cursor = $ss->copy();
+            while ($cursor->lt($se)) {
+                $slotEnd = $cursor->copy()->startOfHour()->addHour();
+                $chunk = $slotEnd->lt($se) ? $slotEnd : $se;
+                $frac = $cursor->diffInSeconds($chunk) / 3600.0;
+                $h = (int) $cursor->hour;
+                $hourFrac[$h][$uid] = ($hourFrac[$h][$uid] ?? 0) + $frac;
+                $cursor = $chunk;
+            }
+        }
+
+        // Attribute each hour's register sales among the floor staff on at that
+        // hour (weighted by the fraction of the hour worked). If no floor shift
+        // matched an hour, attribute it to whoever actually rang it (so nothing
+        // is lost when Sling data is missing).
+        $attributed = [];   // uid => split sales
+        $hourRows = [];
+        ksort($hourSales);
+        foreach ($hourSales as $h => $sales) {
+            if ($sales <= 0) { continue; }
+            $present = $hourFrac[$h] ?? [];
+            $tot = array_sum($present);
+            $split = [];
+            if ($tot > 0) {
+                foreach ($present as $uid => $frac) { $split[$uid] = $sales * ($frac / $tot); }
+            } else {
+                $cr = $hourCashierRev[$h] ?? [];
+                $crTot = array_sum($cr);
+                if ($crTot > 0) { foreach ($cr as $uid => $rev) { $split[$uid] = $sales * ($rev / $crTot); } }
+            }
+            foreach ($split as $uid => $amt) { $attributed[$uid] = ($attributed[$uid] ?? 0) + $amt; }
+            $hourRows[] = ['h' => $h, 'sales' => round($sales, 2), 'heads' => count($split), 'split' => $split];
+        }
+
+        // The ERP's own per-person goal + achieved for that day (so the goal
+        // bonus matches what each employee is shown).
+        $goals = collect();
+        $goalNote = null;
+        try {
+            $goals = app(\App\Http\Controllers\ReportController::class)->salesBonusByUser($businessId, $date, $date);
+        } catch (\Throwable $e) {
+            $goalNote = 'Goal numbers unavailable (' . $e->getMessage() . ') — showing base 2% only.';
+        }
+
+        $people = [];
+        $uids = array_unique(array_merge(array_keys($attributed), array_keys($shiftSpan)));
+        foreach ($uids as $uid) {
+            $uid = (int) $uid;
+            $attr = round($attributed[$uid] ?? 0, 2);
+            $g = $goals->get($uid);
+            $goal = $g ? round((float) $g->goal, 2) : 0.0;
+            $achieved = $g ? round((float) $g->achieved, 2) : round($ownRung[$uid] ?? 0, 2);
+            $base = round($attr * self::SHIFT_BASE_RATE, 2);
+            $over = ($goal > 0 && $achieved > $goal) ? round($achieved - $goal, 2) : 0.0;
+            $bonus = round($over * self::SHIFT_GOAL_BONUS_RATE, 2);
+            $span = $shiftSpan[$uid] ?? null;
+            $people[] = [
+                'uid' => $uid,
+                'name' => $nameOf[$uid] ?? ('User #' . $uid),
+                'shift' => $span ? ($span['from']->format('g:i A') . ' - ' . $span['to']->format('g:i A')) : '(no floor shift)',
+                'positions' => $span ? implode(', ', array_keys($span['pos'])) : '',
+                'own_rung' => round($ownRung[$uid] ?? 0, 2),
+                'attributed' => $attr,
+                'goal' => $goal,
+                'achieved' => $achieved,
+                'over' => $over,
+                'base' => $base,
+                'bonus' => $bonus,
+                'total' => round($base + $bonus, 2),
+            ];
+        }
+        usort($people, function ($a, $b) { return $b['total'] <=> $a['total']; });
+
+        return [
+            'date' => $date, 'store' => $lname,
+            'people' => $people, 'hour_rows' => $hourRows, 'names' => $nameOf,
+            'goal_note' => $goalNote,
+            'store_sales' => round(array_sum($hourSales), 2),
+        ];
     }
 
     // Freeze a payroll run: snapshot everyone's CURRENT owed (listing + sales)

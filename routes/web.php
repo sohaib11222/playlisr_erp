@@ -974,6 +974,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // each person's share to the (undoable) sales payout ledger.
     Route::get('/admin/party-bonus', 'ListingCommissionController@partyBonus');
     Route::post('/admin/party-bonus/pay', 'ListingCommissionController@partyBonusPay');
+    // Shift Commission: per-shift commission for a date + store. 2% of sales
+    // (split among floor staff sharing the one register), plus the individual
+    // 2% over-goal bonus (not split), using the ERP's own goal numbers.
+    Route::get('/admin/shift-commission', 'ListingCommissionController@shiftCommission');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling
