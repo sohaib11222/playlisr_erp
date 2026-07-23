@@ -159,6 +159,11 @@ class ListingCommissionController extends Controller
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
             $p->sales_goal     = $s ? (float) $s->goal     : 0.0;
             $p->sales_achieved = $s ? (float) $s->achieved : 0.0;
+            // NET per type = earned minus paid (can go NEGATIVE = a credit from
+            // an overpayment). Unlike the "owed" columns (which floor at 0), these
+            // two always add up to Pay now, so every row reconciles.
+            $p->sales_net   = round($p->sales_earned - $p->sales_paid, 2);
+            $p->listing_net = round($p->earned - $p->paid, 2);
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
             $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
