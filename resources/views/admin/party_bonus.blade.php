@@ -81,7 +81,7 @@
     <div class="pb-card pb-result">
         <div>Sales rung at <strong>{{ $result['location_name'] }}</strong> on <strong>{{ $date }}</strong>, {{ $result['window'] }}:</div>
         <div class="big">${{ number_format($result['sales'], 2) }}</div>
-        <div style="margin-top:6px;">Bonus pool = <strong>{{ rtrim(rtrim(number_format($result['percent'], 2), '0'), '.') }}%</strong> of that = <strong>${{ number_format($result['pool'], 2) }}</strong>@if(count($result['people']) > 0), split {{ count($result['people']) }} ways = <strong>${{ number_format($result['per'], 2) }}</strong> each@endif.</div>
+        <div style="margin-top:6px;">Bonus pool = <strong>{{ rtrim(rtrim(number_format($result['percent'], 2), '0'), '.') }}%</strong> of that = <strong>${{ number_format($result['pool'], 2) }}</strong>@if(count($result['people']) > 0), split {{ count($result['people']) }} ways = <strong>${{ number_format($result['per'], 2) }}</strong> each @endif.</div>
 
         @if (count($result['people']) > 0)
         <form method="POST" action="{{ url('/admin/party-bonus/pay') }}"
