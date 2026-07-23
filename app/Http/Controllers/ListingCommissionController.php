@@ -970,6 +970,11 @@ class ListingCommissionController extends Controller
     // Sum of all applied party-split adjustments per user (positive for helpers,
     // negative for cashiers; the total across everyone is zero). Read from a small
     // sidecar, so the Commissions page stays fast — no per-day recompute.
+    // Below this, a party adjustment is shift-handoff noise (a few cents from
+    // someone still ringing as another clocks in), not a real party share — drop
+    // it so it never shows or moves pay.
+    const PARTY_NOISE_FLOOR = 1.00;
+
     private function partySplitAdjustmentsByUser()
     {
         $out = [];
@@ -977,6 +982,9 @@ class ListingCommissionController extends Controller
             foreach (($entry['adj'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
+        }
+        foreach ($out as $uid => $amt) {
+            if (abs($amt) < self::PARTY_NOISE_FLOOR) { unset($out[$uid]); }
         }
         return $out;
     }
@@ -991,6 +999,9 @@ class ListingCommissionController extends Controller
             foreach (($entry['party'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
+        }
+        foreach ($out as $uid => $amt) {
+            if (abs($amt) < self::PARTY_NOISE_FLOOR) { unset($out[$uid]); }
         }
         return $out;
     }
