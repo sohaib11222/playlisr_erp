@@ -443,6 +443,170 @@ class ListingCommissionController extends Controller
         ]);
     }
 
+    // Listening Party Bonus calculator. Pick a date + time window + store + a
+    // %, and it pulls the ACTUAL sales rung at that store during the window
+    // (non-whatnot, final sells, pre-tax net of returns — the same revenue basis
+    // as commissions), then splits (% of those sales) evenly among the staff who
+    // worked the party. Purpose-built for the "2 people work a party, split a %
+    // of what the store rang during it" model, which the hourly overage pool
+    // handles badly. Read-only until you hit Pay; paying logs to the same
+    // undoable sales payout ledger the Commissions page uses.
+    public function partyBonus(Request $request)
+    {
+        $businessId = $request->session()->get('user.business_id');
+
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)->where('is_active', 1)
+            ->orderBy('name')->pluck('name', 'id');
+
+        $staff = DB::table('users')
+            ->where('business_id', $businessId)
+            ->where('status', 'active')
+            ->orderBy('first_name')->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name', 'surname'])
+            ->map(function ($u) {
+                $u->label = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $u->id));
+                return $u;
+            });
+
+        $date       = trim((string) $request->input('date', ''));
+        $fromTime   = trim((string) $request->input('from_time', ''));
+        $toTime     = trim((string) $request->input('to_time', ''));
+        $locationId = (int) $request->input('location_id');
+        $percent    = (float) $request->input('percent', 0);
+        $selected   = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('staff', [])))));
+
+        $result = null;
+        $error  = null;
+        $validWindow = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)
+            && preg_match('/^\d{1,2}:\d{2}$/', $fromTime)
+            && preg_match('/^\d{1,2}:\d{2}$/', $toTime)
+            && $locationId > 0;
+
+        if ($request->has('date') && !$validWindow) {
+            $error = 'Enter a valid date, start time, end time (HH:MM), and store.';
+        } elseif ($validWindow) {
+            $startC = \Carbon::parse($date . ' ' . $fromTime . ':00');
+            $endC   = \Carbon::parse($date . ' ' . $toTime . ':59');
+            if ($endC->lte($startC)) {
+                $error = 'End time must be after start time.';
+            } else {
+                // Sales rung at this store during the window. transaction_date on
+                // in-store POS sales is stored in store-local (LA) time, so a
+                // local-clock window matches directly. Same revenue basis as the
+                // leaderboard/commissions (pre-tax, net of returns, no Whatnot).
+                $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+                $sales = (float) DB::table('transactions as t')
+                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+                    ->where('t.business_id', $businessId)
+                    ->where('t.location_id', $locationId)
+                    ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+                    ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                    ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
+                    ->sum(DB::raw($net_pretax));
+                $sales = round((float) $sales, 2);
+
+                $pool = round($sales * ($percent / 100), 2);
+                $n = max(1, count($selected));
+                $per = round($pool / $n, 2);
+
+                $names = [];
+                if (!empty($selected)) {
+                    foreach (DB::table('users')->whereIn('id', $selected)->get(['id', 'first_name', 'last_name', 'surname']) as $u) {
+                        $names[(int) $u->id] = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $u->id));
+                    }
+                }
+                $people = [];
+                foreach ($selected as $uid) {
+                    $people[] = ['user_id' => $uid, 'name' => $names[$uid] ?? ('User #' . $uid), 'amount' => $per];
+                }
+
+                $result = [
+                    'sales'         => $sales,
+                    'percent'       => $percent,
+                    'pool'          => $pool,
+                    'per'           => $per,
+                    'people'        => $people,
+                    'location_name' => $locations[$locationId] ?? ('Store #' . $locationId),
+                    'window'        => $startC->format('g:i A') . ' - ' . $endC->format('g:i A'),
+                ];
+            }
+        }
+
+        return response()->view('admin.party_bonus', [
+            'locations'   => $locations,
+            'staff'       => $staff,
+            'date'        => $date,
+            'from_time'   => $fromTime,
+            'to_time'     => $toTime,
+            'location_id' => $locationId,
+            'percent'     => $percent ?: '',
+            'selected'    => $selected,
+            'result'      => $result,
+            'error'       => $error,
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache');
+    }
+
+    // Log each party worker's share to the sales payout ledger, backdated to the
+    // party date, so it shows as paid on the Commissions page and is undoable
+    // there. Skips an entry already on the ledger for the same person+date+amount
+    // so re-submitting the same party can't double-pay.
+    public function partyBonusPay(Request $request)
+    {
+        $date  = trim((string) $request->input('date', ''));
+        $store = trim((string) $request->input('location_name', ''));
+        $uids  = (array) $request->input('user_id', []);
+        $amts  = (array) $request->input('amount', []);
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return redirect('/admin/party-bonus')
+                ->with('status', ['success' => 0, 'msg' => 'Missing party date.']);
+        }
+
+        $note = 'Listening party ' . $date . ($store !== '' ? ' (' . $store . ')' : '');
+        $sales = $this->loadSalesPayouts();
+
+        $exists = function ($uid, $amount) use ($sales, $date) {
+            foreach ($sales as $p) {
+                $pdate = substr((string) ($p['from_date'] ?? $p['marked_at'] ?? ''), 0, 10);
+                if ((int) ($p['user_id'] ?? 0) === $uid && $pdate === $date
+                    && abs((float) ($p['amount'] ?? 0) - $amount) < 0.005) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $paid = 0; $skipped = 0; $total = 0.0;
+        foreach ($uids as $i => $uidRaw) {
+            $uid = (int) $uidRaw;
+            $amount = round((float) ($amts[$i] ?? 0), 2);
+            if ($uid <= 0 || $amount == 0.0) { continue; }
+            if ($exists($uid, $amount)) { $skipped++; continue; }
+
+            $u = DB::table('users')->where('id', $uid)->first();
+            $name = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid);
+            $sales[] = [
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $uid, 'name' => $name,
+                'amount' => $amount, 'from_date' => $date, 'to_date' => $date,
+                'manual' => true, 'note' => $note,
+                'marked_by' => $request->session()->get('user.id'), 'marked_at' => $date . ' 12:00:00',
+            ];
+            $paid++; $total += $amount;
+        }
+
+        $this->saveSalesPayouts($sales);
+
+        if ($paid === 0 && $skipped === 0) {
+            return redirect('/admin/party-bonus')
+                ->with('status', ['success' => 0, 'msg' => 'Nothing to pay — pick staff and an amount first.']);
+        }
+        $msg = 'Paid ' . $paid . ' ' . ($paid === 1 ? 'person' : 'people') . ' $' . number_format($total, 2) . ' for the ' . $note . '.';
+        if ($skipped > 0) { $msg .= ' Skipped ' . $skipped . ' already on the ledger (no double-pay).'; }
+        return redirect('/admin/party-bonus')->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
     // Freeze a payroll run: snapshot everyone's CURRENT owed (listing + sales)
     // into a locked list you pay against, so the sales bonus can't drift under
     // you mid-payroll. Read-only reference — it does not touch the payout ledgers.

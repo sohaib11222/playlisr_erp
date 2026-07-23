@@ -969,6 +969,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Bulk-record a past payroll from pasted rows (name, listing, sales). Skips
     // anything already on the ledger so re-pasting can't double-count.
     Route::post('/admin/listing-commissions/bulk-record', 'ListingCommissionController@bulkRecord');
+    // Listening Party Bonus: pick date + time window + store + %, pull that
+    // window's sales, split the % among the staff who worked the party, and log
+    // each person's share to the (undoable) sales payout ledger.
+    Route::get('/admin/party-bonus', 'ListingCommissionController@partyBonus');
+    Route::post('/admin/party-bonus/pay', 'ListingCommissionController@partyBonusPay');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling
