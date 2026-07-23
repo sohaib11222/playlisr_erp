@@ -568,7 +568,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                 {{-- Sarah 2026-07-22: Discogs logo next to the heading. --}}
                 <span style="display:inline-flex; align-items:center; gap:5px; margin-left:8px; vertical-align:middle;">
                     <svg title="Discogs" role="img" aria-label="Discogs" viewBox="0 0 32 32" style="height:18px; width:18px;" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#333333" stroke-width="2.4"><circle cx="16" cy="16" r="14"/><circle cx="16" cy="16" r="8.2"/></g><circle cx="16" cy="16" r="2.4" fill="#333333"/></svg>
-                    <span style="font-family:Arial,Helvetica,sans-serif; font-weight:bold; font-size:15px; color:#333333; line-height:1;">discogs</span>
+                    <span style="font-family:'Avenir Next','Century Gothic',Futura,'Trebuchet MS',sans-serif; font-weight:bold; font-size:17px; letter-spacing:-0.3px; color:#111111; line-height:1;">Discogs</span>
                 </span>
             </h3>
             <div class="box-tools pull-right">
