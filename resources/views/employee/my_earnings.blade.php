@@ -95,6 +95,13 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <div class="val" style="font-size:24px;">${{ number_format($sales_bonus['revenue'], 2) }}</div>
                     <div class="sub">non-Whatnot; your sales feed the store goal</div>
                 </div>
+                @if(abs($sales_bonus['party_split'] ?? 0) > 0.004)
+                <div class="me-stat">
+                    <div class="lbl">Listening party commission</div>
+                    <div class="val" style="font-size:24px; color:{{ $sales_bonus['party_split'] > 0 ? '#2F6B3E' : '#B3402E' }};">{{ $sales_bonus['party_split'] > 0 ? '+' : '-' }}${{ number_format(abs($sales_bonus['party_split']), 2) }}</div>
+                    <div class="sub">{{ $sales_bonus['party_split'] > 0 ? 'your share of a party bonus while sharing the floor' : "your helper's share of a party bonus, moved to them" }} — included above</div>
+                </div>
+                @endif
                 @php $salesOwed = round((float) $sales_bonus['bonus'] - (float) $sales_paid, 2); @endphp
                 <div class="me-stat">
                     <div class="lbl">Paid out to you</div>

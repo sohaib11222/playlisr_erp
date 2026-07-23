@@ -115,6 +115,28 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings sales bonus failed: ' . $e->getMessage());
         }
 
+        // Listening-party split: fold this person's applied party redistribution
+        // into their sales bonus so the statement matches the payroll page. A
+        // floor helper sees a positive "Listening party commission"; the cashier
+        // sees the share that moved to their helper subtracted.
+        $partySplit = 0.0;
+        try {
+            if (\Storage::disk('local')->exists('party-split-adjustments.json')) {
+                $all = json_decode(\Storage::disk('local')->get('party-split-adjustments.json'), true);
+                if (is_array($all)) {
+                    foreach ($all as $entry) {
+                        foreach (($entry['adj'] ?? []) as $uid => $amt) {
+                            if ((int) $uid === $userId) { $partySplit += (float) $amt; }
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('my-earnings party split failed: ' . $e->getMessage());
+        }
+        $salesBonus['party_split'] = round($partySplit, 2);
+        $salesBonus['bonus'] = round(((float) $salesBonus['bonus']) + $partySplit, 2);
+
         // Reconciled paid/owed that INCLUDES manual payments (from both ledgers),
         // matching the admin Commissions page: owed = total earned − total paid,
         // and can go negative when overpaid.
