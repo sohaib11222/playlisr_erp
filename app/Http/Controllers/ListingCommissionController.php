@@ -700,32 +700,31 @@ class ListingCommissionController extends Controller
         $end   = $date . ' 23:59:59';
         $net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
 
-        // Register sales per (hour, cashier) at this store for the day.
-        $rows = DB::table('transactions as t')
+        // Every sell receipt at this store for the day, with its EXACT time and
+        // who rang it — so sales are split by who was actually on the floor at
+        // that minute (not rounded to the hour).
+        $txns = DB::table('transactions as t')
             ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
             ->where('t.business_id', $businessId)->where('t.location_id', $locationId)
             ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
             ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->whereBetween('t.transaction_date', [$start, $end])
-            ->groupBy(DB::raw('HOUR(t.transaction_date)'), 't.created_by', 'u.first_name', 'u.last_name')
-            ->selectRaw("HOUR(t.transaction_date) as h, t.created_by as uid, u.first_name, u.last_name, COALESCE(SUM($net), 0) as rev")
+            ->groupBy('t.id', 't.transaction_date', 't.created_by', 'u.first_name', 'u.last_name')
+            ->orderBy('t.transaction_date')
+            ->selectRaw("t.id, t.transaction_date, t.created_by as uid, u.first_name, u.last_name, COALESCE(SUM($net), 0) as net")
             ->get();
 
-        $hourSales = [];       // h => total store sales that hour
-        $hourCashierRev = [];  // h => [uid => rev they rang]
-        $ownRung = [];         // uid => total rung that day
+        $ownRung = [];  // uid => total rung that day
         $nameOf = [];
-        foreach ($rows as $r) {
-            $h = (int) $r->h; $uid = (int) $r->uid; $rev = (float) $r->rev;
-            $hourSales[$h] = ($hourSales[$h] ?? 0) + $rev;
-            $hourCashierRev[$h][$uid] = ($hourCashierRev[$h][$uid] ?? 0) + $rev;
-            $ownRung[$uid] = ($ownRung[$uid] ?? 0) + $rev;
-            $nameOf[$uid] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: ('User #' . $uid);
+        foreach ($txns as $r) {
+            $uid = (int) $r->uid;
+            $ownRung[$uid] = ($ownRung[$uid] ?? 0) + (float) $r->net;
+            if ($uid > 0) { $nameOf[$uid] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: ('User #' . $uid); }
         }
 
         // Whitelisted floor shifts (Front Desk / Event Lead / Sales Floor Lead)
-        // published in Sling for this store on this day.
+        // published in Sling for this store on this day, as exact time intervals.
         $shifts = \App\SlingShift::where('event_type', \App\SlingShift::TYPE_SHIFT)
             ->where('published', 1)->whereNotNull('erp_user_id')
             ->whereDate('dtstart', $date)->get();
@@ -734,8 +733,8 @@ class ListingCommissionController extends Controller
         $lkey = strtolower(trim((string) $lname));
         $lfirst = strtolower(trim(explode(' ', $lkey)[0] ?? ''));
 
-        $hourFrac = [];   // h => [uid => fraction of that clock-hour on a floor shift]
-        $shiftSpan = [];  // uid => [start, end, positions[]]
+        $intervals = [];  // uid => [[startTs, endTs], ...]
+        $shiftSpan = [];  // uid => ['from'=>, 'to'=>, 'pos'=>[]]
         foreach ($shifts as $s) {
             $pos = strtolower(trim((string) ($s->position_name ?? '')));
             $isFloor = false;
@@ -750,43 +749,41 @@ class ListingCommissionController extends Controller
             $nameOf[$uid] = ($nameOf[$uid] ?? '') ?: ($s->user_name ?: ('User #' . $uid));
             $ss = \Carbon::parse($s->dtstart);
             $se = $s->dtend ? \Carbon::parse($s->dtend) : $ss->copy()->endOfDay();
+            $intervals[$uid][] = [$ss->timestamp, $se->timestamp];
             if (!isset($shiftSpan[$uid])) { $shiftSpan[$uid] = ['from' => $ss->copy(), 'to' => $se->copy(), 'pos' => []]; }
             if ($ss->lt($shiftSpan[$uid]['from'])) { $shiftSpan[$uid]['from'] = $ss->copy(); }
             if ($se->gt($shiftSpan[$uid]['to'])) { $shiftSpan[$uid]['to'] = $se->copy(); }
             $shiftSpan[$uid]['pos'][ucwords($pos)] = true;
-
-            $cursor = $ss->copy();
-            while ($cursor->lt($se)) {
-                $slotEnd = $cursor->copy()->startOfHour()->addHour();
-                $chunk = $slotEnd->lt($se) ? $slotEnd : $se;
-                $frac = $cursor->diffInSeconds($chunk) / 3600.0;
-                $h = (int) $cursor->hour;
-                $hourFrac[$h][$uid] = ($hourFrac[$h][$uid] ?? 0) + $frac;
-                $cursor = $chunk;
-            }
         }
 
-        // Attribute each hour's register sales among the floor staff on at that
-        // hour (weighted by the fraction of the hour worked). If no floor shift
-        // matched an hour, attribute it to whoever actually rang it (so nothing
-        // is lost when Sling data is missing).
-        $attributed = [];   // uid => split sales
-        $hourRows = [];
-        ksort($hourSales);
-        foreach ($hourSales as $h => $sales) {
-            if ($sales <= 0) { continue; }
-            $present = $hourFrac[$h] ?? [];
-            $tot = array_sum($present);
-            $split = [];
-            if ($tot > 0) {
-                foreach ($present as $uid => $frac) { $split[$uid] = $sales * ($frac / $tot); }
-            } else {
-                $cr = $hourCashierRev[$h] ?? [];
-                $crTot = array_sum($cr);
-                if ($crTot > 0) { foreach ($cr as $uid => $rev) { $split[$uid] = $sales * ($rev / $crTot); } }
+        // Split each receipt among the floor staff on at its exact time. When 2+
+        // share the floor, it's the "party" (shared) portion; when one person is
+        // on, it's their solo. A sale rung when nobody has a matched floor shift
+        // goes to whoever actually rang it (so nothing is lost to Sling gaps).
+        $attributed = []; $party = []; $solo = [];
+        foreach ($txns as $r) {
+            $net = (float) $r->net;
+            if ($net == 0.0) { continue; }
+            $ts = \Carbon::parse($r->transaction_date)->timestamp;
+            $present = [];
+            foreach ($intervals as $uid => $ivs) {
+                foreach ($ivs as $iv) { if ($ts >= $iv[0] && $ts < $iv[1]) { $present[] = $uid; break; } }
             }
-            foreach ($split as $uid => $amt) { $attributed[$uid] = ($attributed[$uid] ?? 0) + $amt; }
-            $hourRows[] = ['h' => $h, 'sales' => round($sales, 2), 'heads' => count($split), 'split' => $split];
+            if (!empty($present)) {
+                $shared = count($present) > 1;
+                $share = $net / count($present);
+                foreach ($present as $uid) {
+                    $attributed[$uid] = ($attributed[$uid] ?? 0) + $share;
+                    if ($shared) { $party[$uid] = ($party[$uid] ?? 0) + $share; }
+                    else { $solo[$uid] = ($solo[$uid] ?? 0) + $share; }
+                }
+            } else {
+                $uid = (int) $r->uid;
+                if ($uid > 0) {
+                    $attributed[$uid] = ($attributed[$uid] ?? 0) + $net;
+                    $solo[$uid] = ($solo[$uid] ?? 0) + $net;
+                }
+            }
         }
 
         // The ERP's own per-person goal + achieved for that day (so the goal
@@ -807,7 +804,8 @@ class ListingCommissionController extends Controller
             $g = $goals->get($uid);
             $goal = $g ? round((float) $g->goal, 2) : 0.0;
             $achieved = $g ? round((float) $g->achieved, 2) : round($ownRung[$uid] ?? 0, 2);
-            $base = round($attr * self::SHIFT_BASE_RATE, 2);
+            $partyComm = round(($party[$uid] ?? 0) * self::SHIFT_BASE_RATE, 2);
+            $soloBase  = round(($solo[$uid] ?? 0) * self::SHIFT_BASE_RATE, 2);
             $over = ($goal > 0 && $achieved > $goal) ? round($achieved - $goal, 2) : 0.0;
             $bonus = round($over * self::SHIFT_GOAL_BONUS_RATE, 2);
             $span = $shiftSpan[$uid] ?? null;
@@ -821,18 +819,22 @@ class ListingCommissionController extends Controller
                 'goal' => $goal,
                 'achieved' => $achieved,
                 'over' => $over,
-                'base' => $base,
+                // Regular sales commission = solo-floor base + individual over-goal
+                // bonus. Party commission = the shared-floor base (split 50/50).
+                'sales_comm' => round($soloBase + $bonus, 2),
+                'party_comm' => $partyComm,
+                'solo_base'  => $soloBase,
                 'bonus' => $bonus,
-                'total' => round($base + $bonus, 2),
+                'total' => round($soloBase + $partyComm + $bonus, 2),
             ];
         }
         usort($people, function ($a, $b) { return $b['total'] <=> $a['total']; });
 
         return [
             'date' => $date, 'store' => $lname,
-            'people' => $people, 'hour_rows' => $hourRows, 'names' => $nameOf,
+            'people' => $people, 'names' => $nameOf,
             'goal_note' => $goalNote,
-            'store_sales' => round(array_sum($hourSales), 2),
+            'store_sales' => round(array_sum($ownRung), 2),
         ];
     }
 
