@@ -255,7 +255,7 @@ class GamificationService
             }
 
             if ($def['key'] === 'avg_ticket') {
-                $agg = $this->shiftSalesAggregate($user->id, $businessId, $shift);
+                $agg = $this->shiftSalesAggregate($user->id, $businessId, $shift, true);
                 $delta = ($current > 0 && $peerPerHour) ? (($current - $peerPerHour) / $peerPerHour) * 100 : null;
                 $task['paired_with'] = $def['paired_with'] ?? null;
                 $task['hide_bar'] = true;
@@ -442,7 +442,7 @@ class GamificationService
      *
      * @return array{total: float, count: int}
      */
-    protected function shiftSalesAggregate(int $userId, int $businessId, array $shift): array
+    protected function shiftSalesAggregate(int $userId, int $businessId, array $shift, bool $inStoreOnly = false): array
     {
         $start = $shift['started_at']->toDateTimeString();
         $now = Carbon::now()->toDateTimeString();
@@ -453,6 +453,12 @@ class GamificationService
             ->whereNull('import_source')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$start, $now]);
+        // Avg-ticket callers pass $inStoreOnly=true so off-register channels
+        // don't skew a cashier's counter ATV; the products-goal register-
+        // busyness count leaves it false (any register ring is register time).
+        if ($inStoreOnly) {
+            $this->scopeInStoreChannel($q);
+        }
         if (!empty($shift['location_id'])) {
             $q->where('location_id', $shift['location_id']);
         }
@@ -473,12 +479,14 @@ class GamificationService
      */
     public function personalBestAvgTicket(int $userId, int $businessId): ?array
     {
-        $row = DB::table('transactions')
-            ->where('business_id', $businessId)
-            ->where('type', 'sell')
-            ->where('status', 'final')
-            ->whereNull('import_source')
-            ->where('created_by', $userId)
+        $row = $this->scopeInStoreChannel(
+            DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->where('created_by', $userId)
+        )
             ->selectRaw('DATE(transaction_date) as d, SUM(final_total) / COUNT(*) as atv, COUNT(*) as cnt')
             ->groupBy('d')
             ->havingRaw('COUNT(*) >= 3')
@@ -574,6 +582,27 @@ class GamificationService
         return [];
     }
 
+    /**
+     * Restrict a `transactions` query to true in-store register sales.
+     *
+     * Sarah 2026-07-23: Whatnot / Discogs / eBay / Prepaid Pickup rings are
+     * off-register — Whatnot is Golden's livestream, Discogs/eBay settle on
+     * their own platforms, prepaid pickups were paid ahead. When a cashier
+     * taps one of those channel chips at the register they're only *recording*
+     * the sale, not making a live counter sale, so it must not move their
+     * personal shift-sales or avg-ticket goals. Filtering to channel =
+     * 'in_store' keeps only register sales; legacy rows default to 'in_store'
+     * (see migration 2026_04_22_063000), so history is unaffected. Guarded on
+     * the column so servers that haven't run that migration keep working.
+     */
+    protected function scopeInStoreChannel($query)
+    {
+        if (\Schema::hasColumn('transactions', 'channel')) {
+            $query->where('channel', 'in_store');
+        }
+        return $query;
+    }
+
     protected function measureCurrent(string $taskKey, int $userId, int $businessId, array $shift): float
     {
         $start = $shift['started_at']->toDateTimeString();
@@ -587,6 +616,10 @@ class GamificationService
                 ->whereNull('import_source')
                 ->where('created_by', $userId)
                 ->whereBetween('transaction_date', [$start, $now]);
+            // Personal shift-sales goal counts in-store register sales only —
+            // Whatnot/Discogs/Prepaid Pickup are off-register (see
+            // scopeInStoreChannel).
+            $this->scopeInStoreChannel($q);
             if (!empty($shift['location_id'])) {
                 $q->where('location_id', $shift['location_id']);
             }
@@ -602,7 +635,7 @@ class GamificationService
         }
 
         if ($taskKey === 'avg_ticket') {
-            $row = $this->shiftSalesAggregate($userId, $businessId, $shift);
+            $row = $this->shiftSalesAggregate($userId, $businessId, $shift, true);
             return $row['count'] > 0 ? (float) $row['total'] / $row['count'] : 0.0;
         }
 
@@ -690,6 +723,9 @@ class GamificationService
                 ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
                 ->whereRaw('HOUR(transaction_date) = ?', [$hour])
                 ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+            // In-store only so the peer ATV benchmark matches the cashier's
+            // now-in-store-only current ATV.
+            $this->scopeInStoreChannel($q);
             if (!empty($shift['location_id'])) {
                 $q->where('location_id', $shift['location_id']);
             }
@@ -769,6 +805,10 @@ class GamificationService
             ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
             ->whereRaw('HOUR(transaction_date) = ?', [$hour])
             ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        // In-store register sales only — the sales_total goal is in-store, so
+        // its peer pace must be too (off-register Whatnot/Discogs would
+        // inflate the target the cashier is measured against).
+        $this->scopeInStoreChannel($q);
         if (!empty($locationId)) {
             $q->where('location_id', $locationId);
         }
@@ -813,7 +853,7 @@ class GamificationService
         $rangeEnd = $now->copy()->subDay()->endOfDay()->toDateTimeString();
         $dowBucket = $this->dowBucketForToday();
 
-        $daily = $this->storeDailyPeerStats($businessId, $shift['location_id'] ?? null, $dowBucket, $rangeStart, $rangeEnd);
+        $daily = $this->storeDailyPeerStats($businessId, $shift['location_id'] ?? null, $dowBucket, $rangeStart, $rangeEnd, true);
         if ($daily['avg'] === null || $daily['avg'] <= 0) {
             return null;
         }
@@ -832,7 +872,7 @@ class GamificationService
      *
      * @return array{avg: ?float, top: ?float}
      */
-    protected function storeDailyPeerStats(int $businessId, ?int $locationId, array $dowBucket, string $rangeStart, string $rangeEnd): array
+    protected function storeDailyPeerStats(int $businessId, ?int $locationId, array $dowBucket, string $rangeStart, string $rangeEnd, bool $inStoreOnly = false): array
     {
         $q = DB::table('transactions')
             ->where('business_id', $businessId)
@@ -842,6 +882,11 @@ class GamificationService
             ->whereNotNull('created_by')
             ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
             ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        // The sales_total fallback passes true (personal in-store goal); the
+        // store_sales_today "all cashiers" figure leaves it false.
+        if ($inStoreOnly) {
+            $this->scopeInStoreChannel($q);
+        }
         if (!empty($locationId)) {
             $q->where('location_id', $locationId);
         }
@@ -921,6 +966,9 @@ class GamificationService
             ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
             ->whereRaw('HOUR(transaction_date) = ?', [$hour])
             ->whereRaw('DAYOFWEEK(transaction_date) IN ('.$this->dowList($dowBucket).')');
+        // Match the in-store numerator in salesPeerStats: an off-register
+        // Whatnot ring doesn't prove the counter was open this hour.
+        $this->scopeInStoreChannel($q);
         if (!empty($locationId)) {
             $q->where('location_id', $locationId);
         }
