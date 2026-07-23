@@ -152,6 +152,7 @@ class ListingCommissionController extends Controller
         }
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
+        $partyEarned = $this->partyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -175,6 +176,7 @@ class ListingCommissionController extends Controller
             // total payout is unchanged — it just moves each party's bonus onto
             // the floor helper who earned it.
             $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
+            $p->party_earned = round($partyEarned[(int) $uid] ?? 0, 2); // equal 50/50 share, for display
             $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
@@ -921,19 +923,22 @@ class ListingCommissionController extends Controller
             return redirect($back)->with('status', ['success' => 0, 'msg' => 'Could not compute the split: ' . $e->getMessage()]);
         }
 
-        $adj = []; $detail = [];
+        $adj = []; $party = []; $detail = [];
         foreach ($res['people'] as $p) {
+            $uid = (int) $p['uid'];
             $a = round($p['total'] - $p['raw_bonus'], 2);
-            if (abs($a) < 0.005) { continue; }
-            $adj[(int) $p['uid']] = $a;
-            $detail[] = ['uid' => (int) $p['uid'], 'name' => $p['name'], 'raw' => $p['raw_bonus'], 'new' => $p['total'], 'adj' => $a];
+            $pc = round($p['party_bonus'] ?? 0, 2);   // what they EARNED for the party (equal split)
+            if (abs($a) < 0.005 && abs($pc) < 0.005) { continue; }
+            if (abs($a) >= 0.005) { $adj[$uid] = $a; }
+            if (abs($pc) >= 0.005) { $party[$uid] = $pc; }
+            $detail[] = ['uid' => $uid, 'name' => $p['name'], 'raw' => $p['raw_bonus'], 'new' => $p['total'], 'adj' => $a, 'party_earned' => $pc];
         }
 
         $all = $this->loadPartySplits();
         $all[$date . '|' . $locationId] = [
             'date' => $date, 'location_id' => $locationId, 'store' => $lname,
             'applied_at' => now()->toDateTimeString(), 'applied_by' => $request->session()->get('user.id'),
-            'adj' => $adj, 'detail' => $detail,
+            'adj' => $adj, 'party' => $party, 'detail' => $detail,
         ];
         $this->savePartySplits($all);
 
@@ -962,6 +967,20 @@ class ListingCommissionController extends Controller
         $out = [];
         foreach ($this->loadPartySplits() as $entry) {
             foreach (($entry['adj'] ?? []) as $uid => $amt) {
+                $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
+            }
+        }
+        return $out;
+    }
+
+    // What each person EARNED for the party (their equal 50/50 share) — shown as
+    // the "Listening party" column so both the cashier and the helper read the
+    // same amount, separate from the +/- movement in the pay adjustment above.
+    private function partyEarnedByUser()
+    {
+        $out = [];
+        foreach ($this->loadPartySplits() as $entry) {
+            foreach (($entry['party'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
         }

@@ -161,7 +161,7 @@
                             <th style="text-align:right; background:#FFF3C4;" title="Unpaid listing commission">Listing owed</th>
                             <th style="text-align:right; border-left:1px solid #ddd;" title="Sales earned minus sales paid. Negative = a credit from an overpayment. Sales net + Listing net = Pay now.">Sales net</th>
                             <th style="text-align:right;" title="Listing earned minus listing paid. Negative = a credit.">Listing net</th>
-                            <th style="text-align:right; border-left:1px solid #ddd;" title="Listening party commission — a floor helper's share of a party bonus (+), or the share moved OFF the cashier (-). Already included in Sales net.">Listening party</th>
+                            <th style="text-align:right; border-left:1px solid #ddd;" title="What each person earned for the listening party — their equal 50/50 share of the bonus while sharing the floor. Already reflected in Sales net / Pay now.">Listening party</th>
                             <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales net + Listing net = what you hand this person this run">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
@@ -185,7 +185,7 @@
                                 <td style="text-align:right; background:#FFF3C4;">@if($p->owed > 0)${{ number_format($p->owed, 2) }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; border-left:1px solid #ddd;">@if(abs($p->sales_net) < 0.005)<span class="text-muted">—</span>@elseif($p->sales_net > 0)${{ number_format($p->sales_net, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($p->sales_net), 2) }}</span>@endif</td>
                                 <td style="text-align:right;">@if(abs($p->listing_net) < 0.005)<span class="text-muted">—</span>@elseif($p->listing_net > 0)${{ number_format($p->listing_net, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($p->listing_net), 2) }}</span>@endif</td>
-                                <td style="text-align:right; border-left:1px solid #ddd;">@if(abs($p->party_split ?? 0) < 0.005)<span class="text-muted">—</span>@elseif($p->party_split > 0)<span style="color:#2f7a4f; font-weight:600;">+${{ number_format($p->party_split, 2) }}</span>@else <span style="color:#b3402e;">-${{ number_format(abs($p->party_split), 2) }}</span>@endif</td>
+                                <td style="text-align:right; border-left:1px solid #ddd;">@if(abs($p->party_earned ?? 0) < 0.005)<span class="text-muted">—</span>@else <span style="color:#2f7a4f; font-weight:600;">${{ number_format($p->party_earned, 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
