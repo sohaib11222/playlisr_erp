@@ -200,12 +200,15 @@ class ListingCommissionController extends Controller
             // from the NET per type (earned minus paid) so it always explains the
             // actual Pay now — including a CREDIT when someone was overpaid.
             $memo = [];
-            if ($p->sales_net > 0.004) {
-                $memo[] = 'Sales bonus $' . number_format($p->sales_net, 2)
+            // Sales-bonus line EXCLUDES the party split (shown on its own line
+            // below) so the memo adds up to Pay now instead of double-counting.
+            $salesBonusOnly = round($p->sales_net - $p->party_split, 2);
+            if ($salesBonusOnly > 0.004) {
+                $memo[] = 'Sales bonus $' . number_format($salesBonusOnly, 2)
                     . ' — 2% of register sales above your daily goal (4% during peak hours), added up day by day since '
                     . \Carbon::parse(self::SALES_BONUS_FROM)->format('m/d/y');
-            } elseif ($p->sales_net < -0.004) {
-                $memo[] = 'Sales credit -$' . number_format(abs($p->sales_net), 2)
+            } elseif ($salesBonusOnly < -0.004) {
+                $memo[] = 'Sales credit -$' . number_format(abs($salesBonusOnly), 2)
                     . ' — overpaid sales bonus from a past run, subtracted here';
             }
             if (abs($p->party_split) > 0.004) {
