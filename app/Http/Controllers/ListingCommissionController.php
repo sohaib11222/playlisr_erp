@@ -151,10 +151,31 @@ class ListingCommissionController extends Controller
             }
         }
         $stores = $this->primaryStoreByUser($businessId);
+        $partyAdj = $this->partySplitAdjustmentsByUser();
+        // Make sure a floor helper who only shows up via a party split (no listing
+        // and no raw sales bonus of their own) still appears on the page.
+        foreach ($partyAdj as $uid => $amt) {
+            $uid = (int) $uid;
+            if (!isset($byId[$uid])) {
+                $u = DB::table('users')->where('id', $uid)->first();
+                $byId[$uid] = (object) [
+                    'user_id' => $uid,
+                    'name'    => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?? ('User #' . $uid))) : ('User #' . $uid),
+                    'listed_count' => 0, 'listed_value' => 0.0, 'sold_count' => 0,
+                    'sale_total' => 0.0, 'earned' => 0.0, 'paid' => 0.0, 'owed' => 0.0, 'count' => 0,
+                ];
+            }
+        }
         foreach ($byId as $uid => $p) {
             $p->store = $stores[(int) $uid] ?? '';
             $s = $salesSummary->get($uid);
             $p->sales_earned   = $s ? (float) $s->earned   : 0.0;
+            // Listening-party split: shift the sales bonus by the applied
+            // redistribution (helpers +, cashiers -). Sums to zero store-wide, so
+            // total payout is unchanged — it just moves each party's bonus onto
+            // the floor helper who earned it.
+            $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
+            $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
             $p->sales_goal     = $s ? (float) $s->goal     : 0.0;
@@ -184,6 +205,11 @@ class ListingCommissionController extends Controller
             } elseif ($p->sales_net < -0.004) {
                 $memo[] = 'Sales credit -$' . number_format(abs($p->sales_net), 2)
                     . ' — overpaid sales bonus from a past run, subtracted here';
+            }
+            if (abs($p->party_split) > 0.004) {
+                $memo[] = ($p->party_split > 0
+                    ? 'Listening party commission +$' . number_format($p->party_split, 2) . ' — your share of the bonus while you worked the floor together'
+                    : 'Listening party split -$' . number_format(abs($p->party_split), 2) . ' — the floor helper\'s share of the party bonus, moved to them');
             }
             if ($p->listing_net > 0.004) {
                 $memo[] = 'Listing commission $' . number_format($p->listing_net, 2)
@@ -678,6 +704,8 @@ class ListingCommissionController extends Controller
     // Shows every input so it can be verified before anyone is paid.
     const SHIFT_BASE_RATE = 0.02;
     const SHIFT_GOAL_BONUS_RATE = 0.02;
+    const PARTY_SPLIT_FROM = '2026-07-10';
+    const PARTY_SPLIT_FILE = 'party-split-adjustments.json';
     private $floorPositions = ['front desk', 'event lead', 'floor sales', 'sales floor lead'];
 
     public function shiftCommission(Request $request)
@@ -865,6 +893,91 @@ class ListingCommissionController extends Controller
             'store_sales' => round(array_sum($ownRung), 2),
             'total_bonus' => round(array_sum(array_map(function ($p) { return $p['total']; }, $people)), 2),
         ];
+    }
+
+    // Apply a day + store's listening-party split to payroll. Snapshots each
+    // person's adjustment (their redistributed bonus minus their raw per-cashier
+    // bonus) so the Commissions page shifts everyone's sales bonus: the cashier
+    // drops by the helper's share, the helper gains it, the store total is
+    // unchanged. Re-applying the same date+store replaces the prior snapshot.
+    public function partySplitApply(Request $request)
+    {
+        $businessId = $request->session()->get('user.business_id');
+        $date = trim((string) $request->input('date', ''));
+        $locationId = (int) $request->input('location_id');
+        $back = '/admin/shift-commission?date=' . urlencode($date) . '&location_id=' . $locationId;
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $locationId <= 0) {
+            return redirect('/admin/shift-commission')->with('status', ['success' => 0, 'msg' => 'Pick a date and store first.']);
+        }
+        if (strcmp($date, self::PARTY_SPLIT_FROM) < 0) {
+            return redirect($back)->with('status', ['success' => 0, 'msg' => 'The party split only applies from ' . self::PARTY_SPLIT_FROM . ' on.']);
+        }
+
+        $lname = DB::table('business_locations')->where('id', $locationId)->value('name') ?: ('Store #' . $locationId);
+        try {
+            $res = $this->computeShiftCommission($businessId, $date, $locationId, $lname);
+        } catch (\Throwable $e) {
+            return redirect($back)->with('status', ['success' => 0, 'msg' => 'Could not compute the split: ' . $e->getMessage()]);
+        }
+
+        $adj = []; $detail = [];
+        foreach ($res['people'] as $p) {
+            $a = round($p['total'] - $p['raw_bonus'], 2);
+            if (abs($a) < 0.005) { continue; }
+            $adj[(int) $p['uid']] = $a;
+            $detail[] = ['uid' => (int) $p['uid'], 'name' => $p['name'], 'raw' => $p['raw_bonus'], 'new' => $p['total'], 'adj' => $a];
+        }
+
+        $all = $this->loadPartySplits();
+        $all[$date . '|' . $locationId] = [
+            'date' => $date, 'location_id' => $locationId, 'store' => $lname,
+            'applied_at' => now()->toDateTimeString(), 'applied_by' => $request->session()->get('user.id'),
+            'adj' => $adj, 'detail' => $detail,
+        ];
+        $this->savePartySplits($all);
+
+        return redirect($back)->with('status', [
+            'success' => 1,
+            'msg' => 'Applied the ' . $date . ' ' . $lname . ' party split to payroll — the Commissions page now reflects it (cashier down, helper up, total unchanged).',
+        ]);
+    }
+
+    public function partySplitUndo(Request $request)
+    {
+        $date = trim((string) $request->input('date', ''));
+        $locationId = (int) $request->input('location_id');
+        $all = $this->loadPartySplits();
+        $key = $date . '|' . $locationId;
+        if (isset($all[$key])) { unset($all[$key]); $this->savePartySplits($all); }
+        return redirect('/admin/shift-commission?date=' . urlencode($date) . '&location_id=' . $locationId)
+            ->with('status', ['success' => 1, 'msg' => 'Removed that party split from payroll.']);
+    }
+
+    // Sum of all applied party-split adjustments per user (positive for helpers,
+    // negative for cashiers; the total across everyone is zero). Read from a small
+    // sidecar, so the Commissions page stays fast — no per-day recompute.
+    private function partySplitAdjustmentsByUser()
+    {
+        $out = [];
+        foreach ($this->loadPartySplits() as $entry) {
+            foreach (($entry['adj'] ?? []) as $uid => $amt) {
+                $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
+            }
+        }
+        return $out;
+    }
+
+    private function loadPartySplits()
+    {
+        if (!Storage::disk('local')->exists(self::PARTY_SPLIT_FILE)) { return []; }
+        $d = json_decode(Storage::disk('local')->get(self::PARTY_SPLIT_FILE), true);
+        return is_array($d) ? $d : [];
+    }
+
+    private function savePartySplits(array $d)
+    {
+        Storage::disk('local')->put(self::PARTY_SPLIT_FILE, json_encode($d, JSON_PRETTY_PRINT));
     }
 
     // Freeze a payroll run: snapshot everyone's CURRENT owed (listing + sales)

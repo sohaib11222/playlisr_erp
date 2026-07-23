@@ -25,6 +25,9 @@ details > summary { cursor:pointer; font-weight:600; color:#23303d; margin:10px 
 
 <section class="content sc-wrap">
 
+@if (session('status'))
+    <div class="alert {{ session('status')['success'] ? 'alert-success' : 'alert-danger' }}">{{ session('status')['msg'] }}</div>
+@endif
 @if ($error)<div class="alert alert-danger">{{ $error }}</div>@endif
 
 <form method="GET" action="{{ url('/admin/shift-commission') }}" class="sc-card" style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
@@ -79,6 +82,23 @@ details > summary { cursor:pointer; font-weight:600; color:#23303d; margin:10px 
             </tbody>
         </table>
         <p class="muted" style="font-size:12px; margin-top:8px;">Each cashier's real sales bonus is <strong>redistributed</strong>, never added to: the bonus earned while two shared the floor is split evenly; solo hours stay the cashier's. So the cashier's <strong>Total</strong> drops and the helper's is their share — the <strong>Store total is identical</strong> to before. Bonus &amp; goal come from the ERP's own calc.</p>
+
+        <div style="margin-top:16px; border-top:1px solid #eee; padding-top:14px;">
+            <form method="POST" action="{{ url('/admin/shift-commission/apply') }}" style="display:inline;"
+                  onsubmit="return confirm('Apply this split to payroll? It shifts each person\'s sales bonus on the Commissions page (cashier down, helper up, store total unchanged).');">
+                @csrf
+                <input type="hidden" name="date" value="{{ $date }}">
+                <input type="hidden" name="location_id" value="{{ $location_id }}">
+                <button type="submit" class="sc-btn">Apply this split to payroll</button>
+            </form>
+            <form method="POST" action="{{ url('/admin/shift-commission/undo') }}" style="display:inline; margin-left:8px;">
+                @csrf
+                <input type="hidden" name="date" value="{{ $date }}">
+                <input type="hidden" name="location_id" value="{{ $location_id }}">
+                <button type="submit" class="sc-btn" style="background:#fff;">Remove it</button>
+            </form>
+            <p class="muted" style="font-size:12px; margin-top:8px;">Applying writes this day's split to the <a href="{{ url('/admin/listing-commissions') }}">Commissions page</a> — the helper's share moves onto them and off the cashier. Undo any time.</p>
+        </div>
         @endif
     </div>
 @endif

@@ -978,6 +978,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // (split among floor staff sharing the one register), plus the individual
     // 2% over-goal bonus (not split), using the ERP's own goal numbers.
     Route::get('/admin/shift-commission', 'ListingCommissionController@shiftCommission');
+    Route::post('/admin/shift-commission/apply', 'ListingCommissionController@partySplitApply');
+    Route::post('/admin/shift-commission/undo', 'ListingCommissionController@partySplitUndo');
 
     // Payroll Calculator (admin-only). Hours from Clover clock in/out (pasted or
     // uploaded per pay period), OT via CA daily rule, late flags vs the Sling
