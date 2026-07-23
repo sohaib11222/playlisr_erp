@@ -151,8 +151,8 @@ class ListingCommissionController extends Controller
             }
         }
         $stores = $this->primaryStoreByUser($businessId);
-        $partyAdj = $this->partySplitAdjustmentsByUser($businessId);
-        $partyEarned = $this->partyEarnedByUser($businessId);
+        $partyAdj = $this->partySplitAdjustmentsByUser();
+        $partyEarned = $this->partyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -970,45 +970,29 @@ class ListingCommissionController extends Controller
     // Sum of all applied party-split adjustments per user (positive for helpers,
     // negative for cashiers; the total across everyone is zero). Read from a small
     // sidecar, so the Commissions page stays fast — no per-day recompute.
-    private $partyLiveCache = null;
-
-    // Recompute every APPLIED party day live (same tool math) rather than trust
-    // the stored snapshot, so bug fixes flow through without re-applying. The
-    // sidecar just records WHICH day+store are active; amounts are always fresh.
-    private function partySplitLive($businessId)
+    private function partySplitAdjustmentsByUser()
     {
-        if ($this->partyLiveCache !== null) { return $this->partyLiveCache; }
-        $adj = []; $party = [];
+        $out = [];
         foreach ($this->loadPartySplits() as $entry) {
-            $date = $entry['date'] ?? null;
-            $lid  = (int) ($entry['location_id'] ?? 0);
-            if (!$date || $lid <= 0) { continue; }
-            try {
-                $res = $this->computeShiftCommission($businessId, $date, $lid, $entry['store'] ?? '');
-            } catch (\Throwable $e) { continue; }
-            foreach ($res['people'] as $p) {
-                $uid = (int) $p['uid'];
-                $a  = round($p['total'] - $p['raw_bonus'], 2);
-                $pc = round($p['party_bonus'] ?? 0, 2);
-                if (abs($a) >= 0.005)  { $adj[$uid]   = ($adj[$uid] ?? 0) + $a; }
-                if (abs($pc) >= 0.005) { $party[$uid] = ($party[$uid] ?? 0) + $pc; }
+            foreach (($entry['adj'] ?? []) as $uid => $amt) {
+                $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
         }
-        $this->partyLiveCache = ['adj' => $adj, 'party' => $party];
-        return $this->partyLiveCache;
-    }
-
-    private function partySplitAdjustmentsByUser($businessId)
-    {
-        return $this->partySplitLive($businessId)['adj'];
+        return $out;
     }
 
     // What each person EARNED for the party (their equal 50/50 share) — shown as
     // the "Listening party" column so both the cashier and the helper read the
     // same amount, separate from the +/- movement in the pay adjustment above.
-    private function partyEarnedByUser($businessId)
+    private function partyEarnedByUser()
     {
-        return $this->partySplitLive($businessId)['party'];
+        $out = [];
+        foreach ($this->loadPartySplits() as $entry) {
+            foreach (($entry['party'] ?? []) as $uid => $amt) {
+                $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
+            }
+        }
+        return $out;
     }
 
     private function loadPartySplits()
