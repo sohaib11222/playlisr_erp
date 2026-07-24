@@ -163,6 +163,28 @@
     </button>
 </div>
 
+<div class="pos-quick-grid-title" style="margin-top:14px;">Quick Add — Accessories & Supplies</div>
+<div class="pos-quick-grid">
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Guitar Pick" data-preset-price="2.00" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🎸</span> Guitar Pick <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Outer Sleeve" data-preset-price="0.25" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">📀</span> Outer Sleeve <span class="pos-quick-price">$0.25</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Inner Sleeve" data-preset-price="0.25" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">💿</span> Inner Sleeve <span class="pos-quick-price">$0.25</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Cardboard Record Mailer" data-preset-price="2.00" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">📦</span> Record Mailer <span class="pos-quick-price">$2.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Magnet (unpriced)" data-preset-price="3.00" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🧲</span> Magnet <span class="pos-quick-price">$3.00</span>
+    </button>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Keychain (unpriced)" data-preset-price="3.00" data-preset-category="Accessories &amp; Supplies">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🔑</span> Keychain <span class="pos-quick-price">$3.00</span>
+    </button>
+</div>
+
 {{-- Quick-add handler — skips the modal entirely and hits the same backend
      endpoint the manual-item modal uses, so the item lands directly in the
      cart. After the row renders, MutationObserver below moves the bag-fee
