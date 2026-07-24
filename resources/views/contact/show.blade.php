@@ -134,6 +134,8 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
 .cp-action-btn i { font-size: 15px; }
 .cp-action-btn.btn-green { border-color: #27ae60; color: #27ae60; }
 .cp-action-btn.btn-green:hover { background: #eafaf1; }
+.cp-action-btn.btn-amber { border-color: #e67e22; color: #d35400; }
+.cp-action-btn.btn-amber:hover { background: #fef5ec; }
 
 /* --- Credits --- */
 .cp-credit-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #f5f2ed; }
@@ -476,6 +478,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <a class="cp-action-btn cp-add-note-btn"><i class="fa fa-sticky-note"></i> Add Note</a>
             @if(in_array($contact->type, ['customer', 'both']) && auth()->user()->can('customer.update'))
                 <a href="#" class="cp-action-btn btn-green cp-add-store-credit" data-contact-id="{{ $contact->id }}"><i class="fa fa-plus-circle"></i> Add Credit</a>
+                <a href="#" class="cp-action-btn btn-amber cp-adjust-store-credit" data-contact-id="{{ $contact->id }}" data-current-balance="{{ $contact->balance ?? 0 }}"><i class="fa fa-minus-circle"></i> Remove Credit</a>
             @else
                 <a class="cp-action-btn btn-green" style="opacity:.4; cursor:default;"><i class="fa fa-plus-circle"></i> Add Credit</a>
             @endif
@@ -712,56 +715,31 @@ $(document).ready(function(){
         if ($btn.length) { $btn.trigger('click'); } else { toastr.info('Notes system loading...'); }
     });
 
-    // --- Add Store Credit ---
+    // --- Add Store Credit --- (shared amount + reason dialog; reason required,
+    // "Collection purchase" routes to the Buy From Customer form).
+    // Reflect a new balance in the header figure and keep the Remove button's
+    // stashed balance current so the adjust preview stays right without a reload.
+    function cpSyncStoreCredit(newBalance){
+        newBalance = parseFloat(newBalance || 0) || 0;
+        if ($('#cp_advance_balance').length) {
+            $('#cp_advance_balance').text(__currency_trans_from_en(newBalance, true));
+        }
+        $('.cp-adjust-store-credit').data('current-balance', newBalance);
+    }
+
     $(document).on('click', '.cp-add-store-credit', function(e){
         e.preventDefault();
-        var contactId = $(this).data('contact-id');
-        if (!contactId) {
-            toastr.error('Contact ID not found.');
-            return;
-        }
+        openAddStoreCreditDialog($(this).data('contact-id'), function(result){
+            cpSyncStoreCredit(result.new_balance);
+        });
+    });
 
-        swal({
-            title: 'Add Store Credit',
-            text: 'Enter amount to add to customer credit balance:',
-            content: {
-                element: 'input',
-                attributes: {
-                    type: 'number',
-                    step: '0.01',
-                    min: '0.01',
-                    placeholder: 'Amount'
-                }
-            },
-            buttons: true
-        }).then(function(value){
-            var amount = parseFloat(value) || 0;
-            if (amount <= 0) {
-                return;
-            }
-
-            $.ajax({
-                method: 'POST',
-                url: '/contacts/' + contactId + '/store-credit',
-                dataType: 'json',
-                data: {
-                    amount: amount,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                },
-                success: function(result){
-                    if (result.success) {
-                        toastr.success(result.msg);
-                        if ($('#cp_advance_balance').length) {
-                            $('#cp_advance_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
-                        }
-                    } else {
-                        toastr.error(result.msg || 'Unable to add store credit.');
-                    }
-                },
-                error: function(){
-                    toastr.error('Unable to add store credit.');
-                }
-            });
+    // --- Remove / Adjust Store Credit --- (signed amount + reason; the shared
+    // dialog handles a minus sign to deduct and refuses to go below $0).
+    $(document).on('click', '.cp-adjust-store-credit', function(e){
+        e.preventDefault();
+        openAdjustStoreCreditDialog($(this).data('contact-id'), $(this).data('current-balance'), function(result){
+            cpSyncStoreCredit(result.new_balance);
         });
     });
 
@@ -871,4 +849,5 @@ function get_contact_payments(url) {
     });
 </script>
 @include('sale_pos.partials.subscriptions_table_javascript', ['contact_id' => $contact->id])
+@include('contact.partials.store_credit_js')
 @endsection

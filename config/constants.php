@@ -33,7 +33,20 @@ return [
     'document_size_limit' => '5000000', //in Bytes,
     'image_size_limit' => '5000000', //in Bytes
 
-    'asset_version' => 691,
+    'asset_version' => 692,
+
+    // Locked reason list for issuing store credit from a customer account.
+    // Cashiers must pick one (see ContactController@updateStoreCredit — reason
+    // is required and validated against these keys). 'collection_purchase' is
+    // special: it is NOT applied here; it routes the cashier to the
+    // Buy From Customer form, which issues the credit against itemized stock.
+    // Keys are stored; values are shown in the dropdown and audit trail.
+    'store_credit_reasons' => [
+        'return'              => 'Return',
+        'unsatisfying'        => 'Very unsatisfying experience',
+        'broken_media'        => 'Broken media / missing',
+        'collection_purchase' => 'Collection purchase with credit',
+    ],
 
     // nivessa.com bridge — the website still captures RSVPs + preorders; the
     // ERP reads/manages them through /api/v1/erp/* using this shared key.

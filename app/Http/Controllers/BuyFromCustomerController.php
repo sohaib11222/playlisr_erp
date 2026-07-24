@@ -82,7 +82,21 @@ class BuyFromCustomerController extends Controller
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget'));
+        // Prefill the seller when we arrive from a "Collection purchase with
+        // credit" store-credit attempt (ContactController redirects here with
+        // ?contact_id=…). $input_data drives the form's initial values, so
+        // seed it with the picked contact in "existing account" mode.
+        $input_data = null;
+        $prefillContactId = (int) request()->query('contact_id', 0);
+        if ($prefillContactId > 0 && Contact::where('business_id', $business_id)->where('id', $prefillContactId)->exists()) {
+            $input_data = [
+                'seller_mode' => 'contact',
+                'contact_id' => $prefillContactId,
+                'payment_method' => 'store_credit',
+            ];
+        }
+
+        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget', 'input_data'));
     }
 
     /**

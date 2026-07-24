@@ -548,47 +548,9 @@ $(document).ready(function() {
     });
 
     // Add store credit directly from customer details modal
-    $(document).on('click', '#modal_add_store_credit_btn', function() {
-        var contactId = $('#modal_store_credit_contact_id').val();
-        var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
-
-        if (!contactId) {
-            toastr.error('Customer not selected.');
-            return;
-        }
-        if (amount <= 0) {
-            toastr.error('Please enter a valid amount.');
-            return;
-        }
-
-        $.ajax({
-            method: 'POST',
-            url: '/contacts/' + contactId + '/store-credit',
-            dataType: 'json',
-            data: {
-                amount: amount,
-                _token: $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function(result) {
-                if (result.success) {
-                    toastr.success(result.msg);
-                    $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
-                    $('#modal_store_credit_amount').val('');
-
-                    if ($('#customer_id').val() == contactId) {
-                        $('#advance_balance').val(result.new_balance || 0);
-                        $('#advance_balance_text').text(__currency_trans_from_en(result.new_balance || 0, true));
-                        loadCustomerAccountInfo(contactId);
-                    }
-                } else {
-                    toastr.error(result.msg || 'Unable to add store credit.');
-                }
-            },
-            error: function() {
-                toastr.error('Unable to add store credit.');
-            }
-        });
-    });
+    // Store-credit "Add" button in the customer account modal is handled by the
+    // shared partial contact/partials/store_credit_js.blade.php (reason required,
+    // collection-purchase routing). Included on this page via the POS view.
 
     $('#customer_id').on('select2:select', function(e) {
         var data = e.params.data;

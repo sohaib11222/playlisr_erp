@@ -938,40 +938,8 @@ HTML;
             loadCustomerAccount(contactId);
         });
 
-        // Add store credit from inside the modal (mirrors the POS / contact list).
-        $(document).on('click', '#modal_add_store_credit_btn', function () {
-            var contactId = $('#modal_store_credit_contact_id').val();
-            var amount = parseFloat($('#modal_store_credit_amount').val()) || 0;
-            if (!contactId) {
-                toastr.error('Customer not selected.');
-                return;
-            }
-            if (amount <= 0) {
-                toastr.error('Please enter a valid amount.');
-                return;
-            }
-            $.ajax({
-                method: 'POST',
-                url: '/contacts/' + contactId + '/store-credit',
-                dataType: 'json',
-                data: {
-                    amount: amount,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                },
-                success: function (result) {
-                    if (result.success) {
-                        toastr.success(result.msg);
-                        $('#modal_account_balance').text(__currency_trans_from_en(result.new_balance || 0, true));
-                        $('#modal_store_credit_amount').val('');
-                    } else {
-                        toastr.error(result.msg || 'Unable to add store credit.');
-                    }
-                },
-                error: function () {
-                    toastr.error('Unable to add store credit.');
-                }
-            });
-        });
+        // Add store credit from inside the modal is handled by the shared
+        // partial contact/partials/store_credit_js.blade.php (reason required).
 
         // Sarah 2026-05-06: auto-fill the per-row "Standard Multiplier" from the
         // Discogs median price (the value tier from Sarah's sheet). Condition is
@@ -1558,4 +1526,5 @@ HTML;
         @endif
     })();
 </script>
+@include('contact.partials.store_credit_js')
 @endsection

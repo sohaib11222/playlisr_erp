@@ -1893,6 +1893,35 @@ class ContactController extends Controller
             $business_id = request()->session()->get('user.business_id');
             $contact = Contact::where('business_id', $business_id)->findOrFail($id);
 
+            // A reason is now REQUIRED and must be one of the locked options
+            // (config/constants.php store_credit_reasons). This is the server-side
+            // guarantee behind the dropdown — no cashier can hand out credit with
+            // no explanation, whichever screen they use. Sarah 2026-07-24.
+            $reasons = (array) config('constants.store_credit_reasons', []);
+            $reasonCode = trim((string) $request->input('reason', ''));
+            if ($reasonCode === '' || !array_key_exists($reasonCode, $reasons)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Please choose a reason for this store credit.'
+                ]);
+            }
+
+            // "Collection purchase with credit" is never applied here. Records are
+            // physically coming in, so it must go through the Buy From Customer
+            // form (which itemizes the stock and issues the credit on accept).
+            // Tell the front-end where to send the cashier.
+            if ($reasonCode === 'collection_purchase') {
+                return response()->json([
+                    'success' => false,
+                    'redirect_buy_form' => true,
+                    'redirect_url' => url('/buy-from-customer?contact_id=' . $contact->id),
+                    'msg' => 'Collection purchases must go through the Buy From Customer form.'
+                ]);
+            }
+
+            // Human-readable label for the audit trail / ledger.
+            $reasonLabel = $reasons[$reasonCode];
+
             $amount = (float) $request->input('amount', 0);
             if ($amount <= 0) {
                 return response()->json([
@@ -1912,12 +1941,10 @@ class ContactController extends Controller
             if (\Illuminate\Support\Facades\Schema::hasColumn('contacts', 'balance_notes')) {
                 $stamp = now()->format('Y-m-d H:i');
                 $who = auth()->user()->first_name ?? 'unknown';
-                $reason = trim((string) $request->input('reason', ''));
                 $line = sprintf(
-                    '[%s] store-credit +$%s by %s → new balance $%s.%s',
+                    '[%s] store-credit +$%s by %s → new balance $%s. Reason: %s',
                     $stamp, number_format($amount, 2),
-                    $who, number_format($newBalance, 2),
-                    $reason !== '' ? ' Reason: ' . $reason : ''
+                    $who, number_format($newBalance, 2), $reasonLabel
                 );
                 $contact->balance_notes = trim(($contact->balance_notes ?? '') . "\n" . $line);
             }
@@ -1926,13 +1953,13 @@ class ContactController extends Controller
             // Structured audit row so this credit is attributable by user_id
             // (not just a first name) and shows up in /admin/store-credit-log.
             // This path has no purchase form, so buy_customer_offer_id stays null.
-            $this->logStoreCredit($contact, $amount, $newBalance, 'manual_add', trim((string) $request->input('reason', '')));
+            $this->logStoreCredit($contact, $amount, $newBalance, 'manual_add', $reasonLabel);
 
             if (in_array($contact->type, ['customer', 'both']) && !empty($contact->email)) {
                 app(\App\Services\NivessaBackendCreditSyncService::class)->syncDeltaByEmail(
                     (string) $contact->email,
                     (float) $amount,
-                    (string) $request->input('reason', 'erp_store_credit_add'),
+                    $reasonLabel,
                     ['contact_id' => (int) $contact->id, 'action' => 'add']
                 );
             }

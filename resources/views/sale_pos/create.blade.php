@@ -390,4 +390,5 @@
             @endif
 	    @endforeach
 	@endif
+	@include('contact.partials.store_credit_js')
 @endsection
