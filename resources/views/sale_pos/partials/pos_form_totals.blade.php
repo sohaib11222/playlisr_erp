@@ -433,6 +433,19 @@
 
     /* Card modal */
     .card-prompt-body { text-align: center; }
+    .card-prompt-body .card-pretax-ref {
+        display: flex; align-items: baseline; justify-content: center;
+        gap: 8px; margin-bottom: 14px; padding-bottom: 12px;
+        border-bottom: 1px dashed #E3DACb;
+    }
+    .card-prompt-body .card-pretax-label {
+        font-size: 12px; font-weight: 600; color: #8A8172;
+        text-transform: uppercase; letter-spacing: .05em;
+    }
+    .card-prompt-body .card-pretax-amt {
+        font-size: 20px; font-weight: 700; color: #8A8172;
+        font-variant-numeric: tabular-nums;
+    }
     .card-prompt-body .card-instr {
         font-size: 14px; font-weight: 600; color: #5A5045;
         text-transform: uppercase; letter-spacing: .05em;
@@ -962,8 +975,14 @@
                     $('#cash_prompt_modal').modal('show');
                     setTimeout(function () { $('#cash_prompt_received').trigger('focus'); }, 250);
                 }
+                function readPreTax() {
+                    var raw = ($('#pre_tax_amount').text() || '0');
+                    var n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+                    return isNaN(n) ? 0 : n;
+                }
                 function openCardPrompt(btn) {
                     var total = readTotalDue();
+                    $('#card_prompt_pretax').text(fmtMoney(readPreTax()));
                     $('#card_prompt_total').text(fmtMoney(total));
                     $('#card_prompt_confirm').off('click.cashier').on('click.cashier', function () {
                         // Tell the show.bs.modal hook to suppress
@@ -1101,7 +1120,15 @@
                         <h4 class="modal-title" id="card_prompt_title"><i class="fas fa-credit-card"></i> Card payment</h4>
                     </div>
                     <div class="modal-body card-prompt-body">
-                        <div class="card-instr">Key this amount into Clover</div>
+                        {{-- Pre-tax shown for reference only, so the cashier
+                             can see it but isn't tempted to key it. The
+                             big post-tax figure is the one that goes into
+                             Clover (Sarah 2026-07-24). --}}
+                        <div class="card-pretax-ref">
+                            <span class="card-pretax-label">Pre-tax</span>
+                            <span class="card-pretax-amt" id="card_prompt_pretax">$0.00</span>
+                        </div>
+                        <div class="card-instr">Key this amount (post-tax) into Clover</div>
                         <div class="card-amt" id="card_prompt_total">$0.00</div>
                         <div class="card-reminder">Wait for Clover approval before tapping <strong>Approved</strong>.</div>
                     </div>
