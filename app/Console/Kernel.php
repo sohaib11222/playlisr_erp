@@ -105,6 +105,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
 
+        // Auto-apply the listening-party / double-staffed-floor commission split
+        // so it's ready on the Commissions page each morning — paying stays a
+        // manual "Mark paid". Runs after the sales syncs so the day's data is in.
+        $schedule->command('commissions:apply-party-splits --days=10')
+            ->dailyAt('06:30')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+
         // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
         // edits land in the ERP expense report without a manual import. The
         // 14-day window is intentional — late posts and reconcile edits in

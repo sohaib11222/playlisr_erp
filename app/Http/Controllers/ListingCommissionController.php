@@ -950,9 +950,63 @@ class ListingCommissionController extends Controller
         $locationId = (int) $request->input('location_id');
         $all = $this->loadPartySplits();
         $key = $date . '|' . $locationId;
-        if (isset($all[$key])) { unset($all[$key]); $this->savePartySplits($all); }
+        // Leave a tombstone so the nightly auto-apply won't just re-add it.
+        $all[$key] = ['date' => $date, 'location_id' => $locationId, 'removed' => true,
+            'removed_at' => now()->toDateTimeString(), 'adj' => [], 'party' => []];
+        $this->savePartySplits($all);
         return redirect('/admin/shift-commission?date=' . urlencode($date) . '&location_id=' . $locationId)
-            ->with('status', ['success' => 1, 'msg' => 'Removed that party split from payroll.']);
+            ->with('status', ['success' => 1, 'msg' => 'Removed that party split from payroll (it won\'t auto-re-add).']);
+    }
+
+    // Nightly automation: scan recent days for any store where two whitelisted
+    // floor staff shared the register (a party / double-staffed peak), and apply
+    // the split automatically — so nobody has to Calculate + Apply by hand.
+    // Only PRE-FILLS the split; paying still requires a human "Mark paid". Skips
+    // days already applied by hand and days removed by hand (tombstones).
+    public function autoApplyPartySplits($businessId, $days = 10)
+    {
+        $start = \Carbon::parse(self::PARTY_SPLIT_FROM);
+        $earliest = \Carbon::today()->subDays(max(1, (int) $days));
+        if ($start->lt($earliest)) { $start = $earliest; }
+
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)->where('is_active', 1)->pluck('name', 'id');
+
+        $all = $this->loadPartySplits();
+        $applied = 0;
+        for ($d = $start->copy(); $d->lte(\Carbon::today()); $d->addDay()) {
+            $date = $d->toDateString();
+            foreach ($locations as $lid => $lname) {
+                $key = $date . '|' . (int) $lid;
+                if (isset($all[$key]) && (!empty($all[$key]['removed']) || empty($all[$key]['auto']))) {
+                    continue; // respect manual apply / manual removal
+                }
+                try {
+                    $res = $this->computeShiftCommission($businessId, $date, (int) $lid, $lname);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                $adj = []; $party = [];
+                foreach ($res['people'] as $p) {
+                    $a = round($p['total'] - $p['raw_bonus'], 2);
+                    $pc = round($p['party_bonus'] ?? 0, 2);
+                    if (abs($a) >= 0.005) { $adj[(int) $p['uid']] = $a; }
+                    if (abs($pc) >= 0.005) { $party[(int) $p['uid']] = $pc; }
+                }
+                if (empty($party)) {
+                    // No shared-floor bonus that day — drop a stale auto entry.
+                    if (isset($all[$key])) { unset($all[$key]); }
+                    continue;
+                }
+                $all[$key] = [
+                    'date' => $date, 'location_id' => (int) $lid, 'store' => $lname, 'auto' => true,
+                    'applied_at' => \Carbon::now()->toDateTimeString(), 'adj' => $adj, 'party' => $party,
+                ];
+                $applied++;
+            }
+        }
+        $this->savePartySplits($all);
+        return $applied;
     }
 
     // Sum of all applied party-split adjustments per user (positive for helpers,
