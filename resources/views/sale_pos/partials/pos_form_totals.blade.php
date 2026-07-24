@@ -431,41 +431,40 @@
         text-align: center; font-weight: 600;
     }
 
-    /* Card modal */
+    /* Card modal — two stacked blocks:
+       1) KEY row  = the pre-tax number the cashier types into Clover
+          (mustard "Clover" box, big + prominent = the action).
+       2) VERIFY row = the post-tax total Clover should display once it
+          adds tax (lighter, smaller = the check). */
     .card-prompt-body { text-align: center; }
-    /* Clover row — the ONE figure to type into Clover: instruction on the
-       left, big post-tax number on the right, in a mustard "Clover" box so
-       it reads as the amount the terminal should charge / show. */
     .card-prompt-body .card-clover-row {
-        display: flex; align-items: center; justify-content: center;
-        gap: 16px; flex-wrap: wrap;
         background: #FDF6E3; border: 2px solid #E9C766;
-        border-radius: 12px; padding: 16px 18px; margin-bottom: 12px;
+        border-radius: 12px; padding: 16px 18px; margin-bottom: 10px;
     }
     .card-prompt-body .card-instr {
-        flex: 0 1 190px; text-align: left;
-        font-size: 15px; font-weight: 700; color: #6B5417;
-        text-transform: uppercase; letter-spacing: .04em; line-height: 1.25;
+        font-size: 14px; font-weight: 700; color: #6B5417;
+        text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px;
     }
     .card-prompt-body .card-amt {
         font-size: 52px; font-weight: 800; color: #1F1B16;
-        letter-spacing: -.02em; font-variant-numeric: tabular-nums;
-        line-height: 1;
+        letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1;
     }
-    /* Pre-tax reference — deliberately small/greyed so it's clearly NOT the
-       number to key. */
-    .card-prompt-body .card-pretax-ref {
-        display: flex; align-items: baseline; justify-content: center;
-        gap: 6px; margin-bottom: 14px;
+    .card-prompt-body .card-amt-tag {
+        font-size: 12px; font-weight: 700; color: #A08B4A;
+        text-transform: uppercase; letter-spacing: .08em; margin-top: 4px;
     }
-    .card-prompt-body .card-pretax-amt {
-        font-size: 18px; font-weight: 700; color: #8A8172;
-        font-variant-numeric: tabular-nums;
+    .card-prompt-body .card-verify-row {
+        padding: 12px 18px; margin-bottom: 14px;
+        border: 1px dashed #D8CEB8; border-radius: 10px; background: #FBFAF6;
     }
-    .card-prompt-body .card-pretax-label {
-        font-size: 12px; font-weight: 600; color: #8A8172;
-        text-transform: uppercase; letter-spacing: .05em;
+    .card-prompt-body .card-verify-instr {
+        font-size: 13px; font-weight: 600; color: #5A5045; margin-bottom: 4px;
     }
+    .card-prompt-body .card-verify-amt {
+        font-size: 30px; font-weight: 800; color: #4A4034;
+        font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    .card-prompt-body .card-verify-row .card-amt-tag { color: #8A8172; }
     .card-prompt-body .card-reminder {
         padding: 10px 14px;
         background: #FFF8E1; border: 1px solid #F5E2A5;
@@ -1130,20 +1129,22 @@
                         <h4 class="modal-title" id="card_prompt_title"><i class="fas fa-credit-card"></i> Card payment</h4>
                     </div>
                     <div class="modal-body card-prompt-body">
-                        {{-- Post-tax is the figure that goes into Clover:
-                             instruction sits right next to the big number at
-                             the top. Pre-tax is shown below for reference only,
-                             so the cashier isn't tempted to key it (Sarah
-                             2026-07-24). --}}
+                        {{-- Clover computes tax itself: the cashier keys the
+                             PRE-TAX amount, Clover adds tax, and should then
+                             DISPLAY the POST-TAX total. Top block = the number
+                             to type; bottom block = the number to verify on
+                             Clover's screen (Sarah 2026-07-24). --}}
                         <div class="card-clover-row">
-                            <span class="card-instr">Key this amount (post-tax) into Clover</span>
-                            <span class="card-amt" id="card_prompt_total">$0.00</span>
+                            <div class="card-instr">Key this amount into Clover</div>
+                            <div class="card-amt" id="card_prompt_pretax">$0.00</div>
+                            <div class="card-amt-tag">pre-tax</div>
                         </div>
-                        <div class="card-pretax-ref">
-                            <span class="card-pretax-amt" id="card_prompt_pretax">$0.00</span>
-                            <span class="card-pretax-label">(pre-tax)</span>
+                        <div class="card-verify-row">
+                            <div class="card-verify-instr">After tax, Clover should show this amount</div>
+                            <div class="card-verify-amt" id="card_prompt_total">$0.00</div>
+                            <div class="card-amt-tag">post-tax</div>
                         </div>
-                        <div class="card-reminder">Clover should show this <strong>post-tax</strong> amount. Wait for approval before tapping <strong>Approved</strong>.</div>
+                        <div class="card-reminder">Wait for Clover approval before tapping <strong>Approved</strong>.</div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
