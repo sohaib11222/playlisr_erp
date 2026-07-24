@@ -946,6 +946,52 @@ class InventoryCheckController extends Controller
             }
         }
         $L[] = '';
+        $L[] = 'CURRENT FEED (rows actually stored right now — what the columns read):';
+        $summary = $this->inventoryCheckService->supplierFeedSummary($business_id);
+        foreach ($known as $key => $meta) {
+            $rc = (int) ($summary[$key]['row_count'] ?? 0);
+            $imp = $summary[$key]['imported_at'] ?? '';
+            $L[] = sprintf('  %-9s %6d rows%s', strtoupper($key), $rc,
+                $imp ? ('  · stored ' . substr((string) $imp, 0, 10)) : '');
+        }
+
+        // Live login/fetch test for the suppliers that DO have creds — this
+        // is what turns "0 rows" into an actual reason (bounced login vs a
+        // parser that matched nothing). Bounded to ~10s each so this GET
+        // still returns quickly.
+        $L[] = '';
+        $L[] = 'LIVE LOGIN + FETCH TEST (creds-saved suppliers, ~10s each):';
+        foreach (['AMS_FETCH_BUDGET_SEC', 'REDEYE_FETCH_BUDGET_SEC'] as $bk) {
+            putenv($bk . '=10');
+            $_ENV[$bk] = '10';
+            $_SERVER[$bk] = '10';
+        }
+        @set_time_limit(120);
+        $liveMap = [
+            'ams' => \App\Services\SupplierFetchers\AmsFetcher::class,
+            'redeye' => \App\Services\SupplierFetchers\RedeyeFetcher::class,
+        ];
+        foreach ($liveMap as $key => $cls) {
+            $st = $this->inventoryCheckService->supplierCredentialsStatus($business_id, $key);
+            if (empty($st['configured'])) {
+                $L[] = sprintf('  %-9s skipped — no creds saved', strtoupper($key));
+                continue;
+            }
+            try {
+                $rows = app($cls)->fetch();
+                $withCost = 0;
+                foreach ($rows as $r) {
+                    if (is_array($r) && !empty($r['cost']) && (float) $r['cost'] > 0) $withCost++;
+                }
+                $L[] = sprintf('  %-9s OK — %d rows (%d priced) in the 10s window%s',
+                    strtoupper($key), count($rows), $withCost,
+                    count($rows) === 0 ? '  → login worked but parsed 0 (page layout / catalog scope)' : '');
+            } catch (\Throwable $e) {
+                $L[] = sprintf('  %-9s FAIL — %s', strtoupper($key), $e->getMessage());
+            }
+        }
+
+        $L[] = '';
         $L[] = 'READING:';
         if (!$anyOk && $anyBlocked) {
             $L[] = '  Every portal is unreachable from the server → this is an OUTBOUND FIREWALL / egress block on';
