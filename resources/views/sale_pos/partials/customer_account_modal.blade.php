@@ -53,6 +53,9 @@
                                     <input type="hidden" id="modal_store_credit_contact_id" value="">
                                     <div class="form-group">
                                         <label><strong>Add Store Credit</strong></label>
+                                        <select class="form-control" id="modal_store_credit_reason" style="margin-bottom:8px;">
+                                            @include('contact.partials._store_credit_reason_options')
+                                        </select>
                                         <div class="input-group">
                                             <input type="number" min="0" step="0.01" class="form-control" id="modal_store_credit_amount" placeholder="Amount">
                                             <span class="input-group-btn">
@@ -61,7 +64,7 @@
                                                 </button>
                                             </span>
                                         </div>
-                                        <small class="text-muted">This increases customer's advance/store credit balance.</small>
+                                        <small class="text-muted">A reason is required. "Collection purchase with credit" opens the Buy From Customer form.</small>
                                     </div>
                                 </div>
                             </div>
