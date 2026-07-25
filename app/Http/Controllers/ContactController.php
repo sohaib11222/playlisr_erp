@@ -814,12 +814,34 @@ class ContactController extends Controller
         // Needed by the purchases tab's purchase_table partial (bulk status update dropdown)
         $orderStatuses = $this->commonUtil->orderStatuses();
 
+        // Store-credit ledger — every change to the balance (manual add /
+        // adjust, POS redemption, collection purchase, spend reward) so the
+        // profile shows the FULL history, not just the free-text balance_notes
+        // (which only the manual add/adjust paths write to — redemptions and
+        // collection credits were invisible before this). Guarded so a missing
+        // migration or the legacy state can never 500 the page.
+        $store_credit_logs = collect([]);
+        try {
+            if (in_array($contact->type, ['customer', 'both']) && \Illuminate\Support\Facades\Schema::hasTable('store_credit_logs')) {
+                $store_credit_logs = \App\StoreCreditLog::where('business_id', $business_id)
+                    ->where('contact_id', $contact->id)
+                    ->with('user')
+                    ->orderBy('created_at', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->limit(100)
+                    ->get();
+            }
+        } catch (\Exception $e) {
+            \Log::warning('store_credit_logs read failed: ' . $e->getMessage());
+        }
+
         return view('contact.show')
              ->with(compact(
                  'contact', 'reward_enabled', 'contact_dropdown', 'business_locations',
                  'view_type', 'contact_view_tabs', 'activities', 'gift_cards', 'total_gift_card_balance',
                  'recent_purchases', 'purchase_history', 'sell_count', 'avg_order', 'visits_90d',
-                 'current_tier', 'next_tier', 'tier_progress', 'customer_notes', 'orderStatuses'
+                 'current_tier', 'next_tier', 'tier_progress', 'customer_notes', 'orderStatuses',
+                 'store_credit_logs'
              ));
     }
 
