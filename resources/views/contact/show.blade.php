@@ -478,7 +478,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <a class="cp-action-btn cp-add-note-btn"><i class="fa fa-sticky-note"></i> Add Note</a>
             @if(in_array($contact->type, ['customer', 'both']) && auth()->user()->can('customer.update'))
                 <a href="#" class="cp-action-btn btn-green cp-add-store-credit" data-contact-id="{{ $contact->id }}"><i class="fa fa-plus-circle"></i> Add Credit</a>
-                <a href="#" class="cp-action-btn btn-amber cp-adjust-store-credit" data-contact-id="{{ $contact->id }}" data-current-balance="{{ $contact->balance ?? 0 }}"><i class="fa fa-minus-circle"></i> Remove Credit</a>
+                <a href="#" class="cp-action-btn btn-amber cp-adjust-store-credit" data-contact-id="{{ $contact->id }}" data-current-balance="{{ $contact->balance ?? 0 }}"><i class="fa fa-edit"></i> Adjust store credit</a>
             @else
                 <a class="cp-action-btn btn-green" style="opacity:.4; cursor:default;"><i class="fa fa-plus-circle"></i> Add Credit</a>
             @endif
