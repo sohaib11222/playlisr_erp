@@ -136,6 +136,20 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
 .cp-action-btn.btn-green:hover { background: #eafaf1; }
 .cp-action-btn.btn-amber { border-color: #e67e22; color: #d35400; }
 .cp-action-btn.btn-amber:hover { background: #fef5ec; }
+.sc-ledger { border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
+.sc-row { padding:9px 12px; border-bottom:1px solid #f1f2f4; }
+.sc-row:last-child { border-bottom:none; }
+.sc-row-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.sc-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.sc-badge.sc-pos { background:#eafaf1; color:#1e7e46; }
+.sc-badge.sc-neg { background:#fdecea; color:#b91c1c; }
+.sc-badge.sc-adj { background:#fef5ec; color:#b45309; }
+.sc-badge.sc-rew { background:#eef2ff; color:#4338ca; }
+.sc-amt { font-size:13px; font-weight:700; }
+.sc-amt-pos { color:#15803d; }
+.sc-amt-neg { color:#b91c1c; }
+.sc-row-sub { display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:3px; font-size:11px; color:#6b7280; }
+.sc-row-reason { margin-top:4px; font-size:12px; color:#374151; }
 
 /* --- Credits --- */
 .cp-credit-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #f5f2ed; }
@@ -478,7 +492,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <a class="cp-action-btn cp-add-note-btn"><i class="fa fa-sticky-note"></i> Add Note</a>
             @if(in_array($contact->type, ['customer', 'both']) && auth()->user()->can('customer.update'))
                 <a href="#" class="cp-action-btn btn-green cp-add-store-credit" data-contact-id="{{ $contact->id }}"><i class="fa fa-plus-circle"></i> Add Credit</a>
-                <a href="#" class="cp-action-btn btn-amber cp-adjust-store-credit" data-contact-id="{{ $contact->id }}" data-current-balance="{{ $contact->balance ?? 0 }}"><i class="fa fa-minus-circle"></i> Remove Credit</a>
+                <a href="#" class="cp-action-btn btn-amber cp-adjust-store-credit" data-contact-id="{{ $contact->id }}" data-current-balance="{{ $contact->balance ?? 0 }}"><i class="fa fa-edit"></i> Adjust store credit</a>
             @else
                 <a class="cp-action-btn btn-green" style="opacity:.4; cursor:default;"><i class="fa fa-plus-circle"></i> Add Credit</a>
             @endif
@@ -511,28 +525,74 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             <span class="cp-credit-val cp-credit-positive"><span class="display_currency" data-currency_symbol="true" id="cp_advance_balance">{{ $contact->balance ?? 0 }}</span></span>
         </div>
 
-        {{-- Store-credit audit trail — Sarah 2026-04-22: "how does this guy have
-             $125 store credit?" We now append a line to contacts.balance_notes
-             every time someone uses the green Add or yellow Adjust button, so
-             the history is visible at a glance. Legacy credit (added before
-             this audit existed) will show nothing here — the balance is real
-             but its origin predates tracking. --}}
-        @if(!empty($contact->balance_notes))
-            <div style="margin-top:14px; padding:10px 12px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
-                <div style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#6b7280; font-weight:700; margin-bottom:6px;">
-                    Credit history
+        {{-- Store-credit history — the full ledger from store_credit_logs, so
+             EVERY change to the balance is visible: manual add / adjust, POS
+             redemptions at checkout, collection-purchase credits, and spend
+             rewards. Before this the panel only showed contacts.balance_notes,
+             which the redemption / collection paths never wrote to, so those
+             changes were invisible. balance_notes is kept below as a legacy
+             fallback for entries that predate the structured ledger. --}}
+        @php
+            $sc_meta = [
+                'manual_add'       => ['label' => 'Added',               'cls' => 'sc-pos'],
+                'manual_adjust'    => ['label' => 'Adjusted',            'cls' => 'sc-adj'],
+                'redeem'           => ['label' => 'Redeemed at checkout','cls' => 'sc-neg'],
+                'buy_from_customer'=> ['label' => 'Collection purchase', 'cls' => 'sc-pos'],
+                'spend_reward'     => ['label' => 'Spend reward',        'cls' => 'sc-rew'],
+            ];
+        @endphp
+        <div style="margin-top:14px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#6b7280; font-weight:700; margin-bottom:8px;">
+                Credit history
+            </div>
+
+            @if(isset($store_credit_logs) && count($store_credit_logs))
+                <div class="sc-ledger">
+                    @foreach($store_credit_logs as $log)
+                        @php
+                            $m = $sc_meta[$log->source] ?? ['label' => ucfirst(str_replace('_',' ', $log->source)), 'cls' => 'sc-adj'];
+                            $amt = (float) $log->amount;
+                            $who = trim(($log->user->first_name ?? '') . ' ' . ($log->user->last_name ?? ''));
+                        @endphp
+                        <div class="sc-row">
+                            <div class="sc-row-top">
+                                <span class="sc-badge {{ $m['cls'] }}">{{ $m['label'] }}</span>
+                                <span class="sc-amt {{ $amt < 0 ? 'sc-amt-neg' : 'sc-amt-pos' }}">
+                                    {{ $amt < 0 ? '−' : '+' }}${{ number_format(abs($amt), 2) }}
+                                </span>
+                            </div>
+                            <div class="sc-row-sub">
+                                <span>{{ optional($log->created_at)->format('M j, Y g:i A') }}</span>
+                                <span>Balance after: <strong>${{ number_format((float) $log->balance_after, 2) }}</strong></span>
+                                @if($who !== '')<span>by {{ $who }}</span>@endif
+                            </div>
+                            @if(!empty($log->reason))
+                                <div class="sc-row-reason">Reason: {{ $log->reason }}</div>
+                            @endif
+                        </div>
+                    @endforeach
                 </div>
-                <pre style="margin:0; font-size:12px; color:#374151; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:pre-wrap; word-break:break-word; background:transparent; border:none; padding:0;">{{ trim($contact->balance_notes) }}</pre>
-            </div>
-        @elseif(($contact->balance ?? 0) > 0)
-            <div style="margin-top:14px; padding:10px 12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; font-size:12px; color:#9a3412;">
-                <strong>No credit history yet.</strong> This balance of
-                <span class="display_currency" data-currency_symbol="true">{{ $contact->balance }}</span>
-                was added before audit tracking existed (pre-2026-04-22). Every
-                credit add / adjust from today onward will log a line here with
-                the cashier's name, amount, and reason.
-            </div>
-        @endif
+
+                @if(!empty($contact->balance_notes))
+                    <details style="margin-top:10px;">
+                        <summary style="font-size:11px; color:#9ca3af; cursor:pointer;">Legacy notes (pre-ledger)</summary>
+                        <pre style="margin:6px 0 0; font-size:11px; color:#6b7280; white-space:pre-wrap; word-break:break-word; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:8px;">{{ trim($contact->balance_notes) }}</pre>
+                    </details>
+                @endif
+            @elseif(!empty($contact->balance_notes))
+                {{-- No structured ledger rows yet, but we have the free-text trail. --}}
+                <pre style="margin:0; font-size:12px; color:#374151; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:pre-wrap; word-break:break-word; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px;">{{ trim($contact->balance_notes) }}</pre>
+            @elseif(($contact->balance ?? 0) > 0)
+                <div style="padding:10px 12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; font-size:12px; color:#9a3412;">
+                    <strong>No credit history recorded.</strong> This balance of
+                    <span class="display_currency" data-currency_symbol="true">{{ $contact->balance }}</span>
+                    predates change tracking. Every add / adjust / redemption from
+                    here on is logged below with the amount, source, staff, and reason.
+                </div>
+            @else
+                <div style="font-size:12px; color:#9ca3af;">No store-credit activity yet.</div>
+            @endif
+        </div>
     </div>
 
 </div>
