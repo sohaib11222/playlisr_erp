@@ -162,6 +162,10 @@
         .bfc-create .bfc-used-budget-warn { margin-top: 10px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #842029; background: #fff5f5; border: 1px solid #f1c2c2; border-left: 4px solid #c0392b; border-radius: 4px; }
         .bfc-create .bfc-used-budget-warn strong { color: #842029; }
         .bfc-create .bfc-used-budget-warn + .bfc-used-budget-warn { margin-top: 6px; }
+        /* Advisory (amber), not a hard stop: over the used cap but still a judgment
+           call for the cashier — buy the best items, don't overpay unless it's a
+           fast mover. (Sarah 2026-07-26) */
+        .bfc-create .bfc-used-budget-coach { margin-top: 10px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #7a5b00; background: #fffaf0; border: 1px solid #f0d9a8; border-left: 4px solid #e0a800; border-radius: 4px; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -314,6 +318,18 @@ HTML;
                             New purchases ran ${{ number_format($newOver, 0) }} over and used up {{ $s['label'] }}'s whole weekly pot — so there's nothing left to buy collections against. Hold off on buying more used here, or get Jon's OK first.
                         </div>
                     @endforeach
+                    @php
+                        // Over the used cap on any permitted store — advisory coaching
+                        // note (not a hard stop). Verbatim wording per Sarah 2026-07-26.
+                        $anyUsedOver = collect($perStore)->contains(function ($s) {
+                            return !empty($s['used']['over_budget']);
+                        });
+                    @endphp
+                    @if($anyUsedOver)
+                        <div class="bfc-used-budget-coach">
+                            We are currently over budget, but if you really believe we should be buying it, buy the best items you can and try not to pay too much...unless you think its a very fast mover!
+                        </div>
+                    @endif
                 </div>
             @endif
 
