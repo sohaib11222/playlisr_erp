@@ -992,6 +992,23 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
+        $L[] = 'BACKFILL LOG (most recent full-pull output, if any):';
+        $anyLog = false;
+        foreach ($known as $key => $meta) {
+            $lp = storage_path('app/ica-backfill-' . $key . '.log');
+            if (!is_file($lp)) continue;
+            $anyLog = true;
+            $lines = array_values(array_filter(array_map('rtrim', (array) @file($lp))));
+            $tail = implode(' | ', array_slice($lines, -4));
+            $L[] = sprintf('  %-9s %s  · updated %s', strtoupper($key),
+                mb_strimwidth($tail, 0, 180, '…'),
+                date('H:i:s', @filemtime($lp) ?: time()));
+        }
+        if (!$anyLog) {
+            $L[] = '  (no backfill has been launched from the button yet)';
+        }
+
+        $L[] = '';
         $L[] = 'READING:';
         if (!$anyOk && $anyBlocked) {
             $L[] = '  Every portal is unreachable from the server → this is an OUTBOUND FIREWALL / egress block on';
@@ -1028,18 +1045,36 @@ class InventoryCheckController extends Controller
             return response('Unknown supplier: ' . $supplier . "\n", 422)
                 ->header('Content-Type', 'text/plain; charset=utf-8');
         }
-        $flag = storage_path('app/ica-backfill-request.json');
-        file_put_contents($flag, json_encode([
-            'supplier' => $supplier,
-            'business_id' => $business_id,
-            'requested_at' => Carbon::now()->toIso8601String(),
-        ], JSON_PRETTY_PRINT));
+        // Launch the full pull RIGHT NOW as a detached background process so
+        // it doesn't depend on the scheduler firing (and survives this web
+        // request). Output goes to a log the diagnostics page tails. Falls
+        // back to a scheduler flag file if shell exec is disabled.
+        $phpPath = (new \Symfony\Component\Process\PhpExecutableFinder())->find(false) ?: 'php';
+        $artisan = base_path('artisan');
+        $log = storage_path('app/ica-backfill-' . $supplier . '.log');
+        $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+        $started = false;
+        if (function_exists('shell_exec') && !in_array('shell_exec', $disabled, true)) {
+            $cmd = 'nohup ' . escapeshellarg($phpPath) . ' ' . escapeshellarg($artisan)
+                . ' supplier-prices:fetch ' . escapeshellarg($supplier) . ' --full'
+                . ' --business-id=' . (int) $business_id
+                . ' > ' . escapeshellarg($log) . ' 2>&1 &';
+            @shell_exec($cmd);
+            $started = true;
+        } else {
+            file_put_contents(storage_path('app/ica-backfill-request.json'), json_encode([
+                'supplier' => $supplier,
+                'business_id' => $business_id,
+                'requested_at' => Carbon::now()->toIso8601String(),
+            ], JSON_PRETTY_PRINT));
+        }
 
-        $msg = "Full-catalog backfill QUEUED for: " . strtoupper($supplier) . "\n\n"
-            . "The server will start pulling the entire catalog within ~5 minutes and\n"
-            . "may take several minutes to finish (no need to keep this open).\n\n"
+        $msg = "Full-catalog backfill " . ($started ? "STARTED" : "QUEUED") . " for: " . strtoupper($supplier) . "\n\n"
+            . ($started
+                ? "It's running now in the background and may take several minutes\n(no need to keep this open).\n\n"
+                : "The scheduler will start it within ~5 minutes.\n\n")
             . "Watch progress on the diagnostics page — the CURRENT FEED row count\n"
-            . "for this supplier will climb as it runs:\n"
+            . "for this supplier will climb, and the BACKFILL LOG shows live output:\n"
             . "  " . url('reports/inventory-check-assistant/supplier-diagnostics') . "\n\n"
             . "Product prices on /products fill in automatically as the feed grows.";
         return response($msg, 200)
