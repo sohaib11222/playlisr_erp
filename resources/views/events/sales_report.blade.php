@@ -31,8 +31,8 @@
 <div class="ev-wrap ev-wrap-wide">
   <div class="ev-head">
     <div>
-      <h1>Event Sales Report</h1>
-      <p class="sub">Per-event attendees, preorder interest, and day-of on-the-spot POS sales of the featured record. Sales come straight from the POS; attendees and preorder interest come from nivessa.com.</p>
+      <h1>Listening Party Sales</h1>
+      <p class="sub">Per-party attendees, preorder interest, and day-of on-the-spot POS sales of the featured record - including previous parties and what sold. Sales come straight from the POS; attendees and preorder interest come from nivessa.com.</p>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <a href="{{ route('events.index') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">&larr; Events</a>
         <a href="{{ route('events.preordersOverview') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">Preorders</a>

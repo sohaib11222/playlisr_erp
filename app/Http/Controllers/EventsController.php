@@ -1814,7 +1814,11 @@ class EventsController extends Controller
     protected function buildSalesRows(Request $request): array
     {
         $business_id = $this->businessId($request);
-        $events = array_values(self::load($business_id)['items']);
+        // Listening parties only — this report is about what we sold at parties.
+        $events = array_values(array_filter(
+            self::load($business_id)['items'],
+            fn($ev) => ($ev['eventType'] ?? 'listening_party') === 'listening_party'
+        ));
         $counts = $this->bridgeCounts();
         $featured = $this->featuredProductMap();
 
