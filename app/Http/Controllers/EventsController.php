@@ -1756,11 +1756,11 @@ class EventsController extends Controller
      * is stored LA-local, so DATE() gives the LA calendar day (matches event dates).
      * Graceful-empty on any error.
      */
-    protected function onsiteSalesLookup(int $business_id, array $productIds, string $minDate, string $maxDate): array
+    protected function salesByDayStore(int $business_id, array $dates): array
     {
         $lookup = [];
-        $productIds = array_values(array_unique(array_filter(array_map('intval', $productIds))));
-        if (empty($productIds) || $minDate === '' || $maxDate === '') {
+        $dates = array_values(array_unique(array_filter(array_map('strval', $dates))));
+        if (empty($dates)) {
             return $lookup;
         }
         try {
@@ -1770,6 +1770,7 @@ class EventsController extends Controller
                       ->whereNull('tsl.parent_sell_line_id');
                 })
                 ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                ->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
@@ -1777,27 +1778,26 @@ class EventsController extends Controller
                 ->where(function ($q) {
                     $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
                 })
-                ->whereIn('tsl.product_id', $productIds)
-                ->whereDate('t.transaction_date', '>=', $minDate)
-                ->whereDate('t.transaction_date', '<=', $maxDate)
-                ->groupBy(\DB::raw('DATE(t.transaction_date)'), 'tsl.product_id', 'bl.name')
+                ->whereNotNull('tsl.product_id')
+                ->whereIn(\DB::raw('DATE(t.transaction_date)'), $dates)
+                ->groupBy(\DB::raw('DATE(t.transaction_date)'), 'bl.name', 'tsl.product_id')
                 ->select(
                     \DB::raw('DATE(t.transaction_date) as d'),
-                    'tsl.product_id',
                     'bl.name as location_name',
+                    'tsl.product_id',
+                    \DB::raw("MAX(COALESCE(NULLIF(tsl.product_name, ''), p.name)) as pname"),
                     \DB::raw('SUM(tsl.quantity) as units'),
-                    \DB::raw('SUM(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue'),
-                    \DB::raw('COUNT(DISTINCT t.id) as txns')
+                    \DB::raw('SUM(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue')
                 )
                 ->get();
             foreach ($rows as $r) {
                 $d = (string) $r->d;
-                $pid = (int) $r->product_id;
                 $loc = mb_strtolower(trim((string) ($r->location_name ?? '')));
-                $lookup[$d][$pid][$loc] = [
-                    'units'   => (float) $r->units,
-                    'revenue' => round((float) $r->revenue, 2),
-                    'txns'    => (int) $r->txns,
+                $lookup[$d][$loc][] = [
+                    'product_id' => (int) $r->product_id,
+                    'name'       => trim((string) ($r->pname ?? '')) ?: ('Product #' . (int) $r->product_id),
+                    'units'      => (float) $r->units,
+                    'revenue'    => round((float) $r->revenue, 2),
                 ];
             }
         } catch (\Throwable $e) {
@@ -1807,9 +1807,10 @@ class EventsController extends Controller
     }
 
     /**
-     * Assemble the per-event report rows: attendees + preorder interest (from
-     * the website bridge) and day-of on-the-spot POS sales of the featured
-     * record (local SQL). Shared by the report view and its CSV export.
+     * Assemble the per-party report rows: attendees + preorder interest (from
+     * the website bridge) and what actually sold on the POS at the party's
+     * store(s) on the party date (local SQL). No pre-linked featured record
+     * needed, so previous parties show real sales. Shared by view + export.
      */
     protected function buildSalesRows(Request $request): array
     {
@@ -1820,38 +1821,28 @@ class EventsController extends Controller
             fn($ev) => ($ev['eventType'] ?? 'listening_party') === 'listening_party'
         ));
         $counts = $this->bridgeCounts();
-        $featured = $this->featuredProductMap();
 
+        // What sold on the POS at each party's date (any store), so previous
+        // parties show real sales without needing a pre-linked featured record.
         $dates = [];
-        $productIds = [];
         foreach ($events as $ev) {
-            $id = (string) ($ev['id'] ?? '');
-            $pid = (int) ($featured[$id] ?? 0);
-            if ($pid > 0 && !empty($ev['date'])) {
-                $dates[] = (string) $ev['date'];
-                $productIds[] = $pid;
-            }
+            if (!empty($ev['date'])) { $dates[] = (string) $ev['date']; }
         }
-        $minDate = $dates ? min($dates) : '';
-        $maxDate = $dates ? max($dates) : '';
-        $sales = $this->onsiteSalesLookup($business_id, $productIds, $minDate, $maxDate);
+        $sales = $this->salesByDayStore($business_id, $dates);
 
         $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
         $rows = [];
         foreach ($events as $ev) {
-            $id = (string) ($ev['id'] ?? '');
             $name = (string) ($ev['name'] ?? '(untitled)');
             $k = self::normName($name);
             $date = (string) ($ev['date'] ?? '');
             $locs = array_values(array_filter((array) ($ev['location'] ?? [])));
-            $pid = (int) ($featured[$id] ?? 0);
-            $hasFeatured = $pid > 0;
 
-            $units = 0.0;
-            $revenue = 0.0;
-            $txns = 0;
-            if ($hasFeatured && $date !== '' && isset($sales[$date][$pid])) {
-                foreach ($sales[$date][$pid] as $locName => $agg) {
+            // Merge the day's product sales across this party's store(s). When
+            // the party has no store set, count every store that day.
+            $byProduct = [];
+            if ($date !== '' && isset($sales[$date])) {
+                foreach ($sales[$date] as $locName => $lines) {
                     $match = empty($locs);
                     foreach ($locs as $lk) {
                         $lkk = mb_strtolower((string) $lk);
@@ -1860,28 +1851,33 @@ class EventsController extends Controller
                             break;
                         }
                     }
-                    if ($match) {
-                        $units += $agg['units'];
-                        $revenue += $agg['revenue'];
-                        $txns += $agg['txns'];
+                    if (!$match) { continue; }
+                    foreach ($lines as $ln) {
+                        $pid = $ln['product_id'];
+                        if (!isset($byProduct[$pid])) {
+                            $byProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                        }
+                        $byProduct[$pid]['units']   += $ln['units'];
+                        $byProduct[$pid]['revenue'] += $ln['revenue'];
                     }
                 }
             }
+            usort($byProduct, function ($a, $b) {
+                return ($b['units'] <=> $a['units']) ?: ($b['revenue'] <=> $a['revenue']);
+            });
 
             $rows[] = [
-                'id'            => $id,
-                'name'          => $name,
-                'date'          => $date,
-                'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
-                'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
-                'attendees'     => (int) ($counts['rsvps'][$k] ?? 0),
-                'vinyl'         => (int) ($counts['vinyl'][$k] ?? 0),
-                'cd'            => (int) ($counts['cd'][$k] ?? 0),
-                'units'         => $units,
-                'revenue'       => $revenue,
-                'txns'          => $txns,
-                'hasFeatured'   => $hasFeatured,
-                'featuredTitle' => trim((string) ($ev['preorderTitle'] ?? '')),
+                'name'         => $name,
+                'date'         => $date,
+                'eventType'    => (string) ($ev['eventType'] ?? 'listening_party'),
+                'stores'       => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
+                'attendees'    => (int) ($counts['rsvps'][$k] ?? 0),
+                'vinyl'        => (int) ($counts['vinyl'][$k] ?? 0),
+                'cd'           => (int) ($counts['cd'][$k] ?? 0),
+                'units'        => array_sum(array_column($byProduct, 'units')),
+                'revenue'      => array_sum(array_column($byProduct, 'revenue')),
+                'productCount' => count($byProduct),
+                'topSellers'   => array_slice($byProduct, 0, 6),
             ];
         }
         usort($rows, fn($a, $b) => strcmp((string) $b['date'], (string) $a['date']));
@@ -1906,7 +1902,6 @@ class EventsController extends Controller
             'interest'  => array_sum(array_column($rows, 'vinyl')) + array_sum(array_column($rows, 'cd')),
             'units'     => array_sum(array_column($rows, 'units')),
             'revenue'   => array_sum(array_column($rows, 'revenue')),
-            'txns'      => array_sum(array_column($rows, 'txns')),
         ];
         return view('events.sales_report', [
             'rows'       => $rows,
@@ -1930,24 +1925,26 @@ class EventsController extends Controller
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Event', 'Date', 'Type', 'Stores', 'Attendees',
+                'Party', 'Date', 'Stores', 'Attendees',
                 'Preorder interest (vinyl)', 'Preorder interest (CD)',
-                'Day-of purchases', 'Day-of qty sold', 'Day-of revenue',
-                'Featured record',
+                'Records sold (that day)', 'Sales revenue (that day)',
+                'What sold (top records)',
             ]);
             foreach ($rows as $r) {
+                $top = array_map(
+                    fn($p) => $p['name'] . ' x' . rtrim(rtrim(number_format($p['units'], 2), '0'), '.'),
+                    $r['topSellers']
+                );
                 fputcsv($out, [
                     $r['name'],
                     $r['date'],
-                    self::eventTypes()[$r['eventType']] ?? $r['eventType'],
                     implode(' + ', $r['stores']),
                     $r['attendees'],
                     $r['vinyl'],
                     $r['cd'],
-                    $r['hasFeatured'] ? $r['txns'] : '',
-                    $r['hasFeatured'] ? $r['units'] : '',
-                    $r['hasFeatured'] ? number_format($r['revenue'], 2, '.', '') : '',
-                    $r['featuredTitle'],
+                    rtrim(rtrim(number_format($r['units'], 2), '0'), '.'),
+                    number_format($r['revenue'], 2, '.', ''),
+                    implode('; ', $top),
                 ]);
             }
             fclose($out);
