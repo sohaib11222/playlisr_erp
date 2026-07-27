@@ -67,10 +67,24 @@ class AmsFetcher extends AbstractHttpFetcher
         $cdPages = (int) env('AMS_CD_PAGES', 25);
         $ipp = (int) env('AMS_ITEMS_PER_PAGE', 100);
 
+        // Sort orders to walk. Default is SalesRank (the top-sellers list,
+        // which caps out around a few thousand titles). In --full mode the
+        // command sets AMS_FULL_CATALOG=1, which adds an UNSORTED pass:
+        // /Search/Vinyl?ipp=100&pg=N with no sort pages AMS's ENTIRE browsable
+        // catalog, not just ranked sellers — that's what prices the long tail
+        // of our inventory (we order everything from AMS). '' = no sort param.
+        $sorts = ['SalesRank'];
+        if (filter_var(env('AMS_FULL_CATALOG'), FILTER_VALIDATE_BOOLEAN)) {
+            $sorts[] = '';
+        }
+
         $rows = [];
         foreach ([['Vinyl', $vinylPages, 'LP'], ['CD', $cdPages, 'CD']] as [$path, $pages, $defaultFormat]) {
-            foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp, $startedAt) as $row) {
-                $rows[] = $row;
+            foreach ($sorts as $sort) {
+                if ((microtime(true) - $startedAt) > (float) env('AMS_FETCH_BUDGET_SEC', 45)) break;
+                foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp, $startedAt, $sort) as $row) {
+                    $rows[] = $row;
+                }
             }
         }
 
@@ -308,9 +322,12 @@ class AmsFetcher extends AbstractHttpFetcher
      *
      * @return array<int, array<string,mixed>>
      */
-    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp, float $startedAt = 0.0): array
+    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp, float $startedAt = 0.0, string $sort = 'SalesRank'): array
     {
-        $base = 'https://www.allmediasupply.com/Search/' . $path . '?sort=SalesRank&ipp=' . $ipp;
+        // sort='' → no sort param → AMS's full default catalog listing
+        // (used by --full to reach titles the SalesRank top-list omits).
+        $base = 'https://www.allmediasupply.com/Search/' . $path . '?ipp=' . $ipp
+            . ($sort !== '' ? '&sort=' . rawurlencode($sort) : '');
         $rows = [];
         $seenEans = [];
         $pageParam = null; // locked once a spelling is proven to advance

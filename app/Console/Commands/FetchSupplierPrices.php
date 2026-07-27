@@ -62,6 +62,7 @@ class FetchSupplierPrices extends Command
         if ((bool) $this->option('full')) {
             $overrides = [
                 'AMS_FETCH_BUDGET_SEC' => '5400',   // 90 min ceiling
+                'AMS_FULL_CATALOG' => '1',          // also walk the unsorted full catalog
                 'AMS_VINYL_PAGES' => '1000',
                 'AMS_CD_PAGES' => '1000',
                 'AMS_BARCODE_LOOKUPS' => '20000',
