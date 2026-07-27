@@ -1001,6 +1001,40 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
+        $L[] = 'AMS MATCH COVERAGE (your 300 most-recently-added products):';
+        try {
+            $recent = DB::table('products')
+                ->where('business_id', $business_id)
+                ->orderByDesc('created_at')
+                ->limit(300)
+                ->get(['name', 'artist', 'sku']);
+            $n = count($recent);
+            $withAms = 0; $bySku = 0; $byName = 0;
+            foreach ($recent as $p) {
+                $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist ?? null, $p->name ?? null, null, $p->sku ?? null);
+                $ams = null;
+                foreach ($prices as $pr) {
+                    if (($pr['supplier_key'] ?? '') === 'ams') { $ams = $pr; break; }
+                }
+                if ($ams === null) continue;
+                $withAms++;
+                // Did it match on a barcode in the SKU, or fall back to name?
+                $skuSet = $this->skuUpcCandidatesForDiag((string) ($p->sku ?? ''));
+                $amsUpc = preg_replace('/\D+/', '', (string) ($ams['upc'] ?? ''));
+                $amsUpc = ltrim($amsUpc, '0');
+                if ($amsUpc !== '' && isset($skuSet[$amsUpc])) { $bySku++; } else { $byName++; }
+            }
+            $L[] = sprintf('  %d of %d have an AMS price (%d%%)  —  %d matched by SKU/barcode, %d by name',
+                $withAms, $n, $n ? (int) round($withAms * 100 / $n) : 0, $bySku, $byName);
+            if ($n && $withAms < $n) {
+                $L[] = '  Blank ones are titles AMS does not carry, or whose SKU is internal (no barcode) and';
+                $L[] = '  whose artist/title text does not line up with AMS.';
+            }
+        } catch (\Throwable $e) {
+            $L[] = '  (coverage check failed: ' . $e->getMessage() . ')';
+        }
+
+        $L[] = '';
         $L[] = 'BACKFILL LOG (most recent full-pull output, if any):';
         $anyLog = false;
         foreach ($known as $key => $meta) {
@@ -1089,6 +1123,20 @@ class InventoryCheckController extends Controller
         return response($msg, 200)
             ->header('Content-Type', 'text/plain; charset=utf-8')
             ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    /** Barcode-shaped tokens in a SKU (mirrors the matcher) — for diag stats. */
+    protected function skuUpcCandidatesForDiag(string $raw): array
+    {
+        $set = [];
+        foreach (preg_split('/[,\s;|]+/', $raw) as $tok) {
+            $digits = preg_replace('/\D+/', '', (string) $tok);
+            $len = strlen($digits);
+            if ($len < 8 || $len > 14) continue;
+            $norm = ltrim($digits, '0');
+            if ($norm !== '') $set[$norm] = true;
+        }
+        return $set;
     }
 
     /** Short outbound HTTP probe used only by supplierDiagnostics(). */
