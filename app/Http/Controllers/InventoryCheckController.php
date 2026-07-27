@@ -977,6 +977,15 @@ class InventoryCheckController extends Controller
                 $L[] = sprintf('  %-9s skipped — no creds saved', strtoupper($key));
                 continue;
             }
+            // Don't run a live login while a backfill for this supplier is in
+            // flight — both share one portal cookie jar, so a concurrent login
+            // would clobber the running pull's session (false 0-row result and,
+            // worse, it can break the backfill). Skip if the log moved recently.
+            $lp = storage_path('app/ica-backfill-' . $key . '.log');
+            if (is_file($lp) && (time() - (int) @filemtime($lp)) < 600) {
+                $L[] = sprintf('  %-9s skipped — a backfill is running (see BACKFILL LOG below)', strtoupper($key));
+                continue;
+            }
             try {
                 $rows = app($cls)->fetch();
                 $withCost = 0;
