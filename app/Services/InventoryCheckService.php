@@ -1207,9 +1207,13 @@ class InventoryCheckService
         // ERP row carries a barcode, match it against the feed row's upc (digits
         // only, leading zeros stripped) and accept regardless of how the names
         // line up. Name matching stays the fallback when there's no barcode hit.
-        $upcNorm = $this->normalizeUpc($upc);
+        // A product's SKU field can hold several comma/space-separated tokens
+        // (internal SKU + a scanned barcode + a Discogs id). Build the set of
+        // every barcode-shaped token so a real UPC anywhere in the SKU matches
+        // the feed's UPC — barcode match wins over fuzzy name matching.
+        $upcSet = $this->skuUpcCandidates($upc);
         $candidates = $this->supplierMatchCandidates($artist, $title);
-        if (empty($candidates) && $upcNorm === '') return [];
+        if (empty($candidates) && empty($upcSet)) return [];
 
         $out = [];
         foreach ($cache[$business_id] as $key => $bundle) {
@@ -1218,7 +1222,8 @@ class InventoryCheckService
                 if (!is_array($row)) continue;
                 $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
                 $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
-                $upcMatch = $upcNorm !== '' && $this->normalizeUpc($row['upc'] ?? null) === $upcNorm;
+                $rUpc = $this->normalizeUpc($row['upc'] ?? null);
+                $upcMatch = $rUpc !== '' && isset($upcSet[$rUpc]);
                 if (!$upcMatch && !$this->rowMatchesCandidates($rArtist, $rTitle, $candidates)) continue;
                 $cost = isset($row['cost']) ? (float) $row['cost'] : null;
                 if ($cost === null || $cost <= 0) continue;
@@ -1253,6 +1258,28 @@ class InventoryCheckService
     {
         $digits = preg_replace('/\D+/', '', (string) $raw);
         return ltrim((string) $digits, '0');
+    }
+
+    /**
+     * Every barcode-shaped token in a product's SKU field, normalized, as a
+     * lookup set [normUpc => true]. A SKU can be "PD-141108, 634904032418,
+     * 9514" — we want the 12/13-digit EAN in there to match the feed's UPC,
+     * not the internal SKU or Discogs id. Splits on comma/space/semicolon/pipe
+     * and keeps tokens that are 8-14 digits (UPC-E/UPC-A/EAN).
+     *
+     * @return array<string,bool>
+     */
+    protected function skuUpcCandidates($raw): array
+    {
+        $set = [];
+        foreach (preg_split('/[,\s;|]+/', (string) $raw) as $tok) {
+            $digits = preg_replace('/\D+/', '', (string) $tok);
+            $len = strlen($digits);
+            if ($len < 8 || $len > 14) continue; // not a UPC/EAN
+            $norm = ltrim($digits, '0');
+            if ($norm !== '') $set[$norm] = true;
+        }
+        return $set;
     }
 
     /**
