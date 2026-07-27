@@ -1837,15 +1837,29 @@ class EventsController extends Controller
     protected function buildSalesRows(Request $request): array
     {
         $business_id = $this->businessId($request);
+        // Optional per-store scope (?store=hollywood|pico); '' = both stores.
+        $store = strtolower(trim((string) $request->query('store', '')));
+        if (!in_array($store, ['hollywood', 'pico'], true)) { $store = ''; }
+
         // Past listening parties only — this report is about what we sold at
         // parties that have already happened (upcoming ones have no sales yet).
+        // When a store is picked, only parties that ran there (or have no store
+        // set) are shown.
         $today = \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
         $events = array_values(array_filter(
             self::load($business_id)['items'],
-            function ($ev) use ($today) {
+            function ($ev) use ($today, $store) {
                 if (($ev['eventType'] ?? 'listening_party') !== 'listening_party') { return false; }
                 $d = (string) ($ev['date'] ?? '');
-                return $d !== '' && $d <= $today;
+                if ($d === '' || $d > $today) { return false; }
+                if ($store !== '') {
+                    $locs = array_values(array_filter(array_map(
+                        fn($l) => mb_strtolower((string) $l),
+                        (array) ($ev['location'] ?? [])
+                    )));
+                    if (!empty($locs) && !in_array($store, $locs, true)) { return false; }
+                }
+                return true;
             }
         ));
         $counts = $this->bridgeCounts();
@@ -1877,7 +1891,11 @@ class EventsController extends Controller
                 $endSec = min(86399, $endSec + $graceAfterEnd);
             }
 
-            $storeMatch = function ($locName) use ($locs) {
+            $storeMatch = function ($locName) use ($locs, $store) {
+                // Scoped to one store: count only that store's sales.
+                if ($store !== '') {
+                    return $locName === $store || strpos($locName, $store) !== false || strpos($store, $locName) !== false;
+                }
                 if (empty($locs)) { return true; }
                 foreach ($locs as $lk) {
                     $lkk = mb_strtolower((string) $lk);
@@ -1919,15 +1937,27 @@ class EventsController extends Controller
             // The album = the record that sold the most during the party window.
             $album = $partyByProduct[0] ?? null;
 
+            // Attendees + preorders: per-store when scoped, else store totals.
+            if ($store !== '') {
+                $st = $counts['store'][$k][$store] ?? ['attending' => 0, 'vinyl' => 0, 'cd' => 0];
+                $attendees = (int) ($st['attending'] ?? 0);
+                $vinyl = (int) ($st['vinyl'] ?? 0);
+                $cd = (int) ($st['cd'] ?? 0);
+            } else {
+                $attendees = (int) ($counts['rsvps'][$k] ?? 0);
+                $vinyl = (int) ($counts['vinyl'][$k] ?? 0);
+                $cd = (int) ($counts['cd'][$k] ?? 0);
+            }
+
             $rows[] = [
                 'name'          => $name,
                 'date'          => $date,
                 'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
                 'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
                 'hasWindow'     => $startSec !== null,
-                'attendees'     => (int) ($counts['rsvps'][$k] ?? 0),
-                'vinyl'         => (int) ($counts['vinyl'][$k] ?? 0),
-                'cd'            => (int) ($counts['cd'][$k] ?? 0),
+                'attendees'     => $attendees,
+                'vinyl'         => $vinyl,
+                'cd'            => $cd,
                 'albumName'     => $album['name'] ?? '',
                 'albumUnits'    => $album['units'] ?? 0,
                 'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
@@ -1954,6 +1984,8 @@ class EventsController extends Controller
         if (!auth()->user()->can('product.create')) {
             abort(403, 'Unauthorized action.');
         }
+        $store = strtolower(trim((string) $request->query('store', '')));
+        if (!in_array($store, ['hollywood', 'pico'], true)) { $store = ''; }
         $rows = $this->buildSalesRows($request);
         $totals = [
             'attendees'    => array_sum(array_column($rows, 'attendees')),
@@ -1967,6 +1999,7 @@ class EventsController extends Controller
         return view('events.sales_report', [
             'rows'       => $rows,
             'totals'     => $totals,
+            'store'      => $store,
             'eventTypes' => self::eventTypes(),
             'bridgeKeySet' => $this->erpApiKey() !== '',
         ]);

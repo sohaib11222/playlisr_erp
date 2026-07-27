@@ -39,15 +39,25 @@
 <div class="ev-wrap ev-wrap-wide">
   <div class="ev-head">
     <div>
-      <h1>Listening Party Sales</h1>
+      <h1>Listening Party Sales @if ($store) <span style="font-size:15px;color:#8a7c6a;font-weight:600;">&middot; {{ ucfirst($store) }}</span> @endif</h1>
       <p class="sub">Past listening parties, most recent first: attendees, preorders placed, and what sold on the POS - split into the party's own hours vs the whole store day, with the top record sold during the party (the album) called out.</p>
+      @php
+        $tabBase = 'display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);';
+        $tabOn = 'background:var(--pos-accent,#FFE08A);color:#3a2f0c;font-weight:700;';
+        $tabOff = 'color:#6b6253;';
+      @endphp
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <a href="{{ route('events.index') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">&larr; Events</a>
-        <a href="{{ route('events.preordersOverview') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">Preorders</a>
+        <a href="{{ route('events.salesReport') }}" style="{{ $tabBase }}{{ $store === '' ? $tabOn : $tabOff }}">Both stores</a>
+        <a href="{{ route('events.salesReport', ['store' => 'hollywood']) }}" style="{{ $tabBase }}{{ $store === 'hollywood' ? $tabOn : $tabOff }}">Hollywood</a>
+        <a href="{{ route('events.salesReport', ['store' => 'pico']) }}" style="{{ $tabBase }}{{ $store === 'pico' ? $tabOn : $tabOff }}">Pico</a>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <a href="{{ route('events.index') }}" style="{{ $tabBase }}{{ $tabOff }}">&larr; Events</a>
+        <a href="{{ route('events.preordersOverview') }}" style="{{ $tabBase }}{{ $tabOff }}">Preorders</a>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
-      <a href="{{ route('events.salesReportExport') }}" class="btn-accent" style="text-decoration:none;text-align:center;">Export CSV</a>
+      <a href="{{ route('events.salesReportExport', $store ? ['store' => $store] : []) }}" class="btn-accent" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
   </div>
 
