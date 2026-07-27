@@ -589,6 +589,39 @@ class ProductController extends Controller
                     $url = 'https://nivessa.com/products/' . rawurlencode($sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
                     return '<a href="' . $url . '" target="_blank" rel="noopener"><i class="fa fa-external-link"></i> View</a>';
                 })
+                ->addColumn('distributor_prices', function ($row) use ($business_id) {
+                    // What each distributor charges for this product, cheapest
+                    // first, matched by UPC/SKU (strong) then artist/title.
+                    // Reuses the same feed matcher the ICA buckets use, so the
+                    // AMS/Redeye/… feeds populate this column automatically.
+                    try {
+                        $prices = app(\App\Services\InventoryCheckService::class)
+                            ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, null, $row->sku ?? null);
+                    } catch (\Throwable $e) {
+                        $prices = [];
+                    }
+                    if (empty($prices)) {
+                        return '<span class="text-muted" title="No distributor carries this (or their feed isn\'t loaded yet)">—</span>';
+                    }
+                    $best = (float) ($prices[0]['cost'] ?? 0);
+                    $chips = [];
+                    foreach ($prices as $p) {
+                        $cost = (float) ($p['cost'] ?? 0);
+                        if ($cost <= 0) { continue; }
+                        $label = e($p['supplier_label'] ?? $p['supplier_key'] ?? '?');
+                        $isBest = abs($cost - $best) < 0.005;
+                        $style = $isBest
+                            ? 'background:#e6f4ea;color:#0b3d1a;font-weight:600;'
+                            : 'background:#f3f3f3;color:#333;';
+                        $chip = '<span style="display:inline-block;margin:1px 2px;padding:1px 7px;border-radius:10px;font-size:11px;white-space:nowrap;' . $style . '">'
+                            . $label . ' $' . number_format($cost, 2) . '</span>';
+                        if (!empty($p['url'])) {
+                            $chip = '<a href="' . e($p['url']) . '" target="_blank" rel="noopener" style="text-decoration:none;">' . $chip . '</a>';
+                        }
+                        $chips[] = $chip;
+                    }
+                    return $chips ? implode(' ', $chips) : '<span class="text-muted">—</span>';
+                })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
                             $q->where('sub_sku', 'like', "%{$keyword}%");
@@ -603,7 +636,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'distributor_prices'])
                 ->make(true);
         }
 

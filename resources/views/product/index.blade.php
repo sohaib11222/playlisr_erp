@@ -515,7 +515,8 @@
                         { data: 'discogs_id', name: 'discogs_id', orderable: false, searchable: false },
                         { data: 'list_discogs', name: 'list_discogs', orderable: false, searchable: false },
                         { data: 'list_ebay', name: 'list_ebay', orderable: false, searchable: false },
-                        { data: 'nivessa_url', name: 'nivessa_url', orderable: false, searchable: false }
+                        { data: 'nivessa_url', name: 'nivessa_url', orderable: false, searchable: false },
+                        { data: 'distributor_prices', name: 'distributor_prices', orderable: false, searchable: false }
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){
