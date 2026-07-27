@@ -40,7 +40,7 @@
   <div class="ev-head">
     <div>
       <h1>Listening Party Sales</h1>
-      <p class="sub">Every listening party (most recent first): attendees, preorders placed, and what sold on the POS - split into the party's own hours vs the whole store day, with the top record sold during the party (the album) called out.</p>
+      <p class="sub">Past listening parties, most recent first: attendees, preorders placed, and what sold on the POS - split into the party's own hours vs the whole store day, with the top record sold during the party (the album) called out.</p>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <a href="{{ route('events.index') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">&larr; Events</a>
         <a href="{{ route('events.preordersOverview') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">Preorders</a>
@@ -134,7 +134,7 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="7" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:#8a7c6a;padding:26px;">No past listening parties yet.</td></tr>
         @endforelse
       </tbody>
       @if (count($rows))

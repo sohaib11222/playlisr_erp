@@ -1837,10 +1837,16 @@ class EventsController extends Controller
     protected function buildSalesRows(Request $request): array
     {
         $business_id = $this->businessId($request);
-        // Listening parties only — this report is about what we sold at parties.
+        // Past listening parties only — this report is about what we sold at
+        // parties that have already happened (upcoming ones have no sales yet).
+        $today = \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
         $events = array_values(array_filter(
             self::load($business_id)['items'],
-            fn($ev) => ($ev['eventType'] ?? 'listening_party') === 'listening_party'
+            function ($ev) use ($today) {
+                if (($ev['eventType'] ?? 'listening_party') !== 'listening_party') { return false; }
+                $d = (string) ($ev['date'] ?? '');
+                return $d !== '' && $d <= $today;
+            }
         ));
         $counts = $this->bridgeCounts();
 
