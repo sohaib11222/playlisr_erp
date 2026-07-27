@@ -18,6 +18,7 @@
         <a href="{{ route('events.index') }}" style="{{ $tabBase }}{{ $filterType === 'listening_party' ? $tabOn : $tabOff }}">Listening parties</a>
         <a href="{{ route('events.index', ['type' => 'all']) }}" style="{{ $tabBase }}{{ $filterType === null ? $tabOn : $tabOff }}">All events</a>
         <a href="{{ route('events.preordersOverview') }}" style="{{ $tabBase }}{{ $tabOff }}">Preorders &rarr;</a>
+        <a href="{{ route('events.salesReport') }}" style="{{ $tabBase }}{{ $tabOff }}">Sales report &rarr;</a>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">

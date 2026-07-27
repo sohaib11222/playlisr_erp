@@ -1714,4 +1714,241 @@ class EventsController extends Controller
             return null;
         }
     }
+
+    /**
+     * eventId => featured POS product id, read from the website's public
+     * allEvents feed (the ERP event JSON stores preorder titles only, not the
+     * POS product id the customer picker resolved on nivessa.com). Same feed +
+     * pattern as publishedMap(); empty on failure so the report degrades to
+     * "no featured record" rather than breaking. product ids here are
+     * UltimatePOS ids that line up with transaction_sell_lines.product_id.
+     */
+    protected function featuredProductMap(): array
+    {
+        $map = [];
+        $raw = $this->httpGet($this->bridgeBaseUrl() . '/events/allEvents?all=1');
+        if ($raw === null) {
+            return $map;
+        }
+        try {
+            $j = json_decode($raw, true);
+            $list = $j['data'] ?? $j['events'] ?? (is_array($j) ? $j : []);
+            if (is_array($list)) {
+                foreach ($list as $e) {
+                    $id = (string) ($e['id'] ?? $e['_id'] ?? '');
+                    if ($id === '') { continue; }
+                    $pid = (int) ($e['preorderPosProductId'] ?? 0);
+                    if ($pid > 0) { $map[$id] = $pid; }
+                }
+            }
+        } catch (\Throwable $e) {
+            // leave empty
+        }
+        return $map;
+    }
+
+    /**
+     * On-the-spot POS sales lookup for the featured records across the event
+     * date span, in ONE query. Returns lookup[date][product_id][locNameLower]
+     * => ['units','revenue','txns']. Mirrors the recent-sales-feed pool
+     * (SellPosController@recentSalesFeed): final 'sell' transactions, no xlsx
+     * import_source, Whatnot excluded, top-level sell lines only. transaction_date
+     * is stored LA-local, so DATE() gives the LA calendar day (matches event dates).
+     * Graceful-empty on any error.
+     */
+    protected function onsiteSalesLookup(int $business_id, array $productIds, string $minDate, string $maxDate): array
+    {
+        $lookup = [];
+        $productIds = array_values(array_unique(array_filter(array_map('intval', $productIds))));
+        if (empty($productIds) || $minDate === '' || $maxDate === '') {
+            return $lookup;
+        }
+        try {
+            $rows = \DB::table('transactions as t')
+                ->join('transaction_sell_lines as tsl', function ($j) {
+                    $j->on('tsl.transaction_id', '=', 't.id')
+                      ->whereNull('tsl.parent_sell_line_id');
+                })
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereNull('t.import_source')
+                ->where(function ($q) {
+                    $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
+                })
+                ->whereIn('tsl.product_id', $productIds)
+                ->whereDate('t.transaction_date', '>=', $minDate)
+                ->whereDate('t.transaction_date', '<=', $maxDate)
+                ->groupBy(\DB::raw('DATE(t.transaction_date)'), 'tsl.product_id', 'bl.name')
+                ->select(
+                    \DB::raw('DATE(t.transaction_date) as d'),
+                    'tsl.product_id',
+                    'bl.name as location_name',
+                    \DB::raw('SUM(tsl.quantity) as units'),
+                    \DB::raw('SUM(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue'),
+                    \DB::raw('COUNT(DISTINCT t.id) as txns')
+                )
+                ->get();
+            foreach ($rows as $r) {
+                $d = (string) $r->d;
+                $pid = (int) $r->product_id;
+                $loc = mb_strtolower(trim((string) ($r->location_name ?? '')));
+                $lookup[$d][$pid][$loc] = [
+                    'units'   => (float) $r->units,
+                    'revenue' => round((float) $r->revenue, 2),
+                    'txns'    => (int) $r->txns,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // graceful-empty
+        }
+        return $lookup;
+    }
+
+    /**
+     * Assemble the per-event report rows: attendees + preorder interest (from
+     * the website bridge) and day-of on-the-spot POS sales of the featured
+     * record (local SQL). Shared by the report view and its CSV export.
+     */
+    protected function buildSalesRows(Request $request): array
+    {
+        $business_id = $this->businessId($request);
+        $events = array_values(self::load($business_id)['items']);
+        $counts = $this->bridgeCounts();
+        $featured = $this->featuredProductMap();
+
+        $dates = [];
+        $productIds = [];
+        foreach ($events as $ev) {
+            $id = (string) ($ev['id'] ?? '');
+            $pid = (int) ($featured[$id] ?? 0);
+            if ($pid > 0 && !empty($ev['date'])) {
+                $dates[] = (string) $ev['date'];
+                $productIds[] = $pid;
+            }
+        }
+        $minDate = $dates ? min($dates) : '';
+        $maxDate = $dates ? max($dates) : '';
+        $sales = $this->onsiteSalesLookup($business_id, $productIds, $minDate, $maxDate);
+
+        $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
+        $rows = [];
+        foreach ($events as $ev) {
+            $id = (string) ($ev['id'] ?? '');
+            $name = (string) ($ev['name'] ?? '(untitled)');
+            $k = self::normName($name);
+            $date = (string) ($ev['date'] ?? '');
+            $locs = array_values(array_filter((array) ($ev['location'] ?? [])));
+            $pid = (int) ($featured[$id] ?? 0);
+            $hasFeatured = $pid > 0;
+
+            $units = 0.0;
+            $revenue = 0.0;
+            $txns = 0;
+            if ($hasFeatured && $date !== '' && isset($sales[$date][$pid])) {
+                foreach ($sales[$date][$pid] as $locName => $agg) {
+                    $match = empty($locs);
+                    foreach ($locs as $lk) {
+                        $lkk = mb_strtolower((string) $lk);
+                        if ($lkk !== '' && ($locName === $lkk || strpos($locName, $lkk) !== false || strpos($lkk, $locName) !== false)) {
+                            $match = true;
+                            break;
+                        }
+                    }
+                    if ($match) {
+                        $units += $agg['units'];
+                        $revenue += $agg['revenue'];
+                        $txns += $agg['txns'];
+                    }
+                }
+            }
+
+            $rows[] = [
+                'id'            => $id,
+                'name'          => $name,
+                'date'          => $date,
+                'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
+                'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
+                'attendees'     => (int) ($counts['rsvps'][$k] ?? 0),
+                'vinyl'         => (int) ($counts['vinyl'][$k] ?? 0),
+                'cd'            => (int) ($counts['cd'][$k] ?? 0),
+                'units'         => $units,
+                'revenue'       => $revenue,
+                'txns'          => $txns,
+                'hasFeatured'   => $hasFeatured,
+                'featuredTitle' => trim((string) ($ev['preorderTitle'] ?? '')),
+            ];
+        }
+        usort($rows, fn($a, $b) => strcmp((string) $b['date'], (string) $a['date']));
+        return $rows;
+    }
+
+    /**
+     * GET /events-sales-report — per-event sales summary for the accountant:
+     * attendees, preorder interest, and day-of on-the-spot POS sales of the
+     * featured record (units + revenue), with a CSV export. All data is native
+     * to the ERP (POS sales) or read over the existing website bridge; no new
+     * token needed.
+     */
+    public function salesReport(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $rows = $this->buildSalesRows($request);
+        $totals = [
+            'attendees' => array_sum(array_column($rows, 'attendees')),
+            'interest'  => array_sum(array_column($rows, 'vinyl')) + array_sum(array_column($rows, 'cd')),
+            'units'     => array_sum(array_column($rows, 'units')),
+            'revenue'   => array_sum(array_column($rows, 'revenue')),
+            'txns'      => array_sum(array_column($rows, 'txns')),
+        ];
+        return view('events.sales_report', [
+            'rows'       => $rows,
+            'totals'     => $totals,
+            'eventTypes' => self::eventTypes(),
+            'bridgeKeySet' => $this->erpApiKey() !== '',
+        ]);
+    }
+
+    /**
+     * GET /events-sales-report/export — the same rows as a CSV download.
+     */
+    public function salesReportExport(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $rows = $this->buildSalesRows($request);
+        $filename = 'nivessa-event-sales-report.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Event', 'Date', 'Type', 'Stores', 'Attendees',
+                'Preorder interest (vinyl)', 'Preorder interest (CD)',
+                'Day-of purchases', 'Day-of qty sold', 'Day-of revenue',
+                'Featured record',
+            ]);
+            foreach ($rows as $r) {
+                fputcsv($out, [
+                    $r['name'],
+                    $r['date'],
+                    self::eventTypes()[$r['eventType']] ?? $r['eventType'],
+                    implode(' + ', $r['stores']),
+                    $r['attendees'],
+                    $r['vinyl'],
+                    $r['cd'],
+                    $r['hasFeatured'] ? $r['txns'] : '',
+                    $r['hasFeatured'] ? $r['units'] : '',
+                    $r['hasFeatured'] ? number_format($r['revenue'], 2, '.', '') : '',
+                    $r['featuredTitle'],
+                ]);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
 }

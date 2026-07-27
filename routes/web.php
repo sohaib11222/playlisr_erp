@@ -403,6 +403,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/events', 'EventsController@index')->name('events.index');
     // Preorders across all events + in-store special orders (where, pickup date)
     Route::get('/events-preorders', 'EventsController@preordersOverview')->name('events.preordersOverview');
+    // Per-event sales summary for the accountant: attendees + preorder interest
+    // + day-of on-the-spot POS sales of the featured record (units + revenue).
+    Route::get('/events-sales-report', 'EventsController@salesReport')->name('events.salesReport');
+    Route::get('/events-sales-report/export', 'EventsController@salesReportExport')->name('events.salesReportExport');
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
     Route::post('/events-preorders/event/{preorderId}/paid', 'EventsController@overviewMarkEventPaid')->name('events.overviewEventPaid');
     Route::post('/events-preorders/event/{preorderId}/source', 'EventsController@overviewSetEventSource')->name('events.overviewEventSource');
