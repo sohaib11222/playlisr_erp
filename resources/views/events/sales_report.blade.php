@@ -18,7 +18,7 @@
 @endphp
 
 <style>
-  .esr-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .esr-table { width:100%; border-collapse:collapse; font-size:13px; min-width:900px; }
   .esr-table th, .esr-table td { padding:10px 12px; border-bottom:1px solid var(--pos-line,#ECE3CF); text-align:left; vertical-align:top; }
   .esr-table th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8a7c6a; font-weight:700; background:#faf6ec; }
   .esr-table td.num, .esr-table th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -26,6 +26,10 @@
   .esr-ev-sub { font-size:11px; color:#8a7c6a; margin-top:2px; }
   .esr-foot td { font-weight:700; color:#3a2f0c; background:#faf6ec; border-top:2px solid var(--pos-line,#ECE3CF); }
   .esr-muted { color:#b6ac97; }
+  .esr-star { background:#fff6df; }
+  .esr-star.num { color:#3a2f0c; }
+  .esr-album-qty { font-size:17px; font-weight:800; color:#3a2f0c; }
+  .esr-album-name { font-size:11px; color:#8a7c6a; margin-top:1px; max-width:180px; }
   .esr-sold { margin:0; padding:0; list-style:none; font-size:12px; color:#4a4335; }
   .esr-sold li { display:flex; justify-content:space-between; gap:12px; padding:1px 0; }
   .esr-sold li span:last-child { color:#8a7c6a; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -36,7 +40,7 @@
   <div class="ev-head">
     <div>
       <h1>Listening Party Sales</h1>
-      <p class="sub">Every listening party (most recent first) with attendees, preorder interest, and what actually sold on the POS at the party's store on the party date. Sales read straight from the register; attendees and preorder interest come from nivessa.com.</p>
+      <p class="sub">Every listening party (most recent first): attendees, preorders placed, and what sold on the POS - split into the party's own hours vs the whole store day, with the top record sold during the party (the album) called out.</p>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <a href="{{ route('events.index') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">&larr; Events</a>
         <a href="{{ route('events.preordersOverview') }}" style="display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);color:#6b6253;">Preorders</a>
@@ -49,12 +53,12 @@
 
   @if (!$bridgeKeySet)
     <div style="margin:0 0 14px;padding:10px 14px;border:1px solid #ead9a6;background:#fff6df;border-radius:10px;font-size:13px;color:#8a6a1a;">
-      The website bridge key isn't set, so attendee and preorder-interest columns show 0. Sales still work (they read the POS directly). Set the key on the Events page to fill those in.
+      The website bridge key isn't set, so attendees and preorders placed show 0. Sales still work (they read the POS directly). Set the key on the Events page to fill those in.
     </div>
   @endif
 
-  <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:860px;">
-    "Sold" counts every record rung up on the POS at the party's store(s) on the party date - the store is open to walk-ins too, so this is the store's sales that day, not only party guests. A dash means nothing was rung at that store that day (e.g. an upcoming party).
+  <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
+    "During party" counts POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. "Album" is the single record that sold the most during the party. A dash means nothing was rung at that store then.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -63,10 +67,11 @@
         <tr>
           <th>Party</th>
           <th class="num">Attendees</th>
-          <th class="num">Preorder interest</th>
-          <th class="num">Records sold</th>
-          <th class="num">Sales revenue</th>
-          <th>What sold (top records that day)</th>
+          <th class="num">Preorders placed</th>
+          <th class="num esr-star">Album sold at party</th>
+          <th class="num">Sold during party</th>
+          <th class="num">Sold that day (store)</th>
+          <th>Top records during party</th>
         </tr>
       </thead>
       <tbody>
@@ -77,6 +82,7 @@
               <div class="esr-ev-sub">
                 {{ $fmtDate($r['date']) }}
                 @if (!empty($r['stores'])) &middot; {{ implode(' + ', $r['stores']) }} @endif
+                @unless ($r['hasWindow']) &middot; <span title="No start time set - using the whole day">no time set</span> @endunless
               </div>
             </td>
             <td class="num">{{ $r['attendees'] ?: '-' }}</td>
@@ -88,8 +94,30 @@
                 <span class="esr-muted">-</span>
               @endif
             </td>
-            <td class="num">{{ $r['units'] > 0 ? $qty($r['units']) : '' }}@if ($r['units'] <= 0)<span class="esr-muted">-</span>@endif</td>
-            <td class="num">{{ $r['units'] > 0 ? $money($r['revenue']) : '' }}@if ($r['units'] <= 0)<span class="esr-muted">-</span>@endif</td>
+            <td class="num esr-star">
+              @if ($r['albumUnits'] > 0)
+                <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
+                <div class="esr-album-name">{{ $r['albumName'] }}</div>
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
+            <td class="num">
+              @if ($r['partyUnits'] > 0)
+                {{ $qty($r['partyUnits']) }}
+                <div class="esr-ev-sub">{{ $money($r['partyRevenue']) }}</div>
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
+            <td class="num">
+              @if ($r['dayUnits'] > 0)
+                {{ $qty($r['dayUnits']) }}
+                <div class="esr-ev-sub">{{ $money($r['dayRevenue']) }}</div>
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
             <td>
               @if (!empty($r['topSellers']))
                 <ul class="esr-sold">
@@ -106,7 +134,7 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="6" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
         @endforelse
       </tbody>
       @if (count($rows))
@@ -114,9 +142,10 @@
           <tr class="esr-foot">
             <td>Totals ({{ count($rows) }} parties)</td>
             <td class="num">{{ $totals['attendees'] }}</td>
-            <td class="num">{{ $totals['interest'] }}</td>
-            <td class="num">{{ $qty($totals['units']) }}</td>
-            <td class="num">{{ $money($totals['revenue']) }}</td>
+            <td class="num">{{ $totals['preorders'] }}</td>
+            <td class="num esr-star">{{ $qty($totals['albumUnits']) }}</td>
+            <td class="num">{{ $qty($totals['partyUnits']) }}<div class="esr-ev-sub">{{ $money($totals['partyRevenue']) }}</div></td>
+            <td class="num">{{ $qty($totals['dayUnits']) }}<div class="esr-ev-sub">{{ $money($totals['dayRevenue']) }}</div></td>
             <td></td>
           </tr>
         </tfoot>

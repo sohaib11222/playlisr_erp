@@ -1748,15 +1748,15 @@ class EventsController extends Controller
     }
 
     /**
-     * On-the-spot POS sales lookup for the featured records across the event
-     * date span, in ONE query. Returns lookup[date][product_id][locNameLower]
-     * => ['units','revenue','txns']. Mirrors the recent-sales-feed pool
-     * (SellPosController@recentSalesFeed): final 'sell' transactions, no xlsx
-     * import_source, Whatnot excluded, top-level sell lines only. transaction_date
-     * is stored LA-local, so DATE() gives the LA calendar day (matches event dates).
-     * Graceful-empty on any error.
+     * Line-level POS sales for the given LA dates, so the report can split each
+     * party's own hours from the rest of the store's day. Returns
+     * lookup[date] = [ ['tm'(seconds since midnight),'loc'(name lower),'product_id',
+     * 'name','units','revenue'], ... ]. Mirrors the recent-sales-feed pool
+     * (SellPosController@recentSalesFeed): final 'sell', no xlsx import_source,
+     * Whatnot excluded, top-level sell lines only. transaction_date is LA-local,
+     * so DATE()/TIME() give the LA day/clock-time. Graceful-empty on any error.
      */
-    protected function salesByDayStore(int $business_id, array $dates): array
+    protected function salesLinesByDate(int $business_id, array $dates): array
     {
         $lookup = [];
         $dates = array_values(array_unique(array_filter(array_map('strval', $dates))));
@@ -1780,23 +1780,25 @@ class EventsController extends Controller
                 })
                 ->whereNotNull('tsl.product_id')
                 ->whereIn(\DB::raw('DATE(t.transaction_date)'), $dates)
-                ->groupBy(\DB::raw('DATE(t.transaction_date)'), 'bl.name', 'tsl.product_id')
+                ->limit(50000)
                 ->select(
                     \DB::raw('DATE(t.transaction_date) as d'),
+                    \DB::raw('TIME_TO_SEC(TIME(t.transaction_date)) as tm'),
                     'bl.name as location_name',
                     'tsl.product_id',
-                    \DB::raw("MAX(COALESCE(NULLIF(tsl.product_name, ''), p.name)) as pname"),
-                    \DB::raw('SUM(tsl.quantity) as units'),
-                    \DB::raw('SUM(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue')
+                    \DB::raw("COALESCE(NULLIF(tsl.product_name, ''), p.name) as pname"),
+                    'tsl.quantity as qty',
+                    \DB::raw('(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue')
                 )
                 ->get();
             foreach ($rows as $r) {
                 $d = (string) $r->d;
-                $loc = mb_strtolower(trim((string) ($r->location_name ?? '')));
-                $lookup[$d][$loc][] = [
+                $lookup[$d][] = [
+                    'tm'         => (int) $r->tm,
+                    'loc'        => mb_strtolower(trim((string) ($r->location_name ?? ''))),
                     'product_id' => (int) $r->product_id,
                     'name'       => trim((string) ($r->pname ?? '')) ?: ('Product #' . (int) $r->product_id),
-                    'units'      => (float) $r->units,
+                    'units'      => (float) $r->qty,
                     'revenue'    => round((float) $r->revenue, 2),
                 ];
             }
@@ -1806,10 +1808,30 @@ class EventsController extends Controller
         return $lookup;
     }
 
+    /** "18:00" / "6:00 pm" -> seconds since midnight, or null. */
+    protected static function hmsToSeconds(?string $s): ?int
+    {
+        $s = trim((string) $s);
+        if ($s === '') {
+            return null;
+        }
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]m)?$/i', $s, $m)) {
+            $h = (int) $m[1];
+            $min = (int) $m[2];
+            $sec = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 0;
+            $ap = strtolower($m[4] ?? '');
+            if ($ap === 'pm' && $h < 12) { $h += 12; }
+            if ($ap === 'am' && $h === 12) { $h = 0; }
+            return $h * 3600 + $min * 60 + $sec;
+        }
+        return null;
+    }
+
     /**
-     * Assemble the per-party report rows: attendees + preorder interest (from
-     * the website bridge) and what actually sold on the POS at the party's
-     * store(s) on the party date (local SQL). No pre-linked featured record
+     * Assemble the per-party report rows: attendees + preorders placed (website
+     * bridge), and what sold on the POS at the party's store(s) - split into the
+     * party's own hours vs the whole store day, plus the single record that sold
+     * the most during the party (the album). No pre-linked featured record
      * needed, so previous parties show real sales. Shared by view + export.
      */
     protected function buildSalesRows(Request $request): array
@@ -1822,13 +1844,15 @@ class EventsController extends Controller
         ));
         $counts = $this->bridgeCounts();
 
-        // What sold on the POS at each party's date (any store), so previous
-        // parties show real sales without needing a pre-linked featured record.
         $dates = [];
         foreach ($events as $ev) {
             if (!empty($ev['date'])) { $dates[] = (string) $ev['date']; }
         }
-        $sales = $this->salesByDayStore($business_id, $dates);
+        $lines = $this->salesLinesByDate($business_id, $dates);
+
+        // Grace after the party end for people buying on their way out.
+        $graceAfterEnd = 3600;      // 1 hour
+        $defaultDuration = 3 * 3600; // when no end time is set
 
         $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
         $rows = [];
@@ -1838,46 +1862,74 @@ class EventsController extends Controller
             $date = (string) ($ev['date'] ?? '');
             $locs = array_values(array_filter((array) ($ev['location'] ?? [])));
 
-            // Merge the day's product sales across this party's store(s). When
-            // the party has no store set, count every store that day.
-            $byProduct = [];
-            if ($date !== '' && isset($sales[$date])) {
-                foreach ($sales[$date] as $locName => $lines) {
-                    $match = empty($locs);
-                    foreach ($locs as $lk) {
-                        $lkk = mb_strtolower((string) $lk);
-                        if ($lkk !== '' && ($locName === $lkk || strpos($locName, $lkk) !== false || strpos($lkk, $locName) !== false)) {
-                            $match = true;
-                            break;
-                        }
+            // Party window in seconds-since-midnight. Null start = no time set,
+            // so the "party window" falls back to the whole day.
+            $startSec = self::hmsToSeconds($ev['time'] ?? null);
+            $endSec = self::hmsToSeconds($ev['endTime'] ?? null);
+            if ($startSec !== null) {
+                if ($endSec === null || $endSec <= $startSec) { $endSec = $startSec + $defaultDuration; }
+                $endSec = min(86399, $endSec + $graceAfterEnd);
+            }
+
+            $storeMatch = function ($locName) use ($locs) {
+                if (empty($locs)) { return true; }
+                foreach ($locs as $lk) {
+                    $lkk = mb_strtolower((string) $lk);
+                    if ($lkk !== '' && ($locName === $lkk || strpos($locName, $lkk) !== false || strpos($lkk, $locName) !== false)) {
+                        return true;
                     }
-                    if (!$match) { continue; }
-                    foreach ($lines as $ln) {
-                        $pid = $ln['product_id'];
-                        if (!isset($byProduct[$pid])) {
-                            $byProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                }
+                return false;
+            };
+
+            $dayByProduct = [];    // whole store day
+            $partyByProduct = [];   // during the party hours only
+            if ($date !== '' && isset($lines[$date])) {
+                foreach ($lines[$date] as $ln) {
+                    if (!$storeMatch($ln['loc'])) { continue; }
+                    $pid = $ln['product_id'];
+                    if (!isset($dayByProduct[$pid])) {
+                        $dayByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                    }
+                    $dayByProduct[$pid]['units']   += $ln['units'];
+                    $dayByProduct[$pid]['revenue'] += $ln['revenue'];
+
+                    $inWindow = $startSec === null || ($ln['tm'] >= $startSec && $ln['tm'] <= $endSec);
+                    if ($inWindow) {
+                        if (!isset($partyByProduct[$pid])) {
+                            $partyByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
                         }
-                        $byProduct[$pid]['units']   += $ln['units'];
-                        $byProduct[$pid]['revenue'] += $ln['revenue'];
+                        $partyByProduct[$pid]['units']   += $ln['units'];
+                        $partyByProduct[$pid]['revenue'] += $ln['revenue'];
                     }
                 }
             }
-            usort($byProduct, function ($a, $b) {
+            $bySold = function ($a, $b) {
                 return ($b['units'] <=> $a['units']) ?: ($b['revenue'] <=> $a['revenue']);
-            });
+            };
+            usort($dayByProduct, $bySold);
+            usort($partyByProduct, $bySold);
+
+            // The album = the record that sold the most during the party window.
+            $album = $partyByProduct[0] ?? null;
 
             $rows[] = [
-                'name'         => $name,
-                'date'         => $date,
-                'eventType'    => (string) ($ev['eventType'] ?? 'listening_party'),
-                'stores'       => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
-                'attendees'    => (int) ($counts['rsvps'][$k] ?? 0),
-                'vinyl'        => (int) ($counts['vinyl'][$k] ?? 0),
-                'cd'           => (int) ($counts['cd'][$k] ?? 0),
-                'units'        => array_sum(array_column($byProduct, 'units')),
-                'revenue'      => array_sum(array_column($byProduct, 'revenue')),
-                'productCount' => count($byProduct),
-                'topSellers'   => array_slice($byProduct, 0, 6),
+                'name'          => $name,
+                'date'          => $date,
+                'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
+                'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
+                'hasWindow'     => $startSec !== null,
+                'attendees'     => (int) ($counts['rsvps'][$k] ?? 0),
+                'vinyl'         => (int) ($counts['vinyl'][$k] ?? 0),
+                'cd'            => (int) ($counts['cd'][$k] ?? 0),
+                'albumName'     => $album['name'] ?? '',
+                'albumUnits'    => $album['units'] ?? 0,
+                'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
+                'partyRevenue'  => array_sum(array_column($partyByProduct, 'revenue')),
+                'dayUnits'      => array_sum(array_column($dayByProduct, 'units')),
+                'dayRevenue'    => array_sum(array_column($dayByProduct, 'revenue')),
+                'productCount'  => count($partyByProduct),
+                'topSellers'    => array_slice($partyByProduct, 0, 6),
             ];
         }
         usort($rows, fn($a, $b) => strcmp((string) $b['date'], (string) $a['date']));
@@ -1898,10 +1950,13 @@ class EventsController extends Controller
         }
         $rows = $this->buildSalesRows($request);
         $totals = [
-            'attendees' => array_sum(array_column($rows, 'attendees')),
-            'interest'  => array_sum(array_column($rows, 'vinyl')) + array_sum(array_column($rows, 'cd')),
-            'units'     => array_sum(array_column($rows, 'units')),
-            'revenue'   => array_sum(array_column($rows, 'revenue')),
+            'attendees'    => array_sum(array_column($rows, 'attendees')),
+            'preorders'    => array_sum(array_column($rows, 'vinyl')) + array_sum(array_column($rows, 'cd')),
+            'albumUnits'   => array_sum(array_column($rows, 'albumUnits')),
+            'partyUnits'   => array_sum(array_column($rows, 'partyUnits')),
+            'partyRevenue' => array_sum(array_column($rows, 'partyRevenue')),
+            'dayUnits'     => array_sum(array_column($rows, 'dayUnits')),
+            'dayRevenue'   => array_sum(array_column($rows, 'dayRevenue')),
         ];
         return view('events.sales_report', [
             'rows'       => $rows,
@@ -1922,17 +1977,20 @@ class EventsController extends Controller
         $rows = $this->buildSalesRows($request);
         $filename = 'nivessa-event-sales-report.csv';
 
-        return response()->streamDownload(function () use ($rows) {
+        $qty = fn($n) => rtrim(rtrim(number_format((float) $n, 2), '0'), '.');
+
+        return response()->streamDownload(function () use ($rows, $qty) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Party', 'Date', 'Stores', 'Attendees',
-                'Preorder interest (vinyl)', 'Preorder interest (CD)',
-                'Records sold (that day)', 'Sales revenue (that day)',
-                'What sold (top records)',
+                'Party', 'Date', 'Stores', 'Attendees', 'Preorders placed',
+                'Album sold at party', 'Album qty sold at party',
+                'Records sold during party', 'Revenue during party',
+                'Records sold that day (store)', 'Revenue that day (store)',
+                'What sold during party (top records)',
             ]);
             foreach ($rows as $r) {
                 $top = array_map(
-                    fn($p) => $p['name'] . ' x' . rtrim(rtrim(number_format($p['units'], 2), '0'), '.'),
+                    fn($p) => $p['name'] . ' x' . $qty($p['units']),
                     $r['topSellers']
                 );
                 fputcsv($out, [
@@ -1940,10 +1998,13 @@ class EventsController extends Controller
                     $r['date'],
                     implode(' + ', $r['stores']),
                     $r['attendees'],
-                    $r['vinyl'],
-                    $r['cd'],
-                    rtrim(rtrim(number_format($r['units'], 2), '0'), '.'),
-                    number_format($r['revenue'], 2, '.', ''),
+                    $r['vinyl'] + $r['cd'],
+                    $r['albumName'],
+                    $r['albumUnits'] ? $qty($r['albumUnits']) : '',
+                    $qty($r['partyUnits']),
+                    number_format($r['partyRevenue'], 2, '.', ''),
+                    $qty($r['dayUnits']),
+                    number_format($r['dayRevenue'], 2, '.', ''),
                     implode('; ', $top),
                 ]);
             }
