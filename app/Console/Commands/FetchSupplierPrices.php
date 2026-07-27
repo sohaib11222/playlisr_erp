@@ -32,7 +32,7 @@ use Illuminate\Console\Command;
  */
 class FetchSupplierPrices extends Command
 {
-    protected $signature = 'supplier-prices:fetch {supplier=all} {--business-id=} {--dry}';
+    protected $signature = 'supplier-prices:fetch {supplier=all} {--business-id=} {--dry} {--full}';
     protected $description = 'Pull supplier price catalogs from their portals and update the per-supplier feed JSON.';
 
     /** Map of supplier key → fetcher class. */
@@ -54,6 +54,28 @@ class FetchSupplierPrices extends Command
             return 1;
         }
         $dry = (bool) $this->option('dry');
+
+        // --full: pull the WHOLE catalog, not the small bounded slice the
+        // click-button uses. Only safe from the CLI/cron (no web-request
+        // timeout). Uncaps the wall-clock budget + page/lookup caps so the
+        // fetchers walk everything and stop only when a portal runs dry.
+        if ((bool) $this->option('full')) {
+            $overrides = [
+                'AMS_FETCH_BUDGET_SEC' => '5400',   // 90 min ceiling
+                'AMS_VINYL_PAGES' => '1000',
+                'AMS_CD_PAGES' => '1000',
+                'AMS_BARCODE_LOOKUPS' => '20000',
+                'REDEYE_FETCH_BUDGET_SEC' => '5400',
+                'REDEYE_LIST_PAGES' => '500',
+            ];
+            foreach ($overrides as $k => $v) {
+                putenv("$k=$v");
+                $_ENV[$k] = $v;
+                $_SERVER[$k] = $v;
+            }
+            @set_time_limit(0);
+            $this->info('--full: pulling the entire catalog (budget/page caps lifted).');
+        }
 
         $targets = $key === 'all' ? array_keys($this->fetchers) : [$key];
         $exit = 0;

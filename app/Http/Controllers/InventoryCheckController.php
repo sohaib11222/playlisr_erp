@@ -1013,6 +1013,40 @@ class InventoryCheckController extends Controller
             ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
+    /**
+     * Queue a full-catalog backfill without waiting for the Monday cron.
+     * Writes a one-shot request flag the scheduler picks up within ~5 min
+     * and runs `supplier-prices:fetch <supplier> --full` in the CLI (no web-
+     * request timeout). Plain-text GET so Sarah can just open the URL.
+     * ?supplier=ams (default) | redeye | all.
+     */
+    public function queueSupplierBackfill(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $supplier = preg_replace('/[^a-z]/', '', strtolower((string) $request->input('supplier', 'ams'))) ?: 'ams';
+        if ($supplier !== 'all' && !isset($this->inventoryCheckService->knownSuppliers()[$supplier])) {
+            return response('Unknown supplier: ' . $supplier . "\n", 422)
+                ->header('Content-Type', 'text/plain; charset=utf-8');
+        }
+        $flag = storage_path('app/ica-backfill-request.json');
+        file_put_contents($flag, json_encode([
+            'supplier' => $supplier,
+            'business_id' => $business_id,
+            'requested_at' => Carbon::now()->toIso8601String(),
+        ], JSON_PRETTY_PRINT));
+
+        $msg = "Full-catalog backfill QUEUED for: " . strtoupper($supplier) . "\n\n"
+            . "The server will start pulling the entire catalog within ~5 minutes and\n"
+            . "may take several minutes to finish (no need to keep this open).\n\n"
+            . "Watch progress on the diagnostics page — the CURRENT FEED row count\n"
+            . "for this supplier will climb as it runs:\n"
+            . "  " . url('reports/inventory-check-assistant/supplier-diagnostics') . "\n\n"
+            . "Product prices on /products fill in automatically as the feed grows.";
+        return response($msg, 200)
+            ->header('Content-Type', 'text/plain; charset=utf-8')
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
     /** Short outbound HTTP probe used only by supplierDiagnostics(). */
     protected function egressProbe(string $url): array
     {

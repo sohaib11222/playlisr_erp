@@ -84,10 +84,21 @@ class Kernel extends ConsoleKernel
         // the Wednesday ordering pass. Each fetcher skips itself if its
         // .env credentials aren't set, so this is safe to ship before
         // every supplier is wired up. Sarah 2026-05-21.
-        $schedule->command('supplier-prices:fetch all')
+        $schedule->command('supplier-prices:fetch all --full')
             ->weeklyOn(1, '06:00')
             ->timezone('America/Los_Angeles')
-            ->withoutOverlapping(45);
+            ->withoutOverlapping(120);
+
+        // "Backfill now" trigger — the ICA page drops a request flag file
+        // (queueSupplierBackfill) so Sarah can force a full-catalog pull
+        // without waiting for Monday and without SSH. This command picks it
+        // up within a few minutes and runs the full pull with no web-request
+        // timeout. runInBackground so a multi-minute pull never blocks
+        // schedule:run; it no-ops instantly when no flag is present.
+        $schedule->command('supplier-prices:backfill-if-requested')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(120)
+            ->runInBackground();
 
         // Channel Sales Sync → store nivessa.com web orders + space rentals
         // (nivessa:sync-web-sales) and Discogs marketplace orders
