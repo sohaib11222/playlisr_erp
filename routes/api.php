@@ -39,4 +39,9 @@ Route::prefix('v1/nivessa-web')
         Route::post('gift-cards/issue',  [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'issue']);
         Route::post('store-credit/adjust', [\App\Http\Controllers\Api\NivessaStoreCreditController::class, 'adjust']);
         Route::get('products-feed', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'index']);
+        // On-the-spot POS sales for one LA day, by product + store, so the
+        // nivessa.com Event Sales Report can attribute a party's day-of sales
+        // to its featured record. Date is a path param (nginx strips query
+        // strings on these bridge GETs). Read-only, graceful-empty.
+        Route::get('event-onsite-sales/{date}', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'eventOnsiteSales']);
     });

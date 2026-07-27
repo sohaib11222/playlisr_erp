@@ -261,6 +261,83 @@ class NivessaProductsFeedController extends Controller
     }
 
     /**
+     * GET /api/v1/nivessa-web/event-onsite-sales/{date}  (TOKEN-GUARDED bridge)
+     *
+     * On-the-spot POS sales for one LA calendar day, aggregated by product and
+     * store, so nivessa.com's Event Sales Report can attribute the featured
+     * record's day-of sales to a listening party. The website already knows
+     * each event's featured POS product id (preorderPosProductId) + store +
+     * date; it calls this per event day and picks the matching product/store
+     * row, on top of the preorder numbers it already has.
+     *
+     * Mirrors the recent-sales-feed pool EXACTLY (SellPosController@recentSalesFeed):
+     * final 'sell' transactions, no xlsx import_source, Whatnot excluded, top-level
+     * sell lines only. product_id here is the UltimatePOS product id, which lines
+     * up with the website's posProductId. revenue = qty * unit_price_inc_tax
+     * (fallback unit_price), matching the feed's per-line total.
+     *
+     * Date is a PATH param (nginx strips query strings on these bridge GETs).
+     * Read-only, behind the shared nivessa_web bearer token so in-store sales
+     * never go public, graceful-empty (HTTP 200) so a query failure can never
+     * break the report or touch the POS sell flow.
+     */
+    public function eventOnsiteSales(Request $request, $date): JsonResponse
+    {
+        $dateStr = (string) $date;
+        $items = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr)) {
+            try {
+                $businessId = $this->businessId();
+                $rows = DB::table('transactions as t')
+                    ->join('transaction_sell_lines as tsl', function ($j) {
+                        $j->on('tsl.transaction_id', '=', 't.id')
+                          ->whereNull('tsl.parent_sell_line_id');
+                    })
+                    ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                    ->where('t.business_id', $businessId)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->whereNull('t.import_source')
+                    ->where(function ($q) {
+                        $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
+                    })
+                    ->whereDate('t.transaction_date', $dateStr)
+                    ->whereNotNull('tsl.product_id')
+                    ->groupBy('tsl.product_id', 't.location_id', 'bl.name')
+                    ->select(
+                        'tsl.product_id',
+                        't.location_id',
+                        'bl.name as location_name',
+                        DB::raw('SUM(tsl.quantity) as units'),
+                        DB::raw('SUM(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue'),
+                        DB::raw('COUNT(DISTINCT t.id) as transactions')
+                    )
+                    ->get();
+                foreach ($rows as $r) {
+                    $items[] = [
+                        'product_id'    => (int) $r->product_id,
+                        'location_id'   => (int) $r->location_id,
+                        'location_name' => (string) ($r->location_name ?? ''),
+                        'units'         => (float) $r->units,
+                        'revenue'       => round((float) $r->revenue, 2),
+                        'transactions'  => (int) $r->transactions,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[event-onsite-sales] failed: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'date'  => $dateStr,
+            'items' => $items,
+            'count' => count($items),
+        ], 200, [
+            'Cache-Control' => 'private, max-age=120',
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * GET /abc-a-products.json  (PUBLIC, off the /api/ path like /products-feed.json)
      *
      * Returns the normalized ARTISTS and TITLES of the A-class products from the
