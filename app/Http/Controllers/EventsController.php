@@ -2038,8 +2038,12 @@ class EventsController extends Controller
             $k = self::normName($name);
             $date = (string) ($ev['date'] ?? '');
             $locs = array_values(array_filter((array) ($ev['location'] ?? [])));
-            // The party artist, so we can find their records in the day's sales.
+            // Match the new release by BOTH the party artist (from the name) and
+            // the release title Sarah entered (preorderTitle) - some records are
+            // cataloged under the album title, not the artist, so artist-only
+            // matching missed them (e.g. a Menzingers release named by its title).
             $artistTokens = self::artistTokens($name);
+            $titleTokens = self::artistTokens((string) ($ev['preorderTitle'] ?? ''));
 
             // Party window in seconds-since-midnight. Null start = no time set,
             // so the "party window" falls back to the whole day.
@@ -2067,8 +2071,9 @@ class EventsController extends Controller
 
             $dayByProduct = [];      // whole store day
             $partyByProduct = [];    // during the party hours only
-            $albumByProduct = [];    // the party artist's records (whole day)
+            $albumByProduct = [];    // the new release's records (whole day)
             $partyFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
+            $albumFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
@@ -2097,15 +2102,19 @@ class EventsController extends Controller
                         $partyFormats[$fmt] += $ln['units'];
                     }
 
-                    // The album = the party artist's record(s), counted across
-                    // the whole day (party-driven) so a generic toy that outsold
-                    // the record doesn't hijack the column. Includes manual sales.
-                    if (self::productMatchesArtist($ln['name'], $artistTokens)) {
+                    // The album = the new release's record(s), counted across the
+                    // whole day (party-driven) so a generic toy that outsold the
+                    // record doesn't hijack the column. Matches the party artist
+                    // OR the release title, and includes manual sales.
+                    $isAlbum = self::productMatchesArtist($ln['name'], $artistTokens)
+                        || (!empty($titleTokens) && self::productMatchesArtist($ln['name'], $titleTokens));
+                    if ($isAlbum) {
                         if (!isset($albumByProduct[$key])) {
                             $albumByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
                         }
                         $albumByProduct[$key]['units']   += $ln['units'];
                         $albumByProduct[$key]['revenue'] += $ln['revenue'];
+                        $albumFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $ln['units'];
                     }
                 }
             }
@@ -2199,6 +2208,7 @@ class EventsController extends Controller
                 'albumUnits'    => $albumUnits,
                 'albumRevenue'  => $albumRevenue,
                 'albumTitleCount' => count($albumByProduct),
+                'albumFormats'  => array_filter($albumFormats, fn($u) => $u > 0),
                 'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
                 'partyRevenue'  => array_sum(array_column($partyByProduct, 'revenue')),
                 'dayUnits'      => array_sum(array_column($dayByProduct, 'units')),
@@ -2282,7 +2292,7 @@ class EventsController extends Controller
                 'Party', 'Date', 'Upcoming', 'Advance', 'Stores', 'Attendees',
                 'Preorders placed', 'RSVP purchase interest',
                 'Ordered (total)', 'Ordered by format', 'Ordered source',
-                'Album (artist record)', 'Album qty sold', 'Album revenue',
+                'Album (artist record)', 'Album qty sold', 'Album revenue', 'Album formats',
                 'Records sold during party', 'Total revenue during party',
                 'Formats sold during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
@@ -2312,6 +2322,7 @@ class EventsController extends Controller
                     $r['albumName'],
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
+                    implode('; ', array_map(fn($f, $u) => $f . ' ' . $qty($u), array_keys($r['albumFormats']), array_values($r['albumFormats']))),
                     $qty($r['partyUnits']),
                     number_format($r['partyRevenue'], 2, '.', ''),
                     implode('; ', $fmts),

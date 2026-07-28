@@ -126,6 +126,11 @@
                 <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
                 <div class="esr-album-name">{{ $r['albumName'] }}</div>
                 <div class="esr-ev-sub">{{ $money($r['albumRevenue']) }}@if ($r['albumTitleCount'] > 1) &middot; {{ $r['albumTitleCount'] }} titles @endif</div>
+                @if (!empty($r['albumFormats']))
+                  <div class="esr-fmt" style="justify-content:flex-end;margin-top:3px;">
+                    @foreach ($r['albumFormats'] as $f => $u)<span class="esr-fmt-pill">{{ $f }} {{ $qty($u) }}</span>@endforeach
+                  </div>
+                @endif
               @else
                 <span class="esr-muted">-</span>
               @endif
