@@ -1828,6 +1828,38 @@ class EventsController extends Controller
     }
 
     /**
+     * Artist word-tokens from a party name, so we can find that artist's records
+     * in the day's sales (the album), not just the top-selling toy. Drops the
+     * "listening party" / event-format words and common stopwords.
+     * "Shania Twain Listening Party" -> ['shania','twain'].
+     */
+    protected static function artistTokens(string $name): array
+    {
+        $s = mb_strtolower($name);
+        $s = preg_replace('/\b(the\s+)?listening\s*party\b/u', ' ', $s);
+        $s = preg_replace('/\b(in[\s-]?store|record\s*release|release\s*party|album\s*release|event|dj\s*set|acoustic|session|showcase|open\s*mic)\b/u', ' ', $s);
+        $parts = preg_split('/[^a-z0-9]+/u', (string) $s, -1, PREG_SPLIT_NO_EMPTY);
+        $stop = ['the', 'a', 'an', 'and', 'of', 'with', 'feat', 'featuring', 'vs', 'party', 'listening', 'live', 'set', 'night'];
+        $tokens = [];
+        foreach ($parts as $p) {
+            if (mb_strlen($p) < 2 || in_array($p, $stop, true)) { continue; }
+            $tokens[] = $p;
+        }
+        return array_values(array_unique($tokens));
+    }
+
+    /** True if a product name contains every artist token (order-independent). */
+    protected static function productMatchesArtist(string $productName, array $tokens): bool
+    {
+        if (empty($tokens)) { return false; }
+        $hay = mb_strtolower($productName);
+        foreach ($tokens as $t) {
+            if (mb_strpos($hay, $t) === false) { return false; }
+        }
+        return true;
+    }
+
+    /**
      * Assemble the per-party report rows: attendees + preorders placed (website
      * bridge), and what sold on the POS at the party's store(s) - split into the
      * party's own hours vs the whole store day, plus the single record that sold
@@ -1881,6 +1913,8 @@ class EventsController extends Controller
             $k = self::normName($name);
             $date = (string) ($ev['date'] ?? '');
             $locs = array_values(array_filter((array) ($ev['location'] ?? [])));
+            // The party artist, so we can find their records in the day's sales.
+            $artistTokens = self::artistTokens($name);
 
             // Party window in seconds-since-midnight. Null start = no time set,
             // so the "party window" falls back to the whole day.
@@ -1906,8 +1940,9 @@ class EventsController extends Controller
                 return false;
             };
 
-            $dayByProduct = [];    // whole store day
-            $partyByProduct = [];   // during the party hours only
+            $dayByProduct = [];      // whole store day
+            $partyByProduct = [];    // during the party hours only
+            $albumByProduct = [];    // the party artist's records (whole day)
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
@@ -1926,6 +1961,17 @@ class EventsController extends Controller
                         $partyByProduct[$pid]['units']   += $ln['units'];
                         $partyByProduct[$pid]['revenue'] += $ln['revenue'];
                     }
+
+                    // The album = the party artist's record(s). Count these
+                    // across the whole day (party-driven), so a generic toy
+                    // that outsold the record doesn't hijack the column.
+                    if (self::productMatchesArtist($ln['name'], $artistTokens)) {
+                        if (!isset($albumByProduct[$pid])) {
+                            $albumByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                        }
+                        $albumByProduct[$pid]['units']   += $ln['units'];
+                        $albumByProduct[$pid]['revenue'] += $ln['revenue'];
+                    }
                 }
             }
             $bySold = function ($a, $b) {
@@ -1933,9 +1979,10 @@ class EventsController extends Controller
             };
             usort($dayByProduct, $bySold);
             usort($partyByProduct, $bySold);
+            usort($albumByProduct, $bySold);
 
-            // The album = the record that sold the most during the party window.
-            $album = $partyByProduct[0] ?? null;
+            $albumUnits = array_sum(array_column($albumByProduct, 'units'));
+            $albumRevenue = array_sum(array_column($albumByProduct, 'revenue'));
 
             // Attendees + preorders: per-store when scoped, else store totals.
             if ($store !== '') {
@@ -1958,8 +2005,10 @@ class EventsController extends Controller
                 'attendees'     => $attendees,
                 'vinyl'         => $vinyl,
                 'cd'            => $cd,
-                'albumName'     => $album['name'] ?? '',
-                'albumUnits'    => $album['units'] ?? 0,
+                'albumName'     => $albumByProduct[0]['name'] ?? '',
+                'albumUnits'    => $albumUnits,
+                'albumRevenue'  => $albumRevenue,
+                'albumTitleCount' => count($albumByProduct),
                 'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
                 'partyRevenue'  => array_sum(array_column($partyByProduct, 'revenue')),
                 'dayUnits'      => array_sum(array_column($dayByProduct, 'units')),
@@ -2022,7 +2071,7 @@ class EventsController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Party', 'Date', 'Stores', 'Attendees', 'Preorders placed',
-                'Album sold at party', 'Album qty sold at party',
+                'Album (artist record)', 'Album qty sold', 'Album revenue',
                 'Records sold during party', 'Revenue during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
                 'What sold during party (top records)',
@@ -2040,6 +2089,7 @@ class EventsController extends Controller
                     $r['vinyl'] + $r['cd'],
                     $r['albumName'],
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
+                    $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
                     $qty($r['partyUnits']),
                     number_format($r['partyRevenue'], 2, '.', ''),
                     $qty($r['dayUnits']),

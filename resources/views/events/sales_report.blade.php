@@ -68,7 +68,7 @@
   @endif
 
   <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
-    "During party" counts POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. "Album" is the single record that sold the most during the party. A dash means nothing was rung at that store then.
+    "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -108,6 +108,7 @@
               @if ($r['albumUnits'] > 0)
                 <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
                 <div class="esr-album-name">{{ $r['albumName'] }}</div>
+                <div class="esr-ev-sub">{{ $money($r['albumRevenue']) }}@if ($r['albumTitleCount'] > 1) &middot; {{ $r['albumTitleCount'] }} titles @endif</div>
               @else
                 <span class="esr-muted">-</span>
               @endif
