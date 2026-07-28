@@ -2090,10 +2090,19 @@ class EventsController extends Controller
                     || (!empty($titleTokens) && self::productMatchesArtist($nm, $titleTokens));
             };
 
-            // Day-of: whole store day + party-window records/formats.
+            $storeKeyOf = function ($loc) {
+                return strpos($loc, 'hollywood') !== false ? 'hollywood'
+                    : (strpos($loc, 'pico') !== false ? 'pico' : null);
+            };
+
+            // Day-of: whole store day + party-window records/formats (+ per store).
             $dayByProduct = [];      // whole store day
             $partyByProduct = [];    // during the party hours only
             $partyFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
+            $partyByStore = [
+                'hollywood' => ['records' => 0.0, 'revenue' => 0.0],
+                'pico'      => ['records' => 0.0, 'revenue' => 0.0],
+            ];
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
@@ -2117,6 +2126,11 @@ class EventsController extends Controller
                         $partyByProduct[$key]['units']   += $ln['units'];
                         $partyByProduct[$key]['revenue'] += $ln['revenue'];
                         $partyFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $ln['units'];
+                        $sk = $storeKeyOf($ln['loc']);
+                        if ($sk) {
+                            $partyByStore[$sk]['records'] += $ln['units'];
+                            $partyByStore[$sk]['revenue'] += $ln['revenue'];
+                        }
                     }
                 }
             }
@@ -2238,11 +2252,36 @@ class EventsController extends Controller
                 }
             }
 
+            // Per-store breakdown ("how Hollywood did vs Pico"). Show the stores
+            // the party ran at (or the selected store).
+            $showStores = $store !== '' ? [$store] : ['hollywood', 'pico'];
+            if (!empty($locs)) {
+                $ran = array_values(array_filter($showStores, fn($sk) => in_array($sk, $locs, true)));
+                if (!empty($ran)) { $showStores = $ran; }
+            }
+            $storeBreakdown = [];
+            foreach ($showStores as $sk) {
+                $orow = (array) ($ordered[$sk] ?? []);
+                $ordSk = (int) ($orow['indieVinyl'] ?? 0) + (int) ($orow['stdVinyl'] ?? 0) + (int) ($orow['deluxeVinyl'] ?? 0)
+                    + (int) ($orow['stdCd'] ?? 0) + (int) ($orow['deluxeCd'] ?? 0) + (int) ($orow['cassette'] ?? 0);
+                $stAtt = $counts['store'][$k][$sk] ?? ['attending' => 0];
+                $storeBreakdown[] = [
+                    'label'     => $storeLabels[$sk] ?? ucfirst($sk),
+                    'attendees' => (int) ($stAtt['attending'] ?? 0),
+                    'album'     => $albumByStore[$sk] ?? 0,
+                    'album14'   => $album14ByStore[$sk] ?? 0,
+                    'records'   => $partyByStore[$sk]['records'] ?? 0,
+                    'revenue'   => $partyByStore[$sk]['revenue'] ?? 0,
+                    'ordered'   => $ordSk,
+                ];
+            }
+
             $rows[] = [
                 'name'          => $name,
                 'date'          => $date,
                 'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
                 'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
+                'storeBreakdown' => $storeBreakdown,
                 'hasWindow'     => $startSec !== null,
                 'isAdvance'     => $isAdvance,
                 'isNewRelease'  => $isNewRelease,
