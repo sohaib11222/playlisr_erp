@@ -101,6 +101,49 @@ class RedeyeFetcher extends AbstractHttpFetcher
         return $rows;
     }
 
+    /**
+     * On-server debug probe (called from the ICA diagnostics page): log in and
+     * report, per listing page, whether the session took and how many product
+     * links the raw server HTML actually contains — so we can tell a
+     * JS-rendered/empty listing from a parser bug without SSH.
+     *
+     * @return array<int,string>
+     */
+    public function debugProbe(): array
+    {
+        $out = [];
+        try {
+            $creds = $this->readCredentials();
+            $loginHtml = $this->get($this->base . '/login');
+            $token = $this->extractCsrfToken($loginHtml);
+            $out[] = 'csrf token on /login: ' . ($token ? 'found' : 'MISSING');
+            $this->login($this->base . '/login', [
+                '_token' => (string) $token,
+                'return_to_referrer' => '',
+                'email' => $creds['REDEYE_PORTAL_USER'],
+                'password' => $creds['REDEYE_PORTAL_PASS'],
+                'remember' => 'on',
+            ]);
+            foreach (array_merge(['/best-sellers'], $this->listPaths) as $path) {
+                try {
+                    $html = $this->get($this->base . $path);
+                } catch (\Throwable $e) {
+                    $out[] = sprintf('  %-28s ERROR %s', $path, $e->getMessage());
+                    continue;
+                }
+                $ids = count(array_unique(array_keys($this->collectDetailIds($html))));
+                $out[] = sprintf('  %-28s len=%-7d logout=%s detailLinks=%d',
+                    $path, strlen($html), stripos($html, '/logout') !== false ? 'Y' : 'N', $ids);
+            }
+            $bs = $this->get($this->base . '/best-sellers');
+            $txt = preg_replace('/\s+/', ' ', trim(strip_tags($bs)));
+            $out[] = '  best-sellers text: ' . mb_strimwidth($txt, 0, 260, '…');
+        } catch (\Throwable $e) {
+            $out[] = 'PROBE ERROR: ' . $e->getMessage();
+        }
+        return $out;
+    }
+
     /** Pull the Laravel CSRF token out of the login form. */
     protected function extractCsrfToken(string $html): ?string
     {

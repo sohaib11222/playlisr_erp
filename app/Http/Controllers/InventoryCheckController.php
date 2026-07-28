@@ -1076,6 +1076,21 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
+        $L[] = 'REDEYE DEBUG (why the fetch returns 0):';
+        try {
+            $rstat = $this->inventoryCheckService->supplierCredentialsStatus($business_id, 'redeye');
+            if (empty($rstat['configured'])) {
+                $L[] = '  skipped — no Redeye creds saved';
+            } else {
+                foreach (app(\App\Services\SupplierFetchers\RedeyeFetcher::class)->debugProbe() as $line) {
+                    $L[] = $line;
+                }
+            }
+        } catch (\Throwable $e) {
+            $L[] = '  (probe failed: ' . $e->getMessage() . ')';
+        }
+
+        $L[] = '';
         $L[] = 'BACKFILL LOG (most recent full-pull output, if any):';
         $anyLog = false;
         foreach ($known as $key => $meta) {
