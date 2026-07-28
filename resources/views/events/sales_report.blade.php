@@ -15,6 +15,13 @@
   };
   $money = fn($n) => '$' . number_format((float) $n, 2);
   $qty = fn($n) => rtrim(rtrim(number_format((float) $n, 2), '0'), '.');
+  // "HW 3 · Pico 2" from a ['hollywood'=>x,'pico'=>y] map (only stores > 0).
+  $storeSplit = function ($map) use ($qty) {
+      $lbl = ['hollywood' => 'HW', 'pico' => 'Pico'];
+      $parts = [];
+      foreach ($map as $k => $v) { $parts[] = ($lbl[$k] ?? ucfirst($k)) . ' ' . $qty($v); }
+      return implode(' · ', $parts);
+  };
 @endphp
 
 <style>
@@ -133,6 +140,9 @@
               @elseif ($r['albumUnits'] > 0)
                 <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
                 <div class="esr-album-name">{{ $r['albumName'] }}</div>
+                @if ($store === '' && !empty($r['albumByStore']))
+                  <div class="esr-ev-sub">{{ $storeSplit($r['albumByStore']) }}</div>
+                @endif
                 <div class="esr-ev-sub">{{ $money($r['albumRevenue']) }}@if ($r['albumTitleCount'] > 1) &middot; {{ $r['albumTitleCount'] }} titles @endif</div>
                 @if (!empty($r['albumFormats']))
                   <div class="esr-fmt" style="justify-content:flex-end;margin-top:3px;">
@@ -153,6 +163,9 @@
             <td class="num">
               @if ($r['album14'] > 0)
                 {{ $qty($r['album14']) }}@unless ($r['window14Complete'])<span class="esr-more"> so far</span>@endunless
+                @if ($store === '' && !empty($r['album14ByStore']))
+                  <div class="esr-ev-sub">{{ $storeSplit($r['album14ByStore']) }}</div>
+                @endif
               @else
                 <span class="esr-muted">-</span>
               @endif

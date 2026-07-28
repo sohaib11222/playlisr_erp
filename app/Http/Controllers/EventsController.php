@@ -2127,6 +2127,8 @@ class EventsController extends Controller
             $albumFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
             $album7 = 0.0;
             $album14 = 0.0;
+            $albumByStore = ['hollywood' => 0.0, 'pico' => 0.0];   // day-of, per store
+            $album14ByStore = ['hollywood' => 0.0, 'pico' => 0.0]; // +14 days, per store
             if ($date !== '') {
                 for ($off = 0; $off <= 14; $off++) {
                     $dd = date('Y-m-d', strtotime($date . " +$off days"));
@@ -2141,7 +2143,10 @@ class EventsController extends Controller
                             : 'm:' . mb_strtolower(trim((string) $ln['name']));
                         if ($key === 'm:') { continue; }
                         $u = (float) $ln['units'];
+                        $sk = strpos($ln['loc'], 'hollywood') !== false ? 'hollywood'
+                            : (strpos($ln['loc'], 'pico') !== false ? 'pico' : null);
                         $album14 += $u;
+                        if ($sk) { $album14ByStore[$sk] += $u; }
                         if ($off <= 7) { $album7 += $u; }
                         if ($off === 0) {
                             if (!isset($albumByProduct[$key])) {
@@ -2150,6 +2155,7 @@ class EventsController extends Controller
                             $albumByProduct[$key]['units']   += $u;
                             $albumByProduct[$key]['revenue'] += $ln['revenue'];
                             $albumFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $u;
+                            if ($sk) { $albumByStore[$sk] += $u; }
                         }
                     }
                 }
@@ -2255,6 +2261,8 @@ class EventsController extends Controller
                 'albumFormats'  => array_filter($albumFormats, fn($u) => $u > 0),
                 'album7'        => $album7,
                 'album14'       => $album14,
+                'albumByStore'  => array_filter($albumByStore, fn($u) => $u > 0),
+                'album14ByStore' => array_filter($album14ByStore, fn($u) => $u > 0),
                 'window7Complete'  => $window7Complete,
                 'window14Complete' => $window14Complete,
                 'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
@@ -2345,7 +2353,8 @@ class EventsController extends Controller
                 'Preorders placed', 'RSVP purchase interest',
                 'Ordered (total)', 'Ordered by format', 'Ordered source',
                 'Album (artist record)', 'Album qty sold', 'Album revenue', 'Album formats',
-                'Album sold +7 days', 'Album sold +14 days',
+                'Album by store (day-of)', 'Album sold +7 days', 'Album sold +14 days',
+                'Album +14 by store',
                 'Records sold during party', 'Total revenue during party',
                 'Formats sold during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
@@ -2360,6 +2369,12 @@ class EventsController extends Controller
                 foreach ($r['formats'] as $f => $u) { $fmts[] = $f . ' ' . $qty($u); }
                 $ordFmts = [];
                 foreach ($r['orderedByFmt'] as $f => $u) { $ordFmts[] = $f . ' ' . $u; }
+                $stLbl = ['hollywood' => 'HW', 'pico' => 'Pico'];
+                $splitStr = function ($map) use ($qty, $stLbl) {
+                    $p = [];
+                    foreach ($map as $k => $v) { $p[] = ($stLbl[$k] ?? $k) . ' ' . $qty($v); }
+                    return implode('; ', $p);
+                };
                 fputcsv($out, [
                     $r['name'],
                     $r['date'],
@@ -2376,8 +2391,10 @@ class EventsController extends Controller
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
                     implode('; ', array_map(fn($f, $u) => $f . ' ' . $qty($u), array_keys($r['albumFormats']), array_values($r['albumFormats']))),
+                    $splitStr($r['albumByStore']),
                     $r['album7'] > 0 ? $qty($r['album7']) . ($r['window7Complete'] ? '' : ' (so far)') : '',
                     $r['album14'] > 0 ? $qty($r['album14']) . ($r['window14Complete'] ? '' : ' (so far)') : '',
+                    $splitStr($r['album14ByStore']),
                     $qty($r['partyUnits']),
                     number_format($r['partyRevenue'], 2, '.', ''),
                     implode('; ', $fmts),
