@@ -1187,61 +1187,141 @@ class InventoryCheckService
      */
     public function allSupplierPrices(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): array
     {
-        static $cache = []; // [business_id => [supplier_key => indexed_rows]]
-        if (!isset($cache[$business_id])) {
-            $cache[$business_id] = [];
-            foreach ($this->knownSuppliers() as $key => $meta) {
-                $feed = $this->loadSupplierFeed($business_id, $key);
-                if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
-                $cache[$business_id][$key] = [
-                    'label' => $meta['label'] ?? $key,
-                    'rows' => $feed['rows'],
-                ];
+        // Build a per-request INDEX of every feed once (keyed by normalized
+        // barcode and normalized title), then answer each product with O(1)
+        // hash lookups. A linear scan of the feed per product was fine at
+        // ~2,700 rows but the full AMS catalog is ~80k rows and the /products
+        // page matches ~100 products per load — that would be millions of
+        // string ops per page. The index makes it constant-time per product.
+        $index = $this->supplierIndex($business_id);
+        if (empty($index['suppliers'])) return [];
+
+        // Collect the cheapest matching row per supplier.
+        $hits = [];
+        $consider = function (array $row) use (&$hits) {
+            $cost = isset($row['cost']) ? (float) $row['cost'] : 0.0;
+            if ($cost <= 0) return;
+            $k = $row['supplier_key'];
+            if (!isset($hits[$k]) || $cost < $hits[$k]['cost']) {
+                $hits[$k] = $row;
+            }
+        };
+
+        // 1) Barcode match — strongest. Any real UPC/EAN token in the SKU.
+        foreach ($this->skuUpcCandidates($upc) as $u => $_) {
+            if (!empty($index['byUpc'][$u])) {
+                foreach ($index['byUpc'][$u] as $row) $consider($row);
             }
         }
-        if (empty($cache[$business_id])) return [];
 
-        // Exact barcode match is the strongest signal. Legacy ERP records bake
-        // "Title / Artist" into one name field while supplier feeds store them
-        // separately, so name matching is fuzzy — but a UPC is a UPC. When the
-        // ERP row carries a barcode, match it against the feed row's upc (digits
-        // only, leading zeros stripped) and accept regardless of how the names
-        // line up. Name matching stays the fallback when there's no barcode hit.
-        // A product's SKU field can hold several comma/space-separated tokens
-        // (internal SKU + a scanned barcode + a Discogs id). Build the set of
-        // every barcode-shaped token so a real UPC anywhere in the SKU matches
-        // the feed's UPC — barcode match wins over fuzzy name matching.
-        $upcSet = $this->skuUpcCandidates($upc);
-        $candidates = $this->supplierMatchCandidates($artist, $title);
-        if (empty($candidates) && empty($upcSet)) return [];
-
-        $out = [];
-        foreach ($cache[$business_id] as $key => $bundle) {
-            $bestForThisSupplier = null;
-            foreach ($bundle['rows'] as $row) {
-                if (!is_array($row)) continue;
-                $rArtist = mb_strtolower((string) ($row['artist'] ?? ''));
-                $rTitle = mb_strtolower((string) ($row['title'] ?? ''));
-                $rUpc = $this->normalizeUpc($row['upc'] ?? null);
-                $upcMatch = $rUpc !== '' && isset($upcSet[$rUpc]);
-                if (!$upcMatch && !$this->rowMatchesCandidates($rArtist, $rTitle, $candidates)) continue;
-                $cost = isset($row['cost']) ? (float) $row['cost'] : null;
-                if ($cost === null || $cost <= 0) continue;
-                if ($bestForThisSupplier === null || $cost < $bestForThisSupplier['cost']) {
-                    $bestForThisSupplier = [
-                        'supplier_key' => $key,
-                        'supplier_label' => $bundle['label'],
-                        'cost' => $cost,
-                        'upc' => $row['upc'] ?? null,
-                        'format' => $row['format'] ?? null,
-                        'url' => $row['url'] ?? null,
-                    ];
+        // 2) Name match — normalized (punctuation/&/the/and-insensitive) exact
+        // title key, then verify the artist is compatible. Handles product
+        // names stored either as just the title or as "ARTIST - TITLE".
+        foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
+            if ($tKey === '' || empty($index['byTitle'][$tKey])) continue;
+            foreach ($index['byTitle'][$tKey] as $row) {
+                $rA = $row['artist_norm'] ?? '';
+                if ($aNorm !== '' && $rA !== ''
+                    && strpos($rA, $aNorm) === false && strpos($aNorm, $rA) === false) {
+                    continue; // title matches but artist clearly differs
                 }
+                $consider($row);
             }
-            if ($bestForThisSupplier !== null) $out[] = $bestForThisSupplier;
         }
+
+        $out = array_values($hits);
         usort($out, fn ($a, $b) => $a['cost'] <=> $b['cost']);
         return $out;
+    }
+
+    /**
+     * Per-request index of all supplier feeds:
+     *   suppliers: [key => label]
+     *   byUpc:     [normUpc  => [row, ...]]
+     *   byTitle:   [normTitle => [row, ...]]
+     * Each row: supplier_key, supplier_label, cost, upc, format, url, artist_norm.
+     */
+    protected function supplierIndex(int $business_id): array
+    {
+        static $idx = [];
+        if (isset($idx[$business_id])) return $idx[$business_id];
+
+        $out = ['suppliers' => [], 'byUpc' => [], 'byTitle' => []];
+        foreach ($this->knownSuppliers() as $key => $meta) {
+            $feed = $this->loadSupplierFeed($business_id, $key);
+            if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
+            $label = $meta['label'] ?? $key;
+            $out['suppliers'][$key] = $label;
+            foreach ($feed['rows'] as $row) {
+                if (!is_array($row)) continue;
+                $cost = isset($row['cost']) ? (float) $row['cost'] : 0.0;
+                if ($cost <= 0) continue;
+                $entry = [
+                    'supplier_key' => $key,
+                    'supplier_label' => $label,
+                    'cost' => $cost,
+                    'upc' => $row['upc'] ?? null,
+                    'format' => $row['format'] ?? null,
+                    'url' => $row['url'] ?? null,
+                    'artist_norm' => $this->normalizeMatchText((string) ($row['artist'] ?? '')),
+                ];
+                $u = $this->normalizeUpc($row['upc'] ?? null);
+                if ($u !== '') $out['byUpc'][$u][] = $entry;
+                $tKey = $this->normalizeMatchText((string) ($row['title'] ?? ''));
+                if ($tKey !== '') $out['byTitle'][$tKey][] = $entry;
+            }
+        }
+        $idx[$business_id] = $out;
+        return $out;
+    }
+
+    /**
+     * Normalized title keys to try for a product, each paired with the
+     * normalized artist to verify against. Handles a product name that is just
+     * the title AND one baked as "ARTIST - TITLE" / "TITLE / ARTIST".
+     *
+     * @return array<int, array{0:string,1:string}> [artistNorm, titleKey]
+     */
+    protected function titleKeyCandidates(?string $artist, ?string $title): array
+    {
+        $artistNorm = $this->normalizeMatchText((string) $artist);
+        $title = trim((string) $title);
+        if ($title === '') return [];
+
+        $keys = [];
+        $add = function (string $a, string $t) use (&$keys) {
+            $tk = $this->normalizeMatchText($t);
+            if ($tk !== '') $keys[$a . '||' . $tk] = [$a, $tk];
+        };
+
+        $add($artistNorm, $title); // name is just the title (artist in its own column)
+        foreach ([' - ', ' / ', ' — ', ': '] as $sep) {
+            if (mb_strpos($title, $sep) === false) continue;
+            [$a, $b] = array_map('trim', explode($sep, $title, 2));
+            if ($a === '' || $b === '') continue;
+            $add($artistNorm, $b);                       // TITLE after "ARTIST - "
+            $add($artistNorm, $a);                       // TITLE before " - ARTIST"
+            $add($this->normalizeMatchText($a), $b);     // a=artist, b=title
+            $add($this->normalizeMatchText($b), $a);     // reversed
+        }
+        return array_values($keys);
+    }
+
+    /**
+     * Normalize free text for fuzzy title/artist matching: lowercase, drop all
+     * punctuation (so "Earth, Wind & Fire" == "earth wind fire"), drop the
+     * noise words the/and/a/an, collapse whitespace. Both sides are normalized
+     * the same way so formatting differences stop blocking matches.
+     */
+    protected function normalizeMatchText($s): string
+    {
+        $s = mb_strtolower(trim((string) $s));
+        $s = preg_replace('/[^a-z0-9]+/u', ' ', $s);   // punctuation/& → space
+        $s = ' ' . preg_replace('/\s+/', ' ', $s) . ' ';
+        foreach (['the', 'and', 'a', 'an'] as $w) {
+            $s = str_replace(' ' . $w . ' ', ' ', $s);
+        }
+        return trim(preg_replace('/\s+/', ' ', $s));
     }
 
     public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): ?array
