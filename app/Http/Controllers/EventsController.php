@@ -1989,15 +1989,20 @@ class EventsController extends Controller
         $store = strtolower(trim((string) $request->query('store', '')));
         if (!in_array($store, ['hollywood', 'pico'], true)) { $store = ''; }
 
-        // All listening parties (upcoming shown first, past below). When a store
+        // Listening parties only. Active view = last 3 months + upcoming;
+        // Archive view (?archive=1) = parties older than 3 months. When a store
         // is picked, only parties that ran there (or have no store set) show.
+        $archive = filter_var($request->query('archive'), FILTER_VALIDATE_BOOLEAN);
         $today = \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
+        $cutoff = \Carbon\Carbon::now('America/Los_Angeles')->subMonths(3)->format('Y-m-d');
         $events = array_values(array_filter(
             self::load($business_id)['items'],
-            function ($ev) use ($store) {
+            function ($ev) use ($store, $archive, $cutoff) {
                 if (($ev['eventType'] ?? 'listening_party') !== 'listening_party') { return false; }
                 $d = (string) ($ev['date'] ?? '');
                 if ($d === '') { return false; }
+                // Split active vs archive at the 3-month cutoff.
+                if ($archive ? ($d >= $cutoff) : ($d < $cutoff)) { return false; }
                 if ($store !== '') {
                     $locs = array_values(array_filter(array_map(
                         fn($l) => mb_strtolower((string) $l),
@@ -2012,10 +2017,20 @@ class EventsController extends Controller
         $placed = $this->placedPreorderCounts();
 
         $dates = [];
+        // Fetch sales for each party date PLUS the next 14 days (up to today), so
+        // we can show 7-day and 14-day album sell-through, not just day-of.
+        $saleDates = [];
         foreach ($events as $ev) {
-            if (!empty($ev['date'])) { $dates[] = (string) $ev['date']; }
+            $d = (string) ($ev['date'] ?? '');
+            if ($d === '') { continue; }
+            $dates[] = $d;
+            for ($off = 0; $off <= 14; $off++) {
+                $dd = date('Y-m-d', strtotime($d . " +$off days"));
+                if ($dd > $today) { break; }
+                $saleDates[$dd] = true;
+            }
         }
-        $lines = $this->salesLinesByDate($business_id, $dates);
+        $lines = $this->salesLinesByDate($business_id, array_keys($saleDates));
 
         // Purchase-order lines spanning 30 days before the earliest party up to
         // the latest, so we can estimate "ordered" for parties with no manual
@@ -2069,17 +2084,20 @@ class EventsController extends Controller
                 return false;
             };
 
+            // Match the new release by artist OR release title.
+            $isAlbumFn = function ($nm) use ($artistTokens, $titleTokens) {
+                return self::productMatchesArtist($nm, $artistTokens)
+                    || (!empty($titleTokens) && self::productMatchesArtist($nm, $titleTokens));
+            };
+
+            // Day-of: whole store day + party-window records/formats.
             $dayByProduct = [];      // whole store day
             $partyByProduct = [];    // during the party hours only
-            $albumByProduct = [];    // the new release's records (whole day)
             $partyFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
-            $albumFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
                     if (self::isFeeLine($ln['name'])) { continue; }
-                    // Catalog products key by id; manual lines (no id) key by
-                    // their typed name so Heated Rivalry etc. aggregate together.
                     $key = ((int) $ln['product_id']) > 0
                         ? 'p:' . (int) $ln['product_id']
                         : 'm:' . mb_strtolower(trim((string) $ln['name']));
@@ -2098,23 +2116,41 @@ class EventsController extends Controller
                         }
                         $partyByProduct[$key]['units']   += $ln['units'];
                         $partyByProduct[$key]['revenue'] += $ln['revenue'];
-                        $fmt = self::formatOf($ln['cat'] ?? '', $ln['name']);
-                        $partyFormats[$fmt] += $ln['units'];
+                        $partyFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $ln['units'];
                     }
+                }
+            }
 
-                    // The album = the new release's record(s), counted across the
-                    // whole day (party-driven) so a generic toy that outsold the
-                    // record doesn't hijack the column. Matches the party artist
-                    // OR the release title, and includes manual sales.
-                    $isAlbum = self::productMatchesArtist($ln['name'], $artistTokens)
-                        || (!empty($titleTokens) && self::productMatchesArtist($ln['name'], $titleTokens));
-                    if ($isAlbum) {
-                        if (!isset($albumByProduct[$key])) {
-                            $albumByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+            // The new release across a window: day-of records/formats, plus
+            // cumulative sell-through at 7 and 14 days (did all the Madonna sell?).
+            $albumByProduct = [];
+            $albumFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
+            $album7 = 0.0;
+            $album14 = 0.0;
+            if ($date !== '') {
+                for ($off = 0; $off <= 14; $off++) {
+                    $dd = date('Y-m-d', strtotime($date . " +$off days"));
+                    if ($dd > $today) { break; }
+                    if (!isset($lines[$dd])) { continue; }
+                    foreach ($lines[$dd] as $ln) {
+                        if (!$storeMatch($ln['loc'])) { continue; }
+                        if (self::isFeeLine($ln['name'])) { continue; }
+                        if (!$isAlbumFn($ln['name'])) { continue; }
+                        $key = ((int) $ln['product_id']) > 0
+                            ? 'p:' . (int) $ln['product_id']
+                            : 'm:' . mb_strtolower(trim((string) $ln['name']));
+                        if ($key === 'm:') { continue; }
+                        $u = (float) $ln['units'];
+                        $album14 += $u;
+                        if ($off <= 7) { $album7 += $u; }
+                        if ($off === 0) {
+                            if (!isset($albumByProduct[$key])) {
+                                $albumByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                            }
+                            $albumByProduct[$key]['units']   += $u;
+                            $albumByProduct[$key]['revenue'] += $ln['revenue'];
+                            $albumFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $u;
                         }
-                        $albumByProduct[$key]['units']   += $ln['units'];
-                        $albumByProduct[$key]['revenue'] += $ln['revenue'];
-                        $albumFormats[self::formatOf($ln['cat'] ?? '', $ln['name'])] += $ln['units'];
                     }
                 }
             }
@@ -2127,6 +2163,9 @@ class EventsController extends Controller
 
             $albumUnits = array_sum(array_column($albumByProduct, 'units'));
             $albumRevenue = array_sum(array_column($albumByProduct, 'revenue'));
+            // Whether the 7/14-day windows have fully elapsed yet.
+            $window7Complete = date('Y-m-d', strtotime($date . ' +7 days')) <= $today;
+            $window14Complete = date('Y-m-d', strtotime($date . ' +14 days')) <= $today;
 
             // Attendees + RSVP purchase interest: per-store when scoped.
             if ($store !== '') {
@@ -2209,6 +2248,10 @@ class EventsController extends Controller
                 'albumRevenue'  => $albumRevenue,
                 'albumTitleCount' => count($albumByProduct),
                 'albumFormats'  => array_filter($albumFormats, fn($u) => $u > 0),
+                'album7'        => $album7,
+                'album14'       => $album14,
+                'window7Complete'  => $window7Complete,
+                'window14Complete' => $window14Complete,
                 'partyUnits'    => array_sum(array_column($partyByProduct, 'units')),
                 'partyRevenue'  => array_sum(array_column($partyByProduct, 'revenue')),
                 'dayUnits'      => array_sum(array_column($dayByProduct, 'units')),
@@ -2252,6 +2295,7 @@ class EventsController extends Controller
         }
         $store = strtolower(trim((string) $request->query('store', '')));
         if (!in_array($store, ['hollywood', 'pico'], true)) { $store = ''; }
+        $archive = filter_var($request->query('archive'), FILTER_VALIDATE_BOOLEAN);
         $rows = $this->buildSalesRows($request);
         $totals = [
             'attendees'    => array_sum(array_column($rows, 'attendees')),
@@ -2259,6 +2303,8 @@ class EventsController extends Controller
             'interest'     => array_sum(array_column($rows, 'interest')),
             'ordered'      => array_sum(array_column($rows, 'orderedTotal')),
             'albumUnits'   => array_sum(array_column($rows, 'albumUnits')),
+            'album7'       => array_sum(array_column($rows, 'album7')),
+            'album14'      => array_sum(array_column($rows, 'album14')),
             'partyUnits'   => array_sum(array_column($rows, 'partyUnits')),
             'partyRevenue' => array_sum(array_column($rows, 'partyRevenue')),
             'dayUnits'     => array_sum(array_column($rows, 'dayUnits')),
@@ -2268,6 +2314,7 @@ class EventsController extends Controller
             'rows'       => $rows,
             'totals'     => $totals,
             'store'      => $store,
+            'archive'    => $archive,
             'eventTypes' => self::eventTypes(),
             'bridgeKeySet' => $this->erpApiKey() !== '',
         ]);
@@ -2293,6 +2340,7 @@ class EventsController extends Controller
                 'Preorders placed', 'RSVP purchase interest',
                 'Ordered (total)', 'Ordered by format', 'Ordered source',
                 'Album (artist record)', 'Album qty sold', 'Album revenue', 'Album formats',
+                'Album sold +7 days', 'Album sold +14 days',
                 'Records sold during party', 'Total revenue during party',
                 'Formats sold during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
@@ -2323,6 +2371,8 @@ class EventsController extends Controller
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
                     implode('; ', array_map(fn($f, $u) => $f . ' ' . $qty($u), array_keys($r['albumFormats']), array_values($r['albumFormats']))),
+                    $r['album7'] > 0 ? $qty($r['album7']) . ($r['window7Complete'] ? '' : ' (so far)') : '',
+                    $r['album14'] > 0 ? $qty($r['album14']) . ($r['window14Complete'] ? '' : ' (so far)') : '',
                     $qty($r['partyUnits']),
                     number_format($r['partyRevenue'], 2, '.', ''),
                     implode('; ', $fmts),

@@ -18,7 +18,7 @@
 @endphp
 
 <style>
-  .esr-table { width:100%; border-collapse:collapse; font-size:13px; min-width:1240px; }
+  .esr-table { width:100%; border-collapse:collapse; font-size:13px; min-width:1400px; }
   .esr-table th, .esr-table td { padding:10px 12px; border-bottom:1px solid var(--pos-line,#ECE3CF); text-align:left; vertical-align:top; }
   .esr-table th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8a7c6a; font-weight:700; background:#faf6ec; }
   .esr-table td.num, .esr-table th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -41,25 +41,29 @@
 <div class="ev-wrap ev-wrap-wide">
   <div class="ev-head">
     <div>
-      <h1>Listening Party Sales @if ($store) <span style="font-size:15px;color:#8a7c6a;font-weight:600;">&middot; {{ ucfirst($store) }}</span> @endif</h1>
-      <p class="sub">Listening parties - upcoming (that are live) first, past below. Upcoming parties with no RSVPs or preorders yet are hidden. Shows attendees, preorders placed, and what sold on the POS - the party's own hours vs the whole store day, with the artist's record (the album), total party revenue, and the format mix.</p>
+      <h1>Listening Party Sales @if ($archive) <span style="font-size:15px;color:#8a7c6a;font-weight:600;">&middot; Archive</span> @endif @if ($store) <span style="font-size:15px;color:#8a7c6a;font-weight:600;">&middot; {{ ucfirst($store) }}</span> @endif</h1>
+      <p class="sub">{{ $archive ? 'Archived listening parties (older than 3 months).' : 'Listening parties - upcoming (that are live) first, then the last 3 months.' }} Shows attendees, preorders, and what sold on the POS, plus the album's 7-day and 14-day sell-through. Older parties live under Archive.</p>
       @php
         $tabBase = 'display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);';
         $tabOn = 'background:var(--pos-accent,#FFE08A);color:#3a2f0c;font-weight:700;';
         $tabOff = 'color:#6b6253;';
+        $arch = $archive ? ['archive' => 1] : [];
+        $storeParam = fn($s) => array_merge($s ? ['store' => $s] : [], $arch);
       @endphp
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <a href="{{ route('events.salesReport') }}" style="{{ $tabBase }}{{ $store === '' ? $tabOn : $tabOff }}">Both stores</a>
-        <a href="{{ route('events.salesReport', ['store' => 'hollywood']) }}" style="{{ $tabBase }}{{ $store === 'hollywood' ? $tabOn : $tabOff }}">Hollywood</a>
-        <a href="{{ route('events.salesReport', ['store' => 'pico']) }}" style="{{ $tabBase }}{{ $store === 'pico' ? $tabOn : $tabOff }}">Pico</a>
+        <a href="{{ route('events.salesReport', $storeParam('')) }}" style="{{ $tabBase }}{{ $store === '' ? $tabOn : $tabOff }}">Both stores</a>
+        <a href="{{ route('events.salesReport', $storeParam('hollywood')) }}" style="{{ $tabBase }}{{ $store === 'hollywood' ? $tabOn : $tabOff }}">Hollywood</a>
+        <a href="{{ route('events.salesReport', $storeParam('pico')) }}" style="{{ $tabBase }}{{ $store === 'pico' ? $tabOn : $tabOff }}">Pico</a>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <a href="{{ route('events.salesReport', $store ? ['store' => $store] : []) }}" style="{{ $tabBase }}{{ !$archive ? $tabOn : $tabOff }}">Active (last 3 months)</a>
+        <a href="{{ route('events.salesReport', array_merge($store ? ['store' => $store] : [], ['archive' => 1])) }}" style="{{ $tabBase }}{{ $archive ? $tabOn : $tabOff }}">Archive</a>
         <a href="{{ route('events.index') }}" style="{{ $tabBase }}{{ $tabOff }}">&larr; Events</a>
         <a href="{{ route('events.preordersOverview') }}" style="{{ $tabBase }}{{ $tabOff }}">Preorders</a>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
-      <a href="{{ route('events.salesReportExport', $store ? ['store' => $store] : []) }}" class="btn-accent" style="text-decoration:none;text-align:center;">Export CSV</a>
+      <a href="{{ route('events.salesReportExport', array_merge($store ? ['store' => $store] : [], $arch)) }}" class="btn-accent" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
   </div>
 
@@ -81,6 +85,8 @@
           <th class="num">Attendees</th>
           <th class="num">Preorders placed</th>
           <th class="num esr-star">Album sold at party</th>
+          <th class="num">Album +7 days</th>
+          <th class="num">Album +14 days</th>
           <th>Ordered</th>
           <th class="num">Records sold (party)</th>
           <th class="num">Total revenue (party)</th>
@@ -131,6 +137,20 @@
                     @foreach ($r['albumFormats'] as $f => $u)<span class="esr-fmt-pill">{{ $f }} {{ $qty($u) }}</span>@endforeach
                   </div>
                 @endif
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
+            <td class="num">
+              @if ($r['album7'] > 0)
+                {{ $qty($r['album7']) }}@unless ($r['window7Complete'])<span class="esr-more"> so far</span>@endunless
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
+            <td class="num">
+              @if ($r['album14'] > 0)
+                {{ $qty($r['album14']) }}@unless ($r['window14Complete'])<span class="esr-more"> so far</span>@endunless
               @else
                 <span class="esr-muted">-</span>
               @endif
@@ -195,7 +215,7 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="10" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
+          <tr><td colspan="12" style="text-align:center;color:#8a7c6a;padding:26px;">{{ $archive ? 'No archived listening parties.' : 'No listening parties in the last 3 months.' }}</td></tr>
         @endforelse
       </tbody>
       @if (count($rows))
@@ -205,6 +225,8 @@
             <td class="num">{{ $totals['attendees'] }}</td>
             <td class="num">{{ $totals['preorders'] }}</td>
             <td class="num esr-star">{{ $qty($totals['albumUnits']) }}</td>
+            <td class="num">{{ $qty($totals['album7']) }}</td>
+            <td class="num">{{ $qty($totals['album14']) }}</td>
             <td>{{ $totals['ordered'] }}</td>
             <td class="num">{{ $qty($totals['partyUnits']) }}</td>
             <td class="num">{{ $money($totals['partyRevenue']) }}</td>
