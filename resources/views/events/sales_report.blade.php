@@ -43,6 +43,7 @@
   .esr-more { font-size:11px; color:#b6ac97; margin-top:2px; }
   .esr-fmt { display:flex; flex-wrap:wrap; gap:4px; }
   .esr-fmt-pill { display:inline-block; font-size:11px; font-weight:600; color:#4a4335; background:#faf6ec; border:1px solid var(--pos-line,#ECE3CF); border-radius:999px; padding:1px 8px; white-space:nowrap; }
+  .esr-section { background:#f2ead6; color:#6b6253; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:6px 12px; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -103,7 +104,15 @@
         </tr>
       </thead>
       <tbody>
+        @php $seenUpcoming = false; $seenPast = false; @endphp
         @forelse ($rows as $r)
+          @if ($r['isUpcoming'] && !$seenUpcoming)
+            @php $seenUpcoming = true; @endphp
+            <tr><td colspan="12" class="esr-section">Upcoming</td></tr>
+          @elseif (!$r['isUpcoming'] && !$seenPast)
+            @php $seenPast = true; @endphp
+            <tr><td colspan="12" class="esr-section">Past</td></tr>
+          @endif
           <tr>
             <td>
               <div class="esr-ev-name">{{ $r['name'] }}
