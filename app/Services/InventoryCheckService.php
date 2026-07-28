@@ -1220,11 +1220,7 @@ class InventoryCheckService
         foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
             if ($tKey === '' || empty($index['byTitle'][$tKey])) continue;
             foreach ($index['byTitle'][$tKey] as $row) {
-                $rA = $row['artist_norm'] ?? '';
-                if ($aNorm !== '' && $rA !== ''
-                    && strpos($rA, $aNorm) === false && strpos($aNorm, $rA) === false) {
-                    continue; // title matches but artist clearly differs
-                }
+                if (!$this->artistMatches($aNorm, $row['artist_norm'] ?? '')) continue;
                 $consider($row);
             }
         }
@@ -1267,8 +1263,13 @@ class InventoryCheckService
                 ];
                 $u = $this->normalizeUpc($row['upc'] ?? null);
                 if ($u !== '') $out['byUpc'][$u][] = $entry;
-                $tKey = $this->normalizeMatchText((string) ($row['title'] ?? ''));
-                if ($tKey !== '') $out['byTitle'][$tKey][] = $entry;
+                // Index under the CORE title (parentheticals + format/edition
+                // suffixes stripped) AND the full normalized title, so
+                // "THRILLER (140G/GATEFOLD)" is findable by "thriller".
+                $rawTitle = (string) ($row['title'] ?? '');
+                foreach (array_unique(array_filter([$this->coreTitleKey($rawTitle), $this->normalizeMatchText($rawTitle)])) as $tk) {
+                    $out['byTitle'][$tk][] = $entry;
+                }
             }
         }
         $idx[$business_id] = $out;
@@ -1290,7 +1291,7 @@ class InventoryCheckService
 
         $keys = [];
         $add = function (string $a, string $t) use (&$keys) {
-            $tk = $this->normalizeMatchText($t);
+            $tk = $this->coreTitleKey($t);
             if ($tk !== '') $keys[$a . '||' . $tk] = [$a, $tk];
         };
 
@@ -1322,6 +1323,43 @@ class InventoryCheckService
             $s = str_replace(' ' . $w . ' ', ' ', $s);
         }
         return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
+    /**
+     * The "core" title for matching: drop parenthetical/bracketed asides and
+     * trailing format/edition noise that distributors tack on
+     * ("THRILLER (140G/GATEFOLD)" → "thriller", "TEN (150G VINYL)" → "ten"),
+     * then normalize. Lets a clean product title match a suffixed feed title.
+     */
+    protected function coreTitleKey($title): string
+    {
+        $t = (string) $title;
+        $t = preg_replace('/\([^)]*\)/u', ' ', $t); // (…) asides
+        $t = preg_replace('/\[[^\]]*\]/u', ' ', $t); // […] asides
+        $t = $this->normalizeMatchText($t);
+        // Strip trailing format/edition tokens if any slipped through.
+        $noise = ['lp', 'ep', 'cd', 'vinyl', 'gatefold', 'remaster', 'remastered',
+            'reissue', 'deluxe', 'edition', 'expanded', 'mono', 'stereo', '7', '10', '12',
+            '150g', '180g', '140g', '200g', 'coloured', 'colored', 'clear', 'black'];
+        $toks = $t === '' ? [] : explode(' ', $t);
+        while (!empty($toks) && in_array(end($toks), $noise, true)) array_pop($toks);
+        return implode(' ', $toks);
+    }
+
+    /**
+     * Order-independent artist match so "Michael Jackson" == feed
+     * "JACKSON,MICHAEL" (→ "jackson michael"). True if either token set is a
+     * subset of the other. Empty on either side can't disqualify (title-only).
+     */
+    protected function artistMatches(string $a, string $b): bool
+    {
+        if ($a === '' || $b === '') return true;
+        if ($a === $b) return true;
+        $ta = array_values(array_unique(array_filter(explode(' ', $a))));
+        $tb = array_values(array_unique(array_filter(explode(' ', $b))));
+        if (empty($ta) || empty($tb)) return true;
+        $common = count(array_intersect($ta, $tb));
+        return $common >= min(count($ta), count($tb)); // one set ⊆ the other
     }
 
     public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): ?array
