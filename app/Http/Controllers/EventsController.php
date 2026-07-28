@@ -2209,6 +2209,13 @@ class EventsController extends Controller
                 'topSellers'    => array_slice($partyByProduct, 0, 6),
             ];
         }
+        // Hide upcoming parties that aren't live yet - no RSVPs, no preorders,
+        // no purchase interest. Past parties are always kept.
+        $rows = array_values(array_filter($rows, function ($r) {
+            if (empty($r['isUpcoming'])) { return true; }
+            return $r['attendees'] > 0 || $r['preordersPlaced'] > 0 || $r['interest'] > 0;
+        }));
+
         // Upcoming first (soonest at top), then past (most recent at top).
         usort($rows, function ($a, $b) use ($today) {
             $ua = $a['date'] >= $today;

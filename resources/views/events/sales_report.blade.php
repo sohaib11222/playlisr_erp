@@ -42,7 +42,7 @@
   <div class="ev-head">
     <div>
       <h1>Listening Party Sales @if ($store) <span style="font-size:15px;color:#8a7c6a;font-weight:600;">&middot; {{ ucfirst($store) }}</span> @endif</h1>
-      <p class="sub">All listening parties - upcoming first, past below: attendees, preorders placed, and what sold on the POS - split into the party's own hours vs the whole store day, with the party artist's record (the album), total party revenue, and the format mix called out.</p>
+      <p class="sub">Listening parties - upcoming (that are live) first, past below. Upcoming parties with no RSVPs or preorders yet are hidden. Shows attendees, preorders placed, and what sold on the POS - the party's own hours vs the whole store day, with the artist's record (the album), total party revenue, and the format mix.</p>
       @php
         $tabBase = 'display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;text-decoration:none;border:1px solid var(--pos-line,#ECE3CF);';
         $tabOn = 'background:var(--pos-accent,#FFE08A);color:#3a2f0c;font-weight:700;';
