@@ -70,7 +70,7 @@
   @endif
 
   <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
-    "Ordered" is the stock we ordered in for the party (from the event's order matrix) - compare it against records sold. "Preorders placed" counts actual preorder records; "said they'd buy" underneath is the softer RSVP purchase-interest signal (guests who ticked vinyl/CD on their RSVP). "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
+    "Ordered" is the stock we ordered in for the party (from the event's order matrix) - compare it against records sold. Where no matrix was entered, it's estimated from purchase orders of the artist's records in the 30 days before the party (marked "est. from POs"). "Preorders placed" counts actual preorder records; "said they'd buy" underneath is the softer RSVP purchase-interest signal (guests who ticked vinyl/CD on their RSVP). "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -132,9 +132,10 @@
             </td>
             <td>
               @if ($r['orderedTotal'] > 0)
-                <strong>{{ $r['orderedTotal'] }}</strong>
+                <strong>{{ rtrim(rtrim(number_format($r['orderedTotal'], 2), '0'), '.') }}</strong>
+                @if ($r['orderedEstimated'])<span class="esr-more" title="No order matrix was entered on this event - estimated from purchase orders of the artist's records in the 30 days before the party."> est. from POs</span>@endif
                 <div class="esr-fmt" style="margin-top:2px;">
-                  @foreach ($r['orderedByFmt'] as $f => $u)<span class="esr-fmt-pill">{{ $f }} {{ $u }}</span>@endforeach
+                  @foreach ($r['orderedByFmt'] as $f => $u)<span class="esr-fmt-pill">{{ $f }} {{ rtrim(rtrim(number_format($u, 2), '0'), '.') }}</span>@endforeach
                 </div>
               @else
                 <span class="esr-muted">-</span>

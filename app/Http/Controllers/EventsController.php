@@ -1851,6 +1851,54 @@ class EventsController extends Controller
         return $lookup;
     }
 
+    /**
+     * Purchase-order lines in a date range, so we can estimate what was ordered
+     * for a party from real purchasing data (used only when an event has no
+     * hand-entered order matrix). Returns a flat list: ['d','loc','name','cat',
+     * 'qty']. type = purchase_order (what we ordered, any status). Graceful-empty.
+     */
+    protected function purchaseLinesByRange(int $business_id, string $from, string $to): array
+    {
+        $out = [];
+        if ($from === '' || $to === '') {
+            return $out;
+        }
+        try {
+            $rows = \DB::table('transactions as t')
+                ->join('purchase_lines as pl', 'pl.transaction_id', '=', 't.id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+                ->leftJoin('products as p', 'p.id', '=', 'pl.product_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'purchase_order')
+                ->whereNotNull('pl.product_id')
+                ->whereDate('t.transaction_date', '>=', $from)
+                ->whereDate('t.transaction_date', '<=', $to)
+                ->limit(50000)
+                ->select(
+                    \DB::raw('DATE(t.transaction_date) as d'),
+                    'bl.name as location_name',
+                    \DB::raw("COALESCE(p.name, '') as pname"),
+                    \DB::raw("TRIM(CONCAT(COALESCE(c.name, ''), ' ', COALESCE(sc.name, ''))) as cat"),
+                    'pl.quantity as qty'
+                )
+                ->get();
+            foreach ($rows as $r) {
+                $out[] = [
+                    'd'    => (string) $r->d,
+                    'loc'  => mb_strtolower(trim((string) ($r->location_name ?? ''))),
+                    'name' => (string) ($r->pname ?? ''),
+                    'cat'  => (string) ($r->cat ?? ''),
+                    'qty'  => (float) $r->qty,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // graceful-empty
+        }
+        return $out;
+    }
+
     /** Bucket a product into a format from its category (falls back to name). */
     protected static function formatOf(string $category, string $name): string
     {
@@ -1968,6 +2016,16 @@ class EventsController extends Controller
             if (!empty($ev['date'])) { $dates[] = (string) $ev['date']; }
         }
         $lines = $this->salesLinesByDate($business_id, $dates);
+
+        // Purchase-order lines spanning 30 days before the earliest party up to
+        // the latest, so we can estimate "ordered" for parties with no manual
+        // matrix. One query for the whole range; filtered per party below.
+        $purchaseLines = [];
+        if (!empty($dates)) {
+            $poFrom = date('Y-m-d', strtotime(min($dates) . ' -30 days'));
+            $poTo = max($dates);
+            $purchaseLines = $this->purchaseLinesByRange($business_id, $poFrom, $poTo);
+        }
 
         // Grace after the party end for people buying on their way out.
         $graceAfterEnd = 3600;      // 1 hour
@@ -2101,6 +2159,27 @@ class EventsController extends Controller
             }
             $orderedTotal = array_sum($orderedByFmt);
 
+            // Fallback: estimate ordered from purchase orders of the artist's
+            // records in the 30 days before the party, only when nothing was
+            // hand-entered. Store-scoped and format-bucketed like the sales.
+            $orderedEstimated = false;
+            if ($orderedTotal === 0 && $date !== '' && !empty($artistTokens)) {
+                $winStart = date('Y-m-d', strtotime($date . ' -30 days'));
+                $est = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
+                foreach ($purchaseLines as $pl) {
+                    if ($pl['d'] < $winStart || $pl['d'] > $date) { continue; }
+                    if (!$storeMatch($pl['loc'])) { continue; }
+                    if (!self::productMatchesArtist($pl['name'], $artistTokens)) { continue; }
+                    $est[self::formatOf($pl['cat'], $pl['name'])] += $pl['qty'];
+                }
+                $estTotal = array_sum($est);
+                if ($estTotal > 0) {
+                    $orderedByFmt = array_filter($est, fn($u) => $u > 0);
+                    $orderedTotal = $estTotal;
+                    $orderedEstimated = true;
+                }
+            }
+
             $rows[] = [
                 'name'          => $name,
                 'date'          => $date,
@@ -2115,6 +2194,7 @@ class EventsController extends Controller
                 'preordersPlaced' => $preordersPlaced,
                 'orderedTotal'  => $orderedTotal,
                 'orderedByFmt'  => array_filter($orderedByFmt, fn($u) => $u > 0),
+                'orderedEstimated' => $orderedEstimated,
                 'albumName'     => $albumByProduct[0]['name'] ?? '',
                 'albumUnits'    => $albumUnits,
                 'albumRevenue'  => $albumRevenue,
@@ -2194,7 +2274,7 @@ class EventsController extends Controller
             fputcsv($out, [
                 'Party', 'Date', 'Upcoming', 'Advance', 'Stores', 'Attendees',
                 'Preorders placed', 'RSVP purchase interest',
-                'Ordered (total)', 'Ordered by format',
+                'Ordered (total)', 'Ordered by format', 'Ordered source',
                 'Album (artist record)', 'Album qty sold', 'Album revenue',
                 'Records sold during party', 'Total revenue during party',
                 'Formats sold during party',
@@ -2221,6 +2301,7 @@ class EventsController extends Controller
                     $r['interest'],
                     $r['orderedTotal'],
                     implode('; ', $ordFmts),
+                    $r['orderedTotal'] > 0 ? ($r['orderedEstimated'] ? 'est. from POs' : 'manual') : '',
                     $r['albumName'],
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
