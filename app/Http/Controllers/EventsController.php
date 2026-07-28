@@ -546,6 +546,43 @@ class EventsController extends Controller
     }
 
     /**
+     * ACTUAL placed preorders per event (distinct from RSVP purchase interest,
+     * which is just what guests said they'd buy). Reads the website preorder
+     * records in one call and counts non-canceled ones, keyed by both event id
+     * ("id:<id>") and normalized name ("nm:<name>") so callers can prefer the
+     * stable id. Also splits vinyl/cd by the preorder's format when present.
+     * Empty when the bridge key is off / website unreachable.
+     */
+    protected function placedPreorderCounts(): array
+    {
+        $out = [];
+        if ($this->erpApiKey() === '') {
+            return $out;
+        }
+        $resp = $this->websiteApi('GET', '/erp/preorders?limit=10000');
+        $rows = $resp['data'] ?? $resp['preorders'] ?? [];
+        if (!is_array($rows)) {
+            return $out;
+        }
+        $bump = function (&$out, $key, $fmt) {
+            if (!isset($out[$key])) { $out[$key] = ['count' => 0, 'vinyl' => 0, 'cd' => 0]; }
+            $out[$key]['count']++;
+            if (strpos($fmt, 'vinyl') !== false) { $out[$key]['vinyl']++; }
+            if (strpos($fmt, 'cd') !== false) { $out[$key]['cd']++; }
+        };
+        foreach ($rows as $p) {
+            $status = strtolower((string) ($p['status'] ?? 'pending'));
+            if ($status === 'canceled' || $status === 'cancelled') { continue; }
+            $fmt = strtolower((string) ($p['format'] ?? $p['preorderFormat'] ?? ''));
+            $eid = (string) ($p['eventId'] ?? '');
+            $enm = self::normName($p['eventName'] ?? '');
+            if ($eid !== '') { $bump($out, 'id:' . $eid, $fmt); }
+            if ($enm !== '') { $bump($out, 'nm:' . $enm, $fmt); }
+        }
+        return $out;
+    }
+
+    /**
      * Build the "what to order" shortfall list across upcoming events: per
      * store, demand (RSVP buy-interest) minus what's ordered. Non-hosting
      * stores get a baseline (stock a couple standard vinyl). Only returns
@@ -1906,6 +1943,7 @@ class EventsController extends Controller
             }
         ));
         $counts = $this->bridgeCounts();
+        $placed = $this->placedPreorderCounts();
 
         $dates = [];
         foreach ($events as $ev) {
@@ -2002,7 +2040,7 @@ class EventsController extends Controller
             $albumUnits = array_sum(array_column($albumByProduct, 'units'));
             $albumRevenue = array_sum(array_column($albumByProduct, 'revenue'));
 
-            // Attendees + preorders: per-store when scoped, else store totals.
+            // Attendees + RSVP purchase interest: per-store when scoped.
             if ($store !== '') {
                 $st = $counts['store'][$k][$store] ?? ['attending' => 0, 'vinyl' => 0, 'cd' => 0];
                 $attendees = (int) ($st['attending'] ?? 0);
@@ -2013,6 +2051,12 @@ class EventsController extends Controller
                 $vinyl = (int) ($counts['vinyl'][$k] ?? 0);
                 $cd = (int) ($counts['cd'][$k] ?? 0);
             }
+            $interest = $vinyl + $cd; // guests who SAID they'd buy (RSVP)
+
+            // ACTUAL placed preorders (real records), preferring the event id.
+            $eid = (string) ($ev['id'] ?? '');
+            $pk = ($eid !== '' && isset($placed['id:' . $eid])) ? ('id:' . $eid) : ('nm:' . $k);
+            $preordersPlaced = (int) ($placed[$pk]['count'] ?? 0);
 
             // Advance-release party: the album wasn't out yet, so it moved via
             // preorders, not day-of sales. Flagged by preorderEnabled, or when
@@ -2033,6 +2077,8 @@ class EventsController extends Controller
                 'attendees'     => $attendees,
                 'vinyl'         => $vinyl,
                 'cd'            => $cd,
+                'interest'      => $interest,
+                'preordersPlaced' => $preordersPlaced,
                 'albumName'     => $albumByProduct[0]['name'] ?? '',
                 'albumUnits'    => $albumUnits,
                 'albumRevenue'  => $albumRevenue,
@@ -2066,7 +2112,8 @@ class EventsController extends Controller
         $rows = $this->buildSalesRows($request);
         $totals = [
             'attendees'    => array_sum(array_column($rows, 'attendees')),
-            'preorders'    => array_sum(array_column($rows, 'vinyl')) + array_sum(array_column($rows, 'cd')),
+            'preorders'    => array_sum(array_column($rows, 'preordersPlaced')),
+            'interest'     => array_sum(array_column($rows, 'interest')),
             'albumUnits'   => array_sum(array_column($rows, 'albumUnits')),
             'partyUnits'   => array_sum(array_column($rows, 'partyUnits')),
             'partyRevenue' => array_sum(array_column($rows, 'partyRevenue')),
@@ -2098,7 +2145,8 @@ class EventsController extends Controller
         return response()->streamDownload(function () use ($rows, $qty) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Party', 'Date', 'Advance', 'Stores', 'Attendees', 'Preorders placed',
+                'Party', 'Date', 'Advance', 'Stores', 'Attendees',
+                'Preorders placed', 'RSVP purchase interest',
                 'Album (artist record)', 'Album qty sold', 'Album revenue',
                 'Records sold during party', 'Revenue during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
@@ -2115,7 +2163,8 @@ class EventsController extends Controller
                     $r['isAdvance'] ? 'Yes' : '',
                     implode(' + ', $r['stores']),
                     $r['attendees'],
-                    $r['vinyl'] + $r['cd'],
+                    $r['preordersPlaced'],
+                    $r['interest'],
                     $r['albumName'],
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',

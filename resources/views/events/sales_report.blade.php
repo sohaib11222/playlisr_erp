@@ -68,7 +68,7 @@
   @endif
 
   <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
-    "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
+    "Preorders placed" counts actual preorder records; "said they'd buy" underneath is the softer RSVP purchase-interest signal (guests who ticked vinyl/CD on their RSVP). "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -99,16 +99,19 @@
             </td>
             <td class="num">{{ $r['attendees'] ?: '-' }}</td>
             <td class="num">
-              @if ($r['vinyl'] || $r['cd'])
-                {{ $r['vinyl'] + $r['cd'] }}
-                <div class="esr-ev-sub">{{ $r['vinyl'] }} vinyl &middot; {{ $r['cd'] }} CD</div>
+              @if ($r['preordersPlaced'] > 0)
+                {{ $r['preordersPlaced'] }}
+                @if ($r['interest']) <div class="esr-ev-sub">{{ $r['interest'] }} said they'd buy</div> @endif
+              @elseif ($r['interest'])
+                <span class="esr-muted">0</span>
+                <div class="esr-ev-sub">{{ $r['interest'] }} said they'd buy</div>
               @else
                 <span class="esr-muted">-</span>
               @endif
             </td>
             <td class="num esr-star">
               @if ($r['isAdvance'])
-                <div class="esr-album-qty">{{ $r['vinyl'] + $r['cd'] }}</div>
+                <div class="esr-album-qty">{{ $r['preordersPlaced'] }}</div>
                 <div class="esr-album-name">preordered (advance)</div>
                 @if ($r['albumUnits'] > 0)
                   <div class="esr-ev-sub">{{ $qty($r['albumUnits']) }} sold day-of</div>
