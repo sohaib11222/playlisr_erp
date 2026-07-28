@@ -135,9 +135,30 @@ class RedeyeFetcher extends AbstractHttpFetcher
                 $out[] = sprintf('  %-28s len=%-7d logout=%s detailLinks=%d',
                     $path, strlen($html), stripos($html, '/logout') !== false ? 'Y' : 'N', $ids);
             }
+            // Fetch one actual product page and see whether the price is in the
+            // server HTML (parser bug) or absent (JS/AJAX-loaded price).
             $bs = $this->get($this->base . '/best-sellers');
-            $txt = preg_replace('/\s+/', ' ', trim(strip_tags($bs)));
-            $out[] = '  best-sellers text: ' . mb_strimwidth($txt, 0, 260, '…');
+            $ids = array_keys($this->collectDetailIds($bs));
+            if (!empty($ids)) {
+                $fid = (string) $ids[0];
+                try {
+                    $d = $this->get($this->base . '/products/details/' . $fid);
+                    $rows = $this->parseDetailPage($d, $fid);
+                    $out[] = sprintf('  detail %s: len=%d hasYourCost=%s cartBuyBox=%d hasUPC=%s parsedRows=%d',
+                        $fid, strlen($d),
+                        stripos($d, 'your cost') !== false ? 'Y' : 'N',
+                        (int) preg_match_all('#cart-buy-box#', $d),
+                        stripos($d, 'upc') !== false ? 'Y' : 'N',
+                        count($rows));
+                    if (!empty($rows)) {
+                        $r0 = $rows[0];
+                        $out[] = sprintf('  first parsed row: %s / %s / %s / $%s',
+                            $r0['artist'] ?? '', $r0['title'] ?? '', $r0['format'] ?? '', $r0['cost'] ?? '');
+                    }
+                } catch (\Throwable $e) {
+                    $out[] = '  detail fetch ERROR: ' . $e->getMessage();
+                }
+            }
         } catch (\Throwable $e) {
             $out[] = 'PROBE ERROR: ' . $e->getMessage();
         }
