@@ -1001,35 +1001,37 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
-        $L[] = 'AMS MATCH COVERAGE (your 300 most-recently-added products):';
+        $L[] = 'AMS MATCH COVERAGE (your 400 most-recently-added products, split new vs used):';
         try {
             $recent = DB::table('products')
-                ->where('business_id', $business_id)
-                ->orderByDesc('created_at')
-                ->limit(300)
-                ->get(['name', 'artist', 'sku']);
-            $n = count($recent);
-            $withAms = 0; $bySku = 0; $byName = 0;
+                ->leftJoin('categories as c', 'products.category_id', '=', 'c.id')
+                ->where('products.business_id', $business_id)
+                ->orderByDesc('products.created_at')
+                ->limit(400)
+                ->get(['products.name', 'products.artist', 'products.sku', 'c.name as cat']);
+            $stat = ['new' => ['n' => 0, 'ams' => 0], 'used' => ['n' => 0, 'ams' => 0]];
+            $bySku = 0;
             foreach ($recent as $p) {
+                $bucket = (stripos((string) ($p->cat ?? ''), 'used') !== false) ? 'used' : 'new';
+                $stat[$bucket]['n']++;
                 $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist ?? null, $p->name ?? null, null, $p->sku ?? null);
                 $ams = null;
                 foreach ($prices as $pr) {
                     if (($pr['supplier_key'] ?? '') === 'ams') { $ams = $pr; break; }
                 }
                 if ($ams === null) continue;
-                $withAms++;
-                // Did it match on a barcode in the SKU, or fall back to name?
+                $stat[$bucket]['ams']++;
                 $skuSet = $this->skuUpcCandidatesForDiag((string) ($p->sku ?? ''));
-                $amsUpc = preg_replace('/\D+/', '', (string) ($ams['upc'] ?? ''));
-                $amsUpc = ltrim($amsUpc, '0');
-                if ($amsUpc !== '' && isset($skuSet[$amsUpc])) { $bySku++; } else { $byName++; }
+                $amsUpc = ltrim(preg_replace('/\D+/', '', (string) ($ams['upc'] ?? '')), '0');
+                if ($amsUpc !== '' && isset($skuSet[$amsUpc])) { $bySku++; }
             }
-            $L[] = sprintf('  %d of %d have an AMS price (%d%%)  —  %d matched by SKU/barcode, %d by name',
-                $withAms, $n, $n ? (int) round($withAms * 100 / $n) : 0, $bySku, $byName);
-            if ($n && $withAms < $n) {
-                $L[] = '  Blank ones are titles AMS does not carry, or whose SKU is internal (no barcode) and';
-                $L[] = '  whose artist/title text does not line up with AMS.';
+            foreach (['new' => 'NEW/sealed', 'used' => 'USED'] as $k => $lbl) {
+                $s = $stat[$k];
+                $L[] = sprintf('  %-10s %d of %d have an AMS price (%d%%)', $lbl,
+                    $s['ams'], $s['n'], $s['n'] ? (int) round($s['ams'] * 100 / $s['n']) : 0);
             }
+            $L[] = sprintf('  (%d of all matched on a real barcode in the SKU; the rest matched by artist/title)', $bySku);
+            $L[] = '  USED being low is expected — AMS sells new, so it does not carry your used copies.';
         } catch (\Throwable $e) {
             $L[] = '  (coverage check failed: ' . $e->getMessage() . ')';
         }
