@@ -18,7 +18,7 @@
 @endphp
 
 <style>
-  .esr-table { width:100%; border-collapse:collapse; font-size:13px; min-width:1120px; }
+  .esr-table { width:100%; border-collapse:collapse; font-size:13px; min-width:1240px; }
   .esr-table th, .esr-table td { padding:10px 12px; border-bottom:1px solid var(--pos-line,#ECE3CF); text-align:left; vertical-align:top; }
   .esr-table th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8a7c6a; font-weight:700; background:#faf6ec; }
   .esr-table td.num, .esr-table th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -70,7 +70,7 @@
   @endif
 
   <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
-    "Preorders placed" counts actual preorder records; "said they'd buy" underneath is the softer RSVP purchase-interest signal (guests who ticked vinyl/CD on their RSVP). "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
+    "Ordered" is the stock we ordered in for the party (from the event's order matrix) - compare it against records sold. "Preorders placed" counts actual preorder records; "said they'd buy" underneath is the softer RSVP purchase-interest signal (guests who ticked vinyl/CD on their RSVP). "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -81,6 +81,7 @@
           <th class="num">Attendees</th>
           <th class="num">Preorders placed</th>
           <th class="num esr-star">Album sold at party</th>
+          <th>Ordered</th>
           <th class="num">Records sold (party)</th>
           <th class="num">Total revenue (party)</th>
           <th>Formats sold (party)</th>
@@ -125,6 +126,16 @@
                 <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
                 <div class="esr-album-name">{{ $r['albumName'] }}</div>
                 <div class="esr-ev-sub">{{ $money($r['albumRevenue']) }}@if ($r['albumTitleCount'] > 1) &middot; {{ $r['albumTitleCount'] }} titles @endif</div>
+              @else
+                <span class="esr-muted">-</span>
+              @endif
+            </td>
+            <td>
+              @if ($r['orderedTotal'] > 0)
+                <strong>{{ $r['orderedTotal'] }}</strong>
+                <div class="esr-fmt" style="margin-top:2px;">
+                  @foreach ($r['orderedByFmt'] as $f => $u)<span class="esr-fmt-pill">{{ $f }} {{ $u }}</span>@endforeach
+                </div>
               @else
                 <span class="esr-muted">-</span>
               @endif
@@ -178,7 +189,7 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="9" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
+          <tr><td colspan="10" style="text-align:center;color:#8a7c6a;padding:26px;">No listening parties yet.</td></tr>
         @endforelse
       </tbody>
       @if (count($rows))
@@ -188,6 +199,7 @@
             <td class="num">{{ $totals['attendees'] }}</td>
             <td class="num">{{ $totals['preorders'] }}</td>
             <td class="num esr-star">{{ $qty($totals['albumUnits']) }}</td>
+            <td>{{ $totals['ordered'] }}</td>
             <td class="num">{{ $qty($totals['partyUnits']) }}</td>
             <td class="num">{{ $money($totals['partyRevenue']) }}</td>
             <td></td>

@@ -2088,6 +2088,19 @@ class EventsController extends Controller
                 $isAdvance = true;
             }
 
+            // What we ordered for this party (per-store matrix), scoped to the
+            // selected store. Same format buckets as "formats sold".
+            $orderedByFmt = ['Vinyl' => 0, 'CD' => 0, 'Cassette' => 0];
+            $ordered = (array) ($ev['ordered'] ?? []);
+            $orderStores = $store !== '' ? [$store] : ['hollywood', 'pico'];
+            foreach ($orderStores as $sk) {
+                $orow = (array) ($ordered[$sk] ?? []);
+                $orderedByFmt['Vinyl']    += (int) ($orow['indieVinyl'] ?? 0) + (int) ($orow['stdVinyl'] ?? 0) + (int) ($orow['deluxeVinyl'] ?? 0);
+                $orderedByFmt['CD']       += (int) ($orow['stdCd'] ?? 0) + (int) ($orow['deluxeCd'] ?? 0);
+                $orderedByFmt['Cassette'] += (int) ($orow['cassette'] ?? 0);
+            }
+            $orderedTotal = array_sum($orderedByFmt);
+
             $rows[] = [
                 'name'          => $name,
                 'date'          => $date,
@@ -2100,6 +2113,8 @@ class EventsController extends Controller
                 'cd'            => $cd,
                 'interest'      => $interest,
                 'preordersPlaced' => $preordersPlaced,
+                'orderedTotal'  => $orderedTotal,
+                'orderedByFmt'  => array_filter($orderedByFmt, fn($u) => $u > 0),
                 'albumName'     => $albumByProduct[0]['name'] ?? '',
                 'albumUnits'    => $albumUnits,
                 'albumRevenue'  => $albumRevenue,
@@ -2145,6 +2160,7 @@ class EventsController extends Controller
             'attendees'    => array_sum(array_column($rows, 'attendees')),
             'preorders'    => array_sum(array_column($rows, 'preordersPlaced')),
             'interest'     => array_sum(array_column($rows, 'interest')),
+            'ordered'      => array_sum(array_column($rows, 'orderedTotal')),
             'albumUnits'   => array_sum(array_column($rows, 'albumUnits')),
             'partyUnits'   => array_sum(array_column($rows, 'partyUnits')),
             'partyRevenue' => array_sum(array_column($rows, 'partyRevenue')),
@@ -2178,6 +2194,7 @@ class EventsController extends Controller
             fputcsv($out, [
                 'Party', 'Date', 'Upcoming', 'Advance', 'Stores', 'Attendees',
                 'Preorders placed', 'RSVP purchase interest',
+                'Ordered (total)', 'Ordered by format',
                 'Album (artist record)', 'Album qty sold', 'Album revenue',
                 'Records sold during party', 'Total revenue during party',
                 'Formats sold during party',
@@ -2191,6 +2208,8 @@ class EventsController extends Controller
                 );
                 $fmts = [];
                 foreach ($r['formats'] as $f => $u) { $fmts[] = $f . ' ' . $qty($u); }
+                $ordFmts = [];
+                foreach ($r['orderedByFmt'] as $f => $u) { $ordFmts[] = $f . ' ' . $u; }
                 fputcsv($out, [
                     $r['name'],
                     $r['date'],
@@ -2200,6 +2219,8 @@ class EventsController extends Controller
                     $r['attendees'],
                     $r['preordersPlaced'],
                     $r['interest'],
+                    $r['orderedTotal'],
+                    implode('; ', $ordFmts),
                     $r['albumName'],
                     $r['albumUnits'] ? $qty($r['albumUnits']) : '',
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
