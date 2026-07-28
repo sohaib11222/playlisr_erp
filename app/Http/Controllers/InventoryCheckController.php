@@ -1037,6 +1037,45 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
+        $L[] = 'SAMPLE — recent NEW products (name | artist | sku | discogs | var sub_skus):';
+        try {
+            $sp = DB::table('products')
+                ->leftJoin('categories as c', 'products.category_id', '=', 'c.id')
+                ->where('products.business_id', $business_id)
+                ->where(function ($q) { $q->whereNull('c.name')->orWhere('c.name', 'not like', '%used%'); })
+                ->orderByDesc('products.created_at')->limit(8)
+                ->get(['products.id', 'products.name', 'products.artist', 'products.sku', 'products.discogs_release_id']);
+            foreach ($sp as $p) {
+                $subs = '';
+                try {
+                    $subs = DB::table('variations')->where('product_id', $p->id)
+                        ->whereNotNull('sub_sku')->where('sub_sku', '!=', '')
+                        ->limit(3)->pluck('sub_sku')->implode(',');
+                } catch (\Throwable $e) {}
+                $L[] = sprintf('  %-32s | %-18s | sku=%s | disc=%s | sub=%s',
+                    mb_strimwidth((string) $p->name, 0, 32, '…'),
+                    mb_strimwidth((string) ($p->artist ?? ''), 0, 18, '…'),
+                    (string) ($p->sku ?? ''), (string) ($p->discogs_release_id ?? ''), $subs);
+            }
+        } catch (\Throwable $e) {
+            $L[] = '  (sample failed: ' . $e->getMessage() . ')';
+        }
+        $L[] = '';
+        $L[] = 'SAMPLE — AMS feed rows (artist | title | upc):';
+        try {
+            $feed = $this->inventoryCheckService->loadSupplierFeed($business_id, 'ams');
+            foreach (array_slice($feed['rows'] ?? [], 0, 8) as $r) {
+                if (!is_array($r)) continue;
+                $L[] = sprintf('  %-20s | %-34s | %s',
+                    mb_strimwidth((string) ($r['artist'] ?? ''), 0, 20, '…'),
+                    mb_strimwidth((string) ($r['title'] ?? ''), 0, 34, '…'),
+                    (string) ($r['upc'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            $L[] = '  (sample failed: ' . $e->getMessage() . ')';
+        }
+
+        $L[] = '';
         $L[] = 'BACKFILL LOG (most recent full-pull output, if any):';
         $anyLog = false;
         foreach ($known as $key => $meta) {
