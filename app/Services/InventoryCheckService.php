@@ -1207,21 +1207,22 @@ class InventoryCheckService
             }
         };
 
+        $compact = $index['compact'];
+
         // 1) Barcode match — strongest. Any real UPC/EAN token in the SKU.
         foreach ($this->skuUpcCandidates($upc) as $u => $_) {
-            if (!empty($index['byUpc'][$u])) {
-                foreach ($index['byUpc'][$u] as $row) $consider($row);
-            }
+            foreach ($index['byUpc'][$u] ?? [] as $i) $consider($compact[$i]);
         }
 
         // 2) Name match — normalized (punctuation/&/the/and-insensitive) exact
         // title key, then verify the artist is compatible. Handles product
         // names stored either as just the title or as "ARTIST - TITLE".
         foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
-            if ($tKey === '' || empty($index['byTitle'][$tKey])) continue;
-            foreach ($index['byTitle'][$tKey] as $row) {
-                if (!$this->artistMatches($aNorm, $row['artist_norm'] ?? '')) continue;
-                $consider($row);
+            if ($tKey === '') continue;
+            foreach ($index['byTitle'][$tKey] ?? [] as $i) {
+                $e = $compact[$i];
+                if (!$this->artistMatches($aNorm, $e['artist_norm'] ?? '')) continue;
+                $consider($e);
             }
         }
 
@@ -1231,18 +1232,44 @@ class InventoryCheckService
     }
 
     /**
-     * Per-request index of all supplier feeds:
+     * Index of all supplier feeds, keyed for O(1) matching:
      *   suppliers: [key => label]
-     *   byUpc:     [normUpc  => [row, ...]]
-     *   byTitle:   [normTitle => [row, ...]]
-     * Each row: supplier_key, supplier_label, cost, upc, format, url, artist_norm.
+     *   compact:   [i => {supplier_key,supplier_label,cost,upc,format,url,artist_norm}]
+     *   byUpc:     [normUpc   => [i, ...]]
+     *   byTitle:   [titleKey  => [i, ...]]   (core + full normalized titles)
+     *
+     * The full AMS catalog is ~80k rows; decoding + indexing it costs ~200ms
+     * and ~200MB, which made /products crawl (the column matches ~100 rows per
+     * page, but the index built on EVERY request). So the built index is
+     * cached to a serialized sidecar and reused until a feed file changes —
+     * subsequent requests just read+unserialize (~30ms). byUpc/byTitle store
+     * integer offsets into `compact` (not duplicated rows) to keep it small.
      */
     protected function supplierIndex(int $business_id): array
     {
         static $idx = [];
         if (isset($idx[$business_id])) return $idx[$business_id];
 
-        $out = ['suppliers' => [], 'byUpc' => [], 'byTitle' => []];
+        // Signature of the current feeds (path|mtime|size) — cache is valid
+        // only while this matches, so a new pull rebuilds it automatically.
+        $sig = '';
+        foreach ($this->knownSuppliers() as $key => $meta) {
+            $p = $this->supplierFeedPath($business_id, $key);
+            if (is_file($p)) $sig .= $key . ':' . filemtime($p) . ':' . filesize($p) . '|';
+        }
+        $datPath = storage_path('app/supplier-index-' . $business_id . '.ser');
+        $sigPath = storage_path('app/supplier-index-' . $business_id . '.sig');
+
+        if ($sig !== '' && is_file($datPath) && is_file($sigPath)
+            && trim((string) @file_get_contents($sigPath)) === $sig) {
+            $cached = @unserialize((string) @file_get_contents($datPath));
+            if (is_array($cached) && isset($cached['compact'])) {
+                return $idx[$business_id] = $cached;
+            }
+        }
+
+        @ini_set('memory_limit', '512M'); // the one-off rebuild is memory-heavy
+        $out = ['suppliers' => [], 'compact' => [], 'byUpc' => [], 'byTitle' => []];
         foreach ($this->knownSuppliers() as $key => $meta) {
             $feed = $this->loadSupplierFeed($business_id, $key);
             if (empty($feed['rows']) || !is_array($feed['rows'])) continue;
@@ -1252,7 +1279,8 @@ class InventoryCheckService
                 if (!is_array($row)) continue;
                 $cost = isset($row['cost']) ? (float) $row['cost'] : 0.0;
                 if ($cost <= 0) continue;
-                $entry = [
+                $i = count($out['compact']);
+                $out['compact'][$i] = [
                     'supplier_key' => $key,
                     'supplier_label' => $label,
                     'cost' => $cost,
@@ -1262,18 +1290,32 @@ class InventoryCheckService
                     'artist_norm' => $this->normalizeMatchText((string) ($row['artist'] ?? '')),
                 ];
                 $u = $this->normalizeUpc($row['upc'] ?? null);
-                if ($u !== '') $out['byUpc'][$u][] = $entry;
-                // Index under the CORE title (parentheticals + format/edition
-                // suffixes stripped) AND the full normalized title, so
-                // "THRILLER (140G/GATEFOLD)" is findable by "thriller".
+                if ($u !== '') $out['byUpc'][$u][] = $i;
+                // Index under the CORE title (parentheticals/format stripped)
+                // AND the full normalized title, so "THRILLER (140G/GATEFOLD)"
+                // is findable by "thriller".
                 $rawTitle = (string) ($row['title'] ?? '');
                 foreach (array_unique(array_filter([$this->coreTitleKey($rawTitle), $this->normalizeMatchText($rawTitle)])) as $tk) {
-                    $out['byTitle'][$tk][] = $entry;
+                    $out['byTitle'][$tk][] = $i;
                 }
             }
         }
-        $idx[$business_id] = $out;
-        return $out;
+
+        // Persist for reuse until the feeds change. Best-effort; write to a
+        // temp file then rename so a concurrent reader never sees a partial.
+        if ($sig !== '') {
+            try {
+                $tmp = $datPath . '.' . getmypid() . '.tmp';
+                if (@file_put_contents($tmp, serialize($out)) !== false) {
+                    @rename($tmp, $datPath);
+                    @file_put_contents($sigPath, $sig);
+                }
+            } catch (\Throwable $e) {
+                // Non-fatal — we just rebuild next time.
+            }
+        }
+
+        return $idx[$business_id] = $out;
     }
 
     /**
