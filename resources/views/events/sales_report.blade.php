@@ -68,7 +68,7 @@
   @endif
 
   <p style="font-size:12px;color:#8a7c6a;margin:0 0 12px;max-width:900px;">
-    "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
+    "Album sold at party" is the party artist's own record(s) sold that day - matched by the artist in the party name (e.g. a Shania Twain party counts Shania Twain records, not the top-selling toy). For an Advance party the album wasn't out yet, so this shows preorders placed instead. "During party" counts all POS sales in the party's hours (start to end time, plus 1 hour grace); "that day" is the store's whole day for comparison. A dash means none sold / nothing was rung.
   </p>
 
   <div style="overflow-x:auto;border:1px solid var(--pos-line,#ECE3CF);border-radius:12px;background:#fff;">
@@ -88,7 +88,9 @@
         @forelse ($rows as $r)
           <tr>
             <td>
-              <div class="esr-ev-name">{{ $r['name'] }}</div>
+              <div class="esr-ev-name">{{ $r['name'] }}
+                @if ($r['isAdvance'])<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#3a2f0c;background:var(--pos-accent,#FFE08A);border-radius:999px;padding:1px 6px;margin-left:6px;vertical-align:middle;">Advance</span>@endif
+              </div>
               <div class="esr-ev-sub">
                 {{ $fmtDate($r['date']) }}
                 @if (!empty($r['stores'])) &middot; {{ implode(' + ', $r['stores']) }} @endif
@@ -105,7 +107,13 @@
               @endif
             </td>
             <td class="num esr-star">
-              @if ($r['albumUnits'] > 0)
+              @if ($r['isAdvance'])
+                <div class="esr-album-qty">{{ $r['vinyl'] + $r['cd'] }}</div>
+                <div class="esr-album-name">preordered (advance)</div>
+                @if ($r['albumUnits'] > 0)
+                  <div class="esr-ev-sub">{{ $qty($r['albumUnits']) }} sold day-of</div>
+                @endif
+              @elseif ($r['albumUnits'] > 0)
                 <div class="esr-album-qty">{{ $qty($r['albumUnits']) }}</div>
                 <div class="esr-album-name">{{ $r['albumName'] }}</div>
                 <div class="esr-ev-sub">{{ $money($r['albumRevenue']) }}@if ($r['albumTitleCount'] > 1) &middot; {{ $r['albumTitleCount'] }} titles @endif</div>

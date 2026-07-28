@@ -2014,12 +2014,22 @@ class EventsController extends Controller
                 $cd = (int) ($counts['cd'][$k] ?? 0);
             }
 
+            // Advance-release party: the album wasn't out yet, so it moved via
+            // preorders, not day-of sales. Flagged by preorderEnabled, or when
+            // the record's street date falls after the party.
+            $isAdvance = !empty($ev['preorderEnabled']);
+            $streetDate = (string) ($ev['streetDate'] ?? '');
+            if (!$isAdvance && $streetDate !== '' && $date !== '' && $streetDate > $date) {
+                $isAdvance = true;
+            }
+
             $rows[] = [
                 'name'          => $name,
                 'date'          => $date,
                 'eventType'     => (string) ($ev['eventType'] ?? 'listening_party'),
                 'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
                 'hasWindow'     => $startSec !== null,
+                'isAdvance'     => $isAdvance,
                 'attendees'     => $attendees,
                 'vinyl'         => $vinyl,
                 'cd'            => $cd,
@@ -2088,7 +2098,7 @@ class EventsController extends Controller
         return response()->streamDownload(function () use ($rows, $qty) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Party', 'Date', 'Stores', 'Attendees', 'Preorders placed',
+                'Party', 'Date', 'Advance', 'Stores', 'Attendees', 'Preorders placed',
                 'Album (artist record)', 'Album qty sold', 'Album revenue',
                 'Records sold during party', 'Revenue during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
@@ -2102,6 +2112,7 @@ class EventsController extends Controller
                 fputcsv($out, [
                     $r['name'],
                     $r['date'],
+                    $r['isAdvance'] ? 'Yes' : '',
                     implode(' + ', $r['stores']),
                     $r['attendees'],
                     $r['vinyl'] + $r['cd'],
