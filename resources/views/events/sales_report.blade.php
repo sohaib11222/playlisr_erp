@@ -114,6 +114,8 @@
               @if ($r['preordersPlaced'] > 0)
                 {{ $r['preordersPlaced'] }}
                 @if ($r['interest']) <div class="esr-ev-sub">{{ $r['interest'] }} said they'd buy</div> @endif
+              @elseif ($r['isNewRelease'])
+                <div class="esr-ev-sub" style="text-align:right;">No preorders taken for new release listening parties</div>
               @elseif ($r['interest'])
                 <span class="esr-muted">0</span>
                 <div class="esr-ev-sub">{{ $r['interest'] }} said they'd buy</div>

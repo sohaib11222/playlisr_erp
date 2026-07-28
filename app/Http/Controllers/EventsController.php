@@ -2193,6 +2193,10 @@ class EventsController extends Controller
             if (!$isAdvance && $streetDate !== '' && $date !== '' && $streetDate > $date) {
                 $isAdvance = true;
             }
+            // New-release party: the record was already out on the party date, so
+            // we sold it at the party rather than taking preorders (e.g. Ariana
+            // Grande). Signalled by a street date on or before the party.
+            $isNewRelease = !$isAdvance && $streetDate !== '' && $date !== '' && $streetDate <= $date;
 
             // What we ordered for this party (per-store matrix), scoped to the
             // selected store. Same format buckets as "formats sold".
@@ -2235,6 +2239,7 @@ class EventsController extends Controller
                 'stores'        => array_map(fn($l) => $storeLabels[$l] ?? ucfirst((string) $l), $locs),
                 'hasWindow'     => $startSec !== null,
                 'isAdvance'     => $isAdvance,
+                'isNewRelease'  => $isNewRelease,
                 'attendees'     => $attendees,
                 'vinyl'         => $vinyl,
                 'cd'            => $cd,
@@ -2362,7 +2367,7 @@ class EventsController extends Controller
                     $r['isAdvance'] ? 'Yes' : '',
                     implode(' + ', $r['stores']),
                     $r['attendees'],
-                    $r['preordersPlaced'],
+                    ($r['preordersPlaced'] === 0 && $r['isNewRelease']) ? 'No preorders taken for new release listening parties' : $r['preordersPlaced'],
                     $r['interest'],
                     $r['orderedTotal'],
                     implode('; ', $ordFmts),
