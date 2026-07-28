@@ -1778,7 +1778,9 @@ class EventsController extends Controller
                 ->where(function ($q) {
                     $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot');
                 })
-                ->whereNotNull('tsl.product_id')
+                // Keep manual lines (product_id NULL) - cashiers ring some
+                // records (e.g. books like Heated Rivalry) as manual sales, and
+                // those are exactly the party-driven sales we want to catch.
                 ->whereIn(\DB::raw('DATE(t.transaction_date)'), $dates)
                 ->limit(50000)
                 ->select(
@@ -1857,6 +1859,15 @@ class EventsController extends Controller
             if (mb_strpos($hay, $t) === false) { return false; }
         }
         return true;
+    }
+
+    /** Fee / non-record manual lines to keep out of the "records sold" counts. */
+    protected static function isFeeLine(string $name): bool
+    {
+        return (bool) preg_match(
+            '/\b(bag fee|store credit|gift\s?card|gratuity|tip|donation|rounding|deposit|layaway|shipping|postage|restocking)\b/i',
+            $name
+        );
     }
 
     /**
@@ -1946,31 +1957,38 @@ class EventsController extends Controller
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
-                    $pid = $ln['product_id'];
-                    if (!isset($dayByProduct[$pid])) {
-                        $dayByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                    if (self::isFeeLine($ln['name'])) { continue; }
+                    // Catalog products key by id; manual lines (no id) key by
+                    // their typed name so Heated Rivalry etc. aggregate together.
+                    $key = ((int) $ln['product_id']) > 0
+                        ? 'p:' . (int) $ln['product_id']
+                        : 'm:' . mb_strtolower(trim((string) $ln['name']));
+                    if ($key === 'm:') { continue; } // unnamed manual line
+
+                    if (!isset($dayByProduct[$key])) {
+                        $dayByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
                     }
-                    $dayByProduct[$pid]['units']   += $ln['units'];
-                    $dayByProduct[$pid]['revenue'] += $ln['revenue'];
+                    $dayByProduct[$key]['units']   += $ln['units'];
+                    $dayByProduct[$key]['revenue'] += $ln['revenue'];
 
                     $inWindow = $startSec === null || ($ln['tm'] >= $startSec && $ln['tm'] <= $endSec);
                     if ($inWindow) {
-                        if (!isset($partyByProduct[$pid])) {
-                            $partyByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                        if (!isset($partyByProduct[$key])) {
+                            $partyByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
                         }
-                        $partyByProduct[$pid]['units']   += $ln['units'];
-                        $partyByProduct[$pid]['revenue'] += $ln['revenue'];
+                        $partyByProduct[$key]['units']   += $ln['units'];
+                        $partyByProduct[$key]['revenue'] += $ln['revenue'];
                     }
 
-                    // The album = the party artist's record(s). Count these
-                    // across the whole day (party-driven), so a generic toy
-                    // that outsold the record doesn't hijack the column.
+                    // The album = the party artist's record(s), counted across
+                    // the whole day (party-driven) so a generic toy that outsold
+                    // the record doesn't hijack the column. Includes manual sales.
                     if (self::productMatchesArtist($ln['name'], $artistTokens)) {
-                        if (!isset($albumByProduct[$pid])) {
-                            $albumByProduct[$pid] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
+                        if (!isset($albumByProduct[$key])) {
+                            $albumByProduct[$key] = ['name' => $ln['name'], 'units' => 0.0, 'revenue' => 0.0];
                         }
-                        $albumByProduct[$pid]['units']   += $ln['units'];
-                        $albumByProduct[$pid]['revenue'] += $ln['revenue'];
+                        $albumByProduct[$key]['units']   += $ln['units'];
+                        $albumByProduct[$key]['revenue'] += $ln['revenue'];
                     }
                 }
             }
