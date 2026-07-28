@@ -1808,6 +1808,8 @@ class EventsController extends Controller
                 })
                 ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
                 ->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
@@ -1826,6 +1828,7 @@ class EventsController extends Controller
                     'bl.name as location_name',
                     'tsl.product_id',
                     \DB::raw("COALESCE(NULLIF(tsl.product_name, ''), p.name) as pname"),
+                    \DB::raw("TRIM(CONCAT(COALESCE(c.name, ''), ' ', COALESCE(sc.name, ''))) as cat"),
                     'tsl.quantity as qty',
                     \DB::raw('(tsl.quantity * COALESCE(NULLIF(tsl.unit_price_inc_tax, 0), tsl.unit_price)) as revenue')
                 )
@@ -1837,6 +1840,7 @@ class EventsController extends Controller
                     'loc'        => mb_strtolower(trim((string) ($r->location_name ?? ''))),
                     'product_id' => (int) $r->product_id,
                     'name'       => trim((string) ($r->pname ?? '')) ?: ('Product #' . (int) $r->product_id),
+                    'cat'        => (string) ($r->cat ?? ''),
                     'units'      => (float) $r->qty,
                     'revenue'    => round((float) $r->revenue, 2),
                 ];
@@ -1845,6 +1849,22 @@ class EventsController extends Controller
             // graceful-empty
         }
         return $lookup;
+    }
+
+    /** Bucket a product into a format from its category (falls back to name). */
+    protected static function formatOf(string $category, string $name): string
+    {
+        $s = mb_strtolower($category . ' ' . $name);
+        if (strpos($s, 'vinyl') !== false || preg_match('/\blps?\b/', $s) || strpos($s, '7"') !== false || strpos($s, '45 rpm') !== false) {
+            return 'Vinyl';
+        }
+        if (preg_match('/\bcds?\b/', $s) || strpos($s, 'compact disc') !== false) {
+            return 'CD';
+        }
+        if (strpos($s, 'cassette') !== false || preg_match('/\btapes?\b/', $s)) {
+            return 'Cassette';
+        }
+        return 'Other';
     }
 
     /** "18:00" / "6:00 pm" -> seconds since midnight, or null. */
@@ -1921,17 +1941,15 @@ class EventsController extends Controller
         $store = strtolower(trim((string) $request->query('store', '')));
         if (!in_array($store, ['hollywood', 'pico'], true)) { $store = ''; }
 
-        // Past listening parties only — this report is about what we sold at
-        // parties that have already happened (upcoming ones have no sales yet).
-        // When a store is picked, only parties that ran there (or have no store
-        // set) are shown.
+        // All listening parties (upcoming shown first, past below). When a store
+        // is picked, only parties that ran there (or have no store set) show.
         $today = \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
         $events = array_values(array_filter(
             self::load($business_id)['items'],
-            function ($ev) use ($today, $store) {
+            function ($ev) use ($store) {
                 if (($ev['eventType'] ?? 'listening_party') !== 'listening_party') { return false; }
                 $d = (string) ($ev['date'] ?? '');
-                if ($d === '' || $d > $today) { return false; }
+                if ($d === '') { return false; }
                 if ($store !== '') {
                     $locs = array_values(array_filter(array_map(
                         fn($l) => mb_strtolower((string) $l),
@@ -1992,6 +2010,7 @@ class EventsController extends Controller
             $dayByProduct = [];      // whole store day
             $partyByProduct = [];    // during the party hours only
             $albumByProduct = [];    // the party artist's records (whole day)
+            $partyFormats = ['Vinyl' => 0.0, 'CD' => 0.0, 'Cassette' => 0.0, 'Other' => 0.0];
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
@@ -2016,6 +2035,8 @@ class EventsController extends Controller
                         }
                         $partyByProduct[$key]['units']   += $ln['units'];
                         $partyByProduct[$key]['revenue'] += $ln['revenue'];
+                        $fmt = self::formatOf($ln['cat'] ?? '', $ln['name']);
+                        $partyFormats[$fmt] += $ln['units'];
                     }
 
                     // The album = the party artist's record(s), counted across
@@ -2087,11 +2108,21 @@ class EventsController extends Controller
                 'partyRevenue'  => array_sum(array_column($partyByProduct, 'revenue')),
                 'dayUnits'      => array_sum(array_column($dayByProduct, 'units')),
                 'dayRevenue'    => array_sum(array_column($dayByProduct, 'revenue')),
+                'formats'       => array_filter($partyFormats, fn($u) => $u > 0),
+                'isUpcoming'    => $date >= $today,
                 'productCount'  => count($partyByProduct),
                 'topSellers'    => array_slice($partyByProduct, 0, 6),
             ];
         }
-        usort($rows, fn($a, $b) => strcmp((string) $b['date'], (string) $a['date']));
+        // Upcoming first (soonest at top), then past (most recent at top).
+        usort($rows, function ($a, $b) use ($today) {
+            $ua = $a['date'] >= $today;
+            $ub = $b['date'] >= $today;
+            if ($ua !== $ub) { return $ua ? -1 : 1; }
+            return $ua
+                ? strcmp((string) $a['date'], (string) $b['date'])
+                : strcmp((string) $b['date'], (string) $a['date']);
+        });
         return $rows;
     }
 
@@ -2145,10 +2176,11 @@ class EventsController extends Controller
         return response()->streamDownload(function () use ($rows, $qty) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Party', 'Date', 'Advance', 'Stores', 'Attendees',
+                'Party', 'Date', 'Upcoming', 'Advance', 'Stores', 'Attendees',
                 'Preorders placed', 'RSVP purchase interest',
                 'Album (artist record)', 'Album qty sold', 'Album revenue',
-                'Records sold during party', 'Revenue during party',
+                'Records sold during party', 'Total revenue during party',
+                'Formats sold during party',
                 'Records sold that day (store)', 'Revenue that day (store)',
                 'What sold during party (top records)',
             ]);
@@ -2157,9 +2189,12 @@ class EventsController extends Controller
                     fn($p) => $p['name'] . ' x' . $qty($p['units']),
                     $r['topSellers']
                 );
+                $fmts = [];
+                foreach ($r['formats'] as $f => $u) { $fmts[] = $f . ' ' . $qty($u); }
                 fputcsv($out, [
                     $r['name'],
                     $r['date'],
+                    $r['isUpcoming'] ? 'Yes' : '',
                     $r['isAdvance'] ? 'Yes' : '',
                     implode(' + ', $r['stores']),
                     $r['attendees'],
@@ -2170,6 +2205,7 @@ class EventsController extends Controller
                     $r['albumUnits'] ? number_format($r['albumRevenue'], 2, '.', '') : '',
                     $qty($r['partyUnits']),
                     number_format($r['partyRevenue'], 2, '.', ''),
+                    implode('; ', $fmts),
                     $qty($r['dayUnits']),
                     number_format($r['dayRevenue'], 2, '.', ''),
                     implode('; ', $top),
