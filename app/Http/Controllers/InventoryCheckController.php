@@ -1091,6 +1091,21 @@ class InventoryCheckController extends Controller
         }
 
         $L[] = '';
+        $L[] = 'ALLIANCE DEBUG (probe WebAMI login endpoint):';
+        try {
+            $astat = $this->inventoryCheckService->supplierCredentialsStatus($business_id, 'alliance');
+            if (empty($astat['configured'])) {
+                $L[] = '  skipped — no Alliance creds saved';
+            } else {
+                foreach (app(\App\Services\SupplierFetchers\AllianceFetcher::class)->debugProbe() as $line) {
+                    $L[] = $line;
+                }
+            }
+        } catch (\Throwable $e) {
+            $L[] = '  (probe failed: ' . $e->getMessage() . ')';
+        }
+
+        $L[] = '';
         $L[] = 'BACKFILL LOG (most recent full-pull output, if any):';
         $anyLog = false;
         foreach ($known as $key => $meta) {
