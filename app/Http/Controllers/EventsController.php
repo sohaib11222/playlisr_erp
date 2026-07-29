@@ -2103,6 +2103,10 @@ class EventsController extends Controller
                 'hollywood' => ['records' => 0.0, 'revenue' => 0.0],
                 'pico'      => ['records' => 0.0, 'revenue' => 0.0],
             ];
+            $dayByStore = [ // whole store day, not just party hours
+                'hollywood' => ['records' => 0.0, 'revenue' => 0.0],
+                'pico'      => ['records' => 0.0, 'revenue' => 0.0],
+            ];
             if ($date !== '' && isset($lines[$date])) {
                 foreach ($lines[$date] as $ln) {
                     if (!$storeMatch($ln['loc'])) { continue; }
@@ -2117,6 +2121,11 @@ class EventsController extends Controller
                     }
                     $dayByProduct[$key]['units']   += $ln['units'];
                     $dayByProduct[$key]['revenue'] += $ln['revenue'];
+                    $dsk = $storeKeyOf($ln['loc']);
+                    if ($dsk) {
+                        $dayByStore[$dsk]['records'] += $ln['units'];
+                        $dayByStore[$dsk]['revenue'] += $ln['revenue'];
+                    }
 
                     $inWindow = $startSec === null || ($ln['tm'] >= $startSec && $ln['tm'] <= $endSec);
                     if ($inWindow) {
@@ -2272,6 +2281,7 @@ class EventsController extends Controller
                     'album14'   => $album14ByStore[$sk] ?? 0,
                     'records'   => $partyByStore[$sk]['records'] ?? 0,
                     'revenue'   => $partyByStore[$sk]['revenue'] ?? 0,
+                    'dayRevenue' => $dayByStore[$sk]['revenue'] ?? 0,
                     'ordered'   => $ordSk,
                 ];
             }

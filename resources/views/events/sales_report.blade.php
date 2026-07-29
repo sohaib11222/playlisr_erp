@@ -76,7 +76,7 @@
   @endif
 
   <p class="lp-note">
-    "Album sold" is the party's own record (matched by artist/title). "+14 days" is how much of it sold within two weeks (did it all move). "Ordered" is what we brought in (from the order matrix, or estimated from purchase orders). "Records" and "Revenue" cover the party's hours. Each row is a store.
+    "Album sold" is the party's own record (matched by artist/title). "+14 days" is how much of it sold within two weeks (did it all move). "Ordered" is what we brought in (from the order matrix, or estimated from purchase orders). "Records" and "Revenue (party)" cover the party's hours. "Revenue (day)" is the store's whole day of sales, not just the party window. Each row is a store.
   </p>
 
   @php $seenUpcoming = false; $seenPast = false; @endphp
@@ -125,6 +125,7 @@
               <th>Ordered</th>
               <th>Records (party)</th>
               <th>Revenue (party)</th>
+              <th>Revenue (day)</th>
             </tr>
           </thead>
           <tbody>
@@ -137,6 +138,7 @@
                 <td>{{ $s['ordered'] > 0 ? $s['ordered'] : '-' }}</td>
                 <td>{{ $s['records'] > 0 ? $qty($s['records']) : '-' }}</td>
                 <td>{{ $s['revenue'] > 0 ? $money($s['revenue']) : '-' }}</td>
+                <td>{{ ($s['dayRevenue'] ?? 0) > 0 ? $money($s['dayRevenue']) : '-' }}</td>
               </tr>
             @endforeach
             @if (count($r['storeBreakdown']) > 1)
@@ -148,6 +150,7 @@
                 <td>{{ $r['orderedTotal'] > 0 ? $qty($r['orderedTotal']) . ($r['orderedEstimated'] ? '*' : '') : '-' }}</td>
                 <td>{{ $r['partyUnits'] > 0 ? $qty($r['partyUnits']) : '-' }}</td>
                 <td>{{ $r['partyRevenue'] > 0 ? $money($r['partyRevenue']) : '-' }}</td>
+                <td>{{ $r['dayRevenue'] > 0 ? $money($r['dayRevenue']) : '-' }}</td>
               </tr>
             @endif
           </tbody>
