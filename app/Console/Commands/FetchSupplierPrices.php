@@ -40,9 +40,9 @@ class FetchSupplierPrices extends Command
         'ams' => AmsFetcher::class,
         'alliance' => AllianceFetcher::class,
         'secretly' => SecretlyFetcher::class,
-        'beggars' => BeggarsFetcher::class,
         'redeye' => RedeyeFetcher::class,
-        'vp' => VpFetcher::class,
+        // Matador / Monostereo / Deejay: upload-only for now (no scraper yet).
+        // VP + generic Beggars dropped 2026-07-30 (Nivessa doesn't use them).
     ];
 
     public function handle(InventoryCheckService $ica)

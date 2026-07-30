@@ -81,9 +81,12 @@ return [
             'ams'      => ['label' => 'AMS', 'notes' => 'All Media Supply — main weekly availability + cost'],
             'alliance' => ['label' => 'Alliance', 'notes' => 'Alliance Entertainment — AENT / WebAMI portal. Separate distributor from AMS (Sarah 2026-05-28)'],
             'secretly' => ['label' => 'Secretly', 'notes' => 'Secretly Distribution — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
-            'beggars'  => ['label' => 'Beggars', 'notes' => 'Beggars Group — XL, Matador, 4AD, Rough Trade, Young'],
+            'matador'  => ['label' => 'Matador', 'notes' => 'Matador / Beggars direct dealer portal (XL, 4AD, Rough Trade, Young)'],
             'redeye'   => ['label' => 'Redeye', 'notes' => 'Redeye Worldwide — Indie / world / reggae catalog'],
+            'monostereo' => ['label' => 'Monostereo', 'notes' => 'Monostereo — distributor'],
+            'deejay'   => ['label' => 'Deejay', 'notes' => 'Deejay — distributor'],
             // VP Records removed 2026-07-30 — Nivessa does not order from VP.
+            // 'beggars' generic removed 2026-07-30 — Nivessa orders Matador direct (see 'matador').
         ],
         // 🧴 Accessories low — cleaning kits + other accessories running low.
         // Non-music consumables (vinyl cleaning kits, brushes, sleeves) that
