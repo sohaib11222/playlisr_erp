@@ -683,18 +683,42 @@
     var btn = document.getElementById('spin-btn');
     var disp = document.getElementById('spin-display');
     if (btn && disp) {
+      // Remember who already won this session so a 2nd/3rd-prize spin never
+      // lands on the same person while other guests are still eligible.
+      var alreadyWon = [];
+      // Cryptographically-strong random index in [0, n). Falls back to
+      // Math.random on very old browsers. Never deterministic.
+      var randIndex = function (n) {
+        if (window.crypto && window.crypto.getRandomValues) {
+          var buf = new Uint32Array(1);
+          // Reject the top slice so the modulo is unbiased across [0, n).
+          var limit = Math.floor(4294967296 / n) * n;
+          var x;
+          do { window.crypto.getRandomValues(buf); x = buf[0]; } while (x >= limit);
+          return x % n;
+        }
+        return Math.floor(Math.random() * n);
+      };
       btn.addEventListener('click', function () {
         // Checked-in guests only — the pool is already filtered server-side.
         var pool = (window.__spinPool || []);
         if (!pool.length) { disp.textContent = 'No one is checked in yet'; return; }
+
+        // Eligible = everyone not already drawn. Once everyone has won, reset
+        // so the wheel keeps working for extra prizes.
+        var eligible = pool.filter(function (p) { return alreadyWon.indexOf(p) === -1; });
+        if (!eligible.length) { alreadyWon = []; eligible = pool.slice(); }
+
         btn.disabled = true;
-        var ticks = 0, total = 28 + Math.floor(pool.length % 7);
+        var ticks = 0, total = 28 + randIndex(8);
         var iv = setInterval(function () {
-          disp.textContent = pool[Math.floor((ticks * 7 + 3) % pool.length)].name;
+          // Flash random names for the reel effect.
+          disp.textContent = pool[randIndex(pool.length)].name;
           ticks++;
           if (ticks >= total) {
             clearInterval(iv);
-            var winner = pool[(ticks * 13 + 5) % pool.length];
+            var winner = eligible[randIndex(eligible.length)];
+            alreadyWon.push(winner);
             disp.textContent = 'Winner: ' + winner.name;
             btn.disabled = false;
           }
