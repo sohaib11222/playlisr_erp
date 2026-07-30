@@ -83,7 +83,7 @@ return [
             'secretly' => ['label' => 'Secretly', 'notes' => 'Secretly Distribution — Dead Oceans, Jagjaguwar, Saddle Creek, etc.'],
             'beggars'  => ['label' => 'Beggars', 'notes' => 'Beggars Group — XL, Matador, 4AD, Rough Trade, Young'],
             'redeye'   => ['label' => 'Redeye', 'notes' => 'Redeye Worldwide — Indie / world / reggae catalog'],
-            'vp'       => ['label' => 'VP', 'notes' => 'VP Records — reggae specialist'],
+            // VP Records removed 2026-07-30 — Nivessa does not order from VP.
         ],
         // 🧴 Accessories low — cleaning kits + other accessories running low.
         // Non-music consumables (vinyl cleaning kits, brushes, sleeves) that
