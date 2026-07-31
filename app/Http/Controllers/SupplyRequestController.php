@@ -143,19 +143,25 @@ class SupplyRequestController extends Controller
         $this->managerGuard();
 
         $all = self::readAll();
-        // Open requests first (pending, then ordered), then newest.
-        $rank = ['pending' => 0, 'ordered' => 1, 'received' => 2, 'declined' => 3];
-        usort($all, function ($a, $b) use ($rank) {
-            $ra = $rank[$a['status'] ?? 'pending'] ?? 9;
-            $rb = $rank[$b['status'] ?? 'pending'] ?? 9;
-            if ($ra !== $rb) {
-                return $ra <=> $rb;
-            }
+        // Newest first within each group.
+        usort($all, function ($a, $b) {
             return strcmp($b['requested_at'] ?? '', $a['requested_at'] ?? '');
         });
 
+        // The active queue is only what still needs ordering (pending). Once a
+        // manager marks something Ordered it drops out of the queue into the
+        // collapsed "Ordered & done" list below - still editable there so they
+        // can add tracking or mark it Received, and the requester still sees it.
+        $open = array_values(array_filter($all, function ($r) {
+            return ($r['status'] ?? 'pending') === 'pending';
+        }));
+        $done = array_values(array_filter($all, function ($r) {
+            return ($r['status'] ?? 'pending') !== 'pending';
+        }));
+
         return view('admin.supply_requests', [
-            'requests' => $all,
+            'requests' => $open,
+            'done'     => $done,
             'statuses' => self::STATUSES,
         ]);
     }
