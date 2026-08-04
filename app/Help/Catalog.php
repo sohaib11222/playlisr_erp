@@ -341,8 +341,8 @@ HTML,
     <strong>Don't let customers grab from the Kallaxes</strong> under the genre bins — those are pulled inventory headed to Discogs orders. If you do see one taken and they want to buy it, check with a manager first; if it sells, immediately delete it from Discogs so it doesn't double-sell.
 </div>
 
-<div class="help-tip">
-    <strong>Bathroom:</strong> customers can use it. One person at a time. Use your judgment if anyone seems off.
+<div class="help-warn">
+    <strong>Restroom is employees only.</strong> Customers and outside visitors (including anyone filming or working a food truck) do not use it. If asked, point them to the nearest public restroom.
 </div>
 
 <div class="help-warn">
@@ -659,7 +659,7 @@ HTML,
 
 <h3>Bathroom & Carrying Help</h3>
 <ul>
-    <li><strong>Bathroom:</strong> customers may use it. Only one at a time. Use judgment if anyone seems off.</li>
+    <li><strong>Restroom is employees only.</strong> Customers and outside visitors do not use it.</li>
     <li><strong>Carrying collections:</strong> if a seller has a large collection and asks for help, you can offer if you feel comfortable — but you're not obligated. Your safety first.</li>
 </ul>
 
@@ -1206,7 +1206,7 @@ HTML,
 <ul>
     <li>Help guide guests as they come in.</li>
     <li>Maintain a safe and enjoyable environment — same standards as a regular shop day.</li>
-    <li>Watch the bathroom (one customer at a time still applies).</li>
+    <li>Restroom stays employees only, even during events.</li>
 </ul>
 
 <h3>The Outside Frame</h3>
@@ -1313,6 +1313,248 @@ HTML,
 </ul>
 HTML,
             ],
+            [
+                'slug' => 'store-manager-handbook',
+                'title' => 'Store Manager Handbook',
+                'section' => 'Store Manager',
+                'sort' => 1,
+                'summary' => 'The complete manager guide - the role, and every training pulled together in one place.',
+                'page_keys' => ['home', 'dashboard'],
+                'body_html' => <<<'HTML'
+<p>This is the complete guide to running a Nivessa store. It pulls every staff training into one place and organizes it around what the job actually is. You report to <strong>Jon</strong>. This role exists so one person owns each store day to day instead of Jon managing two at once. It is a hard job and an important one.</p>
+
+<div class="help-must-do">
+    <strong>Two things define this job.</strong>
+    <ol style="margin-bottom:0;">
+        <li><strong>You grow sales</strong> - your own and everyone else's. You are on the floor selling, and you show the team how to sell so the whole store gets better.</li>
+        <li><strong>You keep the store tight</strong> - organized, stocked, clean, and staffed by people who know what they are doing because you trained them.</li>
+    </ol>
+</div>
+
+<p>You are a <strong>seller and a teacher</strong>. The best thing you can do for the numbers is sell well yourself and turn everyone around you into a better seller. If you would rather do it all yourself than train someone, this is not the job.</p>
+
+<p><strong>You are accountable for:</strong> your store's sales, the team, the look of the floor, cash and keys and access, and loss prevention. The rest of this handbook is how you deliver on each of those.</p>
+
+<hr>
+
+<h2>1. Drive sales</h2>
+
+<h3>Sell on the floor yourself</h3>
+<p>Set the example. Greet people, read what they are into, put records in their hands. On peak weekend shifts you lead from the floor closing sales, not parked at the register. Ring your own closes under your own login so the credit and commission are yours and the team sees you doing the work.</p>
+
+<h3>How we sell (train yourself and the team on this)</h3>
+<ul>
+    <li><strong>Approach naturally.</strong> "Looking for anything specific today?" or a low-pressure "I'm here if you need anything." If someone stops on a record, "Did you ever hear of this one?" opens a conversation. If they want to be left alone, respect it.</li>
+    <li><strong>Stay visible and approachable.</strong> Stand near customers without hovering. No phone, no looking too busy to help. Make eye contact and acknowledge everyone who walks in.</li>
+    <li><strong>Look the part.</strong> Dress professionally, nothing that blocks your face.</li>
+    <li><strong>Build connections.</strong> Compliment a band shirt, talk music, share recommendations. Small interactions build regulars.</li>
+    <li><strong>Share what's new.</strong> Current sales and markdowns, new releases tied to what they're buying, a similar album, a cleaning kit or accessory.</li>
+    <li><strong>Who we are.</strong> Nivessa is not a snob shop. We welcome everyone from lifelong collectors to first-time buyers. Be knowledgeable, be helpful, be kind. Customers remember how you made them feel.</li>
+</ul>
+<p>Full version: <a href="/help/sales-training" target="_blank">Sales Training</a> and <a href="/help/customer-service-basics" target="_blank">Customer Service Basics</a>.</p>
+
+<h3>Own your numbers</h3>
+<div class="help-must-do">
+    Know where your store stands for the <strong>day, the week, and the month</strong>. When you are behind, adjust that shift - do not wait for the month to end.
+</div>
+<ul>
+    <li>Check your personal numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</li>
+    <li>Jon will set you up on the store's daily and weekly figures and what "on track" looks like. If you are unsure of the target, ask him - do not guess.</li>
+    <li>Reach out to Jon anytime for support. Owning the number does not mean carrying it alone.</li>
+</ul>
+
+<h3>Turn browsers into buyers, buyers into regulars</h3>
+<p>Most people who walk in still leave without buying - that is the gap you close. Know your customers and what they collect, and tell them when something comes in for them. Recommend a second record without being pushy. Follow the weekly focus Jon posts in Slack. Tell Jon what is selling, what is not, and what customers keep asking for that we do not carry.</p>
+
+<h3>Ring it right</h3>
+<ul>
+    <li>Every sale goes through the ERP at <a href="/pos/create" target="_blank">POS &rarr; Create</a>, <strong>and</strong> every sale - cash and card - is entered on Clover. Confirm the Clover amount matches the POS total. A cash sale that never touches Clover looks like missing money at close.</li>
+    <li>Sticker price is the price. Cashiers do not adjust prices at the register.</li>
+    <li>Never zero the tax unless the whole transaction is store credit.</li>
+    <li>The only standing discount is <strong>10% off orders of $300+</strong>, approved by Jon. No cash discounts, ever.</li>
+    <li><strong>Refunds go through Jon only.</strong> No used-product returns.</li>
+</ul>
+<p>Full version: <a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing Up a Customer</a>.</p>
+
+<hr>
+
+<h2>2. Teach the team to sell</h2>
+<ul>
+    <li>Train every person to <strong>sell, not just ring people up</strong>: how to greet, ask what someone is looking for, recommend, suggest a second record, and talk about a pressing without being pushy.</li>
+    <li><strong>Coach in the moment.</strong> Watch how your team interacts with customers and give real feedback that same shift, not a month later.</li>
+    <li><strong>Build their music knowledge.</strong> Genres, key artists, pressings, what is collectible, what is worth more and why.</li>
+    <li><strong>Give clear goals and follow up.</strong> People should always know what "doing well" looks like this week, and whether they hit it.</li>
+</ul>
+<div class="help-tip">
+    How the team is paid to sell: a <strong>daily sales-goal bonus</strong> for whoever rings the sale, plus <strong>2% listing commission</strong> on items they listed that sell in store. See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a>.
+</div>
+
+<hr>
+
+<h2>3. Train everyone, all the way through</h2>
+<div class="help-must-do">
+    New hires get properly trained on the <strong>register, buys, theft awareness, and the floor</strong> before they run solo. Nobody is left alone on a shift until you have signed off.
+</div>
+<p><strong>Onboarding order:</strong></p>
+<ol>
+    <li><strong>Register</strong> - <a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing up a customer</a>. ERP + Clover, tax never zeroed, no cashier discounts.</li>
+    <li><strong>Buys</strong> - <a href="/help/buy-collection-from-customer" target="_blank">Buying a collection</a>. Contact info first, negotiate before typing, use the buy calculator, no off-the-books deals.</li>
+    <li><strong>Theft awareness</strong> - <a href="/help/safety-and-suspicious-customers" target="_blank">Safety and suspicious customers</a>. What to watch for, and that their safety comes first.</li>
+    <li><strong>The floor</strong> - <a href="/help/floor-lead-checklist" target="_blank">Floor Lead</a> and <a href="/help/pricing-in-store" target="_blank">Pricing</a>. How a section should look, how items get priced and barcoded.</li>
+    <li><strong>Conduct</strong> - <a href="/help/code-of-conduct" target="_blank">Code of Conduct</a>. Have them read it once.</li>
+</ol>
+<ul>
+    <li><strong>Keep a simple training checklist per person</strong> so nothing gets skipped and you know exactly where everyone stands - who is cleared for register, buys, opening, and closing. You can keep a shared page at <a href="/admin/help-knowledge" target="_blank">Store Knowledge</a>.</li>
+    <li><strong>Keep training going after week one.</strong> Short refreshers and quick huddles. Retrain when the same mistake repeats - a repeated mistake is a training gap, not a bad day.</li>
+    <li><strong>Theft awareness is ongoing.</strong> Teach the team to watch the floor, greet everyone (being seen deters theft on its own), and stop loss before it happens. Shrink is part of your store bonus.</li>
+</ul>
+
+<hr>
+
+<h2>4. Keep the store organized</h2>
+<ul>
+    <li><strong>The store looks great every day:</strong> well merchandised, well stocked, sections in order, no gaps and no mess. Every section has a standard and you hold the team to it. Baseline is the <a href="/help/floor-lead-checklist" target="_blank">Floor Lead Checklist</a>.</li>
+    <li><strong>Own the daily routine:</strong> <a href="/help/opening-checklist" target="_blank">Opening</a> and <a href="/help/closing-checklist" target="_blank">Closing</a> to the checklist every day, restock, new arrivals out fast, back stock under control, pricing correct.</li>
+    <li><strong>Get product listed:</strong> barcode every item, never hand-write a price. See <a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a> and <a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a>. Slow shift equals catalog time.</li>
+    <li>Need supplies or upgrades? Tell Jon or Sarah. Do not buy for the store with your own money without approval first.</li>
+    <li>Close every shift with a note in <strong>#shift-notes</strong> so the next person picks up where you left off.</li>
+</ul>
+
+<hr>
+
+<h2>5. Run the operation</h2>
+
+<h3>Oversee the cashiers</h3>
+<div class="help-must-do">
+    You are accountable for their performance - accurate when selling and when buying collections, following cash and theft rules, sections kept tight, register closes clean and accurate.
+</div>
+
+<h3>Oversee collection buys</h3>
+<p>Buy smart - rare, quality product only, no junk. Get the seller's phone or email before anything else. Negotiate before you type: ask what they are hoping for, ask cash or store credit (store credit pays more), grade the collection, then open low. Use the <a href="/buy-from-customer" target="_blank">buy calculator</a>. Back up cashiers on anything large or unusual, and loop in Jon before anyone quotes a big number.</p>
+<div class="help-critical">
+    <strong>Do not buy:</strong> stolen goods (sealed Target/B&amp;N/Walmart stock from an evasive seller), firearms or weapons ever, or Poor/Fair/Good condition at any meaningful price. Your safety comes first.
+</div>
+<p>Full version: <a href="/help/buy-collection-from-customer" target="_blank">Buying a Collection</a>.</p>
+
+<h3>Oversee events</h3>
+<p>Clean setup, friendly hosting, safe environment, floor reset before close. Playbook in <a href="/help/hosting-events" target="_blank">Hosting Events</a>.</p>
+
+<h3>Own the keys and access</h3>
+<ul>
+    <li>You are accountable for the keys. Basement and warehouse stay locked when no one is in there; the front gate is locked at end of shift.</li>
+    <li>If anything looks off when you arrive (broken lock, door ajar, missing inventory), do not enter - call Jon first.</li>
+    <li>Fatteen handles most scheduling. On a last-minute emergency you may need to help him find coverage.</li>
+</ul>
+
+<h3>Be the face of the store</h3>
+<p>Friendly, approachable, even-tempered under pressure. Hold people to standards without drama, and bring issues to Jon and Sarah directly and early.</p>
+
+<hr>
+
+<h2>6. Safety and theft</h2>
+<div class="help-critical">
+    <strong>Your safety comes first.</strong> If a situation feels dangerous, do not engage. Move to a safe area, call for help, and let Jon or Sarah know. Money and merchandise can be replaced.
+</div>
+<ul>
+    <li>Aggressive or unstable person: do not engage. Call or text the <strong>Hollywood Partnership at 567-459-9663</strong> (faster than police), then tell Jon or Sarah. Save that number now.</li>
+    <li>Watch for items moving under clothing, avoided eye contact while holding merch, quick section-to-section movement, large stacks with no intent to buy. Acknowledge people with a hello - being seen deters theft.</li>
+</ul>
+<p>Full version: <a href="/help/safety-and-suspicious-customers" target="_blank">Safety and Suspicious Customers</a>.</p>
+
+<hr>
+
+<h2>7. Store policies to enforce</h2>
+<ul>
+    <li><strong>Filming:</strong> anyone filming must book and pay first through Giggster or <a href="https://nivessa.com/venues" target="_blank">nivessa.com/venues</a>. The store stays open, aisles are never blocked. That is why our rates are lower.</li>
+    <li><strong>Food trucks:</strong> not allowed to park in front. Ask them to move; if they refuse, call parking enforcement.</li>
+    <li><strong>Restroom:</strong> employees only. Not customers, filmers, or food-truck workers.</li>
+</ul>
+<p>Full version: <a href="/help/filming-food-trucks-restroom" target="_blank">Filming, Food Trucks and Restroom</a>.</p>
+
+<hr>
+
+<h2>8. Schedule, on call, and pay</h2>
+<ul>
+    <li><strong>Weekends are mandatory</strong> - Saturday and Sunday are the busiest days for both stores, and you are on the floor leading and selling.</li>
+    <li><strong>On call when you are not in.</strong> If the store is open and something comes up staff cannot handle, you are reachable and help sort it out.</li>
+    <li><strong>One full weekday off, guaranteed and protected.</strong> A backup manager covers it so you are truly off. Only a true emergency (break-in, alarm, fire, flood, or a shift left completely unstaffed) interrupts it, and that is rare.</li>
+    <li><strong>Pay:</strong> hourly at a manager rate above cashier pay, plus a <strong>monthly store bonus</strong> tied to hitting sales, keeping shrink low, and clean, accurate register closes.</li>
+</ul>
+
+<hr>
+
+<h3>Every guide, in one list</h3>
+<p>Know all of these - they are what you train the team on.
+<a href="/help/sales-training" target="_blank">Sales Training</a> ,
+<a href="/help/customer-service-basics" target="_blank">Customer Service Basics</a> ,
+<a href="/help/floor-sales-lead" target="_blank">Floor Sales Lead</a> ,
+<a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing Up a Customer</a> ,
+<a href="/help/store-credit" target="_blank">Store Credit</a> ,
+<a href="/help/consignment" target="_blank">Consignment</a> ,
+<a href="/help/buy-collection-from-customer" target="_blank">Buying a Collection</a> ,
+<a href="/help/receive-ams-shipment" target="_blank">Receiving an AMS Shipment</a> ,
+<a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a> ,
+<a href="/help/list-on-discogs" target="_blank">Listing on Discogs</a> ,
+<a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a> ,
+<a href="/help/ship-discogs-order" target="_blank">Shipping a Discogs Order</a> ,
+<a href="/help/whatnot-orders" target="_blank">Whatnot Orders</a> ,
+<a href="/help/discogs-messages-and-returns" target="_blank">Discogs Messages and Returns</a> ,
+<a href="/help/opening-checklist" target="_blank">Opening Checklist</a> ,
+<a href="/help/closing-checklist" target="_blank">Closing Checklist</a> ,
+<a href="/help/floor-lead-checklist" target="_blank">Floor Lead Checklist</a> ,
+<a href="/help/shift-notes" target="_blank">After-Shift Notes</a> ,
+<a href="/help/shifts-and-sling" target="_blank">Shifts and Sling</a> ,
+<a href="/help/hosting-events" target="_blank">Hosting Events</a> ,
+<a href="/help/safety-and-suspicious-customers" target="_blank">Safety and Suspicious Customers</a> ,
+<a href="/help/code-of-conduct" target="_blank">Code of Conduct</a> ,
+<a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a> ,
+<a href="/help/sick-leave-and-benefits" target="_blank">Sick Leave</a> ,
+<a href="/help/computer-or-printer-issues" target="_blank">When the Computer or Printer Breaks</a> ,
+<a href="/help/filming-food-trucks-restroom" target="_blank">Filming, Food Trucks and Restroom</a>.</p>
+
+<div class="help-tip">
+    Something missing? Add it yourself at <a href="/admin/help-knowledge" target="_blank">Store Knowledge</a> or Slack Sarah. This handbook should grow as you learn what a new hire needs.
+</div>
+HTML,
+            ],
+            [
+                'slug' => 'filming-food-trucks-restroom',
+                'title' => 'Filming, Food Trucks and Restroom',
+                'section' => 'Operations',
+                'sort' => 4,
+                'summary' => 'Store policy on paid filming, food trucks out front, and who may use the restroom.',
+                'page_keys' => ['home'],
+                'body_html' => <<<'HTML'
+<p>Three store policies everyone needs to know and enforce. Managers are accountable for holding the line on all three.</p>
+
+<h3>Filming in the store</h3>
+<div class="help-must-do">
+    Anyone filming in the store must pay for it first, through <strong>Giggster</strong> or <strong>nivessa.com/venues</strong>. No booking, no filming.
+</div>
+<ul>
+    <li><strong>The store stays open for business.</strong> We never shut the store down for a shoot.</li>
+    <li><strong>Aisles cannot be blocked.</strong> Customers always get a clear path through the store. A crew cannot take over a section or block the bins.</li>
+    <li>This is exactly why our filming rates are lower than a normal location - the store keeps selling the whole time. If a crew wants the place to themselves, that is not what we offer.</li>
+    <li>If someone starts filming without a booking, stop them politely and send them to <a href="https://nivessa.com/venues" target="_blank">nivessa.com/venues</a> or Giggster to book.</li>
+</ul>
+
+<h3>Food trucks out front</h3>
+<div class="help-critical">
+    Food trucks are <strong>not allowed</strong> to park in front of the store. If you see one, ask them to move.
+</div>
+<ul>
+    <li>They must move. If they will not, call parking enforcement.</li>
+    <li>They do not pay rent on Hollywood Blvd and they block our storefront - it is not fair to the store and it costs us walk-in traffic.</li>
+    <li>They cannot use the restroom (see below).</li>
+</ul>
+
+<h3>Restroom</h3>
+<div class="help-critical">
+    The restroom is for <strong>employees only</strong>. No one else uses it - not customers, not filmers, not food-truck workers, no one.
+</div>
+<p>If someone asks, politely point them to the nearest public restroom. This is a change from the old policy that let customers use it, so expect to remind regulars.</p>
+HTML,
+            ],
         ];
 
         // Merge in manager-added entries from the self-serve knowledge editor
@@ -1414,6 +1656,7 @@ HTML,
      */
     private const SECTION_ORDER = [
         'Welcome',
+        'Store Manager',
         'Conduct',
         'Shifts & Schedule',
         'POS',
