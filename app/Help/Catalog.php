@@ -1321,7 +1321,7 @@ HTML,
                 'summary' => 'The complete manager guide - the role, and every training pulled together in one place.',
                 'page_keys' => ['home', 'dashboard'],
                 'body_html' => <<<'HTML'
-<p>This is the complete guide to running a Nivessa store. It pulls every staff training into one place and organizes it around what the job actually is. You report to <strong>Jon</strong>. This role exists so one person owns each store day to day instead of Jon managing two at once. It is a hard job and an important one.</p>
+<p>This is the complete guide to running a Nivessa store. It pulls every staff training into one place and organizes it around what the job actually is, so a new manager can read this one page and know how to run the floor, the team, the cash, and the building. You report to <strong>Jon</strong>. This role exists so one person owns each store day to day instead of Jon managing two at once. It is a hard job and an important one.</p>
 
 <div class="help-must-do">
     <strong>Two things define this job.</strong>
@@ -1333,155 +1333,414 @@ HTML,
 
 <p>You are a <strong>seller and a teacher</strong>. The best thing you can do for the numbers is sell well yourself and turn everyone around you into a better seller. If you would rather do it all yourself than train someone, this is not the job.</p>
 
-<p><strong>You are accountable for:</strong> your store's sales, the team, the look of the floor, cash and keys and access, and loss prevention. The rest of this handbook is how you deliver on each of those.</p>
+<h3>What you own</h3>
+<ul>
+    <li><strong>Your store's sales</strong> - day, week, and month.</li>
+    <li><strong>The team</strong> - trained in, coached on every shift, held to the standard.</li>
+    <li><strong>The floor</strong> - merchandised, stocked, clean, sections in order, new arrivals out fast.</li>
+    <li><strong>Cash, keys, and access</strong> - clean register closes, accurate buys, and the keys to the building.</li>
+    <li><strong>Loss prevention</strong> - a team that watches the floor and stops theft before it happens.</li>
+</ul>
+
+<h3>How your bonus works</h3>
+<p>Hourly at a manager rate above cashier pay, plus a <strong>monthly store bonus</strong> tied to three things you directly control:</p>
+<ul>
+    <li><strong>Hitting sales</strong> - your store's number for the month.</li>
+    <li><strong>Keeping shrink low</strong> - theft and loss stay down because the floor is watched and the team is trained.</li>
+    <li><strong>Clean, accurate register closes</strong> - the drawer ties out and every sale is accounted for.</li>
+</ul>
 
 <hr>
 
 <h2>1. Drive sales</h2>
 
 <h3>Sell on the floor yourself</h3>
-<p>Set the example. Greet people, read what they are into, put records in their hands. On peak weekend shifts you lead from the floor closing sales, not parked at the register. Ring your own closes under your own login so the credit and commission are yours and the team sees you doing the work.</p>
+<p>Set the example. Greet people, read what they are into, put records in their hands, walk them to the listening station. On peak weekend shifts you lead from the floor closing sales, not parked at the register. Ring your own closes under <strong>your own login</strong> so the credit and commission are yours and the team sees you doing the work.</p>
 
-<h3>How we sell (train yourself and the team on this)</h3>
+<h3>The Nivessa selling method - train yourself and the team on all of this</h3>
 <ul>
-    <li><strong>Approach naturally.</strong> "Looking for anything specific today?" or a low-pressure "I'm here if you need anything." If someone stops on a record, "Did you ever hear of this one?" opens a conversation. If they want to be left alone, respect it.</li>
-    <li><strong>Stay visible and approachable.</strong> Stand near customers without hovering. No phone, no looking too busy to help. Make eye contact and acknowledge everyone who walks in.</li>
-    <li><strong>Look the part.</strong> Dress professionally, nothing that blocks your face.</li>
-    <li><strong>Build connections.</strong> Compliment a band shirt, talk music, share recommendations. Small interactions build regulars.</li>
-    <li><strong>Share what's new.</strong> Current sales and markdowns, new releases tied to what they're buying, a similar album, a cleaning kit or accessory.</li>
-    <li><strong>Who we are.</strong> Nivessa is not a snob shop. We welcome everyone from lifelong collectors to first-time buyers. Be knowledgeable, be helpful, be kind. Customers remember how you made them feel.</li>
+    <li><strong>Approach naturally.</strong> When someone is digging, most are looking for something specific and do not know if we have it. Open with "Looking for anything specific today?" or a low-pressure "I'm here if you need anything." If they stop on a record, "Did you ever hear of this one?" starts a real conversation. If they would rather be left alone, respect it.</li>
+    <li><strong>Stay visible and approachable.</strong> Stand near customers without hovering. No phone, no looking buried or too busy to help. Customers should feel they can approach you at any time.</li>
+    <li><strong>Look the part.</strong> Dress professionally. Avoid hoodies or anything that blocks your face. Make eye contact and acknowledge everyone who walks in.</li>
+    <li><strong>Build connections.</strong> Compliment a band shirt or jacket, talk music, share a recommendation. A genuine compliment creates an instant connection and makes people feel welcome. Our strongest sellers do this constantly.</li>
+    <li><strong>Share what's new.</strong> Tell people about current sales and markdowns, new releases tied to what they are buying, a similar album they might love, or an accessory like a cleaning kit that improves their collection.</li>
+    <li><strong>Read the room.</strong> On a full floor, get to the people who look ready to buy - or ready to walk - first. Do not get stuck 20 minutes on one person when 40 others are browsing.</li>
+    <li><strong>Who we are.</strong> Nivessa is not a snob shop. We are not record snobs and we do not make anyone feel they need a certain level of knowledge to shop here. We welcome everyone, from lifelong collectors to someone buying their first record. Be knowledgeable, be helpful, be kind. Customers remember how you made them feel.</li>
 </ul>
-<p>Full version: <a href="/help/sales-training" target="_blank">Sales Training</a> and <a href="/help/customer-service-basics" target="_blank">Customer Service Basics</a>.</p>
 
 <h3>Own your numbers</h3>
 <div class="help-must-do">
     Know where your store stands for the <strong>day, the week, and the month</strong>. When you are behind, adjust that shift - do not wait for the month to end.
 </div>
 <ul>
-    <li>Check your personal numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</li>
-    <li>Jon will set you up on the store's daily and weekly figures and what "on track" looks like. If you are unsure of the target, ask him - do not guess.</li>
-    <li>Reach out to Jon anytime for support. Owning the number does not mean carrying it alone.</li>
+    <li>Check your own numbers anytime at <a href="/my-earnings" target="_blank">My Earnings</a>.</li>
+    <li>Jon will set you up on the store's daily and weekly sales figures and what "on track" looks like. If you are ever unsure of the target, ask him - do not guess.</li>
+    <li>Follow the <strong>weekly focus</strong> Jon posts in Slack - the categories, genres, or items to push that week. If you are not sure what is prioritized, ask him.</li>
+    <li>Reach out to Jon anytime for support or guidance. Owning the number does not mean carrying it alone.</li>
 </ul>
 
 <h3>Turn browsers into buyers, buyers into regulars</h3>
-<p>Most people who walk in still leave without buying - that is the gap you close. Know your customers and what they collect, and tell them when something comes in for them. Recommend a second record without being pushy. Follow the weekly focus Jon posts in Slack. Tell Jon what is selling, what is not, and what customers keep asking for that we do not carry.</p>
-
-<h3>Ring it right</h3>
+<p>Right now most people who walk in still leave without buying - that is the gap you close.</p>
 <ul>
-    <li>Every sale goes through the ERP at <a href="/pos/create" target="_blank">POS &rarr; Create</a>, <strong>and</strong> every sale - cash and card - is entered on Clover. Confirm the Clover amount matches the POS total. A cash sale that never touches Clover looks like missing money at close.</li>
-    <li>Sticker price is the price. Cashiers do not adjust prices at the register.</li>
-    <li>Never zero the tax unless the whole transaction is store credit.</li>
-    <li>The only standing discount is <strong>10% off orders of $300+</strong>, approved by Jon. No cash discounts, ever.</li>
-    <li><strong>Refunds go through Jon only.</strong> No used-product returns.</li>
+    <li>Know your regulars and what they collect. When something comes in for them, tell them.</li>
+    <li>Recommend a second record without being pushy. Get people to the listening station.</li>
+    <li>Turn a good first visit into a return visit - a compliment, a recommendation, remembering their name.</li>
 </ul>
-<p>Full version: <a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing Up a Customer</a>.</p>
+
+<h3>Peak weekend playbook</h3>
+<p>Weekends are the busiest days for both stores and where the month is won. Hollywood runs a <strong>second person on the floor</strong> whose only job is to sell during the fullest hours (roughly Friday evening, Saturday afternoon, Sunday afternoon), when 35 to 70 people can be on the floor at once.</p>
+<ul>
+    <li>Both sellers stay on the floor, never both parked behind the desk. Greet everyone within a minute of walking in.</li>
+    <li>Take turns at the register: each person rings the sales they personally closed, under their own login, so the credit and the daily bonus land with whoever did the selling.</li>
+    <li>During lulls, face and restock the bins and tidy the listening station so the floor stays shoppable, and stay visible as a loss-prevention presence while it is crowded.</li>
+</ul>
+
+<h3>Report the floor to Jon</h3>
+<p>You are Jon's eyes in the store. Tell him what is selling and what is not, what customers keep asking for that we do not carry, and where a section is dying. Real signals from the floor shape what we buy and how we merchandise.</p>
 
 <hr>
 
-<h2>2. Teach the team to sell</h2>
-<ul>
-    <li>Train every person to <strong>sell, not just ring people up</strong>: how to greet, ask what someone is looking for, recommend, suggest a second record, and talk about a pressing without being pushy.</li>
-    <li><strong>Coach in the moment.</strong> Watch how your team interacts with customers and give real feedback that same shift, not a month later.</li>
-    <li><strong>Build their music knowledge.</strong> Genres, key artists, pressings, what is collectible, what is worth more and why.</li>
-    <li><strong>Give clear goals and follow up.</strong> People should always know what "doing well" looks like this week, and whether they hit it.</li>
-</ul>
-<div class="help-tip">
-    How the team is paid to sell: a <strong>daily sales-goal bonus</strong> for whoever rings the sale, plus <strong>2% listing commission</strong> on items they listed that sell in store. See <a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a>.
+<h2>2. Ring it right (the register)</h2>
+<p>Everyone you train has to run the register the same way, every time. This is the single most common place things break.</p>
+
+<div class="help-must-do">
+    <strong>Every sale goes through the ERP at <a href="/pos/create" target="_blank">POS &rarr; Create</a>, and every sale - cash AND card - is also entered on Clover.</strong> A cash sale that never touches Clover looks like missing money at close.
+</div>
+
+<h3>The sale flow</h3>
+<ol>
+    <li><strong>Pick the customer.</strong> Search by name or phone. If new, add them on the spot - name and phone is enough. Offer the free rewards program.</li>
+    <li><strong>Add items.</strong> Scan the barcode, or search by title, or use manual entry for an untagged used record.</li>
+    <li><strong>Confirm price matches the sticker.</strong> The sticker price is the price. Cashiers do not adjust prices at the register. No sticker or a wrong sticker? A manager sorts it before it rings.</li>
+    <li><strong>Tax applies automatically</strong> by store location. Cash and card both pay tax.</li>
+    <li><strong>Take payment</strong> - cash, card, or store credit (store credit shows on the customer record, and store-credit sales do not pay tax).</li>
+    <li><strong>Finalize</strong>, then type the total into <strong>Clover</strong> and confirm the Clover amount matches the POS total. For card, wait for the approved screen before handing anything back.</li>
+    <li>Offer a receipt by phone or email.</li>
+</ol>
+
+<div class="help-critical">
+    <strong>Discounts and refunds are not the cashier's call.</strong> The only standing discount is <strong>10% off orders of $300 or more</strong>, approved by Jon. No cash discounts, ever. <strong>Refunds go through Jon only</strong>, receipts required, and used products have no returns.
+</div>
+
+<div class="help-warn">
+    <strong>Kallax pulls.</strong> If a customer pulls a record from a Kallax under the bins, it may be reserved for a Discogs order. Do not ring it without checking. If it does sell, immediately delete the listing from Discogs so it is not double-sold.
+</div>
+
+<div class="help-critical">
+    <strong>Clover and the ERP must always match.</strong> If they do not, fix it before moving on. If you cannot, ping Sarah and she will.
 </div>
 
 <hr>
 
-<h2>3. Train everyone, all the way through</h2>
+<h2>3. Buying collections</h2>
+<p>Buying collections fuels the business. You oversee every buy your cashiers make and you handle the big or unusual ones yourself. Buy smart - rare, quality product only, no junk.</p>
+
+<div class="help-must-do">
+    <strong>Get the seller's phone or email before anything else.</strong> Even if the deal does not happen today, the contact info is the first asset.
+</div>
+
+<h3>Negotiate first, type second</h3>
+<ol>
+    <li><strong>Ask what they are hoping for.</strong> It is often less than you would have offered. Do not lead with a number.</li>
+    <li><strong>Ask cash or store credit.</strong> Store credit pays more than cash.</li>
+    <li><strong>Assess and grade</strong> with the Goldmine standard (M, NM, VG+, VG, G+, G, F, P). Watch for mold, deep scratches, missing items, cracked media, wrong record in wrong sleeve. We mostly want M to VG; G+ and below sells slowly, so pay very little.</li>
+    <li><strong>Compute three offers</strong> on paper - high, middle, low. Open with the low and let them counter.</li>
+    <li><strong>Close.</strong> Use the <a href="/buy-from-customer" target="_blank">buy calculator</a> and pay from the register. If short on cash, Jon can Zelle or Venmo the seller - hold the merchandise until it is settled. For store credit, add it to the customer's record in the ERP.</li>
+</ol>
+
+<h3>What to pay (rough guide)</h3>
+<table class="table table-condensed table-bordered">
+  <thead><tr><th>Format</th><th>Rate</th></tr></thead>
+  <tbody>
+    <tr><td>Sealed/new LP, popular artist (2020+)</td><td>$7-8 each</td></tr>
+    <tr><td>Sealed/new LP, lesser-known</td><td>$2 each</td></tr>
+    <tr><td>Used LP, sellable (Stevie Wonder, Sade, Sabbath, Dead)</td><td>~$2 each</td></tr>
+    <tr><td>Slower LPs (Genesis, Billy Joel, Cat Stevens, Elton John)</td><td>$1 each</td></tr>
+    <tr><td>Don't offer for: Johnny Mathis, Streisand, Jack Jones</td><td>$0</td></tr>
+    <tr><td>CDs - Hip hop, Metal</td><td>$1 / $1.50 sealed</td></tr>
+    <tr><td>CDs - Latin, Reggae</td><td>$0.50 / $1 sealed</td></tr>
+    <tr><td>CDs - Blues, Rock, Electronic, New Wave</td><td>$0.35 / $0.70 sealed</td></tr>
+    <tr><td>CDs - Jazz, R&amp;B, Soundtracks, Musicals</td><td>$0.15 / $0.35 sealed</td></tr>
+    <tr><td>CDs - Classical</td><td>$0.10 / $0.25 sealed</td></tr>
+    <tr><td>45s (7")</td><td>$0.15 each (Latin: $0.50)</td></tr>
+    <tr><td>DVDs</td><td>$0.15 used / $0.35 sealed / $2 steelbook</td></tr>
+    <tr><td>Blu-rays</td><td>$0.25 used / $0.50 sealed</td></tr>
+  </tbody>
+</table>
+
+<div class="help-critical">
+    <strong>Do not buy:</strong> stolen goods (sealed Target / B&amp;N / Walmart stock from an evasive or unhoused-looking seller - pass kindly with "We aren't interested today," get contact info, call Jon if unsure), firearms or weapons ever, or Poor / Fair / Good condition at any meaningful price. Your safety comes first.
+</div>
+
+<h3>Consignment</h3>
+<p>Sometimes a seller wants us to sell their items instead of buying outright. We pay the seller <strong>60% of the sale price after the item sells</strong>. Log the items as a purchase with the seller as supplier and a consignment note, create their customer record, and <strong>put a "C" sticker on every item</strong> so the team knows it is not store-owned. Without the C sticker we will not know to pay them out. When a C item rings up, flag it to Jon for the payout.</p>
+
+<h3>After a buy</h3>
+<p>Price the collection promptly. <strong>AMS orders are top priority, collections are second.</strong> Anything better suited to Discogs goes in the Discogs bin instead of the floor.</p>
+
+<hr>
+
+<h2>4. Teach the team to sell</h2>
+<p>A store is only as good as the people on the floor. Your job is to make every one of them a seller, not just a cashier who rings people up.</p>
+<ul>
+    <li><strong>Train the moves:</strong> how to greet, how to ask what someone is looking for, how to recommend, how to suggest a second record, and how to talk about a pressing without being pushy.</li>
+    <li><strong>Coach in the moment.</strong> Watch how your team interacts with customers and give them real feedback that same shift, not a month later. Catch someone doing it right and say so; catch a missed opportunity and show them the better move right then.</li>
+    <li><strong>Build their music knowledge.</strong> Genres, key artists, pressings, what is collectible, what is worth more and why. This is what lets a browser trust a recommendation.</li>
+    <li><strong>Give clear goals and follow up.</strong> People should always know what "doing well" looks like this week, and whether they hit it. A goal with no follow-up is a wish.</li>
+</ul>
+<div class="help-tip">
+    <strong>How the team is paid to sell:</strong> a <strong>daily sales-goal bonus</strong> (2% or 4% depending on the goal hit) goes to whoever rings the sale, plus <strong>2% listing commission</strong> on items they listed that later sell in store. Make sure everyone knows this - it is why ringing your own closes matters.
+</div>
+
+<hr>
+
+<h2>5. Train everyone, all the way through</h2>
 <div class="help-must-do">
     New hires get properly trained on the <strong>register, buys, theft awareness, and the floor</strong> before they run solo. Nobody is left alone on a shift until you have signed off.
 </div>
-<p><strong>Onboarding order:</strong></p>
+
+<h3>Onboarding order</h3>
 <ol>
-    <li><strong>Register</strong> - <a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing up a customer</a>. ERP + Clover, tax never zeroed, no cashier discounts.</li>
-    <li><strong>Buys</strong> - <a href="/help/buy-collection-from-customer" target="_blank">Buying a collection</a>. Contact info first, negotiate before typing, use the buy calculator, no off-the-books deals.</li>
-    <li><strong>Theft awareness</strong> - <a href="/help/safety-and-suspicious-customers" target="_blank">Safety and suspicious customers</a>. What to watch for, and that their safety comes first.</li>
-    <li><strong>The floor</strong> - <a href="/help/floor-lead-checklist" target="_blank">Floor Lead</a> and <a href="/help/pricing-in-store" target="_blank">Pricing</a>. How a section should look, how items get priced and barcoded.</li>
-    <li><strong>Conduct</strong> - <a href="/help/code-of-conduct" target="_blank">Code of Conduct</a>. Have them read it once.</li>
+    <li><strong>Register</strong> - the sale flow above. ERP + Clover, tax never zeroed, no cashier discounts, refunds Jon only.</li>
+    <li><strong>Buys</strong> - contact info first, negotiate before typing, use the buy calculator, no off-the-books deals.</li>
+    <li><strong>Theft awareness</strong> - what to watch for on the floor and with sellers, and that their safety comes first (see section 8).</li>
+    <li><strong>The floor</strong> - how a section should look, and how items get priced and barcoded (sections 6 and 7).</li>
+    <li><strong>Conduct</strong> - the things we are serious about (section 10). Have them read it once.</li>
 </ol>
+
+<h3>A simple first-week shape</h3>
 <ul>
-    <li><strong>Keep a simple training checklist per person</strong> so nothing gets skipped and you know exactly where everyone stands - who is cleared for register, buys, opening, and closing. You can keep a shared page at <a href="/admin/help-knowledge" target="_blank">Store Knowledge</a>.</li>
-    <li><strong>Keep training going after week one.</strong> Short refreshers and quick huddles. Retrain when the same mistake repeats - a repeated mistake is a training gap, not a bad day.</li>
-    <li><strong>Theft awareness is ongoing.</strong> Teach the team to watch the floor, greet everyone (being seen deters theft on its own), and stop loss before it happens. Shrink is part of your store bonus.</li>
+    <li><strong>Day 1-2:</strong> shadow you on the floor and at the register. They watch, then ring with you standing there.</li>
+    <li><strong>Day 3-4:</strong> they run the register with you nearby; you introduce buys and pricing.</li>
+    <li><strong>Day 5+:</strong> they handle the floor and register while you spot-check; you cover opening and closing.</li>
+    <li>Cleared to work solo only once you have watched them do each core task correctly without help.</li>
+</ul>
+
+<h3>Keep a training checklist per person</h3>
+<p>A simple checklist for each person so nothing gets skipped and you know exactly where everyone stands. At a glance you should be able to say who is cleared for: <strong>register, buys, opening, closing, shipping, and pricing.</strong> Keep it wherever is easiest - you can keep a shared page at <a href="/admin/help-knowledge" target="_blank">Store Knowledge</a>.</p>
+
+<h3>Keep training going after week one</h3>
+<ul>
+    <li>Short refreshers and quick huddles at the start of busy shifts.</li>
+    <li>Retrain when the same mistake repeats. A repeated mistake is a training gap, not just a bad day.</li>
+</ul>
+
+<h3>Theft-awareness training (everyone)</h3>
+<p>Teach the team to watch the floor and stop loss before it happens:</p>
+<ul>
+    <li>Greet everyone - being seen deters theft on its own.</li>
+    <li>Watch for items moving under clothing, avoided eye contact while holding merch, quick section-to-section movement, and large stacks with no intent to buy.</li>
+    <li>Stay attentive but do not confront alone. If something feels wrong, get a coworker or manager involved discreetly.</li>
+    <li>Shrink is part of your store bonus, so this is not optional coaching.</li>
 </ul>
 
 <hr>
 
-<h2>4. Keep the store organized</h2>
+<h2>6. Keep the store organized</h2>
+
+<h3>The daily floor standard</h3>
+<p>The store looks great every day: well merchandised, well stocked, sections in order, no gaps and no mess. Every section has a standard and you hold the team to it. On every floor shift:</p>
 <ul>
-    <li><strong>The store looks great every day:</strong> well merchandised, well stocked, sections in order, no gaps and no mess. Every section has a standard and you hold the team to it. Baseline is the <a href="/help/floor-lead-checklist" target="_blank">Floor Lead Checklist</a>.</li>
-    <li><strong>Own the daily routine:</strong> <a href="/help/opening-checklist" target="_blank">Opening</a> and <a href="/help/closing-checklist" target="_blank">Closing</a> to the checklist every day, restock, new arrivals out fast, back stock under control, pricing correct.</li>
-    <li><strong>Get product listed:</strong> barcode every item, never hand-write a price. See <a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a> and <a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a>. Slow shift equals catalog time.</li>
-    <li>Need supplies or upgrades? Tell Jon or Sarah. Do not buy for the store with your own money without approval first.</li>
-    <li>Close every shift with a note in <strong>#shift-notes</strong> so the next person picks up where you left off.</li>
+    <li><strong>Trash and recycling out.</strong> Hollywood: parking lot behind the store. Pico: behind our store, not behind the cafe. Flatten cardboard into the blue bins.</li>
+    <li><strong>Floor and bins:</strong> walk the floor for misplaced product, records upright with no leaning piles, fix messy bins.</li>
+    <li><strong>Refill</strong> end caps, walls, the new-CD section near the front desk, and window displays with featured albums.</li>
+    <li><strong>Signage:</strong> section signs lined up and in the right place; stage tidy; windows clean (Windex if dirty).</li>
+    <li><strong>No boxes or open stock in customer view.</strong></li>
+    <li><strong>Sweep or vacuum</strong> before the next shift comes in.</li>
+    <li>Anything cracked, damaged, or old-looking: ask Jon before tossing - it may still have value.</li>
 </ul>
+<p>Need supplies or upgrades to keep the store right? Tell Jon or Sarah. Do not buy for the store with your own money without approval first.</p>
 
-<hr>
+<h3>New arrivals out fast</h3>
+<p>AMS ships sealed inventory roughly weekly in brown UPS boxes; the order is already in the ERP. Confirm it arrived, mark the purchase <strong>Received</strong> (this updates stock), print 2x1 barcode labels, sticker top-right of the cover, and shelve in the New Reissue bins. New product on the floor fast is money; a box in the back is not.</p>
 
-<h2>5. Run the operation</h2>
-
-<h3>Oversee the cashiers</h3>
+<h3>Pricing and barcoding</h3>
 <div class="help-must-do">
-    You are accountable for their performance - accurate when selling and when buying collections, following cash and theft rules, sections kept tight, register closes clean and accurate.
+    Barcode every floor item - never hand-write the price. Every item should have an ERP record and a barcode so checkout, stock counts, and reports actually work. A slow shift is catalog time.
 </div>
+<p>Pricing method for vinyl / CDs / cassettes: scan into Discogs, pick the exact pressing (label, jacket, country, notes), grade it, and price at <strong>Discogs market price plus half the lowest shipping rate</strong> (lowest shipping ~$5 means add ~$2.50). Cover worse than the media? Knock 5 to 10% off. Non-Discogs items: price off eBay <strong>Sold</strong> listings. On the sticker, always write the <strong>genre and the price</strong> (e.g. "$14 ROCK") so a misplaced record can be put back.</p>
+
+<h3>When it goes to Discogs instead of the floor</h3>
+<p>If an item is over $70 and not on our top-150-sold-artists list, or it is rare / collector-grade, list it on Discogs and place it in the correct Kallax. <strong>Always set the location</strong> in the listing and physically file it there - we have lost hundreds of records to wrong or missing locations. Pico is shipping HQ.</p>
+
+<h3>Shift notes</h3>
+<p>Close every shift with a note in <strong>#shift-notes</strong> on Slack: what got shipped/listed/rung, what is still in progress, supplies low, anything broken, and the in-store sales total. The next person reads it first.</p>
+
+<hr>
+
+<h2>7. Opening and closing checklists</h2>
+<div class="help-must-do">
+    <strong>Arrive at least 15 minutes before opening.</strong> Setup takes time and customers walk up at the dot.
+</div>
+
+<h3>Opening - Pico</h3>
+<ol>
+    <li>Unlock the front door: turn the key <strong>left</strong> on the glass door, <strong>right</strong> on the metal door.</li>
+    <li>Clock in on Clover.</li>
+    <li>Turn on front lights, backroom lights, and the back-wall switch that powers the fans and record player.</li>
+    <li>Turn on the computer. Put on good music.</li>
+    <li>Set the A-frame out by the curb.</li>
+    <li>Count the register cash and log the opening total.</li>
+    <li>Check walls and bins are stocked; fix messy bins. Refill end caps with featured albums.</li>
+    <li>Clear front-desk clutter. Sweep or vacuum. Tidy the bathroom, trash out.</li>
+    <li>Check Discogs for new orders and messages.</li>
+</ol>
+
+<h3>Opening - Hollywood</h3>
+<ol>
+    <li>If you do not have a key, the lockbox is at the front of the gate; code <code>1492</code>. Unlock the front door.</li>
+    <li>Turn on all main-room lights and the computer. Music up loud, outside too.</li>
+    <li>Plug in the neon signs: "Welcome to Digger's Paradise" (behind the listening station), "Have you heard it on vinyl" (behind the rock bins), "Disco es la cultura" (wall on stage).</li>
+    <li>Check walls and bins; fix out-of-place sections. Refill end caps with featured albums.</li>
+    <li>Clear front desk. Sweep or vacuum. Check the bathroom.</li>
+    <li>Open the doors to welcome customers.</li>
+</ol>
+
+<h3>Closing - Pico</h3>
+<ol>
+    <li>Tidy the floor and restock end caps. Clear the front desk. Sweep or vacuum.</li>
+    <li>Tidy the bathroom - lights off, trash emptied. Take the trash out. Bring the A-frame inside.</li>
+    <li>Turn off the computer, vinyl player, and front fan. Turn off backroom lights, bathroom light, the "Diggers Paradise" neon, the front main light, and the lamp by the vinyl player.</li>
+    <li>Grab the lock from the hook behind the desk, join the metal gates, and lock them. Pull the brown gate flush with the door and all the way right.</li>
+    <li>Close the glass door and lock it (turn the key right until it clicks). <strong>Double-check it is locked.</strong></li>
+</ol>
+
+<h3>Closing - Hollywood</h3>
+<ol>
+    <li>Tidy the floor and restock featured displays. Clear the front desk. Sweep or vacuum.</li>
+    <li>Tidy the bathroom - lights off, trash emptied. Empty all trash bins.</li>
+    <li>Shut down the front-desk computer. Unplug the three neon signs. Turn off the vinyl player and all lights including the bathroom.</li>
+    <li>Bring the A-frame in if it is outside.</li>
+    <li>Lock the front door with the two bottom locks. Lower the gate with the buttons on the right wall.</li>
+    <li>Exit through the back door and confirm it is locked behind you.</li>
+    <li>Put the key back in the lockbox and <strong>scramble the code.</strong></li>
+</ol>
+
+<div class="help-must-do">
+    Update <code>#shift-notes</code> at close: what you did, what is left, in-store sales total, anything broken or low.
+</div>
+
+<hr>
+
+<h2>8. Run the operation</h2>
+
+<h3>Make sure the cashiers are doing their jobs</h3>
+<p>You are accountable for how your cashiers perform - both when selling and when buying collections. Spot-check every shift:</p>
+<div class="help-must-do">
+    <ul style="margin-bottom:0;">
+        <li><strong>Every sale is in the ERP and on Clover</strong>, tax handled correctly, amounts matching between the two.</li>
+        <li><strong>No unauthorized discounts.</strong> Only 10% off $300+ with Jon's approval. No cash discounts.</li>
+        <li><strong>Prices match stickers.</strong> Cashiers are not adjusting prices at the register.</li>
+        <li><strong>Buys are accurate</strong> - contact info captured, buy calculator used, condition graded honestly, nothing bought off the books.</li>
+        <li><strong>Register closes are clean</strong> and the drawer ties out. A close that does not balance gets found and explained the same day, not left for the morning.</li>
+        <li><strong>Cash is handled straight</strong> - no pocketing, everything (cash included) rung on Clover so the day balances. Follow the safe-drop rules for large cash.</li>
+        <li><strong>Sections stay tight</strong> during their shift, not just at open and close.</li>
+    </ul>
+</div>
+<p>If a cashier keeps making the same mistake, that is a retraining job, not a one-off correction. If it is a cash or honesty issue, address it directly and loop in Jon and Sarah - see Conduct below.</p>
 
 <h3>Oversee collection buys</h3>
-<p>Buy smart - rare, quality product only, no junk. Get the seller's phone or email before anything else. Negotiate before you type: ask what they are hoping for, ask cash or store credit (store credit pays more), grade the collection, then open low. Use the <a href="/buy-from-customer" target="_blank">buy calculator</a>. Back up cashiers on anything large or unusual, and loop in Jon before anyone quotes a big number.</p>
-<div class="help-critical">
-    <strong>Do not buy:</strong> stolen goods (sealed Target/B&amp;N/Walmart stock from an evasive seller), firearms or weapons ever, or Poor/Fair/Good condition at any meaningful price. Your safety comes first.
-</div>
-<p>Full version: <a href="/help/buy-collection-from-customer" target="_blank">Buying a Collection</a>.</p>
+<p>Make sure the store is buying smart: rare, quality product only, no junk. Back up cashiers on anything large or unusual, and loop in Jon before anyone quotes a big number. Rates and grading are in section 3.</p>
 
 <h3>Oversee events</h3>
-<p>Clean setup, friendly hosting, safe environment, floor reset before close. Playbook in <a href="/help/hosting-events" target="_blank">Hosting Events</a>.</p>
+<p>In-store events bring new people in. The bar is clean setup, friendly hosting, safe environment. Stage and equipment prepared well before guests arrive, sound checked early, floor walked with no boxes in view. Reset the floor before closing and drop a note in #shift-notes with headcount and anything that broke. Keep the outside A-frame fresh with eye-catching records and change it periodically.</p>
 
-<h3>Own the keys and access</h3>
+<h3>Keys, access, and security</h3>
 <ul>
-    <li>You are accountable for the keys. Basement and warehouse stay locked when no one is in there; the front gate is locked at end of shift.</li>
-    <li>If anything looks off when you arrive (broken lock, door ajar, missing inventory), do not enter - call Jon first.</li>
-    <li>Fatteen handles most scheduling. On a last-minute emergency you may need to help him find coverage.</li>
+    <li><strong>You own the keys and access.</strong> Basement and warehouse stay locked when no one is in there; the front gate is locked at end of shift.</li>
+    <li>If anything looks off when you arrive - broken lock, door ajar, missing inventory - <strong>do not enter, call Jon first.</strong></li>
 </ul>
+
+<h3>When the computer or printer breaks</h3>
+<p>Message <strong>Muhammad on WhatsApp at +880 1723-948653</strong> for any computer or label-printer issue; he fixes most things remotely via AnyDesk. First try the basics: check the printer sensor for stuck labels, power-cycle, check paper/ribbon and the USB cable. If the whole ERP is down and you cannot ring sales, get Jon immediately - do not keep ringing on Clover only.</p>
+
+<h3>Coverage</h3>
+<p>Fatteen handles the bulk of scheduling in Sling. On a last-minute emergency you may need to help him find coverage. Approve shift claims and trades in Sling; the 40-hour week is the cap and overtime needs approval in advance.</p>
 
 <h3>Be the face of the store</h3>
-<p>Friendly, approachable, even-tempered under pressure. Hold people to standards without drama, and bring issues to Jon and Sarah directly and early.</p>
+<p>Friendly, approachable, even-tempered under pressure. The kind of person customers like and come back for, and the kind of lead the team wants to work for. Hold people to standards without drama, and bring issues to Jon and Sarah directly and early.</p>
 
 <hr>
 
-<h2>6. Safety and theft</h2>
+<h2>9. Cash, shrink, and loss prevention</h2>
+<p>These three are your monthly bonus, so treat them as core to the job, not paperwork.</p>
+<ul>
+    <li><strong>Clean closes:</strong> the drawer balances and every sale is accounted for on both the ERP and Clover. Investigate a miss the same day.</li>
+    <li><strong>Cash discipline:</strong> no pocketing, ever. All sales (cash and card) go on Clover. Follow the safe-drop procedure for large cash on hand.</li>
+    <li><strong>Shrink stays low</strong> because the floor is watched, the team greets everyone, and suspicious situations get handled early. Train it, model it, and address theft head-on.</li>
+</ul>
+
+<hr>
+
+<h2>10. Safety and suspicious situations</h2>
 <div class="help-critical">
-    <strong>Your safety comes first.</strong> If a situation feels dangerous, do not engage. Move to a safe area, call for help, and let Jon or Sarah know. Money and merchandise can be replaced.
+    <strong>Your safety and your team's safety come first.</strong> If a situation feels dangerous, do not engage. Move to a safe area, call for help, and let Jon or Sarah know. Money and merchandise can be replaced.
 </div>
 <ul>
-    <li>Aggressive or unstable person: do not engage. Call or text the <strong>Hollywood Partnership at 567-459-9663</strong> (faster than police), then tell Jon or Sarah. Save that number now.</li>
-    <li>Watch for items moving under clothing, avoided eye contact while holding merch, quick section-to-section movement, large stacks with no intent to buy. Acknowledge people with a hello - being seen deters theft.</li>
+    <li><strong>Aggressive or unstable person:</strong> do not argue or engage. Call or text the <strong>Hollywood Partnership at 567-459-9663</strong> (they respond faster than police), then tell Jon or Sarah so they can call police if needed. Save that number in your phone now.</li>
+    <li><strong>Suspicious seller:</strong> sealed retail-stickered stock from an evasive seller is likely stolen - pass kindly and get contact info. Record-company employees selling surplus sealed stock are legitimate; judge the seller, not the items.</li>
+    <li><strong>Arriving to something off</strong> (broken lock, door not fully closed, missing inventory): do not enter, call Jon first.</li>
 </ul>
-<p>Full version: <a href="/help/safety-and-suspicious-customers" target="_blank">Safety and Suspicious Customers</a>.</p>
 
 <hr>
 
-<h2>7. Store policies to enforce</h2>
+<h2>11. Conduct and culture</h2>
+<p>Trust and integrity are how Nivessa runs. You enforce this, and you model it.</p>
+<div class="help-critical">
+    <strong>Strictly prohibited:</strong> theft of cash or merchandise, self-pricing for personal gain, pocketing cash, lying about purchased collections, wage theft (manipulating hours, skipping clock-out, dodging overtime), off-the-books buys from customers, and clocking in for someone else. These are grounds for discipline up to termination.
+</div>
 <ul>
-    <li><strong>Filming:</strong> anyone filming must book and pay first through Giggster or <a href="https://nivessa.com/venues" target="_blank">nivessa.com/venues</a>. The store stays open, aisles are never blocked. That is why our rates are lower.</li>
-    <li><strong>Food trucks:</strong> not allowed to park in front. Ask them to move; if they refuse, call parking enforcement.</li>
-    <li><strong>Restroom:</strong> employees only. Not customers, filmers, or food-truck workers.</li>
+    <li>Respect customers, coworkers, and management. Zero tolerance for discrimination or harassment.</li>
+    <li>No politics at work. No gossip - take concerns directly to a manager.</li>
+    <li>Confidentiality: customer data, internal pricing, business strategy, anything in the ERP stays inside Nivessa.</li>
+    <li>Show up on time and ready. Two no-call-no-shows lose hours. Emergencies happen - give a heads-up.</li>
 </ul>
+<p>If you witness or suspect any of the above, it comes to Jon and Sarah. Reports are confidential and retaliation is not tolerated.</p>
+
+<hr>
+
+<h2>12. People and schedule</h2>
+<ul>
+    <li><strong>Sling</strong> runs scheduling. Staff claim shifts and you (or Fatteen) approve. Time off needs 2 weeks' notice with the shift marked available; trades happen in-app with manager approval.</li>
+    <li><strong>Sick leave (California):</strong> 1 hour per 30 worked, usable after 90 days, up to 24 hours per year, capped at 48 accrued.</li>
+    <li><strong>Roles on the floor:</strong> Front Desk (register, customers, listing), Shipping (online orders), Product and Floor Lead (pricing, organizing, restocking), Photo Upload (Discogs listing), Moving Shift (between stores/storage), Inventory Check (counts).</li>
+</ul>
+
+<hr>
+
+<h2>13. Your schedule, on call, and pay</h2>
+<ul>
+    <li><strong>Weekends are mandatory</strong> - Saturday and Sunday are the busiest days for both stores, and you are on the floor leading and selling.</li>
+    <li><strong>On call when you are not in.</strong> If the store is open and something comes up staff cannot handle, you are reachable and help sort it out. This is how Jon runs things now.</li>
+    <li><strong>One full weekday off, guaranteed and protected.</strong> A backup manager covers it so you are truly off. Only a true emergency - break-in, alarm, fire, flood, or a shift left completely unstaffed - interrupts it, and that is rare.</li>
+    <li><strong>Pay:</strong> hourly at a manager rate above cashier pay, plus a monthly store bonus tied to hitting sales, keeping shrink low, and clean, accurate register closes.</li>
+</ul>
+
+<hr>
+
+<h2>14. Store policies you enforce</h2>
+<div class="help-must-do">
+    <strong>Filming:</strong> anyone filming must book and pay first through <strong>Giggster</strong> or <a href="https://nivessa.com/venues" target="_blank">nivessa.com/venues</a>. The store stays <strong>open for business</strong> - we never shut down for a shoot - and <strong>aisles are never blocked</strong>. That is exactly why our filming rates are lower. No booking, no filming.
+</div>
+<div class="help-critical">
+    <strong>Food trucks</strong> are not allowed to park in front of the store. Ask them to move. If they refuse, call parking enforcement. They do not pay rent on Hollywood Blvd and they block our storefront and our walk-in traffic.
+</div>
+<div class="help-critical">
+    <strong>Restroom is employees only.</strong> No customers, filmers, or food-truck workers. Point anyone who asks to the nearest public restroom.
+</div>
 <p>Full version: <a href="/help/filming-food-trucks-restroom" target="_blank">Filming, Food Trucks and Restroom</a>.</p>
 
 <hr>
 
-<h2>8. Schedule, on call, and pay</h2>
+<h2>Key contacts</h2>
 <ul>
-    <li><strong>Weekends are mandatory</strong> - Saturday and Sunday are the busiest days for both stores, and you are on the floor leading and selling.</li>
-    <li><strong>On call when you are not in.</strong> If the store is open and something comes up staff cannot handle, you are reachable and help sort it out.</li>
-    <li><strong>One full weekday off, guaranteed and protected.</strong> A backup manager covers it so you are truly off. Only a true emergency (break-in, alarm, fire, flood, or a shift left completely unstaffed) interrupts it, and that is rare.</li>
-    <li><strong>Pay:</strong> hourly at a manager rate above cashier pay, plus a <strong>monthly store bonus</strong> tied to hitting sales, keeping shrink low, and clean, accurate register closes.</li>
+    <li><strong>Jon</strong> - owner, your direct report. Sales targets, big buys, discounts, refunds, anything you are unsure about.</li>
+    <li><strong>Sarah</strong> - website, ERP, and Clover/ERP mismatches.</li>
+    <li><strong>Fatteen</strong> - scheduling in Sling.</li>
+    <li><strong>Muhammad (tech support)</strong> - WhatsApp +880 1723-948653, computer and printer issues.</li>
+    <li><strong>Hollywood Partnership (safety)</strong> - 567-459-9663, faster than police for a situation on the block.</li>
+    <li><strong>Golden</strong> - hosts the daily Whatnot show at Pico.</li>
 </ul>
-
-<hr>
 
 <h3>Every guide, in one list</h3>
 <p>Know all of these - they are what you train the team on.
@@ -1495,6 +1754,7 @@ HTML,
 <a href="/help/receive-ams-shipment" target="_blank">Receiving an AMS Shipment</a> ,
 <a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a> ,
 <a href="/help/list-on-discogs" target="_blank">Listing on Discogs</a> ,
+<a href="/help/photo-upload-fl-bins" target="_blank">Photo Upload (FL Bins)</a> ,
 <a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a> ,
 <a href="/help/ship-discogs-order" target="_blank">Shipping a Discogs Order</a> ,
 <a href="/help/whatnot-orders" target="_blank">Whatnot Orders</a> ,
