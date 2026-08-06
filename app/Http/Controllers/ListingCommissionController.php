@@ -195,20 +195,26 @@ class ListingCommissionController extends Controller
             // that's a credit against their next commission.
             $p->total_owed_now = round($p->total_comm - $p->total_paid_all, 2);
 
-            // Plain-English payroll memo so whoever pays them knows what the
-            // money is for (and the person can see it on their pay stub). Built
-            // from the NET per type (earned minus paid) so it always explains the
-            // actual Pay now — including a CREDIT when someone was overpaid.
-            // Short, plain note: one label per line, matching the columns, that
-            // adds up to Pay now. (Sales bonus line excludes the party, which is
-            // its own line.)
+            // Cross-cancel overpayment across buckets for DISPLAY (Sarah
+            // 2026-08-06). A payment logged to the wrong bucket — e.g. listing
+            // commission recorded as a sales payout — otherwise shows one column
+            // deep negative and the other positive (Manolo: -$45 sales / +$54
+            // listing). Net them so a RED number only appears when the person is
+            // GENUINELY net-overpaid (total_owed_now < 0). Pay now is unchanged;
+            // this only moves the split between the two columns.
+            $sd = $p->sales_net; $ld = $p->listing_net;
+            if ($sd < 0 && $ld > 0)     { $t = min(-$sd, $ld); $sd += $t; $ld -= $t; }
+            elseif ($ld < 0 && $sd > 0) { $t = min(-$ld, $sd); $ld += $t; $sd -= $t; }
+            $p->sales_disp   = round($sd, 2);
+            $p->listing_disp = round($ld, 2);
+
+            // Plain-English payroll memo, from the reallocated display split so it
+            // matches the columns and always adds up to Pay now.
             $memo = [];
-            $salesLine = round($p->sales_net - ($p->party_earned ?? 0), 2);
-            if ($salesLine > 0.004)      { $memo[] = 'Sales bonus $' . number_format($salesLine, 2); }
-            elseif ($salesLine < -0.004) { $memo[] = 'Sales credit -$' . number_format(abs($salesLine), 2); }
-            if (($p->party_earned ?? 0) > 0.004) { $memo[] = 'Listening party $' . number_format($p->party_earned, 2); }
-            if ($p->listing_net > 0.004)      { $memo[] = 'Listing $' . number_format($p->listing_net, 2); }
-            elseif ($p->listing_net < -0.004) { $memo[] = 'Listing credit -$' . number_format(abs($p->listing_net), 2); }
+            if ($p->sales_disp > 0.004)      { $memo[] = 'Sales bonus $' . number_format($p->sales_disp, 2); }
+            elseif ($p->sales_disp < -0.004) { $memo[] = 'Sales credit -$' . number_format(abs($p->sales_disp), 2); }
+            if ($p->listing_disp > 0.004)      { $memo[] = 'Listing $' . number_format($p->listing_disp, 2); }
+            elseif ($p->listing_disp < -0.004) { $memo[] = 'Listing credit -$' . number_format(abs($p->listing_disp), 2); }
             $p->payroll_memo = implode(' + ', $memo);
             if (count($memo) > 1 || $p->total_owed_now < -0.004) {
                 $p->payroll_memo .= ' = ' . ($p->total_owed_now < -0.004
