@@ -12,7 +12,7 @@ class BuyOfferCalculatorService
     public function getRules()
     {
         return [
-            'credit_bonus_multiplier' => 1.20,
+            'credit_bonus_multiplier' => 1.50,
             'individual_vinyl_standard_multiplier' => 0.10,
             // Condition multipliers — kept in worst→best order so the dropdown
             // sorts naturally bottom-up. Sarah 2026-05-06: 'Poor' added (0.10).

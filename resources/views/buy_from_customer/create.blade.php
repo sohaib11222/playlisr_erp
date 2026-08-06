@@ -578,7 +578,7 @@ HTML;
         @endphp
         <div class="row">
             <div class="col-md-12">
-                <div class="box box-success">
+                <div class="box box-success" id="bfc_calc_result">
                     <div class="box-header with-border"><h3 class="box-title">Calculated offer &amp; transaction details</h3></div>
                     <div class="box-body">
                         <h4 class="text-muted">Automatic snapshot</h4>
@@ -1350,6 +1350,21 @@ HTML;
         })();
 
         @if(!empty($calc))
+        // Sarah 2026-08-06: after "Save quote & continue" the page reloads with the
+        // calculated offer + accept/reject step rendered below the fold. Scroll the
+        // cashier straight down to it so the newly-revealed content is in view
+        // instead of leaving them looking at the (now-quoted) setup form up top.
+        (function scrollToCalcResult() {
+            var el = document.getElementById('bfc_calc_result');
+            if (!el) return;
+            // Defer a tick so layout (select2, budget bars, images) has settled and
+            // the offset is accurate.
+            setTimeout(function () {
+                var top = $(el).offset().top - 70;
+                $('html, body').animate({ scrollTop: top }, 350);
+            }, 150);
+        })();
+
         // Sarah 2026-05-19: the offer fields live inside the Calculate form, but
         // Save / Accept / Reject are separate forms whose offer values come from
         // hidden inputs emitted server-side (last Calculate's $input). If the
