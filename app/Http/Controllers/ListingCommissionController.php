@@ -153,6 +153,7 @@ class ListingCommissionController extends Controller
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $partyEarned = $this->partyEarnedByUser();
+        $manualParty = $this->manualPartyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -176,7 +177,9 @@ class ListingCommissionController extends Controller
             // total payout is unchanged — it just moves each party's bonus onto
             // the floor helper who earned it.
             $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
-            $p->party_earned = round($partyEarned[(int) $uid] ?? 0, 2); // equal 50/50 share, for display
+            // Show the party bonus each person got (auto split + hand-paid) even after
+            // it's paid, so the column isn't blank. Display only - Pay now is unchanged.
+            $p->party_earned = round(($partyEarned[(int) $uid] ?? 0) + ($manualParty[(int) $uid] ?? 0), 2);
             $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
@@ -1073,6 +1076,22 @@ class ListingCommissionController extends Controller
             foreach (($entry['party'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
+        }
+        return $out;
+    }
+
+    // Listening-party bonuses paid by hand via /admin/party-bonus are written to the
+    // SALES payout ledger with a note starting "Listening party ...". Sum them per
+    // user so the Commissions page can SHOW them in the Listening party column even
+    // once they're paid (the column otherwise reads $0 owed and goes blank). Display
+    // only - does not touch anyone's Pay now.
+    private function manualPartyEarnedByUser()
+    {
+        $out = [];
+        foreach ($this->loadSalesPayouts() as $p) {
+            if (stripos((string) ($p['note'] ?? ''), 'Listening party') !== 0) { continue; }
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid > 0) { $out[$uid] = ($out[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
         }
         return $out;
     }
