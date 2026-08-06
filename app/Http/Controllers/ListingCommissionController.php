@@ -972,10 +972,24 @@ class ListingCommissionController extends Controller
         $locations = DB::table('business_locations')
             ->where('business_id', $businessId)->where('is_active', 1)->pluck('name', 'id');
 
+        $partyDates = $this->partyDates();
         $all = $this->loadPartySplits();
+
+        // Prune phantom auto-splits: a split may ONLY exist on a real party date.
+        // Drop any auto entry on a non-party day (ordinary shared-floor selling
+        // that was miscredited as a "listening party"); leave manual apply/removal
+        // alone.
+        foreach (array_keys($all) as $k) {
+            $entry = $all[$k];
+            if (!empty($entry['removed']) || empty($entry['auto'])) { continue; }
+            $ed = $entry['date'] ?? (explode('|', (string) $k)[0]);
+            if (!in_array($ed, $partyDates, true)) { unset($all[$k]); }
+        }
+
         $applied = 0;
         for ($d = $start->copy(); $d->lte(\Carbon::today()); $d->addDay()) {
             $date = $d->toDateString();
+            if (!in_array($date, $partyDates, true)) { continue; } // real party days only
             foreach ($locations as $lid => $lname) {
                 $key = $date . '|' . (int) $lid;
                 if (isset($all[$key]) && (!empty($all[$key]['removed']) || empty($all[$key]['auto']))) {
@@ -1012,10 +1026,22 @@ class ListingCommissionController extends Controller
     // Sum of all applied party-split adjustments per user (positive for helpers,
     // negative for cashiers; the total across everyone is zero). Read from a small
     // sidecar, so the Commissions page stays fast — no per-day recompute.
+    // Real listening-party dates. The shared-floor bonus split ONLY applies on
+    // these days. Any other applied split is ordinary shared-floor selling that
+    // got wrongly labeled a "listening party" — filtered out here (instant, on
+    // read) and pruned from the file by the nightly auto-apply. Add a date here
+    // when a new party happens.
+    private function partyDates()
+    {
+        return ['2026-07-24', '2026-07-31'];
+    }
+
     private function partySplitAdjustmentsByUser()
     {
+        $partyDates = $this->partyDates();
         $out = [];
         foreach ($this->loadPartySplits() as $entry) {
+            if (!in_array($entry['date'] ?? '', $partyDates, true)) { continue; }
             foreach (($entry['adj'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
@@ -1028,8 +1054,10 @@ class ListingCommissionController extends Controller
     // same amount, separate from the +/- movement in the pay adjustment above.
     private function partyEarnedByUser()
     {
+        $partyDates = $this->partyDates();
         $out = [];
         foreach ($this->loadPartySplits() as $entry) {
+            if (!in_array($entry['date'] ?? '', $partyDates, true)) { continue; }
             foreach (($entry['party'] ?? []) as $uid => $amt) {
                 $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
             }
