@@ -1026,14 +1026,17 @@ class ListingCommissionController extends Controller
     // Sum of all applied party-split adjustments per user (positive for helpers,
     // negative for cashiers; the total across everyone is zero). Read from a small
     // sidecar, so the Commissions page stays fast — no per-day recompute.
-    // Real listening-party dates. The shared-floor bonus split ONLY applies on
-    // these days. Any other applied split is ordinary shared-floor selling that
-    // got wrongly labeled a "listening party" — filtered out here (instant, on
-    // read) and pruned from the file by the nightly auto-apply. Add a date here
-    // when a new party happens.
+    // Auto listening-party split is DISABLED (Sarah 2026-08-06). It split ALL
+    // shared-floor overage across the WHOLE day among everyone on shift, so it
+    // credited people who never worked the party (Mica $1, Jacob $2, Luis,
+    // Clyde). It has no notion of the party's time window or who attended, so it
+    // can't be trusted. Listening-party bonuses are now paid DELIBERATELY through
+    // /admin/party-bonus (pick the date, the party window, and exactly who worked
+    // it). An empty list here means no auto split counts anywhere: the read
+    // filters skip every entry and the nightly job prunes the file to empty.
     private function partyDates()
     {
-        return ['2026-07-24', '2026-07-31'];
+        return [];
     }
 
     private function partySplitAdjustmentsByUser()
