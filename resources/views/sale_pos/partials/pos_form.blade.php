@@ -399,6 +399,14 @@
 								$(this).toggleClass('is-active', $(this).data('channel') === val);
 							});
 							$('#is_whatnot').val(val === 'whatnot' ? 1 : 0);
+							// Sarah 2026-08-06: Discogs/Whatnot are tax-exempt at
+							// the register — recompute totals whenever the channel
+							// changes so the on-screen order tax drops to 0 (and
+							// comes back when switching to a taxed channel). The
+							// zeroing itself lives in pos_order_tax() in pos.js.
+							if (typeof pos_total_row === 'function') {
+								pos_total_row();
+							}
 						}
 						$(document).on('change', '.pos-channel-picker input[name="channel"]', syncChannelChips);
 

@@ -4313,6 +4313,17 @@ class SellPosController extends Controller
                 $input['sub_status'] = 'proforma';
             }
 
+            // Sarah 2026-08-06: Discogs and Whatnot sales are tax-exempt at
+            // the register — those platforms collect/remit sales tax on their
+            // own, so the POS must never add store sales tax on top. Null the
+            // order tax rate here, before calculateInvoiceTotal() runs, so the
+            // sale is stored with tax_id null / tax_amount 0 and a tax-free
+            // final total. pos.js zeroes the on-screen tax to match; this
+            // server-side guard is the authoritative source of truth.
+            if (in_array($input['channel'] ?? null, ['discogs', 'whatnot'], true) || !empty($input['is_whatnot'])) {
+                $input['tax_rate_id'] = null;
+            }
+
             //Add change return
             $change_return = $this->dummyPaymentLine;
             if (!empty($input['payment']['change_return'])) {
@@ -5302,6 +5313,14 @@ class SellPosController extends Controller
             } else {
                 $input['sub_status'] = null;
                 $input['is_quotation'] = 0;
+            }
+
+            // Sarah 2026-08-06: Discogs/Whatnot sales are tax-exempt at the
+            // register (see store()) — keep an edited sale tax-free too, so
+            // re-saving a Discogs/Whatnot ticket doesn't reintroduce sales
+            // tax. Authoritative guard; pos.js zeroes the display to match.
+            if (in_array($input['channel'] ?? null, ['discogs', 'whatnot'], true) || !empty($input['is_whatnot'])) {
+                $input['tax_rate_id'] = null;
             }
 
             $is_direct_sale = false;

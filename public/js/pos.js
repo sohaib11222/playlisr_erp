@@ -3614,6 +3614,17 @@ function pos_discount(total_amount) {
 }
 
 function pos_order_tax(price_total, discount) {
+    // Sarah 2026-08-06: Discogs/Whatnot sales are tax-exempt at the register
+    // (those platforms handle sales tax themselves). Zero the order tax for
+    // those channels so the on-screen total matches what the server stores.
+    // Server-side guard in SellPosController store()/update() is authoritative.
+    var pos_channel = $('.pos-channel-picker input[name="channel"]:checked').val();
+    if (pos_channel === 'discogs' || pos_channel === 'whatnot') {
+        $('span#order_tax').text(__currency_trans_from_en(0, false));
+        $('span#order_tax_display').text(__currency_trans_from_en(0, false));
+        return 0;
+    }
+
     // Use taxable subtotal (excluding bag fee and tax-exempt products) for tax calculation
     var taxable_total = get_taxable_subtotal();
     var total_amount = taxable_total - discount;
