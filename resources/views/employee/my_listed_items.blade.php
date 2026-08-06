@@ -102,6 +102,7 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
                             @endphp
                             <th><a href="{{ $sortBase.'&sort='.$key.'&dir='.$next }}" style="color:inherit;text-decoration:none;white-space:nowrap;">{{ $label }}{{ $arrow }}</a></th>
                         @endforeach
+                        <th style="white-space:nowrap;">Listed by</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -116,9 +117,10 @@ body.role-picker .li-genre .d { font-size:12px; color:#6B5E2E; margin-top:2px; }
                             <td class="li-muted">@if($r->sold_at){{ \Carbon::parse($r->sold_at)->format('m/d/y') }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->sale_value > 0)${{ number_format($r->sale_value, 2) }}@else<span class="li-unsold">—</span>@endif</td>
                             <td>@if($r->commission > 0)<span class="li-sold">${{ number_format($r->commission, 2) }}</span>@else<span class="li-unsold">$0.00</span>@endif</td>
+                            <td class="li-muted" style="white-space:nowrap;">{{ $target_name }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
+                        <tr><td colspan="10" class="li-muted" style="padding:18px;">No items listed in this period.</td></tr>
                     @endforelse
                 </tbody>
             </table>
