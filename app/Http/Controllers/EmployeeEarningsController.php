@@ -124,7 +124,12 @@ class EmployeeEarningsController extends Controller
             if (\Storage::disk('local')->exists('party-split-adjustments.json')) {
                 $all = json_decode(\Storage::disk('local')->get('party-split-adjustments.json'), true);
                 if (is_array($all)) {
+                    // Same party-date gate as the admin Commissions page (single
+                    // source of truth). Currently empty = auto party split OFF, so
+                    // no phantom party shows on the employee statement either.
+                    $partyDates = app(\App\Http\Controllers\ListingCommissionController::class)->partyDates();
                     foreach ($all as $entry) {
+                        if (!in_array($entry['date'] ?? '', $partyDates, true)) { continue; }
                         foreach (($entry['adj'] ?? []) as $uid => $amt) {
                             if ((int) $uid === $userId) { $partySplit += (float) $amt; }
                         }

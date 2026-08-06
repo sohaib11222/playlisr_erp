@@ -1040,7 +1040,7 @@ class ListingCommissionController extends Controller
     // /admin/party-bonus (pick the date, the party window, and exactly who worked
     // it). An empty list here means no auto split counts anywhere: the read
     // filters skip every entry and the nightly job prunes the file to empty.
-    private function partyDates()
+    public function partyDates()
     {
         return [];
     }
