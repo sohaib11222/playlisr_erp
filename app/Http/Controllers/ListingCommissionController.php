@@ -1042,7 +1042,10 @@ class ListingCommissionController extends Controller
     // filters skip every entry and the nightly job prunes the file to empty.
     public function partyDates()
     {
-        return [];
+        // Real listening-party dates. Only these get the auto shared-floor split
+        // (2nd floor person up, cashier down, store total unchanged). Add a date
+        // here after you've applied its split on /admin/shift-commission.
+        return ['2026-07-24', '2026-07-31'];
     }
 
     private function partySplitAdjustmentsByUser()
