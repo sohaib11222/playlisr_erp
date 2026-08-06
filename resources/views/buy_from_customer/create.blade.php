@@ -358,7 +358,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>New or returning seller?</label>
-                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? 'phone', ['class' => 'form-control', 'id' => 'seller_mode']) !!}
+                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? null, ['class' => 'form-control', 'id' => 'seller_mode', 'placeholder' => 'Select New/Returning']) !!}
                             </div>
                         </div>
                         <div class="col-md-3 seller-contact-block">
@@ -797,8 +797,11 @@ HTML;
     (function () {
         function toggleSellerMode() {
             var mode = $('#seller_mode').val();
+            // Sarah 2026-08-06: default is now the "Select New/Returning" prompt
+            // (empty), so show NEITHER block until the cashier picks a mode —
+            // don't fall through to the walk-in block on the empty value.
             $('.seller-contact-block').toggle(mode === 'contact');
-            $('.seller-phone-block').toggle(mode !== 'contact');
+            $('.seller-phone-block').toggle(mode === 'phone');
         }
 
         $(document).on('change', '#seller_mode', toggleSellerMode);
@@ -1072,6 +1075,9 @@ HTML;
         // an instant, clear message instead of a round-trip.
         function bfcSellerGate() {
             var mode = $('#seller_mode').val();
+            if (!mode) {
+                return { field: '#seller_mode', msg: 'Choose New or Returning seller before getting a quote.' };
+            }
             if (mode === 'contact') {
                 if (!$('#contact_id').val()) {
                     return { field: '#contact_id', msg: 'Select the seller\'s existing account before getting a quote.' };
