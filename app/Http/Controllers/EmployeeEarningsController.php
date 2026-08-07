@@ -188,14 +188,15 @@ class EmployeeEarningsController extends Controller
             $mondayOf = function ($dstr) {
                 return \Carbon::parse($dstr)->startOfWeek(\Carbon::MONDAY)->toDateString();
             };
-            $wk = []; // 'Y-m-d'(Monday) => ['listing'=>, 'sales'=>, 'paid'=>]
+            $wk = []; // 'Y-m-d'(Monday) => ['listing'=>, 'sales'=>, 'paid'=>, 'dates'=>[]]
+            $init = function () { return ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0, 'dates' => []]; };
             $stmt = app(\App\Http\Controllers\ReportController::class)
                 ->buildDailyEarnings($businessId, $start, $end, $userId);
             foreach ($stmt['days'] as $date => $list) {
                 foreach ($list as $r) {
                     if ((int) $r['user_id'] !== (int) $userId) { continue; }
                     $k = $mondayOf($date);
-                    if (!isset($wk[$k])) { $wk[$k] = ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0]; }
+                    if (!isset($wk[$k])) { $wk[$k] = $init(); }
                     $wk[$k]['listing'] += (float) $r['listing_comm'];
                     $wk[$k]['sales']   += (float) $r['sales_bonus'];
                 }
@@ -205,24 +206,30 @@ class EmployeeEarningsController extends Controller
                 $d = substr((string) ($p['marked_at'] ?? $p['from_date'] ?? ''), 0, 10);
                 if ($d === '') { continue; }
                 $k = $mondayOf($d);
-                if (!isset($wk[$k])) { $wk[$k] = ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0]; }
+                if (!isset($wk[$k])) { $wk[$k] = $init(); }
                 $wk[$k]['paid'] += (float) ($p['amount'] ?? 0);
+                if (!in_array($d, $wk[$k]['dates'], true)) { $wk[$k]['dates'][] = $d; }
             }
-            ksort($wk);
+            ksort($wk); // oldest first so the running balance accumulates correctly
             $running = 0.0;
             foreach ($wk as $k => $v) {
                 $earnedW = round($v['listing'] + $v['sales'], 2);
                 $paidW   = round($v['paid'], 2);
+                $prev    = $running; // balance carried in from the week before
                 $running = round($running + $earnedW - $paidW, 2);
+                rsort($v['dates']); // latest payment date first
                 $weekly[] = (object) [
-                    'week_start' => $k,
-                    'listing'    => round($v['listing'], 2),
-                    'sales'      => round($v['sales'], 2),
-                    'earned'     => $earnedW,
-                    'paid'       => $paidW,
-                    'balance'    => $running,
+                    'week_start'   => $k,
+                    'listing'      => round($v['listing'], 2),
+                    'sales'        => round($v['sales'], 2),
+                    'earned'       => $earnedW,
+                    'paid'         => $paidW,
+                    'pay_dates'    => $v['dates'],
+                    'prev_balance' => $prev,
+                    'balance'      => $running,
                 ];
             }
+            $weekly = array_reverse($weekly); // display latest week first, like a ledger
         } catch (\Throwable $e) {
             \Log::warning('my-earnings weekly statement failed: ' . $e->getMessage());
         }

@@ -153,7 +153,6 @@ class ListingCommissionController extends Controller
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $partyEarned = $this->partyEarnedByUser();
-        $manualParty = $this->manualPartyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -177,9 +176,11 @@ class ListingCommissionController extends Controller
             // total payout is unchanged — it just moves each party's bonus onto
             // the floor helper who earned it.
             $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
-            // Show the party bonus each person got (auto split + hand-paid) even after
-            // it's paid, so the column isn't blank. Display only - Pay now is unchanged.
-            $p->party_earned = round(($partyEarned[(int) $uid] ?? 0) + ($manualParty[(int) $uid] ?? 0), 2);
+            // Listening party column shows only what's still OWED for a party. Hand-paid
+            // party bonuses are earned == paid so they net to $0 and drop off once paid,
+            // same as the sales/listing owed columns; the paid ones live in the weekly
+            // statement instead. (Only an un-paid auto split would show here.)
+            $p->party_earned = round($partyEarned[(int) $uid] ?? 0, 2);
             $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;

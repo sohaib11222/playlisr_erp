@@ -159,7 +159,7 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#FFF3C4;" title="Listening party bonus this person earned (includes bonuses already paid out by hand). Shown for the pay stub; already reflected in what's been paid, so it is not added again into Pay now.">Listening party</th>
+                            <th style="text-align:right; background:#FFF3C4;" title="Listening party bonus still owed (earned minus paid). Clears to blank once paid; the paid ones show on each person's weekly statement.">Listening party owed</th>
                             <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed + Listening party owed = what you hand this person this run">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>

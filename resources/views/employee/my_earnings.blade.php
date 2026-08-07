@@ -174,10 +174,13 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
 
         <div class="me-card">
             <h3 style="margin-bottom:2px;">Weekly commission statement</h3>
-            <p class="me-muted" style="margin:2px 0 12px;">What {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid each week (Mon&ndash;Sun). <strong>Balance</strong> is the running total still owed &mdash; it should stay at or above $0. A red negative means overpaid.</p>
+            <p class="me-muted" style="margin:2px 0 12px;">A running ledger of what {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid each week (Mon&ndash;Sun), newest first. <strong>Balance</strong> carries down the running total still owed: <em>last week's balance + earned this week &minus; paid this week</em>. It should stay at or above $0 &mdash; a red negative means overpaid.</p>
             @if(empty($weekly))
                 <p class="me-muted">No commission activity yet.</p>
             @else
+                @php
+                    $money = function ($n) { return ($n < 0 ? '-$' : '$') . number_format(abs($n), 2); };
+                @endphp
                 <div style="overflow-x:auto;">
                 <table class="me-table">
                     <thead>
@@ -185,20 +188,24 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                             <th>Week of</th>
                             <th style="text-align:right;">Listing earned</th>
                             <th style="text-align:right;">Sales bonus</th>
-                            <th style="text-align:right;border-left:1px solid #E5D9BC;">Total earned</th>
-                            <th style="text-align:right;">Paid</th>
+                            <th style="text-align:right;border-left:1px solid #E5D9BC;">Earned (+)</th>
+                            <th style="text-align:right;">Paid on</th>
+                            <th style="text-align:right;">Paid (&minus;)</th>
                             <th style="text-align:right;border-left:1px solid #E5D9BC;">Balance</th>
+                            <th style="border-left:1px solid #E5D9BC;">How it's figured</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($weekly as $w)
                             <tr>
-                                <td>{{ \Carbon::parse($w->week_start)->format('M j') }}</td>
+                                <td style="white-space:nowrap;">{{ \Carbon::parse($w->week_start)->format('M j, Y') }}</td>
                                 <td style="text-align:right;">{{ $w->listing != 0 ? '$'.number_format($w->listing, 2) : '—' }}</td>
                                 <td style="text-align:right;">{{ $w->sales != 0 ? '$'.number_format($w->sales, 2) : '—' }}</td>
                                 <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;">${{ number_format($w->earned, 2) }}</td>
+                                <td style="text-align:right;white-space:nowrap;color:#5A5045;">{{ count($w->pay_dates) ? implode(', ', array_map(function ($d) { return \Carbon::parse($d)->format('n/j'); }, $w->pay_dates)) : '—' }}</td>
                                 <td style="text-align:right;{{ $w->paid != 0 ? 'color:#2F6B3E;' : 'color:#8E8273;' }}">{{ $w->paid != 0 ? '$'.number_format($w->paid, 2) : '—' }}</td>
-                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;{{ $w->balance < -0.004 ? 'color:#b3402e;' : ($w->balance > 0.004 ? 'color:#6B5E2E;' : 'color:#8E8273;') }}">{{ $w->balance < 0 ? '-$'.number_format(abs($w->balance), 2) : '$'.number_format($w->balance, 2) }}</td>
+                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;{{ $w->balance < -0.004 ? 'color:#b3402e;' : ($w->balance > 0.004 ? 'color:#6B5E2E;' : 'color:#8E8273;') }}">{{ $money($w->balance) }}</td>
+                                <td style="border-left:1px solid #ECE3CF;font-size:12px;color:#5A5045;white-space:nowrap;">{{ $money($w->prev_balance) }} + ${{ number_format($w->earned, 2) }} &minus; ${{ number_format($w->paid, 2) }} = {{ $money($w->balance) }}</td>
                             </tr>
                         @endforeach
                     </tbody>
