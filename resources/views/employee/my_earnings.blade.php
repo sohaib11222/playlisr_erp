@@ -193,12 +193,23 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     </thead>
                     <tbody>
                         @foreach($weekly as $i => $w)
-                            <tr @if($i === 0)style="background:#FBF7E9;"@endif>
-                                <td style="white-space:nowrap;">{{ \Carbon::parse($w->week_start)->format('M j, Y') }}@if($i === 0)<div style="font-size:11px;color:#B07A00;font-weight:700;">current</div>@endif</td>
+                            @php $isCurrent = ($i === 0); @endphp
+                            <tr style="{{ $isCurrent ? 'background:#FBF7E9;' : '' }}">
+                                <td style="white-space:nowrap;">
+                                    {{ \Carbon::parse($w->week_start)->format('M j, Y') }}
+                                    @if($isCurrent)
+                                        <div style="font-size:11px;color:#B07A00;font-weight:700;">current</div>
+                                    @endif
+                                </td>
                                 <td style="text-align:right;">
                                     <strong>${{ number_format($w->earned, 2) }}</strong>
-                                    @if($w->listing != 0 || $w->sales != 0)
-                                        <div style="font-size:11px;color:#8E8273;">@if($w->listing != 0)list ${{ number_format($w->listing, 2) }}@endif@if($w->sales != 0){{ $w->listing != 0 ? ' · ' : '' }}sales ${{ number_format($w->sales, 2) }}@endif</div>
+                                    @php
+                                        $bits = [];
+                                        if ($w->listing != 0) { $bits[] = 'list $' . number_format($w->listing, 2); }
+                                        if ($w->sales != 0) { $bits[] = 'sales $' . number_format($w->sales, 2); }
+                                    @endphp
+                                    @if(!empty($bits))
+                                        <div style="font-size:11px;color:#8E8273;">{{ implode(' · ', $bits) }}</div>
                                     @endif
                                 </td>
                                 <td style="text-align:right;">
