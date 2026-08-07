@@ -358,7 +358,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>New or returning seller?</label>
-                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? null, ['class' => 'form-control', 'id' => 'seller_mode', 'placeholder' => 'Select New/Returning']) !!}
+                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? null, ['class' => 'form-control', 'id' => 'seller_mode', 'placeholder' => 'Select seller type']) !!}
                             </div>
                         </div>
                         <div class="col-md-3 seller-contact-block">
@@ -1076,7 +1076,7 @@ HTML;
         function bfcSellerGate() {
             var mode = $('#seller_mode').val();
             if (!mode) {
-                return { field: '#seller_mode', msg: 'Choose New or Returning seller before getting a quote.' };
+                return { field: '#seller_mode', msg: 'Select a seller type before getting a quote.' };
             }
             if (mode === 'contact') {
                 if (!$('#contact_id').val()) {
