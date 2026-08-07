@@ -1046,10 +1046,15 @@ class ListingCommissionController extends Controller
     // filters skip every entry and the nightly job prunes the file to empty.
     public function partyDates()
     {
-        // Real listening-party dates. Only these get the auto shared-floor split
-        // (2nd floor person up, cashier down, store total unchanged). Add a date
-        // here after you've applied its split on /admin/shift-commission.
-        return ['2026-07-24', '2026-07-31'];
+        // Real listening-party dates that used the AUTO shared-floor split (2nd floor
+        // person up, cashier down, store total unchanged), from memory 2026-07-23:
+        //   7/10 Hollywood (Clyde+Luis), 7/10 Pico (Zakary+Davis), 7/18 Hollywood (Cody+Manolo).
+        // 7/31 is intentionally NOT here: that party was paid by hand via
+        // /admin/party-bonus (in the sales ledger), so auto-applying it would
+        // double-count. Re-enabling these restores the earned side that this
+        // morning's empty list dropped, which is what made Luis/Davis/Cody read
+        // as overpaid (Sarah 2026-08-06).
+        return ['2026-07-10', '2026-07-18'];
     }
 
     private function partySplitAdjustmentsByUser()
