@@ -174,7 +174,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
 
         <div class="me-card">
             <h3 style="margin-bottom:2px;">Weekly commission statement</h3>
-            <p class="me-muted" style="margin:2px 0 12px;">A running ledger of what {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid each week (Mon&ndash;Sun), newest first. <strong>Balance</strong> carries down the running total still owed: <em>last week's balance + earned this week &minus; paid this week</em>. It should stay at or above $0 &mdash; a red negative means overpaid.</p>
+            <p class="me-muted" style="margin:2px 0 12px;">A running ledger, newest week first, of what {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid. The <strong>top row's balance is the current one</strong> &mdash; that's what's still owed today. Each row: last week's balance + earned &minus; paid. A mid-list negative isn't an overpay &mdash; it just means a payment landed before that week's earnings caught up.</p>
             @if(empty($weekly))
                 <p class="me-muted">No commission activity yet.</p>
             @else
@@ -186,26 +186,31 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <thead>
                         <tr>
                             <th>Week of</th>
-                            <th style="text-align:right;">Listing earned</th>
-                            <th style="text-align:right;">Sales bonus</th>
-                            <th style="text-align:right;border-left:1px solid #E5D9BC;">Earned (+)</th>
-                            <th style="text-align:right;">Paid on</th>
-                            <th style="text-align:right;">Paid (&minus;)</th>
+                            <th style="text-align:right;">Earned</th>
+                            <th style="text-align:right;">Paid</th>
                             <th style="text-align:right;border-left:1px solid #E5D9BC;">Balance</th>
-                            <th style="border-left:1px solid #E5D9BC;">How it's figured</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($weekly as $w)
-                            <tr>
-                                <td style="white-space:nowrap;">{{ \Carbon::parse($w->week_start)->format('M j, Y') }}</td>
-                                <td style="text-align:right;">{{ $w->listing != 0 ? '$'.number_format($w->listing, 2) : '—' }}</td>
-                                <td style="text-align:right;">{{ $w->sales != 0 ? '$'.number_format($w->sales, 2) : '—' }}</td>
-                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;">${{ number_format($w->earned, 2) }}</td>
-                                <td style="text-align:right;white-space:nowrap;color:#5A5045;">{{ count($w->pay_dates) ? implode(', ', array_map(function ($d) { return \Carbon::parse($d)->format('n/j'); }, $w->pay_dates)) : '—' }}</td>
-                                <td style="text-align:right;{{ $w->paid != 0 ? 'color:#2F6B3E;' : 'color:#8E8273;' }}">{{ $w->paid != 0 ? '$'.number_format($w->paid, 2) : '—' }}</td>
-                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;{{ $w->balance < -0.004 ? 'color:#b3402e;' : ($w->balance > 0.004 ? 'color:#6B5E2E;' : 'color:#8E8273;') }}">{{ $money($w->balance) }}</td>
-                                <td style="border-left:1px solid #ECE3CF;font-size:12px;color:#5A5045;white-space:nowrap;">{{ $money($w->prev_balance) }} + ${{ number_format($w->earned, 2) }} &minus; ${{ number_format($w->paid, 2) }} = {{ $money($w->balance) }}</td>
+                        @foreach($weekly as $i => $w)
+                            <tr @if($i === 0)style="background:#FBF7E9;"@endif>
+                                <td style="white-space:nowrap;">{{ \Carbon::parse($w->week_start)->format('M j, Y') }}@if($i === 0)<div style="font-size:11px;color:#B07A00;font-weight:700;">current</div>@endif</td>
+                                <td style="text-align:right;">
+                                    <strong>${{ number_format($w->earned, 2) }}</strong>
+                                    @if($w->listing != 0 || $w->sales != 0)
+                                        <div style="font-size:11px;color:#8E8273;">@if($w->listing != 0)list ${{ number_format($w->listing, 2) }}@endif@if($w->sales != 0){{ $w->listing != 0 ? ' · ' : '' }}sales ${{ number_format($w->sales, 2) }}@endif</div>
+                                    @endif
+                                </td>
+                                <td style="text-align:right;">
+                                    @if($w->paid != 0)
+                                        <span style="color:#2F6B3E;font-weight:600;">${{ number_format($w->paid, 2) }}</span>
+                                        <div style="font-size:11px;color:#8E8273;">paid {{ implode(', ', array_map(function ($d) { return \Carbon::parse($d)->format('n/j'); }, $w->pay_dates)) }}</div>
+                                    @else <span class="me-muted">—</span>@endif
+                                </td>
+                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;{{ $w->balance < -0.004 ? ($i === 0 ? 'color:#b3402e;' : 'color:#B07A00;') : ($w->balance > 0.004 ? 'color:#2F6B3E;' : 'color:#8E8273;') }}">
+                                    {{ $money($w->balance) }}
+                                    <div style="font-size:11px;color:#A79A80;font-weight:400;white-space:nowrap;">{{ $money($w->prev_balance) }} + ${{ number_format($w->earned, 2) }} &minus; ${{ number_format($w->paid, 2) }}</div>
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
