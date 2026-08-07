@@ -1046,15 +1046,14 @@ class ListingCommissionController extends Controller
     // filters skip every entry and the nightly job prunes the file to empty.
     public function partyDates()
     {
-        // Real listening-party dates that used the AUTO shared-floor split (2nd floor
-        // person up, cashier down, store total unchanged), from memory 2026-07-23:
-        //   7/10 Hollywood (Clyde+Luis), 7/10 Pico (Zakary+Davis), 7/18 Hollywood (Cody+Manolo).
-        // 7/31 is intentionally NOT here: that party was paid by hand via
-        // /admin/party-bonus (in the sales ledger), so auto-applying it would
-        // double-count. Re-enabling these restores the earned side that this
-        // morning's empty list dropped, which is what made Luis/Davis/Cody read
-        // as overpaid (Sarah 2026-08-06).
-        return ['2026-07-10', '2026-07-18'];
+        // Held EMPTY on purpose. Re-enabling the July dates (7/10, 7/18) restored the
+        // auto-split EARNED side, but the actual payments for those parties don't
+        // match the split (helpers came up owed, cashiers overpaid) - and some of
+        // those same people were just paid at the no-split amounts in today's run.
+        // Reconciling that needs the real payment records traced per party, done
+        // deliberately, NOT a live toggle. Leave empty until that's worked through
+        // with Sarah (2026-08-06).
+        return [];
     }
 
     private function partySplitAdjustmentsByUser()
