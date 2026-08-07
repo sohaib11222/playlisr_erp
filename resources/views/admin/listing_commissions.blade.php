@@ -248,6 +248,7 @@
                             <th>Person</th>
                             <th style="text-align:right;">Sales</th>
                             <th style="text-align:right;">Listing</th>
+                            <th style="text-align:right;">Listening party</th>
                             <th style="text-align:right;">Total</th>
                             <th></th>
                         </tr>
@@ -260,6 +261,7 @@
                                     <td>{{ $r['name'] }}@if(!empty($r['notes'])) <span class="text-muted" style="font-size:11px;">({{ implode('; ', $r['notes']) }})</span>@endif</td>
                                     <td style="text-align:right;">@if($r['sales'] != 0)${{ number_format($r['sales'], 2) }}@else<span class="text-muted">—</span>@endif</td>
                                     <td style="text-align:right;">@if($r['listing'] != 0)${{ number_format($r['listing'], 2) }}@else<span class="text-muted">—</span>@endif</td>
+                                    <td style="text-align:right;">@if(($r['party'] ?? 0) != 0)<span style="color:#2f7a4f;">${{ number_format($r['party'], 2) }}</span>@else<span class="text-muted">—</span>@endif</td>
                                     <td style="text-align:right;"><strong>${{ number_format($r['total'], 2) }}</strong></td>
                                     <td style="text-align:right; white-space:nowrap;">
                                         @foreach ($r['undos'] as $u)

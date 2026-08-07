@@ -1337,11 +1337,16 @@ class ListingCommissionController extends Controller
                 $uid = $r['uid'];
                 if (!isset($byUser[$uid])) {
                     $byUser[$uid] = ['uid' => $uid, 'name' => $r['name'], 'listing' => 0.0, 'sales' => 0.0,
-                        'items' => 0, 'undos' => [], 'notes' => []];
+                        'party' => 0.0, 'items' => 0, 'undos' => [], 'notes' => []];
                 }
                 if ($r['kind'] === 'listing') {
                     $byUser[$uid]['listing'] += $r['amount'];
                     $byUser[$uid]['items'] += $r['items'];
+                } elseif (stripos((string) ($r['note'] ?? ''), 'Listening party') === 0) {
+                    // Party bonuses live in the sales ledger with a "Listening party" note;
+                    // break them out into their own column so the payment record is clear.
+                    $byUser[$uid]['party'] += $r['amount'];
+                    if ($r['note'] !== '') { $byUser[$uid]['notes'][] = $r['note']; }
                 } else {
                     $byUser[$uid]['sales'] += $r['amount'];
                     if ($r['note'] !== '') { $byUser[$uid]['notes'][] = $r['note']; }
@@ -1355,7 +1360,8 @@ class ListingCommissionController extends Controller
             foreach ($byUser as $u) {
                 $u['listing'] = round($u['listing'], 2);
                 $u['sales']   = round($u['sales'], 2);
-                $u['total']   = round($u['listing'] + $u['sales'], 2);
+                $u['party']   = round($u['party'], 2);
+                $u['total']   = round($u['listing'] + $u['sales'] + $u['party'], 2);
                 $dtotal += $u['total'];
                 $out[] = $u;
             }
