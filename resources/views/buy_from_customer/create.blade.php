@@ -358,7 +358,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>New or returning seller?</label>
-                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? 'phone', ['class' => 'form-control', 'id' => 'seller_mode']) !!}
+                                {!! Form::select('seller_mode', ['contact' => 'Returning — has an account', 'phone' => 'New / walk-in'], $input['seller_mode'] ?? null, ['class' => 'form-control', 'id' => 'seller_mode', 'placeholder' => 'Select seller type']) !!}
                             </div>
                         </div>
                         <div class="col-md-3 seller-contact-block">
@@ -578,7 +578,7 @@ HTML;
         @endphp
         <div class="row">
             <div class="col-md-12">
-                <div class="box box-success">
+                <div class="box box-success" id="bfc_calc_result">
                     <div class="box-header with-border"><h3 class="box-title">Calculated offer &amp; transaction details</h3></div>
                     <div class="box-body">
                         <h4 class="text-muted">Automatic snapshot</h4>
@@ -797,8 +797,11 @@ HTML;
     (function () {
         function toggleSellerMode() {
             var mode = $('#seller_mode').val();
+            // Sarah 2026-08-06: default is now the "Select New/Returning" prompt
+            // (empty), so show NEITHER block until the cashier picks a mode —
+            // don't fall through to the walk-in block on the empty value.
             $('.seller-contact-block').toggle(mode === 'contact');
-            $('.seller-phone-block').toggle(mode !== 'contact');
+            $('.seller-phone-block').toggle(mode === 'phone');
         }
 
         $(document).on('change', '#seller_mode', toggleSellerMode);
@@ -1072,6 +1075,9 @@ HTML;
         // an instant, clear message instead of a round-trip.
         function bfcSellerGate() {
             var mode = $('#seller_mode').val();
+            if (!mode) {
+                return { field: '#seller_mode', msg: 'Select a seller type before getting a quote.' };
+            }
             if (mode === 'contact') {
                 if (!$('#contact_id').val()) {
                     return { field: '#contact_id', msg: 'Select the seller\'s existing account before getting a quote.' };
@@ -1350,6 +1356,21 @@ HTML;
         })();
 
         @if(!empty($calc))
+        // Sarah 2026-08-06: after "Save quote & continue" the page reloads with the
+        // calculated offer + accept/reject step rendered below the fold. Scroll the
+        // cashier straight down to it so the newly-revealed content is in view
+        // instead of leaving them looking at the (now-quoted) setup form up top.
+        (function scrollToCalcResult() {
+            var el = document.getElementById('bfc_calc_result');
+            if (!el) return;
+            // Defer a tick so layout (select2, budget bars, images) has settled and
+            // the offset is accurate.
+            setTimeout(function () {
+                var top = $(el).offset().top - 70;
+                $('html, body').animate({ scrollTop: top }, 350);
+            }, 150);
+        })();
+
         // Sarah 2026-05-19: the offer fields live inside the Calculate form, but
         // Save / Accept / Reject are separate forms whose offer values come from
         // hidden inputs emitted server-side (last Calculate's $input). If the
