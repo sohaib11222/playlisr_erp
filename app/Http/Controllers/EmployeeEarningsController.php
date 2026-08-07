@@ -177,6 +177,56 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings daily breakdown failed: ' . $e->getMessage());
         }
 
+        // Weekly commission statement — earned (listing + sales bonus) vs paid for
+        // each Mon–Sun week since the rollout, with a RUNNING balance. The balance
+        // is cumulative earned minus cumulative paid: it should sit at/above $0, and
+        // a negative number is an at-a-glance overpaid flag. Earned reuses the same
+        // daily engine as the breakdown; paid reuses both payout ledgers, so it
+        // reconciles with everything else on the page (Sarah 2026-08-06).
+        $weekly = [];
+        try {
+            $mondayOf = function ($dstr) {
+                return \Carbon::parse($dstr)->startOfWeek(\Carbon::MONDAY)->toDateString();
+            };
+            $wk = []; // 'Y-m-d'(Monday) => ['listing'=>, 'sales'=>, 'paid'=>]
+            $stmt = app(\App\Http\Controllers\ReportController::class)
+                ->buildDailyEarnings($businessId, $start, $end, $userId);
+            foreach ($stmt['days'] as $date => $list) {
+                foreach ($list as $r) {
+                    if ((int) $r['user_id'] !== (int) $userId) { continue; }
+                    $k = $mondayOf($date);
+                    if (!isset($wk[$k])) { $wk[$k] = ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0]; }
+                    $wk[$k]['listing'] += (float) $r['listing_comm'];
+                    $wk[$k]['sales']   += (float) $r['sales_bonus'];
+                }
+            }
+            foreach (array_merge($this->loadPayouts(), $this->loadSalesPayouts()) as $p) {
+                if ((int) ($p['user_id'] ?? 0) !== (int) $userId) { continue; }
+                $d = substr((string) ($p['marked_at'] ?? $p['from_date'] ?? ''), 0, 10);
+                if ($d === '') { continue; }
+                $k = $mondayOf($d);
+                if (!isset($wk[$k])) { $wk[$k] = ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0]; }
+                $wk[$k]['paid'] += (float) ($p['amount'] ?? 0);
+            }
+            ksort($wk);
+            $running = 0.0;
+            foreach ($wk as $k => $v) {
+                $earnedW = round($v['listing'] + $v['sales'], 2);
+                $paidW   = round($v['paid'], 2);
+                $running = round($running + $earnedW - $paidW, 2);
+                $weekly[] = (object) [
+                    'week_start' => $k,
+                    'listing'    => round($v['listing'], 2),
+                    'sales'      => round($v['sales'], 2),
+                    'earned'     => $earnedW,
+                    'paid'       => $paidW,
+                    'balance'    => $running,
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('my-earnings weekly statement failed: ' . $e->getMessage());
+        }
+
         // Admin convenience: a roster of current staff so an admin can jump to
         // any employee's view (?user_id=) without hunting for an id.
         $staff = collect();
@@ -219,6 +269,7 @@ class EmployeeEarningsController extends Controller
             'staff'        => $staff,
             'daily'        => $daily,
             'daily_days'   => $dailyDays,
+            'weekly'       => $weekly,
             'sales_bonus_live' => $salesBonus['live'] ?? false,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');

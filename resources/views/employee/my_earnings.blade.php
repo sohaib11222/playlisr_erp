@@ -173,6 +173,41 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         </div>
 
         <div class="me-card">
+            <h3 style="margin-bottom:2px;">Weekly commission statement</h3>
+            <p class="me-muted" style="margin:2px 0 12px;">What {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid each week (Mon&ndash;Sun). <strong>Balance</strong> is the running total still owed &mdash; it should stay at or above $0. A red negative means overpaid.</p>
+            @if(empty($weekly))
+                <p class="me-muted">No commission activity yet.</p>
+            @else
+                <div style="overflow-x:auto;">
+                <table class="me-table">
+                    <thead>
+                        <tr>
+                            <th>Week of</th>
+                            <th style="text-align:right;">Listing earned</th>
+                            <th style="text-align:right;">Sales bonus</th>
+                            <th style="text-align:right;border-left:1px solid #E5D9BC;">Total earned</th>
+                            <th style="text-align:right;">Paid</th>
+                            <th style="text-align:right;border-left:1px solid #E5D9BC;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($weekly as $w)
+                            <tr>
+                                <td>{{ \Carbon::parse($w->week_start)->format('M j') }}</td>
+                                <td style="text-align:right;">{{ $w->listing != 0 ? '$'.number_format($w->listing, 2) : '—' }}</td>
+                                <td style="text-align:right;">{{ $w->sales != 0 ? '$'.number_format($w->sales, 2) : '—' }}</td>
+                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;">${{ number_format($w->earned, 2) }}</td>
+                                <td style="text-align:right;{{ $w->paid != 0 ? 'color:#2F6B3E;' : 'color:#8E8273;' }}">{{ $w->paid != 0 ? '$'.number_format($w->paid, 2) : '—' }}</td>
+                                <td style="text-align:right;border-left:1px solid #ECE3CF;font-weight:700;{{ $w->balance < -0.004 ? 'color:#b3402e;' : ($w->balance > 0.004 ? 'color:#6B5E2E;' : 'color:#8E8273;') }}">{{ $w->balance < 0 ? '-$'.number_format(abs($w->balance), 2) : '$'.number_format($w->balance, 2) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                </div>
+            @endif
+        </div>
+
+        <div class="me-card">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                 <h3 style="margin-bottom:2px;">Daily breakdown — last {{ $daily_days }} days</h3>
                 @if(!empty($is_admin))
