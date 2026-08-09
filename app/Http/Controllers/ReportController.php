@@ -14236,9 +14236,17 @@ class ReportController extends Controller
         $slotStaff = [];    // 'Y-m-d H' => [user_id => true]
         $now = \Carbon::now();
         foreach ($sessions as $s) {
+            // Skip STILL-OPEN registers. Their goal was measured against the live
+            // clock (end = now), so hours-worked — and therefore the daily target —
+            // grew every minute the drawer stayed open, making the sales bonus
+            // silently SHRINK on each refresh during an active shift (Luis, Sarah
+            // 2026-08-09). A day's bonus now locks in only once the register is
+            // closed, so the number holds steady during the shift instead of
+            // drifting down. (Pre-close the day simply isn't counted yet.)
+            if (empty($s->closed_at)) { continue; }
             $ss = \Carbon::parse($s->created_at);
             if ($ss->lt($startC)) { $ss = $startC->copy(); }
-            $se = $s->closed_at ? \Carbon::parse($s->closed_at) : $now->copy();
+            $se = \Carbon::parse($s->closed_at);
             if ($se->gt($endC)) { $se = $endC->copy(); }
             $cap = $ss->copy()->addSeconds(21600); // 6h
             if ($se->gt($cap)) { $se = $cap; }
