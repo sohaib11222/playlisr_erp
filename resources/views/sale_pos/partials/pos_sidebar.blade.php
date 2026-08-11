@@ -185,16 +185,16 @@
     </button>
 </div>
 
-{{-- Sarah 2026-08-10: Shipping quick-adds. Shipping cost varies, so these
-     use pos-quick-prompt (asks for the $ amount) instead of a fixed preset
-     price. Both land as manual line items under a "Shipping" category. --}}
+{{-- Sarah 2026-08-11: Shipping quick-adds at fixed prices ($7 domestic /
+     $15 international). Add as manual line items under a "Shipping" category
+     via the same endpoint the other fixed-price presets use. --}}
 <div class="pos-quick-grid-title" style="margin-top:14px;">Quick Add — Shipping</div>
 <div class="pos-quick-grid">
-    <button type="button" class="pos-quick-tile pos-quick-prompt" data-prompt-name="Shipping (Domestic)" data-prompt-category="Shipping">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🚚</span> Shipping (Dom) <span class="pos-quick-price">enter $</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Shipping (Domestic)" data-preset-price="7.00" data-preset-category="Shipping">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🚚</span> Shipping (Dom) <span class="pos-quick-price">$7.00</span>
     </button>
-    <button type="button" class="pos-quick-tile pos-quick-prompt" data-prompt-name="Shipping (Intl)" data-prompt-category="Shipping">
-        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🌍</span> Shipping (Intl) <span class="pos-quick-price">enter $</span>
+    <button type="button" class="pos-quick-tile pos-quick-preset" data-preset-name="Shipping (Intl)" data-preset-price="15.00" data-preset-category="Shipping">
+        <span style="font-size:26px; line-height:1; display:block; margin-bottom:4px;">🌍</span> Shipping (Intl) <span class="pos-quick-price">$15.00</span>
     </button>
 </div>
 
@@ -237,60 +237,6 @@
                     quantity: 1,
                     // Each Quick Add tile declares its category by name;
                     // backend resolves/creates the matching Category row.
-                    category_name: String(category)
-                }]
-            },
-            dataType: 'json'
-        }).done(function (result) {
-            if (result && result.success && result.html_content) {
-                var html = result.html_content;
-                var $bagRow = $('#pos_table tbody tr[data-plastic-bag="true"]').first();
-                if (Array.isArray(html)) {
-                    html.forEach(function (h) { $bagRow.length ? $bagRow.before(h) : $('#pos_table tbody').append(h); });
-                } else {
-                    $bagRow.length ? $bagRow.before(html) : $('#pos_table tbody').append(html);
-                }
-                $('#pos_table tbody tr').each(function () { if (typeof pos_each_row === 'function') pos_each_row($(this)); });
-                if (typeof pos_total_row === 'function') pos_total_row();
-                if (typeof toastr !== 'undefined' && toastr.success) toastr.success(name + ' added');
-            } else {
-                if (typeof toastr !== 'undefined') toastr.error((result && result.msg) || 'Could not add ' + name);
-            }
-        }).fail(function () {
-            if (typeof toastr !== 'undefined') toastr.error('Could not add ' + name);
-        }).always(function () {
-            $btn.prop('disabled', false);
-        });
-    });
-
-    // Variable-price quick-adds (shipping): prompt for the $ amount, then add a
-    // manual line item via the same endpoint the fixed-price presets use.
-    $(document).on('click', '.pos-quick-prompt', function () {
-        var $btn = $(this);
-        if ($btn.prop('disabled')) return;
-        var name = $btn.data('prompt-name');
-        var category = $btn.data('prompt-category') || '';
-        if (!name) return;
-        var raw = window.prompt(name + ' — enter amount ($):', '');
-        if (raw === null) return; // cancelled
-        var price = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
-        if (!(price > 0)) {
-            if (typeof toastr !== 'undefined') toastr.error('Enter a valid amount for ' + name);
-            return;
-        }
-        $btn.prop('disabled', true);
-        $.ajax({
-            method: 'POST',
-            url: '/sells/pos/get_manual_product_rows',
-            data: {
-                _token: $('meta[name="csrf-token"]').attr('content'),
-                products: [{
-                    product_id: 'manual',
-                    product_type: 'single',
-                    name: name,
-                    artist: '',
-                    price: price.toFixed(2),
-                    quantity: 1,
                     category_name: String(category)
                 }]
             },
