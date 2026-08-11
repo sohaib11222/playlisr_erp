@@ -1,0 +1,110 @@
+# One-shot: site-wide 500 caused by an invalid Modules/*/module.json.
+#
+# Nwidart\Modules scans every Modules/*/module.json at boot and throws
+# InvalidJsonException on the first one that fails to parse, which 500s
+# every route. A stray, untracked module directory (e.g. Modules/BadModule)
+# with malformed JSON does exactly this, and a normal deploy does NOT remove
+# it (deploy.sh only `git clean`s bootstrap/cache/, and reset --hard ignores
+# untracked dirs).
+#
+# This workflow finds each Modules/*/module.json that fails to parse and
+# MOVES the offending module directory aside into a timestamped backup
+# OUTSIDE Modules/ (reversible — nothing is deleted), then clears caches and
+# HTTP smoke-tests. Run: Actions -> "Fix bad module" -> Run workflow.
+
+name: Fix bad module
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-restart
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Move aside invalid module.json dirs, clear caches, smoke test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            DEPLOY_PATH=/www/playlist.nivessa.com/app
+            cd "$DEPLOY_PATH" || { echo "cannot cd $DEPLOY_PATH"; exit 1; }
+            STAMP=$(date +%Y%m%d-%H%M%S)
+            BACKUP_DIR="$DEPLOY_PATH/storage/bad-modules-$STAMP"
+
+            echo "=== current Modules/ contents ==="
+            ls -la Modules/ 2>&1
+            echo
+
+            echo "=== validating each Modules/*/module.json ==="
+            moved=0
+            for f in Modules/*/module.json; do
+              [ -e "$f" ] || continue
+              if php -r 'json_decode(file_get_contents($argv[1])); exit(json_last_error() === JSON_ERROR_NONE ? 0 : 1);' "$f"; then
+                echo "  OK    $f"
+              else
+                dir=$(dirname "$f")
+                echo "  BAD   $f  -> moving $dir aside"
+                echo "        content was:"; cat "$f" 2>&1 | sed 's/^/          /'
+                mkdir -p "$BACKUP_DIR"
+                mv "$dir" "$BACKUP_DIR/" && moved=$((moved+1))
+              fi
+            done
+            echo "moved $moved bad module dir(s)"
+            [ "$moved" -gt 0 ] && echo "backup at: $BACKUP_DIR"
+            echo
+
+            echo "=== also handle a module dir with NO module.json (scanner still errors) ==="
+            for d in Modules/*/; do
+              [ -d "$d" ] || continue
+              if [ ! -e "${d}module.json" ]; then
+                echo "  NO module.json in $d -> moving aside"
+                mkdir -p "$BACKUP_DIR"
+                mv "$d" "$BACKUP_DIR/" && moved=$((moved+1))
+              fi
+            done
+            echo
+
+            echo "=== clearing module + boot caches ==="
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php \
+                  bootstrap/cache/events.php bootstrap/cache/connector_module.php \
+                  bootstrap/cache/config.php bootstrap/cache/routes-v7.php 2>&1
+            php artisan optimize:clear 2>&1 | head -12
+            echo
+
+            echo "=== HTTP smoke test (from server) ==="
+            for url in http://localhost/ http://localhost/pos/recent-feed; do
+              echo "--- $url ---"
+              curl -ks -o /dev/null -w "HTTP %{http_code} · %{time_total}s\n" -m 15 "$url"
+            done
+
+      - name: Smoke test from outside
+        run: |
+          echo "=== from GitHub runner (public) ==="
+          for url in https://playlist.nivessa.com/ https://playlist.nivessa.com/pos/recent-feed; do
+            echo "--- $url ---"
+            curl -ks -o /dev/null -w "HTTP %{http_code} · %{time_total}s\n" -m 20 "$url"
+          done
