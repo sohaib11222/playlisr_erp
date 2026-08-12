@@ -415,6 +415,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/events/{id}/edit', 'EventsController@edit')->name('events.edit');
     Route::post('/events/{id}', 'EventsController@update')->name('events.update');
     Route::post('/events/{id}/prep', 'EventsController@updatePrep')->name('events.prep');
+    // Typable per-store order notes on the "What to order" list (what was
+    // ordered + tracking number). Stored on the event JSON, no migration.
+    Route::post('/events/{id}/order-notes', 'EventsController@orderNotesSave')->name('events.orderNotes');
     Route::post('/events/{id}/delete', 'EventsController@destroy')->name('events.destroy');
     Route::post('/events-import', 'EventsController@import')->name('events.import');
     // Set the website bridge key from the UI (stored in storage/app, not .env)

@@ -54,4 +54,24 @@ body.pos-v2 .prep-list li.is-done .lbl { color:#9a948a; text-decoration:line-thr
 body.pos-v2 .prep-note { flex:1 1 240px; max-width:320px; border:1px solid var(--pos-line-2); border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit; }
 body.pos-v2 a.ev-edit { color: var(--pos-accent-text); font-weight:700; text-decoration:none; }
 body.pos-v2 a.ev-edit:hover { text-decoration:underline; }
+/* Store colors — Hollywood vs Pico, used to tell the two stores apart in the
+   "What to order" list and the Ordered column. */
+body.pos-v2 .ev-store-hollywood { color:#146c5f; }
+body.pos-v2 .ev-store-pico { color:#7a3ea0; }
+/* "What to order" — one grouped block per event, a colored line per store with
+   a typable note (what was ordered + tracking number). */
+body.pos-v2 .ev-order-grp { padding:14px 0; border-bottom:1px solid var(--pos-line); }
+body.pos-v2 .ev-order-grp:last-of-type { border-bottom:none; padding-bottom:0; }
+body.pos-v2 .ev-order-title { font-weight:700; font-size:15px; margin-bottom:8px; }
+body.pos-v2 .ev-order-line { display:flex; gap:14px; align-items:flex-start; margin-bottom:9px; flex-wrap:wrap; }
+body.pos-v2 .ev-order-store { flex:0 0 190px; font-weight:700; font-size:14px; display:flex; align-items:center; gap:7px; padding-top:6px; }
+body.pos-v2 .ev-order-store .ev-store-dot { width:9px; height:9px; border-radius:50%; background:currentColor; flex:0 0 auto; }
+body.pos-v2 .ev-order-need { font-weight:600; color:#a23; font-size:13px; }
+body.pos-v2 .ev-order-done { font-weight:600; color:#2e7d32; font-size:12px; }
+body.pos-v2 .ev-order-note { flex:1 1 320px; min-width:220px; border:1px solid var(--pos-line-2); border-left:3px solid var(--pos-line-2);
+  border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; resize:vertical; min-height:40px; background:#fff; color:var(--pos-ink); }
+body.pos-v2 .ev-order-note.hw { border-left-color:#146c5f; }
+body.pos-v2 .ev-order-note.pico { border-left-color:#7a3ea0; }
+body.pos-v2 .ev-order-note:focus { outline:none; box-shadow:0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .ev-order-actions { margin-top:4px; }
 </style>

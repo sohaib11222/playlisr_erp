@@ -591,13 +591,18 @@ class EventsController extends Controller
     protected function toOrderList(array $upcoming, array $storeDemand): array
     {
         $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
-        $lines = [];
+        // One entry per event (grouped), each carrying a per-store line: the
+        // shortfall to order plus the typable order-note (what was ordered +
+        // tracking) saved against that store on the event.
+        $events = [];
         foreach ($upcoming as $ev) {
             if (($ev['eventType'] ?? '') !== 'listening_party') { continue; }
             $k = self::normName($ev['name'] ?? '');
             $dem = $storeDemand[$k] ?? [];
             $ord = (array) ($ev['ordered'] ?? []);
             $locs = (array) ($ev['location'] ?? []);
+            $notes = (array) ($ev['orderNotes'] ?? []);
+            $stores = [];
             foreach ($storeLabels as $sk => $slabel) {
                 $row = (array) ($ord[$sk] ?? []);
                 $ordV = (int) ($row['indieVinyl'] ?? 0) + (int) ($row['stdVinyl'] ?? 0) + (int) ($row['deluxeVinyl'] ?? 0);
@@ -613,16 +618,27 @@ class EventsController extends Controller
                     if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
                     if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
                 }
-                if ($needs) {
-                    $lines[] = [
-                        'event' => $ev['name'] ?? '(untitled)',
-                        'store' => $slabel,
-                        'need'  => implode(', ', $needs),
+                $note = trim((string) ($notes[$sk] ?? ''));
+                // Show a store line when it has a shortfall OR already carries an
+                // order-note (so a note stays visible after its shortfall closes).
+                if ($needs || $note !== '') {
+                    $stores[] = [
+                        'key'   => $sk,
+                        'label' => $slabel,
+                        'need'  => $needs ? implode(', ', $needs) : '',
+                        'note'  => $note,
                     ];
                 }
             }
+            if ($stores) {
+                $events[] = [
+                    'id'     => $ev['id'] ?? '',
+                    'event'  => $ev['name'] ?? '(untitled)',
+                    'stores' => $stores,
+                ];
+            }
         }
-        return $lines;
+        return $events;
     }
 
     /** Normalize an event name for case-insensitive count matching. */
@@ -1596,6 +1612,40 @@ class EventsController extends Controller
         self::save($business_id, $data);
 
         return redirect()->route('events.edit', ['id' => $id])->with('status', 'Prep updated.');
+    }
+
+    /**
+     * Save the per-store order notes on the "What to order" list — a free-text
+     * jot of what was ordered for each store and the tracking number. Stored on
+     * the event JSON as orderNotes => ['hollywood' => '...', 'pico' => '...'].
+     */
+    public function orderNotesSave(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $this->businessId($request);
+        $data = self::load($business_id);
+        if (!isset($data['items'][$id])) {
+            return redirect()->route('events.index')->with('error', 'Event not found.');
+        }
+
+        $notes = (array) ($data['items'][$id]['orderNotes'] ?? []);
+        $incoming = (array) $request->input('note', []);
+        foreach (['hollywood', 'pico'] as $sk) {
+            if (array_key_exists($sk, $incoming)) {
+                $notes[$sk] = mb_substr(trim((string) $incoming[$sk]), 0, 2000);
+            }
+        }
+        // Drop empty entries so the store line only lingers when there's a note.
+        $notes = array_filter($notes, fn($v) => trim((string) $v) !== '');
+
+        $data['items'][$id]['orderNotes'] = $notes ?: new \stdClass();
+        $data['items'][$id]['updatedAt']  = date('c');
+
+        self::save($business_id, $data);
+
+        return redirect()->route('events.index')->with('status', 'Order notes saved.');
     }
 
     /**

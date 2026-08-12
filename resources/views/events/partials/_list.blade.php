@@ -46,14 +46,17 @@
         $picoV = $sc ? (int) ($sc['pico']['vinyl'] ?? 0) : 0;
         $picoC = $sc ? (int) ($sc['pico']['cd'] ?? 0) : 0;
         $picoA = $sc ? (int) ($sc['pico']['attending'] ?? 0) : 0;
-        $vinylByStore = ($sc && ($isMultiStore || $picoV > 0)) ? trim('HW ' . (int) $sc['hollywood']['vinyl'] . ' · Pico ' . $picoV) : null;
-        $cdByStore = ($sc && ($isMultiStore || $picoC > 0)) ? trim('HW ' . (int) $sc['hollywood']['cd'] . ' · Pico ' . $picoC) : null;
+        // Hollywood vs Pico get two distinct colors so the two stores are easy
+        // to tell apart at a glance in every per-store breakdown line.
+        $byStore = fn($hw, $pico) => '<span class="ev-store-hollywood">HW ' . (int) $hw . '</span> · <span class="ev-store-pico">Pico ' . (int) $pico . '</span>';
+        $vinylByStore = ($sc && ($isMultiStore || $picoV > 0)) ? $byStore($sc['hollywood']['vinyl'] ?? 0, $picoV) : null;
+        $cdByStore = ($sc && ($isMultiStore || $picoC > 0)) ? $byStore($sc['hollywood']['cd'] ?? 0, $picoC) : null;
         // Attending is the headline metric — always break it out by store when
         // there are RSVPs, so a Hollywood-only party (Madonna) still shows
         // "Pico 0" rather than a bare total. (Vinyl/CD splits stay hidden when
         // Pico is empty to avoid noise on the detail columns.)
         $attendByStore = $sc
-          ? trim('HW ' . (int) ($sc['hollywood']['attending'] ?? 0) . ' · Pico ' . $picoA)
+          ? $byStore($sc['hollywood']['attending'] ?? 0, $picoA)
           : null;
         $takingPreorders = !empty($ev['preorderEnabled']);
         // Ordered totals across stores: vinyl = indie+std+deluxe, plus cassette
@@ -114,13 +117,13 @@
         <td>{{ $evStreetDate }}</td>
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td class="ev-meta">{{ $eventLead !== '' ? $eventLead : '—' }}</td>
-        <td style="white-space:nowrap;">{{ $rsvpCount === null ? '—' : $rsvpCount }}@if($attendByStore)<div class="ev-meta">{{ $attendByStore }}</div>@endif</td>
-        <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{{ $vinylByStore }}</div>@endif</td>
-        <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{{ $cdByStore }}</div>@endif</td>
+        <td style="white-space:nowrap;">{{ $rsvpCount === null ? '—' : $rsvpCount }}@if($attendByStore)<div class="ev-meta">{!! $attendByStore !!}</div>@endif</td>
+        <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{!! $vinylByStore !!}</div>@endif</td>
+        <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{!! $cdByStore !!}</div>@endif</td>
         <td>
           @if(count($orderedLines))
             @foreach($orderedLines as $store => $line)
-              <div style="font-size:12px;line-height:1.5;white-space:nowrap;"><strong>{{ $store }}:</strong> {{ $line }}</div>
+              <div style="font-size:12px;line-height:1.5;white-space:nowrap;"><strong class="{{ $store === 'HW' ? 'ev-store-hollywood' : 'ev-store-pico' }}">{{ $store }}:</strong> {{ $line }}</div>
             @endforeach
           @else
             <span class="ev-meta">—</span>
