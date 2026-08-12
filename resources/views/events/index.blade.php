@@ -39,28 +39,21 @@
   @if(!empty($toOrder))
     <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
       <h2 style="margin-top:0;">What to order</h2>
-      <p class="sub" style="margin:0 0 4px;">Gaps between customer demand (RSVP buy-interest) and what you've ordered, at each hosting store. A store that isn't hosting carries none of the title, so it's never listed here.</p>
-      <p class="sub" style="margin:0 0 10px;"><span class="ev-store-hollywood" style="font-weight:700;">Hollywood</span> and <span class="ev-store-pico" style="font-weight:700;">Pico</span> are grouped under each event. Type what you ordered and the tracking number per store, then Save.</p>
+      <p class="sub" style="margin:0 0 10px;">Demand vs. what you've ordered at each hosting store. Type what you ordered and the tracking number, then Save.</p>
       @foreach($toOrder as $t)
         <form method="POST" action="{{ route('events.orderNotes', ['id' => $t['id']]) }}" class="ev-order-grp">
           {{ csrf_field() }}
           <div class="ev-order-title">{{ $t['event'] }}</div>
           @foreach($t['stores'] as $s)
             <div class="ev-order-line">
-              <div class="ev-order-store ev-store-{{ $s['key'] }}">
-                <span class="ev-store-dot"></span>{{ $s['label'] }}
-                @if($s['need'])
-                  <span class="ev-order-need">{{ $s['need'] }}</span>
-                @else
-                  <span class="ev-order-done">ordered</span>
-                @endif
+              <div class="ev-order-store">
+                <b class="ev-store-{{ $s['key'] }}">{{ $s['label'] }}</b>@if($s['need']) <span class="ev-order-need">{{ $s['need'] }}</span>@endif
               </div>
-              <textarea name="note[{{ $s['key'] }}]" rows="2"
-                        class="ev-order-note {{ $s['key'] === 'hollywood' ? 'hw' : 'pico' }}"
-                        placeholder="What you ordered + tracking #">{{ $s['note'] }}</textarea>
+              <input type="text" name="note[{{ $s['key'] }}]" class="ev-order-note"
+                     value="{{ $s['note'] }}" placeholder="What we ordered + tracking #">
             </div>
           @endforeach
-          <div class="ev-order-actions"><button type="submit" class="btn-accent">Save notes</button></div>
+          <div class="ev-order-actions"><button type="submit" class="btn-accent">Save</button></div>
         </form>
       @endforeach
     </div>
