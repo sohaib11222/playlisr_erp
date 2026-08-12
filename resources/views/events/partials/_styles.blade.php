@@ -63,13 +63,15 @@ body.pos-v2 .ev-store-pico { color:#7a3ea0; }
 body.pos-v2 .ev-order-grp { padding:12px 0; border-bottom:1px solid var(--pos-line); }
 body.pos-v2 .ev-order-grp:last-of-type { border-bottom:none; padding-bottom:0; }
 body.pos-v2 .ev-order-title { font-weight:700; font-size:15px; margin-bottom:8px; }
-body.pos-v2 .ev-order-line { display:flex; gap:12px; align-items:center; margin-bottom:7px; flex-wrap:wrap; }
-body.pos-v2 .ev-order-store { flex:0 0 170px; font-size:13.5px; }
+body.pos-v2 .ev-order-date { color:#8a8070; font-weight:600; font-size:12.5px; margin-left:9px; }
+body.pos-v2 .ev-order-stores { display:flex; gap:26px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+body.pos-v2 .ev-order-store-grp { display:flex; gap:10px; align-items:center; }
+body.pos-v2 .ev-order-store { font-size:13.5px; white-space:nowrap; }
 body.pos-v2 .ev-order-store b { font-weight:700; }
 body.pos-v2 .ev-order-need { color:#a23; font-weight:600; font-size:12.5px; }
-body.pos-v2 .ev-order-note { flex:1 1 300px; min-width:200px; border:1px solid var(--pos-line-2);
+body.pos-v2 .ev-order-note { width:210px; border:1px solid var(--pos-line-2);
   border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; background:#fff; color:var(--pos-ink); }
-body.pos-v2 .ev-order-note.ev-order-track { flex:0 1 190px; min-width:140px; }
+body.pos-v2 .ev-order-note.ev-order-track { width:130px; }
 body.pos-v2 .ev-order-note:focus { outline:none; border-color:var(--pos-accent-deep); box-shadow:0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 .ev-order-actions { margin-top:2px; }
 </style>

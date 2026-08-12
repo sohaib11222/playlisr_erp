@@ -642,9 +642,11 @@ class EventsController extends Controller
             }
             if ($stores) {
                 $events[] = [
-                    'id'     => $ev['id'] ?? '',
-                    'event'  => $ev['name'] ?? '(untitled)',
-                    'stores' => $stores,
+                    'id'         => $ev['id'] ?? '',
+                    'event'      => $ev['name'] ?? '(untitled)',
+                    'date'       => $ev['date'] ?? '',
+                    'streetDate' => $ev['streetDate'] ?? '',
+                    'stores'     => $stores,
                 ];
             }
         }
