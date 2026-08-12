@@ -69,6 +69,7 @@ body.pos-v2 .ev-order-store b { font-weight:700; }
 body.pos-v2 .ev-order-need { color:#a23; font-weight:600; font-size:12.5px; }
 body.pos-v2 .ev-order-note { flex:1 1 300px; min-width:200px; border:1px solid var(--pos-line-2);
   border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; background:#fff; color:var(--pos-ink); }
+body.pos-v2 .ev-order-note.ev-order-track { flex:0 1 190px; min-width:140px; }
 body.pos-v2 .ev-order-note:focus { outline:none; border-color:var(--pos-accent-deep); box-shadow:0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 .ev-order-actions { margin-top:2px; }
 </style>

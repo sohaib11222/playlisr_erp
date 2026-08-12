@@ -49,8 +49,10 @@
               <div class="ev-order-store">
                 <b class="ev-store-{{ $s['key'] }}">{{ $s['label'] }}</b>@if($s['need']) <span class="ev-order-need">{{ $s['need'] }}</span>@endif
               </div>
-              <input type="text" name="note[{{ $s['key'] }}]" class="ev-order-note"
-                     value="{{ $s['note'] }}" placeholder="What we ordered + tracking #">
+              <input type="text" name="note[{{ $s['key'] }}][ordered]" class="ev-order-note"
+                     value="{{ $s['ordered'] }}" placeholder="What we ordered">
+              <input type="text" name="note[{{ $s['key'] }}][tracking]" class="ev-order-note ev-order-track"
+                     value="{{ $s['tracking'] }}" placeholder="Tracking #">
             </div>
           @endforeach
           <div class="ev-order-actions"><button type="submit" class="btn-accent">Save</button></div>

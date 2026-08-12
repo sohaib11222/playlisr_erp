@@ -618,15 +618,25 @@ class EventsController extends Controller
                     if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
                     if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
                 }
-                $note = trim((string) ($notes[$sk] ?? ''));
-                // Show a store line when it has a shortfall OR already carries an
-                // order-note (so a note stays visible after its shortfall closes).
-                if ($needs || $note !== '') {
+                // Note is stored per store as ['ordered' => ..., 'tracking' => ...].
+                // Tolerate the old single-string shape (treat it as "ordered").
+                $noteRaw = $notes[$sk] ?? '';
+                if (is_array($noteRaw)) {
+                    $ordered  = trim((string) ($noteRaw['ordered'] ?? ''));
+                    $tracking = trim((string) ($noteRaw['tracking'] ?? ''));
+                } else {
+                    $ordered  = trim((string) $noteRaw);
+                    $tracking = '';
+                }
+                // Show a store line when it has a shortfall OR already carries a
+                // note (so a note stays visible after its shortfall closes).
+                if ($needs || $ordered !== '' || $tracking !== '') {
                     $stores[] = [
-                        'key'   => $sk,
-                        'label' => $slabel,
-                        'need'  => $needs ? implode(', ', $needs) : '',
-                        'note'  => $note,
+                        'key'      => $sk,
+                        'label'    => $slabel,
+                        'need'     => $needs ? implode(', ', $needs) : '',
+                        'ordered'  => $ordered,
+                        'tracking' => $tracking,
                     ];
                 }
             }
@@ -1633,12 +1643,19 @@ class EventsController extends Controller
         $notes = (array) ($data['items'][$id]['orderNotes'] ?? []);
         $incoming = (array) $request->input('note', []);
         foreach (['hollywood', 'pico'] as $sk) {
-            if (array_key_exists($sk, $incoming)) {
-                $notes[$sk] = mb_substr(trim((string) $incoming[$sk]), 0, 2000);
+            if (!array_key_exists($sk, $incoming)) {
+                continue;
+            }
+            $row = (array) $incoming[$sk];
+            $ordered  = mb_substr(trim((string) ($row['ordered'] ?? '')), 0, 2000);
+            $tracking = mb_substr(trim((string) ($row['tracking'] ?? '')), 0, 500);
+            // Drop the entry entirely when both fields are blank.
+            if ($ordered === '' && $tracking === '') {
+                unset($notes[$sk]);
+            } else {
+                $notes[$sk] = ['ordered' => $ordered, 'tracking' => $tracking];
             }
         }
-        // Drop empty entries so the store line only lingers when there's a note.
-        $notes = array_filter($notes, fn($v) => trim((string) $v) !== '');
 
         $data['items'][$id]['orderNotes'] = $notes ?: new \stdClass();
         $data['items'][$id]['updatedAt']  = date('c');
