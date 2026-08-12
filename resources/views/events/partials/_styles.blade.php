@@ -69,6 +69,7 @@ body.pos-v2 .ev-order-store-grp { display:flex; gap:10px; align-items:center; }
 body.pos-v2 .ev-order-store { font-size:13.5px; white-space:nowrap; }
 body.pos-v2 .ev-order-store b { font-weight:700; }
 body.pos-v2 .ev-order-need { color:#a23; font-weight:600; font-size:12.5px; }
+body.pos-v2 .ev-order-na { color:#9a948a; font-style:italic; font-size:12.5px; }
 body.pos-v2 .ev-order-note { width:210px; border:1px solid var(--pos-line-2);
   border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; background:#fff; color:var(--pos-ink); }
 body.pos-v2 .ev-order-note.ev-order-track { width:130px; }

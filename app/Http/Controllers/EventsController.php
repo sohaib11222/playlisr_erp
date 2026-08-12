@@ -603,21 +603,27 @@ class EventsController extends Controller
             $locs = (array) ($ev['location'] ?? []);
             $notes = (array) ($ev['orderNotes'] ?? []);
             $stores = [];
+            $anyActionable = false;
             foreach ($storeLabels as $sk => $slabel) {
+                $hosting = in_array($sk, $locs, true);
+
+                // A store that isn't hosting carries none of the title — show it
+                // as not eligible (no fields) so it's clear it was considered.
+                if (!$hosting) {
+                    $stores[] = ['key' => $sk, 'label' => $slabel, 'eligible' => false];
+                    continue;
+                }
+
                 $row = (array) ($ord[$sk] ?? []);
                 $ordV = (int) ($row['indieVinyl'] ?? 0) + (int) ($row['stdVinyl'] ?? 0) + (int) ($row['deluxeVinyl'] ?? 0);
                 $ordC = (int) ($row['stdCd'] ?? 0) + (int) ($row['deluxeCd'] ?? 0);
                 $wantV = (int) ($dem[$sk]['vinyl'] ?? 0);
                 $wantC = (int) ($dem[$sk]['cd'] ?? 0);
-                $hosting = in_array($sk, $locs, true);
 
-                // Only hosting stores need stock; a non-hosting store carries 0
-                // of an event title, so there's nothing to order there.
                 $needs = [];
-                if ($hosting) {
-                    if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
-                    if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
-                }
+                if ($wantV > $ordV) { $needs[] = ($wantV - $ordV) . ' vinyl'; }
+                if ($wantC > $ordC) { $needs[] = ($wantC - $ordC) . ' CD'; }
+
                 // Note is stored per store as ['ordered' => ..., 'tracking' => ...].
                 // Tolerate the old single-string shape (treat it as "ordered").
                 $noteRaw = $notes[$sk] ?? '';
@@ -628,19 +634,20 @@ class EventsController extends Controller
                     $ordered  = trim((string) $noteRaw);
                     $tracking = '';
                 }
-                // Show a store line when it has a shortfall OR already carries a
-                // note (so a note stays visible after its shortfall closes).
-                if ($needs || $ordered !== '' || $tracking !== '') {
-                    $stores[] = [
-                        'key'      => $sk,
-                        'label'    => $slabel,
-                        'need'     => $needs ? implode(', ', $needs) : '',
-                        'ordered'  => $ordered,
-                        'tracking' => $tracking,
-                    ];
-                }
+                if ($needs || $ordered !== '' || $tracking !== '') { $anyActionable = true; }
+
+                $stores[] = [
+                    'key'      => $sk,
+                    'label'    => $slabel,
+                    'eligible' => true,
+                    'need'     => $needs ? implode(', ', $needs) : '',
+                    'ordered'  => $ordered,
+                    'tracking' => $tracking,
+                ];
             }
-            if ($stores) {
+            // Only list an event when a hosting store actually has something to
+            // order (or an existing note) — otherwise it's not on the worklist.
+            if ($anyActionable) {
                 $events[] = [
                     'id'         => $ev['id'] ?? '',
                     'event'      => $ev['name'] ?? '(untitled)',
