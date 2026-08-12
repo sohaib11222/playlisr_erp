@@ -4785,6 +4785,18 @@ class SellPosController extends Controller
 
                 DB::commit();
 
+                // Nivessa (real-time stock): the sale is committed, so push its
+                // stock changes to nivessa.com now — the storefront updates in
+                // seconds instead of on the website's nightly POS stock sync.
+                // Fire-and-forget with a short timeout; a slow/down website never
+                // blocks the register, and the nightly sync is the backstop if a
+                // push is missed. Only FINAL sells push (drafts don't move stock).
+                try {
+                    (new \App\Services\NivessaStockNotifier())->notifySale($transaction);
+                } catch (\Throwable $e) {
+                    \Log::info('nivessa_stock_push_failed (store): ' . $e->getMessage());
+                }
+
                 // Nivessa (Jon 2026-07-03): the sale is COMMITTED now.
                 // Everything below — receipt render, print redirect,
                 // whatsapp link — is post-commit garnish. Previously a
@@ -5546,6 +5558,15 @@ class SellPosController extends Controller
                 $this->transactionUtil->activityLog($transaction, 'edited', $transaction_before);
 
                 DB::commit();
+
+                // Nivessa (real-time stock): a sale edit can change stock — push
+                // the current lines to nivessa.com so the storefront reflects it
+                // in seconds. Fire-and-forget; nightly sync is the backstop.
+                try {
+                    (new \App\Services\NivessaStockNotifier())->notifySale($transaction);
+                } catch (\Throwable $e) {
+                    \Log::info('nivessa_stock_push_failed (update): ' . $e->getMessage());
+                }
 
                 if ($request->input('is_save_and_print') == 1) {
                     $url = $this->transactionUtil->getInvoiceUrl($id, $business_id);
