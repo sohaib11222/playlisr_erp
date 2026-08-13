@@ -336,18 +336,41 @@ body.help-v2 .help-article-body ol,
 body.help-v2 .help-article-body ul { padding-left: 26px; margin: 0 0 14px; }
 body.help-v2 .help-article-body li { margin-bottom: 7px; }
 body.help-v2 .help-article-body a { color: #1a73e8; }
+/* "Every training guide" grouped into labelled sections */
+body.help-v2 .help-article-body .help-guide-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 20px 28px;
+    margin: 4px 0 14px;
+}
+body.help-v2 .help-article-body .help-guide-group h3 {
+    margin: 0 0 8px;
+    padding-bottom: 6px;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6b5b4f;
+    border-bottom: 1px solid #eee4cf;
+}
 body.help-v2 .help-article-body ul.help-guide-links {
-    columns: 2;
-    column-gap: 30px;
-    padding-left: 20px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
-body.help-v2 .help-article-body ul.help-guide-links li {
-    break-inside: avoid;
-    margin-bottom: 9px;
-}
-@media (max-width: 640px) {
-    body.help-v2 .help-article-body ul.help-guide-links { columns: 1; }
-}
+body.help-v2 .help-article-body ul.help-guide-links li { margin-bottom: 6px; }
+
+/* Readability: the global brand rule paints every content link tan
+   (--nv-accent-text, low contrast on cream). Force dark, high-contrast
+   link text on the help pages only. */
+body.help-v2 .help-toc-link,
+body.help-v2 .help-toc-link:hover,
+body.help-v2 .help-toc-link.is-active,
+body.help-v2 .help-article-link,
+body.help-v2 .help-article-title { color: #1f2630 !important; }
+body.help-v2 .help-toc-link:hover { color: #1a73e8 !important; }
+body.help-v2 .help-article-body a { color: #1a5fb4 !important; text-decoration: underline; }
+body.help-v2 .help-article-body a:hover { color: #12467f !important; }
+body.help-v2 .help-article-body .help-critical a { color: #fff !important; }
 body.help-v2 .help-article-body pre.help-template {
     background: #fbf8f0;
     border: 1px solid #e7e0cf;

@@ -1704,7 +1704,7 @@ HTML,
     <li><strong>Sling</strong> runs scheduling. Staff claim shifts and you (or Fatteen) approve. Time off needs 2 weeks' notice with the shift marked available; trades happen in-app with manager approval.</li>
     <li><strong>Sick leave (California):</strong> 1 hour per 30 worked, usable after 90 days, up to 24 hours per year, capped at 48 accrued.</li>
     <li><strong>Roles on the floor:</strong> Front Desk (register, customers, listing), Shipping (online orders), Product and Floor Lead (pricing, organizing, restocking), Photo Upload (Discogs listing), Moving Shift (between stores/storage), Inventory Check (counts).</li>
-    <li><strong>Monthly 1:1 check-ins:</strong> sit down with each person for about an hour every month, then send a short report to Jon and Sarah. Full guide and template: <a href="/help/monthly-1-on-1-checkin" target="_blank">Monthly 1:1 Check-in</a>.</li>
+    <li><strong>Weekly manager report:</strong> every week, send Jon and Sarah a short report on how the team is doing, what the store needs, what you are handling, and what you need help with. Template: <a href="/help/weekly-manager-report" target="_blank">Weekly Manager Report</a>.</li>
 </ul>
 
 <hr>
@@ -1744,37 +1744,77 @@ HTML,
 </ul>
 
 <h2>Every training guide</h2>
-<p>These are the individual guides behind this handbook - what you train the team on. Open any one for the full detail.</p>
-<ul class="help-guide-links">
-    <li><a href="/help/sales-training" target="_blank">Sales Training</a></li>
-    <li><a href="/help/customer-service-basics" target="_blank">Customer Service Basics</a></li>
-    <li><a href="/help/floor-sales-lead" target="_blank">Floor Sales Lead</a></li>
-    <li><a href="/help/monthly-1-on-1-checkin" target="_blank">Monthly 1:1 Check-in</a></li>
-    <li><a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing Up a Customer</a></li>
-    <li><a href="/help/store-credit" target="_blank">Store Credit</a></li>
-    <li><a href="/help/consignment" target="_blank">Consignment</a></li>
-    <li><a href="/help/buy-collection-from-customer" target="_blank">Buying a Collection</a></li>
-    <li><a href="/help/receive-ams-shipment" target="_blank">Receiving an AMS Shipment</a></li>
-    <li><a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a></li>
-    <li><a href="/help/list-on-discogs" target="_blank">Listing on Discogs</a></li>
-    <li><a href="/help/photo-upload-fl-bins" target="_blank">Photo Upload (FL Bins)</a></li>
-    <li><a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a></li>
-    <li><a href="/help/ship-discogs-order" target="_blank">Shipping a Discogs Order</a></li>
-    <li><a href="/help/whatnot-orders" target="_blank">Whatnot Orders</a></li>
-    <li><a href="/help/discogs-messages-and-returns" target="_blank">Discogs Messages and Returns</a></li>
-    <li><a href="/help/opening-checklist" target="_blank">Opening Checklist</a></li>
-    <li><a href="/help/closing-checklist" target="_blank">Closing Checklist</a></li>
-    <li><a href="/help/floor-lead-checklist" target="_blank">Floor Lead Checklist</a></li>
-    <li><a href="/help/shift-notes" target="_blank">After-Shift Notes</a></li>
-    <li><a href="/help/shifts-and-sling" target="_blank">Shifts and Sling</a></li>
-    <li><a href="/help/hosting-events" target="_blank">Hosting Events</a></li>
-    <li><a href="/help/safety-and-suspicious-customers" target="_blank">Safety and Suspicious Customers</a></li>
-    <li><a href="/help/code-of-conduct" target="_blank">Code of Conduct</a></li>
-    <li><a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a></li>
-    <li><a href="/help/sick-leave-and-benefits" target="_blank">Sick Leave</a></li>
-    <li><a href="/help/computer-or-printer-issues" target="_blank">When the Computer or Printer Breaks</a></li>
-    <li><a href="/help/filming-food-trucks-restroom" target="_blank">Filming, Food Trucks and Restroom</a></li>
-</ul>
+<p>These are the individual guides behind this handbook, grouped by area - what you train the team on. Open any one for the full detail.</p>
+<div class="help-guide-groups">
+    <div class="help-guide-group">
+        <h3>Selling &amp; customers</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/sales-training" target="_blank">Sales Training</a></li>
+            <li><a href="/help/customer-service-basics" target="_blank">Customer Service Basics</a></li>
+            <li><a href="/help/floor-sales-lead" target="_blank">Floor Sales Lead</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Register &amp; payments</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/pos-ringing-up-a-customer" target="_blank">Ringing Up a Customer</a></li>
+            <li><a href="/help/store-credit" target="_blank">Store Credit</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Buying &amp; consignment</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/buy-collection-from-customer" target="_blank">Buying a Collection</a></li>
+            <li><a href="/help/consignment" target="_blank">Consignment</a></li>
+            <li><a href="/help/receive-ams-shipment" target="_blank">Receiving an AMS Shipment</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Pricing &amp; listing</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/pricing-in-store" target="_blank">Pricing for the Floor</a></li>
+            <li><a href="/help/list-on-discogs" target="_blank">Listing on Discogs</a></li>
+            <li><a href="/help/photo-upload-fl-bins" target="_blank">Photo Upload (FL Bins)</a></li>
+            <li><a href="/help/cataloging-older-inventory" target="_blank">Cataloging Older Inventory</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Online orders &amp; shipping</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/ship-discogs-order" target="_blank">Shipping a Discogs Order</a></li>
+            <li><a href="/help/whatnot-orders" target="_blank">Whatnot Orders</a></li>
+            <li><a href="/help/discogs-messages-and-returns" target="_blank">Discogs Messages and Returns</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Opening, closing &amp; floor</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/opening-checklist" target="_blank">Opening Checklist</a></li>
+            <li><a href="/help/closing-checklist" target="_blank">Closing Checklist</a></li>
+            <li><a href="/help/floor-lead-checklist" target="_blank">Floor Lead Checklist</a></li>
+            <li><a href="/help/shift-notes" target="_blank">After-Shift Notes</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>People &amp; scheduling</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/weekly-manager-report" target="_blank">Weekly Manager Report</a></li>
+            <li><a href="/help/shifts-and-sling" target="_blank">Shifts and Sling</a></li>
+            <li><a href="/help/hosting-events" target="_blank">Hosting Events</a></li>
+        </ul>
+    </div>
+    <div class="help-guide-group">
+        <h3>Safety, conduct &amp; policy</h3>
+        <ul class="help-guide-links">
+            <li><a href="/help/safety-and-suspicious-customers" target="_blank">Safety and Suspicious Customers</a></li>
+            <li><a href="/help/code-of-conduct" target="_blank">Code of Conduct</a></li>
+            <li><a href="/help/earning-at-nivessa" target="_blank">Earning at Nivessa</a></li>
+            <li><a href="/help/sick-leave-and-benefits" target="_blank">Sick Leave</a></li>
+            <li><a href="/help/computer-or-printer-issues" target="_blank">When the Computer or Printer Breaks</a></li>
+            <li><a href="/help/filming-food-trucks-restroom" target="_blank">Filming, Food Trucks and Restroom</a></li>
+        </ul>
+    </div>
+</div>
 
 <div class="help-tip">
     Something missing? Add it yourself at <a href="/admin/help-knowledge" target="_blank">Store Knowledge</a> or Slack Sarah. This handbook should grow as you learn what a new hire needs.
@@ -1782,99 +1822,68 @@ HTML,
 HTML,
             ],
             [
-                'slug' => 'monthly-1-on-1-checkin',
-                'title' => 'Monthly 1:1 Check-in (Manager Tool)',
+                'slug' => 'weekly-manager-report',
+                'title' => 'Weekly Manager Report',
                 'section' => 'Store Manager',
                 'sort' => 2,
-                'summary' => 'How to run a one-hour check-in with each team member, plus the report you send Jon and Sarah after.',
+                'summary' => 'The weekly check-in you send Jon and Sarah: how the team is doing, what the store needs, what you are handling, and what you need help with.',
                 'page_keys' => ['home', 'dashboard'],
                 'body_html' => <<<'HTML'
-<p>Once a month, sit down one-on-one with each person on your team for about an hour. This is a real check-in, not a quick hallway chat: how they are doing, what is working, what is hard, and where they want to grow. After each one you send a short report to <strong>Jon and Sarah</strong> so we all know where the team stands.</p>
+<p>Every week, send Jon and Sarah a short report on how the store and team are doing. It keeps us in the loop, shows what you have already handled, and flags what you need from us early - before a small thing turns into a big one.</p>
 
 <div class="help-must-do">
-    <strong>Every person, every month, about an hour each.</strong> Book it during a slow shift with coverage on the floor, somewhere you can talk without customers listening. Give them a heads-up the day before so they can think about what they want to raise.
+    <strong>One report a week, sent to Jon and Sarah.</strong> Send it at the end of your week - Sunday close works well. Keep it short: a few lines per section. If something is urgent, do not wait for the report - message us right away.
 </div>
 
-<h2>Why we do this</h2>
+<h2>What it covers</h2>
+<p>Four things, every week:</p>
 <ul>
-    <li>People do better when someone is paying attention to them, not just their numbers.</li>
-    <li>You catch training gaps, frustrations, and small problems while they are still small.</li>
-    <li>Jon and Sarah get a real read on the team from the person who works next to them every day.</li>
+    <li><strong>How the team is doing</strong> - who is doing well, who needs a nudge or retraining.</li>
+    <li><strong>What the store needs</strong> - stock, supplies, repairs, displays, staffing gaps.</li>
+    <li><strong>What you are handling yourself</strong> - what you own this week, no action needed from us.</li>
+    <li><strong>What you need help with</strong> - decisions, approvals, big buys, anything above your call.</li>
 </ul>
 
-<h2>Before the 1:1</h2>
+<h2>Before you write it</h2>
 <ul>
-    <li>Pull their recent numbers - sales, closes, and listings from <a href="/my-earnings" target="_blank">My Earnings</a> and the daily totals - so you can talk specifics, not vibes.</li>
-    <li>Skim their recent shift notes and anything that came up on their shifts.</li>
-    <li>Write down two things they are doing well and one or two things to work on. Come in prepared.</li>
-</ul>
-
-<h2>How to run the hour</h2>
-<p>Keep it a conversation, not a lecture. A simple shape that fills an hour well:</p>
-<ol>
-    <li><strong>Open (5 min).</strong> Make it relaxed. Remind them this is their time and it is confidential up to Jon and Sarah.</li>
-    <li><strong>Their view first (15 min).</strong> Let them talk before you do. How are they feeling about the job? What is going well? What is frustrating or getting in the way?</li>
-    <li><strong>Your feedback (15 min).</strong> Specific wins first, then one or two things to improve, tied to real moments you saw. Selling, the register, buys, keeping the floor tight.</li>
-    <li><strong>Growth and training (15 min).</strong> What do they want to get better at or learn? What are they not yet cleared on - buys, opening, closing, shipping, pricing? Line up the next thing to train.</li>
-    <li><strong>Close (10 min).</strong> Agree on one or two goals for next month. Ask if there is anything they need from you, Jon, or Sarah. End on something positive.</li>
-</ol>
-
-<h2>What to cover</h2>
-<ul>
-    <li>How they are doing overall, in and outside the numbers.</li>
-    <li>Selling and the floor - strengths, and the one habit that would move them up.</li>
-    <li>The register and buys - anything shaky, any retraining needed.</li>
-    <li>Training gaps to close before the next check-in.</li>
-    <li>Schedule and availability - anything changing, time off coming up.</li>
-    <li>Any concerns: customers, coworkers, cash, safety, or conduct.</li>
-    <li>Goals for the month ahead.</li>
+    <li>Base the team section on real check-ins during the week - talk to your people on shift, do not guess.</li>
+    <li>Glance at the week's numbers in <a href="/my-earnings" target="_blank">My Earnings</a> and the daily totals so the sales line is accurate.</li>
+    <li>Walk the floor before you write "what the store needs" so nothing gets missed.</li>
 </ul>
 
 <div class="help-critical">
-    If anything about <strong>cash, honesty, safety, or harassment</strong> comes up, it goes to Jon and Sarah right away - do not wait for the written report. See Conduct in the <a href="/help/store-manager-handbook" target="_blank">Store Manager Handbook</a>.
+    Anything about <strong>cash, honesty, safety, or harassment</strong> goes to Jon and Sarah the moment it comes up - never hold it for the weekly report. See Conduct in the <a href="/help/store-manager-handbook" target="_blank">Store Manager Handbook</a>.
 </div>
 
 <h2>The report you send</h2>
-<p>Right after each 1:1, fill this in and send it to <strong>Jon and Sarah on Slack</strong>. Keep it short and honest - a few lines per section is plenty.</p>
-<pre class="help-template">NIVESSA 1:1 CHECK-IN
+<p>Fill this in and send it to <strong>Jon and Sarah on Slack</strong> each week.</p>
+<pre class="help-template">NIVESSA WEEKLY MANAGER REPORT
 
-Store:          Hollywood / Pico
-Team member:
+Store:        Hollywood / Pico
 Manager:
-Date:
-Length:
+Week of:
 
-1. How they are doing (their words)
+1. How the team is doing
+   (one line per person - doing well, needs a nudge, needs retraining)
    -
 
-2. What is working / recent wins
+2. What the store needs
+   (stock, supplies, repairs, cleaning, displays, staffing)
    -
 
-3. Where they are struggling or blocked
+3. What I am handling myself
+   (owned this week - no action needed from you)
    -
 
-4. Selling and floor - strengths and what to improve
+4. What I need help with from Jon and Sarah
+   (decisions, approvals, big buys, anything above my call)
    -
 
-5. Training gaps to close before next month
-   -
-
-6. Schedule, availability, time-off notes
-   -
-
-7. Concerns raised (customers, coworkers, cash, safety, conduct)
-   -
-
-8. Goals agreed for next month
-   -
-
-9. Anything Jon or Sarah should action
-   -
-
-Overall read:   On track / Needs support / Concern</pre>
+Sales this week vs target:
+Anything urgent:</pre>
 
 <div class="help-tip">
-    Do them around the same time each month so nobody gets skipped. If you manage a bigger team, spread them across a couple of weeks rather than cramming them all into one day.
+    Send it the same day and time each week so it becomes a habit and nothing slips. Over a few weeks, these reports show us exactly where each store stands.
 </div>
 HTML,
             ],
