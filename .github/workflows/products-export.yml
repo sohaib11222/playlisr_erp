@@ -56,15 +56,19 @@ jobs:
             ls -lh /tmp/products_export.csv
 
       - name: Copy CSV back to runner
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ steps.flags.outputs.ssh_port }}
-          source: /tmp/products_export.csv
-          target: ./out
-          strip_components: 1
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p out
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          scp -i /tmp/deploy_key -P "${{ steps.flags.outputs.ssh_port }}" \
+            -o StrictHostKeyChecking=no \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/products_export.csv" out/products_export.csv
+          rm -f /tmp/deploy_key
+          ls -lh out/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
