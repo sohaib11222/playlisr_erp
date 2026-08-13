@@ -231,11 +231,55 @@ body.help-v2 .help-empty {
 /* Show page layout */
 body.help-v2 .help-show-grid {
     display: grid;
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: 260px 1fr;
     gap: 20px;
+    align-items: start;
+}
+body.help-v2 .help-show-side {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 @media (max-width: 900px) {
     body.help-v2 .help-show-grid { grid-template-columns: 1fr; }
+    body.help-v2 .help-show-side {
+        position: static;
+        max-height: none;
+        overflow: visible;
+    }
+    body.help-v2 .help-toc { max-height: 40vh; overflow-y: auto; }
+}
+/* In-page section nav (auto-built from the article's h2 headings) */
+body.help-v2 .help-toc-card { margin-bottom: 0; }
+body.help-v2 .help-toc {
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+}
+body.help-v2 .help-toc-link {
+    display: block;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border-left: 3px solid transparent;
+    color: #4a5260;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-decoration: none;
+}
+body.help-v2 .help-toc-link:hover {
+    background: #fbf8f0;
+    color: #1a73e8;
+    text-decoration: none;
+}
+body.help-v2 .help-toc-link.is-active {
+    background: #FFF7DB;
+    border-left-color: #E8C200;
+    color: #1a1f29;
 }
 body.help-v2 .help-show-side .help-empty-side {
     padding: 14px 18px;
@@ -292,6 +336,31 @@ body.help-v2 .help-article-body ol,
 body.help-v2 .help-article-body ul { padding-left: 26px; margin: 0 0 14px; }
 body.help-v2 .help-article-body li { margin-bottom: 7px; }
 body.help-v2 .help-article-body a { color: #1a73e8; }
+body.help-v2 .help-article-body ul.help-guide-links {
+    columns: 2;
+    column-gap: 30px;
+    padding-left: 20px;
+}
+body.help-v2 .help-article-body ul.help-guide-links li {
+    break-inside: avoid;
+    margin-bottom: 9px;
+}
+@media (max-width: 640px) {
+    body.help-v2 .help-article-body ul.help-guide-links { columns: 1; }
+}
+body.help-v2 .help-article-body pre.help-template {
+    background: #fbf8f0;
+    border: 1px solid #e7e0cf;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 0 0 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #2b2f36;
+    white-space: pre-wrap;
+    overflow: auto;
+}
 body.help-v2 .help-article-body code {
     background: #f4eee0;
     color: #6a5a30;
