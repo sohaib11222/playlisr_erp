@@ -1,0 +1,83 @@
+# Read-only products export. SSHes to prod, runs a pure SELECT over the
+# products table (mirroring the /products list: business-scoped, non-modifier,
+# non-deleted variations, aggregated stock/price), writes /tmp/products_export.csv,
+# copies it back to the runner, and uploads it as a downloadable artifact.
+# No writes to app data. Reuses the Deploy production SSH secrets.
+
+name: Playlisr · products export (CSV)
+
+on:
+  workflow_dispatch:
+    inputs:
+      business_id:
+        description: Business id to export (blank = the store with the most products)
+        required: false
+        default: ''
+
+concurrency:
+  group: playlisr-products-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Build CSV on prod
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          # drone-ssh runs each line as its own command, so the export script is
+          # base64-encoded into a single line, decoded to a temp file, and run via
+          # `php artisan tinker <file>` (full Laravel bootstrap).
+          script: |
+            echo "=== products export, business_id input: '${{ github.event.inputs.business_id }}' ==="
+            echo 'PD9waHAKLy8gUmVhZC1vbmx5IHByb2R1Y3RzIGV4cG9ydCAtPiAvdG1wL3Byb2R1Y3RzX2V4cG9ydC5jc3Ygb24gcHJvZC4KLy8gTWlycm9ycyB0aGUgL3Byb2R1Y3RzIGxpc3QgcXVlcnk6IGJ1c2luZXNzLXNjb3BlZCwgbm9uLW1vZGlmaWVyLAovLyBub24tZGVsZXRlZCB2YXJpYXRpb25zLCB3aXRoIGFnZ3JlZ2F0ZWQgc3RvY2svcHJpY2UgcGVyIHByb2R1Y3QuCi8vIFB1cmUgU0VMRUNUICsgd3JpdGVzIGEgdGVtcCBDU1YuIE5vIHdyaXRlcyB0byBhcHAgZGF0YS4KCiRidXNpbmVzc19pZCA9IGdldGVudignRVhQT1JUX0JVU0lORVNTX0lEJyk7CmlmICghJGJ1c2luZXNzX2lkKSB7CiAgICAvLyBEZWZhdWx0IHRvIHRoZSBidXNpbmVzcyB0aGF0IG93bnMgdGhlIG1vc3QgcHJvZHVjdHMgKHRoZSBzdG9yZSB0aGUKICAgIC8vIC9wcm9kdWN0cyBzY3JlZW4gc2hvd3Mgb24gYSBzaW5nbGUtdGVuYW50IGluc3RhbGwpLgogICAgJHJvdyA9IERCOjpzZWxlY3RPbmUoCiAgICAgICAgIlNFTEVDVCBidXNpbmVzc19pZCwgQ09VTlQoKikgQVMgYyBGUk9NIHByb2R1Y3RzICIgLgogICAgICAgICJHUk9VUCBCWSBidXNpbmVzc19pZCBPUkRFUiBCWSBjIERFU0MgTElNSVQgMSIKICAgICk7CiAgICAkYnVzaW5lc3NfaWQgPSAkcm93LT5idXNpbmVzc19pZDsKfQoKJGhhc0Rpc2NvZ3MgPSBTY2hlbWE6Omhhc0NvbHVtbigncHJvZHVjdHMnLCAnZGlzY29nc19yZWxlYXNlX2lkJyk7CgokcGF0aCA9ICcvdG1wL3Byb2R1Y3RzX2V4cG9ydC5jc3YnOwokZmggPSBmb3BlbigkcGF0aCwgJ3cnKTsKLy8gVVRGLTggQk9NIHNvIEV4Y2VsIHJlYWRzIGFjY2VudGVkIGFydGlzdC90aXRsZSBuYW1lcyBjb3JyZWN0bHkuCmZ3cml0ZSgkZmgsICJceEVGXHhCQlx4QkYiKTsKCiRoZWFkZXIgPSBbCiAgICAnaWQnLCAnc2t1JywgJ3Byb2R1Y3QnLCAnYXJ0aXN0JywgJ3R5cGUnLCAnY2F0ZWdvcnknLCAnc3ViX2NhdGVnb3J5JywKICAgICdicmFuZCcsICd1bml0JywgJ3RheCcsICdjdXJyZW50X3N0b2NrJywgJ21pbl9zZWxsX3ByaWNlJywgJ21heF9zZWxsX3ByaWNlJywKICAgICdtaW5fcHVyY2hhc2VfcHJpY2UnLCAnbWF4X3B1cmNoYXNlX3ByaWNlJywgJ2VuYWJsZV9zdG9jaycsICdpc19pbmFjdGl2ZScsCiAgICAnbm90X2Zvcl9zZWxsaW5nJywgJ2NyZWF0ZWRfYnknLCAnY3JlYXRlZF9hdCcsICdsYXN0X3VwZGF0ZWQnLApdOwppZiAoJGhhc0Rpc2NvZ3MpIHsgJGhlYWRlcltdID0gJ2Rpc2NvZ3NfcmVsZWFzZV9pZCc7IH0KJGhlYWRlciA9IGFycmF5X21lcmdlKCRoZWFkZXIsIFsKICAgICdjdXN0b21fZmllbGQxJywgJ2N1c3RvbV9maWVsZDInLCAnY3VzdG9tX2ZpZWxkMycsICdjdXN0b21fZmllbGQ0JywKXSk7CmZwdXRjc3YoJGZoLCAkaGVhZGVyKTsKCiRkaXNjb2dzU2VsZWN0ID0gJGhhc0Rpc2NvZ3MgPyAicHJvZHVjdHMuZGlzY29nc19yZWxlYXNlX2lkLCIgOiAiIjsKCiRzcWwgPSAiClNFTEVDVCBwcm9kdWN0cy5pZCwgcHJvZHVjdHMuc2t1LCBwcm9kdWN0cy5uYW1lIEFTIHByb2R1Y3QsIHByb2R1Y3RzLmFydGlzdCwKICAgICAgIHByb2R1Y3RzLnR5cGUsIGMxLm5hbWUgQVMgY2F0ZWdvcnksIGMyLm5hbWUgQVMgc3ViX2NhdGVnb3J5LAogICAgICAgYnJhbmRzLm5hbWUgQVMgYnJhbmQsIHVuaXRzLmFjdHVhbF9uYW1lIEFTIHVuaXQsIHRheF9yYXRlcy5uYW1lIEFTIHRheCwKICAgICAgIFNVTSh2bGQucXR5X2F2YWlsYWJsZSkgQVMgY3VycmVudF9zdG9jaywKICAgICAgIE1JTih2LnNlbGxfcHJpY2VfaW5jX3RheCkgQVMgbWluX3NlbGxfcHJpY2UsCiAgICAgICBNQVgodi5zZWxsX3ByaWNlX2luY190YXgpIEFTIG1heF9zZWxsX3ByaWNlLAogICAgICAgTUlOKHYuZHBwX2luY190YXgpIEFTIG1pbl9wdXJjaGFzZV9wcmljZSwKICAgICAgIE1BWCh2LmRwcF9pbmNfdGF4KSBBUyBtYXhfcHVyY2hhc2VfcHJpY2UsCiAgICAgICBwcm9kdWN0cy5lbmFibGVfc3RvY2ssIHByb2R1Y3RzLmlzX2luYWN0aXZlLCBwcm9kdWN0cy5ub3RfZm9yX3NlbGxpbmcsCiAgICAgICBUUklNKENPTkNBVChDT0FMRVNDRSh1LmZpcnN0X25hbWUsJycpLCcgJyxDT0FMRVNDRSh1Lmxhc3RfbmFtZSwnJykpKSBBUyBjcmVhdGVkX2J5LAogICAgICAgcHJvZHVjdHMuY3JlYXRlZF9hdCwKICAgICAgIEdSRUFURVNUKAogICAgICAgICBDT0FMRVNDRShJRihwcm9kdWN0cy51cGRhdGVkX2F0ID4gTk9XKCksIE5VTEwsIHByb2R1Y3RzLnVwZGF0ZWRfYXQpLCAnMTk3MC0wMS0wMScpLAogICAgICAgICBDT0FMRVNDRShNQVgoSUYodi51cGRhdGVkX2F0ID4gTk9XKCksIE5VTEwsIHYudXBkYXRlZF9hdCkpLCAnMTk3MC0wMS0wMScpCiAgICAgICApIEFTIGxhc3RfdXBkYXRlZCwKICAgICAgICRkaXNjb2dzU2VsZWN0CiAgICAgICBwcm9kdWN0cy5wcm9kdWN0X2N1c3RvbV9maWVsZDEsIHByb2R1Y3RzLnByb2R1Y3RfY3VzdG9tX2ZpZWxkMiwKICAgICAgIHByb2R1Y3RzLnByb2R1Y3RfY3VzdG9tX2ZpZWxkMywgcHJvZHVjdHMucHJvZHVjdF9jdXN0b21fZmllbGQ0CkZST00gcHJvZHVjdHMKSk9JTiB1bml0cyBPTiB1bml0cy5pZCA9IHByb2R1Y3RzLnVuaXRfaWQKSk9JTiB2YXJpYXRpb25zIHYgT04gdi5wcm9kdWN0X2lkID0gcHJvZHVjdHMuaWQgQU5EIHYuZGVsZXRlZF9hdCBJUyBOVUxMCkxFRlQgSk9JTiB2YXJpYXRpb25fbG9jYXRpb25fZGV0YWlscyB2bGQgT04gdmxkLnZhcmlhdGlvbl9pZCA9IHYuaWQKTEVGVCBKT0lOIGJyYW5kcyBPTiBicmFuZHMuaWQgPSBwcm9kdWN0cy5icmFuZF9pZApMRUZUIEpPSU4gY2F0ZWdvcmllcyBjMSBPTiBjMS5pZCA9IHByb2R1Y3RzLmNhdGVnb3J5X2lkCkxFRlQgSk9JTiBjYXRlZ29yaWVzIGMyIE9OIGMyLmlkID0gcHJvZHVjdHMuc3ViX2NhdGVnb3J5X2lkCkxFRlQgSk9JTiB0YXhfcmF0ZXMgT04gdGF4X3JhdGVzLmlkID0gcHJvZHVjdHMudGF4CkxFRlQgSk9JTiB1c2VycyB1IE9OIHUuaWQgPSBwcm9kdWN0cy5jcmVhdGVkX2J5CldIRVJFIHByb2R1Y3RzLmJ1c2luZXNzX2lkID0gPyBBTkQgcHJvZHVjdHMudHlwZSAhPSAnbW9kaWZpZXInCkdST1VQIEJZIHByb2R1Y3RzLmlkCk9SREVSIEJZIHByb2R1Y3RzLmlkCiI7CgokY291bnQgPSAwOwpmb3JlYWNoIChEQjo6Y3Vyc29yKCRzcWwsIFskYnVzaW5lc3NfaWRdKSBhcyAkcikgewogICAgJHZhbHMgPSBbCiAgICAgICAgJHItPmlkLCAkci0+c2t1LCAkci0+cHJvZHVjdCwgJHItPmFydGlzdCwgJHItPnR5cGUsICRyLT5jYXRlZ29yeSwKICAgICAgICAkci0+c3ViX2NhdGVnb3J5LCAkci0+YnJhbmQsICRyLT51bml0LCAkci0+dGF4LCAkci0+Y3VycmVudF9zdG9jaywKICAgICAgICAkci0+bWluX3NlbGxfcHJpY2UsICRyLT5tYXhfc2VsbF9wcmljZSwgJHItPm1pbl9wdXJjaGFzZV9wcmljZSwKICAgICAgICAkci0+bWF4X3B1cmNoYXNlX3ByaWNlLCAkci0+ZW5hYmxlX3N0b2NrLCAkci0+aXNfaW5hY3RpdmUsCiAgICAgICAgJHItPm5vdF9mb3Jfc2VsbGluZywgJHItPmNyZWF0ZWRfYnksICRyLT5jcmVhdGVkX2F0LCAkci0+bGFzdF91cGRhdGVkLAogICAgXTsKICAgIGlmICgkaGFzRGlzY29ncykgeyAkdmFsc1tdID0gJHItPmRpc2NvZ3NfcmVsZWFzZV9pZDsgfQogICAgJHZhbHMgPSBhcnJheV9tZXJnZSgkdmFscywgWwogICAgICAgICRyLT5wcm9kdWN0X2N1c3RvbV9maWVsZDEsICRyLT5wcm9kdWN0X2N1c3RvbV9maWVsZDIsCiAgICAgICAgJHItPnByb2R1Y3RfY3VzdG9tX2ZpZWxkMywgJHItPnByb2R1Y3RfY3VzdG9tX2ZpZWxkNCwKICAgIF0pOwogICAgZnB1dGNzdigkZmgsICR2YWxzKTsKICAgICRjb3VudCsrOwp9CmZjbG9zZSgkZmgpOwplY2hvICJET05FXHR7JGNvdW50fSByb3dzXHRidXNpbmVzc19pZD17JGJ1c2luZXNzX2lkfVx0eyRwYXRofVxuIjsK' | base64 -d > /tmp/products_export.php
+            cd /www/playlist.nivessa.com/app && EXPORT_BUSINESS_ID='${{ github.event.inputs.business_id }}' php artisan tinker /tmp/products_export.php
+            rm -f /tmp/products_export.php
+            ls -lh /tmp/products_export.csv
+
+      - name: Copy CSV back to runner
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          source: /tmp/products_export.csv
+          target: ./out
+          strip_components: 1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: products-export
+          path: ./out/products_export.csv
+          if-no-files-found: error
+
+      - name: Clean up remote temp file
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script: rm -f /tmp/products_export.csv
