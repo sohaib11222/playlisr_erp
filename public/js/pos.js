@@ -603,6 +603,42 @@ $(document).ready(function() {
 
     set_default_customer();
 
+    // Zero-result POS searches are the store's want-list: a customer asked for
+    // something at the counter and we had nothing to show them. Log them so
+    // /reports/pos-requests can rank what we keep turning away. Fire only once
+    // the cashier stops typing - the autocomplete runs on every keystroke, so
+    // logging inline would record "rad", "radi", "radioh"... as separate misses.
+    var pos_miss_timer = null;
+    var pos_miss_last_term = '';
+    var pos_miss_last_at = 0;
+
+    function cancel_pos_miss_log() {
+        if (pos_miss_timer) {
+            clearTimeout(pos_miss_timer);
+            pos_miss_timer = null;
+        }
+    }
+
+    function log_pos_empty_search(raw) {
+        var term = $.trim(raw || '');
+        cancel_pos_miss_log();
+
+        if (term.length < 3) { return; }
+        // Same term twice in a couple of minutes is one customer, not two.
+        if (term === pos_miss_last_term && (new Date().getTime() - pos_miss_last_at) < 120000) { return; }
+
+        pos_miss_timer = setTimeout(function() {
+            pos_miss_timer = null;
+            pos_miss_last_term = term;
+            pos_miss_last_at = new Date().getTime();
+            $.post('/sells/pos/log-empty-search', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                term: term,
+                location_id: $('input#location_id').val()
+            });
+        }, 1200);
+    }
+
     if ($('#search_product').length) {
         //Add Product
         $('#search_product')
@@ -632,6 +668,10 @@ $(document).ready(function() {
                 },
                 minLength: 2,
                 response: function(event, ui) {
+                    // A hit cancels any pending miss queued by a shorter prefix
+                    // of what the cashier is still typing.
+                    if (ui.content.length > 0) { cancel_pos_miss_log(); }
+
                     if (ui.content.length == 1) {
                         ui.item = ui.content[0];
 
@@ -671,6 +711,7 @@ $(document).ready(function() {
                         }
                     } else if (ui.content.length == 0) {
                         toastr.error(LANG.no_products_found);
+                        log_pos_empty_search($(this).val());
                         $('input#search_product').select();
                     }
                 },
@@ -682,6 +723,8 @@ $(document).ready(function() {
                 },
                 select: function(event, ui) {
                     var searched_term = $(this).val();
+                    // They found it after all - don't log the partial as a miss.
+                    cancel_pos_miss_log();
                     var is_overselling_allowed = false;
                     if($('input#is_overselling_allowed').length) {
                         is_overselling_allowed = true;

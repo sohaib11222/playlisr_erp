@@ -2,13 +2,14 @@
     <div class="col-md-4">
         <div class="form-group">
             <label>Artist</label>
-            <input type="text" class="form-control" name="artist" value="{{ old('artist', $want->artist ?? '') }}" placeholder="e.g. Kali Uchis">
+            {{-- Query-string fallback lets the POS Requests report hand a term straight into this form. --}}
+            <input type="text" class="form-control" name="artist" value="{{ old('artist', $want->artist ?? request()->query('artist', '')) }}" placeholder="e.g. Kali Uchis">
         </div>
     </div>
     <div class="col-md-5">
         <div class="form-group">
             <label>Title <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" name="title" value="{{ old('title', $want->title ?? '') }}" required placeholder="e.g. Red Moon In Venus">
+            <input type="text" class="form-control" name="title" value="{{ old('title', $want->title ?? request()->query('title', '')) }}" required placeholder="e.g. Red Moon In Venus">
         </div>
     </div>
     <div class="col-md-3">
