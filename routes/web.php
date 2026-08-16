@@ -179,6 +179,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/help/{slug}', 'HelpController@show')->name('help.show')->where('slug', '[a-z0-9\\-]+');
     Route::get('/reports/help-searches', 'HelpReportController@index')->name('reports.help-searches');
 
+    // POS Requests — product searches at the register that returned nothing.
+    Route::get('/reports/pos-requests', 'PosSearchRequestController@index')->name('reports.pos-requests');
+    Route::get('/reports/pos-requests/catalog-check', 'PosSearchRequestController@catalogCheck')->name('reports.pos-requests.catalog-check');
+
     // Customer Pickups
     Route::resource('customer-pickups', 'CustomerPickupController');
     Route::get('/customer-pickups/customer/{contact_id}', 'CustomerPickupController@getCustomerPickups');
@@ -330,6 +334,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/import-sales/preview', 'ImportSalesController@preview');
     Route::post('/import-sales', 'ImportSalesController@import');
     Route::get('/revert-sale-import/{batch}', 'ImportSalesController@revertSaleImport');
+
+    Route::post('/sells/pos/log-empty-search', 'PosSearchRequestController@logEmptySearch')->name('pos.log-empty-search');
 
     Route::get('/sells/pos/get_product_row/{variation_id}/{location_id}', 'SellPosController@getProductRow');
     Route::post('/sells/pos/get_manual_product_row', [SellPosController::class, 'getManualProductRow']);
