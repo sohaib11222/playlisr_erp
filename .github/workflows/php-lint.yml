@@ -22,11 +22,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '7.4'
-          coverage: none
+      # Deliberately uses the PHP preinstalled on the runner rather than
+      # shivammathur/setup-php. This gate only needs a parser, and codeload
+      # rate-limited that action's download hard enough to fail the job three
+      # attempts in a row — an outage in a third-party action should not be
+      # able to block a syntax check. Production runs 7.4 and the runner is
+      # newer, which is fine for catching parse errors.
+      - name: Show PHP version
+        run: php -v
 
       - name: php -l on changed PHP files
         run: |

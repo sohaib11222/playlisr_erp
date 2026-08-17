@@ -430,65 +430,152 @@ class ProductController extends Controller
 
             $search_keyword = trim((string) request()->input('search.value'));
 
-            $datatable = Datatables::of($products)->setTotalRecords($total_records);
+            // The global search, as a closure so the same predicate can be applied
+            // to both the id lookup and the count below.
+            //
+            // yajra's built-in search is deliberately not used: it expands to
+            // LOWER(col) LIKE ? across every column the front-end marks
+            // searchable — including products.created_at and an EXISTS on
+            // variations.sub_sku — once per whitespace-separated term.
+            $apply_search = function ($query) use ($search_keyword) {
+                if ($search_keyword === '') {
+                    return $query;
+                }
 
-            // ->filter() below marks the query as filtered unconditionally, which
-            // makes yajra run a second full count even when nobody typed
-            // anything. With an empty box the filtered count is the total, so
-            // hand it over and skip that query entirely.
-            if ($search_keyword === '') {
-                $datatable->setFilteredRecords($total_records);
+                // Every term must match somewhere (same AND-between-terms
+                // behaviour as yajra's multi_term search, which is what makes
+                // "miles davis" narrow rather than widen).
+                foreach (preg_split('/\s+/', $search_keyword) as $term) {
+                    if ($term === '') {
+                        continue;
+                    }
+                    $like = '%' . $term . '%';
+                    // MySQL's collation here is already case-insensitive, so
+                    // plain LIKE matches what LOWER(col) LIKE did without
+                    // running LOWER() over every row.
+                    $query->where(function ($q) use ($term, $like) {
+                        $q->where('products.name', 'like', $like)
+                          ->orWhere('products.artist', 'like', $like)
+                          ->orWhere('products.sku', 'like', $like)
+                          ->orWhere('c1.name', 'like', $like)
+                          ->orWhere('c2.name', 'like', $like)
+                          ->orWhere('u.first_name', 'like', $like);
+
+                        // A variation's sub_sku is the product's SKU plus a
+                        // counter, so products.sku above already covers it —
+                        // except for variations whose sub_sku was entered by
+                        // hand. Only pay for that lookup when the term looks
+                        // like a SKU (has a digit or a dash); a word like
+                        // "beatles" cannot match a hand-typed sub_sku that
+                        // the product's own SKU does not already match.
+                        if (preg_match('/[0-9\-]/', $term)) {
+                            $q->orWhereExists(function ($sub) use ($like) {
+                                $sub->select(DB::raw(1))
+                                    ->from('variations as vs')
+                                    ->whereColumn('vs.product_id', 'products.id')
+                                    ->whereNull('vs.deleted_at')
+                                    ->where('vs.sub_sku', 'like', $like);
+                            });
+                        }
+                    });
+                }
+
+                return $query;
+            };
+
+            // Which columns is DataTables asking us to sort by? Mirrors how yajra
+            // resolves them: the column's "name" if the front-end set one, else
+            // its "data" key.
+            $requested_sorts = [];
+            $request_columns = (array) request()->input('columns', []);
+            foreach ((array) request()->input('order', []) as $order_entry) {
+                $index = isset($order_entry['column']) ? (int) $order_entry['column'] : -1;
+                if (!isset($request_columns[$index])) {
+                    continue;
+                }
+                $column = $request_columns[$index];
+                $name = !empty($column['name']) ? $column['name'] : ($column['data'] ?? null);
+                if ($name) {
+                    $requested_sorts[] = [
+                        $name,
+                        strtolower($order_entry['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc',
+                    ];
+                }
+            }
+
+            // Columns that are real columns on the query rather than SELECT
+            // aliases, so a lean "ids only" query can reproduce the same ordering.
+            $plain_sort_columns = [
+                'products.artist', 'products.name', 'products.sku',
+                'products.created_at', 'c1.name', 'c2.name', 'u.first_name',
+            ];
+            $page_length = (int) request()->input('length', 100);
+
+            $two_phase = $page_length > 0;
+            foreach ($requested_sorts as $sort) {
+                if (!in_array($sort[0], $plain_sort_columns, true)) {
+                    $two_phase = false;
+                    break;
+                }
+            }
+
+            if ($two_phase) {
+                // Two-phase read. Resolving the page with the full SELECT list is
+                // what made this page slow: with seven correlated subselects in
+                // the select list, MySQL costs the ORDER BY wrong, ignores
+                // idx_products_business_created_at and filesorts the whole
+                // business — which then evaluates every subselect for all ~141k
+                // rows instead of the 100 on screen. Measured at 7333ms.
+                //
+                // So resolve the page's ids with a query too simple to get wrong
+                // (1ms), then fetch the expensive columns for just those ids
+                // (7ms). Unlike FORCE INDEX this needs no hint and stays correct
+                // whichever column the list is sorted by; sorts on SELECT aliases
+                // (price, stock, last-updated) fall back to the single-query path
+                // above.
+                $lean = (clone $products)->setEagerLoads([])->select('products.id');
+                $apply_search($lean);
+                foreach ($requested_sorts as $sort) {
+                    $lean->orderBy($sort[0], $sort[1]);
+                }
+                $page_ids = $lean
+                    ->offset(max(0, (int) request()->input('start', 0)))
+                    ->limit($page_length)
+                    ->pluck('products.id')
+                    ->all();
+
+                $filtered_records = $search_keyword === ''
+                    ? $total_records
+                    : (int) $apply_search((clone $products)->setEagerLoads([]))->count();
+
+                // Must come after the clones above, which need the unrestricted
+                // query to count against.
+                $products->whereIn('products.id', $page_ids ?: [0]);
+
+                $datatable = Datatables::of($products)
+                    ->setTotalRecords($total_records)
+                    ->setFilteredRecords($filtered_records)
+                    ->skipPaging()
+                    // Already reflected in the ids selected above. Still has to be
+                    // registered so yajra does not fall back to its own search.
+                    ->filter(function () {
+                    });
+            } else {
+                $datatable = Datatables::of($products)->setTotalRecords($total_records);
+
+                // ->filter() marks the query as filtered unconditionally, which
+                // makes yajra run a second full count even when nobody typed
+                // anything. With an empty box the filtered count is the total.
+                if ($search_keyword === '') {
+                    $datatable->setFilteredRecords($total_records);
+                }
+
+                $datatable->filter(function ($query) use ($apply_search) {
+                    $apply_search($query);
+                });
             }
 
             return $datatable
-                // Take over the global search instead of letting yajra build it.
-                // Its default expands to LOWER(col) LIKE ? over every column the
-                // front-end marks searchable — including products.created_at and
-                // the sub_sku EXISTS — once per whitespace-separated term. On
-                // 140k products that was the bulk of a 5-9s search.
-                ->filter(function ($query) use ($search_keyword) {
-                    if ($search_keyword === '') {
-                        return;
-                    }
-
-                    // Every term must match somewhere (same AND-between-terms
-                    // behaviour as yajra's multi_term search, which is what
-                    // makes "miles davis" narrow rather than widen).
-                    foreach (preg_split('/\s+/', $search_keyword) as $term) {
-                        if ($term === '') {
-                            continue;
-                        }
-                        $like = '%' . $term . '%';
-                        // MySQL's collation here is already case-insensitive, so
-                        // plain LIKE matches what LOWER(col) LIKE did without
-                        // running LOWER() over every row.
-                        $query->where(function ($q) use ($term, $like) {
-                            $q->where('products.name', 'like', $like)
-                              ->orWhere('products.artist', 'like', $like)
-                              ->orWhere('products.sku', 'like', $like)
-                              ->orWhere('c1.name', 'like', $like)
-                              ->orWhere('c2.name', 'like', $like)
-                              ->orWhere('u.first_name', 'like', $like);
-
-                            // A variation's sub_sku is the product's SKU plus a
-                            // counter, so products.sku above already covers it —
-                            // except for variations whose sub_sku was entered by
-                            // hand. Only pay for that lookup when the term looks
-                            // like a SKU (has a digit or a dash); a word like
-                            // "beatles" cannot match a hand-typed sub_sku that
-                            // the product's own SKU does not already match.
-                            if (preg_match('/[0-9\-]/', $term)) {
-                                $q->orWhereExists(function ($sub) use ($like) {
-                                    $sub->select(DB::raw(1))
-                                        ->from('variations as vs')
-                                        ->whereColumn('vs.product_id', 'products.id')
-                                        ->whereNull('vs.deleted_at')
-                                        ->where('vs.sub_sku', 'like', $like);
-                                });
-                            }
-                        });
-                    }
-                })
                 ->addColumn(
                     'product_locations',
                     function ($row) {
