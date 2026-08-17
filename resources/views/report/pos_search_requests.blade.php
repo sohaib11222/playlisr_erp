@@ -145,7 +145,10 @@
                                         data-term="{{ $r->term }}"
                                         title="See whether we carry it now"><i class="fa fa-search"></i> Check catalog</button>
                                 <a class="btn btn-xs btn-primary" target="_blank"
-                                   href="{{ route('customer-wants.create') }}?artist={{ urlencode($r->term) }}&title={{ urlencode($r->term) }}"
+                                   {{-- action(), not route(): /customer-wants/* is registered twice in web.php
+                                        (hyphen names then underscore names, same URIs), so the hyphen route
+                                        names lose the collision and aren't in the name lookup at all. --}}
+                                   href="{{ action('CustomerWantController@create', ['artist' => $r->term, 'title' => $r->term]) }}"
                                    title="Add to the call-me-when-it-comes-in list"><i class="fa fa-heart"></i> Add to wants</a>
                             </td>
                         </tr>
