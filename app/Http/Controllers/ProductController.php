@@ -189,17 +189,22 @@ class ProductController extends Controller
                 ->leftJoin('tax_rates', 'products.tax', '=', 'tax_rates.id')
                 ->leftJoin('users as u', 'products.created_by', '=', 'u.id')
                 ->where('products.business_id', $business_id)
-                ->where('products.type', '!=', 'modifier')
-                // The old query reached variations through an inner join, so a
-                // product whose variations were all soft-deleted never appeared
-                // in the list. Keep that exact row set — without this the list
-                // would start showing rows with no price and no stock.
-                ->whereExists(function ($q) {
-                    $q->select(DB::raw(1))
-                      ->from('variations as vx')
-                      ->whereColumn('vx.product_id', 'products.id')
-                      ->whereNull('vx.deleted_at');
-                });
+                ->where('products.type', '!=', 'modifier');
+            // There is deliberately no "has a live variation" clause here.
+            // The old query reached variations through an inner join, so it
+            // implicitly hid products whose variations were all soft-deleted,
+            // and this first shipped with a whereExists() to reproduce that.
+            // That was a mistake: MySQL rewrote the EXISTS into a LooseScan
+            // semi-join and made variations the driving table, scanning ~116k
+            // rows and then filesorting them, which lost the index-ordered scan
+            // on products(business_id, created_at) that ORDER BY needs. Same
+            // query, measured on production: 2306ms with the clause, 3ms
+            // without.
+            //
+            // Dropping it is safe because the set it excluded is empty — zero
+            // products in this business have no live variation. Should one ever
+            // appear it now shows up with blank price and stock rather than
+            // vanishing from the list, which is the better failure anyway.
 
             // Stock is summed over the locations this user may see, narrowed
             // further when the list is filtered to one location — same rules the
