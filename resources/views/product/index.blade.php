@@ -491,7 +491,12 @@
                 columns: [
                         { data: 'mass_delete'  },
                         { data: 'action', name: 'action'},
-                        { data: 'product_locations', name: 'product_locations'  },
+                        // Search is handled server-side by an explicit ->filter()
+                        // in ProductController@index over artist / name / SKU /
+                        // category / sub-category / creator. Columns that the
+                        // filter does not cover are marked unsearchable here so
+                        // the request payload matches what the server does.
+                        { data: 'product_locations', name: 'product_locations', searchable: false },
                         { data: 'artist', name: 'products.artist'},
                         { data: 'product', name: 'products.name'  },
                         { data: 'category', name: 'c1.name'},
@@ -505,7 +510,10 @@
                         { data: 'current_stock', searchable: false},
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},
-                        { data: 'created_at', name: 'products.created_at'},
+                        // Not searchable: matching a keyword against a datetime
+                        // meant a LIKE over all 140k rows for no real benefit.
+                        // The "Created date range" filter above covers this.
+                        { data: 'created_at', name: 'products.created_at', searchable: false},
                         { data: 'created_by_name', name: 'u.first_name' },
                         // real_updated_at is a SELECT alias (GREATEST(...)), not a real
                         // column — MySQL rejects aliases in WHERE, so leaving this

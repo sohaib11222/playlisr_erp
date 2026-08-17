@@ -167,27 +167,52 @@ class ProductController extends Controller
                 }
             );
 
-            $query = Product::with(['media'])
+            // Sarah 2026-08-16: this query used to JOIN variations +
+            // variation_location_details and GROUP BY products.id so it could
+            // SUM/MIN/MAX stock and prices. At 140k products that made every
+            // request — including every search keystroke — scan the whole
+            // catalog three times: DataTables asks for an unfiltered count and
+            // a filtered count, and yajra has to wrap a grouped query in
+            // "select count(*) from (<the whole thing>)" for each. Searching
+            // took 5-9s.
+            //
+            // The joins are now gone and the aggregates are scalar subselects
+            // (below). That matters because MySQL only evaluates the select
+            // list for rows that survive WHERE and LIMIT, so the subselects run
+            // for the ~100 rows actually on screen instead of all 140k. Without
+            // GROUP BY, both counts become a plain count over products.
+            $query = Product::query()
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
                 ->join('units', 'products.unit_id', '=', 'units.id')
                 ->leftJoin('categories as c1', 'products.category_id', '=', 'c1.id')
                 ->leftJoin('categories as c2', 'products.sub_category_id', '=', 'c2.id')
                 ->leftJoin('tax_rates', 'products.tax', '=', 'tax_rates.id')
                 ->leftJoin('users as u', 'products.created_by', '=', 'u.id')
-                ->join('variations as v', 'v.product_id', '=', 'products.id')
-                ->leftJoin('variation_location_details as vld', function($join) use ($permitted_locations, $location_id){
-                    $join->on('vld.variation_id', '=', 'v.id');
-                    if ($permitted_locations != 'all') {
-                        $join->whereIn('vld.location_id', $permitted_locations);
-                    }
-                    // When list is filtered by location, show current_stock for that location only
-                    if (!empty($location_id) && $location_id != 'none') {
-                        $join->where('vld.location_id', '=', $location_id);
-                    }
-                })
-                ->whereNull('v.deleted_at')
                 ->where('products.business_id', $business_id)
-                ->where('products.type', '!=', 'modifier');
+                ->where('products.type', '!=', 'modifier')
+                // The old query reached variations through an inner join, so a
+                // product whose variations were all soft-deleted never appeared
+                // in the list. Keep that exact row set — without this the list
+                // would start showing rows with no price and no stock.
+                ->whereExists(function ($q) {
+                    $q->select(DB::raw(1))
+                      ->from('variations as vx')
+                      ->whereColumn('vx.product_id', 'products.id')
+                      ->whereNull('vx.deleted_at');
+                });
+
+            // Stock is summed over the locations this user may see, narrowed
+            // further when the list is filtered to one location — same rules the
+            // old vld join encoded, just expressed inside the subselect.
+            $vld_scope = '';
+            if ($permitted_locations != 'all') {
+                $ids = array_filter(array_map('intval', (array) $permitted_locations));
+                // No permitted locations at all => no visible stock, not "all stock".
+                $vld_scope .= ' and vld.location_id in (' . ($ids ? implode(',', $ids) : '0') . ')';
+            }
+            if (!empty($location_id) && $location_id != 'none') {
+                $vld_scope .= ' and vld.location_id = ' . (int) $location_id;
+            }
 
             if (!empty($location_id) && $location_id != 'none') {
                 if ($permitted_locations == 'all' || in_array($location_id, $permitted_locations)) {
@@ -202,11 +227,14 @@ class ProductController extends Controller
                     $query->whereHas('product_locations', function ($query) use ($permitted_locations) {
                         $query->whereIn('product_locations.location_id', $permitted_locations);
                     });
-                } else {
-                    $query->with('product_locations');
                 }
             }
-            $query->with('sales_person');
+            // Always eager-load: the "Business Locations" column implodes this
+            // relation for every row, so without it the location-filtered
+            // branches above lazy-loaded it once per row (100 extra queries a
+            // page). sales_person and media were eager-loaded too but nothing
+            // on this screen reads them — they only bloated the JSON payload.
+            $query->with('product_locations');
 
             $products = $query->select(
                 'products.id',
@@ -230,20 +258,35 @@ class ProductController extends Controller
                 'products.created_at',
                 'products.updated_at',
                 'products.product_custom_field4',
-                'v.id as vid',
                 'products.alert_quantity',
                 DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
-                DB::raw('SUM(vld.qty_available) as current_stock'),
-                DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
-                DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
-                DB::raw('MAX(v.dpp_inc_tax) as max_purchase_price'),
-                DB::raw('MIN(v.dpp_inc_tax) as min_purchase_price'),
+                // Per-product aggregates, one correlated subselect each. These
+                // replace the old variations/vld join + GROUP BY; MySQL runs
+                // them only for the rows it actually returns.
+                DB::raw('(select sum(vld.qty_available)
+                            from variations v2
+                            join variation_location_details vld on vld.variation_id = v2.id
+                           where v2.product_id = products.id and v2.deleted_at is null' . $vld_scope . ') as current_stock'),
+                DB::raw('(select max(v2.sell_price_inc_tax) from variations v2
+                           where v2.product_id = products.id and v2.deleted_at is null) as max_price'),
+                DB::raw('(select min(v2.sell_price_inc_tax) from variations v2
+                           where v2.product_id = products.id and v2.deleted_at is null) as min_price'),
+                DB::raw('(select max(v2.dpp_inc_tax) from variations v2
+                           where v2.product_id = products.id and v2.deleted_at is null) as max_purchase_price'),
+                DB::raw('(select min(v2.dpp_inc_tax) from variations v2
+                           where v2.product_id = products.id and v2.deleted_at is null) as min_purchase_price'),
+                // The variation id the "Add N stock and print label" actions act
+                // on. The old grouped query picked an arbitrary one; pick the
+                // lowest so it is at least stable between page loads.
+                DB::raw('(select min(v2.id) from variations v2
+                           where v2.product_id = products.id and v2.deleted_at is null) as vid'),
                 // Real "last updated" — newest of products.updated_at and any
                 // variation update for this product, ignoring values in the
                 // future (corrupt rows from a sync with bad server time).
                 DB::raw('GREATEST(
                     COALESCE(IF(products.updated_at > NOW(), NULL, products.updated_at), "1970-01-01"),
-                    COALESCE(MAX(IF(v.updated_at > NOW(), NULL, v.updated_at)), "1970-01-01")
+                    COALESCE((select max(IF(v2.updated_at > NOW(), NULL, v2.updated_at)) from variations v2
+                               where v2.product_id = products.id and v2.deleted_at is null), "1970-01-01")
                 ) as real_updated_at')
                 );
 
@@ -254,20 +297,23 @@ class ProductController extends Controller
 
             // Pull the Discogs release id when available so the list can flag items
             // already on Discogs (column may not be migrated — guard the select).
-            if (\Schema::hasColumn('products', 'discogs_release_id')) {
-                $products->addSelect('products.discogs_release_id');
-            }
-            if (\Schema::hasColumn('products', 'ebay_listing_id')) {
-                $products->addSelect('products.ebay_listing_id');
-            }
-            if (\Schema::hasColumn('products', 'listing_status')) {
-                $products->addSelect('products.listing_status');
+            // Each Schema::hasColumn() is an information_schema round trip, so the
+            // answers are cached for a day rather than re-asked on every keystroke.
+            foreach (['discogs_release_id', 'ebay_listing_id', 'listing_status'] as $optional_column) {
+                $has_column = \Cache::remember(
+                    'products_has_column:' . $optional_column,
+                    86400,
+                    function () use ($optional_column) {
+                        return \Schema::hasColumn('products', $optional_column) ? 1 : 0;
+                    }
+                );
+                if ($has_column) {
+                    $products->addSelect('products.' . $optional_column);
+                }
             }
 
             $ebayService = new EbayService($this->getBusinessId());
             $ebayListingReady = $ebayService->isConfigured() && $ebayService->isSellerConnected();
-
-            $products->groupBy('products.id');
 
             $type = request()->get('type', null);
             if (!empty($type)) {
@@ -359,7 +405,85 @@ class ProductController extends Controller
             $discogsConfigured = $this->discogsService->isConfigured();
             $discogsListedSet = self::getDiscogsListedReleaseSet();
 
-            return Datatables::of($products)
+            // "Showing x of N entries" — N is the row count for the current
+            // filters, which does not change while someone types in the search
+            // box. DataTables re-asks for it on every keystroke, so cache it for
+            // a minute per filter combination and hand it to yajra; that skips
+            // one of the two full counts each request does.
+            $total_records = \Cache::remember(
+                'products_index_total:' . $business_id . ':' . md5(json_encode([
+                    $permitted_locations, $location_id, $type, $category_id, $sub_category_id,
+                    $any_category_id, $uncategorized_only, $brand_id, $unit_id, $tax_id,
+                    $active_state, $not_for_selling, $woocommerce_enabled, $created_by,
+                    $start_date, $end_date, request()->get('repair_model_id'),
+                ])),
+                60,
+                function () use ($products) {
+                    return (clone $products)->count();
+                }
+            );
+
+            $search_keyword = trim((string) request()->input('search.value'));
+
+            $datatable = Datatables::of($products)->setTotalRecords($total_records);
+
+            // ->filter() below marks the query as filtered unconditionally, which
+            // makes yajra run a second full count even when nobody typed
+            // anything. With an empty box the filtered count is the total, so
+            // hand it over and skip that query entirely.
+            if ($search_keyword === '') {
+                $datatable->setFilteredRecords($total_records);
+            }
+
+            return $datatable
+                // Take over the global search instead of letting yajra build it.
+                // Its default expands to LOWER(col) LIKE ? over every column the
+                // front-end marks searchable — including products.created_at and
+                // the sub_sku EXISTS — once per whitespace-separated term. On
+                // 140k products that was the bulk of a 5-9s search.
+                ->filter(function ($query) use ($search_keyword) {
+                    if ($search_keyword === '') {
+                        return;
+                    }
+
+                    // Every term must match somewhere (same AND-between-terms
+                    // behaviour as yajra's multi_term search, which is what
+                    // makes "miles davis" narrow rather than widen).
+                    foreach (preg_split('/\s+/', $search_keyword) as $term) {
+                        if ($term === '') {
+                            continue;
+                        }
+                        $like = '%' . $term . '%';
+                        // MySQL's collation here is already case-insensitive, so
+                        // plain LIKE matches what LOWER(col) LIKE did without
+                        // running LOWER() over every row.
+                        $query->where(function ($q) use ($term, $like) {
+                            $q->where('products.name', 'like', $like)
+                              ->orWhere('products.artist', 'like', $like)
+                              ->orWhere('products.sku', 'like', $like)
+                              ->orWhere('c1.name', 'like', $like)
+                              ->orWhere('c2.name', 'like', $like)
+                              ->orWhere('u.first_name', 'like', $like);
+
+                            // A variation's sub_sku is the product's SKU plus a
+                            // counter, so products.sku above already covers it —
+                            // except for variations whose sub_sku was entered by
+                            // hand. Only pay for that lookup when the term looks
+                            // like a SKU (has a digit or a dash); a word like
+                            // "beatles" cannot match a hand-typed sub_sku that
+                            // the product's own SKU does not already match.
+                            if (preg_match('/[0-9\-]/', $term)) {
+                                $q->orWhereExists(function ($sub) use ($like) {
+                                    $sub->select(DB::raw(1))
+                                        ->from('variations as vs')
+                                        ->whereColumn('vs.product_id', 'products.id')
+                                        ->whereNull('vs.deleted_at')
+                                        ->where('vs.sub_sku', 'like', $like);
+                                });
+                            }
+                        });
+                    }
+                })
                 ->addColumn(
                     'product_locations',
                     function ($row) {
