@@ -1,0 +1,47 @@
+# Syntax-checks the PHP files a branch touches before it can reach main (where
+# a push deploys straight to production). Cheap safety net: this repo has no
+# other CI, and a parse error in a controller takes the whole app down rather
+# than failing loudly at build time.
+#
+# Blade templates are skipped — `php -l` cannot parse Blade directives, so it
+# would report false errors on every view.
+
+name: PHP lint
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+
+      - name: php -l on changed PHP files
+        run: |
+          base=$(git merge-base origin/main HEAD || echo HEAD~1)
+          files=$(git diff --name-only "$base" HEAD -- '*.php' \
+            | { grep -v '^vendor/' || true; } \
+            | { grep -v '\.blade\.php$' || true; })
+          if [ -z "$files" ]; then
+            echo "No PHP files changed."
+            exit 0
+          fi
+          status=0
+          for f in $files; do
+            [ -f "$f" ] || continue
+            echo "--- $f"
+            php -l "$f" || status=1
+          done
+          exit $status
