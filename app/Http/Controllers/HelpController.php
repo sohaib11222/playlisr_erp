@@ -58,6 +58,8 @@ class HelpController extends Controller
             }
         }
 
-        return view('help.show', compact('article', 'related'));
+        $videoEmbed = Catalog::videoEmbed($article['video'] ?? null);
+
+        return view('help.show', compact('article', 'related', 'videoEmbed'));
     }
 }

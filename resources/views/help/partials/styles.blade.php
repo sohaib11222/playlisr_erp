@@ -315,6 +315,23 @@ body.help-v2 .help-article-lead {
     border-bottom: 1px solid #f0ebe0;
     line-height: 1.5;
 }
+body.help-v2 .help-video {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 0 0 18px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid #e7e0cf;
+}
+body.help-v2 .help-video iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
 body.help-v2 .help-article-body { font-size: 15px; line-height: 1.65; }
 body.help-v2 .help-article-body h2 {
     font-size: 22px;

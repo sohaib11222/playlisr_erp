@@ -2021,6 +2021,39 @@ HTML,
     }
 
     /**
+     * Turn a plain video link (the kind you copy from the address bar) into an
+     * embeddable player URL. Supports YouTube, Vimeo, and Loom. Returns null if
+     * it is not a recognised video link, so the view just shows no player.
+     * To add a video to any article, set 'video' => 'https://youtu.be/...' on
+     * that article above.
+     */
+    public static function videoEmbed(?string $url): ?string
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return null;
+        }
+
+        // YouTube: youtu.be/ID, watch?v=ID, /embed/ID, /shorts/ID
+        if (preg_match('~(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/)|youtu\.be/)([A-Za-z0-9_-]{6,})~i', $url, $m)) {
+            return 'https://www.youtube.com/embed/' . $m[1];
+        }
+        // Vimeo: vimeo.com/ID
+        if (preg_match('~vimeo\.com/(?:video/)?(\d+)~i', $url, $m)) {
+            return 'https://player.vimeo.com/video/' . $m[1];
+        }
+        // Loom: loom.com/share/ID or loom.com/embed/ID
+        if (preg_match('~loom\.com/(?:share|embed)/([A-Za-z0-9]+)~i', $url, $m)) {
+            return 'https://www.loom.com/embed/' . $m[1];
+        }
+        // Already an embeddable player URL - trust it as-is.
+        if (preg_match('~^https://(?:www\.youtube\.com/embed/|player\.vimeo\.com/|www\.loom\.com/embed/)~i', $url)) {
+            return $url;
+        }
+        return null;
+    }
+
+    /**
      * Sections render in this order on the index. Anything not listed here
      * falls in alphabetically at the end.
      */

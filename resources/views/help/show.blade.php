@@ -50,6 +50,12 @@
                     @if(!empty($article['summary']))
                         <p class="help-article-lead">{{ $article['summary'] }}</p>
                     @endif
+                    @php($videoEmbed = $videoEmbed ?? \App\Help\Catalog::videoEmbed($article['video'] ?? null))
+                    @if(!empty($videoEmbed))
+                        <div class="help-video">
+                            <iframe src="{{ $videoEmbed }}" title="{{ $article['title'] }} video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                        </div>
+                    @endif
                     <div class="help-article-body" id="help-article-body">
                         {!! $article['body_html'] !!}
                     </div>
