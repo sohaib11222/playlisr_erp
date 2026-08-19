@@ -164,6 +164,19 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                         <th>Format</th>
                         <th>In ERP</th>
                         <th>Manual</th>
+                        @foreach($months as $i => $m)
+                        <th>{{ $month_labels[$i] }} $</th>
+                        @endforeach
+                        @foreach($months as $i => $m)
+                        <th>{{ $month_labels[$i] }} Qty</th>
+                        @endforeach
+                        @if(!empty($months))
+                        <th>Total $</th>
+                        <th>Total Qty</th>
+                        <th>Share %</th>
+                        <th>Cum %</th>
+                        <th>CV</th>
+                        @endif
                     </tr>
                 </thead>
             </table>
@@ -181,6 +194,25 @@ $(document).ready(function () {
     // (the opening-checklist endcaps link uses ?class=A to show A-products).
     var qsClass = (new URLSearchParams(window.location.search)).get('class');
     if (qsClass) { $('#full_class').val(qsClass.toUpperCase()); }
+
+    // Monthly $ /qty /totals columns only exist on auto-calc data (empty
+    // array for CSV imports) — the header row above already matches this.
+    var months = @json($months);
+    var money = function (v) { return v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
+    var extraColumns = [];
+    months.forEach(function (m) {
+        extraColumns.push({ data: 'monthly_revenue.' + m, defaultContent: '', render: function (data) { return money(data); } });
+    });
+    months.forEach(function (m) {
+        extraColumns.push({ data: 'monthly_qty.' + m, defaultContent: '', render: function (data) { return (data === null || data === undefined || data === '') ? '<span class="muted">—</span>' : data; } });
+    });
+    if (months.length) {
+        extraColumns.push({ data: 'total_revenue', defaultContent: '', render: function (data) { return money(data); } });
+        extraColumns.push({ data: 'total_qty', defaultContent: '' });
+        extraColumns.push({ data: 'share_pct', defaultContent: '', render: function (data) { return (data === null || data === undefined || data === '') ? '—' : data + '%'; } });
+        extraColumns.push({ data: 'cum_pct', defaultContent: '', render: function (data) { return (data === null || data === undefined || data === '') ? '—' : data + '%'; } });
+        extraColumns.push({ data: 'cv', defaultContent: '', render: function (data) { return (data === null || data === undefined || data === '') ? '<span class="muted">—</span>' : data; } });
+    }
 
     var table = $('#abc_full_table').DataTable({
         processing: true,
@@ -231,7 +263,7 @@ $(document).ready(function () {
             { data: 'format', name: 'format', render: function (data) { return data || '<span class="muted">—</span>'; } },
             { data: 'in_erp', name: 'in_erp', render: function (data) { return parseInt(data || 0, 10) ? '<span class="yn-yes">Yes</span>' : '<span class="yn-no">No</span>'; } },
             { data: 'manual', name: 'manual', render: function (data) { return parseInt(data || 0, 10) ? '<span class="yn-yes">Yes</span>' : '<span class="yn-no">No</span>'; } }
-        ]
+        ].concat(extraColumns)
     });
 
     $('#full_scope, #full_class, #full_xyz, #full_combo, #full_location').change(function () {

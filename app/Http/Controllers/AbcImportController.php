@@ -209,6 +209,10 @@ class AbcImportController extends Controller
             'location_map' => $result['location_map'],
             'unmatched' => $result['unmatched'],
             'report_rows' => $result['report_rows'] ?? [],
+            // Y-m buckets covered by the auto-calc (e.g. ["2026-01",…,"2026-07"]).
+            // Empty for CSV imports — the full report only shows monthly columns
+            // when this is present.
+            'months' => $result['months'] ?? [],
         ];
     }
 

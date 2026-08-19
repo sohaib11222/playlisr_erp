@@ -6410,6 +6410,11 @@ class ReportController extends Controller
         @ini_set('memory_limit', '512M');
 
         $abcSvc = new \App\Services\AbcImportService();
+        $meta = $abcSvc->load();
+        // Only the auto-calc from ERP sales carries a monthly breakdown — CSV
+        // imports don't have per-month $ figures, so this stays empty for them
+        // and the report just shows the letters as before.
+        $months = (array) ($meta['months'] ?? []);
 
         // Full CSV export — every filtered row, not just the page DataTables has
         // loaded (serverSide buttons only see the current 50). Honors the same
@@ -6417,13 +6422,20 @@ class ReportController extends Controller
         if ($request->input('export') === 'csv') {
             $rows = $this->abcFullReportRows($request, true);
             $columns = ['ABC-XYZ', 'Class', 'XYZ', 'Product', 'Artist', 'SKU', 'Format', 'In ERP', 'Manual'];
+            foreach ($months as $m) {
+                $columns[] = \Carbon\Carbon::createFromFormat('Y-m', $m)->format('M Y') . ' $';
+            }
+            foreach ($months as $m) {
+                $columns[] = \Carbon\Carbon::createFromFormat('Y-m', $m)->format('M Y') . ' Qty';
+            }
+            $columns = array_merge($columns, ['Total $', 'Total Qty', 'Share %', 'Cum %', 'CV']);
             $filename = 'abc-full-report-' . date('Y-m-d') . '.csv';
 
-            return response()->stream(function () use ($rows, $columns) {
+            return response()->stream(function () use ($rows, $columns, $months) {
                 $out = fopen('php://output', 'w');
                 fputcsv($out, $columns);
                 foreach ($rows as $r) {
-                    fputcsv($out, [
+                    $line = [
                         $r['abc_xyz'] ?? '',
                         $r['class'] ?? '',
                         $r['xyz'] ?? '',
@@ -6433,7 +6445,19 @@ class ReportController extends Controller
                         $r['format'] ?? '',
                         !empty($r['in_erp']) ? 'Yes' : 'No',
                         !empty($r['manual']) ? 'Yes' : 'No',
-                    ]);
+                    ];
+                    foreach ($months as $m) {
+                        $line[] = $r['monthly_revenue'][$m] ?? '';
+                    }
+                    foreach ($months as $m) {
+                        $line[] = $r['monthly_qty'][$m] ?? '';
+                    }
+                    $line[] = $r['total_revenue'] ?? '';
+                    $line[] = $r['total_qty'] ?? '';
+                    $line[] = $r['share_pct'] ?? '';
+                    $line[] = $r['cum_pct'] ?? '';
+                    $line[] = $r['cv'] ?? '';
+                    fputcsv($out, $line);
                 }
                 fclose($out);
             }, 200, [
@@ -6448,10 +6472,16 @@ class ReportController extends Controller
 
         $business_id = $request->session()->get('user.business_id');
 
+        $monthLabels = array_map(function ($m) {
+            return \Carbon\Carbon::createFromFormat('Y-m', $m)->format('M');
+        }, $months);
+
         return view('report.abc_full_report', [
-            'imported_meta' => $abcSvc->load(),
+            'imported_meta' => $meta,
             'has_rows' => count($abcSvc->loadReportRows()) > 0,
             'business_locations' => BusinessLocation::forDropdown($business_id, true),
+            'months' => $months,
+            'month_labels' => $monthLabels,
         ]);
     }
 

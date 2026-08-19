@@ -483,6 +483,7 @@ class AbcImportService
 
         $globalRevenue = [];
         $monthlyQty = [];
+        $monthlyRev = [];
         $locRevenue = [];
 
         foreach ($rows as $r) {
@@ -496,6 +497,7 @@ class AbcImportService
             $qty = (float) $r->qty;
             $globalRevenue[$pid] = ($globalRevenue[$pid] ?? 0) + $rev;
             $monthlyQty[$pid][$r->ym] = ($monthlyQty[$pid][$r->ym] ?? 0) + $qty;
+            $monthlyRev[$pid][$r->ym] = ($monthlyRev[$pid][$r->ym] ?? 0) + $rev;
             if ($r->location_id) {
                 $locRevenue[(int) $r->location_id][$pid] = ($locRevenue[(int) $r->location_id][$pid] ?? 0) + $rev;
             }
@@ -509,13 +511,15 @@ class AbcImportService
         }
 
         $global_map = $this->paretoClassify($globalRevenue);
+        $cvByPid = [];
         $abcxyz_map = [];
         foreach ($globalRevenue as $pid => $rev) {
             $series = [];
             foreach ($months as $m) {
                 $series[] = $monthlyQty[$pid][$m] ?? 0;
             }
-            $abcxyz_map[$pid] = ($global_map[$pid] ?? '') . $this->classifyXyz($series);
+            $cvByPid[$pid] = $this->coefficientOfVariation($series);
+            $abcxyz_map[$pid] = ($global_map[$pid] ?? '') . $this->xyzFromCv($cvByPid[$pid]);
         }
 
         $location_map = [];
@@ -524,9 +528,14 @@ class AbcImportService
         }
 
         // report_rows + matched_trace shaped like match()'s output so the
-        // existing preview UI renders them without any JS changes.
+        // existing preview UI renders them without any JS changes. Each row
+        // also carries the monthly $ and Q-ty breakdown, Share/Cum %, and CV
+        // — the same columns as Sabina's "ABC-XYZ overall" tab — so the Full
+        // ABC Report can render full detail instead of just the letters.
         $ranked = $globalRevenue;
         arsort($ranked);
+        $totalRevenue = array_sum($globalRevenue);
+        $running = 0.0;
         $report_rows = [];
         $matched_trace = [];
         foreach ($ranked as $pid => $rev) {
@@ -537,6 +546,17 @@ class AbcImportService
             $class = $global_map[$pid] ?? '';
             $combo = $abcxyz_map[$pid] ?? '';
             $xyz = strlen($combo) > 1 ? substr($combo, 1, 1) : '';
+
+            $running += $rev;
+            $monthlyRevOut = [];
+            $monthlyQtyOut = [];
+            $totalQty = 0;
+            foreach ($months as $m) {
+                $monthlyRevOut[$m] = round($monthlyRev[$pid][$m] ?? 0, 2);
+                $q = $monthlyQty[$pid][$m] ?? 0;
+                $monthlyQtyOut[$m] = $q;
+                $totalQty += $q;
+            }
 
             $report_rows[] = [
                 'product' => $name,
@@ -549,6 +569,13 @@ class AbcImportService
                 'matched_id' => $pid,
                 'method' => 'sales',
                 'manual' => 0,
+                'monthly_revenue' => $monthlyRevOut,
+                'monthly_qty' => $monthlyQtyOut,
+                'total_revenue' => round($rev, 2),
+                'total_qty' => $totalQty,
+                'share_pct' => $totalRevenue > 0 ? round(($rev / $totalRevenue) * 100, 2) : 0,
+                'cum_pct' => $totalRevenue > 0 ? round(($running / $totalRevenue) * 100, 2) : 0,
+                'cv' => is_finite($cvByPid[$pid] ?? 0) ? round($cvByPid[$pid], 3) : null,
             ];
             $matched_trace[] = [
                 'csv_product' => $name,
@@ -577,6 +604,7 @@ class AbcImportService
             'sku_matched' => count($global_map),
             'report_rows' => $report_rows,
             'total' => count($global_map),
+            'months' => $months,
             'period_label' => $yearStart->format('M Y') . ' – ' . $windowEnd->copy()->subDay()->format('M Y') . ' (auto from sales)',
         ];
     }
@@ -599,25 +627,32 @@ class AbcImportService
     }
 
     /**
-     * Coefficient of variation of a monthly-units series → X/Y/Z steadiness.
-     * A product with no sales in the window (mean 0) is maximally erratic.
+     * Coefficient of variation (stdev/mean, population) of a monthly-units
+     * series. A product with no sales in the window (mean 0) is maximally
+     * erratic. Kept separate from the X/Y/Z bucketing so the raw number can
+     * be shown in the full report too, next to the letter.
      */
-    protected function classifyXyz(array $series): string
+    protected function coefficientOfVariation(array $series): float
     {
         $n = count($series);
         if ($n === 0) {
-            return 'Z';
+            return 0.0;
         }
         $mean = array_sum($series) / $n;
         if ($mean <= 0) {
-            return 'Z';
+            return INF; // no sales in the window at all — maximally erratic, always buckets to Z
         }
         $variance = 0.0;
         foreach ($series as $v) {
             $variance += ($v - $mean) ** 2;
         }
         $variance /= $n;
-        $cv = sqrt($variance) / $mean;
+        return sqrt($variance) / $mean;
+    }
+
+    /** X <= 0.5 (steady), Y <= 1.0 (variable), Z > 1.0 (sporadic). */
+    protected function xyzFromCv(float $cv): string
+    {
         if ($cv <= 0.5) {
             return 'X';
         }
