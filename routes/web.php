@@ -168,7 +168,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     
     // Gift Cards
     Route::resource('gift-cards', 'GiftCardController');
-    
+
+    // Coupons — discount codes for nivessa.com checkout
+    Route::resource('coupons', 'CouponController');
+
     // Preorders
     Route::resource('preorders', 'PreorderController');
     Route::get('/preorders/customer/{contact_id}', 'PreorderController@getCustomerPreorders');
