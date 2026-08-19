@@ -216,6 +216,71 @@ class AbcImportController extends Controller
         ];
     }
 
+    /**
+     * Diagnostic: every 'sell'/'final' line for one product this year, plus
+     * the monthly totals computeFromSales() would derive from them. Lets us
+     * reconcile a specific product against Sabina's spreadsheet number by
+     * number instead of guessing. GET /admin/abc-import/debug-sku?sku=...
+     */
+    public function debugSku(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['ok' => false, 'error' => 'Pass ?sku=...'], 422);
+        }
+
+        $product = \DB::table('products')
+            ->where('business_id', $business_id)
+            ->where('sku', $sku)
+            ->first();
+        if (!$product) {
+            $product = \DB::table('products')
+                ->where('business_id', $business_id)
+                ->where('name', 'like', '%' . $sku . '%')
+                ->first();
+        }
+        if (!$product) {
+            return response()->json(['ok' => false, 'error' => 'No product matches sku/name "' . $sku . '".'], 404);
+        }
+
+        $lines = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('tsl.product_id', $product->id)
+            ->whereYear('t.transaction_date', now()->year)
+            ->select(
+                't.id as transaction_id',
+                't.transaction_date',
+                't.type',
+                't.status',
+                't.location_id',
+                'tsl.quantity',
+                'tsl.quantity_returned',
+                'tsl.unit_price_inc_tax'
+            )
+            ->orderBy('t.transaction_date')
+            ->get();
+
+        $monthly = [];
+        foreach ($lines as $l) {
+            $counts = $l->type === 'sell' && $l->status === 'final' ? 'counted' : 'excluded (' . $l->type . '/' . $l->status . ')';
+            $ym = substr((string) $l->transaction_date, 0, 7);
+            if ($counts === 'counted') {
+                $rev = ((float) $l->quantity - (float) $l->quantity_returned) * (float) $l->unit_price_inc_tax;
+                $monthly[$ym] = ($monthly[$ym] ?? 0) + $rev;
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'product' => ['id' => $product->id, 'name' => $product->name, 'sku' => $product->sku],
+            'monthly_revenue_counted' => $monthly,
+            'line_count' => $lines->count(),
+            'lines' => $lines,
+        ]);
+    }
+
     protected function sampleMatched(array $global_map, int $business_id, int $limit): array
     {
         if (empty($global_map)) {

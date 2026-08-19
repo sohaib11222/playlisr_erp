@@ -886,6 +886,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/abc-import/recalculate', 'AbcImportController@recalculate');
     Route::post('/admin/abc-import/save', 'AbcImportController@save');
     Route::post('/admin/abc-import/clear', 'AbcImportController@clear');
+    // Temporary diagnostic: dump raw sell-line data for one SKU across the
+    // year, to reconcile a specific product against Sabina's spreadsheet.
+    // Remove once the ABC auto-calc reconciliation is done. Sarah 2026-08-19.
+    Route::get('/admin/abc-import/debug-sku', 'AbcImportController@debugSku');
 
     // Sarah 2026-05-15 — Discogs inventory bulk import. Browser drives the
     // 60-req/min rate limit by serializing one page per AJAX call, snapshots
