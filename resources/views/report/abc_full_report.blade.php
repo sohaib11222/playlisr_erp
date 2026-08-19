@@ -252,7 +252,8 @@ $(document).ready(function () {
             },
             'print'
         ],
-        ordering: false,
+        ordering: true,
+        order: [], // keep the server's revenue-rank order on load; sort only on header click
         columns: [
             { data: 'abc_xyz', name: 'abc_xyz', render: function (data) { return data ? '<span class="combo-tag">' + data + '</span>' : '<span class="muted">—</span>'; } },
             { data: 'class', name: 'class', render: function (data) { return data ? '<span class="class-tag class-' + data + '">' + data + '</span>' : '<span class="muted">—</span>'; } },
