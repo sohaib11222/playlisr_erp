@@ -883,6 +883,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // the live inventory-value ABC used in ICA + ABC report.
     Route::get('/admin/abc-import', 'AbcImportController@index');
     Route::post('/admin/abc-import/preview', 'AbcImportController@preview');
+    Route::post('/admin/abc-import/recalculate', 'AbcImportController@recalculate');
     Route::post('/admin/abc-import/save', 'AbcImportController@save');
     Route::post('/admin/abc-import/clear', 'AbcImportController@clear');
 

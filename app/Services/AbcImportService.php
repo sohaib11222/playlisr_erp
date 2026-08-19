@@ -415,6 +415,227 @@ class AbcImportService
     }
 
     /**
+     * Live sales-based ABC-XYZ, computed straight from ERP transactions
+     * instead of the analyzer CSV. Same shape as match() so it's a drop-in
+     * for AbcImportController's preview/save flow.
+     *
+     * Window: calendar year-to-date through the last fully completed month —
+     * mirrors Sarah's analyzer sheet (one tab per month, Jan onward).
+     * ABC: revenue Pareto — A = cum top 80%, B = next 15%, C = bottom 5%.
+     * Same thresholds as the CSV import and the inventory-value fallback in
+     * InventoryCheckService::computeAbcMapUncached.
+     * XYZ: coefficient of variation (stdev/mean) of a product's monthly
+     * units sold across the window — X <= 0.5 (steady), Y <= 1.0, Z > 1.0.
+     * Gift cards are excluded — they're not merchandise and would otherwise
+     * dominate the A-class list on revenue alone.
+     */
+    public function computeFromSales(int $business_id): array
+    {
+        $now = now();
+        $yearStart = $now->copy()->startOfYear();
+        $windowEnd = $now->copy()->startOfMonth(); // exclusive
+        if ($windowEnd->lte($yearStart)) {
+            $windowEnd = $yearStart->copy()->addMonth();
+        }
+
+        $rows = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', $yearStart)
+            ->where('t.transaction_date', '<', $windowEnd)
+            ->select(
+                'tsl.product_id',
+                't.location_id',
+                DB::raw("DATE_FORMAT(t.transaction_date, '%Y-%m') as ym"),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as revenue'),
+                DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty')
+            )
+            ->groupBy('tsl.product_id', 't.location_id', 'ym')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return $this->emptySalesResult();
+        }
+
+        $productIds = $rows->pluck('product_id')->unique()->values();
+        $products = DB::table('products as p')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+            ->whereIn('p.id', $productIds)
+            ->select('p.id', 'p.name', 'p.sku', DB::raw('COALESCE(sc.name, c.name) as format'))
+            ->get()->keyBy('id');
+
+        // Gift cards aren't merchandise — drop from the classification entirely.
+        $giftCardIds = [];
+        foreach ($products as $pid => $p) {
+            if (stripos((string) $p->name, 'gift card') !== false) {
+                $giftCardIds[(int) $pid] = true;
+            }
+        }
+
+        $globalRevenue = [];
+        $monthlyQty = [];
+        $locRevenue = [];
+
+        foreach ($rows as $r) {
+            $pid = (int) $r->product_id;
+            if (isset($giftCardIds[$pid])) {
+                continue;
+            }
+            $rev = (float) $r->revenue;
+            $qty = (float) $r->qty;
+            $globalRevenue[$pid] = ($globalRevenue[$pid] ?? 0) + $rev;
+            $monthlyQty[$pid][$r->ym] = ($monthlyQty[$pid][$r->ym] ?? 0) + $qty;
+            if ($r->location_id) {
+                $locRevenue[(int) $r->location_id][$pid] = ($locRevenue[(int) $r->location_id][$pid] ?? 0) + $rev;
+            }
+        }
+
+        $months = [];
+        $cursor = $yearStart->copy();
+        while ($cursor->lt($windowEnd)) {
+            $months[] = $cursor->format('Y-m');
+            $cursor->addMonth();
+        }
+
+        $global_map = $this->paretoClassify($globalRevenue);
+        $abcxyz_map = [];
+        foreach ($globalRevenue as $pid => $rev) {
+            $series = [];
+            foreach ($months as $m) {
+                $series[] = $monthlyQty[$pid][$m] ?? 0;
+            }
+            $abcxyz_map[$pid] = ($global_map[$pid] ?? '') . $this->classifyXyz($series);
+        }
+
+        $location_map = [];
+        foreach ($locRevenue as $locId => $revMap) {
+            $location_map[$locId] = $this->paretoClassify($revMap);
+        }
+
+        // report_rows + matched_trace shaped like match()'s output so the
+        // existing preview UI renders them without any JS changes.
+        $ranked = $globalRevenue;
+        arsort($ranked);
+        $report_rows = [];
+        $matched_trace = [];
+        foreach ($ranked as $pid => $rev) {
+            $p = $products->get($pid);
+            $name = $p->name ?? ('Product #' . $pid);
+            $sku = $p->sku ?? '';
+            $format = $p->format ?? '';
+            $class = $global_map[$pid] ?? '';
+            $combo = $abcxyz_map[$pid] ?? '';
+            $xyz = strlen($combo) > 1 ? substr($combo, 1, 1) : '';
+
+            $report_rows[] = [
+                'product' => $name,
+                'sku' => $sku,
+                'format' => $format,
+                'class' => $class,
+                'xyz' => $xyz,
+                'abc_xyz' => $combo,
+                'in_erp' => 1,
+                'matched_id' => $pid,
+                'method' => 'sales',
+                'manual' => 0,
+            ];
+            $matched_trace[] = [
+                'csv_product' => $name,
+                'csv_sku' => $sku,
+                'csv_format' => $format,
+                'csv_location' => '',
+                'csv_class' => $class,
+                'csv_abc_xyz' => $combo,
+                'match_method' => 'sales',
+                'matched_id' => $pid,
+                'matched_name' => $name,
+                'matched_category' => $format,
+                'matched_sub_category' => '',
+                'initial_candidates' => 1,
+                'final_candidates' => 1,
+            ];
+        }
+
+        return [
+            'global_map' => $global_map,
+            'abcxyz_map' => $abcxyz_map,
+            'location_map' => $location_map,
+            'unmatched' => [],
+            'matched_trace' => $matched_trace,
+            'matched_count' => count($global_map),
+            'sku_matched' => count($global_map),
+            'report_rows' => $report_rows,
+            'total' => count($global_map),
+            'period_label' => $yearStart->format('M Y') . ' – ' . $windowEnd->copy()->subDay()->format('M Y') . ' (auto from sales)',
+        ];
+    }
+
+    protected function paretoClassify(array $revenueByPid): array
+    {
+        arsort($revenueByPid);
+        $total = array_sum($revenueByPid);
+        $map = [];
+        if ($total <= 0) {
+            return $map;
+        }
+        $running = 0.0;
+        foreach ($revenueByPid as $pid => $rev) {
+            $running += $rev;
+            $pct = ($running / $total) * 100;
+            $map[$pid] = $pct <= 80 ? 'A' : ($pct <= 95 ? 'B' : 'C');
+        }
+        return $map;
+    }
+
+    /**
+     * Coefficient of variation of a monthly-units series → X/Y/Z steadiness.
+     * A product with no sales in the window (mean 0) is maximally erratic.
+     */
+    protected function classifyXyz(array $series): string
+    {
+        $n = count($series);
+        if ($n === 0) {
+            return 'Z';
+        }
+        $mean = array_sum($series) / $n;
+        if ($mean <= 0) {
+            return 'Z';
+        }
+        $variance = 0.0;
+        foreach ($series as $v) {
+            $variance += ($v - $mean) ** 2;
+        }
+        $variance /= $n;
+        $cv = sqrt($variance) / $mean;
+        if ($cv <= 0.5) {
+            return 'X';
+        }
+        if ($cv <= 1.0) {
+            return 'Y';
+        }
+        return 'Z';
+    }
+
+    protected function emptySalesResult(): array
+    {
+        return [
+            'global_map' => [],
+            'abcxyz_map' => [],
+            'location_map' => [],
+            'unmatched' => [],
+            'matched_trace' => [],
+            'matched_count' => 0,
+            'sku_matched' => 0,
+            'report_rows' => [],
+            'total' => 0,
+            'period_label' => '',
+        ];
+    }
+
+    /**
      * Compare CSV format to ERP category name as token SETS, not substrings.
      * Order-independent and survives wording variations:
      *   "CD (Sealed)" CSV  ≈  "Sealed CD" ERP   → match (tokens {cd, sealed})

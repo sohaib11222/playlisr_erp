@@ -41,6 +41,18 @@
             </div>
         </div>
 
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">Or: calculate from ERP sales</h3></div>
+            <div class="box-body">
+                <p class="text-muted">
+                    Skips the spreadsheet — computes ABC-XYZ straight from this year's final sales
+                    (Jan through last completed month), same 80/15/5 revenue split. Excludes gift cards.
+                    Runs a preview first; nothing changes until you hit Save.
+                </p>
+                <button id="abc-recalc" class="btn btn-default btn-lg">Recalculate from ERP sales</button>
+            </div>
+        </div>
+
         @if($current)
         <div class="box box-solid">
             <div class="box-header"><h3 class="box-title">Currently active</h3></div>
@@ -84,6 +96,7 @@
     const fileEl = document.getElementById('abc-file');
     const periodEl = document.getElementById('abc-period');
     const previewBtn = document.getElementById('abc-preview');
+    const recalcBtn = document.getElementById('abc-recalc');
     const saveBtn = document.getElementById('abc-save');
     const out = document.getElementById('abc-preview-out');
     let pendingToken = null;
@@ -103,6 +116,28 @@
             const data = await postJson("{{ url('/admin/abc-import/preview') }}", fd);
             if (!data.ok) {
                 out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || data.message || 'Preview failed (empty response).') + '</div>';
+                return;
+            }
+            pendingToken = data.token;
+            saveBtn.disabled = false;
+            renderPreview(data);
+        } catch (e) {
+            out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message) + '</div>';
+        }
+    });
+
+    recalcBtn.addEventListener('click', async () => {
+        out.innerHTML = '<p>Computing from sales…</p>';
+        saveBtn.disabled = true;
+        pendingToken = null;
+
+        const fd = new FormData();
+        fd.append('_token', CSRF);
+
+        try {
+            const data = await postJson("{{ url('/admin/abc-import/recalculate') }}", fd);
+            if (!data.ok) {
+                out.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error || data.message || 'Recalculation failed (empty response).') + '</div>';
                 return;
             }
             pendingToken = data.token;

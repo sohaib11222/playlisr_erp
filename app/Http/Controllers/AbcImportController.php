@@ -102,6 +102,55 @@ class AbcImportController extends Controller
         }
     }
 
+    /**
+     * Compute ABC-XYZ straight from ERP sales (no CSV needed) and stash it
+     * behind a token, same as preview() — Save is shared with the CSV flow.
+     */
+    public function recalculate(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $business_id = $request->session()->get('user.business_id');
+
+        try {
+            $svc = new AbcImportService();
+            $result = $svc->computeFromSales($business_id);
+
+            if (empty($result['global_map'])) {
+                return response()->json(['ok' => false, 'error' => 'No final sales found for this year — nothing to classify.'], 422);
+            }
+
+            $payload = $this->buildPayload('ERP sales (auto)', $result['period_label'] ?? '', $result);
+            $token = bin2hex(random_bytes(8));
+            $stashPath = storage_path('app/' . AbcImportService::STORAGE_DIR);
+            if (!is_dir($stashPath)) {
+                @mkdir($stashPath, 0775, true);
+            }
+            file_put_contents($stashPath . '/pending_' . $token . '.json', json_encode($payload));
+
+            return response()->json([
+                'ok' => true,
+                'token' => $token,
+                'stats' => $payload['stats'],
+                'period_label' => $payload['period_label'],
+                'source_file' => $payload['source_file'],
+                'sample_matched' => array_slice($result['matched_trace'], 0, 20),
+                'sample_ambiguous' => [],
+                'sample_unmatched' => [],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ABC sales recalculation failed', [
+                'err' => $e->getMessage(),
+                'file' => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            return response()->json([
+                'ok' => false,
+                'error' => 'Recalculation failed: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            ], 500);
+        }
+    }
+
     public function save(Request $request)
     {
         $request->validate(['token' => 'required|string|alpha_num|size:16']);
