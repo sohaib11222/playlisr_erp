@@ -94,7 +94,7 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
 <section class="content">
     <div class="abc-card">
         <h1 class="abc-h1">Full ABC Report — every row from the analyzer</h1>
-        <p class="abc-sub">This is the complete classification list straight from the uploaded report, including <strong>Manual / no-SKU items that aren't in the ERP catalog</strong>. Use the <strong>Scope</strong> filter — pick <strong>Manual reorder picks</strong> to see no-SKU steady sellers (A/B + X) worth restocking.</p>
+        <p class="abc-sub">This is the complete classification list straight from the uploaded report, including <strong>Manual / no-SKU items that aren't in the ERP catalog</strong>. Use the <strong>Scope</strong> filter — pick <strong>Manual reorder picks</strong> to see no-SKU steady sellers (A/B + X) worth restocking, or <strong>New releases</strong> to watch recent street dates on their own. A strong opening month can make a new release look like an A product fast, but it won't have an X (steady) XYZ yet — that takes a real track record, not just hype.</p>
         @if(!empty($imported_meta))
             <p class="abc-meta">
                 Source: {{ $imported_meta['source_file'] ?? '—' }}
@@ -126,6 +126,7 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                 <label for="full_scope">Scope</label>
                 {!! Form::select('full_scope', [
                     '' => 'All rows',
+                    'new_releases' => 'New releases (street date, last 90 days)',
                     'reorder_manual' => 'Manual reorder picks (no-SKU, A/B + X)',
                     'manual' => 'Manual / no-SKU only',
                     'matched' => 'In ERP only',
@@ -162,6 +163,8 @@ body.abc-v2 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
                         <th>Artist</th>
                         <th>SKU</th>
                         <th>Format</th>
+                        <th>Street Date</th>
+                        <th>Days Since Release</th>
                         <th>In ERP</th>
                         <th>Manual</th>
                         @foreach($months as $i => $m)
@@ -262,6 +265,8 @@ $(document).ready(function () {
             { data: 'artist', name: 'artist', render: function (data) { return data ? data : '<span class="muted">—</span>'; } },
             { data: 'sku', name: 'sku', render: function (data) { return data ? data : '<span class="muted">—</span>'; } },
             { data: 'format', name: 'format', render: function (data) { return data || '<span class="muted">—</span>'; } },
+            { data: 'street_date', name: 'street_date', render: function (data) { return data || '<span class="muted">—</span>'; } },
+            { data: 'days_since_release', name: 'days_since_release', render: function (data) { return (data === null || data === undefined || data === '') ? '<span class="muted">—</span>' : data + 'd'; } },
             { data: 'in_erp', name: 'in_erp', render: function (data) { return parseInt(data || 0, 10) ? '<span class="yn-yes">Yes</span>' : '<span class="yn-no">No</span>'; } },
             { data: 'manual', name: 'manual', render: function (data) { return parseInt(data || 0, 10) ? '<span class="yn-yes">Yes</span>' : '<span class="yn-no">No</span>'; } }
         ].concat(extraColumns)

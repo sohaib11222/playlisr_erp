@@ -6421,7 +6421,7 @@ class ReportController extends Controller
         // scope/class/xyz/combo filters plus the search box.
         if ($request->input('export') === 'csv') {
             $rows = $this->abcFullReportRows($request, true);
-            $columns = ['ABC-XYZ', 'Class', 'XYZ', 'Product', 'Artist', 'SKU', 'Format', 'In ERP', 'Manual'];
+            $columns = ['ABC-XYZ', 'Class', 'XYZ', 'Product', 'Artist', 'SKU', 'Format', 'Street Date', 'Days Since Release', 'In ERP', 'Manual'];
             foreach ($months as $m) {
                 $columns[] = \Carbon\Carbon::createFromFormat('Y-m', $m)->format('M Y') . ' $';
             }
@@ -6443,6 +6443,8 @@ class ReportController extends Controller
                         $r['artist'] ?? '',
                         $r['sku'] ?? '',
                         $r['format'] ?? '',
+                        $r['street_date'] ?? '',
+                        $r['days_since_release'] ?? '',
                         !empty($r['in_erp']) ? 'Yes' : 'No',
                         !empty($r['manual']) ? 'Yes' : 'No',
                     ];
@@ -6572,7 +6574,22 @@ class ReportController extends Controller
             ? DB::table('products')->whereIn('id', $ids)->pluck('artist', 'id')->toArray()
             : [];
 
-        $rows = $rows->map(function ($r) use ($artistById) {
+        // Street/release date lives in product_custom_field2 — same field the
+        // storefront's New Releases row reads (Sarah's one field to set, per
+        // the nightly POS sync). Free-text on the ERP side, so parse loosely.
+        $streetDateById = [];
+        if (!empty($ids)) {
+            foreach (DB::table('products')->whereIn('id', $ids)
+                ->whereNotNull('product_custom_field2')->where('product_custom_field2', '!=', '')
+                ->pluck('product_custom_field2', 'id') as $pid => $raw) {
+                $parsed = $this->tryParseDate($raw);
+                if ($parsed) {
+                    $streetDateById[$pid] = $parsed;
+                }
+            }
+        }
+
+        $rows = $rows->map(function ($r) use ($artistById, $streetDateById) {
             $pid = $r['matched_id'] ?? null;
             $artist = ($pid && !empty($artistById[$pid])) ? trim((string) $artistById[$pid]) : '';
             if ($artist === '') {
@@ -6583,8 +6600,23 @@ class ReportController extends Controller
                 }
             }
             $r['artist'] = $artist;
+            $streetDate = $pid ? ($streetDateById[$pid] ?? null) : null;
+            $r['street_date'] = $streetDate ? $streetDate->format('Y-m-d') : '';
+            $r['days_since_release'] = $streetDate ? $streetDate->diffInDays(now(), false) : null;
             return $r;
         })->values();
+
+        // New releases: street date set and within the last 90 days — same
+        // window the storefront's own New Releases row uses, so "new" means
+        // the same thing here as it does to a customer. Lets staff watch
+        // recent releases separately from the steady catalog, since a strong
+        // opening month doesn't mean steady (X) demand yet — just A-vs-hype.
+        if ($scope === 'new_releases') {
+            $rows = $rows->filter(function ($r) {
+                $d = $r['days_since_release'];
+                return $d !== null && $d >= 0 && $d <= 90;
+            })->sortBy('days_since_release')->values();
+        }
 
         // The export carries the search box term (DataTables handles search
         // itself for the ajax feed). Match across the visible text columns.
@@ -6603,6 +6635,24 @@ class ReportController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Loose date parse for the free-text product_custom_field2 (street date)
+     * — staff type this by hand, so accept whatever Carbon can make sense of
+     * and quietly skip anything it can't (blank field, stray text, etc.).
+     */
+    private function tryParseDate($raw)
+    {
+        $s = trim((string) $raw);
+        if ($s === '') {
+            return null;
+        }
+        try {
+            return \Carbon\Carbon::parse($s);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
