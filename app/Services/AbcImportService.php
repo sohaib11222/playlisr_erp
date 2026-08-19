@@ -467,11 +467,17 @@ class AbcImportService
             ->select('p.id', 'p.name', 'p.sku', DB::raw('COALESCE(sc.name, c.name) as format'))
             ->get()->keyBy('id');
 
-        // Gift cards aren't merchandise — drop from the classification entirely.
-        $giftCardIds = [];
+        // Non-merchandise placeholder products (channel-sync + legacy-import
+        // catch-alls) lump years/months of unrelated revenue onto one SKU —
+        // they'd otherwise dominate class A outright. See:
+        // SyncDiscogsSales::ensurePlaceholder, SyncNivessaWebSales (web sale
+        // + space rental), ImportNivessaHistoricalSales::ensurePlaceholderProduct.
+        $excludedSkus = ['niv-discogs-sale', 'niv-web-sale', 'niv-space-rental', 'niv-legacy-hist'];
+        $excludeIds = [];
         foreach ($products as $pid => $p) {
-            if (stripos((string) $p->name, 'gift card') !== false) {
-                $giftCardIds[(int) $pid] = true;
+            $sku = strtolower(trim((string) $p->sku));
+            if (in_array($sku, $excludedSkus, true) || stripos((string) $p->name, 'gift card') !== false) {
+                $excludeIds[(int) $pid] = true;
             }
         }
 
@@ -481,7 +487,9 @@ class AbcImportService
 
         foreach ($rows as $r) {
             $pid = (int) $r->product_id;
-            if (isset($giftCardIds[$pid])) {
+            // Skip placeholders and orphaned product_ids (no matching product
+            // row — can't act on a deleted product anyway).
+            if (isset($excludeIds[$pid]) || !$products->has($pid)) {
                 continue;
             }
             $rev = (float) $r->revenue;
