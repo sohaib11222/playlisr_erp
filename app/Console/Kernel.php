@@ -124,6 +124,16 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
 
+        // ABC-XYZ recalculation from ERP sales — replaces Sabina's manual
+        // monthly analyzer-CSV upload at /admin/abc-import (Sarah 2026-08-19:
+        // "fully replace sabina"). Runs 1st of the month at 07:00 PST, after
+        // the daily web/Discogs sales syncs, so the just-completed month's
+        // data is in before the window (Jan through last full month) locks it in.
+        $schedule->command('abc:recalculate-from-sales')
+            ->monthlyOn(1, '07:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(120);
+
         // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
         // edits land in the ERP expense report without a manual import. The
         // 14-day window is intentional — late posts and reconcile edits in
