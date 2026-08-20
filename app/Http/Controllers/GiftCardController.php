@@ -127,7 +127,12 @@ class GiftCardController extends Controller
             $gift_card->contact_id = $request->contact_id;
             $gift_card->initial_value = $request->initial_value;
             $gift_card->balance = $request->initial_value;
-            $gift_card->expiry_date = $request->expiry_date;
+            // Normalize to ISO before it hits Eloquent's date cast: the
+            // date-picker submits the business's display format (e.g.
+            // 08/25/2026), and this Laravel version's asDateTime() has no
+            // fallback for a non-ISO/non-native string — it throws a raw
+            // Carbon "Unexpected data found" instead of parsing it.
+            $gift_card->expiry_date = $request->expiry_date ? date('Y-m-d', strtotime($request->expiry_date)) : null;
             $gift_card->status = 'active';
             $gift_card->notes = $request->notes;
             $gift_card->created_by = auth()->user()->id;
@@ -195,7 +200,12 @@ class GiftCardController extends Controller
 
             $gift_card->card_number = $request->card_number;
             $gift_card->contact_id = $request->contact_id;
-            $gift_card->expiry_date = $request->expiry_date;
+            // Normalize to ISO before it hits Eloquent's date cast: the
+            // date-picker submits the business's display format (e.g.
+            // 08/25/2026), and this Laravel version's asDateTime() has no
+            // fallback for a non-ISO/non-native string — it throws a raw
+            // Carbon "Unexpected data found" instead of parsing it.
+            $gift_card->expiry_date = $request->expiry_date ? date('Y-m-d', strtotime($request->expiry_date)) : null;
             $gift_card->status = $request->status;
             $gift_card->notes = $request->notes;
 
