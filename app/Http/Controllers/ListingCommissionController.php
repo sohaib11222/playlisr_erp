@@ -207,7 +207,18 @@ class ListingCommissionController extends Controller
             // NET per type = earned minus paid (can go NEGATIVE = a credit from
             // an overpayment). Unlike the "owed" columns (which floor at 0), these
             // two always add up to Pay now, so every row reconciles.
-            $p->sales_net   = round($p->sales_earned - $p->sales_paid, 2);
+            //
+            // Party money gets special handling here (Sarah 2026-08-20): it should
+            // bring sales owed DOWN like any payment, but never by itself push
+            // someone into "overpaid/credit" — Andy/Zak went negative the moment
+            // their $7.67 party payment landed on an already-small balance, which
+            // reads as "overpaid" when really they're just settled. A genuine
+            // overpayment unrelated to party (Davis, Clyde, Mica) should still show.
+            // So: compute the non-party net first, let party zero it out (floor 0),
+            // but if it was ALREADY negative before party, leave that real credit as-is.
+            $partyPaidAllTime = round($this->partyPaidAllTimeForUser($uid), 2);
+            $nonPartyNet = round($p->sales_earned - ($p->sales_paid - $partyPaidAllTime), 2);
+            $p->sales_net = $nonPartyNet < 0 ? $nonPartyNet : max(0, round($nonPartyNet - $partyPaidAllTime, 2));
             $p->listing_net = round($p->earned - $p->paid, 2);
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
@@ -1112,6 +1123,20 @@ class ListingCommissionController extends Controller
     // user so the Commissions page can SHOW them in the Listening party column even
     // once they're paid (the column otherwise reads $0 owed and goes blank). Display
     // only - does not touch anyone's Pay now.
+    // All-time (unscoped) party paid for ONE user — used by the sales-net floor
+    // logic above, distinct from manualPartyEarnedByUser() which is windowed to
+    // the last 14 days for the Listening party column display.
+    private function partyPaidAllTimeForUser($uid)
+    {
+        $total = 0.0;
+        foreach ($this->loadSalesPayouts() as $p) {
+            if ((int) ($p['user_id'] ?? 0) !== (int) $uid) { continue; }
+            if (stripos((string) ($p['note'] ?? ''), 'Listening party') !== 0) { continue; }
+            $total += (float) ($p['amount'] ?? 0);
+        }
+        return $total;
+    }
+
     private function manualPartyEarnedByUser()
     {
         // Only the last 14 days (one pay period) — this column is meant to read
