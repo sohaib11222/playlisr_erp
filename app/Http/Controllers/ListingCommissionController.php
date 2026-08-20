@@ -334,12 +334,23 @@ class ListingCommissionController extends Controller
             $uid = (int) ($p['user_id'] ?? 0);
             if ($uid > 0) { $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
         }
+        // Listening-party bonuses are earned the moment they're paid (there is
+        // no separate "earned" formula for them like there is for the goal
+        // bonus) — fold the all-time party total into earned too, so paying one
+        // never falsely shows someone as overpaid/credit on this page
+        // (Sarah 2026-08-20: "why is Andy negative now").
+        $partyPaidAllTime = [];
+        foreach ($this->loadSalesPayouts() as $p) {
+            if (stripos((string) ($p['note'] ?? ''), 'Listening party') !== 0) { continue; }
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid > 0) { $partyPaidAllTime[$uid] = ($partyPaidAllTime[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
+        }
 
         $out = [];
         foreach (array_unique(array_merge(array_map('intval', $earned->keys()->all()), array_keys($paidByUser))) as $uid) {
             $uid = (int) $uid;
             $en = $earned->get($uid); // object {bonus, goal, achieved} or null
-            $e  = round((float) ($en->bonus ?? 0), 2);
+            $e  = round((float) ($en->bonus ?? 0) + ($partyPaidAllTime[$uid] ?? 0), 2);
             $pd = round((float) ($paidByUser[$uid] ?? 0), 2);
             $out[$uid] = (object) [
                 'earned'   => $e,
