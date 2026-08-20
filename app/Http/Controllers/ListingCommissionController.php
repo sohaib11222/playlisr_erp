@@ -40,6 +40,17 @@ class ListingCommissionController extends Controller
         'acessories & novelties', 'pictures & posters',
     ];
 
+    // Staff temporarily away and told not to accrue commission while gone
+    // (Sarah 2026-08-20, confirmed multiple times): sales after this date
+    // don't count until she says they're back. Keyed by lowercase first name,
+    // same matching style as the exclusion lists below. Update/remove an entry
+    // when someone returns.
+    private $commissionCutoffByFirstName = [
+        'clark' => '2026-07-16', // traveling, out until further notice
+        'clyde' => '2026-08-12', // left last minute for a month
+        'mica'  => '2026-08-12', // last day
+    ];
+
     // Owners / back-office + departed non-floor accounts that don't get paid
     // listing commission (mirrors the Employee Leaderboard roster). Owner
     // accounts are also the creator-of-record for bulk/imported listings, so
@@ -1607,6 +1618,7 @@ class ListingCommissionController extends Controller
                 'u.first_name',
                 'u.last_name',
                 'u.surname',
+                't.transaction_date',
                 // PRE-TAX, net of returns — the exact expression
                 // barcodingCommissionByUser uses, so this page's owed matches
                 // the Employee Leaderboard's listing pay to the penny. (Earlier
@@ -1619,6 +1631,17 @@ class ListingCommissionController extends Controller
             $paidSet = array_flip($paidLineIds);
             $rows = $rows->reject(function ($r) use ($paidSet) {
                 return isset($paidSet[$r->line_id]);
+            })->values();
+        }
+
+        // Drop sales after a person's commission cutoff (someone away who
+        // shouldn't accrue while gone) — the sale, not the original listing
+        // date, is what matters since that's when the commission is earned.
+        if (!empty($this->commissionCutoffByFirstName)) {
+            $rows = $rows->reject(function ($r) {
+                $first = strtolower(trim((string) ($r->first_name ?? '')));
+                if (!isset($this->commissionCutoffByFirstName[$first])) { return false; }
+                return substr((string) $r->transaction_date, 0, 10) > $this->commissionCutoffByFirstName[$first];
             })->values();
         }
 
