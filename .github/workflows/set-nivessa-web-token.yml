@@ -70,18 +70,19 @@ jobs:
           script_stop: true
           envs: NIVESSA_WEB_API_TOKEN
           script: |
-            set -e
+            set -ex
             DEPLOY_DIR="/www/playlist.nivessa.com/app"
             cd "$DEPLOY_DIR"
-            echo "=== current bridge config ==="
-            php artisan tinker --execute="echo 'api_token set: ' . (config('services.nivessa_web.api_token') ? 'yes' : 'no') . PHP_EOL; echo 'business_id set: ' . (config('services.nivessa_web.business_id') ? 'yes' : 'no') . PHP_EOL;"
+            echo "before:"
+            grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
+            grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
             if grep -q '^NIVESSA_WEB_API_TOKEN=' .env; then
-              echo "NIVESSA_WEB_API_TOKEN already set in .env — leaving it alone, not touching the file."
+              echo "NIVESSA_WEB_API_TOKEN already set in .env - leaving it alone, not touching the file."
             else
               printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
               echo "Added NIVESSA_WEB_API_TOKEN to .env."
               php artisan config:clear
             fi
-            echo "=== post-change bridge config ==="
-            php artisan tinker --execute="echo 'api_token set: ' . (config('services.nivessa_web.api_token') ? 'yes' : 'no') . PHP_EOL; echo 'business_id set: ' . (config('services.nivessa_web.business_id') ? 'yes' : 'no') . PHP_EOL;"
-            echo "=== done ==="
+            echo "after:"
+            grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
+            echo "done"
