@@ -85,6 +85,8 @@ jobs:
             grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
             echo "TEMP DEBUG: listing coupons table"
             echo 'DB::table("coupons")->get()->each(function($c){ echo json_encode($c).PHP_EOL; });' | php artisan tinker
-            echo "TEMP DEBUG: last coupon-related errors from the log"
-            grep -i "CouponController" storage/logs/laravel.log | tail -20 || echo "no matches"
+            echo "TEMP DEBUG: log files present"
+            ls -la storage/logs/ | tail -10
+            echo "TEMP DEBUG: last coupon-related errors from the logs"
+            grep -ril "CouponController" storage/logs/*.log | xargs -r -I{} sh -c 'echo ==={}===; grep -i "CouponController" {} | tail -20' || echo "no matches"
             echo "done"
