@@ -226,7 +226,11 @@ class ListingCommissionController extends Controller
             // What you still owe = everything earned minus everything paid
             // (manual payments included). Goes NEGATIVE when you've overpaid —
             // that's a credit against their next commission.
-            $p->total_owed_now = round($p->total_comm - $p->total_paid_all, 2);
+            // Pay now MUST derive from sales_net + listing_net (already correctly
+            // floored above), not a fresh earned-minus-paid — that raw version is
+            // what let a party payment show as "overpaid" a second time here even
+            // after sales_net itself was fixed (Sarah 2026-08-20).
+            $p->total_owed_now = round($p->sales_net + $p->listing_net, 2);
 
             // Cross-cancel overpayment across buckets for DISPLAY (Sarah
             // 2026-08-06). A payment logged to the wrong bucket — e.g. listing
