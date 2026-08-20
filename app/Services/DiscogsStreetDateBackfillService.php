@@ -64,10 +64,13 @@ class DiscogsStreetDateBackfillService
             }
 
             if ($commit) {
+                // Stored as Y-m-d (ISO) — the website sync (jonhedvat/server)
+                // parses this field as a date, so keep the stored format
+                // stable. Only the admin-page display below is MM/DD/YYYY.
                 \DB::table('products')->where('id', $p->id)->update(['product_custom_field2' => $date]);
             }
             $updated++;
-            $results[] = ['id' => $p->id, 'name' => $p->name, 'discogs_release_id' => $p->discogs_release_id, 'status' => 'found', 'detail' => $date];
+            $results[] = ['id' => $p->id, 'name' => $p->name, 'discogs_release_id' => $p->discogs_release_id, 'status' => 'found', 'detail' => \Carbon\Carbon::createFromFormat('Y-m-d', $date)->format('m/d/Y')];
         }
 
         return [

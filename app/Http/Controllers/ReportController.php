@@ -6601,7 +6601,7 @@ class ReportController extends Controller
             }
             $r['artist'] = $artist;
             $streetDate = $pid ? ($streetDateById[$pid] ?? null) : null;
-            $r['street_date'] = $streetDate ? $streetDate->format('Y-m-d') : '';
+            $r['street_date'] = $streetDate ? $streetDate->format('m/d/Y') : '';
             $r['days_since_release'] = $streetDate ? $streetDate->diffInDays(now(), false) : null;
             return $r;
         })->values();
