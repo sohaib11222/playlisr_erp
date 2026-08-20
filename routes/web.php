@@ -890,6 +890,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/abc-import/save', 'AbcImportController@save');
     Route::post('/admin/abc-import/clear', 'AbcImportController@clear');
 
+    // Discogs street-date backfill — fills New Releases' street date field
+    // from the linked Discogs release, only where it's currently blank.
+    Route::get('/admin/discogs-street-dates', 'DiscogsStreetDateController@index');
+    Route::post('/admin/discogs-street-dates/run', 'DiscogsStreetDateController@run');
+
     // Sarah 2026-05-15 — Discogs inventory bulk import. Browser drives the
     // 60-req/min rate limit by serializing one page per AJAX call, snapshots
     // to storage/app/discogs-inventory-snapshots/{id}/listings.ndjson, then
