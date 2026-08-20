@@ -153,6 +153,12 @@ class ListingCommissionController extends Controller
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $partyEarned = $this->partyEarnedByUser();
+        // Also fold in listening-party bonuses paid by hand via /admin/party-bonus
+        // (previously computed but never wired in) so the Listening party column
+        // shows them too, not just unpaid auto-splits.
+        foreach ($this->manualPartyEarnedByUser() as $uid => $amt) {
+            $partyEarned[(int) $uid] = ($partyEarned[(int) $uid] ?? 0) + $amt;
+        }
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
