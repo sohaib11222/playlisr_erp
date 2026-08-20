@@ -83,6 +83,6 @@ jobs:
             echo "after:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
             grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
-            echo "TEMP: inserting throwaway test coupon for end-to-end verification"
-            echo '$uid = DB::table("users")->where("business_id",1)->value("id"); DB::table("coupons")->insert(["business_id"=>1,"code"=>"CLAUDETEST1","type"=>"percent","value"=>10,"times_used"=>0,"status"=>"active","created_by"=>$uid,"created_at"=>now(),"updated_at"=>now()]); echo "inserted created_by=".$uid.PHP_EOL;' | php artisan tinker
+            echo "TEMP: removing throwaway test coupon used for e2e verification"
+            echo 'echo "deleted rows=".DB::table("coupons")->where("code","CLAUDETEST1")->delete().PHP_EOL;' | php artisan tinker
             echo "done"
