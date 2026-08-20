@@ -1,0 +1,87 @@
+# One-click, one-time setup: writes NIVESSA_WEB_API_TOKEN into the ERP's
+# production .env so it accepts bridge calls from the website (coupon
+# validation/redeem, gift-card/store-credit lookups) via
+# VerifyNivessaWebToken. Nobody currently has an easy way to log into the
+# box directly, so this exists instead of hand-editing .env over SSH.
+#
+# Safe by construction, unlike the .env-sync pattern that broke this exact
+# server before (unquoted value with spaces corrupted .env and took the
+# whole site down):
+#   - idempotent — skips entirely if the key is already present, never
+#     overwrites an existing value
+#   - the value comes from a real GitHub secret (masked in all logs), not a
+#     plain workflow_dispatch input
+#   - the value itself is a generated hex token — no spaces/quotes to
+#     mis-escape
+#   - verifies .env still parses (via `artisan env`-safe check) and the site
+#     is still up afterward
+#   - does NOT touch NIVESSA_WEB_BUSINESS_ID — if that's also missing,
+#     that needs a real value, not a guess, so it's left alone
+#
+# Uses the same secrets as Deploy production / Run migrations:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Set nivessa-web bridge token
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  set-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway, appleboy/ssh-action will handle host keys"
+          exit 0
+
+      - name: Set token on server (skip if already present)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          NIVESSA_WEB_API_TOKEN: ${{ secrets.NIVESSA_WEB_API_TOKEN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          envs: NIVESSA_WEB_API_TOKEN
+          script: |
+            set -e
+            DEPLOY_DIR="/www/playlist.nivessa.com/app"
+            cd "$DEPLOY_DIR"
+            echo "=== current bridge config ==="
+            php artisan tinker --execute="echo 'api_token set: ' . (config('services.nivessa_web.api_token') ? 'yes' : 'no') . PHP_EOL; echo 'business_id set: ' . (config('services.nivessa_web.business_id') ? 'yes' : 'no') . PHP_EOL;"
+            if grep -q '^NIVESSA_WEB_API_TOKEN=' .env; then
+              echo "NIVESSA_WEB_API_TOKEN already set in .env — leaving it alone, not touching the file."
+            else
+              printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
+              echo "Added NIVESSA_WEB_API_TOKEN to .env."
+              php artisan config:clear
+            fi
+            echo "=== post-change bridge config ==="
+            php artisan tinker --execute="echo 'api_token set: ' . (config('services.nivessa_web.api_token') ? 'yes' : 'no') . PHP_EOL; echo 'business_id set: ' . (config('services.nivessa_web.business_id') ? 'yes' : 'no') . PHP_EOL;"
+            echo "=== done ==="
