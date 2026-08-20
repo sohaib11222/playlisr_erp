@@ -134,13 +134,16 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(120);
 
-        // Small daily top-up so newly Discogs-linked products pick up a
-        // street date on their own — the bulk catch-up on the existing
-        // catalog runs by hand at /admin/discogs-street-dates.
-        $schedule->command('discogs:backfill-street-dates --limit=50 --commit')
-            ->dailyAt('05:30')
+        // ~58,800 products were eligible at launch (2026-08-19) — every 15
+        // min at 200/run (paced ~15 req/min, well under Discogs' ~60/min
+        // limit) clears that backlog in a few days; once caught up this
+        // just becomes a fast no-op that tops up newly Discogs-linked
+        // products as they're added. Manual catch-up also available at
+        // /admin/discogs-street-dates if you want to push it faster.
+        $schedule->command('discogs:backfill-street-dates --limit=200 --commit')
+            ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
-            ->withoutOverlapping(20);
+            ->withoutOverlapping(12);
 
         // QuickBooks → ERP expense sync. Runs every 30 min so Sabina's QB
         // edits land in the ERP expense report without a manual import. The
