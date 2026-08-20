@@ -134,7 +134,12 @@ class CouponController extends Controller
             $coupon->min_order_amount = $request->min_order_amount ?: null;
             $coupon->usage_limit = $request->usage_limit ?: null;
             $coupon->times_used = 0;
-            $coupon->expiry_date = $request->expiry_date;
+            // Normalize to ISO before it hits Eloquent's date cast: the
+            // date-picker submits the business's display format (e.g.
+            // 08/25/2026), and this Laravel version's asDateTime() has no
+            // fallback for a non-ISO/non-native string — it throws a raw
+            // Carbon "Unexpected data found" instead of parsing it.
+            $coupon->expiry_date = $request->expiry_date ? date('Y-m-d', strtotime($request->expiry_date)) : null;
             $coupon->status = 'active';
             $coupon->notes = $request->notes;
             $coupon->created_by = auth()->user()->id;
@@ -201,7 +206,12 @@ class CouponController extends Controller
             $coupon->value = $request->value;
             $coupon->min_order_amount = $request->min_order_amount ?: null;
             $coupon->usage_limit = $request->usage_limit ?: null;
-            $coupon->expiry_date = $request->expiry_date;
+            // Normalize to ISO before it hits Eloquent's date cast: the
+            // date-picker submits the business's display format (e.g.
+            // 08/25/2026), and this Laravel version's asDateTime() has no
+            // fallback for a non-ISO/non-native string — it throws a raw
+            // Carbon "Unexpected data found" instead of parsing it.
+            $coupon->expiry_date = $request->expiry_date ? date('Y-m-d', strtotime($request->expiry_date)) : null;
             $coupon->status = $request->status;
             $coupon->notes = $request->notes;
             $coupon->save();
