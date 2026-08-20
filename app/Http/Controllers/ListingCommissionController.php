@@ -341,16 +341,12 @@ class ListingCommissionController extends Controller
             \Log::warning('salesSummaryByUser earned pull failed: ' . $e->getMessage());
         }
 
-        // Listening-party bonuses are their own bucket (shown in the Listening
-        // party column via manualPartyEarnedByUser) — excluded here entirely so
-        // they never touch the goal-based sales earned/paid/owed math. Counting
-        // them as "paid" without a matching "earned" caused a false overpaid
-        // credit; then also adding them to earned double-counted against paid
-        // and inflated owed by the same amount instead (both wrong — Sarah
-        // 2026-08-20: "why is Andy negative now" / "luis amount changed").
+        // Sarah 2026-08-20, final word: party payments DO reduce sales owed —
+        // one combined paid total, same as before any of today's party-column
+        // work touched this function. Simple: pay a party bonus, owed goes down
+        // by that much, same as any other payment.
         $paidByUser = [];
         foreach ($this->loadSalesPayouts() as $p) {
-            if (stripos((string) ($p['note'] ?? ''), 'Listening party') === 0) { continue; }
             $uid = (int) ($p['user_id'] ?? 0);
             if ($uid > 0) { $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
         }
