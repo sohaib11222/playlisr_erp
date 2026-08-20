@@ -76,13 +76,8 @@ jobs:
             echo "before:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
             grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
-            if grep -q '^NIVESSA_WEB_API_TOKEN=' .env; then
-              echo "NIVESSA_WEB_API_TOKEN already set in .env - leaving it alone, not touching the file."
-            else
-              printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
-              echo "Added NIVESSA_WEB_API_TOKEN to .env."
-              php artisan config:clear
-            fi
+            grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "skipping write, already set" || printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
+            php artisan config:clear
             echo "after:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
             echo "done"
