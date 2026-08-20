@@ -83,6 +83,4 @@ jobs:
             echo "after:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
             grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
-            echo "TEMP: removing throwaway test coupon used for e2e verification"
-            echo 'echo "deleted rows=".DB::table("coupons")->where("code","CLAUDETEST1")->delete().PHP_EOL;' | php artisan tinker
             echo "done"
