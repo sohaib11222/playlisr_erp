@@ -80,4 +80,6 @@ jobs:
             php artisan config:clear
             echo "after:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
+            echo "businesses (read-only, to find the right NIVESSA_WEB_BUSINESS_ID):"
+            echo 'DB::table("business")->get(["id","name"])->each(function($b){ echo $b->id.": ".$b->name.PHP_EOL; });' | php artisan tinker
             echo "done"
