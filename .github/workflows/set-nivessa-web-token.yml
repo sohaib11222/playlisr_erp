@@ -15,8 +15,9 @@
 #     mis-escape
 #   - verifies .env still parses (via `artisan env`-safe check) and the site
 #     is still up afterward
-#   - does NOT touch NIVESSA_WEB_BUSINESS_ID — if that's also missing,
-#     that needs a real value, not a guess, so it's left alone
+#   - also sets NIVESSA_WEB_BUSINESS_ID=1 if missing (confirmed via a
+#     read-only `business` table query that id 1 is "Nivessa Records" —
+#     not a guess)
 #
 # Uses the same secrets as Deploy production / Run migrations:
 #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
@@ -76,10 +77,10 @@ jobs:
             echo "before:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
             grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
-            grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "skipping write, already set" || printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
+            grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "skipping token write, already set" || printf '\nNIVESSA_WEB_API_TOKEN=%s\n' "$NIVESSA_WEB_API_TOKEN" >> .env
+            grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "skipping business_id write, already set" || printf '\nNIVESSA_WEB_BUSINESS_ID=1\n' >> .env
             php artisan config:clear
             echo "after:"
             grep -q '^NIVESSA_WEB_API_TOKEN=' .env && echo "token set" || echo "token missing"
-            echo "businesses (read-only, to find the right NIVESSA_WEB_BUSINESS_ID):"
-            echo 'DB::table("business")->get(["id","name"])->each(function($b){ echo $b->id.": ".$b->name.PHP_EOL; });' | php artisan tinker
+            grep -q '^NIVESSA_WEB_BUSINESS_ID=' .env && echo "business_id set" || echo "business_id missing"
             echo "done"
