@@ -159,7 +159,7 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Reference only — NOT part of Pay now. All-time listening-party total, already paid.">Listening party <span style="font-weight:400;">(already paid, all-time — not owed)</span></th>
+                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Reference only — NOT part of Pay now. Last 14 days (this pay period), already paid.">Listening party <span style="font-weight:400;">(this period, already paid)</span></th>
                             <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed + Listening party owed = what you hand this person this run">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>

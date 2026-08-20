@@ -1098,9 +1098,15 @@ class ListingCommissionController extends Controller
     // only - does not touch anyone's Pay now.
     private function manualPartyEarnedByUser()
     {
+        // Only the last 14 days (one pay period) — this column is meant to read
+        // as "this payroll cycle's party money", not a growing all-time total
+        // that drifts further from Pay now with every past party (Sarah 2026-08-20).
+        $cutoff = \Carbon::now()->subDays(14)->toDateString();
         $out = [];
         foreach ($this->loadSalesPayouts() as $p) {
             if (stripos((string) ($p['note'] ?? ''), 'Listening party') !== 0) { continue; }
+            $eventDate = (string) ($p['from_date'] ?? ($p['marked_at'] ?? ''));
+            if ($eventDate !== '' && $eventDate < $cutoff) { continue; }
             $uid = (int) ($p['user_id'] ?? 0);
             if ($uid > 0) { $out[$uid] = ($out[$uid] ?? 0) + (float) ($p['amount'] ?? 0); }
         }
