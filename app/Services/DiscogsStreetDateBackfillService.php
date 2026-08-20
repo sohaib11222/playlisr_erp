@@ -27,6 +27,10 @@ class DiscogsStreetDateBackfillService
             return ['ok' => false, 'error' => 'Discogs API token not configured (Settings > Integrations > Discogs).'];
         }
 
+        // Can't sort by street date — that's the value we're fetching. Newest
+        // catalog additions first is the best available proxy for "recent
+        // release" so the New Releases ABC view fills in sooner instead of
+        // waiting on the whole 58k-deep back-catalog in arbitrary order.
         $products = \DB::table('products')
             ->where('business_id', $businessId)
             ->whereNotNull('discogs_release_id')
@@ -35,6 +39,7 @@ class DiscogsStreetDateBackfillService
                 $q->whereNull('product_custom_field2')->orWhere('product_custom_field2', '');
             })
             ->select('id', 'name', 'discogs_release_id')
+            ->orderByDesc('created_at')
             ->limit($limit)
             ->get();
 
