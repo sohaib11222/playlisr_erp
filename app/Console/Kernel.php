@@ -134,14 +134,18 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(120);
 
-        // ~58,800 products were eligible at launch (2026-08-19). Runs
-        // CONTINUOUSLY for 13 of every 15 min (not one batch then idle) at
-        // ~54 req/min pacing — that clears the backlog in roughly a day
-        // instead of several. Once caught up this exits fast (nothing
-        // eligible) and just tops up newly Discogs-linked products as
+        // ~58,800 products were eligible at launch (2026-08-19). Originally ran
+        // 13 of every 15 min at ~54 req/min — that alone used ~87% of Discogs'
+        // shared ~60 req/min account-wide budget nearly around the clock,
+        // starving the website's own Discogs calls (order sync every 30s,
+        // stock sync, image/artist backfill, the release-rematch sweep) of any
+        // headroom and causing their constant 429s/stalls (2026-08-20). Cut to
+        // 6 of every 15 min so this makes steady progress without crowding out
+        // time-sensitive live-commerce syncs. Once caught up this exits fast
+        // (nothing eligible) and just tops up newly Discogs-linked products as
         // they're added. Manual catch-up also available at
         // /admin/discogs-street-dates if you want to push it faster still.
-        $schedule->command('discogs:backfill-street-dates --minutes=13 --commit')
+        $schedule->command('discogs:backfill-street-dates --minutes=6 --commit')
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(20);
