@@ -215,6 +215,7 @@ class BuyOfferCalculatorService
                 'unit_rate' => $unitRate > 0 ? $unitRate : null,
                 'line_cash_total' => $cashLine,
                 'line_credit_total' => $creditLine,
+                'disposition' => $line['disposition'] ?? null,
             ];
         }
 

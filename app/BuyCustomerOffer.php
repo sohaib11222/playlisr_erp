@@ -8,7 +8,7 @@ class BuyCustomerOffer extends Model
 {
     protected $guarded = ['id'];
 
-    protected $dates = ['accepted_at'];
+    protected $dates = ['accepted_at', 'storage_location_updated_at'];
 
     protected $casts = [
         'calculated_cash_total' => 'float',

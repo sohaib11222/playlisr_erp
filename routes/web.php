@@ -314,7 +314,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
     Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');
     Route::get('/buy-from-customer/history', 'BuyFromCustomerController@history')->name('buy-from-customer.history');
+    Route::get('/buy-from-customer/storage-locations', 'BuyFromCustomerController@storageLocations')->name('buy-from-customer.storage-locations');
     Route::get('/buy-from-customer/{id}/edit', 'BuyFromCustomerController@edit')->name('buy-from-customer.edit');
+    Route::get('/buy-from-customer/{id}/intake-sheet', 'BuyFromCustomerController@intakeSheet')->name('buy-from-customer.intake-sheet');
+    Route::post('/buy-from-customer/{id}/storage-location', 'BuyFromCustomerController@updateStorageLocation')->name('buy-from-customer.storage-location.update');
     Route::post('/buy-from-customer/{id}/delete', 'BuyFromCustomerController@destroy')->name('buy-from-customer.destroy');
     Route::resource('purchases', 'PurchaseController')->except(['show']);
 

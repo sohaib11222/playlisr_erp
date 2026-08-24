@@ -121,6 +121,9 @@
                                     </a>
                                 @endif
                                 @if($offer->status === 'accepted')
+                                    <a href="{{ route('buy-from-customer.intake-sheet', $offer->id) }}" class="btn btn-default btn-xs" title="Print the intake sheet for this collection">
+                                        <i class="fa fa-print"></i> Intake Sheet
+                                    </a>
                                     <span class="text-muted small" title="Accepted offers can't be deleted — void the linked purchase first">locked</span>
                                 @elseif(!empty($is_admin))
                                     <form method="POST" action="{{ route('buy-from-customer.destroy', $offer->id) }}" style="display:inline;" onsubmit="return confirm('Delete {{ $offer->buy_record_number }}? This cannot be undone.');">

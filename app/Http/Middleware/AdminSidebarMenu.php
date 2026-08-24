@@ -35,6 +35,13 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
+            //Storage Locations — where purchased collections physically live.
+            //Deliberately ungated (not behind purchase.*): whoever finds a box
+            //needs to be able to look up or fix its location, not just whoever
+            //bought it. Sits at top level, not inside the Purchases dropdown,
+            //so it's visible even to staff without any purchase permission.
+            $menu->url(action('BuyFromCustomerController@storageLocations'), 'Storage Locations', ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) == 'storage-locations'])->order(7);
+
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 

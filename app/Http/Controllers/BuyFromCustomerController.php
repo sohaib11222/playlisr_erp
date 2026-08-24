@@ -137,6 +137,7 @@ class BuyFromCustomerController extends Controller
                     'quantity' => $line->quantity,
                     'discogs_median_price' => $line->discogs_median_price,
                     'standard_multiplier' => $line->standard_multiplier,
+                    'disposition' => $line->disposition,
                 ];
             })->all();
 
@@ -337,6 +338,7 @@ class BuyFromCustomerController extends Controller
             if ($offer->payout_type === 'store_credit') {
                 $this->creditStoreCreditPayout($offer, $created['purchase']);
             }
+            $created['offer_id'] = $offer->id;
             return $created;
         });
 
@@ -348,7 +350,9 @@ class BuyFromCustomerController extends Controller
                 : ''
         );
 
-        return redirect()->route('buy-from-customer.history')
+        // Straight to the intake sheet — that's the printout Sarah wants in
+        // hand right after the box changes ownership, not buried in History.
+        return redirect()->route('buy-from-customer.intake-sheet', $result['offer_id'])
             ->with('status', ['success' => 1, 'msg' => $msg]);
     }
 
@@ -435,6 +439,81 @@ class BuyFromCustomerController extends Controller
         return view('buy_from_customer.history', compact('offers', 'diagnostics', 'is_admin'));
     }
 
+    /**
+     * Printable intake sheet for an accepted purchase: who it was bought
+     * from/by, the record #, where the box is being stored, what was paid,
+     * and its contents. Any logged-in employee can view/print this (not
+     * gated on purchase.create) — the whole point is that whoever finds the
+     * box later can look it up, not just the person who bought it.
+     */
+    public function intakeSheet($id)
+    {
+        $this->ensureCollectionStorageAndDispositionColumns();
+
+        $business_id = request()->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::with(['lines', 'contact', 'createdBy', 'location'])
+            ->where('business_id', $business_id)
+            ->findOrFail($id);
+        $itemTypes = $this->calculator->getItemTypesForDropdown();
+
+        return view('buy_from_customer.intake_sheet', compact('offer', 'itemTypes'));
+    }
+
+    /**
+     * Shared, store-wide list of where every purchased collection physically
+     * ended up. Visible/editable to any logged-in employee (not gated on
+     * purchase.create) so whoever finds a box — not just whoever bought it —
+     * can look up or correct its location.
+     */
+    public function storageLocations()
+    {
+        $this->ensureCollectionStorageAndDispositionColumns();
+
+        $business_id = request()->session()->get('user.business_id');
+        $search = trim((string) request()->input('q', ''));
+
+        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines'])
+            ->where('business_id', $business_id)
+            ->where('status', 'accepted');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('storage_location', 'like', "%{$search}%")
+                    ->orWhere('seller_name', 'like', "%{$search}%")
+                    ->orWhere('seller_first_name', 'like', "%{$search}%")
+                    ->orWhere('seller_last_name', 'like', "%{$search}%");
+            });
+        }
+
+        $offers = $query->latest('accepted_at')->paginate(50)->appends(request()->only('q'));
+
+        return view('buy_from_customer.storage_locations', compact('offers', 'search'));
+    }
+
+    public function updateStorageLocation(Request $request, $id)
+    {
+        $this->ensureCollectionStorageAndDispositionColumns();
+
+        $business_id = request()->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::where('business_id', $business_id)->findOrFail($id);
+
+        $request->validate([
+            'storage_location' => 'nullable|string|max:255',
+        ]);
+
+        $offer->storage_location = trim((string) $request->input('storage_location', '')) ?: null;
+        $offer->storage_location_updated_by = request()->session()->get('user.id');
+        $offer->storage_location_updated_at = now();
+        $offer->save();
+
+        return response()->json([
+            'success' => true,
+            'storage_location' => $offer->storage_location,
+            'updated_by' => optional(auth()->user())->user_full_name ?? optional(auth()->user())->username,
+            'updated_at' => optional($offer->storage_location_updated_at)->format('M j, Y g:ia'),
+        ]);
+    }
+
     protected function validateRequest(Request $request, $requireFinal)
     {
         if (!$request->has('payment_method') && $request->has('payout_type')) {
@@ -466,6 +545,7 @@ class BuyFromCustomerController extends Controller
             'lines.*.quantity' => 'required|numeric|min:0.0001',
             'lines.*.discogs_median_price' => 'nullable|numeric|min:0',
             'lines.*.condition_grade' => 'nullable|string|max:30',
+            'lines.*.disposition' => 'nullable|string|in:store,discogs,ebay,hollywood,trash,clearance_bin',
             'starting_offer_cash' => 'nullable|numeric|min:0',
             'starting_offer_credit' => 'nullable|numeric|min:0',
             'second_offer_cash' => 'nullable|numeric|min:0',
@@ -542,6 +622,8 @@ class BuyFromCustomerController extends Controller
 
     protected function saveOffer(Request $request, $status = 'draft', $offerId = null, $createContact = true)
     {
+        $this->ensureCollectionStorageAndDispositionColumns();
+
         $business_id = request()->session()->get('user.business_id');
         $user_id = request()->session()->get('user.id');
         $contact = $this->resolveSellerContact($request, $business_id, $user_id, $createContact);
@@ -754,6 +836,7 @@ class BuyFromCustomerController extends Controller
         // shipping ALTER TABLE behind a request avoids the manual step).
         // Idempotent: hasColumn() guards every add.
         $this->ensureOfferLineProductRefColumns();
+        $this->ensureCollectionStorageAndDispositionColumns();
 
         $business_id = $offer->business_id;
         $location_id = $offer->location_id ?: BusinessLocation::where('business_id', $business_id)->value('id');
@@ -888,6 +971,7 @@ class BuyFromCustomerController extends Controller
                 'unit_id' => 1,
                 'type' => 'single',
                 'not_for_selling' => 1,
+                'disposition' => $line->disposition,
             ]);
             $product->sku = $this->productUtil->generateProductSku($product->id);
             $product->save();
@@ -1070,6 +1154,35 @@ class BuyFromCustomerController extends Controller
                 $table->unsignedBigInteger('purchase_line_id')->nullable();
             }
         });
+    }
+
+    /**
+     * Self-heal the storage-location / disposition columns the same way
+     * ensureOfferLineProductRefColumns() does — deploys don't auto-run
+     * `php artisan migrate`, so code that depends on these columns must be
+     * able to add them itself the first time it runs.
+     */
+    protected function ensureCollectionStorageAndDispositionColumns()
+    {
+        if (Schema::hasTable('buy_customer_offers') && !Schema::hasColumn('buy_customer_offers', 'storage_location')) {
+            Schema::table('buy_customer_offers', function (Blueprint $table) {
+                $table->string('storage_location', 255)->nullable();
+                $table->unsignedInteger('storage_location_updated_by')->nullable();
+                $table->timestamp('storage_location_updated_at')->nullable();
+            });
+        }
+
+        if (Schema::hasTable('buy_customer_offer_lines') && !Schema::hasColumn('buy_customer_offer_lines', 'disposition')) {
+            Schema::table('buy_customer_offer_lines', function (Blueprint $table) {
+                $table->string('disposition', 20)->nullable();
+            });
+        }
+
+        if (Schema::hasTable('products') && !Schema::hasColumn('products', 'disposition')) {
+            Schema::table('products', function (Blueprint $table) {
+                $table->string('disposition', 20)->nullable();
+            });
+        }
     }
 }
 
