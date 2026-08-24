@@ -219,19 +219,32 @@ class BuyOfferCalculatorService
         }
 
         $cashTotal = round($cashTotal, 2);
-        $creditTotal = round($cashTotal * (float) $rules['credit_bonus_multiplier'], 2);
+        $creditBonus = (float) $rules['credit_bonus_multiplier'];
+        $creditTotal = round($cashTotal * $creditBonus, 2);
+
+        // Credit offers are always credit_bonus_multiplier × the cash offer at
+        // the same negotiation tier — never taken from the submitted *_credit
+        // input directly. Previously a cashier typing a negotiated
+        // starting/second/final CASH figure left the paired credit figure at
+        // its old auto-filled value, so store credit quietly stopped being
+        // 1.5x cash the moment any negotiation happened (the normal case).
+        // Deriving credit from the (possibly overridden) cash figure here
+        // makes the ratio hold everywhere, not just on the untouched default.
+        $startingCash = isset($offerInputs['starting_offer_cash']) && $offerInputs['starting_offer_cash'] !== '' ? (float) $offerInputs['starting_offer_cash'] : round($cashTotal * 0.50, 2);
+        $secondCash = isset($offerInputs['second_offer_cash']) && $offerInputs['second_offer_cash'] !== '' ? (float) $offerInputs['second_offer_cash'] : round($cashTotal * 0.75, 2);
+        $finalCash = isset($offerInputs['final_offer_cash']) && $offerInputs['final_offer_cash'] !== '' ? (float) $offerInputs['final_offer_cash'] : round($cashTotal * 0.95, 2);
 
         $result = [
             'lines' => $normalized,
             'collection_summary' => $this->summarizeCollection($normalized),
             'calculated_cash_total' => $cashTotal,
             'calculated_credit_total' => $creditTotal,
-            'starting_offer_cash' => isset($offerInputs['starting_offer_cash']) && $offerInputs['starting_offer_cash'] !== '' ? (float) $offerInputs['starting_offer_cash'] : round($cashTotal * 0.50, 2),
-            'starting_offer_credit' => isset($offerInputs['starting_offer_credit']) && $offerInputs['starting_offer_credit'] !== '' ? (float) $offerInputs['starting_offer_credit'] : round($creditTotal * 0.50, 2),
-            'second_offer_cash' => isset($offerInputs['second_offer_cash']) && $offerInputs['second_offer_cash'] !== '' ? (float) $offerInputs['second_offer_cash'] : round($cashTotal * 0.75, 2),
-            'second_offer_credit' => isset($offerInputs['second_offer_credit']) && $offerInputs['second_offer_credit'] !== '' ? (float) $offerInputs['second_offer_credit'] : round($creditTotal * 0.75, 2),
-            'final_offer_cash' => isset($offerInputs['final_offer_cash']) && $offerInputs['final_offer_cash'] !== '' ? (float) $offerInputs['final_offer_cash'] : round($cashTotal * 0.95, 2),
-            'final_offer_credit' => isset($offerInputs['final_offer_credit']) && $offerInputs['final_offer_credit'] !== '' ? (float) $offerInputs['final_offer_credit'] : round($creditTotal * 0.95, 2),
+            'starting_offer_cash' => $startingCash,
+            'starting_offer_credit' => round($startingCash * $creditBonus, 2),
+            'second_offer_cash' => $secondCash,
+            'second_offer_credit' => round($secondCash * $creditBonus, 2),
+            'final_offer_cash' => $finalCash,
+            'final_offer_credit' => round($finalCash * $creditBonus, 2),
         ];
 
         return $result;
