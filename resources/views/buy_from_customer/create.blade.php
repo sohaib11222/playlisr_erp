@@ -453,6 +453,7 @@ HTML;
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / value</th>
+                                    <th>Destination</th>
                                     <th>Line value</th>
                                     <th></th>
                                 </tr>
@@ -463,6 +464,17 @@ HTML;
                                     // type a typical haul without having to click "Add line" each time.
                                     $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10];
                                     $lines = $input['lines'] ?? array_fill(0, 7, $defaultRow);
+                                    // Where the item is meant to end up once it's sorted/priced. Optional —
+                                    // set at intake, can be left blank and decided later.
+                                    $dispositions = [
+                                        '' => '—',
+                                        'store' => 'Store',
+                                        'discogs' => 'Discogs',
+                                        'ebay' => 'eBay',
+                                        'hollywood' => 'Hollywood',
+                                        'trash' => 'Trash',
+                                        'clearance_bin' => 'Clearance Bin (records only)',
+                                    ];
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     <tr>
@@ -475,6 +487,7 @@ HTML;
                                             {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
                                             {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
                                         </td>
+                                        <td>{!! Form::select("lines[$i][disposition]", $dispositions, $line['disposition'] ?? '', ['class' => 'form-control bfc-disposition']) !!}</td>
                                         <td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>
                                         <td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>
                                     </tr>
@@ -1014,6 +1027,7 @@ HTML;
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
+                + '<td><select name="lines[' + idx + '][disposition]" class="form-control bfc-disposition">@foreach($dispositions as $dk => $dl)<option value="{{$dk}}">{{ $dl }}</option>@endforeach</select></td>'
                 + '<td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
@@ -1225,6 +1239,13 @@ HTML;
             }
             return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
         }
+        // Clearance Bin is a records-only destination — same "is this vinyl"
+        // check the calculator itself uses (individual_vinyl / bulk_vinyl_*),
+        // plus 45s since they're vinyl too. Not a hard server-side block, just
+        // keeps the option out of the way for non-record rows.
+        function bfcIsRecordItemType(type) {
+            return type === 'individual_vinyl' || (type || '').indexOf('bulk_vinyl_') === 0 || (type || '').indexOf('rpm45_') === 0;
+        }
         function bfcApplyRowState($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
@@ -1235,6 +1256,14 @@ HTML;
             if (!usesValue) { $median.removeClass('bfc-median-missing'); }
             var $grade = $row.find('select[name$="[condition_grade]"]');
             $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);
+
+            var $disposition = $row.find('select[name$="[disposition]"]');
+            var $clearanceOpt = $disposition.find('option[value="clearance_bin"]');
+            var isRecord = bfcIsRecordItemType(type);
+            if (!isRecord && $disposition.val() === 'clearance_bin') {
+                $disposition.val('');
+            }
+            $clearanceOpt.prop('disabled', !isRecord).toggle(isRecord);
         }
         function bfcRecalcAll() {
             var cashTotal = 0;
