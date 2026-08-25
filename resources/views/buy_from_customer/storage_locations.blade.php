@@ -82,7 +82,12 @@
 </section>
 
 <script>
-    $(function () {
+(function () {
+    function onReady(fn) {
+        if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+        jQuery(fn);
+    }
+    onReady(function ($) {
         function updateBaseUrl(id) {
             return '{{ url('/buy-from-customer') }}/' + id + '/storage-location';
         }
@@ -117,5 +122,6 @@
                 });
         });
     });
+})();
 </script>
 @endsection
