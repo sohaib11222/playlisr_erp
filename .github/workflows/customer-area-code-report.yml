@@ -1,0 +1,164 @@
+# Read-only report: buckets customer contacts by phone-number area code,
+# split by their home store (Pico / Hollywood, attributed by whichever
+# location has the most of their finalized sells). No writes — SELECT only.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Customer area code report
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: customer-area-code-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run area code report
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 10m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+
+            cat > /tmp/area_code_report.php <<'PHP'
+            <?php
+
+            $business = \App\Business::first();
+            $bid = $business->id;
+
+            $pico = \App\BusinessLocation::where('business_id', $bid)
+                ->whereRaw('LOWER(name) LIKE ?', ['%pico%'])->first();
+            $holly = \App\BusinessLocation::where('business_id', $bid)
+                ->whereRaw('LOWER(name) LIKE ?', ['%hollywood%'])->first();
+
+            echo "PICO_LOCATION: " . ($pico ? $pico->id . ' (' . $pico->name . ')' : 'NOT FOUND') . "\n";
+            echo "HOLLYWOOD_LOCATION: " . ($holly ? $holly->id . ' (' . $holly->name . ')' : 'NOT FOUND') . "\n";
+
+            $picoId = $pico->id ?? null;
+            $hollyId = $holly->id ?? null;
+
+            $rows = \DB::table('transactions')
+                ->select('contact_id', 'location_id', \DB::raw('COUNT(*) as cnt'), \DB::raw('MIN(transaction_date) as first_date'))
+                ->where('business_id', $bid)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNotNull('contact_id')
+                ->groupBy('contact_id', 'location_id')
+                ->get();
+
+            $agg = [];
+            foreach ($rows as $r) {
+                $agg[$r->contact_id][$r->location_id] = ['cnt' => $r->cnt, 'first' => $r->first_date];
+            }
+
+            $homeLocation = [];
+            foreach ($agg as $cid => $locs) {
+                $best = null;
+                foreach ($locs as $lid => $info) {
+                    if ($best === null
+                        || $info['cnt'] > $locs[$best]['cnt']
+                        || ($info['cnt'] === $locs[$best]['cnt'] && $info['first'] < $locs[$best]['first'])) {
+                        $best = $lid;
+                    }
+                }
+                $homeLocation[$cid] = $best;
+            }
+
+            $contacts = \App\Contact::where('business_id', $bid)
+                ->where('is_default', 0)
+                ->whereIn('type', ['customer', 'both'])
+                ->select('id', 'mobile')
+                ->get();
+
+            function areaCodeOf($mobile)
+            {
+                $digits = preg_replace('/\D+/', '', (string) $mobile);
+                if (strlen($digits) === 11 && $digits[0] === '1') {
+                    $digits = substr($digits, 1);
+                }
+                if (strlen($digits) !== 10) {
+                    return null;
+                }
+                return substr($digits, 0, 3);
+            }
+
+            $buckets = [
+                'ALL' => [],
+                'PICO' => [],
+                'HOLLYWOOD' => [],
+                'OTHER_LOCATION' => [],
+                'NO_SALES' => [],
+            ];
+            $invalid = ['ALL' => 0, 'PICO' => 0, 'HOLLYWOOD' => 0, 'OTHER_LOCATION' => 0, 'NO_SALES' => 0];
+            $total = ['ALL' => 0, 'PICO' => 0, 'HOLLYWOOD' => 0, 'OTHER_LOCATION' => 0, 'NO_SALES' => 0];
+
+            foreach ($contacts as $c) {
+                $ac = areaCodeOf($c->mobile);
+                $total['ALL']++;
+                if ($ac === null) {
+                    $invalid['ALL']++;
+                } else {
+                    $buckets['ALL'][$ac] = ($buckets['ALL'][$ac] ?? 0) + 1;
+                }
+
+                $lid = $homeLocation[$c->id] ?? null;
+                if ($lid === null) {
+                    $bucketKey = 'NO_SALES';
+                } elseif ($picoId !== null && $lid == $picoId) {
+                    $bucketKey = 'PICO';
+                } elseif ($hollyId !== null && $lid == $hollyId) {
+                    $bucketKey = 'HOLLYWOOD';
+                } else {
+                    $bucketKey = 'OTHER_LOCATION';
+                }
+
+                $total[$bucketKey]++;
+                if ($ac === null) {
+                    $invalid[$bucketKey]++;
+                } else {
+                    $buckets[$bucketKey][$ac] = ($buckets[$bucketKey][$ac] ?? 0) + 1;
+                }
+            }
+
+            foreach ($buckets as $name => $counts) {
+                arsort($counts);
+                echo "=== $name (total: {$total[$name]}, invalid/unknown: {$invalid[$name]}) ===\n";
+                foreach ($counts as $ac => $cnt) {
+                    echo "$ac $cnt\n";
+                }
+                echo "\n";
+            }
+
+            echo "DONE\n";
+            PHP
+
+            php artisan tinker /tmp/area_code_report.php 2>&1
+            code=$?
+            rm -f /tmp/area_code_report.php
+            echo "=== exit code: $code ==="
+            exit 0
