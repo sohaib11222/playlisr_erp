@@ -79,6 +79,10 @@
         /* Editable final-offer inputs — visually distinct so cashier knows they can adjust. */
         .bfc-create .bfc-final-edit { background: #fffdf0; border-color: #e0c46c; color: #333; font-weight: 600; }
         .bfc-create .bfc-final-edit.bfc-final-overridden { background: #fff3cd; border-color: #d4a017; }
+        /* Derived credit (readonly) still needs to show the overridden state when
+           the paired cash figure was negotiated, even though .bfc-offer-display's
+           gray styling normally wins over .bfc-final-edit's cascade order. */
+        .bfc-create .bfc-offer-display.bfc-final-overridden { background: #fff3cd; border-color: #d4a017; }
         /* "Calculator: $X.XX" hint under each editable final input. */
         .bfc-create .bfc-calc-hint { display: block; margin-top: 3px; font-size: 11px; color: #888; }
         .bfc-create .bfc-delta { font-weight: 600; margin-left: 2px; }
@@ -536,12 +540,12 @@ HTML;
                             <tr>
                                 <th class="bfc-offer-rowlabel">1. Opening offer <small class="text-muted" style="font-weight:400;">(start low)</small></th>
                                 <td>{!! Form::number('starting_offer_cash', $offerInput($offerStartingCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
-                                <td>{!! Form::number('starting_offer_credit', $offerInput($offerStartingCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
+                                <td>{!! Form::number('starting_offer_credit', $offerInput($offerStartingCredit), ['class' => 'form-control bfc-offer-display', 'id' => 'bfc_starting_credit', 'step' => '0.01', 'min' => '0', 'readonly' => 'readonly', 'tabindex' => '-1']) !!}</td>
                             </tr>
                             <tr>
                                 <th class="bfc-offer-rowlabel">2. Counter offer <small class="text-muted" style="font-weight:400;">(if they push back)</small></th>
                                 <td>{!! Form::number('second_offer_cash', $offerInput($offerSecondCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
-                                <td>{!! Form::number('second_offer_credit', $offerInput($offerSecondCredit), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
+                                <td>{!! Form::number('second_offer_credit', $offerInput($offerSecondCredit), ['class' => 'form-control bfc-offer-display', 'id' => 'bfc_second_credit', 'step' => '0.01', 'min' => '0', 'readonly' => 'readonly', 'tabindex' => '-1']) !!}</td>
                             </tr>
                             <tr class="bfc-final-row">
                                 <th class="bfc-offer-rowlabel">3. Final price <small style="font-weight:600; color:#8a6d00;">← what you'll pay</small></th>
@@ -552,7 +556,7 @@ HTML;
                                     @endif
                                 </td>
                                 <td>
-                                    {!! Form::number('final_offer_credit', $offerInput($offerFinalCredit), ['class' => 'form-control bfc-final-edit', 'id' => 'bfc_final_credit', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)', 'data-auto' => $offerInput($offerFinalCredit)]) !!}
+                                    {!! Form::number('final_offer_credit', $offerInput($offerFinalCredit), ['class' => 'form-control bfc-offer-display bfc-final-edit', 'id' => 'bfc_final_credit', 'step' => '0.01', 'min' => '0', 'readonly' => 'readonly', 'tabindex' => '-1', 'data-auto' => $offerInput($offerFinalCredit)]) !!}
                                     @if(!empty($calc) && $offerFinalCredit !== null)
                                         <small class="bfc-calc-hint">Calculator: ${{ number_format((float) $offerFinalCredit, 2) }} <span class="bfc-delta" id="bfc_final_credit_delta"></span></small>
                                     @endif
@@ -560,7 +564,10 @@ HTML;
                             </tr>
                         </tbody>
                     </table>
-                    <p class="help-block small" style="margin-top:-4px;">Tip: these fill in automatically from the items above as you type. Type over any figure to use a negotiated price, or blank it to snap back to the suggestion.</p>
+                    @php
+                        $bfcCreditBonus = app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'];
+                    @endphp
+                    <p class="help-block small" style="margin-top:-4px;">Tip: these fill in automatically from the items above as you type. Type over the Cash figure to use a negotiated price (or blank it to snap back to the suggestion) — Credit always follows Cash at {{ rtrim(rtrim(number_format($bfcCreditBonus, 2), '0'), '.') }}x and can't be edited separately.</p>
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
@@ -1295,6 +1302,36 @@ HTML;
                 bfcRecalcAll();
             });
         }
+
+        // Credit is read-only and always mirrors its paired Cash figure at
+        // credit_bonus_multiplier × cash (BuyOfferCalculatorService derives it
+        // the same way server-side, ignoring any submitted credit value — see
+        // BuyFromCustomerController::saveOffer). Previously a cashier negotiating
+        // a Cash figure — the normal case, especially AFTER Calculate when
+        // bfcPopulateLadder above no longer runs — left the paired Credit figure
+        // stuck at its old value, so the store-credit offer quietly stopped
+        // being 1.5x cash. This keeps the on-screen number honest at every tier,
+        // not just the untouched default. Doesn't touch data-auto — the Final
+        // row's override-highlight below still needs that to hold the original
+        // calculator suggestion.
+        var BFC_CASH_CREDIT_PAIRS = {
+            'starting_offer_cash': 'starting_offer_credit',
+            'second_offer_cash': 'second_offer_credit',
+            'final_offer_cash': 'final_offer_credit'
+        };
+        function bfcSyncCreditFromCash($cashInput) {
+            var creditName = BFC_CASH_CREDIT_PAIRS[$cashInput.attr('name')];
+            if (!creditName) return;
+            var $credit = $('#buy_offer_form').find('[name="' + creditName + '"]');
+            if (!$credit.length) return;
+            var cash = parseFloat($cashInput.val());
+            var bonus = parseFloat(BFC_RULES.credit_bonus) || 1;
+            var val = isFinite(cash) ? (Math.round(cash * bonus * 100) / 100).toFixed(2) : '';
+            $credit.val(val).trigger('change');
+        }
+        $(document).on('input change', '#buy_offer_form input[name="starting_offer_cash"], #buy_offer_form input[name="second_offer_cash"], #buy_offer_form input[name="final_offer_cash"]', function () {
+            bfcSyncCreditFromCash($(this));
+        });
 
         $('#offer_lines_table tbody tr').each(function () { bfcApplyRowState($(this)); });
         bfcRecalcAll();
