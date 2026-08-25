@@ -148,7 +148,12 @@
 </style>
 
 <script>
-    $(function () {
+(function () {
+    function onReady(fn) {
+        if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+        jQuery(fn);
+    }
+    onReady(function ($) {
         $('#bfc_storage_location_save').on('click', function () {
             var $btn = $(this);
             var $status = $('#bfc_storage_location_status');
@@ -172,5 +177,6 @@
                 });
         });
     });
+})();
 </script>
 @endsection
