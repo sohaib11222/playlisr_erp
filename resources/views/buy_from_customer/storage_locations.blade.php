@@ -99,7 +99,10 @@
             var val = $wrap.find('.bfc-loc-input').val();
             var $btn = $(this);
             $btn.prop('disabled', true);
-            $.post(updateBaseUrl(id), { storage_location: val })
+            $.post(updateBaseUrl(id), {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                storage_location: val,
+            })
                 .done(function (resp) {
                     var $display = $('.bfc-loc-display[data-offer-id="' + id + '"]');
                     $display.text(resp.storage_location || '—');

@@ -155,7 +155,10 @@
             var val = $('#bfc_storage_location_input').val();
             $btn.prop('disabled', true);
             $status.text('Saving...');
-            $.post('{{ route('buy-from-customer.storage-location.update', $offer->id) }}', { storage_location: val })
+            $.post('{{ route('buy-from-customer.storage-location.update', $offer->id) }}', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                storage_location: val,
+            })
                 .done(function (resp) {
                     $('#bfc_storage_location_display').text(resp.storage_location || 'Not yet assigned');
                     $('#bfc_storage_location_meta').text(resp.updated_at ? ('Last set ' + resp.updated_at + (resp.updated_by ? ' by ' + resp.updated_by : '')) : '');
