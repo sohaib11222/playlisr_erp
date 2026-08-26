@@ -472,7 +472,7 @@ class BuyFromCustomerController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $search = trim((string) request()->input('q', ''));
 
-        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines'])
+        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines', 'location'])
             ->where('business_id', $business_id)
             ->where('status', 'accepted');
 
