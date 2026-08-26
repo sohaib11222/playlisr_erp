@@ -268,6 +268,20 @@
     .pos-pay-row.channel-offregister .pay-card,
     .pos-pay-row.channel-offregister .pos-pay-more { display: none !important; }
     .pos-pay-row.channel-offregister .pos-complete-btn { display: inline-flex !important; }
+
+    /* Sarah 2026-08-26: when applied store credit covers the whole total,
+       there's nothing left to charge to Cash/Card and no reason to open
+       Multi-pay/Credit-sale — collapse the trio into one "Complete with
+       Store Credit" button. Toggled by pos.js (see .store-credit-full on
+       .pos-pay-row, driven by apply_store_credit_to_order_totals_display).
+       Reverts to normal automatically once the sale finalizes and
+       reset_pos_form() removes the class for the next customer. */
+    .pos-storecredit-btn { display: none; }
+    .pos-pay-row.store-credit-full { grid-template-columns: 1fr; }
+    .pos-pay-row.store-credit-full .pay-cash,
+    .pos-pay-row.store-credit-full .pay-card,
+    .pos-pay-row.store-credit-full .pos-pay-more { display: none !important; }
+    .pos-pay-row.store-credit-full .pos-storecredit-btn { display: inline-flex !important; }
     .pos-pay-more .dropdown-menu { min-width: 220px; padding: 4px; }
     .pos-pay-more .dropdown-menu .btn-link {
         display: block; width: 100%; text-align: left;
@@ -708,6 +722,21 @@
                 title="Complete this off-register sale (Whatnot / Discogs)">
                 <i class="fas fa-check"></i> Complete
             </button>
+
+            {{-- Store-credit-full "Complete" button — replaces Cash / Card / More
+                 when the applied store credit covers the whole total (see
+                 .store-credit-full toggle in pos.js, driven by
+                 apply_store_credit_to_order_totals_display). Finalizes as
+                 pay_method "store_credit" so pos.js submits the existing
+                 `advance` payment row as-is instead of overwriting it with
+                 cash/card — see the .pos-express-finalize handler. --}}
+            <button type="button"
+                class="pos-pay-btn pay-complete pos-storecredit-btn pos-express-finalize"
+                id="pos-complete-storecredit"
+                data-pay_method="store_credit"
+                title="Complete this sale using store credit">
+                <i class="fas fa-wallet"></i> Complete with Store Credit
+            </button>
         </div>
 
         @if(empty($edit))
@@ -1074,7 +1103,12 @@
                 }
                 function syncPayModeForChannel() {
                     var offRegister = ['whatnot', 'discogs', 'prepaid_pickup'].indexOf(currentPosChannel()) !== -1;
-                    $('.pos-pay-row').toggleClass('channel-offregister', offRegister);
+                    var $payRow = $('.pos-pay-row').toggleClass('channel-offregister', offRegister);
+                    // Off-register owns the pay row; don't let a store-credit-full
+                    // sale show its "Complete with Store Credit" button alongside it.
+                    if (offRegister) {
+                        $payRow.removeClass('store-credit-full');
+                    }
                 }
                 syncPayModeForChannel();
                 $(document).on('change', '.pos-channel-picker input[name="channel"]', syncPayModeForChannel);
