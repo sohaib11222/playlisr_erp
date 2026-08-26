@@ -471,6 +471,7 @@ class BuyFromCustomerController extends Controller
 
         $business_id = request()->session()->get('user.business_id');
         $search = trim((string) request()->input('q', ''));
+        $locationId = request()->input('location_id');
 
         $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines', 'location'])
             ->where('business_id', $business_id)
@@ -485,9 +486,14 @@ class BuyFromCustomerController extends Controller
             });
         }
 
-        $offers = $query->latest('accepted_at')->paginate(50)->appends(request()->only('q'));
+        if ($locationId !== null && $locationId !== '') {
+            $query->where('location_id', $locationId);
+        }
 
-        return view('buy_from_customer.storage_locations', compact('offers', 'search'));
+        $offers = $query->latest('accepted_at')->paginate(50)->appends(request()->only('q', 'location_id'));
+        $locations = BusinessLocation::forDropdown($business_id, true);
+
+        return view('buy_from_customer.storage_locations', compact('offers', 'search', 'locations', 'locationId'));
     }
 
     public function updateStorageLocation(Request $request, $id)

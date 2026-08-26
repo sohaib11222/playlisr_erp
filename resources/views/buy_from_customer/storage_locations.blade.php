@@ -18,6 +18,7 @@
             <h3 class="box-title">Purchased Collections</h3>
             <div class="box-tools">
                 {!! Form::open(['url' => route('buy-from-customer.storage-locations'), 'method' => 'get', 'style' => 'display:inline-block;']) !!}
+                {!! Form::select('location_id', $locations, $locationId, ['class' => 'form-control input-sm', 'id' => 'location_id', 'style' => 'width:150px; display:inline-block;']) !!}
                 {!! Form::text('q', $search, ['class' => 'form-control input-sm', 'style' => 'width:220px; display:inline-block;', 'placeholder' => 'Search location or seller']) !!}
                 <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-search"></i></button>
                 {!! Form::close() !!}
@@ -30,6 +31,7 @@
                         <th>Buy record</th>
                         <th>Date</th>
                         <th>Store</th>
+                        <th>Employee</th>
                         <th>Seller</th>
                         <th>Items</th>
                         <th>Value</th>
@@ -49,6 +51,7 @@
                             </td>
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
                             <td>{{ optional($offer->location)->name ?: '—' }}</td>
+                            <td>{{ optional($offer->createdBy)->user_full_name ?? optional($offer->createdBy)->username ?? '—' }}</td>
                             <td>
                                 @if($offer->seller_first_name || $offer->seller_last_name)
                                     {{ trim($offer->seller_first_name . ' ' . $offer->seller_last_name) }}
@@ -74,7 +77,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center text-muted">No accepted collections yet.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">No accepted collections yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
