@@ -193,6 +193,59 @@ jobs:
             }
             echo "\n";
 
+            // --- San Fernando Valley (818 + 747 overlay) zip/city breakdown ---
+            $sfvCodes = ['818', '747'];
+            $sfvContacts = \App\Contact::where('business_id', $bid)
+                ->where('is_default', 0)
+                ->whereIn('type', ['customer', 'both'])
+                ->select('id', 'mobile', 'zip_code', 'city', 'state')
+                ->get()
+                ->filter(function ($c) use ($sfvCodes) {
+                    return in_array(areaCodeOf($c->mobile), $sfvCodes, true);
+                });
+
+            $sfvRevenueByZip = [];
+            $sfvCountByZip = [];
+            $sfvRevenueByCity = [];
+            $sfvCountByCity = [];
+            $zipFilled = 0;
+            $cityFilled = 0;
+
+            foreach ($sfvContacts as $c) {
+                $net = (float) ($gross[$c->id] ?? 0) - (float) ($returns[$c->id] ?? 0);
+
+                $zip = trim((string) $c->zip_code);
+                $zipKey = $zip !== '' ? $zip : 'UNKNOWN';
+                if ($zip !== '') {
+                    $zipFilled++;
+                }
+                $sfvRevenueByZip[$zipKey] = ($sfvRevenueByZip[$zipKey] ?? 0) + $net;
+                $sfvCountByZip[$zipKey] = ($sfvCountByZip[$zipKey] ?? 0) + 1;
+
+                $city = trim((string) $c->city);
+                $cityKey = $city !== '' ? $city : 'UNKNOWN';
+                if ($city !== '') {
+                    $cityFilled++;
+                }
+                $sfvRevenueByCity[$cityKey] = ($sfvRevenueByCity[$cityKey] ?? 0) + $net;
+                $sfvCountByCity[$cityKey] = ($sfvCountByCity[$cityKey] ?? 0) + 1;
+            }
+
+            $sfvTotal = $sfvContacts->count();
+            arsort($sfvCountByZip);
+            arsort($sfvCountByCity);
+
+            echo "=== SFV (818+747) CUSTOMERS: total={$sfvTotal} zip_filled={$zipFilled} city_filled={$cityFilled} ===\n";
+            echo "--- by zip_code ---\n";
+            foreach ($sfvCountByZip as $zip => $cnt) {
+                printf("%s count=%d revenue=%.2f\n", $zip, $cnt, $sfvRevenueByZip[$zip]);
+            }
+            echo "--- by city ---\n";
+            foreach ($sfvCountByCity as $city => $cnt) {
+                printf("%s count=%d revenue=%.2f\n", $city, $cnt, $sfvRevenueByCity[$city]);
+            }
+            echo "\n";
+
             echo "DONE\n";
             PHP
 
