@@ -29,6 +29,7 @@
                     <tr>
                         <th>Buy record</th>
                         <th>Date</th>
+                        <th>Store</th>
                         <th>Seller</th>
                         <th>Items</th>
                         <th>Value</th>
@@ -47,6 +48,7 @@
                                 <a href="{{ route('buy-from-customer.intake-sheet', $offer->id) }}">{{ $offer->buy_record_number }}</a>
                             </td>
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
+                            <td>{{ optional($offer->location)->name ?: '—' }}</td>
                             <td>
                                 @if($offer->seller_first_name || $offer->seller_last_name)
                                     {{ trim($offer->seller_first_name . ' ' . $offer->seller_last_name) }}
@@ -72,7 +74,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted">No accepted collections yet.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">No accepted collections yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
