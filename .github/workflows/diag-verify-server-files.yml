@@ -1,0 +1,61 @@
+# READ-ONLY diagnostic: confirm the production checkout's HEAD and the actual
+# on-disk controller/view content match origin/main, to rule out a stale
+# deploy as the cause of the BFC storage-locations store filter appearing to
+# have no effect. No writes.
+name: Diag verify server files
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check server HEAD + on-disk file content (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== controller: storageLocations() location_id handling ==="
+            grep -n "locationId" app/Http/Controllers/BuyFromCustomerController.php
+            echo "=== view: filter form ==="
+            grep -n "location_id\|Form::select" resources/views/buy_from_customer/storage_locations.blade.php
+            echo "=== opcache status ==="
+            php -r "var_export(function_exists('opcache_get_status') ? (opcache_get_status(false) ?: 'disabled_or_false') : 'no_opcache_ext'); echo PHP_EOL;"
+            php -i | grep -i "opcache.enable\|opcache.validate_timestamps\|opcache.revalidate_freq" 2>/dev/null
+            echo "=== done ==="
