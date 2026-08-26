@@ -1,0 +1,68 @@
+# READ-ONLY diagnostic: check whether accepted buy_customer_offers actually
+# carry a diverse location_id (Pico vs Hollywood), and whether the storage-
+# locations page's store filter query would narrow the result set at the DB
+# level. No writes.
+name: Diag BFC storage-location filter
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect location_id distribution (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== buy_customer_offers (status=accepted) location_id distribution ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $rows = \App\BuyCustomerOffer::where('status', 'accepted')
+                ->selectRaw('location_id, count(*) as c')
+                ->groupBy('location_id')
+                ->get();
+            foreach ($rows as $r) {
+                $name = $r->location_id ? optional(\App\BusinessLocation::find($r->location_id))->name : 'NULL';
+                echo "location_id=".($r->location_id ?? 'NULL')." (".$name."): ".$r->c." offers\n";
+            }
+            echo "--- locations for this business ---\n";
+            $bizId = \App\BuyCustomerOffer::where('status', 'accepted')->value('business_id');
+            $locs = \App\BusinessLocation::where('business_id', $bizId)->get(['id', 'name', 'is_active']);
+            foreach ($locs as $l) {
+                echo "id=".$l->id." name=".$l->name." is_active=".$l->is_active."\n";
+            }
+            PHP
+            echo "=== done ==="
