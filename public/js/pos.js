@@ -1484,6 +1484,40 @@ $(document).ready(function() {
             return false;
         }
 
+        // Merged "Complete with Store Credit" button — only shown once credit
+        // covers the whole total (see .store-credit-full / pay-row toggle).
+        // Row 0 already holds the advance line from the "Use it" flow, so —
+        // like the card branch above — submit it as-is instead of routing it
+        // through the generic cash/card path below, which would overwrite
+        // row 0's payment method and silently drop the store-credit line.
+        if (pay_method === 'store_credit') {
+            var scfTotalPayable = __read_number($('input#final_total_input'));
+            var scfRemaining = scfTotalPayable - store_credit_used_amount;
+
+            if (store_credit_used_amount <= 0 || scfRemaining >= 0.05) {
+                // Coverage changed since the button appeared (e.g. an item was
+                // added back) — fall back to Cash/Card instead of under-charging.
+                toastr.warning('Store credit no longer covers the full total. Use Cash or Card to finish.');
+                update_pos_pay_row_for_store_credit_coverage(scfTotalPayable, get_applied_store_credit());
+                return false;
+            }
+
+            var $scfNote = $('#payment_rows_div').find('textarea[id^="note_"]').first();
+            if ($scfNote.length) {
+                var scf_existing_note = ($scfNote.val() || '').trim();
+                var scf_credit_note_prefix = 'Store credit used: ';
+                var scf_credit_note_text = scf_credit_note_prefix + __currency_trans_from_en(store_credit_used_amount, true);
+                if (scf_existing_note.indexOf(scf_credit_note_prefix) === -1) {
+                    $scfNote.val(scf_existing_note ? (scf_existing_note + ' | ' + scf_credit_note_text) : scf_credit_note_text);
+                }
+            }
+
+            window.pos_submit_in_progress = false;
+            calculate_balance_due();
+            pos_form_obj.submit();
+            return false;
+        }
+
         // Guardrail: when store credit is used, push cashier to a supported finalize
         // path (CASH or CARD). Other express methods still warn.
         var bypassStoreCreditGuard = $(this).data('store-credit-bypass') === true;
@@ -3855,6 +3889,22 @@ function get_applied_store_credit() {
 }
 
 /**
+ * Collapses Cash / Card / More into a single "Complete with Store Credit"
+ * button once applied store credit covers the whole total, and reverts once
+ * it no longer does (credit removed, or more items added past what's
+ * covered). Skipped for off-register channels — that channel already owns
+ * the pay row via .channel-offregister and shouldn't be fought over.
+ */
+function update_pos_pay_row_for_store_credit_coverage(fullTotalWithTax, creditApplied) {
+    var $payRow = $('.pos-pay-row');
+    if (!$payRow.length || $payRow.hasClass('channel-offregister')) {
+        return;
+    }
+    var fullyCovered = creditApplied > 0 && fullTotalWithTax > 0 && (fullTotalWithTax - creditApplied) < 0.05;
+    $payRow.toggleClass('store-credit-full', fullyCovered);
+}
+
+/**
  * Store credit in POS is redeemed as an `advance` payment and reduces what the
  * customer still owes. This rewrites the visible order-summary lines — most
  * importantly the "Pre-Tax → Clover" bar, so the cashier keys the AFTER-credit
@@ -3888,6 +3938,8 @@ function apply_store_credit_to_order_totals_display() {
         ? $preTaxOrig.data('full')
         : null;
     var creditDisp = get_applied_store_credit() * exchangeRate;
+
+    update_pos_pay_row_for_store_credit_coverage(fullTotalWithTax, creditDisp);
 
     // No credit applied (or nothing to reduce): restore the full figures and
     // clear the strike-through / highlight. This branch also runs when credit
@@ -4022,6 +4074,7 @@ function reset_pos_form(){
     if (typeof window.set_store_credit_cash_cta === 'function') {
         window.set_store_credit_cash_cta(false);
     }
+    $('.pos-pay-row').removeClass('store-credit-full');
 
 	//Reset discount
 	__write_number($('input#discount_amount'), $('input#discount_amount').data('default'));
