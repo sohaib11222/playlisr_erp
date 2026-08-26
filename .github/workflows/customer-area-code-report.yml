@@ -154,6 +154,45 @@ jobs:
                 echo "\n";
             }
 
+            // --- Net revenue per customer (finalized sells minus sell_returns), by area code ---
+            $gross = \DB::table('transactions')
+                ->select('contact_id', \DB::raw('SUM(final_total) as amt'))
+                ->where('business_id', $bid)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNotNull('contact_id')
+                ->groupBy('contact_id')
+                ->pluck('amt', 'contact_id');
+
+            $returns = \DB::table('transactions')
+                ->select('contact_id', \DB::raw('SUM(final_total) as amt'))
+                ->where('business_id', $bid)
+                ->where('type', 'sell_return')
+                ->whereNotNull('contact_id')
+                ->groupBy('contact_id')
+                ->pluck('amt', 'contact_id');
+
+            $revenueByAreaCode = [];
+            $customersByAreaCode = [];
+            foreach ($contacts as $c) {
+                $ac = areaCodeOf($c->mobile);
+                if ($ac === null) {
+                    continue;
+                }
+                $net = (float) ($gross[$c->id] ?? 0) - (float) ($returns[$c->id] ?? 0);
+                $revenueByAreaCode[$ac] = ($revenueByAreaCode[$ac] ?? 0) + $net;
+                $customersByAreaCode[$ac] = ($customersByAreaCode[$ac] ?? 0) + 1;
+            }
+            arsort($revenueByAreaCode);
+
+            echo "=== NET REVENUE BY AREA CODE (finalized sells minus sell_returns, all customers regardless of store) ===\n";
+            foreach ($revenueByAreaCode as $ac => $rev) {
+                $n = $customersByAreaCode[$ac];
+                $avg = $n > 0 ? $rev / $n : 0;
+                printf("%s revenue=%.2f customers=%d avg_per_customer=%.2f\n", $ac, $rev, $n, $avg);
+            }
+            echo "\n";
+
             echo "DONE\n";
             PHP
 
