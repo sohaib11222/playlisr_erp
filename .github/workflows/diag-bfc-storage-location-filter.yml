@@ -50,10 +50,7 @@ jobs:
             cd /www/playlist.nivessa.com/app
             echo "=== buy_customer_offers (status=accepted) location_id distribution ==="
             php artisan tinker --no-ansi <<'PHP'
-            $rows = \App\BuyCustomerOffer::where('status', 'accepted')
-                ->selectRaw('location_id, count(*) as c')
-                ->groupBy('location_id')
-                ->get();
+            $rows = \App\BuyCustomerOffer::where('status', 'accepted')->selectRaw('location_id, count(*) as c')->groupBy('location_id')->get();
             foreach ($rows as $r) {
                 $name = $r->location_id ? optional(\App\BusinessLocation::find($r->location_id))->name : 'NULL';
                 echo "location_id=".($r->location_id ?? 'NULL')." (".$name."): ".$r->c." offers\n";
@@ -64,5 +61,8 @@ jobs:
             foreach ($locs as $l) {
                 echo "id=".$l->id." name=".$l->name." is_active=".$l->is_active."\n";
             }
+            echo "--- direct where('location_id', X) counts (mirrors storageLocations()) ---\n";
+            foreach ($locs as $l) { echo $l->name.": ".\App\BuyCustomerOffer::where('status','accepted')->where('business_id',$bizId)->where('location_id',$l->id)->count()."\n"; }
+            echo "total accepted for business: ".\App\BuyCustomerOffer::where('status','accepted')->where('business_id',$bizId)->count()."\n";
             PHP
             echo "=== done ==="
