@@ -206,7 +206,7 @@ class BuyOfferCalculatorService
                 'line_order' => $i,
                 'item_type' => $itemType,
                 'title' => $line['title'] ?? null,
-                'genre' => $line['genre'] ?? null,
+                'discogs_link' => $line['discogs_link'] ?? null,
                 'condition_grade' => $noGrading ? null : $grade,
                 'quantity' => $quantity,
                 'discogs_median_price' => $discogsMedian > 0 ? $discogsMedian : null,

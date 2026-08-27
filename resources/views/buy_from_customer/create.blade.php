@@ -453,7 +453,7 @@ HTML;
                                 <tr>
                                     <th>Type</th>
                                     <th>Title/Notes</th>
-                                    <th>Genre</th>
+                                    <th>Discogs Link</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / value</th>
@@ -484,7 +484,7 @@ HTML;
                                     <tr>
                                         <td>{!! Form::select("lines[$i][item_type]", $itemTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}</td>
-                                        <td>{!! Form::text("lines[$i][genre]", $line['genre'] ?? null, ['class' => 'form-control']) !!}</td>
+                                        <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}</td>
                                         <td>{!! Form::select("lines[$i][condition_grade]", array_combine($grades, $grades), $line['condition_grade'] ?? 'VG+', ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
                                         <td>
@@ -1030,7 +1030,7 @@ HTML;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control"></td>'
-                + '<td><input type="text" name="lines[' + idx + '][genre]" class="form-control"></td>'
+                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"></td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
@@ -1056,9 +1056,9 @@ HTML;
         // Sarah 2026-07-05: individual-Discogs lines are priced as
         // Median × grade × standard multiplier, so a blank Discogs Median
         // flattens every grade to $0 — it looks like grade "does nothing".
-        // Guard Calculate: if a filled-in individual line (has a title/genre)
-        // is missing its median, highlight the cell and stop. Blank default
-        // rows (no title) are ignored so the form still calculates normally.
+        // Guard Calculate: if a filled-in individual line (has a title/discogs
+        // link) is missing its median, highlight the cell and stop. Blank
+        // default rows (no title) are ignored so the form still calculates normally.
         function bfcFlagMissingMedians() {
             var problems = 0;
             $('#offer_lines_table tbody tr').each(function () {
@@ -1068,10 +1068,10 @@ HTML;
                 }
                 var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
                 var title = ($row.find('input[name$="[title]"]').val() || '').trim();
-                var genre = ($row.find('input[name$="[genre]"]').val() || '').trim();
+                var discogsLink = ($row.find('input[name$="[discogs_link]"]').val() || '').trim();
                 var $median = $row.find('input[name$="[discogs_median_price]"]');
                 var median = parseFloat($median.val()) || 0;
-                var inUse = qty > 0 && (title !== '' || genre !== '');
+                var inUse = qty > 0 && (title !== '' || discogsLink !== '');
                 if (inUse && median <= 0) {
                     $median.addClass('bfc-median-missing');
                     problems++;
@@ -1363,7 +1363,7 @@ HTML;
                 $('#offer_lines_table tbody tr').each(function () {
                     var $r = $(this);
                     if (($r.find('input[name$="[title]"]').val() || '').trim() !== '') line = true;
-                    if (($r.find('input[name$="[genre]"]').val() || '').trim() !== '') line = true;
+                    if (($r.find('input[name$="[discogs_link]"]').val() || '').trim() !== '') line = true;
                     if (($r.find('input[name$="[discogs_median_price]"]').val() || '').trim() !== '') line = true;
                 });
                 return line;

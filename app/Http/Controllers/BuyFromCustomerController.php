@@ -132,7 +132,7 @@ class BuyFromCustomerController extends Controller
                 return [
                     'item_type' => $line->item_type,
                     'title' => $line->title,
-                    'genre' => $line->genre,
+                    'discogs_link' => $line->discogs_link,
                     'condition_grade' => $line->condition_grade,
                     'quantity' => $line->quantity,
                     'discogs_median_price' => $line->discogs_median_price,
@@ -290,7 +290,7 @@ class BuyFromCustomerController extends Controller
                 continue;
             }
             if (trim((string) ($line['title'] ?? '')) !== '') return true;
-            if (trim((string) ($line['genre'] ?? '')) !== '') return true;
+            if (trim((string) ($line['discogs_link'] ?? '')) !== '') return true;
             if (trim((string) ($line['discogs_median_price'] ?? '')) !== '') return true;
         }
         return false;
