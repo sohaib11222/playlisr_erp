@@ -1,0 +1,63 @@
+# ONE-OFF: zero out qty_available for 4 RSD titles confirmed physically sold
+# out (Sarah, 2026-08-27), and push the change to the website immediately.
+# See app/Console/Commands/ZeroOutRsdSoldStock.php for the SKUs and details.
+#
+# Defaults to dry-run. Flip mode to "commit" only after the dry-run output
+# looks right.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · zero RSD sold-out stock
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry-run (no writes) or commit (writes + pushes to website)
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - commit
+
+concurrency:
+  group: nivessa-zero-rsd-sold-stock
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            MODE='${{ github.event.inputs.mode }}'
+            ARGS=()
+            if [ "$MODE" = "commit" ]; then
+              ARGS+=("--commit")
+            fi
+            php artisan nivessa:zero-rsd-sold-stock "${ARGS[@]}"

@@ -3542,6 +3542,18 @@ class ProductController extends Controller
         } catch (\Throwable $logEx) {
             \Log::warning('updateStock activity log failed: ' . $logEx->getMessage());
         }
+
+        // Real-time website push. Previously only POS register SALES fired
+        // this (SellPosController → NivessaStockNotifier::notifySale) — a
+        // manual correction made right here (like zeroing out a sold-through
+        // item) sat on the website until the next scheduled POS stock sync
+        // caught up. push() is documented as safe for exactly this ad-hoc
+        // reuse: short timeouts, fire-and-forget, never blocks this request.
+        try {
+            (new \App\Services\NivessaStockNotifier())->push([(int) $request->product_id]);
+        } catch (\Throwable $pushEx) {
+            \Log::warning('updateStock website push failed: ' . $pushEx->getMessage());
+        }
     }
 
     public function massCreate(Request $request)
