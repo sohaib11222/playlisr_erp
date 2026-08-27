@@ -80,8 +80,8 @@
                                     <option value="in_progress" {{ $status === 'in_progress' ? 'selected' : '' }}>In Progress</option>
                                     <option value="complete" {{ $status === 'complete' ? 'selected' : '' }}>Complete</option>
                                 </select>
-                                <div class="bfc-status-meta" data-offer-id="{{ $offer->id }}" style="font-size:11px; color:#999; margin-top:4px;">
-                                    {{ optional($offer->processingStatusUpdatedBy)->user_full_name ?? optional($offer->processingStatusUpdatedBy)->username ?? '—' }}
+                                <div class="bfc-status-meta" data-offer-id="{{ $offer->id }}" style="font-size:11px; color:#999; margin-top:4px; max-width:150px;">
+                                    {{ $offer->processing_status_meta }}
                                 </div>
                             </td>
                             <td>
@@ -151,7 +151,7 @@
                 processing_status: val,
             })
                 .done(function (resp) {
-                    $('.bfc-status-meta[data-offer-id="' + id + '"]').text(resp.updated_by || '—');
+                    $('.bfc-status-meta[data-offer-id="' + id + '"]').text(resp.meta || '—');
                 })
                 .fail(function () {
                     alert('Save failed — try again.');
