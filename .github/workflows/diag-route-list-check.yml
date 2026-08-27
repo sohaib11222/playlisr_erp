@@ -1,0 +1,59 @@
+# READ-ONLY diagnostic: run `php artisan route:list` unfiltered (with stderr
+# visible) to confirm the new processing-status route actually registers.
+# No writes.
+name: Diag route list check
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: route:list unfiltered (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== routes/web.php on-disk line ==="
+            grep -n "processing-status" routes/web.php
+            echo "=== route:list exit code + tail ==="
+            php artisan route:list 2>&1 | tee /tmp/route_list_out.txt | tail -5
+            echo "exit_code=$?"
+            echo "=== grep for processing-status in route:list output ==="
+            grep -i "processing-status" /tmp/route_list_out.txt || echo "NO MATCH in route:list output"
+            echo "=== grep for storage-location(s) for comparison (known-good route) ==="
+            grep -i "storage-location" /tmp/route_list_out.txt || echo "NO MATCH for storage-location either"
+            echo "=== done ==="
