@@ -1,0 +1,100 @@
+# Keeps the storefront's New Releases row filled: runs the Discogs street-date
+# backfill (products.product_custom_field2) on a schedule, over SSH, the same
+# way Run migrations / Restart services do.
+#
+# Why this exists: app/Console/Kernel.php already schedules
+# `discogs:backfill-street-dates --minutes=6 --commit` every 15 minutes, but
+# that only fires if something on the server runs `php artisan schedule:run`
+# every minute (a crontab entry) — nobody ever confirmed that crontab exists
+# (see DISCOGS_ORDERS_SYNC_PLAN.md: "I (Claude) didn't verify how the
+# scheduler fires in production"). It doesn't: 55,521 of ~58,800 eligible
+# products were still unbackfilled 8 days after this was wired up
+# (2026-08-19 -> 2026-08-27), i.e. effectively zero progress. This workflow
+# is a second, independent way to make the same safe command actually run,
+# with no dependency on the server's own cron. It only ever fills a BLANK
+# product_custom_field2 from the linked Discogs release — never overwrites a
+# date staff typed in by hand.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Backfill street dates (Discogs)
+
+on:
+  schedule:
+    # Every 20 min, run for up to 8 min -> ~40% duty cycle, matching the
+    # Kernel schedule's original intent (6 of every 15 min) so this doesn't
+    # crowd out the website's own live Discogs calls (order sync, stock
+    # sync, image/artist backfill) sharing the same ~60 req/min budget.
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Keep running for up to this many minutes
+        required: true
+        default: '8'
+      commit:
+        description: Actually write dates (false = dry run)
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+concurrency:
+  group: discogs-street-date-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway, appleboy/ssh-action will handle host keys"
+          exit 0
+
+      - name: Run discogs:backfill-street-dates
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          RUN_MINUTES: ${{ github.event.inputs.minutes || '8' }}
+          RUN_COMMIT: ${{ github.event.inputs.commit || 'true' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          envs: RUN_MINUTES,RUN_COMMIT
+          script: |
+            set -e
+            DEPLOY_DIR="/www/playlist.nivessa.com/app"
+            cd "$DEPLOY_DIR"
+            COMMIT_FLAG=""
+            if [ "$RUN_COMMIT" = "true" ]; then
+              COMMIT_FLAG="--commit"
+            fi
+            echo "=== running discogs:backfill-street-dates --minutes=$RUN_MINUTES $COMMIT_FLAG ==="
+            php artisan discogs:backfill-street-dates --minutes="$RUN_MINUTES" $COMMIT_FLAG
+            echo
+            echo "=== done ==="
