@@ -28,20 +28,30 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           command_timeout: 5m
-          script_stop: false
+          script_stop: true
           script: |
             cd /www/playlist.nivessa.com/app
-            echo "=== candidate: sealed, in stock, recently added, no street date yet ==="
-            php artisan tinker <<'PHPEOF'
+            cat > /tmp/nivessa_candidates.php <<'PHPEOF'
+            <?php
+            require __DIR__.'/vendor/autoload.php';
+            $app = require __DIR__.'/bootstrap/app.php';
+            $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+            $kernel->bootstrap();
+
             $rows = \DB::table('products')
-              ->where('business_id',1)
-              ->where('quantity','>',0)
+              ->where('business_id', 1)
+              ->where('quantity', '>', 0)
               ->where(function($q){ $q->where('category','like','%Sealed%')->orWhere('sub_category','like','%Sealed%'); })
               ->where(function($q){ $q->whereNull('product_custom_field2')->orWhere('product_custom_field2',''); })
-              ->where('created_at','>=', now()->subDays(60))
+              ->where('created_at', '>=', now()->subDays(60))
               ->orderByDesc('created_at')
               ->limit(60)
-              ->get(['id','name','artist','quantity','created_at','category']);
+              ->get(['id','name','artist','quantity','created_at','category','sku']);
+
             echo "count=".$rows->count().PHP_EOL;
-            foreach($rows as $r){ echo $r->id.' | '.$r->artist.' - '.$r->name.' | qty='.$r->quantity.' | '.$r->created_at.' | '.$r->category.PHP_EOL; }
+            foreach ($rows as $r) {
+                echo $r->id.' | '.$r->artist.' - '.$r->name.' | qty='.$r->quantity.' | '.$r->created_at.' | '.$r->category.' | sku='.$r->sku.PHP_EOL;
+            }
             PHPEOF
+            php /tmp/nivessa_candidates.php
+            rm -f /tmp/nivessa_candidates.php
