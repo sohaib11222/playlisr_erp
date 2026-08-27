@@ -72,8 +72,8 @@ class ReceivingPackageController extends Controller
                 })
                 ->editColumn('status', function ($row) {
                     return $row->status == 'open'
-                        ? '<span class="label label-warning">Open</span>'
-                        : '<span class="label label-success">Closed</span>';
+                        ? '<span class="label label-warning">Open</span><br><small style="color:#8a8070;">Still adding items</small>'
+                        : '<span class="label label-success">Closed</span><br><small style="color:#8a8070;">All items logged</small>';
                 })
                 ->addColumn('items_progress', function ($row) {
                     return $row->priced_items_count . ' / ' . $row->items_count . ' priced';
@@ -85,7 +85,7 @@ class ReceivingPackageController extends Controller
                 ->make(true);
         }
 
-        $statuses = ['open' => 'Open (receiving window)', 'closed' => 'Closed'];
+        $statuses = ['open' => 'Open — still adding items', 'closed' => 'Closed — all items logged'];
         $isAdmin = $this->isAdmin();
 
         return view('receiving.index', compact('statuses', 'isAdmin'));
