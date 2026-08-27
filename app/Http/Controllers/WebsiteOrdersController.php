@@ -17,10 +17,10 @@ class WebsiteOrdersController extends Controller
 {
     // Keep in sync with CANCEL_REASONS in server/controllers/erpOrderCancel.controller.js
     const REASONS = [
-        'sold_in_store'   => 'Sold in one of our physical stores before we could pull it',
-        'sold_on_discogs' => 'Sold through our Discogs store before the listing caught up',
-        'condition_issue' => 'Condition issue found when we pulled it',
-        'inventory_error' => "Can't locate it in current stock",
+        'sold_in_store'   => 'Sold in store before online inventory updated',
+        'sold_on_discogs' => 'Sold on Discogs before online inventory updated',
+        'condition_issue' => "Condition issue we didn't catch",
+        'inventory_error' => "Can't locate it in current inventory",
         'other'           => 'Other (type a reason)',
     ];
 
