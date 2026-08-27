@@ -32,10 +32,21 @@ jobs:
           script: |
             cd /www/playlist.nivessa.com/app
             echo "=== businesses table ==="
-            php artisan tinker --execute="foreach(\DB::table('business')->get() as \$b){ echo \$b->id.' | '.\$b->name.PHP_EOL; }"
+            php artisan tinker <<'PHPEOF'
+            foreach(\DB::table('business')->get() as $b){ echo $b->id.' | '.$b->name.PHP_EOL; }
+            PHPEOF
             echo
             echo "=== business_id=1 sample eligible products ==="
-            php artisan tinker --execute="foreach(\DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function(\$q){\$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->limit(5)->get(['id','name','discogs_release_id','business_id']) as \$p){ echo \$p->id.' | '.\$p->name.' | discogs='.\$p->discogs_release_id.PHP_EOL; }"
+            php artisan tinker <<'PHPEOF'
+            foreach(\DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function($q){$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->limit(5)->get(['id','name','discogs_release_id','business_id']) as $p){ echo $p->id.' | '.$p->name.' | discogs='.$p->discogs_release_id.PHP_EOL; }
+            PHPEOF
             echo
-            echo "=== discogs integration settings for business 1 ==="
-            php artisan tinker --execute="echo json_encode(\App\Utils\BusinessUtil::class);"
+            echo "=== raw discogs api test for first eligible product ==="
+            php artisan tinker <<'PHPEOF'
+            $p = \DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function($q){$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->first();
+            echo "testing release_id=".$p->discogs_release_id.PHP_EOL;
+            $svc = new \App\Services\DiscogsService(1);
+            echo "configured=".($svc->isConfigured()?'yes':'no').PHP_EOL;
+            $r = $svc->getReleaseById($p->discogs_release_id);
+            echo json_encode($r).PHP_EOL;
+            PHPEOF
