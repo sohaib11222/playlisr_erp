@@ -42,6 +42,12 @@ class AdminSidebarMenu
             //so it's visible even to staff without any purchase permission.
             $menu->url(action('BuyFromCustomerController@storageLocations'), 'Storage Locations', ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) == 'storage-locations'])->order(7);
 
+            //Receiving — log incoming packages/boxes and their contents.
+            //Deliberately ungated for the same reason as Storage Locations
+            //above: whoever's at the receiving window needs to log it, not
+            //just staff with purchase permissions.
+            $menu->url(action('ReceivingPackageController@index'), 'Receiving', ['icon' => 'fa fas fa-dolly', 'active' => request()->segment(1) == 'receiving'])->order(7);
+
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 
