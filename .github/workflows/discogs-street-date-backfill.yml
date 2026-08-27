@@ -85,6 +85,13 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: true
+          # appleboy/ssh-action's own command_timeout defaults to 10m, which
+          # is shorter than a --minutes=13 (or longer) artisan run — it was
+          # killing the SSH session mid-command before the script could print
+          # its summary or exit cleanly, so every run "failed" even though
+          # the backfill itself was working and committing rows the whole
+          # time. Give it real headroom over the longest --minutes we pass.
+          command_timeout: 30m
           envs: RUN_MINUTES,RUN_COMMIT
           script: |
             set -e
