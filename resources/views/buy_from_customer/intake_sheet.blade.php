@@ -26,6 +26,18 @@
                 <div class="text-muted">{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }} &middot; {{ optional($offer->location)->name ?? '—' }}</div>
             </div>
 
+            @php $totalItems = (int) round($offer->lines->sum('quantity')); @endphp
+            @if($totalItems > 100)
+                <div class="bfc-warehouse-label" style="border:4px solid #b0451a; background:#fff3e0; padding:20px; margin-bottom:20px; text-align:center; border-radius:6px;">
+                    <div style="font-size:22px; font-weight:800; color:#b0451a; letter-spacing:1px;">&#9888; WAREHOUSE COLLECTION &mdash; DO NOT SHELVE IN STORE &#9888;</div>
+                    <div style="font-size:16px; margin-top:8px;">{{ $offer->buy_record_number }} &middot; {{ $totalItems }} items</div>
+                    <div style="font-size:15px; margin-top:10px; font-weight:600;">&rarr; Take this box to the Warehouse</div>
+                    <div style="font-size:12px; color:#7a4a1a; margin-top:8px;">
+                        Warehouse is not always staffed. If it's closed, hold this box at {{ optional($offer->location)->name ?: 'the store' }} until it can be dropped off.
+                    </div>
+                </div>
+            @endif
+
             <table class="table table-bordered" style="margin-bottom:20px;">
                 <tr>
                     <th style="width:25%; background:#f9f9f9;">Purchased from</th>
