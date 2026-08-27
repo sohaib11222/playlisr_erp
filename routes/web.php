@@ -193,6 +193,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-pickups/{id}/mark-picked-up', 'CustomerPickupController@markPickedUp');
     Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
 
+    // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
+    // event), their contents, and price/shelve them.
+    Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
+    Route::get('/receiving/purchase-orders/search', 'ReceivingPackageController@searchPurchaseOrders')->name('receiving.search-purchase-orders');
+    Route::resource('receiving', 'ReceivingPackageController')->except(['edit', 'update', 'destroy']);
+    Route::post('/receiving/{id}/close', 'ReceivingPackageController@close')->name('receiving.close');
+    Route::post('/receiving/{id}/items', 'ReceivingPackageController@addItem')->name('receiving.items.add');
+    Route::put('/receiving/{id}/items/{itemId}', 'ReceivingPackageController@updateItem')->name('receiving.items.update');
+    Route::post('/receiving/{id}/items/{itemId}/mark-priced', 'ReceivingPackageController@markPriced')->name('receiving.items.mark-priced');
+
     // Loyalty Tiers
     Route::resource('loyalty-tiers', 'LoyaltyTierController');
 
