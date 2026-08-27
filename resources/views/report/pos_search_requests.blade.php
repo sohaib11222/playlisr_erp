@@ -115,6 +115,7 @@
                         <th>Search term</th>
                         <th class="text-right">Times asked</th>
                         <th class="text-right">Cashiers</th>
+                        <th>Store(s)</th>
                         <th>First asked</th>
                         <th>Last asked</th>
                         <th class="text-right">Actions</th>
@@ -138,6 +139,7 @@
                                 @endif
                             </td>
                             <td class="text-right">{{ $r->staff_count }}</td>
+                            <td><span class="text-muted">{{ $r->locations ?: '—' }}</span></td>
                             <td><span class="text-muted">{{ \Carbon::parse($r->first_asked)->format('M j, Y') }}</span></td>
                             <td><span class="text-muted">{{ \Carbon::parse($r->last_asked)->diffForHumans() }}</span></td>
                             <td class="text-right" style="white-space:nowrap;">
@@ -153,7 +155,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-muted text-center">No empty searches in this window — everything asked for at the register was in the catalog.</td></tr>
+                        <tr><td colspan="7" class="text-muted text-center">No empty searches in this window — everything asked for at the register was in the catalog.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -145,13 +145,15 @@ class PosSearchRequestController extends Controller
         $unique_terms = (clone $base)->distinct('pos_search_misses.term')->count('pos_search_misses.term');
 
         $top_terms = (clone $base)
+            ->leftJoin('business_locations', 'business_locations.id', '=', 'pos_search_misses.location_id')
             ->select(
                 'pos_search_misses.term',
                 DB::raw('COUNT(*) as hits'),
                 DB::raw('MAX(pos_search_misses.is_scan) as is_scan'),
                 DB::raw('MIN(pos_search_misses.created_at) as first_asked'),
                 DB::raw('MAX(pos_search_misses.created_at) as last_asked'),
-                DB::raw('COUNT(DISTINCT pos_search_misses.user_id) as staff_count')
+                DB::raw('COUNT(DISTINCT pos_search_misses.user_id) as staff_count'),
+                DB::raw("GROUP_CONCAT(DISTINCT COALESCE(business_locations.name, '(not recorded)') ORDER BY business_locations.name SEPARATOR ', ') as locations")
             )
             ->groupBy('pos_search_misses.term')
             ->orderByDesc('hits')
@@ -267,13 +269,14 @@ class PosSearchRequestController extends Controller
 
         return response()->streamDownload(function () use ($top_terms) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Search term', 'Times asked', 'Type', 'Staff who searched', 'First asked', 'Last asked']);
+            fputcsv($out, ['Search term', 'Times asked', 'Type', 'Staff who searched', 'Store(s)', 'First asked', 'Last asked']);
             foreach ($top_terms as $r) {
                 fputcsv($out, [
                     $r->term,
                     $r->hits,
                     $r->is_scan ? 'Scan' : 'Typed',
                     $r->staff_count,
+                    $r->locations,
                     $r->first_asked,
                     $r->last_asked,
                 ]);
