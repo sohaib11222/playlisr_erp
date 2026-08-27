@@ -43,9 +43,9 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
             <h1>Package #{{ $package->id }} — {{ \App\ReceivingPackage::$packageTypes[$package->package_type] ?? $package->package_type }}{{ $package->package_type_detail ? ' ('.$package->package_type_detail.')' : '' }}</h1>
             <p class="sub">
                 @if($package->status == 'open')
-                    <span class="label label-warning">Receiving window open</span>
+                    <span class="label label-warning">Receiving window open</span> <small style="color:#8a8070;">(still adding items — not yet priced/shelved)</small>
                 @else
-                    <span class="label label-success">Closed</span>
+                    <span class="label label-success">Closed</span> <small style="color:#8a8070;">(all items logged — pricing can still be finished)</small>
                 @endif
                 — logged by {{ $package->receiver->user_full_name ?? 'Unknown' }} at {{ $package->location->name ?? '-' }}
             </p>
