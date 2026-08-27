@@ -37,14 +37,45 @@
                             {{$user->role_name}}
                         </p>
 
+                        @can('user.update')
+                            {!! Form::open(['url' => action('ManageUserController@updateAccountInfo', [$user->id]), 'method' => 'PUT', 'id' => 'account_info_form']) !!}
+                            <div class="form-group">
+                                {!! Form::label('first_name', __( 'business.first_name' ) . ':*') !!}
+                                {!! Form::text('first_name', $user->first_name, ['class' => 'form-control', 'required', 'placeholder' => __( 'business.first_name' ) ]); !!}
+                            </div>
+                            <div class="form-group">
+                                {!! Form::label('last_name', __( 'business.last_name' ) . ':') !!}
+                                {!! Form::text('last_name', $user->last_name, ['class' => 'form-control', 'placeholder' => __( 'business.last_name' ) ]); !!}
+                            </div>
+                            <div class="form-group">
+                                {!! Form::label('email', __( 'business.email' ) . ':') !!}
+                                {!! Form::text('email', $user->email, ['class' => 'form-control', 'placeholder' => __( 'business.email' ) ]); !!}
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-block">
+                                <i class="fa fa-save" aria-hidden="true"></i>
+                                @lang('messages.save')
+                            </button>
+                            {!! Form::close() !!}
+                        @endcan
+
                         <ul class="list-group list-group-unbordered">
+                            @cannot('user.update')
+                                <li class="list-group-item">
+                                    <b>@lang( 'business.first_name' )</b>
+                                    <a class="pull-right">{{$user->first_name}}</a>
+                                </li>
+                                <li class="list-group-item">
+                                    <b>@lang( 'business.last_name' )</b>
+                                    <a class="pull-right">{{$user->last_name}}</a>
+                                </li>
+                                <li class="list-group-item">
+                                    <b>@lang( 'business.email' )</b>
+                                    <a class="pull-right">{{$user->email}}</a>
+                                </li>
+                            @endcannot
                             <li class="list-group-item">
                                 <b>@lang( 'business.username' )</b>
                                 <a class="pull-right">{{$user->username}}</a>
-                            </li>
-                            <li class="list-group-item">
-                                <b>@lang( 'business.email' )</b>
-                                <a class="pull-right">{{$user->email}}</a>
                             </li>
                             <li class="list-group-item">
                                 <b>{{ __('lang_v1.status_for_user') }}</b>
@@ -60,7 +91,7 @@
                             </li>
                         </ul>
                         @can('user.update')
-                            <a href="{{action('ManageUserController@edit', [$user->id])}}" class="btn btn-primary btn-block">
+                            <a href="{{action('ManageUserController@edit', [$user->id])}}" class="btn btn-default btn-block">
                                 <i class="glyphicon glyphicon-edit"></i>
                                 @lang("messages.edit")
                             </a>

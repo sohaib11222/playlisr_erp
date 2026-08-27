@@ -480,6 +480,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('roles', 'RoleController');
 
     Route::resource('users', 'ManageUserController');
+    Route::put('/users/{id}/account-info', 'ManageUserController@updateAccountInfo')->name('users.update-account-info');
 
     Route::resource('group-taxes', 'GroupTaxController');
 
