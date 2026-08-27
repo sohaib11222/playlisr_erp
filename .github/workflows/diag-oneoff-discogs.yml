@@ -1,0 +1,41 @@
+name: Diag business check
+on:
+  workflow_dispatch:
+concurrency:
+  group: diag-oneoff
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: known_hosts
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts || true
+      - name: Diagnose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          command_timeout: 5m
+          script_stop: false
+          script: |
+            cd /www/playlist.nivessa.com/app
+            echo "=== businesses table ==="
+            php artisan tinker --execute="foreach(\DB::table('business')->get() as \$b){ echo \$b->id.' | '.\$b->name.PHP_EOL; }"
+            echo
+            echo "=== business_id=1 sample eligible products ==="
+            php artisan tinker --execute="foreach(\DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function(\$q){\$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->limit(5)->get(['id','name','discogs_release_id','business_id']) as \$p){ echo \$p->id.' | '.\$p->name.' | discogs='.\$p->discogs_release_id.PHP_EOL; }"
+            echo
+            echo "=== discogs integration settings for business 1 ==="
+            php artisan tinker --execute="echo json_encode(\App\Utils\BusinessUtil::class);"
