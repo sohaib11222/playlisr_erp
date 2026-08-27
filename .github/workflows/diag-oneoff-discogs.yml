@@ -31,22 +31,17 @@ jobs:
           script_stop: false
           script: |
             cd /www/playlist.nivessa.com/app
-            echo "=== businesses table ==="
+            echo "=== candidate: sealed, in stock, recently added, no street date yet ==="
             php artisan tinker <<'PHPEOF'
-            foreach(\DB::table('business')->get() as $b){ echo $b->id.' | '.$b->name.PHP_EOL; }
-            PHPEOF
-            echo
-            echo "=== business_id=1 sample eligible products ==="
-            php artisan tinker <<'PHPEOF'
-            foreach(\DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function($q){$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->limit(5)->get(['id','name','discogs_release_id','business_id']) as $p){ echo $p->id.' | '.$p->name.' | discogs='.$p->discogs_release_id.PHP_EOL; }
-            PHPEOF
-            echo
-            echo "=== raw discogs api test for first eligible product ==="
-            php artisan tinker <<'PHPEOF'
-            $p = \DB::table('products')->where('business_id',1)->whereNotNull('discogs_release_id')->where('discogs_release_id','>',0)->where(function($q){$q->whereNull('product_custom_field2')->orWhere('product_custom_field2','');})->orderByDesc('created_at')->first();
-            echo "testing release_id=".$p->discogs_release_id.PHP_EOL;
-            $svc = new \App\Services\DiscogsService(1);
-            echo "configured=".($svc->isConfigured()?'yes':'no').PHP_EOL;
-            $r = $svc->getReleaseById($p->discogs_release_id);
-            echo json_encode($r).PHP_EOL;
+            $rows = \DB::table('products')
+              ->where('business_id',1)
+              ->where('quantity','>',0)
+              ->where(function($q){ $q->where('category','like','%Sealed%')->orWhere('sub_category','like','%Sealed%'); })
+              ->where(function($q){ $q->whereNull('product_custom_field2')->orWhere('product_custom_field2',''); })
+              ->where('created_at','>=', now()->subDays(60))
+              ->orderByDesc('created_at')
+              ->limit(60)
+              ->get(['id','name','artist','quantity','created_at','category']);
+            echo "count=".$rows->count().PHP_EOL;
+            foreach($rows as $r){ echo $r->id.' | '.$r->artist.' - '.$r->name.' | qty='.$r->quantity.' | '.$r->created_at.' | '.$r->category.PHP_EOL; }
             PHPEOF
