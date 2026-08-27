@@ -10,6 +10,7 @@ use App\Utils\ModuleUtil;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\Models\Role;
 use Yajra\DataTables\Facades\DataTables;
 use Spatie\Activitylog\Models\Activity;
@@ -356,6 +357,54 @@ class ManageUserController extends Controller
         }
 
         return redirect('users')->with('status', $output);
+    }
+
+    /**
+     * Update just the first name, last name and email of the specified user,
+     * from the inline account-info form on the "View User" page.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function updateAccountInfo(Request $request, $id)
+    {
+        if (!auth()->user()->can('user.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255|unique:users,email,' . $id,
+        ]);
+
+        if ($validator->fails()) {
+            $output = [
+                'success' => 0,
+                'msg' => $validator->errors()->first(),
+            ];
+
+            return redirect()->action('ManageUserController@show', [$id])->with('status', $output);
+        }
+
+        try {
+            $user = User::where('business_id', $business_id)->findOrFail($id);
+
+            $user->update($request->only(['first_name', 'last_name', 'email']));
+
+            $this->moduleUtil->activityLog($user, 'edited', null, ['name' => $user->user_full_name]);
+
+            $output = ['success' => 1, 'msg' => __('user.user_update_success')];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+
+            $output = ['success' => 0, 'msg' => $e->getMessage()];
+        }
+
+        return redirect()->action('ManageUserController@show', [$id])->with('status', $output);
     }
 
     private function getAdmins()
