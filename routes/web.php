@@ -197,8 +197,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // event), their contents, and price/shelve them.
     Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
     Route::get('/receiving/purchase-orders/search', 'ReceivingPackageController@searchPurchaseOrders')->name('receiving.search-purchase-orders');
-    Route::resource('receiving', 'ReceivingPackageController')->except(['edit', 'update', 'destroy']);
+    Route::resource('receiving', 'ReceivingPackageController');
     Route::post('/receiving/{id}/close', 'ReceivingPackageController@close')->name('receiving.close');
+    Route::post('/receiving/{id}/bin-location', 'ReceivingPackageController@updateBin')->name('receiving.update-bin');
     Route::post('/receiving/{id}/items', 'ReceivingPackageController@addItem')->name('receiving.items.add');
     Route::put('/receiving/{id}/items/{itemId}', 'ReceivingPackageController@updateItem')->name('receiving.items.update');
     Route::post('/receiving/{id}/items/{itemId}/mark-priced', 'ReceivingPackageController@markPriced')->name('receiving.items.mark-priced');
