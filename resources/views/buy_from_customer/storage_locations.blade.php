@@ -75,7 +75,7 @@
                             </td>
                             <td>
                                 @php $status = $offer->processing_status ?: 'not_started'; @endphp
-                                <select class="form-control input-sm bfc-status-select" data-offer-id="{{ $offer->id }}" style="width:130px;">
+                                <select class="form-control input-sm bfc-status-select bfc-status-{{ str_replace('_', '-', $status) }}" data-offer-id="{{ $offer->id }}" style="width:130px;">
                                     <option value="not_started" {{ $status === 'not_started' ? 'selected' : '' }}>Not Started</option>
                                     <option value="in_progress" {{ $status === 'in_progress' ? 'selected' : '' }}>In Progress</option>
                                     <option value="complete" {{ $status === 'complete' ? 'selected' : '' }}>Complete</option>
@@ -143,6 +143,8 @@
             var $select = $(this);
             var id = $select.data('offer-id');
             var val = $select.val();
+            $select.removeClass('bfc-status-not-started bfc-status-in-progress bfc-status-complete');
+            $select.addClass('bfc-status-' + val.replace(/_/g, '-'));
             $select.prop('disabled', true);
             $.post('{{ url('/buy-from-customer') }}/' + id + '/processing-status', {
                 _token: $('meta[name="csrf-token"]').attr('content'),
@@ -161,4 +163,12 @@
     });
 })();
 </script>
+@endsection
+
+@section('css')
+<style>
+    .bfc-status-select.bfc-status-not-started { background-color: #f8d7da; border-color: #f1a9ad; color: #7a1f27; }
+    .bfc-status-select.bfc-status-in-progress { background-color: #fff3cd; border-color: #ffe08a; color: #7a5c00; }
+    .bfc-status-select.bfc-status-complete { background-color: #d4edda; border-color: #a3d9b1; color: #1e5c2e; }
+</style>
 @endsection
