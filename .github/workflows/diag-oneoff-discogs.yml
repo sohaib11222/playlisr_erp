@@ -31,27 +31,6 @@ jobs:
           script_stop: true
           script: |
             cd /www/playlist.nivessa.com/app
-            cat > /tmp/nivessa_candidates.php <<'PHPEOF'
-            <?php
-            require __DIR__.'/vendor/autoload.php';
-            $app = require __DIR__.'/bootstrap/app.php';
-            $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-            $kernel->bootstrap();
-
-            $rows = \DB::table('products')
-              ->where('business_id', 1)
-              ->where('quantity', '>', 0)
-              ->where(function($q){ $q->where('category','like','%Sealed%')->orWhere('sub_category','like','%Sealed%'); })
-              ->where(function($q){ $q->whereNull('product_custom_field2')->orWhere('product_custom_field2',''); })
-              ->where('created_at', '>=', now()->subDays(60))
-              ->orderByDesc('created_at')
-              ->limit(60)
-              ->get(['id','name','artist','quantity','created_at','category','sku']);
-
-            echo "count=".$rows->count().PHP_EOL;
-            foreach ($rows as $r) {
-                echo $r->id.' | '.$r->artist.' - '.$r->name.' | qty='.$r->quantity.' | '.$r->created_at.' | '.$r->category.' | sku='.$r->sku.PHP_EOL;
-            }
-            PHPEOF
+            echo 'PD9waHAKcmVxdWlyZSBfX0RJUl9fLicvdmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlIF9fRElSX18uJy9ib290c3RyYXAvYXBwLnBocCc7CiRrZXJuZWwgPSAkYXBwLT5tYWtlKElsbHVtaW5hdGVcQ29udHJhY3RzXENvbnNvbGVcS2VybmVsOjpjbGFzcyk7CiRrZXJuZWwtPmJvb3RzdHJhcCgpOwoKJHJvd3MgPSBcREI6OnRhYmxlKCdwcm9kdWN0cycpCiAgICAtPndoZXJlKCdidXNpbmVzc19pZCcsIDEpCiAgICAtPndoZXJlKCdxdWFudGl0eScsICc+JywgMCkKICAgIC0+d2hlcmUoZnVuY3Rpb24oJHEpeyAkcS0+d2hlcmUoJ2NhdGVnb3J5JywnbGlrZScsJyVTZWFsZWQlJyktPm9yV2hlcmUoJ3N1Yl9jYXRlZ29yeScsJ2xpa2UnLCclU2VhbGVkJScpOyB9KQogICAgLT53aGVyZShmdW5jdGlvbigkcSl7ICRxLT53aGVyZU51bGwoJ3Byb2R1Y3RfY3VzdG9tX2ZpZWxkMicpLT5vcldoZXJlKCdwcm9kdWN0X2N1c3RvbV9maWVsZDInLCcnKTsgfSkKICAgIC0+d2hlcmUoJ2NyZWF0ZWRfYXQnLCAnPj0nLCBub3coKS0+c3ViRGF5cyg2MCkpCiAgICAtPm9yZGVyQnlEZXNjKCdjcmVhdGVkX2F0JykKICAgIC0+bGltaXQoNjApCiAgICAtPmdldChbJ2lkJywnbmFtZScsJ2FydGlzdCcsJ3F1YW50aXR5JywnY3JlYXRlZF9hdCcsJ2NhdGVnb3J5Jywnc2t1J10pOwoKZWNobyAiY291bnQ9Ii4kcm93cy0+Y291bnQoKS5QSFBfRU9MOwpmb3JlYWNoICgkcm93cyBhcyAkcikgewogICAgZWNobyAkci0+aWQuJyB8ICcuJHItPmFydGlzdC4nIC0gJy4kci0+bmFtZS4nIHwgcXR5PScuJHItPnF1YW50aXR5LicgfCAnLiRyLT5jcmVhdGVkX2F0LicgfCAnLiRyLT5jYXRlZ29yeS4nIHwgc2t1PScuJHItPnNrdS5QSFBfRU9MOwp9Cg==' | base64 -d > /tmp/nivessa_candidates.php
             php /tmp/nivessa_candidates.php
             rm -f /tmp/nivessa_candidates.php
