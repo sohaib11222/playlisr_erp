@@ -1,0 +1,35 @@
+name: Diag business check
+on:
+  workflow_dispatch:
+concurrency:
+  group: diag-oneoff
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: known_hosts
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts || true
+      - name: Diagnose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          command_timeout: 5m
+          script_stop: true
+          script: |
+            echo 'PD9waHAKJGJhc2UgPSAnL3d3dy9wbGF5bGlzdC5uaXZlc3NhLmNvbS9hcHAnOwpyZXF1aXJlICRiYXNlLicvdmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICRiYXNlLicvYm9vdHN0cmFwL2FwcC5waHAnOwoka2VybmVsID0gJGFwcC0+bWFrZShJbGx1bWluYXRlXENvbnRyYWN0c1xDb25zb2xlXEtlcm5lbDo6Y2xhc3MpOwoka2VybmVsLT5ib290c3RyYXAoKTsKCmVjaG8gIj09PSBwcm9kdWN0X2N1c3RvbV9maWVsZDIgbm9uLWVtcHR5LCB1cGRhdGVkIG1vcmUgdGhhbiAyIGRheXMgYWdvIChwcmUtZGF0ZXMgdG9kYXkncyB3b3JrKSA9PT0iLlBIUF9FT0w7CiRyb3dzID0gXERCOjp0YWJsZSgncHJvZHVjdHMnKQogICAgLT53aGVyZSgnYnVzaW5lc3NfaWQnLCAxKQogICAgLT53aGVyZU5vdE51bGwoJ3Byb2R1Y3RfY3VzdG9tX2ZpZWxkMicpCiAgICAtPndoZXJlKCdwcm9kdWN0X2N1c3RvbV9maWVsZDInLCAnIT0nLCAnJykKICAgIC0+d2hlcmUoJ3VwZGF0ZWRfYXQnLCAnPCcsIG5vdygpLT5zdWJEYXlzKDIpKQogICAgLT5vcmRlckJ5RGVzYygndXBkYXRlZF9hdCcpCiAgICAtPmxpbWl0KDUwKQogICAgLT5nZXQoWydpZCcsJ25hbWUnLCdhcnRpc3QnLCdza3UnLCdwcm9kdWN0X2N1c3RvbV9maWVsZDInLCd1cGRhdGVkX2F0J10pOwplY2hvICJjb3VudD0iLiRyb3dzLT5jb3VudCgpLlBIUF9FT0w7CmZvcmVhY2ggKCRyb3dzIGFzICRyKSB7CiAgICBlY2hvICRyLT5pZC4nIHwgJy4kci0+YXJ0aXN0LicgLSAnLiRyLT5uYW1lLicgfCBmaWVsZDI9Jy4kci0+cHJvZHVjdF9jdXN0b21fZmllbGQyLicgfCB1cGRhdGVkPScuJHItPnVwZGF0ZWRfYXQuUEhQX0VPTDsKfQoKZWNobyBQSFBfRU9MLiI9PT0gdG90YWwgbm9uLWVtcHR5IHByb2R1Y3RfY3VzdG9tX2ZpZWxkMiAoYWxsIHRpbWUpID09PSIuUEhQX0VPTDsKJHRvdGFsID0gXERCOjp0YWJsZSgncHJvZHVjdHMnKS0+d2hlcmUoJ2J1c2luZXNzX2lkJywxKS0+d2hlcmVOb3ROdWxsKCdwcm9kdWN0X2N1c3RvbV9maWVsZDInKS0+d2hlcmUoJ3Byb2R1Y3RfY3VzdG9tX2ZpZWxkMicsJyE9JywnJyktPmNvdW50KCk7CmVjaG8gInRvdGFsPSIuJHRvdGFsLlBIUF9FT0w7Cg==' | base64 -d > /tmp/check_old_dates.php
+            php /tmp/check_old_dates.php
+            rm -f /tmp/check_old_dates.php
