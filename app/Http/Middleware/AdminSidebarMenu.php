@@ -64,11 +64,12 @@ class AdminSidebarMenu
                     'Preorders',
                     ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
                 )->order(8);
-                //Website Orders — cancel unfulfillable nivessa.com orders, reason required
+                //Orders — nivessa.com fulfillment console (Needs Action/To Ship/
+                //Pickup/Completed/Archived, status changes, cancellation)
                 $menu->url(
                     route('website-orders.index'),
-                    'Website Orders',
-                    ['icon' => 'fa fas fa-ban', 'active' => request()->segment(1) == 'website-orders']
+                    'Orders',
+                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
                 )->order(8);
             }
 

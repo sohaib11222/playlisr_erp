@@ -456,10 +456,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/events/{id}/preorders', 'EventsController@preorderAdd')->name('events.preorderAdd');
     Route::post('/events/{id}/preorders/{preorderId}/status', 'EventsController@preorderStatus')->name('events.preorderStatus');
 
-    // Website order cancellation (moved here from the website admin's old
-    // generic status dropdown — see WebsiteOrdersController).
+    // Website order fulfillment console — moved here from nivessa.com's
+    // /admin/orders (see WebsiteOrdersController). Started as cancellation
+    // only (the website admin's old generic status dropdown had no reason
+    // field); grew into the full Needs Action/To Ship/Pickup/Completed
+    // console so fulfillment can live entirely in the ERP.
     Route::get('/website-orders', 'WebsiteOrdersController@index')->name('website-orders.index');
     Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');
+    Route::post('/website-orders/{id}/status', 'WebsiteOrdersController@updateStatus')->name('website-orders.updateStatus');
+    Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
 
     Route::resource('roles', 'RoleController');
 
