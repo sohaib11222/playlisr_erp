@@ -537,16 +537,25 @@ class BuyFromCustomerController extends Controller
             'processing_status' => 'required|string|in:not_started,in_progress,complete',
         ]);
 
+        $currentName = trim((string) (optional(auth()->user())->user_full_name ?? optional(auth()->user())->username ?? ''));
+
+        $contributors = json_decode($offer->processing_status_contributors ?: '[]', true) ?: [];
+        if ($currentName !== '' && !in_array($currentName, $contributors, true)) {
+            $contributors[] = $currentName;
+        }
+
         $offer->processing_status = $request->input('processing_status');
         $offer->processing_status_updated_by = request()->session()->get('user.id');
         $offer->processing_status_updated_at = now();
+        $offer->processing_status_contributors = json_encode($contributors);
         $offer->save();
 
         return response()->json([
             'success' => true,
             'processing_status' => $offer->processing_status,
-            'updated_by' => optional(auth()->user())->user_full_name ?? optional(auth()->user())->username,
+            'updated_by' => $currentName,
             'updated_at' => optional($offer->processing_status_updated_at)->format('M j, Y g:ia'),
+            'meta' => $offer->processing_status_meta,
         ]);
     }
 
@@ -1229,6 +1238,12 @@ class BuyFromCustomerController extends Controller
                 $table->string('processing_status', 20)->default('not_started');
                 $table->unsignedInteger('processing_status_updated_by')->nullable();
                 $table->timestamp('processing_status_updated_at')->nullable();
+            });
+        }
+
+        if (Schema::hasTable('buy_customer_offers') && !Schema::hasColumn('buy_customer_offers', 'processing_status_contributors')) {
+            Schema::table('buy_customer_offers', function (Blueprint $table) {
+                $table->text('processing_status_contributors')->nullable();
             });
         }
     }
