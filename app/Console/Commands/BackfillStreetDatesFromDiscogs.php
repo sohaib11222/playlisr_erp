@@ -61,6 +61,19 @@ class BackfillStreetDatesFromDiscogs extends Command
             if ($result['checked'] === 0) {
                 break;
             }
+
+            // A round dominated by failures means Discogs is rate-limiting
+            // (verified 2026-08-27: it 429s for the full ~60s window with no
+            // Retry-After, and DiscogsService's own retry only waits up to
+            // 10s) — almost certainly from the site's OTHER Discogs traffic
+            // (order sync, stock sync, image backfill) sharing the same
+            // ~60 req/min account budget, not from this job's own pacing.
+            // Burning straight into the next round just wastes eligible rows
+            // as instant failures, so wait out the window once instead.
+            if ($result['failed'] > 0 && $result['failed'] >= $result['checked'] * 0.5) {
+                $this->info("round {$rounds}: {$result['failed']}/{$result['checked']} failed — cooling down 60s before retrying");
+                sleep(60);
+            }
         }
 
         $this->info(($commit ? 'COMMIT' : 'DRY RUN') . " — {$rounds} round(s), checked {$totalChecked}, "
