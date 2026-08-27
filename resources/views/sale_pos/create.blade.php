@@ -23,6 +23,9 @@
 {{-- Sarah 2026-07-19: opening script for walk-ins — "do you have an account?"
      → look up by phone, or pitch the spend-reward program. Fires on load. --}}
 @include('sale_pos.partials._customer_capture_prompt')
+{{-- "Want a receipt emailed to you?" — opens after a sale finalizes,
+     triggered from pos.js. See _email_receipt_prompt.blade.php. --}}
+@include('sale_pos.partials._email_receipt_prompt')
 <section class="content no-print">
 	<input type="hidden" id="amount_rounding_method" value="{{$pos_settings['amount_rounding_method'] ?? ''}}">
 	@if(!empty($pos_settings['allow_overselling']))

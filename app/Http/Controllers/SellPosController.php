@@ -2213,6 +2213,162 @@ class SellPosController extends Controller
     }
 
     /**
+     * POST /pos/{transaction_id}/email-receipt
+     *
+     * Cashier asks "want a receipt emailed to you?" after a sale; this fires
+     * the itemized email through the website's shared mailbox (same on-brand
+     * template as order confirmations). Independent of the print receipt —
+     * doesn't touch anything on the sell-finalize path, so a failure here
+     * can never turn a completed sale into an error for the cashier.
+     */
+    public function emailReceipt(Request $request, $transaction_id)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $email = trim((string) $request->input('email'));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json(['success' => false, 'msg' => 'Enter a valid email address.']);
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $transaction = Transaction::where('business_id', $business_id)
+            ->where('id', $transaction_id)
+            ->where('type', 'sell')
+            ->first();
+        if (!$transaction) {
+            return response()->json(['success' => false, 'msg' => 'Sale not found.']);
+        }
+
+        try {
+            $lines = $transaction->sell_lines()->with('product')->get();
+            $items = [];
+            foreach ($lines as $line) {
+                $qty = (float) ($line->quantity ?? 0) - (float) ($line->quantity_returned ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+                $unitPrice = (float) ($line->unit_price_inc_tax ?? $line->unit_price ?? 0);
+                $items[] = [
+                    'name' => !empty($line->product) ? $line->product->name : 'Item',
+                    'quantity' => $qty,
+                    'price' => $unitPrice,
+                ];
+            }
+            if (empty($items)) {
+                return response()->json(['success' => false, 'msg' => 'No items on this sale.']);
+            }
+
+            $discountDollar = 0.0;
+            if (!empty($transaction->discount_amount)) {
+                $discountDollar = $transaction->discount_type === 'percentage'
+                    ? round(((float) $transaction->total_before_tax) * ((float) $transaction->discount_amount) / 100, 2)
+                    : (float) $transaction->discount_amount;
+            }
+
+            // Card-tender list mirrors cardLineCountByTx above — same
+            // definition of "card" used by the Clover reconciliation report.
+            $card_methods = [
+                'clover', 'card', 'credit_card', 'credit_sale',
+                'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+                'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+            ];
+            $labels = [];
+            foreach ($transaction->payment_lines()->pluck('method') as $m) {
+                if ($m === 'advance') {
+                    $labels[] = 'Store Credit';
+                } elseif (in_array($m, $card_methods)) {
+                    $labels[] = 'Card';
+                } else {
+                    $labels[] = ucfirst((string) $m);
+                }
+            }
+            $paymentMethod = implode(' + ', array_values(array_unique($labels))) ?: 'Card';
+
+            $customer = $transaction->contact;
+            $customerName = (!empty($customer) && !empty($customer->first_name)) ? $customer->first_name : 'there';
+
+            $saleDate = \Carbon\Carbon::parse($transaction->transaction_date)
+                ->timezone('America/Los_Angeles')
+                ->format('F j, Y \a\t g:i A');
+
+            $storeLocation = strtolower((string) optional($transaction->location)->name);
+
+            $sent = $this->pushReceiptEmail([
+                'to' => $email,
+                'customerName' => $customerName,
+                'receiptNo' => $transaction->invoice_no,
+                'saleDate' => $saleDate,
+                'storeLocation' => $storeLocation,
+                'paymentMethod' => $paymentMethod,
+                'items' => $items,
+                'subtotal' => (float) $transaction->total_before_tax,
+                'discount' => $discountDollar,
+                'tax' => (float) $transaction->tax_amount,
+                'total' => (float) $transaction->final_total,
+            ]);
+
+            if (!$sent) {
+                return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+            }
+
+            return response()->json(['success' => true, 'msg' => 'Receipt emailed.']);
+        } catch (\Throwable $e) {
+            \Log::warning('emailReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+        }
+    }
+
+    /**
+     * POST the receipt payload to the website's ERP bridge (/api/v1/erp/receipts/email).
+     * Same base/key resolution as NivessaStockNotifier — hand-managed prod .env,
+     * no extra configuration needed. Synchronous (unlike the stock push) since
+     * the cashier is waiting on a success/fail toast for this one.
+     */
+    private function pushReceiptEmail(array $payload): bool
+    {
+        $base = trim((string) config('constants.nivessa_api'));
+        if ($base === '') {
+            $base = trim((string) env('NIVESSA_API', 'https://nivessa.com/api/v1'));
+        }
+        $base = rtrim($base, '/');
+
+        $key = trim((string) config('constants.erp_api_key'));
+        if ($key === '') {
+            $key = trim((string) env('ERP_API_KEY', ''));
+        }
+        if ($base === '' || $key === '') {
+            \Log::warning('emailReceipt: website base/key not configured.');
+            return false;
+        }
+
+        $ch = curl_init($base . '/erp/receipts/email');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Content-Type: application/json',
+                'x-erp-key: ' . $key,
+            ],
+        ]);
+        $resp = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($code < 200 || $code >= 300) {
+            \Log::warning('emailReceipt push failed: HTTP ' . $code . ($err ? " curl_err={$err}" : '') . ' body=' . substr((string) $resp, 0, 300));
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Manual Clover↔ERP pair overrides are stored as a JSON file in
      * storage/ instead of a DB column — Sarah doesn't run migrations
      * on the ERP server (they've broken prod before). Shape:
@@ -4845,6 +5001,7 @@ class SellPosController extends Controller
                     }
 
                     $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
+                    $output['transaction_id'] = $transaction->id ?? null;
 
                     if (!empty($whatsapp_link)) {
                         $output['whatsapp_link'] = $whatsapp_link;
@@ -5597,6 +5754,7 @@ class SellPosController extends Controller
                 }
 
                 $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
+                $output['transaction_id'] = $transaction->id ?? null;
 
                 if (!empty($whatsapp_link)) {
                     $output['whatsapp_link'] = $whatsapp_link;

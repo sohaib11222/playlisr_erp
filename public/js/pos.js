@@ -1828,6 +1828,13 @@ $(document).ready(function() {
                                 pos_print(result.receipt);
                             }
 
+                            // "Want a receipt emailed to you?" — guarded so a
+                            // missing/broken prompt partial can never touch the
+                            // sale that already committed above.
+                            if (result.transaction_id && typeof window.__promptEmailReceipt === 'function') {
+                                window.__promptEmailReceipt(result.transaction_id);
+                            }
+
                             // Refresh the customer's stored-credit balance in the
                             // background (balance display + Select2 option). No longer
                             // gates the cart reset above.
