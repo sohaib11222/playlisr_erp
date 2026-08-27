@@ -312,12 +312,19 @@ class WebsiteOrdersController extends Controller
         return rtrim($base !== '' ? $base : 'https://nivessa.com/api/v1', '/');
     }
 
-    /** POST/GET the website bridge with the shared key. Null on failure/unconfigured. */
+    /**
+     * POST/GET the website bridge with the shared key. Always returns an
+     * array — on failure it's {success:false, message: <specific reason>}
+     * rather than a bare null, so a broken bridge call is self-diagnosing
+     * from the error banner instead of always reading "Could not reach the
+     * website" regardless of what actually went wrong (bad key, network
+     * failure, or the endpoint itself erroring with a non-JSON body).
+     */
     protected function websiteApi(string $method, string $path, array $body = null): ?array
     {
         $key = $this->erpApiKey();
         if ($key === '') {
-            return null;
+            return ['success' => false, 'message' => 'No ERP bridge key configured (set one on the Events page).'];
         }
         try {
             $ch = curl_init($this->bridgeBaseUrl() . $path);
@@ -334,19 +341,25 @@ class WebsiteOrdersController extends Controller
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
             $raw = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr = curl_error($ch);
             curl_close($ch);
             if ($raw === false) {
-                return null;
+                return ['success' => false, 'message' => 'Could not reach the website' . ($curlErr !== '' ? " (curl: {$curlErr})" : '') . '.'];
             }
             $decoded = json_decode((string) $raw, true);
             if (!is_array($decoded)) {
-                return null;
+                $snippet = substr(trim((string) $raw), 0, 200);
+                return [
+                    'success' => false,
+                    'message' => "Website returned a non-JSON response (HTTP {$code})" . ($snippet !== '' ? ": {$snippet}" : ' (empty body).'),
+                ];
             }
             // Surface non-2xx bodies too (e.g. validation errors) rather than
-            // collapsing them to null — the caller checks $resp['success'].
+            // collapsing them to a generic failure — the caller checks
+            // $resp['success'].
             return $decoded;
         } catch (\Throwable $e) {
-            return null;
+            return ['success' => false, 'message' => 'Bridge error: ' . $e->getMessage()];
         }
     }
 }
