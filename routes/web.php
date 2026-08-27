@@ -446,6 +446,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/events/{id}/preorders', 'EventsController@preorderAdd')->name('events.preorderAdd');
     Route::post('/events/{id}/preorders/{preorderId}/status', 'EventsController@preorderStatus')->name('events.preorderStatus');
 
+    // Website order cancellation (moved here from the website admin's old
+    // generic status dropdown — see WebsiteOrdersController).
+    Route::get('/website-orders', 'WebsiteOrdersController@index')->name('website-orders.index');
+    Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');
+
     Route::resource('roles', 'RoleController');
 
     Route::resource('users', 'ManageUserController');
