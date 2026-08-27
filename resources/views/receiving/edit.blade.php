@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Log a Package')
+@section('title', 'Edit Package #' . $package->id)
 
 @section('content')
 @include('sale_pos.partials._redesign_v2')
@@ -33,16 +33,16 @@ body.pos-v2 .btn-ghost { background: transparent; border: 1px solid var(--pos-li
 body.pos-v2 .rcv-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>
 
-{!! Form::open(['action' => 'ReceivingPackageController@store', 'method' => 'post', 'id' => 'receiving_form']) !!}
+{!! Form::model($package, ['action' => ['ReceivingPackageController@update', $package->id], 'method' => 'put', 'id' => 'receiving_form']) !!}
 <div class="rcv-wrap">
-    <h1>Log a Package</h1>
-    <p class="sub">What just came in? Log it now — you'll add the contents on the next screen.</p>
+    <h1>Edit Package #{{ $package->id }}</h1>
+    <p class="sub">Fix a mistake in how this package was logged. This doesn't touch its items or pricing.</p>
 
     @include('receiving.partials.form_fields')
 
     <div class="rcv-actions">
-        <a href="{{ action('ReceivingPackageController@index') }}" class="btn-ghost">Cancel</a>
-        <button type="submit" class="btn-accent">Log Package &amp; Add Contents &rarr;</button>
+        <a href="{{ action('ReceivingPackageController@show', [$package->id]) }}" class="btn-ghost">Cancel</a>
+        <button type="submit" class="btn-accent">Save Changes</button>
     </div>
 </div>
 {!! Form::close() !!}
@@ -59,19 +59,6 @@ body.pos-v2 .rcv-actions { display: flex; justify-content: flex-end; gap: 10px; 
         }
         $('#package_type').on('change', toggleTypeDetail);
         toggleTypeDetail();
-
-        $('#purchase_order_ids').select2({
-            placeholder: 'Search open purchase orders...',
-            allowClear: true,
-            minimumInputLength: 1,
-            ajax: {
-                url: '{{ action("ReceivingPackageController@searchPurchaseOrders") }}',
-                dataType: 'json',
-                delay: 250,
-                data: function(params) { return { term: params.term || '' }; },
-                processResults: function(data) { return { results: data.results || [] }; },
-            },
-        });
     });
 </script>
 @stop

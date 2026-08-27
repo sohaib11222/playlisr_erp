@@ -55,9 +55,16 @@ class ReceivingPackageController extends Controller
                 $packages->where('receiving_packages.package_type', request()->package_type);
             }
 
+            $isAdmin = $this->isAdmin();
+
             return DataTables::of($packages)
-                ->addColumn('action', function ($row) {
-                    return '<a href="' . action('ReceivingPackageController@show', [$row->id]) . '" class="btn btn-info btn-xs"><i class="fa fa-eye"></i> Open</a>';
+                ->addColumn('action', function ($row) use ($isAdmin) {
+                    $html = '<a href="' . action('ReceivingPackageController@show', [$row->id]) . '" class="btn btn-info btn-xs"><i class="fa fa-eye"></i> Open</a>';
+                    if ($isAdmin) {
+                        $html .= ' <a href="' . action('ReceivingPackageController@edit', [$row->id]) . '" class="btn btn-warning btn-xs"><i class="fa fa-edit"></i></a>';
+                        $html .= ' <button type="button" class="btn btn-danger btn-xs delete_package" data-href="' . action('ReceivingPackageController@destroy', [$row->id]) . '"><i class="fa fa-trash"></i></button>';
+                    }
+                    return $html;
                 })
                 ->editColumn('package_type', function ($row) {
                     $label = ReceivingPackage::$packageTypes[$row->package_type] ?? $row->package_type;
@@ -79,8 +86,9 @@ class ReceivingPackageController extends Controller
         }
 
         $statuses = ['open' => 'Open (receiving window)', 'closed' => 'Closed'];
+        $isAdmin = $this->isAdmin();
 
-        return view('receiving.index', compact('statuses'));
+        return view('receiving.index', compact('statuses', 'isAdmin'));
     }
 
     /**
@@ -107,6 +115,7 @@ class ReceivingPackageController extends Controller
 
             $request->validate([
                 'location_id' => 'required|exists:business_locations,id',
+                'bin_location' => 'nullable|string|max:255',
                 'package_type' => 'required|in:' . implode(',', array_keys(ReceivingPackage::$packageTypes)),
                 'package_type_detail' => 'nullable|string|max:255',
                 'order_number' => 'nullable|string|max:255',
@@ -119,6 +128,7 @@ class ReceivingPackageController extends Controller
             $package = new ReceivingPackage();
             $package->business_id = $business_id;
             $package->location_id = $request->location_id;
+            $package->bin_location = $request->bin_location;
             $package->package_type = $request->package_type;
             $package->package_type_detail = $request->package_type_detail;
             $package->order_number = $request->order_number;
@@ -161,8 +171,9 @@ class ReceivingPackageController extends Controller
             ->findOrFail($id);
 
         $activities = Activity::forSubject($package)->with('causer')->latest()->get();
+        $isAdmin = $this->isAdmin();
 
-        return view('receiving.show', compact('package', 'activities'));
+        return view('receiving.show', compact('package', 'activities', 'isAdmin'));
     }
 
     /**
@@ -187,6 +198,7 @@ class ReceivingPackageController extends Controller
                 'cost_price' => 'nullable|numeric|min:0',
                 'msrp' => 'nullable|numeric|min:0',
                 'pending_sell_price' => 'nullable|numeric|min:0',
+                'rack' => 'nullable|string|max:255',
             ]);
 
             $item = new ReceivingItem();
@@ -199,6 +211,7 @@ class ReceivingPackageController extends Controller
             $item->cost_price = $request->cost_price;
             $item->msrp = $request->msrp;
             $item->pending_sell_price = $request->pending_sell_price;
+            $item->rack = $request->rack;
             $item->status = 'in_progress';
             $item->save();
 
@@ -341,6 +354,120 @@ class ReceivingPackageController extends Controller
             \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
             return ['success' => false, 'msg' => __('messages.something_went_wrong')];
         }
+    }
+
+    /**
+     * Quick bin/location move — open to any staff, since physically moving
+     * the box around is routine, not a mistake to correct.
+     */
+    public function updateBin(Request $request, $id)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $package = ReceivingPackage::where('business_id', $business_id)->findOrFail($id);
+
+            $request->validate(['bin_location' => 'nullable|string|max:255']);
+
+            $package->bin_location = $request->bin_location;
+            $package->save();
+
+            return ['success' => true, 'msg' => 'Bin location updated.', 'bin_location' => $package->bin_location];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return ['success' => false, 'msg' => __('messages.something_went_wrong')];
+        }
+    }
+
+    /**
+     * Correct a package logged in error — admin only. Rewriting store/type/
+     * order info is a mistake-fix, not routine receiving work.
+     */
+    public function edit($id)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $package = ReceivingPackage::where('business_id', $business_id)->findOrFail($id);
+        $locations = BusinessLocation::forDropdown($business_id);
+
+        return view('receiving.edit', [
+            'package' => $package,
+            'locations' => $locations,
+            'packageTypes' => ReceivingPackage::$packageTypes,
+        ]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $package = ReceivingPackage::where('business_id', $business_id)->findOrFail($id);
+
+            $request->validate([
+                'location_id' => 'required|exists:business_locations,id',
+                'bin_location' => 'nullable|string|max:255',
+                'package_type' => 'required|in:' . implode(',', array_keys(ReceivingPackage::$packageTypes)),
+                'package_type_detail' => 'nullable|string|max:255',
+                'order_number' => 'nullable|string|max:255',
+                'invoice_number' => 'nullable|string|max:255',
+                'notes' => 'nullable|string',
+            ]);
+
+            $before = clone $package;
+
+            $package->location_id = $request->location_id;
+            $package->bin_location = $request->bin_location;
+            $package->package_type = $request->package_type;
+            $package->package_type_detail = $request->package_type_detail;
+            $package->order_number = $request->order_number;
+            $package->invoice_number = $request->invoice_number;
+            $package->notes = $request->notes;
+            $package->save();
+
+            $this->commonUtil->activityLog($package, 'edited', $before, [], true, $business_id);
+
+            $output = ['success' => true, 'msg' => 'Package updated.'];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            $output = ['success' => false, 'msg' => __('messages.something_went_wrong')];
+        }
+
+        return redirect()->action('ReceivingPackageController@show', [$id])->with('status', $output);
+    }
+
+    /**
+     * Delete a package logged in error — admin only. Cascades to its items
+     * and PO links via FK.
+     */
+    public function destroy($id)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $package = ReceivingPackage::where('business_id', $business_id)->findOrFail($id);
+            $package->delete();
+
+            $output = ['success' => true, 'msg' => 'Package deleted.'];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            $output = ['success' => false, 'msg' => __('messages.something_went_wrong')];
+        }
+
+        return $output;
+    }
+
+    private function isAdmin()
+    {
+        return auth()->user()->hasRole('Admin#' . session('business.id'));
     }
 
     /**

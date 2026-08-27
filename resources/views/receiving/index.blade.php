@@ -68,6 +68,7 @@ body.pos-v2 #receiving_table .label { font-size: 11px; font-weight: 600; padding
                         <th>Received</th>
                         <th>Type</th>
                         <th>Store</th>
+                        <th>Bin</th>
                         <th>Order #</th>
                         <th>Invoice #</th>
                         <th>Received By</th>
@@ -99,6 +100,7 @@ body.pos-v2 #receiving_table .label { font-size: 11px; font-weight: 600; padding
                 { data: 'received_at', name: 'received_at' },
                 { data: 'package_type', name: 'package_type' },
                 { data: 'location_name', name: 'business_locations.name', defaultContent: '-' },
+                { data: 'bin_location', name: 'receiving_packages.bin_location', defaultContent: '-' },
                 { data: 'order_number', name: 'order_number', defaultContent: '-' },
                 { data: 'invoice_number', name: 'invoice_number', defaultContent: '-' },
                 { data: 'received_by_name', name: 'received_by_name', defaultContent: '-' },
@@ -111,6 +113,34 @@ body.pos-v2 #receiving_table .label { font-size: 11px; font-weight: 600; padding
 
         $('#status_filter, #type_filter').on('change', function() {
             receiving_table.ajax.reload();
+        });
+
+        $(document).on('click', '.delete_package', function(e) {
+            e.preventDefault();
+            var url = $(this).attr('data-href');
+            swal({
+                title: LANG.sure,
+                text: 'This removes the package and everything logged inside it.',
+                icon: 'warning',
+                buttons: true,
+                dangerMode: true,
+            }).then((confirmed) => {
+                if (confirmed) {
+                    $.ajax({
+                        method: 'DELETE',
+                        url: url,
+                        dataType: 'json',
+                        success: function(result) {
+                            if (result.success) {
+                                toastr.success(result.msg);
+                                receiving_table.ajax.reload();
+                            } else {
+                                toastr.error(result.msg);
+                            }
+                        }
+                    });
+                }
+            });
         });
     });
 </script>

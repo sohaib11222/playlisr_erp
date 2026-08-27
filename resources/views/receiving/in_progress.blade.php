@@ -32,7 +32,9 @@ body.pos-v2 .empty-state { text-align: center; padding: 60px 20px; color: #8a807
         @foreach($items->groupBy('receiving_package_id') as $packageId => $group)
             @php($pkg = $group->first()->package)
             <div class="rcv-group">
-                <h3><a href="{{ action('ReceivingPackageController@show', [$packageId]) }}">Package #{{ $packageId }}</a> — {{ \App\ReceivingPackage::$packageTypes[$pkg->package_type] ?? $pkg->package_type }} at {{ $pkg->location->name ?? '-' }}</h3>
+                <h3><a href="{{ action('ReceivingPackageController@show', [$packageId]) }}">Package #{{ $packageId }}</a> — {{ \App\ReceivingPackage::$packageTypes[$pkg->package_type] ?? $pkg->package_type }} at {{ $pkg->location->name ?? '-' }}
+                    @if($pkg->bin_location) &middot; <span class="label label-default">Bin: {{ $pkg->bin_location }}</span> @endif
+                </h3>
                 @foreach($group as $item)
                     <div class="rcv-item-row">
                         <div>

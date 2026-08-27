@@ -10,7 +10,7 @@ class ReceivingPackage extends Model
 
     protected $dates = ['received_at'];
 
-    public $log_properties = ['package_type', 'location_id', 'status'];
+    public $log_properties = ['package_type', 'location_id', 'bin_location', 'status'];
 
     public static $packageTypes = [
         'mail' => 'Mail (Envelope)',

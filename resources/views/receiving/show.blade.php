@@ -55,11 +55,23 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
             @if($package->status == 'open')
                 <button type="button" id="close_window_btn" class="btn-ghost">Close Receiving Window</button>
             @endif
+            @if($isAdmin)
+                <a href="{{ action('ReceivingPackageController@edit', [$package->id]) }}" class="btn-ghost">Edit</a>
+                <button type="button" id="delete_package_btn" class="btn-ghost" style="color:#c0392b;">Delete</button>
+            @endif
         </div>
     </div>
 
     <div class="rcv-card">
         <div class="rcv-meta">
+            <div class="item"><div class="k">Bin / Location</div><div class="v">
+                <span id="bin_location_display">{{ $package->bin_location ?: 'Not set' }}</span>
+                <button type="button" id="edit_bin_btn" class="btn-ghost" style="padding:2px 8px;font-size:11.5px;">Move</button>
+                <div id="bin_location_edit" style="display:none;margin-top:6px;">
+                    <input type="text" id="bin_location_input" value="{{ $package->bin_location }}" placeholder="e.g. Receiving Bin 2" style="width:180px;">
+                    <button type="button" id="save_bin_btn" class="btn-accent" style="padding:6px 10px;font-size:12px;">Save</button>
+                </div>
+            </div></div>
             <div class="item"><div class="k">Order #</div><div class="v">{{ $package->order_number ?: '-' }}</div></div>
             <div class="item"><div class="k">Invoice #</div><div class="v">{{ $package->invoice_number ?: '-' }}</div></div>
             <div class="item"><div class="k">Linked POs</div><div class="v">
@@ -87,6 +99,7 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
             <div class="rcv-field"><label>Cost Paid</label><input type="number" id="add_item_cost" step="0.01" min="0" placeholder="0.00"></div>
             <div class="rcv-field"><label>MSRP</label><input type="number" id="add_item_msrp" step="0.01" min="0" placeholder="0.00"></div>
             <div class="rcv-field"><label>Sell For</label><input type="number" id="add_item_sell" step="0.01" min="0" placeholder="0.00"></div>
+            <div class="rcv-field"><label>Rack/Shelf</label><input type="text" id="add_item_rack" placeholder="Optional"></div>
             <div class="rcv-field"><button type="button" id="add_item_btn" class="btn-accent">Add to Box</button></div>
         </div>
         <input type="hidden" id="add_item_product_id">
@@ -218,7 +231,7 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
 
         function resetAddItemForm() {
             $('#add_item_product').val(null).trigger('change');
-            $('#add_item_product_id, #add_item_variation_id, #add_item_sku, #add_item_name, #add_item_cost, #add_item_msrp, #add_item_sell').val('');
+            $('#add_item_product_id, #add_item_variation_id, #add_item_sku, #add_item_name, #add_item_cost, #add_item_msrp, #add_item_sell, #add_item_rack').val('');
             $('#add_item_qty').val(1);
         }
 
@@ -242,6 +255,7 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
                     cost_price: $('#add_item_cost').val() || null,
                     msrp: $('#add_item_msrp').val() || null,
                     pending_sell_price: $('#add_item_sell').val() || null,
+                    rack: $('#add_item_rack').val() || null,
                 },
                 dataType: 'json',
                 success: function(result) {
@@ -331,6 +345,54 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
                         dataType: 'json',
                         success: function(result) {
                             if (result.success) { location.reload(); } else { toastr.error(result.msg); }
+                        }
+                    });
+                }
+            });
+        });
+
+        $('#edit_bin_btn').on('click', function() {
+            $('#bin_location_edit').toggle();
+        });
+
+        $('#save_bin_btn').on('click', function() {
+            $.ajax({
+                method: 'POST',
+                url: '/receiving/' + packageId + '/bin-location',
+                data: { _token: csrfToken, bin_location: $('#bin_location_input').val() || null },
+                dataType: 'json',
+                success: function(result) {
+                    if (result.success) {
+                        toastr.success(result.msg);
+                        $('#bin_location_display').text(result.bin_location || 'Not set');
+                        $('#bin_location_edit').hide();
+                    } else {
+                        toastr.error(result.msg);
+                    }
+                }
+            });
+        });
+
+        $('#delete_package_btn').on('click', function() {
+            swal({
+                title: 'Delete this package?',
+                text: 'This removes it and everything logged inside it. This cannot be undone.',
+                icon: 'warning',
+                buttons: true,
+                dangerMode: true,
+            }).then((confirmed) => {
+                if (confirmed) {
+                    $.ajax({
+                        method: 'DELETE',
+                        url: '/receiving/' + packageId,
+                        data: { _token: csrfToken },
+                        dataType: 'json',
+                        success: function(result) {
+                            if (result.success) {
+                                window.location.href = '{{ action("ReceivingPackageController@index") }}';
+                            } else {
+                                toastr.error(result.msg);
+                            }
                         }
                     });
                 }
