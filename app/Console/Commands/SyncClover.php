@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Business;
 use App\Contact;
 use App\Product;
+use App\Services\CloverLineItemStore;
 use App\Services\CloverService;
 use App\Transaction;
 use Carbon\Carbon;
@@ -181,6 +182,7 @@ class SyncClover extends Command
         }
 
         $linked = 0;
+        $itemized = 0;
         foreach ($result['orders'] as $o) {
             $cloverOrderId = $o['id'] ?? null;
             if (!$cloverOrderId) continue;
@@ -199,8 +201,37 @@ class SyncClover extends Command
                 $txn->save();
                 $linked++;
             }
+
+            // Itemized receipt capture — Clover's line items are already
+            // fetched (expand=lineItems on getOrders) but were previously
+            // discarded here. Stash verbatim as a JSON sidecar keyed by
+            // order id (no DB migration — see CloverLineItemStore) so
+            // reconciliation/receipts can show what was actually sold
+            // instead of just the order total.
+            $lineItems = $o['lineItems']['elements'] ?? [];
+            if (!empty($lineItems)) {
+                CloverLineItemStore::save($businessId, (string) $cloverOrderId, [
+                    'clover_order_id' => $cloverOrderId,
+                    'business_id'     => $businessId,
+                    'synced_at'       => now()->toIso8601String(),
+                    'order_total_cents' => $o['total'] ?? null,
+                    'employee_name'   => $o['employee']['name'] ?? null,
+                    'transaction_id'  => $txn->id ?? null,
+                    'items' => array_map(function ($li) {
+                        return [
+                            'clover_line_item_id' => $li['id'] ?? null,
+                            'clover_item_id'      => $li['item']['id'] ?? null,
+                            'name'                => $li['name'] ?? null,
+                            'price_cents'         => $li['price'] ?? null,
+                            'unit_qty'            => $li['unitQty'] ?? null,
+                            'refunded'            => (bool) ($li['refunded'] ?? false),
+                        ];
+                    }, $lineItems),
+                ]);
+                $itemized++;
+            }
         }
-        $this->line('  fetched ' . count($result['orders']) . ", linked {$linked}");
+        $this->line('  fetched ' . count($result['orders']) . ", linked {$linked}, itemized {$itemized}");
         $this->setWatermark($businessId, $scope, 'orders');
     }
 
