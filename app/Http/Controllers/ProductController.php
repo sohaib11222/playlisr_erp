@@ -3519,6 +3519,8 @@ class ProductController extends Controller
     {
         $this->productUtil->updateProductQuantity($request->location_id, $request->product_id, $request->variation_id, $request->stock);
 
+        (new \App\Services\NivessaStockNotifier())->push([$request->product_id]);
+
         // This quick-stock-edit path used to write straight to
         // variation_location_details with no activity_log entry, so the
         // products list "Last updated by" column (sourced entirely from

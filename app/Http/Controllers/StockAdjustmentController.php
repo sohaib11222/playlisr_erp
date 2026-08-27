@@ -187,6 +187,7 @@ class StockAdjustmentController extends Controller
 
             if (!empty($products)) {
                 $product_data = [];
+                $notify_product_ids = [];
 
                 foreach ($products as $product) {
                     $adjustment_line = [
@@ -200,6 +201,7 @@ class StockAdjustmentController extends Controller
                         $adjustment_line['lot_no_line_id'] = $product['lot_no_line_id'];
                     }
                     $product_data[] = $adjustment_line;
+                    $notify_product_ids[] = $product['product_id'];
 
                     //Decrease available quantity
                     $this->productUtil->decreaseProductQuantity(
@@ -228,6 +230,10 @@ class StockAdjustmentController extends Controller
                         ];
 
             DB::commit();
+
+            if (!empty($notify_product_ids)) {
+                (new \App\Services\NivessaStockNotifier())->push(array_values(array_unique($notify_product_ids)));
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             

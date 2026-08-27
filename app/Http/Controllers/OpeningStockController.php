@@ -368,6 +368,8 @@ class OpeningStockController extends Controller
                 }
 
                 DB::commit();
+
+                (new \App\Services\NivessaStockNotifier())->push([$product_id]);
             }
 
             $output = ['success' => 1,
