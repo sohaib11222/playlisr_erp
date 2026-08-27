@@ -3518,6 +3518,28 @@ class ProductController extends Controller
     public function updateStock(Request $request)
     {
         $this->productUtil->updateProductQuantity($request->location_id, $request->product_id, $request->variation_id, $request->stock);
+
+        // This quick-stock-edit path used to write straight to
+        // variation_location_details with no activity_log entry, so the
+        // products list "Last updated by" column (sourced entirely from
+        // activity_log — see ProductController@index) never reflected a
+        // manual stock fix made here. It kept showing whoever/whatever made
+        // the last FULL product edit — which could be a stale automated sync
+        // from months earlier — even seconds after a person corrected the
+        // count. Log it the same way the full edit form does.
+        try {
+            $product = Product::find($request->product_id);
+            if ($product) {
+                $logActivity = activity()
+                    ->performedOn($product)
+                    ->causedBy(auth()->user())
+                    ->log('stock updated');
+                $logActivity->business_id = $product->business_id;
+                $logActivity->save();
+            }
+        } catch (\Throwable $logEx) {
+            \Log::warning('updateStock activity log failed: ' . $logEx->getMessage());
+        }
     }
 
     public function massCreate(Request $request)
