@@ -468,6 +468,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/{id}/status', 'WebsiteOrdersController@updateStatus')->name('website-orders.updateStatus');
     Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
 
+    // Customer email copy editor — moved here from nivessa.com's
+    // /admin/email-templates so the ERP is the only place admin tooling
+    // lives (see EmailTemplatesController).
+    Route::get('/email-templates', 'EmailTemplatesController@index')->name('email-templates.index');
+    Route::post('/email-templates/{key}', 'EmailTemplatesController@update')->name('email-templates.update');
+    Route::post('/email-templates/{key}/reset', 'EmailTemplatesController@reset')->name('email-templates.reset');
+    Route::post('/email-templates/{key}/preview', 'EmailTemplatesController@preview')->name('email-templates.preview');
+    Route::post('/email-templates/{key}/send-test', 'EmailTemplatesController@sendTest')->name('email-templates.sendTest');
+
     Route::resource('roles', 'RoleController');
 
     Route::resource('users', 'ManageUserController');

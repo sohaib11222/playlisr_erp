@@ -71,6 +71,13 @@ class AdminSidebarMenu
                     'Orders',
                     ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
                 )->order(8);
+                //Email Templates — customer email copy editor (order confirmation,
+                //cancellation, welcome, bookings, etc.)
+                $menu->url(
+                    route('email-templates.index'),
+                    'Email Templates',
+                    ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
+                )->order(8);
             }
 
             //Discounts (top-level for quick access)
