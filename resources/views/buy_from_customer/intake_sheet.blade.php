@@ -14,8 +14,10 @@
             </div>
         @endif
         <button type="button" class="btn btn-primary" onclick="window.print()"><i class="fa fa-print"></i> Print</button>
+        <button type="button" class="btn btn-default" id="bfc_copy_discogs_links"><i class="fa fa-copy"></i> Copy Discogs Links</button>
         <a href="{{ route('buy-from-customer.history') }}" class="btn btn-default"><i class="fa fa-arrow-left"></i> Back to History</a>
         <a href="{{ route('buy-from-customer.storage-locations') }}" class="btn btn-default"><i class="fa fa-boxes"></i> Storage Locations</a>
+        <span id="bfc_copy_discogs_links_status" class="text-muted"></span>
     </div>
 
     <div class="box box-solid bfc-intake-sheet">
@@ -112,6 +114,7 @@
                     <tr>
                         <th>Type</th>
                         <th>Title</th>
+                        <th>Discogs Link</th>
                         <th>Grade</th>
                         <th class="text-right">Qty</th>
                         <th>Destination</th>
@@ -132,12 +135,19 @@
                         <tr>
                             <td>{{ $itemTypes[$line->item_type] ?? $line->item_type }}</td>
                             <td>{{ $line->title ?: '—' }}</td>
+                            <td>
+                                @if($line->discogs_url)
+                                    <a href="{{ $line->discogs_url }}" target="_blank" rel="noopener">{{ $line->discogs_link }}</a>
+                                @else
+                                    {{ $line->discogs_link ?: '—' }}
+                                @endif
+                            </td>
                             <td>{{ $line->condition_grade ?: '—' }}</td>
                             <td class="text-right">{{ number_format((float) $line->quantity, 2) }}</td>
                             <td>{{ $dispositionLabels[$line->disposition] ?? '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted">No line items.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">No line items.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -166,6 +176,25 @@
         jQuery(fn);
     }
     onReady(function ($) {
+        $('#bfc_copy_discogs_links').on('click', function () {
+            var links = @json($offer->lines->pluck('discogs_url')->filter()->values());
+            var $status = $('#bfc_copy_discogs_links_status');
+            if (!links.length) {
+                $status.text('No Discogs links on this collection.');
+                return;
+            }
+            var text = links.join('\n');
+            var done = function () { $status.text(links.length + ' link' + (links.length === 1 ? '' : 's') + ' copied.'); };
+            var fail = function () { $status.text('Copy failed — select and copy manually.'); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, fail);
+            } else {
+                var $tmp = $('<textarea>').val(text).appendTo('body').select();
+                try { document.execCommand('copy'); done(); } catch (e) { fail(); }
+                $tmp.remove();
+            }
+        });
+
         $('#bfc_storage_location_save').on('click', function () {
             var $btn = $(this);
             var $status = $('#bfc_storage_location_status');
