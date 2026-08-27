@@ -55,6 +55,11 @@ class BuyCustomerOffer extends Model
         return $this->belongsTo(\App\User::class, 'created_by');
     }
 
+    public function processingStatusUpdatedBy()
+    {
+        return $this->belongsTo(\App\User::class, 'processing_status_updated_by');
+    }
+
     public function acceptedPurchase()
     {
         return $this->belongsTo(\App\Transaction::class, 'accepted_purchase_id');

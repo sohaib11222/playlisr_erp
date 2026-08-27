@@ -36,6 +36,7 @@
                         <th>Items</th>
                         <th>Value</th>
                         <th>Storage location</th>
+                        <th>Status</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -73,11 +74,22 @@
                                 </div>
                             </td>
                             <td>
+                                @php $status = $offer->processing_status ?: 'not_started'; @endphp
+                                <select class="form-control input-sm bfc-status-select" data-offer-id="{{ $offer->id }}" style="width:130px;">
+                                    <option value="not_started" {{ $status === 'not_started' ? 'selected' : '' }}>Not Started</option>
+                                    <option value="in_progress" {{ $status === 'in_progress' ? 'selected' : '' }}>In Progress</option>
+                                    <option value="complete" {{ $status === 'complete' ? 'selected' : '' }}>Complete</option>
+                                </select>
+                                <div class="bfc-status-meta" data-offer-id="{{ $offer->id }}" style="font-size:11px; color:#999; margin-top:4px;">
+                                    {{ optional($offer->processingStatusUpdatedBy)->user_full_name ?? optional($offer->processingStatusUpdatedBy)->username ?? '—' }}
+                                </div>
+                            </td>
+                            <td>
                                 <button type="button" class="btn btn-default btn-xs bfc-loc-edit-btn" data-offer-id="{{ $offer->id }}"><i class="fa fa-pencil"></i> Edit</button>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted">No accepted collections yet.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted">No accepted collections yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -124,6 +136,26 @@
                 })
                 .always(function () {
                     $btn.prop('disabled', false);
+                });
+        });
+
+        $(document).on('change', '.bfc-status-select', function () {
+            var $select = $(this);
+            var id = $select.data('offer-id');
+            var val = $select.val();
+            $select.prop('disabled', true);
+            $.post('{{ url('/buy-from-customer') }}/' + id + '/processing-status', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                processing_status: val,
+            })
+                .done(function (resp) {
+                    $('.bfc-status-meta[data-offer-id="' + id + '"]').text(resp.updated_by || '—');
+                })
+                .fail(function () {
+                    alert('Save failed — try again.');
+                })
+                .always(function () {
+                    $select.prop('disabled', false);
                 });
         });
     });
