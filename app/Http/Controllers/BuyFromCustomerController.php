@@ -473,7 +473,7 @@ class BuyFromCustomerController extends Controller
         $search = trim((string) request()->input('q', ''));
         $locationId = request()->input('location_id');
 
-        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines', 'location'])
+        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'lines', 'location', 'processingStatusUpdatedBy'])
             ->where('business_id', $business_id)
             ->where('status', 'accepted');
 
@@ -517,6 +517,36 @@ class BuyFromCustomerController extends Controller
             'storage_location' => $offer->storage_location,
             'updated_by' => optional(auth()->user())->user_full_name ?? optional(auth()->user())->username,
             'updated_at' => optional($offer->storage_location_updated_at)->format('M j, Y g:ia'),
+        ]);
+    }
+
+    /**
+     * Where a purchased collection is in being sorted/priced/shelved. Same
+     * shared, store-wide editability as storage_location above — whoever is
+     * working a box updates it, so the status always reflects who touched
+     * it last.
+     */
+    public function updateProcessingStatus(Request $request, $id)
+    {
+        $this->ensureCollectionStorageAndDispositionColumns();
+
+        $business_id = request()->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::where('business_id', $business_id)->findOrFail($id);
+
+        $request->validate([
+            'processing_status' => 'required|string|in:not_started,in_progress,complete',
+        ]);
+
+        $offer->processing_status = $request->input('processing_status');
+        $offer->processing_status_updated_by = request()->session()->get('user.id');
+        $offer->processing_status_updated_at = now();
+        $offer->save();
+
+        return response()->json([
+            'success' => true,
+            'processing_status' => $offer->processing_status,
+            'updated_by' => optional(auth()->user())->user_full_name ?? optional(auth()->user())->username,
+            'updated_at' => optional($offer->processing_status_updated_at)->format('M j, Y g:ia'),
         ]);
     }
 
@@ -1191,6 +1221,14 @@ class BuyFromCustomerController extends Controller
         if (Schema::hasTable('products') && !Schema::hasColumn('products', 'disposition')) {
             Schema::table('products', function (Blueprint $table) {
                 $table->string('disposition', 20)->nullable();
+            });
+        }
+
+        if (Schema::hasTable('buy_customer_offers') && !Schema::hasColumn('buy_customer_offers', 'processing_status')) {
+            Schema::table('buy_customer_offers', function (Blueprint $table) {
+                $table->string('processing_status', 20)->default('not_started');
+                $table->unsignedInteger('processing_status_updated_by')->nullable();
+                $table->timestamp('processing_status_updated_at')->nullable();
             });
         }
     }
