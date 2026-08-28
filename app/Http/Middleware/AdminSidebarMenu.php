@@ -64,19 +64,26 @@ class AdminSidebarMenu
                     'Preorders',
                     ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
                 )->order(8);
-                //Orders — nivessa.com fulfillment console (Needs Action/To Ship/
-                //Pickup/Completed/Archived, status changes, cancellation)
-                $menu->url(
-                    route('website-orders.index'),
-                    'Orders',
-                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
-                )->order(8);
                 //Email Templates — customer email copy editor (order confirmation,
                 //cancellation, welcome, bookings, etc.)
                 $menu->url(
                     route('email-templates.index'),
                     'Email Templates',
                     ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
+                )->order(8);
+            }
+
+            //Orders — nivessa.com fulfillment console (Needs Action/To Ship/
+            //Pickup/Completed/Archived, status changes, cancellation). Own gate
+            //(not bundled with Events/Preorders/Email Templates above) so
+            //cashiers who actually do fulfillment (e.g. Nick) can see it via
+            //sell.create without needing product.create's product-management
+            //powers too.
+            if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
+                $menu->url(
+                    route('website-orders.index'),
+                    'Orders',
+                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
                 )->order(8);
             }
 

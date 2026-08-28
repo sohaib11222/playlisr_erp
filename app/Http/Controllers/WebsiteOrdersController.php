@@ -55,7 +55,7 @@ class WebsiteOrdersController extends Controller
 
     public function index(Request $request)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -138,7 +138,7 @@ class WebsiteOrdersController extends Controller
 
     public function updateStatus(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -167,7 +167,7 @@ class WebsiteOrdersController extends Controller
 
     public function archive(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -225,7 +225,7 @@ class WebsiteOrdersController extends Controller
 
     public function cancel(Request $request, string $id)
     {
-        if (!auth()->user()->can('product.create')) {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
             abort(403, 'Unauthorized action.');
         }
 
