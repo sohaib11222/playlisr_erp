@@ -15,6 +15,9 @@ namespace App\Services;
  */
 class DiscogsStreetDateBackfillService
 {
+    /** Written to product_custom_field2 when Discogs confirmed no release date exists — not a real date, excluded from re-checks. */
+    const NO_DATE_SENTINEL = 'NO_DISCOGS_DATE';
+
     /**
      * One batch: find up to $limit eligible products, look each up on
      * Discogs, and (if $commit) write the date. Always returns a preview of
@@ -69,6 +72,25 @@ class DiscogsStreetDateBackfillService
             $date = $this->extractReleaseDate($resp['data']);
             if (!$date) {
                 $notFound++;
+                // Mark it checked so it isn't retried forever — a successful
+                // Discogs lookup that has no release date won't gain one on
+                // a re-check. Before this, no_date rows stayed NULL/blank so
+                // the "eligible" query (whereNull/empty) kept re-selecting
+                // the same head-of-queue rows every run with zero forward
+                // progress (2026-08-28: 30 min of runtime moved the
+                // remaining count by only 7). NOT applied to 'error' below —
+                // those are transient (rate limit, etc.) and should retry.
+                // Sentinel is a plain string, not a parsable date, so it's a
+                // silent no-op everywhere product_custom_field2 is read
+                // (website sync, New Releases ABC scope both fail to parse
+                // it and treat it as unset) — and staff hand-typing a real
+                // date over it later still works exactly as before.
+                if ($commit) {
+                    \DB::table('products')->where('id', $p->id)->update([
+                        'product_custom_field2' => self::NO_DATE_SENTINEL,
+                        'updated_at' => now(),
+                    ]);
+                }
                 $results[] = ['id' => $p->id, 'name' => $p->name, 'discogs_release_id' => $p->discogs_release_id, 'status' => 'no_date', 'detail' => 'Discogs has no release date for this release.'];
                 continue;
             }
