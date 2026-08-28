@@ -25,10 +25,13 @@
             </select>
         @else
             <span class="avatar {{ $t['assigned_to_user_id'] ? '' : 'unassigned' }}"
-                  style="{{ $t['assigned_to_user_id'] ? 'background:' . $avatarColor((int) $t['assigned_to_user_id']) : '' }}">
+                  style="{{ $t['assigned_to_user_id'] ? 'background:' . $avatarColor((int) $t['assigned_to_user_id']) : '' }}"
+                  title="{{ $t['assignee_name'] ?? 'Anyone on shift' }}">
                 {{ $t['assigned_to_user_id'] ? $initials($t['assignee_name']) : '' }}
             </span>
-            <span class="assignee-name">{{ $t['assignee_name'] ?? 'Anyone' }}</span>
+            @if($t['assigned_to_user_id'])
+                <span class="assignee-name">{{ $t['assignee_name'] }}</span>
+            @endif
         @endif
     </div>
 

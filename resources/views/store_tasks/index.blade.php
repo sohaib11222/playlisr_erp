@@ -22,8 +22,8 @@
         return mb_strtoupper($first . $last);
     };
     // A consistent color per person (hash of their id into a fixed palette),
-    // matching Asana's per-assignee avatar coloring.
-    $avatarPalette = ['#E8CF68', '#8FB9A8', '#E3A0A0', '#A6B7D4', '#C9A6D4', '#D9B27C', '#8FC1D4', '#B7C98F'];
+    // matching Asana's per-assignee avatar coloring (solid color, white initials).
+    $avatarPalette = ['#4573D2', '#7A6FF0', '#12A75E', '#E0722F', '#D14D72', '#20A6A0', '#8F5FE8', '#C4890A'];
     $avatarColor = function ($id) use ($avatarPalette) {
         return $avatarPalette[$id % count($avatarPalette)];
     };
@@ -39,22 +39,22 @@
 
 <style>
 .et-shell {
-    --d-bg: #FAF6EE;
+    --d-bg: #FFFFFF;
     --d-surface: #FFFFFF;
-    --d-surface-2: #F7F1E3;
-    --d-ink: #1F1B16;
-    --d-ink-2: #5A5045;
-    --d-ink-3: #8E8273;
-    --d-line: #ECE3CF;
-    --d-line-2: #DFD2B3;
+    --d-surface-2: #F6F6F7;
+    --d-ink: #17181A;
+    --d-ink-2: #545861;
+    --d-ink-3: #98A0A6;
+    --d-line: #E8E8E9;
+    --d-line-2: #D8D9DB;
     --d-accent: #FFF2B3;
-    --d-accent-deep: #E8CF68;
-    --d-accent-soft: #FFF9DB;
-    --d-accent-text: #5A4410;
+    --d-accent-deep: #6D6E6F;
+    --d-accent-soft: #FBF9E9;
+    --d-accent-text: #6A6300;
     --d-good: #2E7D32;
-    --d-bad: #B3261E;
-    --d-radius: 12px;
-    --d-radius-sm: 8px;
+    --d-bad: #CC3A38;
+    --d-radius: 8px;
+    --d-radius-sm: 6px;
 
     font-family: "Inter Tight", system-ui, sans-serif;
     color: var(--d-ink);
@@ -67,20 +67,20 @@
 .et-shell *, .et-shell *::before, .et-shell *::after { box-sizing: border-box; }
 
 .et-shell .et-header { margin: 12px 4px 16px; }
-.et-shell .et-header h1 { font-size: 26px; font-weight: 800; letter-spacing: -.01em; margin: 0; line-height: 1.2; }
-.et-shell .et-header p { font-size: 14px; color: var(--d-ink-3); margin: 6px 0 0; line-height: 1.5; }
+.et-shell .et-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -.01em; margin: 0; line-height: 1.2; }
+.et-shell .et-header p { font-size: 13.5px; color: var(--d-ink-3); margin: 5px 0 0; line-height: 1.5; }
 
-.et-shell .store-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.et-shell .store-tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--d-line); }
 .et-shell .store-tabs a {
-    padding: 7px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 700;
-    text-decoration: none; color: var(--d-ink-2); background: var(--d-surface); border: 1px solid var(--d-line-2);
+    padding: 9px 4px; margin-right: 20px; font-size: 14px; font-weight: 600;
+    text-decoration: none; color: var(--d-ink-3); border-bottom: 2px solid transparent;
 }
-.et-shell .store-tabs a.active { background: var(--d-accent); border-color: var(--d-accent-deep); color: var(--d-accent-text); }
+.et-shell .store-tabs a.active { color: var(--d-ink); border-bottom-color: var(--d-ink); }
 
 .et-shell .callout {
-    background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep);
+    background: var(--d-accent-soft); border: 1px solid #EDE8B0;
     color: var(--d-accent-text); border-radius: var(--d-radius-sm);
-    padding: 12px 16px; margin-bottom: 16px; font-weight: 700; font-size: 14.5px;
+    padding: 12px 16px; margin-bottom: 16px; font-weight: 600; font-size: 14px;
 }
 
 .et-shell .board {
@@ -115,17 +115,17 @@
 .et-shell .task-row:hover { background: var(--d-surface-2); }
 .et-shell .task-row .del-btn { visibility: hidden; }
 .et-shell .task-row:hover .del-btn { visibility: visible; }
-.et-shell .task-row.overdue .due-cell { color: var(--d-bad); font-weight: 700; }
+.et-shell .task-row.overdue .due-cell { color: var(--d-bad); font-weight: 600; }
 
 .et-shell .task-row input[type=checkbox] {
-    appearance: none; -webkit-appearance: none; width: 20px; height: 20px; border: 2px solid var(--d-line-2);
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border: 1.5px solid var(--d-line-2);
     border-radius: 50%; background: #fff; cursor: pointer; position: relative; flex: 0 0 auto;
 }
-.et-shell .task-row.overdue input[type=checkbox] { border-color: var(--d-bad); }
-.et-shell .task-row input[type=checkbox]:checked { background: var(--d-accent-deep); border-color: var(--d-accent-deep); }
+.et-shell .task-row input[type=checkbox]:hover { border-color: var(--d-ink-3); }
+.et-shell .task-row input[type=checkbox]:checked { background: #6D6E6F; border-color: #6D6E6F; }
 .et-shell .task-row input[type=checkbox]:checked::after {
-    content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
-    border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    content: ""; position: absolute; left: 4.5px; top: 1px; width: 5px; height: 9px;
+    border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
 }
 
 .et-shell .task-main { min-width: 0; }
@@ -138,18 +138,17 @@
 .et-shell .avatar {
     width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 800; color: var(--d-accent-text);
-    border: 1px solid rgba(0,0,0,.08);
+    font-size: 10px; font-weight: 700; color: #fff;
 }
 .et-shell .avatar.unassigned {
-    background: transparent; border: 1.5px dashed var(--d-line-2); color: var(--d-ink-3);
+    background: transparent; border: 1.5px dashed var(--d-line-2); color: transparent;
 }
-.et-shell .assignee-name { font-size: 12.5px; color: var(--d-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.et-shell .assignee-name { font-size: 13px; color: var(--d-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .et-shell select.assignee-select {
-    font-family: inherit; font-size: 12.5px; padding: 4px 6px; border-radius: var(--d-radius-sm);
+    font-family: inherit; font-size: 13px; padding: 4px 6px; border-radius: var(--d-radius-sm);
     border: 1px solid transparent; background: transparent; color: var(--d-ink-2); max-width: 150px; cursor: pointer;
 }
-.et-shell select.assignee-select:hover { border-color: var(--d-line-2); background: var(--d-surface); }
+.et-shell select.assignee-select:hover { border-color: var(--d-line-2); background: var(--d-surface-2); }
 
 .et-shell .due-cell { font-size: 12.5px; color: var(--d-ink-2); white-space: nowrap; }
 .et-shell .due-cell .repeat-mark { color: var(--d-ink-3); margin-right: 3px; }
@@ -164,16 +163,20 @@
     display: grid; grid-template-columns: 30px 1fr 170px 130px 30px; gap: 10px; align-items: center;
     padding: 8px 16px; border-top: 1px solid var(--d-line);
 }
-.et-shell .add-row .add-plus { color: var(--d-ink-3); font-size: 16px; text-align: center; }
+.et-shell .add-row .add-plus { color: var(--d-ink-3); font-size: 15px; text-align: center; }
 .et-shell .add-row input[type=text] {
     font-family: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--d-radius-sm);
     background: transparent; color: var(--d-ink); width: 100%;
 }
 .et-shell .add-row input[type=text]:hover, .et-shell .add-row input[type=text]:focus { border-color: var(--d-line-2); background: var(--d-surface); outline: none; }
-.et-shell .add-row input[type=text]::placeholder { color: var(--d-ink-3); font-weight: 600; }
+.et-shell .add-row input[type=text]::placeholder { color: var(--d-ink-3); font-weight: 400; }
 .et-shell .add-row select, .et-shell .add-row input[type=date] {
-    font-family: inherit; font-size: 12.5px; padding: 5px 6px; border: 1px solid var(--d-line-2); border-radius: var(--d-radius-sm);
-    background: var(--d-surface); color: var(--d-ink-2);
+    font-family: inherit; font-size: 12.5px; padding: 4px 5px; border: 1px solid transparent; border-radius: var(--d-radius-sm);
+    background: transparent; color: var(--d-ink-3); opacity: .8;
+}
+.et-shell .add-row select:hover, .et-shell .add-row input[type=date]:hover,
+.et-shell .add-row select:focus, .et-shell .add-row input[type=date]:focus {
+    border-color: var(--d-line-2); background: var(--d-surface); color: var(--d-ink-2); opacity: 1; outline: none;
 }
 .et-shell .empty-note { padding: 4px 16px 14px; font-size: 13px; color: var(--d-ink-3); }
 </style>
