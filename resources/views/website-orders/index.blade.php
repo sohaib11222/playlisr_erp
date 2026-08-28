@@ -9,31 +9,64 @@
 @include('events.partials._styles')
 
 <style>
-  .wo-tabs { display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--pos-line,#ECE3CF); margin-bottom:16px; overflow-x:auto; flex-wrap:wrap; }
-  .wo-tab { position:relative; padding:10px 16px; font-size:13px; font-weight:600; color:#7a7266; text-decoration:none; white-space:nowrap; }
+  .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid var(--pos-line,#ECE3CF); margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
+  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#7a7266; text-decoration:none; white-space:nowrap; }
   .wo-tab:hover { color:#2a2620; }
   .wo-tab.active { color:#2a2620; }
-  .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:#2a2620; border-radius:2px 2px 0 0; }
-  .wo-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; background:#c9c1ac; margin-left:6px; }
+  .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#2a2620; border-radius:2px 2px 0 0; }
+  .wo-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; background:#b7ad93; margin-left:8px; }
   .wo-badge.hot { background:#c98a2c; }
   .wo-badge.overdue { background:#a23; }
-  .wo-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; }
-  .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { font-size:12px; padding:6px 8px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; }
-  .wo-banner { margin-bottom:14px; padding:10px 12px; border-radius:8px; font-size:13px; }
+
+  .wo-filters { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; background:#faf8f2; border:1px solid var(--pos-line,#ECE3CF); border-radius:10px; padding:14px 16px; }
+  .wo-filters .wo-field { display:flex; flex-direction:column; gap:4px; }
+  .wo-filters label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#948a76; }
+  .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { font-size:13.5px; padding:8px 10px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; background:#fff; }
+  .wo-filters .wo-actions-inline { display:flex; gap:10px; align-items:center; }
+
+  .wo-banner { margin-bottom:16px; padding:12px 14px; border-radius:8px; font-size:14px; }
   .wo-banner.warn { background:#fff8e6; border:1px solid #f0dfa8; color:#6b5511; }
   .wo-banner.overdue { background:#fdecec; border:1px solid #f0c2c2; color:#7a2222; }
   .wo-banner.ok { background:#eef7ee; border:1px solid #cfe8cf; color:#245a24; }
-  .wo-row-toggle { cursor:pointer; color:#4a6fa5; font-size:12px; background:none; border:none; padding:0; text-decoration:underline; }
-  .wo-detail td { background:#faf8f2; }
-  .wo-detail-grid { display:flex; flex-wrap:wrap; gap:24px; padding:10px 4px; font-size:12px; }
-  .wo-detail-grid h5 { font-size:12px; font-weight:700; margin:0 0 6px; color:#5a5346; }
-  .wo-detail-items { width:100%; border-collapse:collapse; margin-top:4px; }
-  .wo-detail-items td, .wo-detail-items th { padding:3px 8px 3px 0; font-size:12px; text-align:left; }
-  .wo-status-form { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .wo-status-form select, .wo-status-form input { font-size:12px; padding:5px 6px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; }
-  .wo-status-form input[type=text] { max-width:130px; }
-  .wo-actions { display:flex; flex-direction:column; gap:6px; min-width:260px; }
-  .wo-actions-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+  .wo-tbl { width:100%; border-collapse:collapse; }
+  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8f8672; padding:10px 14px; border-bottom:2px solid var(--pos-line,#ECE3CF); background:#faf8f2; }
+  .wo-tbl tbody tr.wo-row { border-bottom:1px solid var(--pos-line,#ECE3CF); }
+  .wo-tbl tbody tr.wo-row:hover { background:#fdfcf8; }
+  .wo-tbl td { padding:16px 14px; font-size:14px; vertical-align:top; }
+
+  .wo-buyer-name { font-size:14.5px; font-weight:700; color:#2a2620; }
+  .wo-buyer-email { font-size:12.5px; color:#8f8672; margin-top:2px; }
+  .wo-view-toggle { display:inline-block; margin-top:6px; font-size:12.5px; color:#4a6fa5; background:none; border:none; padding:0; cursor:pointer; text-decoration:underline; }
+
+  .wo-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:700; background:#fdf1cf; color:#7a5c10; }
+  .wo-total { font-weight:700; color:#2a2620; }
+  .wo-placed { font-size:13px; color:#6b6253; white-space:nowrap; }
+
+  .wo-status-block { display:flex; flex-direction:column; gap:8px; min-width:230px; }
+  .wo-status-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .wo-status-row select, .wo-status-row input[type=text] { font-size:13.5px; padding:7px 9px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; }
+  .wo-status-row input[type=text] { max-width:130px; }
+  .wo-notify-label { font-size:12px; display:flex; align-items:center; gap:5px; color:#6b6253; }
+  .wo-btn { font-size:13px; padding:7px 14px; border-radius:8px; border:1px solid var(--pos-line,#ECE3CF); background:#fff; cursor:pointer; font-weight:600; color:#2a2620; }
+  .wo-btn:hover { background:#faf8f2; }
+  .wo-btn-primary { background:#2a2620; color:#fff; border-color:#2a2620; }
+  .wo-btn-primary:hover { background:#403a2e; }
+  .wo-btn-danger { color:#a23; border-color:#f3cccc; }
+  .wo-btn-danger:hover { background:#fdecec; }
+
+  .wo-other-col { min-width:180px; }
+  .wo-cancel-toggle { font-size:12.5px; color:#a23; background:none; border:none; padding:0; margin-top:10px; cursor:pointer; text-decoration:underline; display:block; }
+  .wo-cancel-form { display:none; flex-direction:column; gap:8px; margin-top:10px; padding:12px; background:#fdf6f6; border:1px solid #f3cccc; border-radius:8px; }
+  .wo-cancel-form.open { display:flex; }
+  .wo-cancel-form select, .wo-cancel-form input[type=text] { font-size:13px; padding:7px 9px; border:1px solid #f0c2c2; border-radius:7px; width:100%; }
+
+  .wo-detail td { background:#faf8f2; padding:0 14px 18px; }
+  .wo-detail-grid { display:flex; flex-wrap:wrap; gap:28px; padding:14px 4px; font-size:13px; }
+  .wo-detail-grid h5 { font-size:12.5px; font-weight:700; margin:0 0 8px; color:#5a5346; text-transform:uppercase; letter-spacing:.03em; }
+  .wo-detail-items { width:100%; border-collapse:collapse; margin-top:6px; }
+  .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
+  .wo-detail-items th { color:#8f8672; font-weight:700; font-size:11px; text-transform:uppercase; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -102,40 +135,58 @@
 
     <form method="GET" action="{{ route('website-orders.index') }}" class="wo-filters">
       <input type="hidden" name="tab" value="{{ $activeTab }}">
-      <select name="payment_status" onchange="this.form.submit()">
-        <option value="completed" {{ $paymentStatusFilter === 'completed' ? 'selected' : '' }}>Completed</option>
-        <option value="all" {{ $paymentStatusFilter === 'all' ? 'selected' : '' }}>All Payment Status</option>
-        <option value="pending" {{ $paymentStatusFilter === 'pending' ? 'selected' : '' }}>Pending</option>
-        <option value="failed" {{ $paymentStatusFilter === 'failed' ? 'selected' : '' }}>Failed</option>
-        <option value="cancelled" {{ $paymentStatusFilter === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
-        <option value="refunded" {{ $paymentStatusFilter === 'refunded' ? 'selected' : '' }}>Refunded</option>
-      </select>
-      <select name="status" onchange="this.form.submit()">
-        <option value="">All Order Statuses</option>
-        @foreach($statuses as $key => $label)
-          <option value="{{ $key }}" {{ $statusFilter === $key ? 'selected' : '' }}>{{ $label }}</option>
-        @endforeach
-      </select>
-      <input type="date" name="from" value="{{ $dateFrom }}">
-      <input type="date" name="to" value="{{ $dateTo }}">
-      <input type="text" name="q" value="{{ $search }}" placeholder="Search by name, email, or order ID...">
-      <button type="submit" class="btn-ghost" style="padding:6px 12px;font-size:12px;">Filter</button>
-      <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:12px;color:#7a7266;">Clear</a>
+      <div class="wo-field">
+        <label>Payment</label>
+        <select name="payment_status" onchange="this.form.submit()">
+          <option value="completed" {{ $paymentStatusFilter === 'completed' ? 'selected' : '' }}>Completed</option>
+          <option value="all" {{ $paymentStatusFilter === 'all' ? 'selected' : '' }}>All Payment Status</option>
+          <option value="pending" {{ $paymentStatusFilter === 'pending' ? 'selected' : '' }}>Pending</option>
+          <option value="failed" {{ $paymentStatusFilter === 'failed' ? 'selected' : '' }}>Failed</option>
+          <option value="cancelled" {{ $paymentStatusFilter === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
+          <option value="refunded" {{ $paymentStatusFilter === 'refunded' ? 'selected' : '' }}>Refunded</option>
+        </select>
+      </div>
+      <div class="wo-field">
+        <label>Order status</label>
+        <select name="status" onchange="this.form.submit()">
+          <option value="">All Order Statuses</option>
+          @foreach($statuses as $key => $label)
+            <option value="{{ $key }}" {{ $statusFilter === $key ? 'selected' : '' }}>{{ $label }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="wo-field">
+        <label>From</label>
+        <input type="date" name="from" value="{{ $dateFrom }}">
+      </div>
+      <div class="wo-field">
+        <label>To</label>
+        <input type="date" name="to" value="{{ $dateTo }}">
+      </div>
+      <div class="wo-field" style="flex:1 1 220px;">
+        <label>Search</label>
+        <input type="text" name="q" value="{{ $search }}" placeholder="Name, email, or order ID" style="width:100%;">
+      </div>
+      <div class="wo-actions-inline">
+        <button type="submit" class="wo-btn wo-btn-primary">Filter</button>
+        <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:13px;color:#7a7266;">Clear</a>
+      </div>
     </form>
 
     @if(empty($orders))
       <div class="ev-card"><div class="empty">No orders in this view.</div></div>
     @else
-      <div class="ev-card">
-        <table class="ev-tbl">
+      <div class="ev-card" style="padding:0;overflow:hidden;">
+        <div style="overflow-x:auto;">
+        <table class="wo-tbl">
           <thead><tr>
             <th>Buyer</th>
             <th>Status</th>
             <th>Fulfillment</th>
             <th>Total</th>
             <th>Placed</th>
-            <th style="min-width:280px;">Update status</th>
-            <th style="min-width:260px;">Other</th>
+            <th>Update status</th>
+            <th>Other</th>
           </tr></thead>
           <tbody>
             @foreach($orders as $o)
@@ -148,14 +199,15 @@
                 $placed = !empty($o['createdAt']) ? date('M j, Y g:ia', strtotime($o['createdAt'])) : '—';
                 $isArchived = !empty($o['archived']);
                 $rowId = 'wo-detail-' . substr((string) ($o['_id'] ?? ''), -8);
+                $cancelId = 'wo-cancel-' . substr((string) ($o['_id'] ?? ''), -8);
               @endphp
-              <tr>
-                <td class="ev-name">
-                  {{ $customerName }}
-                  <div class="ev-meta">{{ $customerEmail }}</div>
-                  <button type="button" class="wo-row-toggle" onclick="var el=document.getElementById('{{ $rowId }}'); el.style.display = el.style.display === 'none' ? '' : 'none';">View details</button>
+              <tr class="wo-row">
+                <td>
+                  <div class="wo-buyer-name">{{ $customerName }}</div>
+                  <div class="wo-buyer-email">{{ $customerEmail }}</div>
+                  <button type="button" class="wo-view-toggle" onclick="var el=document.getElementById('{{ $rowId }}'); el.style.display = el.style.display === 'none' ? '' : 'none';">View details</button>
                 </td>
-                <td><span class="pill">{{ $statuses[$o['order_status'] ?? ''] ?? ($o['order_status'] ?? 'pending') }}</span></td>
+                <td><span class="wo-pill">{{ $statuses[$o['order_status'] ?? ''] ?? ($o['order_status'] ?? 'pending') }}</span></td>
                 <td>
                   @if($isGift)
                     Digital (Email)
@@ -165,45 +217,48 @@
                     Shipping
                   @endif
                 </td>
-                <td>${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
-                <td class="ev-meta">{{ $placed }}</td>
+                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
+                <td class="wo-placed">{{ $placed }}</td>
                 <td>
-                  <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $o['_id']]) }}" class="wo-status-form">
+                  <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $o['_id']]) }}" class="wo-status-block">
                     {{ csrf_field() }}
                     <input type="hidden" name="tab" value="{{ $activeTab }}">
-                    <select name="status" required>
-                      <option value="">Status…</option>
-                      @foreach($statuses as $key => $label)
-                        <option value="{{ $key }}" {{ ($o['order_status'] ?? '') === $key ? 'selected' : '' }}>{{ $label }}</option>
-                      @endforeach
-                    </select>
-                    <input type="text" name="tracking_number" value="{{ $o['tracking_number'] ?? '' }}" placeholder="Tracking #">
-                    <label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" name="notify_customer" value="1" checked> Notify</label>
-                    <button type="submit" class="btn-ghost" style="padding:5px 10px;font-size:12px;">Update</button>
+                    <div class="wo-status-row">
+                      <select name="status" required>
+                        <option value="">Status…</option>
+                        @foreach($statuses as $key => $label)
+                          <option value="{{ $key }}" {{ ($o['order_status'] ?? '') === $key ? 'selected' : '' }}>{{ $label }}</option>
+                        @endforeach
+                      </select>
+                      <input type="text" name="tracking_number" value="{{ $o['tracking_number'] ?? '' }}" placeholder="Tracking #">
+                    </div>
+                    <div class="wo-status-row">
+                      <label class="wo-notify-label"><input type="checkbox" name="notify_customer" value="1" checked> Notify customer</label>
+                      <button type="submit" class="wo-btn wo-btn-primary">Update</button>
+                    </div>
                   </form>
                 </td>
-                <td class="wo-actions">
-                  <div class="wo-actions-row">
-                    <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
-                          onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
-                      {{ csrf_field() }}
-                      <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
-                      <button type="submit" class="btn-ghost" style="padding:5px 10px;font-size:12px;">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
-                    </form>
-                  </div>
+                <td class="wo-other-col">
+                  <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
+                        onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
+                    <button type="submit" class="wo-btn">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
+                  </form>
                   @if(!$isArchived)
+                    <button type="button" class="wo-cancel-toggle" onclick="var el=document.getElementById('{{ $cancelId }}'); el.classList.toggle('open');">Cancel order…</button>
                     <form method="POST" action="{{ route('website-orders.cancel', ['id' => $o['_id']]) }}"
-                          class="wo-actions-row"
+                          id="{{ $cancelId }}" class="wo-cancel-form"
                           onsubmit="return confirm('Cancel this order and email the customer? This can\'t be undone from here.');">
                       {{ csrf_field() }}
-                      <select name="reason" required style="font-size:12px;padding:5px 6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;max-width:150px;">
-                        <option value="">Cancel reason…</option>
+                      <select name="reason" required>
+                        <option value="">Reason…</option>
                         @foreach($reasons as $key => $label)
                           <option value="{{ $key }}">{{ $label }}</option>
                         @endforeach
                       </select>
-                      <input type="text" name="note" placeholder="Note (if Other)" style="font-size:12px;padding:5px 6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;max-width:120px;">
-                      <button type="submit" class="btn-ghost" style="padding:5px 10px;font-size:12px;color:#a23;border-color:#f3cccc;">Cancel</button>
+                      <input type="text" name="note" placeholder="Note (required if Other)">
+                      <button type="submit" class="wo-btn wo-btn-danger">Cancel order</button>
                     </form>
                   @endif
                 </td>
@@ -276,6 +331,7 @@
             @endforeach
           </tbody>
         </table>
+        </div>
       </div>
     @endif
   @endif
