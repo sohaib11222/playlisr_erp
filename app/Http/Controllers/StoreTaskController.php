@@ -194,7 +194,7 @@ class StoreTaskController extends Controller
             $periodKeys[] = $inst['period_key'] . '|' . $t->id;
         }
 
-        $taskIds = array_map(function ($t) { return $t->id; }, $rows);
+        $taskIds = array_map(function ($t) { return $t['id']; }, $rows);
         $completions = [];
         if (!empty($taskIds)) {
             $rowsC = DB::table(self::COMPLETIONS_TABLE)
