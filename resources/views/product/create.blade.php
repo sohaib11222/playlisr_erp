@@ -24,7 +24,7 @@
     --pe-radius-sm:   8px;
     --pe-shadow-sm:   0 1px 2px rgba(31,27,22,.06);
     --pe-shadow-md:   0 4px 14px rgba(31,27,22,.08);
-    --pe-form-width:  1900px;
+    --pe-form-width:  1600px;
 
     background: var(--pe-bg);
     font-family: "Inter Tight", system-ui, sans-serif;
