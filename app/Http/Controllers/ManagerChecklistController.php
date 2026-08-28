@@ -11,21 +11,34 @@ use Carbon\Carbon;
 /**
  * Manager Checklist — recurring duties for the two store managers (Zakary at
  * Pico, Luis at Hollywood), shown as a flat, Asana-style task list: every
- * recurring item is expanded into dated instances (one per day / week /
- * month) with an explicit due date, sorted soonest-first, with overdue
- * items flagged.
+ * recurring item is expanded into dated instances with an explicit due date,
+ * sorted soonest-first, with overdue items flagged. The list is viewed one
+ * week at a time (see weekBounds()/nav()), defaulting to the current week.
  *
  * The item list is fixed, plain PHP (DAILY/WEEKLY/MONTHLY below) — not
  * admin-editable, matching DailyChecklistController's GROUPS. What IS in the
  * DB is the completion records (manager_checklist_completions): one row per
  * item actually checked off for a given dated instance, keyed by period_key.
  *
- * period_key already encodes the exact instance:
- *   "D:2026-09-01" — that calendar day (due date = the date itself)
- *   "W:2026-08-31" — the Monday that starts that week (due date = the Sunday, +6 days)
- *   "M:2026-09"    — that calendar month (due date = the last day of the month)
- * So due dates are derived from period_key rather than needing a schema
- * change — see dueDateForPeriodKey() / the *Instances() generators below.
+ * Cadence: each item is either
+ *   - weekday-specific — carries a 'days' array of ISO weekday numbers
+ *     (1=Monday .. 7=Sunday) it's due on. One instance is generated per
+ *     matching weekday in the displayed week, using a "D:YYYY-MM-DD" period
+ *     key (same encoding as a plain daily item — a Monday/Thursday-only item
+ *     is really just two dated instances filtered to specific weekdays).
+ *     Daily-group items default to all 7 days if 'days' is omitted.
+ *   - a uniform weekly bucket (Weekly group, no 'days' key) — one instance
+ *     for the displayed week, due the Sunday that ends it, "W:YYYY-MM-DD"
+ *     (the Monday that starts the week).
+ *   - a uniform monthly bucket (Monthly group) — one instance per calendar
+ *     month, due the last day of the month, "M:YYYY-MM". Only shown when
+ *     that due date falls inside the displayed week.
+ *
+ * Items may also carry a 'manager' key ('zakary' or 'luis') restricting them
+ * to one manager only — used for the per-employee 1:1 rows, which are
+ * currently only confirmed for Zakary (real Sling schedule data). Luis's
+ * 1:1 blocks aren't set up in Sling yet, so he keeps the generic "Team 1:1s"
+ * item until that's done.
  *
  * Neither manager is a manager before MANAGERS_START (2026-09-01) — no task
  * instance may have a due date earlier than that, enforced both in the
@@ -38,7 +51,9 @@ use Carbon\Carbon;
  *                                    can open it, and each can only ever toggle
  *                                    their own rows (the toggle endpoint always
  *                                    writes against auth()->id(), never a
- *                                    posted user id).
+ *                                    posted user id) and only their own items
+ *                                    (an item scoped to the other manager via
+ *                                    'manager' is rejected too).
  *   /admin/manager-checklists     — owner/admin-only summary of both managers'
  *                                    task lists (read-only) with overdue/done counts.
  */
@@ -48,60 +63,99 @@ class ManagerChecklistController extends Controller
 
     /**
      * Neither manager is a manager before this date. No task instance may
-     * have a due date earlier than this — see the *Instances() generators.
+     * have a due date earlier than this — see the instance generators.
      */
     const MANAGERS_START = '2026-09-01';
 
-    /** Monday of the week containing MANAGERS_START — first valid weekly period_key. */
+    /** Monday of the week containing MANAGERS_START — first valid displayed week / weekly period_key. */
     const FIRST_WEEK_MONDAY = '2026-08-31';
 
     /** First valid monthly period_key (Y-m). */
     const FIRST_MONTH = '2026-09';
 
-    /* How far back/forward from "today" to expand instances. Bounded window
-     * so the list doesn't grow forever — overdue items stay visible for a
-     * while, upcoming items give a preview, and MANAGERS_START/FIRST_WEEK_MONDAY/
-     * FIRST_MONTH clip anything earlier than the manager start date. */
-    const DAILY_LOOKBACK_DAYS   = 7;
-    const DAILY_LOOKAHEAD_DAYS  = 7;
-    const WEEKLY_LOOKBACK_WEEKS  = 4;
-    const WEEKLY_LOOKAHEAD_WEEKS = 4;
-    const MONTHLY_LOOKBACK_MONTHS  = 2;
-    const MONTHLY_LOOKAHEAD_MONTHS = 2;
+    /** Shared "how to run it" script for every 1:1 item — same text, personalized label per row. */
+    const ONE_ON_ONE_SCRIPT = "10-15 min, one-on-one. Ask: How's the week going? Anything getting in your way - schedule, team, customers? One thing that's going well, one thing you want to get better at. Anything you're seeing on the floor I should know about (sales, product, theft). Anything you need from me?";
 
     /**
-     * Daily duties — one instance per calendar day. Each item is
-     * ['label' => task name, 'how' => plain instructions for exactly what to do],
-     * so a first-time manager doesn't have to guess what the task means.
+     * Daily duties. Each item is
+     * ['label' => task name, 'how' => plain instructions, 'days' => ISO weekdays it's due on (1=Mon..7=Sun)],
+     * so a first-time manager doesn't have to guess what the task means or when it's due.
+     * 'days' omitted = every day.
      */
     const DAILY = [
         'sales_check' => [
             'label' => 'Sales Review',
             'how'   => 'Open <a href="/reports/lfl-sales" target="_blank" rel="noopener">Like-for-Like Sales</a> and check today\'s total so far against the same day last year. Note if you\'re behind and why.',
+            'days'  => [1, 4], // Monday, Thursday
         ],
     ];
 
-    /** Weekly duties — one instance per week, due the Sunday that ends it. */
+    /**
+     * Weekly duties. An item with a 'days' key is due on those specific
+     * weekdays (one instance per matching weekday); without it, it's a
+     * uniform once-a-week item due the Sunday that ends the week. An item
+     * with a 'manager' key only shows up for that one manager.
+     */
     const WEEKLY = [
+        // Zakary's team (Pico) — confirmed against his real Sling 1:1 Check-In
+        // blocks vs. who's on register at the same time (screenshot, Aug 2026):
+        //   Alec K   Mon 2:00-3:00pm overlaps Alec's register shift
+        //   Willy Y  Wed same logic
+        //   Andy Theiss Fri 2:00-4:00pm falls fully inside Andy's 9:45-4:00 shift
+        //   Davis Bryant Sun 10:00-11:00am falls fully inside Davis's 9:45-3:00 shift
+        // Saturday is ambiguous (Zak's Sat 1:1 2:00-4:00pm straddles the Davis/Alec
+        // handoff) and deliberately left out — see report to Sarah.
+        'team_1on1_alec' => [
+            'label'   => '1:1 - Alec K',
+            'how'     => self::ONE_ON_ONE_SCRIPT,
+            'days'    => [1], // Monday
+            'manager' => 'zakary',
+        ],
+        'team_1on1_willy' => [
+            'label'   => '1:1 - Willy Y',
+            'how'     => self::ONE_ON_ONE_SCRIPT,
+            'days'    => [3], // Wednesday
+            'manager' => 'zakary',
+        ],
+        'team_1on1_andy' => [
+            'label'   => '1:1 - Andy Theiss',
+            'how'     => self::ONE_ON_ONE_SCRIPT,
+            'days'    => [5], // Friday
+            'manager' => 'zakary',
+        ],
+        'team_1on1_davis' => [
+            'label'   => '1:1 - Davis Bryant',
+            'how'     => self::ONE_ON_ONE_SCRIPT,
+            'days'    => [7], // Sunday
+            'manager' => 'zakary',
+        ],
+        // Luis's Hollywood team isn't set up with 1:1 blocks in Sling yet, so
+        // he keeps the generic weekly item (due Sunday) until that's done and
+        // a real per-employee split (like Zakary's above) can be added.
         'team_1on1s' => [
-            'label' => 'Team 1:1s (each employee)',
-            'how'   => "10-15 min one-on-one with each person who worked this week - how they're doing, feedback, priorities, anything ongoing.",
+            'label'   => 'Team 1:1s (each employee)',
+            'how'     => self::ONE_ON_ONE_SCRIPT,
+            'manager' => 'luis',
         ],
         'supplies_check' => [
             'label' => 'Supplies check',
             'how'   => 'Check bags, tape, cleaning supplies, receipt paper, and register supplies in the <a href="/admin/supplies" target="_blank" rel="noopener">Supplies</a> page. Low on anything? Tell Jon/Sarah.',
+            'days'  => [1], // Monday
         ],
         'inventory_check' => [
             'label' => 'Inventory check',
             'how'   => 'Spot-check a section using the <a href="/reports/inventory-check-assistant" target="_blank" rel="noopener">Inventory Check Assistant</a> against what the system says is in stock. Flag any mismatch.',
+            'days'  => [2, 3], // Tuesday and Wednesday
         ],
         'training_review' => [
             'label' => 'Training checklist review - where each hire stands',
             'how'   => 'For anyone still ramping up, check where they stand on register, buys, theft awareness, and the floor.',
+            // no 'days' - stays generic weekly, due Sunday.
         ],
         'merch_walk' => [
             'label' => 'Section/merchandising standards walk',
             'how'   => 'Walk every section - genres in order, no gaps, priced right, looks clean.',
+            'days'  => [3], // Wednesday
         ],
     ];
 
@@ -162,71 +216,127 @@ class ManagerChecklistController extends Controller
         return null;
     }
 
-    /* ---------- instance generation (the flat, dated task list) ---------- */
-
-    /** Daily instances in the display window, each ['period_key','due_date','period_note']. */
-    private static function dailyInstances($today)
+    /** The item definition array for a key, across all three groups, or null. */
+    public static function itemByKey($key)
     {
-        $out  = [];
-        $base = Carbon::parse($today);
-        for ($i = -self::DAILY_LOOKBACK_DAYS; $i <= self::DAILY_LOOKAHEAD_DAYS; $i++) {
-            $d = $base->copy()->addDays($i)->format('Y-m-d');
-            if ($d < self::MANAGERS_START) {
-                continue;
+        foreach ([self::DAILY, self::WEEKLY, self::MONTHLY] as $arr) {
+            if (isset($arr[$key])) {
+                return $arr[$key];
             }
-            $out[] = ['period_key' => 'D:' . $d, 'due_date' => $d, 'period_note' => null];
+        }
+        return null;
+    }
+
+    /** True if this item should be shown/toggleable for the given manager key. No 'manager' key = both. */
+    private static function itemAppliesToManager(array $item, $managerKey)
+    {
+        return !isset($item['manager']) || $item['manager'] === $managerKey;
+    }
+
+    /* ---------- week bounds ---------- */
+
+    /** Monday (Y-m-d) of the week containing $date. */
+    private static function mondayOf($date)
+    {
+        return Carbon::parse($date)->startOfWeek(Carbon::MONDAY)->format('Y-m-d');
+    }
+
+    /**
+     * Resolve the displayed week's Monday from the request's ?week= param
+     * (any date inside the wanted week), defaulting to the current week.
+     * Never earlier than FIRST_WEEK_MONDAY - neither manager existed before
+     * MANAGERS_START, so there's nothing to show before that week.
+     */
+    private static function resolveWeekStart(Request $request, $today)
+    {
+        $default = max(self::mondayOf($today), self::FIRST_WEEK_MONDAY);
+        $param   = $request->input('week');
+        $start   = $param ? self::mondayOf($param) : $default;
+        if ($start < self::FIRST_WEEK_MONDAY) {
+            $start = self::FIRST_WEEK_MONDAY;
+        }
+        return $start;
+    }
+
+    /** Nav data (prev/next week links, label, current-week flag) for the week picker in the views. */
+    private static function weekNav($weekStart, $today)
+    {
+        $default = max(self::mondayOf($today), self::FIRST_WEEK_MONDAY);
+        $start   = Carbon::parse($weekStart);
+        return [
+            'week_start'  => $weekStart,
+            'week_end'    => $start->copy()->addDays(6)->format('Y-m-d'),
+            'prev'        => $weekStart > self::FIRST_WEEK_MONDAY ? $start->copy()->subWeek()->format('Y-m-d') : null,
+            'next'        => $start->copy()->addWeek()->format('Y-m-d'),
+            'this_week'   => $default,
+            'is_current'  => $weekStart === $default,
+            'week_label'  => $start->format('M j') . ' - ' . $start->copy()->addDays(6)->format('M j, Y'),
+        ];
+    }
+
+    /* ---------- instance generation (one week at a time) ---------- */
+
+    /** Weekday-filtered "D:" instances within [$weekStart,$weekEnd], skipping anything before MANAGERS_START. */
+    private static function weekdayInstancesInRange($weekStart, $weekEnd, array $days)
+    {
+        $out    = [];
+        $cursor = Carbon::parse($weekStart);
+        $end    = Carbon::parse($weekEnd);
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->format('Y-m-d');
+            if ($ymd >= self::MANAGERS_START && in_array((int) $cursor->format('N'), $days, true)) {
+                $out[] = ['period_key' => 'D:' . $ymd, 'due_date' => $ymd, 'period_note' => null];
+            }
+            $cursor->addDay();
         }
         return $out;
     }
 
-    /** Weekly instances in the display window. Monday-start weeks, due the Sunday. */
-    private static function weeklyInstances($today)
+    /** Monthly instances whose due date (last day of the month) falls inside [$weekStart,$weekEnd]. */
+    private static function monthlyInstancesInWeek($weekStart, $weekEnd)
     {
-        $out           = [];
-        $currentMonday = Carbon::parse($today)->startOfWeek(Carbon::MONDAY);
-        for ($i = -self::WEEKLY_LOOKBACK_WEEKS; $i <= self::WEEKLY_LOOKAHEAD_WEEKS; $i++) {
-            $mon    = $currentMonday->copy()->addWeeks($i);
-            $monStr = $mon->format('Y-m-d');
-            if ($monStr < self::FIRST_WEEK_MONDAY) {
-                continue;
-            }
-            $due    = $mon->copy()->addDays(6)->format('Y-m-d');
-            $out[]  = [
-                'period_key'  => 'W:' . $monStr,
-                'due_date'    => $due,
-                'period_note' => 'week of ' . $mon->format('M j'),
-            ];
-        }
-        return $out;
-    }
-
-    /** Monthly instances in the display window. Due the last day of the month. */
-    private static function monthlyInstances($today)
-    {
-        $out          = [];
-        $currentMonth = Carbon::parse($today)->startOfMonth();
-        for ($i = -self::MONTHLY_LOOKBACK_MONTHS; $i <= self::MONTHLY_LOOKAHEAD_MONTHS; $i++) {
-            $m  = $currentMonth->copy()->addMonths($i);
-            $ym = $m->format('Y-m');
+        $out   = [];
+        $start = Carbon::parse($weekStart);
+        $end   = Carbon::parse($weekEnd);
+        $months = array_unique([$start->format('Y-m'), $end->format('Y-m')]);
+        foreach ($months as $ym) {
             if ($ym < self::FIRST_MONTH) {
                 continue;
             }
-            $due   = $m->copy()->endOfMonth()->format('Y-m-d');
-            $out[] = [
-                'period_key'  => 'M:' . $ym,
-                'due_date'    => $due,
-                'period_note' => $m->format('F Y'),
-            ];
+            $due = Carbon::parse($ym . '-01')->endOfMonth();
+            if ($due->gte($start) && $due->lte($end)) {
+                $out[] = [
+                    'period_key'  => 'M:' . $ym,
+                    'due_date'    => $due->format('Y-m-d'),
+                    'period_note' => $due->format('F Y'),
+                ];
+            }
         }
         return $out;
     }
 
-    private static function instancesFor($group, $today)
+    /** All instances for one item, within the displayed week only. */
+    private static function instancesForItemInWeek($groupName, array $item, $weekStart, $weekEnd)
     {
-        if ($group === 'Daily') { return self::dailyInstances($today); }
-        if ($group === 'Weekly') { return self::weeklyInstances($today); }
-        if ($group === 'Monthly') { return self::monthlyInstances($today); }
-        return [];
+        if ($groupName === 'Monthly') {
+            return self::monthlyInstancesInWeek($weekStart, $weekEnd);
+        }
+
+        $days = $item['days'] ?? ($groupName === 'Daily' ? [1, 2, 3, 4, 5, 6, 7] : null);
+        if ($days !== null) {
+            return self::weekdayInstancesInRange($weekStart, $weekEnd, $days);
+        }
+
+        // Weekly, uniform bucket (no explicit days) - one instance for this week.
+        if ($weekStart < self::FIRST_WEEK_MONDAY) {
+            return [];
+        }
+        $due = Carbon::parse($weekStart)->addDays(6)->format('Y-m-d');
+        return [[
+            'period_key'  => 'W:' . $weekStart,
+            'due_date'    => $due,
+            'period_note' => 'week of ' . Carbon::parse($weekStart)->format('M j'),
+        ]];
     }
 
     /** Due date (Y-m-d) a given period_key resolves to, or null if malformed. */
@@ -261,22 +371,37 @@ class ManagerChecklistController extends Controller
 
     /**
      * True if $periodKey is a well-formed, in-bounds instance for $itemKey —
-     * right frequency prefix, real calendar date/Monday/month, and not
+     * right period_key shape for how that item is scheduled (weekday-filtered
+     * "D:" vs uniform "W:"/"M:"), a real calendar date/Monday/month, on an
+     * allowed weekday when the item restricts to specific days, and not
      * earlier than the manager start date. Used to validate toggle() input
      * without trusting anything the client sends.
      */
     private static function periodKeyValidForItem($itemKey, $periodKey)
     {
         $group = self::groupFor($itemKey);
-        if (!$group) {
-            return false;
-        }
-        $prefix = ['Daily' => 'D:', 'Weekly' => 'W:', 'Monthly' => 'M:'][$group];
-        if (strpos($periodKey, $prefix) !== 0) {
+        $item  = self::itemByKey($itemKey);
+        if (!$group || !$item) {
             return false;
         }
 
+        $days = $item['days'] ?? ($group === 'Daily' ? [1, 2, 3, 4, 5, 6, 7] : null);
+
+        if ($days !== null) {
+            if (strpos($periodKey, 'D:') !== 0) {
+                return false;
+            }
+            $d = substr($periodKey, 2);
+            if (!self::isValidYmd($d) || $d < self::MANAGERS_START) {
+                return false;
+            }
+            return in_array((int) Carbon::parse($d)->format('N'), $days, true);
+        }
+
         if ($group === 'Weekly') {
+            if (strpos($periodKey, 'W:') !== 0) {
+                return false;
+            }
             $mon = substr($periodKey, 2);
             if (!self::isValidYmd($mon) || (int) date('N', strtotime($mon)) !== 1) {
                 return false;
@@ -285,6 +410,9 @@ class ManagerChecklistController extends Controller
         }
 
         if ($group === 'Monthly') {
+            if (strpos($periodKey, 'M:') !== 0) {
+                return false;
+            }
             $ym = substr($periodKey, 2);
             if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
                 return false;
@@ -292,12 +420,7 @@ class ManagerChecklistController extends Controller
             return $ym >= self::FIRST_MONTH;
         }
 
-        // Daily
-        $d = substr($periodKey, 2);
-        if (!self::isValidYmd($d)) {
-            return false;
-        }
-        return $d >= self::MANAGERS_START;
+        return false;
     }
 
     /* ---------- access ---------- */
@@ -367,43 +490,55 @@ class ManagerChecklistController extends Controller
     }
 
     /**
-     * Build the flat, due-date-sorted task list for one user: every recurring
-     * item expanded into its dated instances within the display window, each
-     * with done/overdue flags. Sorted by due date ascending, then Daily
-     * before Weekly before Monthly, then item key.
+     * Build the flat, due-date-sorted task list for one user, for a single
+     * displayed week: every applicable recurring item expanded into its
+     * dated instances within [$weekStart, $weekStart+6], each with
+     * done/overdue flags (overdue is judged against the real $today, not the
+     * displayed week, so a still-open task from a past week you're browsing
+     * back to correctly shows as overdue). Sorted by due date ascending, then
+     * Daily before Weekly before Monthly, then item key.
      */
-    private function buildTaskList($businessId, $userId, $today = null)
+    private function buildTaskList($businessId, $userId, $managerKey, $weekStart, $today = null)
     {
-        $today = $today ?: date('Y-m-d');
+        $today   = $today ?: date('Y-m-d');
+        $weekEnd = Carbon::parse($weekStart)->addDays(6)->format('Y-m-d');
 
-        $instancesByGroup = [];
-        $periodKeys       = [];
-        foreach (array_keys(self::groups()) as $groupName) {
-            $instancesByGroup[$groupName] = self::instancesFor($groupName, $today);
-            foreach ($instancesByGroup[$groupName] as $inst) {
-                $periodKeys[] = $inst['period_key'];
+        $itemsFlat  = []; // itemKey => ['item'=>.., 'group'=>.., 'instances'=>..]
+        $periodKeys = [];
+
+        foreach (self::groups() as $groupName => $items) {
+            foreach ($items as $itemKey => $item) {
+                if (!self::itemAppliesToManager($item, $managerKey)) {
+                    continue;
+                }
+                $instances = self::instancesForItemInWeek($groupName, $item, $weekStart, $weekEnd);
+                if (empty($instances)) {
+                    continue;
+                }
+                $itemsFlat[$itemKey] = ['item' => $item, 'group' => $groupName, 'instances' => $instances];
+                foreach ($instances as $inst) {
+                    $periodKeys[] = $inst['period_key'];
+                }
             }
         }
 
         $done = $userId ? $this->completedPairs($businessId, $userId, $periodKeys) : [];
 
         $rows = [];
-        foreach (self::groups() as $groupName => $items) {
-            foreach ($instancesByGroup[$groupName] as $inst) {
-                foreach ($items as $itemKey => $item) {
-                    $isDone = isset($done[$itemKey . '|' . $inst['period_key']]);
-                    $rows[] = [
-                        'key'         => $itemKey,
-                        'label'       => $item['label'],
-                        'how'         => $item['how'],
-                        'freq'        => $groupName,
-                        'period_key'  => $inst['period_key'],
-                        'period_note' => $inst['period_note'],
-                        'due_date'    => $inst['due_date'],
-                        'done'        => $isDone,
-                        'overdue'     => (!$isDone && $inst['due_date'] < $today),
-                    ];
-                }
+        foreach ($itemsFlat as $itemKey => $entry) {
+            foreach ($entry['instances'] as $inst) {
+                $isDone = isset($done[$itemKey . '|' . $inst['period_key']]);
+                $rows[] = [
+                    'key'         => $itemKey,
+                    'label'       => $entry['item']['label'],
+                    'how'         => $entry['item']['how'],
+                    'freq'        => $entry['group'],
+                    'period_key'  => $inst['period_key'],
+                    'period_note' => $inst['period_note'],
+                    'due_date'    => $inst['due_date'],
+                    'done'        => $isDone,
+                    'overdue'     => (!$isDone && $inst['due_date'] < $today),
+                ];
             }
         }
 
@@ -432,6 +567,7 @@ class ManagerChecklistController extends Controller
         $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
         $userId     = auth()->id();
         $key        = self::currentManagerKey();
+        $today      = date('Y-m-d');
 
         if (!$this->ready()) {
             return view('manager_checklist.index', [
@@ -440,7 +576,10 @@ class ManagerChecklistController extends Controller
             ]);
         }
 
-        $tasks        = $this->buildTaskList($businessId, $userId);
+        $weekStart = self::resolveWeekStart($request, $today);
+        $nav       = self::weekNav($weekStart, $today);
+
+        $tasks        = $this->buildTaskList($businessId, $userId, $key, $weekStart, $today);
         $overdueCount = count(array_filter($tasks, function ($t) { return $t['overdue']; }));
 
         return view('manager_checklist.index', [
@@ -449,6 +588,7 @@ class ManagerChecklistController extends Controller
             'tasks'        => $tasks,
             'overdueCount' => $overdueCount,
             'startDate'    => self::MANAGERS_START,
+            'nav'          => $nav,
         ]);
     }
 
@@ -456,8 +596,9 @@ class ManagerChecklistController extends Controller
      * Toggle a single task instance (AJAX auto-save). Always writes against
      * the logged-in manager's own user_id — there is no way to pass a
      * different user id in, so a manager can never check off the other
-     * manager's items. The posted period_key is validated against the item's
-     * frequency and the manager start date before it's trusted for anything.
+     * manager's items (also enforced explicitly below for items restricted
+     * via 'manager'). The posted period_key is validated against the item's
+     * schedule and the manager start date before it's trusted for anything.
      */
     public function toggle(Request $request)
     {
@@ -473,6 +614,13 @@ class ManagerChecklistController extends Controller
         if (!in_array($key, self::allKeys(), true)) {
             return response()->json(['ok' => false, 'msg' => 'Unknown item.'], 422);
         }
+
+        $managerKey = self::currentManagerKey();
+        $item       = self::itemByKey($key);
+        if (!self::itemAppliesToManager($item, $managerKey)) {
+            return response()->json(['ok' => false, 'msg' => 'That task is not on your checklist.'], 403);
+        }
+
         if (!self::periodKeyValidForItem($key, $periodKey)) {
             return response()->json(['ok' => false, 'msg' => 'Unknown or out-of-range task instance.'], 422);
         }
@@ -511,15 +659,19 @@ class ManagerChecklistController extends Controller
         $this->guardAdmin();
 
         $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
+        $today      = date('Y-m-d');
 
         if (!$this->ready()) {
             return view('manager_checklist.admin', ['notReady' => true]);
         }
 
+        $weekStart = self::resolveWeekStart($request, $today);
+        $nav       = self::weekNav($weekStart, $today);
+
         $managers = [];
         foreach (self::MANAGER_KEYS as $key => $meta) {
             $userRow = $this->managerUser($businessId, $key);
-            $tasks   = $userRow ? $this->buildTaskList($businessId, $userRow->id) : [];
+            $tasks   = $userRow ? $this->buildTaskList($businessId, $userRow->id, $key, $weekStart, $today) : [];
 
             $managers[$key] = [
                 'key'           => $key,
@@ -538,6 +690,7 @@ class ManagerChecklistController extends Controller
             'notReady'  => false,
             'managers'  => $managers,
             'startDate' => self::MANAGERS_START,
+            'nav'       => $nav,
         ]);
     }
 }

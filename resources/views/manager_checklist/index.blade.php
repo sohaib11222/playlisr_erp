@@ -8,6 +8,8 @@
     $overdueCount = $overdueCount ?? 0;
     $startDate    = $startDate ?? null;
     $meta         = $meta ?? ['label' => '', 'store' => ''];
+    $nav          = $nav ?? null;
+    $weekUrl      = function ($w) { return url('/manager-checklist') . '?' . http_build_query(['week' => $w]); };
 @endphp
 {{-- Cream / pastel-yellow look to match /pos/create and /daily-checklist. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -85,6 +87,19 @@
 .open-shell .saved-note { font-size: 13px; font-weight: 700; color: var(--d-good); opacity: 0; transition: opacity .2s; }
 .open-shell .saved-note.show { opacity: 1; }
 
+.open-shell .week-nav {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.open-shell .week-nav .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--d-surface); border: 1px solid var(--d-line-2); color: var(--d-ink-2);
+    border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 700;
+    text-decoration: none; cursor: pointer;
+}
+.open-shell .week-nav .btn:hover { background: var(--d-surface-2); }
+.open-shell .week-nav .week-label { font-weight: 800; font-size: 15px; color: var(--d-ink); }
+
 .open-shell .list-head {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     margin: 4px 0 10px;
@@ -157,6 +172,19 @@
         @if($overdueCount > 0)
             <div class="callout bad">
                 {{ $overdueCount }} {{ $overdueCount === 1 ? 'task is' : 'tasks are' }} overdue - see below.
+            </div>
+        @endif
+
+        @if($nav)
+            <div class="week-nav">
+                @if($nav['prev'])
+                    <a href="{{ $weekUrl($nav['prev']) }}" class="btn"><i class="fa fa-chevron-left"></i> Prev week</a>
+                @endif
+                @if(!$nav['is_current'])
+                    <a href="{{ $weekUrl($nav['this_week']) }}" class="btn">This week</a>
+                @endif
+                <a href="{{ $weekUrl($nav['next']) }}" class="btn">Next week <i class="fa fa-chevron-right"></i></a>
+                <span class="week-label">{{ $nav['week_label'] }}</span>
             </div>
         @endif
 

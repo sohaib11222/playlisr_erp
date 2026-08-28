@@ -6,6 +6,8 @@
     $notReady = $notReady ?? false;
     $managers = $managers ?? [];
     $startDate = $startDate ?? null;
+    $nav = $nav ?? null;
+    $weekUrl = function ($w) { return url('/admin/manager-checklists') . '?' . http_build_query(['week' => $w]); };
 @endphp
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,6 +56,19 @@
     color: var(--d-accent-text); border-radius: var(--d-radius-sm);
     padding: 12px 16px; margin-bottom: 16px; font-weight: 700; font-size: 14.5px;
 }
+
+.open-shell .week-nav {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.open-shell .week-nav .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--d-surface); border: 1px solid var(--d-line-2); color: var(--d-ink-2);
+    border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 700;
+    text-decoration: none; cursor: pointer;
+}
+.open-shell .week-nav .btn:hover { background: var(--d-surface-2); }
+.open-shell .week-nav .week-label { font-weight: 800; font-size: 15px; color: var(--d-ink); }
 
 .open-shell .managers-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
@@ -121,6 +136,19 @@
             Dispatch the "Run migrations" workflow, then reload this page.
         </div>
     @else
+        @if($nav)
+            <div class="week-nav">
+                @if($nav['prev'])
+                    <a href="{{ $weekUrl($nav['prev']) }}" class="btn"><i class="fa fa-chevron-left"></i> Prev week</a>
+                @endif
+                @if(!$nav['is_current'])
+                    <a href="{{ $weekUrl($nav['this_week']) }}" class="btn">This week</a>
+                @endif
+                <a href="{{ $weekUrl($nav['next']) }}" class="btn">Next week <i class="fa fa-chevron-right"></i></a>
+                <span class="week-label">{{ $nav['week_label'] }}</span>
+            </div>
+        @endif
+
         <div class="managers-grid">
             @foreach ($managers as $key => $m)
                 <div class="card">
