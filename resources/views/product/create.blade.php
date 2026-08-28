@@ -99,7 +99,6 @@
 .product-add-v2 .pe-card-row .pe-card { margin-bottom: 0; }
 .product-add-v2 .pe-card-row .pe-card-pricing { flex: 1 1 62%; }
 .product-add-v2 .pe-card-row .pe-card-description { flex: 1 1 34%; }
-.product-add-v2 .pe-card-inventory-standalone { max-width: 640px; }
 
 .product-add-v2 .pe-card-title {
     font-size: 13px;
@@ -504,7 +503,7 @@
     </div>
 
     {{-- ─── Card 2: Inventory Options ───────────────────────────────────── --}}
-    <div class="pe-card pe-card-inventory-standalone">
+    <div class="pe-card pe-card-wide">
         <h3 class="pe-card-title">Inventory Options</h3>
         <div class="row">
             <div class="col-sm-6">
