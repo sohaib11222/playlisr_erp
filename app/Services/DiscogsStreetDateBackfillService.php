@@ -27,14 +27,19 @@ class DiscogsStreetDateBackfillService
             return ['ok' => false, 'error' => 'Discogs API token not configured (Settings > Integrations > Discogs).'];
         }
 
-        // Can't sort by street date — that's the value we're fetching. Newest
-        // catalog additions first is the best available proxy for "recent
-        // release" so the New Releases ABC view fills in sooner instead of
-        // waiting on the whole 58k-deep back-catalog in arbitrary order.
+        // Scoped to products added to the ERP in the last 180 days. A record
+        // added years ago can never have a street date inside the "New
+        // Releases" 90-day window, so checking it just burns Discogs budget
+        // for nothing — that's why this crawled ~58,800 products at ~360/day
+        // and never caught up (2026-08-28, Sarah: still 55,530 remaining
+        // after 9 days). Restricting to recent additions shrinks the pool to
+        // only rows that could plausibly qualify, so the existing 15-min cron
+        // actually finishes instead of crawling the full back-catalog.
         $products = \DB::table('products')
             ->where('business_id', $businessId)
             ->whereNotNull('discogs_release_id')
             ->where('discogs_release_id', '>', 0)
+            ->where('created_at', '>=', now()->subDays(180))
             ->where(function ($q) {
                 $q->whereNull('product_custom_field2')->orWhere('product_custom_field2', '');
             })
@@ -96,6 +101,7 @@ class DiscogsStreetDateBackfillService
             ->where('business_id', $businessId)
             ->whereNotNull('discogs_release_id')
             ->where('discogs_release_id', '>', 0)
+            ->where('created_at', '>=', now()->subDays(180))
             ->where(function ($q) {
                 $q->whereNull('product_custom_field2')->orWhere('product_custom_field2', '');
             })
