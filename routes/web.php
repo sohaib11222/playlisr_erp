@@ -710,6 +710,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('settings', 'LocationSettingsController@updateSettings')->name('settings_update');
     });
 
+    // Third-party integration credentials that live on the website, not the
+    // ERP — forwarded through the ERP<->website bridge (see IntegrationSettingsController).
+    Route::get('integration-settings/openphone', 'IntegrationSettingsController@openPhoneEdit')->name('integration-settings.openphone');
+    Route::post('integration-settings/openphone', 'IntegrationSettingsController@openPhoneSave')->name('integration-settings.openphone.save');
+
     //Business Locations...
     Route::post('business-location/check-location-id', 'BusinessLocationController@checkLocationId');
     Route::resource('business-location', 'BusinessLocationController');
