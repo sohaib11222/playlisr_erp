@@ -1,6 +1,6 @@
 @php
     $dueDate = \Carbon\Carbon::parse($t['due_date']);
-    $dueText = ($t['overdue'] ? 'Overdue - was due ' : 'Due ') . $dueDate->format('D, M j');
+    $dueText = $dueDate->format('M j');
 @endphp
 <div class="task-row {{ $t['overdue'] ? 'overdue' : '' }} {{ $t['done'] ? 'done' : '' }}">
     <input type="checkbox" class="task-box" data-id="{{ $t['id'] }}" data-period="{{ $t['period_key'] }}" {{ $t['done'] ? 'checked' : '' }}>
@@ -15,12 +15,7 @@
         @endif
     </div>
 
-    <div class="task-meta">
-        @if($t['recurrence'] === 'weekly')
-            <span class="chip repeat">Weekly{{ $t['weekday'] ? ' - ' . $weekdayNames[$t['weekday']] : '' }}</span>
-        @endif
-        <span class="chip {{ $t['overdue'] ? 'due-overdue' : '' }}">{{ $dueText }}</span>
-
+    <div class="assignee-cell">
         @if($canManage)
             <select class="assignee-select" data-id="{{ $t['id'] }}">
                 <option value="" {{ !$t['assigned_to_user_id'] ? 'selected' : '' }}>Anyone</option>
@@ -28,11 +23,25 @@
                     <option value="{{ $e['id'] }}" {{ (int) $t['assigned_to_user_id'] === (int) $e['id'] ? 'selected' : '' }}>{{ $e['name'] }}</option>
                 @endforeach
             </select>
-            <button type="button" class="del-btn" data-id="{{ $t['id'] }}" title="Remove task">&times;</button>
         @else
-            <span class="avatar {{ $t['assigned_to_user_id'] ? '' : 'unassigned' }}" title="{{ $t['assignee_name'] ?? 'Anyone' }}">
-                {{ $t['assigned_to_user_id'] ? $initials($t['assignee_name']) : '?' }}
+            <span class="avatar {{ $t['assigned_to_user_id'] ? '' : 'unassigned' }}"
+                  style="{{ $t['assigned_to_user_id'] ? 'background:' . $avatarColor((int) $t['assigned_to_user_id']) : '' }}">
+                {{ $t['assigned_to_user_id'] ? $initials($t['assignee_name']) : '' }}
             </span>
+            <span class="assignee-name">{{ $t['assignee_name'] ?? 'Anyone' }}</span>
         @endif
     </div>
+
+    <div class="due-cell">
+        @if($t['recurrence'] === 'weekly')
+            <span class="repeat-mark" title="Repeats weekly{{ $t['weekday'] ? ' - ' . $weekdayNames[$t['weekday']] : '' }}">&#8635;</span>
+        @endif
+        {{ $t['overdue'] ? 'Overdue ' : '' }}{{ $dueText }}
+    </div>
+
+    @if($canManage)
+        <button type="button" class="del-btn" data-id="{{ $t['id'] }}" title="Remove task">&times;</button>
+    @else
+        <span></span>
+    @endif
 </div>

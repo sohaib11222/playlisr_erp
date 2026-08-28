@@ -12,15 +12,23 @@
     $employees  = $employees ?? [];
     $userId     = $userId ?? null;
     $weekdayNames = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'];
+    $weekdayFull  = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
     $storeUrl = function ($s) { return url('/employee-tasks') . '?' . http_build_query(['store' => $s]); };
     $initials = function ($name) {
-        $parts = preg_split('/\s+/', trim((string) $name));
-        $parts = array_filter($parts);
+        $parts = array_filter(preg_split('/\s+/', trim((string) $name)));
         if (empty($parts)) return '?';
         $first = mb_substr(reset($parts), 0, 1);
         $last  = count($parts) > 1 ? mb_substr(end($parts), 0, 1) : '';
         return mb_strtoupper($first . $last);
     };
+    // A consistent color per person (hash of their id into a fixed palette),
+    // matching Asana's per-assignee avatar coloring.
+    $avatarPalette = ['#E8CF68', '#8FB9A8', '#E3A0A0', '#A6B7D4', '#C9A6D4', '#D9B27C', '#8FC1D4', '#B7C98F'];
+    $avatarColor = function ($id) use ($avatarPalette) {
+        return $avatarPalette[$id % count($avatarPalette)];
+    };
+    $once  = array_values(array_filter($tasks, function ($t) { return $t['recurrence'] === 'once'; }));
+    $weekly = array_values(array_filter($tasks, function ($t) { return $t['recurrence'] === 'weekly'; }));
 @endphp
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,17 +52,15 @@
     --d-accent-soft: #FFF9DB;
     --d-accent-text: #5A4410;
     --d-good: #2E7D32;
-    --d-warn: #B26A00;
     --d-bad: #B3261E;
-    --d-bad-bg: #FBEAE8;
     --d-radius: 12px;
-    --d-radius-sm: 10px;
+    --d-radius-sm: 8px;
 
     font-family: "Inter Tight", system-ui, sans-serif;
     color: var(--d-ink);
     -webkit-font-smoothing: antialiased;
     background: var(--d-bg);
-    max-width: 860px;
+    max-width: 920px;
     margin: 12px auto 48px;
     padding: 0 16px;
 }
@@ -77,91 +83,99 @@
     padding: 12px 16px; margin-bottom: 16px; font-weight: 700; font-size: 14.5px;
 }
 
-.et-shell .add-card {
-    background: var(--d-surface); border: 1px dashed var(--d-line-2); border-radius: var(--d-radius);
-    padding: 14px 16px; margin-bottom: 20px;
+.et-shell .board {
+    background: var(--d-surface); border: 1px solid var(--d-line); border-radius: var(--d-radius);
+    overflow: hidden;
 }
-.et-shell .add-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.et-shell .add-row input[type=text], .et-shell .add-row select, .et-shell .add-row input[type=date] {
-    font-family: inherit; font-size: 14px; padding: 9px 12px; border-radius: var(--d-radius-sm);
-    border: 1px solid var(--d-line-2); background: var(--d-surface); color: var(--d-ink);
-}
-.et-shell .add-row input[type=text] { flex: 1 1 220px; min-width: 160px; }
-.et-shell .add-row .kind-toggle { display: flex; border: 1px solid var(--d-line-2); border-radius: var(--d-radius-sm); overflow: hidden; }
-.et-shell .add-row .kind-toggle button {
-    font-family: inherit; font-size: 13px; font-weight: 700; padding: 9px 12px; border: none; background: var(--d-surface);
-    color: var(--d-ink-3); cursor: pointer;
-}
-.et-shell .add-row .kind-toggle button.active { background: var(--d-accent); color: var(--d-accent-text); }
-.et-shell .add-row button.submit {
-    font-family: inherit; font-size: 14px; font-weight: 800; padding: 9px 18px; border: none; border-radius: var(--d-radius-sm);
-    background: var(--d-ink); color: #fff; cursor: pointer;
-}
-.et-shell .add-row button.submit:hover { opacity: .9; }
-.et-shell .add-notes { margin-top: 8px; }
-.et-shell .add-notes input[type=text] { width: 100%; }
 
+.et-shell .col-head {
+    display: grid; grid-template-columns: 30px 1fr 170px 130px 30px; gap: 10px; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--d-line);
+    font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--d-ink-3);
+}
+
+.et-shell .section { border-bottom: 1px solid var(--d-line); }
+.et-shell .section:last-child { border-bottom: none; }
 .et-shell .section-head {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-    margin: 20px 4px 8px;
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; cursor: pointer; user-select: none;
 }
-.et-shell .section-head h3 {
-    font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-    color: var(--d-ink-2); margin: 0;
+.et-shell .section-head .caret { font-size: 10px; color: var(--d-ink-3); transition: transform .12s; display: inline-block; }
+.et-shell .section-head.collapsed .caret { transform: rotate(-90deg); }
+.et-shell .section-head h3 { font-size: 14.5px; font-weight: 800; margin: 0; color: var(--d-ink); }
+.et-shell .section-head .count {
+    font-size: 11.5px; font-weight: 700; color: var(--d-ink-3); background: var(--d-surface-2);
+    border-radius: 999px; padding: 1px 8px;
 }
-.et-shell .section-head .count { font-size: 12.5px; font-weight: 600; color: var(--d-ink-3); }
+.et-shell .section-body.collapsed { display: none; }
 
 .et-shell .task-row {
-    display: flex; align-items: center; gap: 12px; background: var(--d-surface);
-    border: 1px solid var(--d-line); border-radius: var(--d-radius-sm);
-    padding: 11px 12px; margin-bottom: 8px; transition: background .12s, border-color .12s;
+    display: grid; grid-template-columns: 30px 1fr 170px 130px 30px; gap: 10px; align-items: center;
+    padding: 8px 16px; border-top: 1px solid var(--d-line); transition: background .1s;
 }
 .et-shell .task-row:hover { background: var(--d-surface-2); }
-.et-shell .task-row.overdue { border-color: var(--d-bad); background: var(--d-bad-bg); }
-.et-shell .task-row.done { opacity: .68; }
+.et-shell .task-row .del-btn { visibility: hidden; }
+.et-shell .task-row:hover .del-btn { visibility: visible; }
+.et-shell .task-row.overdue .due-cell { color: var(--d-bad); font-weight: 700; }
 
 .et-shell .task-row input[type=checkbox] {
-    appearance: none; -webkit-appearance: none; flex: 0 0 auto;
-    width: 22px; height: 22px; border: 2px solid var(--d-line-2);
-    border-radius: 50%; background: #fff; cursor: pointer; position: relative;
+    appearance: none; -webkit-appearance: none; width: 20px; height: 20px; border: 2px solid var(--d-line-2);
+    border-radius: 50%; background: #fff; cursor: pointer; position: relative; flex: 0 0 auto;
 }
 .et-shell .task-row.overdue input[type=checkbox] { border-color: var(--d-bad); }
-.et-shell .task-row input[type=checkbox]:checked { background: var(--d-accent); border-color: var(--d-accent-deep); }
+.et-shell .task-row input[type=checkbox]:checked { background: var(--d-accent-deep); border-color: var(--d-accent-deep); }
 .et-shell .task-row input[type=checkbox]:checked::after {
-    content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px;
-    border: solid var(--d-accent-text); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
+    content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
+    border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
-.et-shell .task-main { flex: 1 1 auto; min-width: 0; }
-.et-shell .task-title { font-size: 15px; color: var(--d-ink); display: block; }
+.et-shell .task-main { min-width: 0; }
+.et-shell .task-title { font-size: 14.5px; color: var(--d-ink); display: block; }
 .et-shell .task-row.done .task-title { text-decoration: line-through; color: var(--d-ink-3); }
-.et-shell .task-notes { font-size: 12.5px; color: var(--d-ink-3); margin-top: 2px; display: block; }
-.et-shell .task-done-by { font-size: 12px; color: var(--d-good); margin-top: 2px; display: block; font-weight: 600; }
+.et-shell .task-notes { font-size: 12px; color: var(--d-ink-3); margin-top: 1px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.et-shell .task-done-by { font-size: 11.5px; color: var(--d-good); margin-top: 1px; display: block; font-weight: 600; }
 
-.et-shell .task-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.et-shell .chip {
-    font-size: 11.5px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap;
-    background: var(--d-surface-2); color: var(--d-ink-3); border: 1px solid var(--d-line);
-}
-.et-shell .chip.repeat { color: var(--d-accent-text); background: var(--d-accent-soft); border-color: var(--d-accent-deep); }
-.et-shell .chip.due-overdue { color: var(--d-bad); background: var(--d-bad-bg); border-color: var(--d-bad); }
+.et-shell .assignee-cell { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .et-shell .avatar {
-    width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
+    width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 800; background: var(--d-accent); color: var(--d-accent-text);
-    border: 1px solid var(--d-accent-deep);
+    font-size: 10.5px; font-weight: 800; color: var(--d-accent-text);
+    border: 1px solid rgba(0,0,0,.08);
 }
-.et-shell .avatar.unassigned { background: var(--d-surface-2); color: var(--d-ink-3); border-color: var(--d-line); }
+.et-shell .avatar.unassigned {
+    background: transparent; border: 1.5px dashed var(--d-line-2); color: var(--d-ink-3);
+}
+.et-shell .assignee-name { font-size: 12.5px; color: var(--d-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .et-shell select.assignee-select {
-    font-family: inherit; font-size: 12px; font-weight: 700; padding: 5px 8px; border-radius: 999px;
-    border: 1px solid var(--d-line-2); background: var(--d-surface); color: var(--d-ink-2); max-width: 130px;
+    font-family: inherit; font-size: 12.5px; padding: 4px 6px; border-radius: var(--d-radius-sm);
+    border: 1px solid transparent; background: transparent; color: var(--d-ink-2); max-width: 150px; cursor: pointer;
 }
+.et-shell select.assignee-select:hover { border-color: var(--d-line-2); background: var(--d-surface); }
+
+.et-shell .due-cell { font-size: 12.5px; color: var(--d-ink-2); white-space: nowrap; }
+.et-shell .due-cell .repeat-mark { color: var(--d-ink-3); margin-right: 3px; }
+
 .et-shell .del-btn {
-    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--d-line-2);
-    background: var(--d-surface); color: var(--d-ink-3); cursor: pointer; font-size: 13px; line-height: 1;
+    width: 22px; height: 22px; border-radius: 50%; border: none; background: transparent;
+    color: var(--d-ink-3); cursor: pointer; font-size: 15px; line-height: 1;
 }
-.et-shell .del-btn:hover { background: var(--d-bad-bg); border-color: var(--d-bad); color: var(--d-bad); }
-.et-shell .empty-note { font-size: 13.5px; color: var(--d-ink-3); padding: 10px 12px; }
+.et-shell .del-btn:hover { background: var(--d-line); color: var(--d-bad); }
+
+.et-shell .add-row {
+    display: grid; grid-template-columns: 30px 1fr 170px 130px 30px; gap: 10px; align-items: center;
+    padding: 8px 16px; border-top: 1px solid var(--d-line);
+}
+.et-shell .add-row .add-plus { color: var(--d-ink-3); font-size: 16px; text-align: center; }
+.et-shell .add-row input[type=text] {
+    font-family: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--d-radius-sm);
+    background: transparent; color: var(--d-ink); width: 100%;
+}
+.et-shell .add-row input[type=text]:hover, .et-shell .add-row input[type=text]:focus { border-color: var(--d-line-2); background: var(--d-surface); outline: none; }
+.et-shell .add-row input[type=text]::placeholder { color: var(--d-ink-3); font-weight: 600; }
+.et-shell .add-row select, .et-shell .add-row input[type=date] {
+    font-family: inherit; font-size: 12.5px; padding: 5px 6px; border: 1px solid var(--d-line-2); border-radius: var(--d-radius-sm);
+    background: var(--d-surface); color: var(--d-ink-2);
+}
+.et-shell .empty-note { padding: 4px 16px 14px; font-size: 13px; color: var(--d-ink-3); }
 </style>
 
 <div class="et-shell">
@@ -170,7 +184,7 @@
             <h1>Employee Tasks</h1>
             <p>
                 @if($canManage)
-                    Add today's tasks and weekly routines, assign them or leave them open for whoever's on shift.
+                    {{ $storeLabel }} - add today's tasks and weekly routines, assign them or leave open for whoever's on shift.
                 @else
                     Your tasks for {{ $storeLabel }} - assigned to you, or open for anyone on shift.
                 @endif
@@ -195,62 +209,79 @@
             </div>
         @endif
 
-        @if($canManage)
-            <div class="add-card">
-                <form id="add-task-form">
-                    <input type="hidden" name="store" value="{{ $store }}">
-                    <input type="hidden" name="recurrence" id="recurrence-field" value="once">
-                    <div class="add-row">
-                        <div class="kind-toggle">
-                            <button type="button" class="kind-btn active" data-kind="once">Today</button>
-                            <button type="button" class="kind-btn" data-kind="weekly">Weekly routine</button>
-                        </div>
-                        <input type="text" name="title" placeholder="Task - e.g. Clean floors" maxlength="200" required>
-                        <select name="assigned_to_user_id">
-                            <option value="">Anyone on shift</option>
-                            @foreach($employees as $e)
-                                <option value="{{ $e['id'] }}">{{ $e['name'] }}</option>
-                            @endforeach
-                        </select>
-                        <select name="weekday" id="weekday-field" style="display:none;">
-                            @foreach($weekdayNames as $num => $name)
-                                <option value="{{ $num }}">{{ $name }}</option>
-                            @endforeach
-                        </select>
-                        <input type="date" name="due_date" id="due-date-field" value="{{ date('Y-m-d') }}">
-                        <button type="submit" class="submit">Add task</button>
-                    </div>
-                    <div class="add-notes">
-                        <input type="text" name="notes" placeholder="Notes (optional) - any instructions" maxlength="2000">
-                    </div>
-                </form>
+        <div class="board">
+            <div class="col-head">
+                <span></span>
+                <span>Name</span>
+                <span>Assignee</span>
+                <span>Due date</span>
+                <span></span>
             </div>
-        @endif
 
-        @php
-            $todo = array_values(array_filter($tasks, function ($t) { return !$t['done']; }));
-            $done = array_values(array_filter($tasks, function ($t) { return $t['done']; }));
-        @endphp
+            <div class="section" data-section="once">
+                <div class="section-head" data-toggle="once-body">
+                    <span class="caret">&#9660;</span>
+                    <h3>Today</h3>
+                    <span class="count">{{ count($once) }}</span>
+                </div>
+                <div class="section-body" id="once-body">
+                    @foreach ($once as $t)
+                        @include('store_tasks._row', ['t' => $t, 'canManage' => $canManage, 'employees' => $employees, 'weekdayNames' => $weekdayNames, 'initials' => $initials, 'avatarColor' => $avatarColor])
+                    @endforeach
+                    @if(count($once) === 0)
+                        <div class="empty-note">Nothing for today{{ $canManage ? '' : ' yet' }}.</div>
+                    @endif
+                    @if($canManage)
+                        <form class="add-row add-once" data-recurrence="once">
+                            <span class="add-plus">+</span>
+                            <input type="text" name="title" placeholder="Add task" maxlength="200">
+                            <select name="assigned_to_user_id">
+                                <option value="">Anyone</option>
+                                @foreach($employees as $e)
+                                    <option value="{{ $e['id'] }}">{{ $e['name'] }}</option>
+                                @endforeach
+                            </select>
+                            <input type="date" name="due_date" value="{{ date('Y-m-d') }}">
+                            <span></span>
+                        </form>
+                    @endif
+                </div>
+            </div>
 
-        <div class="section-head">
-            <h3>To do</h3>
-            <span class="count">{{ count($todo) }}</span>
+            <div class="section" data-section="weekly">
+                <div class="section-head" data-toggle="weekly-body">
+                    <span class="caret">&#9660;</span>
+                    <h3>Weekly Routine</h3>
+                    <span class="count">{{ count($weekly) }}</span>
+                </div>
+                <div class="section-body" id="weekly-body">
+                    @foreach ($weekly as $t)
+                        @include('store_tasks._row', ['t' => $t, 'canManage' => $canManage, 'employees' => $employees, 'weekdayNames' => $weekdayNames, 'initials' => $initials, 'avatarColor' => $avatarColor])
+                    @endforeach
+                    @if(count($weekly) === 0)
+                        <div class="empty-note">No weekly routine tasks{{ $canManage ? '' : '' }}.</div>
+                    @endif
+                    @if($canManage)
+                        <form class="add-row add-weekly" data-recurrence="weekly">
+                            <span class="add-plus">+</span>
+                            <input type="text" name="title" placeholder="Add weekly task" maxlength="200">
+                            <select name="assigned_to_user_id">
+                                <option value="">Anyone</option>
+                                @foreach($employees as $e)
+                                    <option value="{{ $e['id'] }}">{{ $e['name'] }}</option>
+                                @endforeach
+                            </select>
+                            <select name="weekday">
+                                @foreach($weekdayFull as $num => $name)
+                                    <option value="{{ $num }}">{{ $name }}</option>
+                                @endforeach
+                            </select>
+                            <span></span>
+                        </form>
+                    @endif
+                </div>
+            </div>
         </div>
-        @forelse ($todo as $t)
-            @include('store_tasks._row', ['t' => $t, 'canManage' => $canManage, 'employees' => $employees, 'weekdayNames' => $weekdayNames, 'initials' => $initials])
-        @empty
-            <div class="empty-note">Nothing to do{{ $canManage ? ' - add a task above.' : ' right now.' }}</div>
-        @endforelse
-
-        @if(count($done) > 0)
-            <div class="section-head">
-                <h3>Done</h3>
-                <span class="count">{{ count($done) }}</span>
-            </div>
-            @foreach ($done as $t)
-                @include('store_tasks._row', ['t' => $t, 'canManage' => $canManage, 'employees' => $employees, 'weekdayNames' => $weekdayNames, 'initials' => $initials])
-            @endforeach
-        @endif
     @endif
 </div>
 
@@ -282,6 +313,14 @@
         });
     }
 
+    document.querySelectorAll('.et-shell .section-head').forEach(function (h) {
+        h.addEventListener('click', function () {
+            var body = document.getElementById(h.getAttribute('data-toggle'));
+            h.classList.toggle('collapsed');
+            if (body) { body.classList.toggle('collapsed'); }
+        });
+    });
+
     document.querySelectorAll('.et-shell .task-box').forEach(function (b) {
         b.addEventListener('change', function () {
             post(urls.toggle, { id: b.getAttribute('data-id'), period_key: b.getAttribute('data-period'), checked: b.checked ? '1' : '0' })
@@ -310,31 +349,25 @@
         });
     });
 
-    var form = document.getElementById('add-task-form');
-    if (form) {
-        var kindField = document.getElementById('recurrence-field');
-        var weekdayField = document.getElementById('weekday-field');
-        var dueDateField = document.getElementById('due-date-field');
-        document.querySelectorAll('.kind-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                document.querySelectorAll('.kind-btn').forEach(function (b) { b.classList.remove('active'); });
-                btn.classList.add('active');
-                var kind = btn.getAttribute('data-kind');
-                kindField.value = kind;
-                weekdayField.style.display = kind === 'weekly' ? '' : 'none';
-                dueDateField.style.display = kind === 'weekly' ? 'none' : '';
+    document.querySelectorAll('.et-shell .add-row').forEach(function (form) {
+        form.addEventListener('submit', function (e) { e.preventDefault(); submitAdd(form); });
+        var titleInput = form.querySelector('input[name=title]');
+        if (titleInput) {
+            titleInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); submitAdd(form); }
             });
-        });
+        }
+    });
 
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            var fd = new FormData(form);
-            var data = {};
-            fd.forEach(function (v, k) { data[k] = v; });
-            post(urls.store, data)
-                .then(function () { window.location.reload(); })
-                .catch(function (e) { alert('Could not add that task.\n' + e.message); });
-        });
+    function submitAdd(form) {
+        var titleInput = form.querySelector('input[name=title]');
+        if (!titleInput || !titleInput.value.trim()) { return; }
+        var fd = new FormData(form);
+        var data = { store: '{{ $store }}', recurrence: form.getAttribute('data-recurrence') };
+        fd.forEach(function (v, k) { data[k] = v; });
+        post(urls.store, data)
+            .then(function () { window.location.reload(); })
+            .catch(function (e) { alert('Could not add that task.\n' + e.message); });
     }
 })();
 </script>
