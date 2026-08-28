@@ -33,7 +33,11 @@
     padding: 20px 24px 32px;
     min-height: calc(100vh - 50px);
 }
-.product-add-v2 .row { margin-left: -6px; margin-right: -6px; }
+/* Bootstrap's float grid lets columns drift to different heights when one
+   field has an extra tooltip icon or help line — the next row then starts
+   lower on one side than the other, leaving ragged gaps. Flex + wrap keeps
+   each visual row's columns the same height so rows stay level. */
+.product-add-v2 .row { display: flex; flex-wrap: wrap; margin-left: -6px; margin-right: -6px; }
 .product-add-v2 [class*="col-"] { padding-left: 6px; padding-right: 6px; }
 
 .product-add-v2 .pe-breadcrumb {
