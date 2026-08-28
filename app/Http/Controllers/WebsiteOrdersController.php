@@ -154,7 +154,10 @@ class WebsiteOrdersController extends Controller
         $resp = $this->websiteApi('POST', "/erp/orders/{$id}/status", [
             'status' => $status,
             'trackingNumber' => $tracking !== '' ? $tracking : null,
-            'notifyCustomer' => filter_var($request->input('notify_customer', true), FILTER_VALIDATE_BOOLEAN),
+            // input('notify_customer', true) would always fall back to the
+            // true default, since an unchecked checkbox sends no field at
+            // all — has() is what actually tells checked from unchecked.
+            'notifyCustomer' => $request->has('notify_customer'),
             'changedBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
         ]);
 
