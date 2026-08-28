@@ -284,28 +284,72 @@
                       </div>
                     @endif
                     <div style="flex:1 1 100%;">
-                      <h5>Items</h5>
+                      <h5>What they ordered</h5>
                       <table class="wo-detail-items">
-                        <thead><tr><th>Item</th><th>Artist</th><th>Format</th><th>Location / Discogs</th><th>Qty</th><th>Price</th></tr></thead>
+                        <thead><tr>
+                          <th></th><th>Name</th><th>Artist</th><th>Format</th><th>Genre</th><th>Store</th><th>Discogs code</th><th>Location</th><th>Qty</th><th>Price</th>
+                        </tr></thead>
                         <tbody>
                           @foreach(($o['items'] ?? []) as $item)
                             @php
                               $itemIsGift = ($item['is_gift_card'] ?? false) === true || (empty($item['product_id']) && !empty($item['gift_card_amount']));
+                              $img = $itemIsGift ? null : ($item['product_id']['image'] ?? $item['product_image'] ?? null);
                               $loc = $item['location'] ?? ($item['product_id']['location'] ?? null);
-                              $locText = is_string($loc) ? $loc : trim(implode(' - ', array_filter([$loc['store'] ?? null, $loc['zone'] ?? null])));
+                              $locStore = is_string($loc) ? $loc : trim(implode(' - ', array_filter([
+                                $loc['store'] ?? null, $loc['zone'] ?? null, $loc['location_store'] ?? null,
+                              ])));
+                              $locSub = is_array($loc) ? ($loc['sub_location'] ?? null) : null;
                               $discogs = $item['discogs_code'] ?? ($item['product_id']['discogsLocation'] ?? null);
+                              $hasLoc = $locStore !== '';
+                              $inStoreBins = $hasLoc && !$discogs && (stripos($locStore, 'hollywood') !== false || stripos($locStore, 'pico') !== false);
+                              $isPreorder = !$itemIsGift && !empty($item['product_id']['isPreorder']);
+                              $shipDate = $item['product_id']['preorderShipDate'] ?? null;
                             @endphp
                             <tr>
+                              <td style="width:52px;">
+                                @if($itemIsGift)
+                                  <div style="width:44px;height:44px;border-radius:6px;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:16px;">&#127873;</div>
+                                @elseif($img)
+                                  <img src="{{ $img }}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">
+                                @else
+                                  <div style="width:44px;height:44px;border-radius:6px;background:#f3f4f6;"></div>
+                                @endif
+                              </td>
                               <td>
                                 @if($itemIsGift)
-                                  Nivessa Gift Card - ${{ $item['gift_card_amount'] ?? $item['price'] ?? '' }}
+                                  <span style="color:#166534;font-weight:600;">Nivessa Gift Card - ${{ $item['gift_card_amount'] ?? $item['price'] ?? '' }}</span>
                                 @else
                                   {{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}
+                                  @if($isPreorder)
+                                    <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:#f97316;color:#fff;font-size:10px;font-weight:700;">Preorder</span>
+                                    @if($shipDate)
+                                      <div style="font-size:11px;color:#c2410c;">Ships {{ date('M j, Y', strtotime($shipDate)) }}</div>
+                                    @endif
+                                  @endif
                                 @endif
                               </td>
                               <td>{{ $itemIsGift ? '—' : ($item['product_id']['artist'] ?? ($item['product_artist'] ?? '—')) }}</td>
                               <td>{{ $itemIsGift ? '—' : ($item['product_id']['subCategory'] ?? ($item['product_subCategory'] ?? '—')) }}</td>
-                              <td>{{ $itemIsGift ? '—' : ($discogs ?: ($locText ?: '—')) }}</td>
+                              <td>{{ $itemIsGift ? '—' : ($item['product_id']['genre'] ?? ($item['product_genre'] ?? '—')) }}</td>
+                              <td>
+                                @if($itemIsGift)
+                                  —
+                                @elseif($locStore !== '')
+                                  {{ $locStore }}@if($locSub)<br><span style="color:#6b7280;">&rarr; {{ $locSub }}</span>@endif
+                                @else
+                                  <span style="color:#9ca3af;font-style:italic;">Not set</span>
+                                @endif
+                              </td>
+                              <td style="font-family:monospace;font-size:12px;">{{ $itemIsGift ? '—' : ($discogs ?: '—') }}</td>
+                              <td>
+                                @if($itemIsGift)
+                                  —
+                                @elseif($inStoreBins)
+                                  <span style="color:#15803d;font-weight:600;">In Store Bins</span>
+                                @else
+                                  <span style="color:#9ca3af;">—</span>
+                                @endif
+                              </td>
                               <td>{{ $item['quantity'] ?? 1 }}</td>
                               <td>${{ number_format((float) ($item['price'] ?? 0), 2) }}</td>
                             </tr>
