@@ -6,24 +6,24 @@
 <div class="product-add-v2">
 
 <style>
-/* ============ PRODUCT ADD V2 — matches /pos/create + product/edit theme ============ */
+/* ============ PRODUCT ADD V2 ============
+   Deliberately near-monochrome: one neutral palette, one accent color
+   (maroon) reserved for the single primary action. Flat surfaces, no
+   shadows, no per-cell table borders, no decorative icons — the goal
+   is calm, not "polished dashboard." */
 .product-add-v2 {
-    --pe-bg:          #FAF6EE;
+    --pe-bg:          #FAFAF8;
     --pe-surface:     #FFFFFF;
-    --pe-surface-2:   #F7F1E3;
-    --pe-ink:         #1F1B16;
-    --pe-ink-2:       #5A5045;
-    --pe-ink-3:       #8E8273;
-    --pe-line:        #ECE3CF;
-    --pe-line-2:      #DFD2B3;
-    --pe-accent:      #FFF2B3;
-    --pe-accent-deep: #E8CF68;
-    --pe-accent-soft: #FFF9DB;
-    --pe-accent-text: #5A4410;
-    --pe-radius:      10px;
-    --pe-radius-sm:   8px;
-    --pe-shadow-sm:   0 1px 2px rgba(31,27,22,.06);
-    --pe-shadow-md:   0 4px 14px rgba(31,27,22,.08);
+    --pe-surface-2:   #F4F3F1;
+    --pe-ink:         #1A1A1A;
+    --pe-ink-2:       #5C5C5C;
+    --pe-ink-3:       #8A8A8A;
+    --pe-line:        #E4E2DE;
+    --pe-line-2:      #D6D3CD;
+    --pe-accent-deep: #8A3A2E;
+    --pe-accent-soft: #F5E9E6;
+    --pe-radius:      8px;
+    --pe-radius-sm:   6px;
     --pe-form-width:  100%;
 
     background: var(--pe-bg);
@@ -33,6 +33,9 @@
     padding: 20px 24px 32px;
     min-height: calc(100vh - 50px);
 }
+/* Decorative-only icons (tooltip "i" bubbles) add visual noise without
+   adding information a plain label + placeholder doesn't already give. */
+.product-add-v2 .fa-info-circle.hover-q { display: none !important; }
 /* Bootstrap's float grid lets columns drift to different heights when one
    field has an extra tooltip icon or help line — the next row then starts
    lower on one side than the other, leaving ragged gaps. Flex + wrap keeps
@@ -83,9 +86,8 @@
     background: var(--pe-surface);
     border: 1px solid var(--pe-line);
     border-radius: var(--pe-radius);
-    box-shadow: var(--pe-shadow-sm);
-    padding: 16px 20px;
-    margin-bottom: 10px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
 }
 .product-add-v2 .pe-card-wide { max-width: var(--pe-form-width); }
 .product-add-v2 .pe-card-row {
@@ -109,6 +111,18 @@
     border-bottom: 1px solid var(--pe-line);
 }
 .product-add-v2 .form-group { margin-bottom: 14px; }
+.product-add-v2 .pe-more-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--pe-ink-2);
+    cursor: pointer;
+    margin: -6px 0 4px;
+}
+.product-add-v2 .pe-more-toggle:hover { color: var(--pe-ink); text-decoration: underline; }
 .product-add-v2 .select2-container {
     width: 100% !important;
 }
@@ -160,6 +174,15 @@
     font-size: 14px !important;
     box-shadow: none !important;
 }
+/* Selected-location chips default to Bootstrap blue — keep them in the
+   same neutral palette as everything else. */
+.product-add-v2 .select2-selection__choice {
+    background: var(--pe-surface-2) !important;
+    border: 1px solid var(--pe-line-2) !important;
+    color: var(--pe-ink) !important;
+    border-radius: 4px !important;
+}
+.product-add-v2 .select2-selection__choice__remove { color: var(--pe-ink-2) !important; }
 .product-add-v2 textarea.form-control { height: auto !important; min-height: 90px !important; max-width: none; }
 .product-add-v2 .select2-selection--single .select2-selection__rendered { line-height: 22px !important; padding: 0 !important; color: var(--pe-ink) !important; }
 .product-add-v2 .select2-selection--single .select2-selection__arrow { height: 36px !important; }
@@ -191,66 +214,69 @@
     color: var(--pe-bg);
 }
 .product-add-v2 .btn-primary:hover { background: #2C2620; border-color: #2C2620; color: var(--pe-bg); }
-.product-add-v2 .bg-purple { background: var(--pe-accent-soft) !important; color: var(--pe-accent-text) !important; border-color: var(--pe-accent-deep) !important; }
-.product-add-v2 .bg-maroon { background: #8A3A2E !important; color: #fff !important; border-color: #8A3A2E !important; }
-.product-add-v2 .btn-warning { background: var(--pe-accent) !important; color: var(--pe-accent-text) !important; border-color: var(--pe-accent-deep) !important; }
+/* One accent color total, reserved for the single primary "Save" action.
+   Every other button (including the other two save variants) stays plain
+   outline so nothing else competes for attention. */
+.product-add-v2 .bg-purple,
+.product-add-v2 .btn-warning {
+    background: var(--pe-surface) !important;
+    color: var(--pe-ink) !important;
+    border-color: var(--pe-line-2) !important;
+}
+.product-add-v2 .bg-maroon {
+    background: var(--pe-accent-deep) !important;
+    color: #fff !important;
+    border-color: var(--pe-accent-deep) !important;
+}
 
 /* ---- Product image panel (right column of card 1) ---- */
+/* No dropzone box or icon badge — just a plain upload control, same
+   visual weight as any other field. */
 .product-add-v2 .pe-image-panel {
-    border: 1.5px dashed var(--pe-line-2);
-    border-radius: var(--pe-radius);
-    background: var(--pe-surface-2);
-    padding: 18px;
-    text-align: center;
+    padding: 0;
 }
-.product-add-v2 .pe-image-panel .pe-image-icon {
-    width: 40px; height: 40px; margin: 0 auto 10px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: var(--pe-accent-soft);
-    color: var(--pe-accent-text);
-    font-size: 18px;
-}
-.product-add-v2 .pe-image-panel .pe-image-title { font-weight: 700; font-size: 13.5px; color: var(--pe-ink); }
-.product-add-v2 .pe-image-panel .pe-image-hint { font-size: 12px; color: var(--pe-ink-3); margin: 4px 0 14px; }
-/* Hide the krajee caption text box ("No file chosen") — the dropzone above already
-   communicates the empty state, so it's redundant here. */
+.product-add-v2 .pe-image-panel .pe-image-hint { font-size: 12px; color: var(--pe-ink-3); margin: 0 0 8px; }
+/* Hide the krajee caption text box ("No file chosen") — redundant with
+   the plain "Browse.." button beneath it. */
 .product-add-v2 .pe-image-panel .kv-fileinput-caption { display: none !important; }
 .product-add-v2 .pe-image-panel .file-caption-main { display: block !important; }
 .product-add-v2 .pe-image-panel .input-group-btn { display: block !important; width: 100%; }
 .product-add-v2 .pe-image-panel .btn-file {
     display: block !important;
     width: 100%;
+    max-width: 200px;
     text-align: center;
     background: var(--pe-surface) !important;
-    color: var(--pe-accent-text) !important;
+    color: var(--pe-ink) !important;
     border: 1px solid var(--pe-line-2) !important;
     border-radius: var(--pe-radius-sm) !important;
     font-weight: 600;
-    padding: 9px 16px;
+    padding: 8px 14px;
 }
 .product-add-v2 .pe-image-panel .file-preview { margin-top: 10px; }
 
+/* Price "table" reads as a plain row of labeled fields, not a grid —
+   one rule under the header, no cell borders, no filled header band. */
 .product-add-v2 .add-product-price-table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
 }
 .product-add-v2 .add-product-price-table > tbody > tr > th,
 .product-add-v2 .add-product-price-table > thead > tr > th {
-    background: var(--pe-accent-soft);
-    color: var(--pe-accent-text);
-    border: 1px solid var(--pe-line-2);
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 10px 12px;
+    background: transparent;
+    color: var(--pe-ink-2);
+    border: none;
+    border-bottom: 1px solid var(--pe-line);
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 0 12px 8px 0;
 }
 .product-add-v2 .add-product-price-table > tbody > tr > td {
-    border: 1px solid var(--pe-line);
-    padding: 12px;
-    background: var(--pe-surface);
+    border: none;
+    padding: 10px 12px 0 0;
+    background: transparent;
 }
 .product-add-v2 #margin_display {
     margin-top: 10px;
@@ -403,39 +429,6 @@
                         </div>
                     </div>
 
-                    <div class="col-sm-6">
-                        <div class="form-group">
-                            {!! Form::label('bin_position', 'Bin Position' . ':') !!}
-                            {!! Form::text('bin_position', !empty($duplicate_product->bin_position) ? $duplicate_product->bin_position : null, ['class' => 'form-control',
-                            'placeholder' => 'A-12, B-5']) !!}
-                        </div>
-                    </div>
-
-                    <div class="col-sm-6">
-                        <div class="form-group">
-                            {!! Form::label('listing_location', 'Listing Location' . ':') !!}
-                            {!! Form::text('listing_location', !empty($duplicate_product->listing_location) ? $duplicate_product->listing_location : null, ['class' => 'form-control',
-                            'placeholder' => 'Warehouse A, Storage B']) !!}
-                            <p class="help-block">For eBay/Discogs listings</p>
-                        </div>
-                    </div>
-
-                    <div class="col-sm-6">
-                        <div class="form-group">
-                            {!! Form::label('product_custom_field1', 'Image URL') !!}
-                            {!! Form::text('product_custom_field1', !empty($duplicate_product->product_custom_field1) ? $duplicate_product->product_custom_field1 : null, ['class' => 'form-control',
-                            'placeholder' => 'Image URL']) !!}
-                        </div>
-                    </div>
-
-                    <div class="col-sm-6">
-                        <div class="form-group">
-                            {!! Form::label('product_custom_field2', 'Street / Release Date') !!}
-                            {!! Form::date('product_custom_field2', !empty($duplicate_product->product_custom_field2) ? $duplicate_product->product_custom_field2 : null, ['class' => 'form-control']) !!}
-                            <p class="help-block">A future date makes this a preorder on the website until that date. Leave blank for a regular in-stock item.</p>
-                        </div>
-                    </div>
-
                     @php
                         $default_location = null;
                         if(count($business_locations) == 1){
@@ -444,8 +437,45 @@
                     @endphp
                     <div class="col-sm-6">
                         <div class="form-group">
-                            {!! Form::label('product_locations', __('business.business_locations') . ':') !!} @show_tooltip(__('lang_v1.product_location_help'))
+                            {!! Form::label('product_locations', __('business.business_locations') . ':') !!}
                             {!! Form::select('product_locations[]', $business_locations, $default_location, ['class' => 'form-control select2', 'multiple', 'id' => 'product_locations', 'data-placeholder' => 'Select location(s)']) !!}
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            {!! Form::label('product_custom_field2', 'Street / Release Date') !!}
+                            {!! Form::date('product_custom_field2', !empty($duplicate_product->product_custom_field2) ? $duplicate_product->product_custom_field2 : null, ['class' => 'form-control']) !!}
+                            <p class="help-block">A future date makes this a preorder on the website until then. Leave blank for a regular in-stock item.</p>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <button type="button" id="more_fields_toggle" class="pe-more-toggle">+ Bin position, listing location, image URL</button>
+                    </div>
+
+                    <div class="col-sm-6 pe-more-field" style="display:none">
+                        <div class="form-group">
+                            {!! Form::label('bin_position', 'Bin Position' . ':') !!}
+                            {!! Form::text('bin_position', !empty($duplicate_product->bin_position) ? $duplicate_product->bin_position : null, ['class' => 'form-control',
+                            'placeholder' => 'A-12, B-5']) !!}
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6 pe-more-field" style="display:none">
+                        <div class="form-group">
+                            {!! Form::label('listing_location', 'Listing Location' . ':') !!}
+                            {!! Form::text('listing_location', !empty($duplicate_product->listing_location) ? $duplicate_product->listing_location : null, ['class' => 'form-control',
+                            'placeholder' => 'Warehouse A, Storage B']) !!}
+                            <p class="help-block">For eBay/Discogs listings</p>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6 pe-more-field" style="display:none">
+                        <div class="form-group">
+                            {!! Form::label('product_custom_field1', 'Image URL') !!}
+                            {!! Form::text('product_custom_field1', !empty($duplicate_product->product_custom_field1) ? $duplicate_product->product_custom_field1 : null, ['class' => 'form-control',
+                            'placeholder' => 'Image URL']) !!}
                         </div>
                     </div>
 
@@ -465,8 +495,6 @@
             <div class="col-sm-4">
                 <label>@lang('lang_v1.product_image'):</label>
                 <div class="pe-image-panel">
-                    <div class="pe-image-icon"><i class="fa fa-image"></i></div>
-                    <div class="pe-image-title">Upload Product Image</div>
                     <p class="pe-image-hint">@lang('purchase.max_file_size', ['size' => (config('constants.document_size_limit') / 1000000)]) &middot; @lang('lang_v1.aspect_ratio_should_be_1_1')</p>
                     {!! Form::file('image', ['id' => 'upload_image', 'accept' => 'image/*']) !!}
                 </div>
@@ -671,6 +699,24 @@
             // Apply now and once more after other initializers run.
             ensureCategoryComboMatcher();
             setTimeout(ensureCategoryComboMatcher, 0);
+
+            // ---- Secondary fields toggle ---------------------------------------
+            // Bin position / listing location / image URL are optional metadata,
+            // not needed for most products — keep them off-screen until asked for.
+            $('#more_fields_toggle').on('click', function () {
+                var $fields = $('.pe-more-field');
+                var opening = $fields.is(':hidden');
+                $fields.toggle(opening);
+                $(this).text(opening ? '− Hide extra fields' : '+ Bin position, listing location, image URL');
+            });
+            // If the user already filled one in (e.g. browser back/forward, or a
+            // duplicate-product prefill), show the group open instead of hiding
+            // data they can't see.
+            var hasPrefilledMoreField = false;
+            $('.pe-more-field').each(function () {
+                if ($(this).find('input').val()) { hasPrefilledMoreField = true; }
+            });
+            if (hasPrefilledMoreField) { $('#more_fields_toggle').trigger('click'); }
 
             // ---- Live "Margin" readout ----------------------------------------
             // Purely a display helper — reads the same cost/markup/price fields
