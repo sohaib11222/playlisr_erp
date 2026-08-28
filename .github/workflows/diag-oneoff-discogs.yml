@@ -1,0 +1,35 @@
+name: Diag business check
+on:
+  workflow_dispatch:
+concurrency:
+  group: diag-oneoff
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: known_hosts
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts || true
+      - name: Diagnose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          command_timeout: 5m
+          script_stop: true
+          script: |
+            echo 'PD9waHAKJGJhc2UgPSAnL3d3dy9wbGF5bGlzdC5uaXZlc3NhLmNvbS9hcHAnOwpyZXF1aXJlICRiYXNlLicvdmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICRiYXNlLicvYm9vdHN0cmFwL2FwcC5waHAnOwoka2VybmVsID0gJGFwcC0+bWFrZShJbGx1bWluYXRlXENvbnRyYWN0c1xDb25zb2xlXEtlcm5lbDo6Y2xhc3MpOwoka2VybmVsLT5ib290c3RyYXAoKTsKCiRjb2RlcyA9IFsnMDE5OTk1NzQ2Mjg1MycsJzE5OTk1NzQ2Mjg1MycsJzA4MDEwNjEwMjU3MTcnLCc4MDEwNjEwMjU3MTcnXTsKCiRyb3dzID0gXERCOjp0YWJsZSgncHJvZHVjdHMnKQogICAgLT53aGVyZSgnYnVzaW5lc3NfaWQnLCAxKQogICAgLT53aGVyZUluKCdza3UnLCAkY29kZXMpCiAgICAtPmdldChbJ2lkJywnbmFtZScsJ2FydGlzdCcsJ3NrdSddKTsKCmVjaG8gIm1hdGNoZWQ9Ii4kcm93cy0+Y291bnQoKS5QSFBfRU9MOwpmb3JlYWNoICgkcm93cyBhcyAkcikgewogICAgJGxvY3MgPSBcREI6OnRhYmxlKCd2YXJpYXRpb25fbG9jYXRpb25fZGV0YWlscycpCiAgICAgICAgLT5qb2luKCd2YXJpYXRpb25zJywndmFyaWF0aW9ucy5pZCcsJz0nLCd2YXJpYXRpb25fbG9jYXRpb25fZGV0YWlscy52YXJpYXRpb25faWQnKQogICAgICAgIC0+am9pbignYnVzaW5lc3NfbG9jYXRpb25zJywnYnVzaW5lc3NfbG9jYXRpb25zLmlkJywnPScsJ3ZhcmlhdGlvbl9sb2NhdGlvbl9kZXRhaWxzLmxvY2F0aW9uX2lkJykKICAgICAgICAtPndoZXJlKCd2YXJpYXRpb25zLnByb2R1Y3RfaWQnLCRyLT5pZCkKICAgICAgICAtPnNlbGVjdCgnYnVzaW5lc3NfbG9jYXRpb25zLm5hbWUgYXMgbG9jJywndmFyaWF0aW9uX2xvY2F0aW9uX2RldGFpbHMucXR5X2F2YWlsYWJsZSBhcyBxdHknKQogICAgICAgIC0+Z2V0KCk7CiAgICBlY2hvICRyLT5pZC4nIHwgJy4kci0+YXJ0aXN0LicgLSAnLiRyLT5uYW1lLicgfCBza3U9Jy4kci0+c2t1LlBIUF9FT0w7CiAgICBmb3JlYWNoICgkbG9jcyBhcyAkbCkgewogICAgICAgIGVjaG8gJyAgICcuJGwtPmxvYy4nOiAnLiRsLT5xdHkuUEhQX0VPTDsKICAgIH0KfQo=' | base64 -d > /tmp/check_rsd_stock.php
+            php /tmp/check_rsd_stock.php
+            rm -f /tmp/check_rsd_stock.php
