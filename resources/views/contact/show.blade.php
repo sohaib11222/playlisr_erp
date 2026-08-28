@@ -400,7 +400,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
                         <td style="color:#888;">{{ trim($ph->staff_name) ?: '-' }}</td>
                         <td>
                             @if(!empty($ph->transaction_id))
-                                <a href="{{ route('sell.printInvoice', $ph->transaction_id) }}" target="_blank" title="View / print this receipt"><i class="fa fa-print"></i></a>
+                                <a href="#" class="print-invoice" data-href="{{ route('sell.printInvoice', $ph->transaction_id) }}" title="Print this receipt"><i class="fa fa-print"></i></a>
                             @else
                                 -
                             @endif
@@ -511,7 +511,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             @endif
             @php $latestTransactionId = optional($purchase_history->first())->transaction_id; @endphp
             @if($latestTransactionId)
-                <a href="{{ route('sell.printInvoice', $latestTransactionId) }}" target="_blank" class="cp-action-btn"><i class="fa fa-print"></i> Print Last Receipt</a>
+                <a href="#" class="cp-action-btn print-invoice" data-href="{{ route('sell.printInvoice', $latestTransactionId) }}"><i class="fa fa-print"></i> Print Last Receipt</a>
             @else
                 <a class="cp-action-btn" style="opacity:.4; cursor:default;"><i class="fa fa-print"></i> Print Last Receipt</a>
             @endif
