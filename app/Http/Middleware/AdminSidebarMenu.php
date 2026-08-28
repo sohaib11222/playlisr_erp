@@ -78,14 +78,8 @@ class AdminSidebarMenu
                 )->order(8);
             }
 
-            //Discounts (top-level for quick access)
-            if (auth()->user()->can('discount.access')) {
-                $menu->url(
-                    action('DiscountController@index'),
-                    __('lang_v1.discounts'),
-                    ['icon' => 'fa fas fa-percent', 'active' => request()->segment(1) == 'discounts']
-                )->order(9);
-            }
+            //Discounts lives inside the Products dropdown below — no longer
+            //duplicated as its own top-level link.
 
             //Warehouse dropdown — Storage Locations and Receiving grouped
             //together. Deliberately ungated (not behind purchase.*): whoever
