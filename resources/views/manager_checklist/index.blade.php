@@ -118,6 +118,7 @@
 .open-shell .item .txt-wrap { padding-top: 1px; min-width: 0; }
 .open-shell .item .txt { font-size: 15px; line-height: 1.35; color: var(--d-ink); display: block; }
 .open-shell .item .how { font-size: 13px; line-height: 1.4; color: var(--d-ink-3); margin-top: 3px; display: block; }
+.open-shell .item .how a { color: var(--d-accent-text); font-weight: 700; text-decoration: underline; }
 .open-shell .item input[type=checkbox]:checked ~ .txt-wrap .txt { color: var(--d-ink-3); text-decoration: line-through; }
 .open-shell .item input[type=checkbox]:checked ~ .txt-wrap .how { opacity: .6; }
 
@@ -178,7 +179,8 @@
                         <span class="txt-wrap">
                             <span class="txt">{{ $t['label'] }}</span>
                             @if(!empty($t['how']))
-                                <span class="how">{{ $t['how'] }}</span>
+                                {{-- $t['how'] is a fixed constant from ManagerChecklistController, not user input - safe to render unescaped so the links work. --}}
+                                <span class="how">{!! $t['how'] !!}</span>
                             @endif
                         </span>
                     </label>
@@ -206,6 +208,13 @@
     var tokenEl = document.querySelector('meta[name="csrf-token"]');
     var token = tokenEl ? tokenEl.getAttribute('content') : '';
     var boxes = document.querySelectorAll('.open-shell .task-box');
+
+    // Links inside the "how" text sit inside the <label>, which would
+    // otherwise also toggle the checkbox when clicked. Let the link
+    // navigate without touching the checkbox.
+    document.querySelectorAll('.open-shell .how a').forEach(function (a) {
+        a.addEventListener('click', function (e) { e.stopPropagation(); });
+    });
 
     boxes.forEach(function (b) {
         b.addEventListener('change', function () {
