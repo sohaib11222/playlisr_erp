@@ -1828,11 +1828,28 @@ $(document).ready(function() {
                                 pos_print(result.receipt);
                             }
 
-                            // "Want a receipt emailed to you?" — guarded so a
-                            // missing/broken prompt partial can never touch the
-                            // sale that already committed above.
+                            // "Want a receipt emailed to you?" — deferred until
+                            // #modal_payment has actually finished its fade-out.
+                            // Opening it immediately raced Bootstrap's own hide
+                            // cleanup (which fires ~300ms later and strips
+                            // modal-open/backdrop/scrollbar state from the body),
+                            // so the email field's first click could land on a
+                            // shifting/leftover backdrop instead of the input.
+                            // Falls back to a timer in case 'hidden.bs.modal'
+                            // never fires (modal_payment already closed, etc.) —
+                            // guarded so a missing/broken prompt partial can
+                            // never touch the sale that already committed above.
                             if (result.transaction_id && typeof window.__promptEmailReceipt === 'function') {
-                                window.__promptEmailReceipt(result.transaction_id, result.customer_email, result.customer_phone);
+                                (function () {
+                                    var opened = false;
+                                    var openEmailReceiptPrompt = function () {
+                                        if (opened) { return; }
+                                        opened = true;
+                                        window.__promptEmailReceipt(result.transaction_id, result.customer_email, result.customer_phone);
+                                    };
+                                    $('#modal_payment').one('hidden.bs.modal', openEmailReceiptPrompt);
+                                    setTimeout(openEmailReceiptPrompt, 350);
+                                })();
                             }
 
                             // Refresh the customer's stored-credit balance in the
