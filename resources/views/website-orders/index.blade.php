@@ -270,6 +270,11 @@
                       @if(!empty($o['total_discount']) && $o['total_discount'] > 0)
                         (discount -${{ number_format((float) $o['total_discount'], 2) }})
                       @endif
+                      @if(!empty($o['_id']))
+                        <div style="margin-top:8px;">
+                          <a href="https://nivessa.com/admin/orders/{{ $o['_id'] }}" target="_blank" rel="noopener" style="font-size:12px;color:#4a6fa5;">View on nivessa.com &rarr;</a>
+                        </div>
+                      @endif
                     </div>
                     @if(!$isGift)
                       <div>
@@ -304,6 +309,14 @@
                               $inStoreBins = $hasLoc && !$discogs && (stripos($locStore, 'hollywood') !== false || stripos($locStore, 'pico') !== false);
                               $isPreorder = !$itemIsGift && !empty($item['product_id']['isPreorder']);
                               $shipDate = $item['product_id']['preorderShipDate'] ?? null;
+                              // Website storefront link — same _id/slug scheme as the
+                              // website's own order-detail page (getProductUrl()).
+                              $websiteId = $item['product_id']['_id'] ?? $item['product_sku'] ?? null;
+                              $websiteSlug = $item['product_slug'] ?? ($item['product_id']['slug'] ?? null);
+                              $websiteUrl = (!$itemIsGift && $websiteId && $websiteSlug) ? "https://nivessa.com/products/{$websiteId}/{$websiteSlug}" : null;
+                              // ERP catalog record — posProductId is the website's copy of
+                              // the ERP's own product primary key (see Product model).
+                              $erpProductId = $item['product_id']['posProductId'] ?? null;
                             @endphp
                             <tr>
                               <td style="width:52px;">
@@ -326,6 +339,15 @@
                                       <div style="font-size:11px;color:#c2410c;">Ships {{ date('M j, Y', strtotime($shipDate)) }}</div>
                                     @endif
                                   @endif
+                                  <div style="font-size:11px;margin-top:3px;">
+                                    @if($websiteUrl)
+                                      <a href="{{ $websiteUrl }}" target="_blank" rel="noopener" style="color:#4a6fa5;">Website</a>
+                                    @endif
+                                    @if($websiteUrl && $erpProductId) &middot; @endif
+                                    @if($erpProductId)
+                                      <a href="{{ url('/products/' . $erpProductId . '/edit') }}" target="_blank" rel="noopener" style="color:#4a6fa5;">ERP</a>
+                                    @endif
+                                  </div>
                                 @endif
                               </td>
                               <td>{{ $itemIsGift ? '—' : ($item['product_id']['artist'] ?? ($item['product_artist'] ?? '—')) }}</td>
