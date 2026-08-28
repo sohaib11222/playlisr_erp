@@ -33,12 +33,10 @@
   .et-status-row input { margin-bottom:6px; }
   .et-actions { display:flex; gap:8px; align-items:center; margin-top:18px; padding-top:14px; border-top:1px solid var(--pos-line,#ECE3CF); flex-wrap:wrap; }
   .et-last-edited { font-size:11px; color:#9c927e; margin-left:auto; }
-  .et-modal-backdrop { display:none; position:fixed; inset:0; background:rgba(20,18,12,.55); z-index:1000; align-items:center; justify-content:center; }
-  .et-modal-backdrop.open { display:flex; }
-  .et-modal { background:#fff; border-radius:12px; width:640px; max-width:92vw; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; }
-  .et-modal-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--pos-line,#ECE3CF); }
-  .et-modal-body { flex:1; overflow:auto; }
-  .et-modal-body iframe { width:100%; height:70vh; border:0; }
+  .et-preview-wrap { margin-top:20px; padding-top:16px; border-top:1px solid var(--pos-line,#ECE3CF); }
+  .et-preview-head { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#5a5346; margin-bottom:8px; }
+  .et-preview-subject { font-weight:400; text-transform:none; letter-spacing:normal; color:#9c927e; margin-left:6px; }
+  .et-preview-frame { display:block; width:100%; min-height:220px; border:1px solid var(--pos-line,#ECE3CF); border-radius:10px; background:#fff; }
   .et-test-row { display:flex; gap:8px; align-items:center; }
   .et-test-row input { font-size:12px; padding:6px 8px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; }
 </style>
@@ -156,6 +154,11 @@
               <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:12px;" onclick="etSendTest('{{ $key }}')">Send Test Email</button>
               <span id="test-status-{{ $key }}" style="font-size:12px;color:#5a8a4a;"></span>
             </div>
+
+            <div class="et-preview-wrap">
+              <div class="et-preview-head">Live Preview — this is the actual email, full length <span class="et-preview-subject" id="preview-subject-{{ $key }}"></span></div>
+              <iframe id="preview-frame-{{ $key }}" class="et-preview-frame" title="Email preview for {{ $m['label'] }}"></iframe>
+            </div>
           </div>
         @endforeach
       </div>
@@ -163,21 +166,21 @@
   @endif
 </div>
 
-<div class="et-modal-backdrop" id="et-preview-backdrop">
-  <div class="et-modal">
-    <div class="et-modal-head">
-      <strong id="et-preview-subject">Preview</strong>
-      <button type="button" class="btn-ghost" style="padding:4px 10px;" onclick="document.getElementById('et-preview-backdrop').classList.remove('open')">Close</button>
-    </div>
-    <div class="et-modal-body"><iframe id="et-preview-frame"></iframe></div>
-  </div>
-</div>
-
 <script>
 function etShow(key) {
   document.querySelectorAll('[data-et-panel]').forEach(function(p) { p.classList.toggle('active', p.getAttribute('data-et-panel') === key); });
   document.querySelectorAll('[data-et-nav]').forEach(function(n) { n.classList.toggle('active', n.getAttribute('data-et-nav') === key); });
   window.location.hash = key;
+  if (!document.getElementById('preview-frame-' + key).dataset.loaded) {
+    etPreview(key);
+  }
+}
+
+function etResizeFrame(frame) {
+  try {
+    var doc = frame.contentWindow.document;
+    frame.style.height = Math.max(200, doc.documentElement.scrollHeight, doc.body.scrollHeight) + 'px';
+  } catch (e) { /* ignore — cross-origin or not yet ready */ }
 }
 
 function etCsrf() {
@@ -192,6 +195,9 @@ function etFormBody(key) {
 }
 
 function etPreview(key) {
+  var frame = document.getElementById('preview-frame-' + key);
+  var subjectEl = document.getElementById('preview-subject-' + key);
+  subjectEl.textContent = '— loading…';
   fetch('/email-templates/' + key + '/preview', {
     method: 'POST',
     headers: { 'X-CSRF-TOKEN': etCsrf(), 'Accept': 'application/json' },
@@ -199,12 +205,13 @@ function etPreview(key) {
   })
     .then(function(r) { return r.json(); })
     .then(function(json) {
-      if (!json.success) { alert(json.message || 'Could not build preview.'); return; }
-      document.getElementById('et-preview-subject').textContent = json.data.subject || 'Preview';
-      document.getElementById('et-preview-frame').srcdoc = json.data.html || '';
-      document.getElementById('et-preview-backdrop').classList.add('open');
+      if (!json.success) { subjectEl.textContent = ''; alert(json.message || 'Could not build preview.'); return; }
+      frame.dataset.loaded = '1';
+      subjectEl.textContent = '— ' + (json.data.subject || '');
+      frame.onload = function() { etResizeFrame(frame); };
+      frame.srcdoc = json.data.html || '';
     })
-    .catch(function() { alert('Could not reach the website.'); });
+    .catch(function() { subjectEl.textContent = ''; alert('Could not reach the website.'); });
 }
 
 function etSendTest(key) {
