@@ -1,0 +1,68 @@
+# ONE-OFF verification: confirms the "email a receipt" walk-in-to-customer
+# contact linking dedupes by email instead of creating duplicates. See
+# app/Console/Commands/VerifyReceiptContactLink.php — creates one throwaway
+# contact with a synthetic @nivessa-test.internal email, re-runs the lookup
+# to confirm it matches instead of duplicating, then deletes it. Never
+# touches a real transaction or a real customer's contact record.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · verify receipt contact link
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry-run (just explains the test) or commit (actually runs it)
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - commit
+
+concurrency:
+  group: nivessa-verify-receipt-contact-link
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then break; fi
+            echo "ssh-keyscan attempt $attempt got nothing; retrying in 5s"
+            sleep 5
+          done
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            MODE='${{ github.event.inputs.mode }}'
+            ARGS=()
+            if [ "$MODE" = "commit" ]; then
+              ARGS+=("--commit")
+            fi
+            php artisan nivessa:verify-receipt-contact-link "${ARGS[@]}"
