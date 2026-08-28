@@ -142,11 +142,6 @@ class ManagerChecklistController extends Controller
             'how'   => 'Check bags, tape, cleaning supplies, receipt paper, and register supplies in the <a href="/admin/supplies" target="_blank" rel="noopener">Supplies</a> page. Low on anything? Tell Jon/Sarah.',
             'days'  => [1], // Monday
         ],
-        'inventory_check' => [
-            'label' => 'Inventory check',
-            'how'   => 'Spot-check a section using the <a href="/reports/inventory-check-assistant" target="_blank" rel="noopener">Inventory Check Assistant</a> against what the system says is in stock. Flag any mismatch.',
-            'days'  => [2, 3], // Tuesday and Wednesday
-        ],
         'training_review' => [
             'label' => 'Training checklist review - where each hire stands',
             'how'   => 'For anyone still ramping up, check where they stand on register, buys, theft awareness, and the floor.',
