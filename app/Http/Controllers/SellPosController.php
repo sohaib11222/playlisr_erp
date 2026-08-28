@@ -2313,10 +2313,67 @@ class SellPosController extends Controller
                 return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
             }
 
+            // Best-effort: give the walk-in an ERP customer record so this sale
+            // (and future ones) show up on their history — never lets a linking
+            // failure turn a successful email send into an error response.
+            try {
+                $this->linkOrCreateReceiptContact($transaction, $email, $business_id);
+            } catch (\Throwable $e) {
+                \Log::warning('emailReceipt: contact link/create failed for sale #' . $transaction_id . ': ' . $e->getMessage());
+            }
+
             return response()->json(['success' => true, 'msg' => 'Receipt emailed.']);
         } catch (\Throwable $e) {
             \Log::warning('emailReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+        }
+    }
+
+    /**
+     * If this sale was rung on the default walk-in contact (or has no
+     * contact at all), turn the email the cashier just sent a receipt to
+     * into a real customer record — so the sale, and any future ones, show
+     * up on that customer's history instead of vanishing into the walk-in
+     * bucket. Matches an existing customer by email first so repeat walk-ins
+     * never get duplicate contacts; only creates a new one when nothing
+     * matches. A contact already linked (and not the walk-in default) is
+     * left alone.
+     */
+    private function linkOrCreateReceiptContact($transaction, string $email, $business_id): void
+    {
+        $existingContact = $transaction->contact;
+        $isWalkIn = empty($existingContact) || !empty($existingContact->is_default);
+        if (!$isWalkIn) {
+            return;
+        }
+
+        $normalizedEmail = strtolower(trim($email));
+
+        $matched = Contact::where('business_id', $business_id)
+            ->whereIn('type', ['customer', 'both'])
+            ->where('is_default', 0)
+            ->whereRaw('LOWER(email) = ?', [$normalizedEmail])
+            ->first();
+
+        if (!$matched) {
+            $localPart = strtok($normalizedEmail, '@') ?: 'Customer';
+            $input = [
+                'type' => 'customer',
+                'first_name' => ucfirst($localPart),
+                'email' => $email,
+                'mobile' => '',
+                'business_id' => $business_id,
+                'created_by' => auth()->user()->id,
+            ];
+            $input['name'] = $input['first_name'];
+
+            $result = $this->contactUtil->createNewContact($input);
+            $matched = !empty($result['success']) ? $result['data'] : null;
+        }
+
+        if ($matched && (int) $transaction->contact_id !== (int) $matched->id) {
+            $transaction->contact_id = $matched->id;
+            $transaction->save();
         }
     }
 
