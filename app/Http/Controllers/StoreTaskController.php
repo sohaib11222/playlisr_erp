@@ -108,7 +108,17 @@ class StoreTaskController extends Controller
         return array_key_first($available) ?: OpeningChecklistController::defaultStoreForUser();
     }
 
-    /** Active, login-enabled employees permitted at $store, for the assignee dropdown. */
+    /**
+     * Owner/admin/dev/departed accounts that have access_all_locations (or
+     * just active+allow_login) but aren't real store-floor staff, so they'd
+     * otherwise show up in every store's assignee list regardless of the
+     * location filter below. Same roster ReportController's leaderboard
+     * exclusions use (its $nonFloor list), matched on first name - plus
+     * Fahrul, who Sarah's asked to keep off any newly routed work.
+     */
+    const NON_FLOOR_STAFF = ['nerdy', 'viper', 'henry', 'nick', 'jon', 'jonathan', 'sarah', 'sohaib', 'fatteen', 'fahrul'];
+
+    /** Active, login-enabled floor employees permitted at $store, for the assignee dropdown. */
     private function employeesForStore($businessId, $store)
     {
         $locationId = null;
@@ -129,16 +139,24 @@ class StoreTaskController extends Controller
             ->orderBy('first_name')
             ->get();
 
-        if ($locationId === null) {
-            return $users->map(function ($u) {
-                return ['id' => $u->id, 'name' => trim($u->first_name . ' ' . $u->last_name)];
-            })->values();
+        $users = $users->filter(function ($u) {
+            $first = strtolower(trim((string) $u->first_name));
+            foreach (self::NON_FLOOR_STAFF as $needle) {
+                if (strpos($first, $needle) !== false) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        if ($locationId !== null) {
+            $users = $users->filter(function ($u) use ($locationId) {
+                $perm = $u->permitted_locations();
+                return $perm === 'all' || in_array($locationId, $perm, true);
+            });
         }
 
-        return $users->filter(function ($u) use ($locationId) {
-            $perm = $u->permitted_locations();
-            return $perm === 'all' || in_array($locationId, $perm, true);
-        })->map(function ($u) {
+        return $users->map(function ($u) {
             return ['id' => $u->id, 'name' => trim($u->first_name . ' ' . $u->last_name)];
         })->values();
     }
