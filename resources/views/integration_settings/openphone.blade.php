@@ -27,9 +27,14 @@
                     </div>
 
                     <div class="form-group">
-                        {!! Form::label('from_number', 'Sending Number:') !!}
-                        {!! Form::text('from_number', null, ['class' => 'form-control', 'placeholder' => '+12136762645', 'required']) !!}
-                        <p class="help-block">Your OpenPhone number. A plain 10-digit number is fine too — it'll be formatted automatically.</p>
+                        {!! Form::label('hollywood_number', 'Hollywood Sending Number:') !!}
+                        {!! Form::text('hollywood_number', null, ['class' => 'form-control', 'placeholder' => '+12136762645', 'required']) !!}
+                    </div>
+
+                    <div class="form-group">
+                        {!! Form::label('pico_number', 'Pico Sending Number:') !!}
+                        {!! Form::text('pico_number', null, ['class' => 'form-control', 'placeholder' => '+12136762645', 'required']) !!}
+                        <p class="help-block">A receipt texts from whichever store rang the sale. Plain 10-digit numbers are fine — formatted automatically.</p>
                     </div>
 
                     <button type="submit" class="btn btn-primary">Save</button>

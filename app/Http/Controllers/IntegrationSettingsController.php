@@ -41,19 +41,23 @@ class IntegrationSettingsController extends Controller
 
         $request->validate([
             'api_key' => 'required|string|max:255',
-            'from_number' => 'required|string|max:20',
+            'hollywood_number' => 'required|string|max:20',
+            'pico_number' => 'required|string|max:20',
         ]);
 
         $apiKey = trim($request->input('api_key'));
-        $fromNumber = trim($request->input('from_number'));
-        // Tolerate a raw 10-digit US number typed without the country code.
-        if (preg_match('/^\d{10}$/', $fromNumber)) {
-            $fromNumber = '+1' . $fromNumber;
-        }
+        $normalizeNumber = function ($n) {
+            $n = trim($n);
+            // Tolerate a raw 10-digit US number typed without the country code.
+            return preg_match('/^\d{10}$/', $n) ? '+1' . $n : $n;
+        };
+        $hollywoodNumber = $normalizeNumber($request->input('hollywood_number'));
+        $picoNumber = $normalizeNumber($request->input('pico_number'));
 
         $sent = $this->pushToErpBridge('/erp/settings/openphone', [
             'apiKey' => $apiKey,
-            'fromNumber' => $fromNumber,
+            'hollywoodNumber' => $hollywoodNumber,
+            'picoNumber' => $picoNumber,
             'updatedBy' => trim((string) optional(auth()->user())->first_name),
         ]);
 
