@@ -49,6 +49,9 @@
                         <tr>
                             <td>
                                 <a href="{{ route('buy-from-customer.intake-sheet', $offer->id) }}">{{ $offer->buy_record_number }}</a>
+                                <div style="margin-top:4px;">
+                                    <a href="{{ route('buy-from-customer.intake-sheet', $offer->id) }}" class="btn btn-success btn-xs"><i class="fa fa-file-text"></i> View Purchase Details</a>
+                                </div>
                             </td>
                             <td>{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }}</td>
                             <td>{{ optional($offer->location)->name ?: '—' }}</td>
