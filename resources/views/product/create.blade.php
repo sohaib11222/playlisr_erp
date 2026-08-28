@@ -98,7 +98,8 @@
 }
 .product-add-v2 .pe-card-row .pe-card { margin-bottom: 0; }
 .product-add-v2 .pe-card-row .pe-card-pricing { flex: 1 1 62%; }
-.product-add-v2 .pe-card-row .pe-card-inventory { flex: 1 1 34%; }
+.product-add-v2 .pe-card-row .pe-card-description { flex: 1 1 34%; }
+.product-add-v2 .pe-card-inventory-standalone { max-width: 640px; }
 
 .product-add-v2 .pe-card-title {
     font-size: 13px;
@@ -183,7 +184,7 @@
     border-radius: 4px !important;
 }
 .product-add-v2 .select2-selection__choice__remove { color: var(--pe-ink-2) !important; }
-.product-add-v2 textarea.form-control { height: auto !important; min-height: 90px !important; max-width: none; }
+.product-add-v2 textarea.form-control { height: auto !important; max-width: none; }
 .product-add-v2 .select2-selection--single .select2-selection__rendered { line-height: 22px !important; padding: 0 !important; color: var(--pe-ink) !important; }
 .product-add-v2 .select2-selection--single .select2-selection__arrow { height: 36px !important; }
 .product-add-v2 ::placeholder { color: #9A9084 !important; opacity: 1 !important; }
@@ -502,7 +503,32 @@
         </div>
     </div>
 
-    {{-- ─── Card 2: Pricing & Tax + Inventory Options (side by side) ──── --}}
+    {{-- ─── Card 2: Inventory Options ───────────────────────────────────── --}}
+    <div class="pe-card pe-card-inventory-standalone">
+        <h3 class="pe-card-title">Inventory Options</h3>
+        <div class="row">
+            <div class="col-sm-6">
+                <div class="form-group">
+                    <label style="display:block; margin-bottom:6px;">
+                        {!! Form::checkbox('enable_stock', 1, !empty($duplicate_product) ? $duplicate_product->enable_stock : true, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
+                        <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
+                    </label>
+                    <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
+                </div>
+            </div>
+
+            <div class="col-sm-6">
+                <div class="form-group">
+                    {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
+                    {!! Form::text('alert_quantity', !empty($duplicate_product->alert_quantity) ? $duplicate_product->alert_quantity : null, ['class' => 'form-control input_number',
+                    'placeholder' => 'e.g. 5']) !!}
+                    <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ─── Card 3: Pricing & Tax + Description (side by side) ─────────── --}}
     <div class="pe-card-row">
         <div class="pe-card pe-card-pricing">
             <h3 class="pe-card-title">Pricing &amp; Tax</h3>
@@ -553,34 +579,14 @@
             </div>
         </div>
 
-        <div class="pe-card pe-card-inventory">
-            <h3 class="pe-card-title">Inventory Options</h3>
-            <div class="form-group">
-                <label style="display:block; margin-bottom:6px;">
-                    {!! Form::checkbox('enable_stock', 1, !empty($duplicate_product) ? $duplicate_product->enable_stock : true, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
-                    <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
-                </label>@show_tooltip(__('tooltip.enable_stock'))
-                <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
-            </div>
-
-            <div class="form-group">
-                {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!} @show_tooltip(__('tooltip.alert_quantity'))
-                {!! Form::text('alert_quantity', !empty($duplicate_product->alert_quantity) ? $duplicate_product->alert_quantity : null, ['class' => 'form-control input_number',
-                'placeholder' => 'e.g. 5']) !!}
-                <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
-            </div>
+        <div class="pe-card pe-card-description">
+            <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
+            {!! Form::textarea('product_description', !empty($duplicate_product->product_description) ? $duplicate_product->product_description : null, ['class' => 'form-control', 'rows' => 4]) !!}
+            <p class="help-block">Also shown as the product description on nivessa.com.</p>
         </div>
     </div>
 
 {!! Form::close() !!}
-
-    {{-- ─── Card 3: Description ───────────────────────────────────────── --}}
-    <div class="pe-card pe-card-wide">
-        <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
-        {{-- Sits outside the main form but submits with it via the HTML5 form attr. --}}
-        {!! Form::textarea('product_description', !empty($duplicate_product->product_description) ? $duplicate_product->product_description : null, ['class' => 'form-control', 'form' => 'product_add_form']) !!}
-        <p class="help-block">Also shown as the product description on nivessa.com.</p>
-    </div>
 
 </div>{{-- /.product-add-v2 --}}
 
