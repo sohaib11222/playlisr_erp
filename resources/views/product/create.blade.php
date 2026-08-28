@@ -24,7 +24,7 @@
     --pe-radius-sm:   8px;
     --pe-shadow-sm:   0 1px 2px rgba(31,27,22,.06);
     --pe-shadow-md:   0 4px 14px rgba(31,27,22,.08);
-    --pe-form-width:  1080px;
+    --pe-form-width:  1360px;
 
     background: var(--pe-bg);
     font-family: "Inter Tight", system-ui, sans-serif;
@@ -107,6 +107,19 @@
 .product-add-v2 .form-group { margin-bottom: 14px; }
 .product-add-v2 .select2-container {
     width: 100% !important;
+}
+/* Card 1's fields sit in a wide column on a big monitor — keep each input a
+   normal reading width instead of stretching it edge to edge. Full-width
+   controls (textarea, the multi-select, table inputs) opt back out below. */
+.product-add-v2 .form-control,
+.product-add-v2 .select2-container {
+    max-width: 460px;
+}
+.product-add-v2 textarea.form-control,
+.product-add-v2 select[id="product_locations"] + .select2-container,
+.product-add-v2 .add-product-price-table .form-control,
+.product-add-v2 .pe-image-panel .form-control {
+    max-width: none;
 }
 .product-add-v2 label,
 .product-add-v2 .form-group label {
