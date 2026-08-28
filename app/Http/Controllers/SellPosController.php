@@ -2322,21 +2322,33 @@ class SellPosController extends Controller
 
     /**
      * POST the receipt payload to the website's ERP bridge (/api/v1/erp/receipts/email).
-     * Same base/key resolution as NivessaStockNotifier — hand-managed prod .env,
-     * no extra configuration needed. Synchronous (unlike the stock push) since
-     * the cashier is waiting on a success/fail toast for this one.
+     * Key/base resolution mirrors NivessaStockNotifier EXACTLY: config, then
+     * .env, then the .env file off disk (cache-proof — config() alone comes
+     * back empty when config:cache predates the key landing in .env, which
+     * is the hand-managed prod .env's normal state), then the UI-set key in
+     * storage/app/events-bridge.json. Synchronous (unlike the stock push)
+     * since the cashier is waiting on a success/fail toast for this one.
      */
     private function pushReceiptEmail(array $payload): bool
     {
         $base = trim((string) config('constants.nivessa_api'));
         if ($base === '') {
-            $base = trim((string) env('NIVESSA_API', 'https://nivessa.com/api/v1'));
+            $base = trim((string) env('NIVESSA_API', ''));
+        }
+        if ($base === '') {
+            $base = 'https://nivessa.com/api/v1';
         }
         $base = rtrim($base, '/');
 
         $key = trim((string) config('constants.erp_api_key'));
         if ($key === '') {
             $key = trim((string) env('ERP_API_KEY', ''));
+        }
+        if ($key === '') {
+            $key = $this->readErpKeyFromDisk();
+        }
+        if ($key === '') {
+            $key = $this->readErpKeyFromStore();
         }
         if ($base === '' || $key === '') {
             \Log::warning('emailReceipt: website base/key not configured.');
@@ -2366,6 +2378,40 @@ class SellPosController extends Controller
             return false;
         }
         return true;
+    }
+
+    /** Cache-proof .env read — copy of NivessaStockNotifier::readKeyFromDisk. */
+    private function readErpKeyFromDisk(): string
+    {
+        try {
+            $path = base_path('.env');
+            if (!is_readable($path)) {
+                return '';
+            }
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                if (strpos(ltrim($line), 'ERP_API_KEY=') === 0) {
+                    return trim(trim(substr(ltrim($line), strlen('ERP_API_KEY='))), "\"'");
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
+        return '';
+    }
+
+    /** UI-set key fallback — copy of NivessaStockNotifier::readKeyFromStore. */
+    private function readErpKeyFromStore(): string
+    {
+        try {
+            $path = storage_path('app/events-bridge.json');
+            if (!is_file($path)) {
+                return '';
+            }
+            $j = json_decode((string) file_get_contents($path), true);
+            return is_array($j) ? trim((string) ($j['erpApiKey'] ?? '')) : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     /**
