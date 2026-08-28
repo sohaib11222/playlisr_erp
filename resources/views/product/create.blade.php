@@ -24,7 +24,7 @@
     --pe-radius-sm:   8px;
     --pe-shadow-sm:   0 1px 2px rgba(31,27,22,.06);
     --pe-shadow-md:   0 4px 14px rgba(31,27,22,.08);
-    --pe-form-width:  1600px;
+    --pe-form-width:  100%;
 
     background: var(--pe-bg);
     font-family: "Inter Tight", system-ui, sans-serif;
@@ -198,7 +198,6 @@
     background: var(--pe-surface-2);
     padding: 18px;
     text-align: center;
-    max-width: 320px;
 }
 .product-add-v2 .pe-image-panel .pe-image-icon {
     width: 40px; height: 40px; margin: 0 auto 10px;
