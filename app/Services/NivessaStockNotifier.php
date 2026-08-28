@@ -76,6 +76,29 @@ class NivessaStockNotifier
      */
     public function push(array $posProductIds): void
     {
+        $this->postIds('/erp/pos-stock-changed', $posProductIds, 'stock push');
+    }
+
+    /**
+     * Notify the website that a product was just created or edited in the ERP
+     * (name, price, category, SKU, custom fields — the full record, not just
+     * stock). Unlike push()/notifySale(), the website may not have this
+     * product yet at all, so its handler creates it if missing instead of
+     * only refreshing an existing one.
+     *
+     * Call this right after a successful create/update commit in
+     * ProductController — wrapped in try/catch there so a website/network
+     * hiccup can never fail the save. The nightly POS upsert sync remains the
+     * correctness backstop if a push is ever lost.
+     */
+    public function pushProductChanged(array $posProductIds): void
+    {
+        $this->postIds('/erp/pos-product-changed', $posProductIds, 'product push');
+    }
+
+    /** Shared POST-ids-to-bridge implementation used by push() and pushProductChanged(). */
+    private function postIds(string $path, array $posProductIds, string $label): void
+    {
         $posProductIds = array_values(array_unique(array_filter(
             array_map('intval', $posProductIds),
             static fn ($v) => $v > 0
@@ -87,7 +110,7 @@ class NivessaStockNotifier
         $base = $this->resolveBase();
         $key = $this->resolveKey();
         if ($base === '' || $key === '') {
-            Log::info('NivessaStockNotifier: base/key not configured — skipping stock push for '
+            Log::info("NivessaStockNotifier: base/key not configured — skipping {$label} for "
                 . count($posProductIds) . ' product(s).');
             return;
         }
@@ -95,7 +118,7 @@ class NivessaStockNotifier
         $payload = json_encode(['pos_product_ids' => $posProductIds]);
 
         try {
-            $ch = curl_init($base . '/erp/pos-stock-changed');
+            $ch = curl_init($base . $path);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CONNECTTIMEOUT => 2,
@@ -113,11 +136,11 @@ class NivessaStockNotifier
             $err  = curl_error($ch);
             curl_close($ch);
 
-            Log::info('NivessaStockNotifier push ' . count($posProductIds) . ' product(s) → HTTP ' . $code
+            Log::info("NivessaStockNotifier {$label} " . count($posProductIds) . ' product(s) → HTTP ' . $code
                 . ($err ? (' curl_err=' . $err) : '')
                 . ' body=' . substr((string) $resp, 0, 200));
         } catch (\Throwable $e) {
-            Log::info('NivessaStockNotifier push failed: ' . $e->getMessage());
+            Log::info("NivessaStockNotifier {$label} failed: " . $e->getMessage());
         }
     }
 

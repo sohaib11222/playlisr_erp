@@ -1194,6 +1194,17 @@ class ProductController extends Controller
 
 
             DB::commit();
+
+            // Real-time website push — a brand-new product (e.g. a preorder
+            // SKU) used to sit invisible until the next scheduled POS import
+            // pass. This creates it on nivessa.com within seconds instead.
+            // Never let a website/network hiccup fail the product save.
+            try {
+                (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $product->id]);
+            } catch (\Throwable $pushEx) {
+                \Log::warning('Product create website push failed: ' . $pushEx->getMessage());
+            }
+
             $output = ['success' => 1,
                             'msg' => __('product.product_added_success')
                         ];
@@ -1781,6 +1792,18 @@ class ProductController extends Controller
             Media::uploadMedia($product->business_id, $product, $request, 'product_brochure', true);
 
             DB::commit();
+
+            // Real-time website push — same as the create path (see store()):
+            // pushes the full edited record (name, price, category, custom
+            // fields, ...) so an edit shows on nivessa.com within seconds
+            // instead of on the next scheduled POS import pass. If the
+            // product doesn't exist on the site yet, the website handler
+            // creates it. Never let a website/network hiccup fail the save.
+            try {
+                (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $id]);
+            } catch (\Throwable $pushEx) {
+                \Log::warning('Product update website push failed: ' . $pushEx->getMessage());
+            }
 
             // Record who last edited this product into the existing activity_log
             // table (no migration needed). The products list reads the latest
