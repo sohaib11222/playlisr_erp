@@ -1,0 +1,82 @@
+# One-click cleanup of never-filled-in default rows on production that got
+# saved as real buy_customer_offer_lines before the BuyOfferCalculatorService
+# fix (the buy-from-customer form pre-renders 7 blank individual_vinyl rows;
+# untouched ones used to persist anyway, so offers showed "7" items
+# regardless of how many were actually entered).
+#
+# Runs `php artisan bfc:cleanup-blank-lines`. DRY RUN by default — it only
+# reports how many blank lines would be deleted. Tick the "commit" input to
+# actually delete them.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Cleanup BFC blank lines
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Actually delete the blank lines? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run bfc:cleanup-blank-lines
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 10m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run — deleting blank lines ==="
+              php artisan bfc:cleanup-blank-lines --commit 2>&1
+            else
+              echo "=== DRY RUN — no changes ==="
+              php artisan bfc:cleanup-blank-lines 2>&1
+            fi
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
+            fi
+            echo "=== done ==="
+            exit 0

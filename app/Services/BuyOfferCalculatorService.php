@@ -180,6 +180,19 @@ class BuyOfferCalculatorService
                 continue;
             }
 
+            // create.blade.php pre-renders 7 blank individual_vinyl rows
+            // (quantity 1, no title/link/price) so cashiers don't have to
+            // click "Add line" for a typical haul. Skip whichever of those
+            // never got touched, so unused rows don't get saved as items.
+            if ($itemType === 'individual_vinyl'
+                && $quantity == 1
+                && trim((string) ($line['title'] ?? '')) === ''
+                && trim((string) ($line['discogs_link'] ?? '')) === ''
+                && trim((string) ($line['discogs_median_price'] ?? '')) === ''
+            ) {
+                continue;
+            }
+
             $noGrading = !empty($cfg['no_grading']);
             $grade = $line['condition_grade'] ?? ($cfg['default_grade'] ?? 'VG+');
             $gradeMultiplier = $noGrading ? 1.0 : (float) ($rules['grade_multipliers'][$grade] ?? 1);
