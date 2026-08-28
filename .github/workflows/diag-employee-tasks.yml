@@ -1,0 +1,82 @@
+# READ-ONLY diagnostic: exercise StoreTaskController::buildBoard() for both
+# stores directly (bypassing auth, since it's a private method with no
+# session dependency) to confirm the board actually renders data with no
+# PHP errors for Pico and Hollywood - same class of bug the "trying to get
+# property 'id' of non-object" fix caught, verified without needing to log
+# into the ERP.
+name: Diag employee tasks
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check both stores' boards build without error (read-only tinker)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== route registered? ==="
+            php artisan route:list --no-ansi 2>/dev/null | grep -i "employee-tasks"
+            echo "=== tables exist? ==="
+            php artisan tinker --no-ansi <<'PHP'
+            echo "employee_tasks=".(\Illuminate\Support\Facades\Schema::hasTable('employee_tasks') ? 'yes' : 'no')."\n";
+            echo "employee_task_completions=".(\Illuminate\Support\Facades\Schema::hasTable('employee_task_completions') ? 'yes' : 'no')."\n";
+            PHP
+            echo "=== buildBoard('pico') and buildBoard('hollywood') - direct call, no auth needed ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $c = new App\Http\Controllers\StoreTaskController();
+            $ref = new ReflectionMethod($c, 'buildBoard');
+            $ref->setAccessible(true);
+            $businessId = DB::table('business')->value('id');
+            echo "business_id=".$businessId."\n";
+            foreach (['pico', 'hollywood'] as $store) {
+                try {
+                    $rows = $ref->invoke($c, $businessId, $store, date('Y-m-d'));
+                    echo "OK $store: ".count($rows)." tasks\n";
+                    foreach ($rows as $r) {
+                        echo "  - [".$r['recurrence']."] ".$r['title']." due ".$r['due_date'].($r['overdue'] ? ' (overdue)' : '')."\n";
+                    }
+                } catch (\Throwable $e) {
+                    echo "FAIL $store: ".get_class($e).": ".$e->getMessage()." at ".$e->getFile().":".$e->getLine()."\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
