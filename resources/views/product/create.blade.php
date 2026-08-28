@@ -700,6 +700,27 @@
             ensureCategoryComboMatcher();
             setTimeout(ensureCategoryComboMatcher, 0);
 
+            // ---- Relabel the price table's image column -----------------------
+            // single_product_form_part.blade.php (shared with mass-add, so not
+            // edited directly) labels its 4th column "Product image" too — same
+            // wording as the real upload panel above, reading as a duplicate.
+            // It's actually a separate field (variation_images[], extra photos
+            // attached to the variation) — this page is the only place in the
+            // app that exposes it, so relabel rather than remove it.
+            (function relabelVariationImagesColumn() {
+                var $th = $('#product_form_part .add-product-price-table thead th, #product_form_part .add-product-price-table tr th').filter(function () {
+                    return $.trim($(this).text()) === 'Product image';
+                });
+                $th.text('Additional Images');
+
+                var $label = $('label[for="variation_images"]');
+                if ($label.length) {
+                    $label.text('Additional Images:');
+                    $label.closest('.form-group').find('.help-block').first()
+                        .html('Extra photos for this listing, beyond the main cover image above.');
+                }
+            })();
+
             // ---- Secondary fields toggle ---------------------------------------
             // Bin position / listing location / image URL are optional metadata,
             // not needed for most products — keep them off-screen until asked for.
