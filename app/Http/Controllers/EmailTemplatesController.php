@@ -142,6 +142,12 @@ class EmailTemplatesController extends Controller
             'group' => 'Bookings (venue rentals)',
             'fields' => ['subject', 'headline', 'intro', 'closingNote'],
         ],
+        'pos_receipt' => [
+            'label' => 'POS Itemized Receipt',
+            'description' => 'Sent from POS Create when a cashier emails a customer their receipt.',
+            'group' => 'Order Lifecycle',
+            'fields' => ['subject', 'headline', 'intro', 'ctaText', 'closingNote'],
+        ],
     ];
 
     const GROUP_ORDER = ['Order Lifecycle', 'Account', 'Events & Preorders', 'Bookings (venue rentals)'];
