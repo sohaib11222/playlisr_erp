@@ -9,64 +9,79 @@
 @include('events.partials._styles')
 
 <style>
-  .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid var(--pos-line,#ECE3CF); margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
-  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#7a7266; text-decoration:none; white-space:nowrap; }
-  .wo-tab:hover { color:#2a2620; }
-  .wo-tab.active { color:#2a2620; }
-  .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#2a2620; border-radius:2px 2px 0 0; }
-  .wo-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; background:#b7ad93; margin-left:8px; }
-  .wo-badge.hot { background:#c98a2c; }
-  .wo-badge.overdue { background:#a23; }
+  .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
+  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#6b7280; text-decoration:none; white-space:nowrap; }
+  .wo-tab:hover { color:#111827; }
+  .wo-tab.active { color:#111827; }
+  .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#111827; border-radius:2px 2px 0 0; }
+  .wo-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; background:#9ca3af; margin-left:8px; }
+  .wo-badge.hot { background:#d97706; }
+  .wo-badge.overdue { background:#dc2626; }
 
-  .wo-filters { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; background:#faf8f2; border:1px solid var(--pos-line,#ECE3CF); border-radius:10px; padding:14px 16px; }
+  .wo-filters { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
   .wo-filters .wo-field { display:flex; flex-direction:column; gap:4px; }
-  .wo-filters label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#948a76; }
-  .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { font-size:13.5px; padding:8px 10px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; background:#fff; }
+  .wo-filters label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#9ca3af; }
+  .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { font-size:13.5px; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; background:#fff; }
   .wo-filters .wo-actions-inline { display:flex; gap:10px; align-items:center; }
 
   .wo-banner { margin-bottom:16px; padding:12px 14px; border-radius:8px; font-size:14px; }
-  .wo-banner.warn { background:#fff8e6; border:1px solid #f0dfa8; color:#6b5511; }
-  .wo-banner.overdue { background:#fdecec; border:1px solid #f0c2c2; color:#7a2222; }
-  .wo-banner.ok { background:#eef7ee; border:1px solid #cfe8cf; color:#245a24; }
+  .wo-banner.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .wo-banner.overdue { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
+  .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
   .wo-tbl { width:100%; border-collapse:collapse; }
-  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#8f8672; padding:10px 14px; border-bottom:2px solid var(--pos-line,#ECE3CF); background:#faf8f2; }
-  .wo-tbl tbody tr.wo-row { border-bottom:1px solid var(--pos-line,#ECE3CF); }
-  .wo-tbl tbody tr.wo-row:hover { background:#fdfcf8; }
+  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
+  .wo-tbl tbody tr.wo-row { border-bottom:1px solid #f0f0f0; }
+  .wo-tbl tbody tr.wo-row:hover { background:#fafafa; }
   .wo-tbl td { padding:16px 14px; font-size:14px; vertical-align:top; }
 
-  .wo-buyer-name { font-size:14.5px; font-weight:700; color:#2a2620; }
-  .wo-buyer-email { font-size:12.5px; color:#8f8672; margin-top:2px; }
-  .wo-view-toggle { display:inline-block; margin-top:6px; font-size:12.5px; color:#4a6fa5; background:none; border:none; padding:0; cursor:pointer; text-decoration:underline; }
+  .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
+  .wo-buyer-email { font-size:12.5px; color:#6b7280; margin-top:2px; }
 
-  .wo-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:700; background:#fdf1cf; color:#7a5c10; }
-  .wo-total { font-weight:700; color:#2a2620; }
-  .wo-placed { font-size:13px; color:#6b6253; white-space:nowrap; }
+  .wo-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .wo-pill.st-processing { background:#fef9c3; color:#854d0e; }
+  .wo-pill.st-ready_for_pickup { background:#fef3c7; color:#92400e; }
+  .wo-pill.st-picked_up { background:#d1fae5; color:#065f46; }
+  .wo-pill.st-shipped { background:#dbeafe; color:#1e40af; }
+  .wo-pill.st-email_sent { background:#dcfce7; color:#166534; }
+  .wo-pill.st-delivered { background:#dcfce7; color:#166534; }
+  .wo-pill.st-cancelled { background:#fee2e2; color:#991b1b; }
+  .wo-pill.st-flag { background:#fee2e2; color:#991b1b; }
+  .wo-pill.st-default { background:#f3f4f6; color:#374151; }
 
-  .wo-status-block { display:flex; flex-direction:column; gap:8px; min-width:230px; }
-  .wo-status-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .wo-status-row select, .wo-status-row input[type=text] { font-size:13.5px; padding:7px 9px; border:1px solid var(--pos-line,#ECE3CF); border-radius:8px; }
-  .wo-status-row input[type=text] { max-width:130px; }
-  .wo-notify-label { font-size:12px; display:flex; align-items:center; gap:5px; color:#6b6253; }
-  .wo-btn { font-size:13px; padding:7px 14px; border-radius:8px; border:1px solid var(--pos-line,#ECE3CF); background:#fff; cursor:pointer; font-weight:600; color:#2a2620; }
-  .wo-btn:hover { background:#faf8f2; }
-  .wo-btn-primary { background:#2a2620; color:#fff; border-color:#2a2620; }
-  .wo-btn-primary:hover { background:#403a2e; }
-  .wo-btn-danger { color:#a23; border-color:#f3cccc; }
-  .wo-btn-danger:hover { background:#fdecec; }
+  .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; }
+  .wo-fm-pill.shipping { background:#e0f2fe; color:#0369a1; }
+  .wo-fm-pill.pickup { background:#f3e8ff; color:#6d28d9; }
+  .wo-fm-pill.digital { background:#dcfce7; color:#166534; }
 
-  .wo-other-col { min-width:180px; }
-  .wo-cancel-toggle { font-size:12.5px; color:#a23; background:none; border:none; padding:0; margin-top:10px; cursor:pointer; text-decoration:underline; display:block; }
-  .wo-cancel-form { display:none; flex-direction:column; gap:8px; margin-top:10px; padding:12px; background:#fdf6f6; border:1px solid #f3cccc; border-radius:8px; }
-  .wo-cancel-form.open { display:flex; }
-  .wo-cancel-form select, .wo-cancel-form input[type=text] { font-size:13px; padding:7px 9px; border:1px solid #f0c2c2; border-radius:7px; width:100%; }
+  .wo-total { font-weight:600; color:#111827; }
+  .wo-placed { font-size:13px; color:#6b7280; white-space:nowrap; }
 
-  .wo-detail td { background:#faf8f2; padding:0 14px 18px; }
+  .wo-row-actions { display:flex; flex-direction:column; gap:6px; min-width:150px; }
+  .wo-btn { font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#374151; text-align:center; }
+  .wo-btn:hover { background:#f9fafb; }
+  .wo-btn-primary { background:#111827; color:#fff; border-color:#111827; }
+  .wo-btn-primary:hover { background:#1f2937; }
+  .wo-btn-danger { color:#b91c1c; border-color:#fecaca; }
+  .wo-btn-danger:hover { background:#fef2f2; }
+
+  .wo-dialog { border:none; border-radius:12px; padding:0; max-width:420px; width:calc(100vw - 32px); box-shadow:0 10px 40px rgba(0,0,0,.2); }
+  .wo-dialog::backdrop { background:rgba(17,24,39,.45); }
+  .wo-dialog-body { padding:22px; }
+  .wo-dialog-body h3 { margin:0 0 14px; font-size:16px; font-weight:700; color:#111827; }
+  .wo-dialog-body label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#6b7280; margin:12px 0 5px; }
+  .wo-dialog-body label:first-of-type { margin-top:0; }
+  .wo-dialog-body select, .wo-dialog-body input[type=text] { width:100%; font-size:14px; padding:9px 10px; border:1px solid #d1d5db; border-radius:8px; box-sizing:border-box; }
+  .wo-dialog-checkline { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:#374151; margin-top:14px; }
+  .wo-dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+
+  .wo-detail td { background:#f9fafb; padding:0 14px 18px; }
   .wo-detail-grid { display:flex; flex-wrap:wrap; gap:28px; padding:14px 4px; font-size:13px; }
-  .wo-detail-grid h5 { font-size:12.5px; font-weight:700; margin:0 0 8px; color:#5a5346; text-transform:uppercase; letter-spacing:.03em; }
+  .wo-detail-grid h5 { font-size:12.5px; font-weight:700; margin:0 0 8px; color:#4b5563; text-transform:uppercase; letter-spacing:.03em; }
   .wo-detail-items { width:100%; border-collapse:collapse; margin-top:6px; }
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
-  .wo-detail-items th { color:#8f8672; font-weight:700; font-size:11px; text-transform:uppercase; }
+  .wo-detail-items th { color:#6b7280; font-weight:700; font-size:11px; text-transform:uppercase; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -169,14 +184,14 @@
       </div>
       <div class="wo-actions-inline">
         <button type="submit" class="wo-btn wo-btn-primary">Filter</button>
-        <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:13px;color:#7a7266;">Clear</a>
+        <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:13px;color:#6b7280;">Clear</a>
       </div>
     </form>
 
     @if(empty($orders))
       <div class="ev-card"><div class="empty">No orders in this view.</div></div>
     @else
-      <div class="ev-card" style="padding:0;overflow:hidden;">
+      <div class="wo-card">
         <div style="overflow-x:auto;">
         <table class="wo-tbl">
           <thead><tr>
@@ -185,8 +200,7 @@
             <th>Fulfillment</th>
             <th>Total</th>
             <th>Placed</th>
-            <th>Update status</th>
-            <th>Other</th>
+            <th>Actions</th>
           </tr></thead>
           <tbody>
             @foreach($orders as $o)
@@ -198,73 +212,46 @@
                 $customerEmail = $o['user_id']['email'] ?? '';
                 $placed = !empty($o['createdAt']) ? date('M j, Y g:ia', strtotime($o['createdAt'])) : '—';
                 $isArchived = !empty($o['archived']);
+                $status = $o['order_status'] ?? '';
+                $pillClass = in_array($status, ['processing','ready_for_pickup','picked_up','shipped','email_sent','delivered','cancelled','flag'], true) ? "st-{$status}" : 'st-default';
                 $rowId = 'wo-detail-' . substr((string) ($o['_id'] ?? ''), -8);
-                $cancelId = 'wo-cancel-' . substr((string) ($o['_id'] ?? ''), -8);
               @endphp
               <tr class="wo-row">
                 <td>
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
-                  <button type="button" class="wo-view-toggle" onclick="var el=document.getElementById('{{ $rowId }}'); el.style.display = el.style.display === 'none' ? '' : 'none';">View details</button>
                 </td>
-                <td><span class="wo-pill">{{ $statuses[$o['order_status'] ?? ''] ?? ($o['order_status'] ?? 'pending') }}</span></td>
+                <td><span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span></td>
                 <td>
                   @if($isGift)
-                    Digital (Email)
+                    <span class="wo-fm-pill digital">Digital (Email)</span>
                   @elseif(($o['fulfillment_method'] ?? null) === 'pickup')
-                    Pickup ({{ ($o['pickup_location'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }})
+                    <span class="wo-fm-pill pickup">Pickup ({{ ($o['pickup_location'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }})</span>
                   @else
-                    Shipping
+                    <span class="wo-fm-pill shipping">Shipping</span>
                   @endif
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
                 <td class="wo-placed">{{ $placed }}</td>
                 <td>
-                  <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $o['_id']]) }}" class="wo-status-block">
-                    {{ csrf_field() }}
-                    <input type="hidden" name="tab" value="{{ $activeTab }}">
-                    <div class="wo-status-row">
-                      <select name="status" required>
-                        <option value="">Status…</option>
-                        @foreach($statuses as $key => $label)
-                          <option value="{{ $key }}" {{ ($o['order_status'] ?? '') === $key ? 'selected' : '' }}>{{ $label }}</option>
-                        @endforeach
-                      </select>
-                      <input type="text" name="tracking_number" value="{{ $o['tracking_number'] ?? '' }}" placeholder="Tracking #">
-                    </div>
-                    <div class="wo-status-row">
-                      <label class="wo-notify-label"><input type="checkbox" name="notify_customer" value="1" checked> Notify customer</label>
-                      <button type="submit" class="wo-btn wo-btn-primary">Update</button>
-                    </div>
-                  </form>
-                </td>
-                <td class="wo-other-col">
-                  <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
-                        onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
-                    {{ csrf_field() }}
-                    <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
-                    <button type="submit" class="wo-btn">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
-                  </form>
-                  @if(!$isArchived)
-                    <button type="button" class="wo-cancel-toggle" onclick="var el=document.getElementById('{{ $cancelId }}'); el.classList.toggle('open');">Cancel order…</button>
-                    <form method="POST" action="{{ route('website-orders.cancel', ['id' => $o['_id']]) }}"
-                          id="{{ $cancelId }}" class="wo-cancel-form"
-                          onsubmit="return confirm('Cancel this order and email the customer? This can\'t be undone from here.');">
+                  <div class="wo-row-actions">
+                    <button type="button" class="wo-btn wo-btn-primary"
+                      onclick="woOpenStatus('{{ $o['_id'] }}', '{{ $status }}', '{{ $o['tracking_number'] ?? '' }}')">Update status</button>
+                    <button type="button" class="wo-btn" onclick="var el=document.getElementById('{{ $rowId }}'); el.style.display = el.style.display === 'none' ? '' : 'none';">View details</button>
+                    <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
+                          onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
                       {{ csrf_field() }}
-                      <select name="reason" required>
-                        <option value="">Reason…</option>
-                        @foreach($reasons as $key => $label)
-                          <option value="{{ $key }}">{{ $label }}</option>
-                        @endforeach
-                      </select>
-                      <input type="text" name="note" placeholder="Note (required if Other)">
-                      <button type="submit" class="wo-btn wo-btn-danger">Cancel order</button>
+                      <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
+                      <button type="submit" class="wo-btn" style="width:100%;">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                     </form>
-                  @endif
+                    @if(!$isArchived)
+                      <button type="button" class="wo-btn wo-btn-danger" onclick="woOpenCancel('{{ $o['_id'] }}')">Cancel order</button>
+                    @endif
+                  </div>
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="7">
+                <td colspan="6">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
@@ -334,6 +321,70 @@
         </div>
       </div>
     @endif
+
+    {{-- Shared "Update status" dialog — one dialog reused for every row, retargeted by
+         woOpenStatus() rather than one dialog per order (keeps the DOM small). --}}
+    <dialog id="wo-status-dialog" class="wo-dialog">
+      <form method="POST" id="wo-status-form" class="wo-dialog-body">
+        {{ csrf_field() }}
+        <input type="hidden" name="tab" value="{{ $activeTab }}">
+        <h3>Update order status</h3>
+        <label>Status</label>
+        <select name="status" id="wo-status-select" required>
+          <option value="">Choose a status…</option>
+          @foreach($statuses as $key => $label)
+            <option value="{{ $key }}">{{ $label }}</option>
+          @endforeach
+        </select>
+        <label>Tracking number</label>
+        <input type="text" name="tracking_number" id="wo-status-tracking" placeholder="Required if Shipped">
+        <label class="wo-dialog-checkline" style="text-transform:none;">
+          <input type="checkbox" name="notify_customer" value="1" checked> Notify the customer by email
+        </label>
+        <div class="wo-dialog-actions">
+          <button type="button" class="wo-btn" onclick="document.getElementById('wo-status-dialog').close()">Cancel</button>
+          <button type="submit" class="wo-btn wo-btn-primary">Update</button>
+        </div>
+      </form>
+    </dialog>
+
+    {{-- Shared "Cancel order" dialog — same reuse pattern. --}}
+    <dialog id="wo-cancel-dialog" class="wo-dialog">
+      <form method="POST" id="wo-cancel-form" class="wo-dialog-body"
+            onsubmit="return confirm('Cancel this order and email the customer? This can\'t be undone from here.');">
+        {{ csrf_field() }}
+        <h3>Cancel order</h3>
+        <label>Reason</label>
+        <select name="reason" required>
+          <option value="">Choose a reason…</option>
+          @foreach($reasons as $key => $label)
+            <option value="{{ $key }}">{{ $label }}</option>
+          @endforeach
+        </select>
+        <label>Note (required if Other)</label>
+        <input type="text" name="note" placeholder="Optional detail for the customer email">
+        <div class="wo-dialog-actions">
+          <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Never mind</button>
+          <button type="submit" class="wo-btn wo-btn-danger">Cancel order</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script>
+      function woOpenStatus(orderId, currentStatus, currentTracking) {
+        var form = document.getElementById('wo-status-form');
+        form.action = '{{ url("/website-orders") }}/' + orderId + '/status';
+        document.getElementById('wo-status-select').value = currentStatus || '';
+        document.getElementById('wo-status-tracking').value = currentTracking || '';
+        document.getElementById('wo-status-dialog').showModal();
+      }
+      function woOpenCancel(orderId) {
+        var form = document.getElementById('wo-cancel-form');
+        form.action = '{{ url("/website-orders") }}/' + orderId + '/cancel';
+        form.reset();
+        document.getElementById('wo-cancel-dialog').showModal();
+      }
+    </script>
   @endif
 </div>
 @endsection
