@@ -1018,6 +1018,18 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Owner/admin summary — both managers side by side, current period + last 7 days.
     Route::get('/admin/manager-checklists', 'ManagerChecklistController@adminSummary')->name('manager-checklist.admin');
 
+    // Employee Tasks: Asana-style board — managers create ad-hoc daily tasks
+    // and recurring weekly routine tasks, optionally assigned to one employee
+    // (blank = anyone on shift). Admin/owner sees both stores; Zakary/Luis see
+    // and manage their own store; everyone else sees a read-only view scoped
+    // to their own tasks + unassigned ones. See StoreTaskController and
+    // migration 2026_08_28_120000_create_employee_tasks_tables.
+    Route::get('/employee-tasks', 'StoreTaskController@index')->name('employee-tasks.index');
+    Route::post('/employee-tasks/store', 'StoreTaskController@store')->name('employee-tasks.store');
+    Route::post('/employee-tasks/update', 'StoreTaskController@update')->name('employee-tasks.update');
+    Route::post('/employee-tasks/destroy', 'StoreTaskController@destroy')->name('employee-tasks.destroy');
+    Route::post('/employee-tasks/toggle', 'StoreTaskController@toggle')->name('employee-tasks.toggle');
+
     // Per-employee starred sidebar links. Each user can pin any left-menu link
     // (or a whole page, via a page's "Pin to my sidebar" button) to a personal
     // Favorites group at the top of the sidebar. Per-user JSON sidecar, no

@@ -11,10 +11,13 @@ use Illuminate\Support\Facades\Storage;
  * the list, check each step off, submit. We log who closed, when, which store,
  * and anything left undone.
  *
- * Each store's list is split into two sections so a late closer knows what is
- * non-negotiable: "Before you leave" is security + shutdown + garbage (only the
- * closer can do these), and "If you have time" is presentation prep the morning
- * opener already does, so it can slide to the morning when it's running late.
+ * Each store's list covers only what's non-negotiable at close: security,
+ * shutdown, and garbage (only the closer can do these). The old "If you have
+ * time" presentation-prep section (tidy, endcaps, front desk, floor,
+ * bathroom) was dropped 2026-08-28 — nobody was getting to it here, so those
+ * jobs now live as recurring weekly routine tasks on /employee-tasks
+ * (StoreTaskController) instead, where a manager can actually assign and
+ * track them instead of them silently sliding to "if you have time."
  *
  * No migration: storage/app/closing_checklist.json. Renders the shared view.
  */
@@ -44,13 +47,6 @@ class ClosingChecklistController extends Controller
                 'lockbox'      => 'If you used the lockbox key, put it back in the lockbox at the front of the gate and scramble the code.',
                 'back_door'    => 'Exit through the back door. Make sure it is locked before you leave, since people in the neighborhood will come in looking for a place to crash if it is left open.',
             ],
-            'If you have time (otherwise the morning opener will finish these)' => [
-                'tidy'       => 'Tidy up the sales floor and make sure all bins look organized.',
-                'endcaps'    => 'Refill any records that sold from the end caps so the featured albums stay visible.',
-                'front_desk' => 'Remove any clutter from the front desk so it stays inviting.',
-                'floor'      => 'Sweep or vacuum the floor so the store is clean for the next day.',
-                'bathroom'   => 'Make sure the bathroom is tidy.',
-            ],
         ],
         'pico' => [
             'Before you leave (required)' => [
@@ -63,23 +59,14 @@ class ClosingChecklistController extends Controller
                 'front_gate'  => 'Close the front gate: pull the brown gate flush with the door and push it to the right.',
                 'front_door'  => 'Close the glass door and lock it with the key, turning to the right until it clicks, then double-check that the front door is locked.',
             ],
-            'If you have time (otherwise the morning opener will finish these)' => [
-                'tidy'       => 'Make sure the floor is tidy and the bins look organized.',
-                'endcaps'    => 'Refill any records that sold from the end caps so the featured albums stay visible.',
-                'front_desk' => 'Remove any clutter from the front desk so it stays clean and inviting.',
-                'floor'      => 'Sweep or vacuum the floor for the next day.',
-                'bathroom'   => 'Make sure the bathroom looks tidy.',
-            ],
         ],
     ];
 
-    const LINKS = [
-        'endcaps' => ['url' => '/reports/abc-full-report?class=A', 'text' => 'View A products'],
-    ];
+    const LINKS = [];
 
     const INTROS = [
-        'hollywood' => 'Hollywood. The first section is required before you leave (locking up, shutting down, and trash). The second section is the next-day tidy: do it if you have time, but if it is late, the morning opener will finish it. Lock up tight before you go. Thank you!',
-        'pico'      => 'Pico (5770 W Pico Blvd). The first section is required before you leave (locking up, shutting down, and trash). The second section is the next-day tidy: do it if you have time, but if it is late, the morning opener will finish it. Lock up tight before you go. Thank you!',
+        'hollywood' => 'Hollywood. Lock up, shut down, and take out the trash before you leave. Lock up tight before you go. Thank you!',
+        'pico'      => 'Pico (5770 W Pico Blvd). Lock up, shut down, and take out the trash before you leave. Lock up tight before you go. Thank you!',
     ];
 
     /* ---------- storage helpers ---------- */
