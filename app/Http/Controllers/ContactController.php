@@ -721,6 +721,7 @@ class ContactController extends Controller
 
             $selectCols = [
                 'transaction_sell_lines.id',
+                't.id as transaction_id',
                 'p.name as product_name',
                 'p.artist',
                 'p.image as product_image',

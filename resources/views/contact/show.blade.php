@@ -368,6 +368,7 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
                     <th>Amount</th>
                     <th>Location</th>
                     <th>Staff</th>
+                    <th>Receipt</th>
                 </tr>
             </thead>
             <tbody>
@@ -397,6 +398,13 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
                         <td class="cp-history-amount"><span class="display_currency" data-currency_symbol="true">{{ $ph->unit_price_inc_tax * $ph->quantity }}</span></td>
                         <td style="color:#888;">{{ $ph->location_name ?: '-' }}</td>
                         <td style="color:#888;">{{ trim($ph->staff_name) ?: '-' }}</td>
+                        <td>
+                            @if(!empty($ph->transaction_id))
+                                <a href="{{ route('sell.printInvoice', $ph->transaction_id) }}" target="_blank" title="View / print this receipt"><i class="fa fa-print"></i></a>
+                            @else
+                                -
+                            @endif
+                        </td>
                     </tr>
                 @endforeach
             </tbody>
@@ -501,7 +509,12 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
             @else
                 <a class="cp-action-btn" style="opacity:.4; cursor:default;"><i class="fa fa-envelope"></i> Send Email</a>
             @endif
-            <a class="cp-action-btn" onclick="window.print();"><i class="fa fa-print"></i> Print Receipt</a>
+            @php $latestTransactionId = optional($purchase_history->first())->transaction_id; @endphp
+            @if($latestTransactionId)
+                <a href="{{ route('sell.printInvoice', $latestTransactionId) }}" target="_blank" class="cp-action-btn"><i class="fa fa-print"></i> Print Last Receipt</a>
+            @else
+                <a class="cp-action-btn" style="opacity:.4; cursor:default;"><i class="fa fa-print"></i> Print Last Receipt</a>
+            @endif
         </div>
     </div>
 
