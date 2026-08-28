@@ -56,43 +56,71 @@
     margin-bottom: 10px;
 }
 .product-add-v2 .pe-card-title {
-    font-size: 10px;
+    font-size: 13px;
     text-transform: uppercase;
-    letter-spacing: .08em;
+    letter-spacing: .06em;
     font-weight: 700;
-    color: var(--pe-ink-3);
-    margin: 0 0 8px;
-    padding-bottom: 6px;
+    color: var(--pe-ink);
+    margin: 0 0 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--pe-line);
 }
-.product-add-v2 .form-group { margin-bottom: 8px; }
+.product-add-v2 .form-group { margin-bottom: 14px; }
+/* Keep individual inputs a sane reading width even inside a wide column —
+   stops "Product Name" etc. from stretching edge-to-edge on a wide card. */
+.product-add-v2 .form-control,
+.product-add-v2 .select2-container {
+    max-width: 420px;
+}
+/* select2 sets an inline pixel width computed at init time — force it back
+   to fill its column (up to the 420px cap above) instead of trusting that. */
+.product-add-v2 .select2-container {
+    width: 100% !important;
+}
+.product-add-v2 select[id="product_locations"] + .select2-container,
+.product-add-v2 textarea.form-control {
+    max-width: none;
+}
 .product-add-v2 label,
 .product-add-v2 .form-group label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    font-weight: 700;
-    color: var(--pe-ink-3);
-    margin-bottom: 2px;
+    display: block;
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 600;
+    color: var(--pe-ink);
+    margin-bottom: 4px;
 }
 .product-add-v2 .form-control,
-.product-add-v2 .select2-selection--single,
+.product-add-v2 .select2-selection--single {
+    border: 1px solid var(--pe-line-2) !important;
+    border-radius: var(--pe-radius-sm) !important;
+    background: var(--pe-surface) !important;
+    color: var(--pe-ink) !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 8px 12px !important;
+    font-family: inherit !important;
+    font-size: 14px !important;
+    box-shadow: none !important;
+}
 .product-add-v2 .select2-selection--multiple {
     border: 1px solid var(--pe-line-2) !important;
     border-radius: var(--pe-radius-sm) !important;
     background: var(--pe-surface) !important;
     color: var(--pe-ink) !important;
-    min-height: 30px !important;
-    height: 30px !important;
-    padding: 4px 9px !important;
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 4px 6px !important;
     font-family: inherit !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     box-shadow: none !important;
 }
-.product-add-v2 textarea.form-control { height: auto !important; min-height: 60px !important; }
-.product-add-v2 .select2-selection--single .select2-selection__rendered { line-height: 22px !important; padding: 0 !important; }
-.product-add-v2 .select2-selection--single .select2-selection__arrow { height: 28px !important; }
-.product-add-v2 .help-block { font-size: 12px; color: var(--pe-ink-3); margin-top: 4px; }
+.product-add-v2 textarea.form-control { height: auto !important; min-height: 90px !important; max-width: none; }
+.product-add-v2 .select2-selection--single .select2-selection__rendered { line-height: 22px !important; padding: 0 !important; color: var(--pe-ink) !important; }
+.product-add-v2 .select2-selection--single .select2-selection__arrow { height: 36px !important; }
+.product-add-v2 ::placeholder { color: #9A9084 !important; opacity: 1 !important; }
+.product-add-v2 .help-block { font-size: 12.5px; color: var(--pe-ink-2); margin-top: 4px; }
 .product-add-v2 .form-control:focus,
 .product-add-v2 .select2-selection--single:focus,
 .product-add-v2 .select2-container--focus .select2-selection {
@@ -125,6 +153,7 @@
 
 .product-add-v2 .add-product-price-table {
     width: 100%;
+    max-width: 760px;
     border-collapse: separate;
     border-spacing: 0;
 }
@@ -221,26 +250,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-4 @if(!session('business.enable_brand')) hide @endif">
-                <div class="form-group">
-                    {!! Form::label('brand_id', __('product.brand') . ':') !!}
-                    <div class="input-group">
-                        {!! Form::select('brand_id', $brands, !empty($duplicate_product->brand_id) ? $duplicate_product->brand_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']) !!}
-                        <span class="input-group-btn">
-                            <button
-                                    type="button" @if(!auth()->user()->can('brand.create')) disabled @endif
-                                    class="btn btn-default bg-white btn-flat btn-modal"
-                                    data-href="{{action('BrandController@create', ['quick_add' => true])}}"
-                                    title="@lang('brand.add_brand')"
-                                    data-container=".view_modal">
-                                <i class="fa fa-plus-circle text-primary fa-lg"></i>
-                            </button>
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-sm-4 @if(!session('business.enable_category')) hide @endif">
+            <div class="col-sm-6 @if(!session('business.enable_category')) hide @endif">
                 <div class="form-group">
                     {!! Form::label('category_combo', __('product.category') . ' / ' . __('product.sub_category') . ' *:') !!}
                     @php
@@ -273,7 +283,26 @@
                 {!! Form::hidden('sub_category_id', !empty($duplicate_product->sub_category_id) ? $duplicate_product->sub_category_id : null, ['id' => 'sub_category_id']) !!}
             </div>
 
-            <div class="col-sm-2">
+            <div class="col-sm-6 @if(!session('business.enable_brand')) hide @endif">
+                <div class="form-group">
+                    {!! Form::label('brand_id', __('product.brand') . ':') !!}
+                    <div class="input-group">
+                        {!! Form::select('brand_id', $brands, !empty($duplicate_product->brand_id) ? $duplicate_product->brand_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']) !!}
+                        <span class="input-group-btn">
+                            <button
+                                    type="button" @if(!auth()->user()->can('brand.create')) disabled @endif
+                                    class="btn btn-default bg-white btn-flat btn-modal"
+                                    data-href="{{action('BrandController@create', ['quick_add' => true])}}"
+                                    title="@lang('brand.add_brand')"
+                                    data-container=".view_modal">
+                                <i class="fa fa-plus-circle text-primary fa-lg"></i>
+                            </button>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6">
                 <div class="form-group">
                     {!! Form::label('bin_position', 'Bin Position' . ':') !!}
                     {!! Form::text('bin_position', !empty($duplicate_product->bin_position) ? $duplicate_product->bin_position : null, ['class' => 'form-control',
@@ -281,7 +310,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-3">
+            <div class="col-sm-6">
                 <div class="form-group">
                     {!! Form::label('listing_location', 'Listing Location' . ':') !!}
                     {!! Form::text('listing_location', !empty($duplicate_product->listing_location) ? $duplicate_product->listing_location : null, ['class' => 'form-control',
@@ -290,7 +319,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-3">
+            <div class="col-sm-6">
                 <div class="form-group">
                     {!! Form::label('product_custom_field1', 'Image URL') !!}
                     {!! Form::text('product_custom_field1', !empty($duplicate_product->product_custom_field1) ? $duplicate_product->product_custom_field1 : null, ['class' => 'form-control',
