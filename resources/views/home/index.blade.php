@@ -124,8 +124,8 @@
     <div style="background:#E9F5EC;border:1px solid #9FCFA9;border-left:6px solid #4C9A5E;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-family:'Inter Tight',system-ui,sans-serif;">
         <i class="fa fas fa-phone" style="font-size:26px;color:#2E7D42;"></i>
         <div style="flex:1 1 280px;min-width:220px;">
-            <div style="font-size:16px;font-weight:800;color:#1E4A2A;">Keep OpenPhone open</div>
-            <div style="font-size:13.5px;color:#3d6b48;margin-top:2px;">Answer calls and texts as they come in - don't let it sit, especially in the afternoon and evening.</div>
+            <div style="font-size:16px;font-weight:800;color:#1E4A2A;">Please keep <a href="https://my.quo.com" target="_blank" rel="noopener" style="color:#1E4A2A;text-decoration:underline;">Quo</a> open on your screen</div>
+            <div style="font-size:13.5px;color:#3d6b48;margin-top:2px;">To answer calls and texts as they come in - especially in the afternoon and evening.</div>
         </div>
     </div>
 
