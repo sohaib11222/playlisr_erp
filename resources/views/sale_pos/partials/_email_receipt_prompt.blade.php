@@ -45,13 +45,18 @@ function initEmailReceiptPrompt($) {
 
     // Called from pos.js right after a sale finalizes. Guarded with typeof
     // there, so a missing/broken partial never touches the sell flow.
-    window.__promptEmailReceipt = function (transactionId) {
+    // customerEmail pre-fills from the attached contact's email on file (if
+    // any) — still requires the cashier to hit Send, never auto-sends.
+    window.__promptEmailReceipt = function (transactionId, customerEmail) {
         if (!transactionId) { return; }
         currentTxId = transactionId;
-        $input.val('');
+        $input.val(customerEmail || '');
         $sendBtn.prop('disabled', false).text('Send Receipt');
         $modal.modal({ backdrop: true, keyboard: true });
-        setTimeout(function () { $input.focus(); }, 300);
+        setTimeout(function () {
+            $input.focus();
+            if (customerEmail) { $input.select(); }
+        }, 300);
     };
 
     function isValidEmail(v) {

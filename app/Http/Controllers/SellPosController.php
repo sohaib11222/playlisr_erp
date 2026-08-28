@@ -5002,6 +5002,7 @@ class SellPosController extends Controller
 
                     $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
                     $output['transaction_id'] = $transaction->id ?? null;
+                    $output['customer_email'] = optional($transaction->contact)->email;
 
                     if (!empty($whatsapp_link)) {
                         $output['whatsapp_link'] = $whatsapp_link;
