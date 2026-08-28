@@ -1007,6 +1007,17 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/daily-checklist/toggle', 'DailyChecklistController@toggle')->name('daily-checklist.toggle');
     Route::post('/daily-checklist/toggle-periodic', 'DailyChecklistController@togglePeriodic')->name('daily-checklist.toggle-periodic');
 
+    // Manager Checklist: recurring duties for the two store managers (Zakary
+    // at Pico, Luis at Hollywood) — daily/weekly/monthly items reset on their
+    // own schedule; each manager only ever checks off their own. Fixed item
+    // list lives in ManagerChecklistController; completion records live in
+    // the manager_checklist_completions table (see migration
+    // 2026_08_28_090000_create_manager_checklist_completions_table).
+    Route::get('/manager-checklist', 'ManagerChecklistController@index')->name('manager-checklist.index');
+    Route::post('/manager-checklist/toggle', 'ManagerChecklistController@toggle')->name('manager-checklist.toggle');
+    // Owner/admin summary — both managers side by side, current period + last 7 days.
+    Route::get('/admin/manager-checklists', 'ManagerChecklistController@adminSummary')->name('manager-checklist.admin');
+
     // Per-employee starred sidebar links. Each user can pin any left-menu link
     // (or a whole page, via a page's "Pin to my sidebar" button) to a personal
     // Favorites group at the top of the sidebar. Per-user JSON sidecar, no
