@@ -60,6 +60,15 @@ class CleanupBlankBfcLines extends Command
             return 0;
         }
 
+        $rows = (clone $blank)->get();
+        $backupDir = storage_path('app/bfc-blank-line-backups');
+        if (!is_dir($backupDir)) {
+            mkdir($backupDir, 0755, true);
+        }
+        $backupPath = $backupDir . '/blank-lines-' . now()->format('Y-m-d_His') . '.json';
+        file_put_contents($backupPath, $rows->toJson(JSON_PRETTY_PRINT));
+        $this->info("Backed up {$count} row(s) to {$backupPath} before deleting.");
+
         $blank->delete();
         $this->info("Deleted {$count} blank line(s).");
         return 0;
