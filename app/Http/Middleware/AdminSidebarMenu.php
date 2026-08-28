@@ -35,55 +35,46 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
-            //Storage Locations — where purchased collections physically live.
-            //Deliberately ungated (not behind purchase.*): whoever finds a box
-            //needs to be able to look up or fix its location, not just whoever
-            //bought it. Sits at top level, not inside the Purchases dropdown,
-            //so it's visible even to staff without any purchase permission.
-            $menu->url(action('BuyFromCustomerController@storageLocations'), 'Storage Locations', ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) == 'storage-locations'])->order(7);
-
-            //Receiving — log incoming packages/boxes and their contents.
-            //Deliberately ungated for the same reason as Storage Locations
-            //above: whoever's at the receiving window needs to log it, not
-            //just staff with purchase permissions.
-            $menu->url(action('ReceivingPackageController@index'), 'Receiving', ['icon' => 'fa fas fa-dolly', 'active' => request()->segment(1) == 'receiving'])->order(7);
-
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 
-            //Events / Listening Parties (top-level — its own thing, not under Products)
-            if (auth()->user()->can('product.create')) {
-                $menu->url(
-                    route('events.index'),
-                    'Events',
-                    ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
-                )->order(7);
-                //Preorders — all customer pickups (listening-party + special orders)
-                $menu->url(
-                    route('events.preordersOverview'),
-                    'Preorders',
-                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
-                )->order(8);
-                //Email Templates — customer email copy editor (order confirmation,
-                //cancellation, welcome, bookings, etc.)
-                $menu->url(
-                    route('email-templates.index'),
-                    'Email Templates',
-                    ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
-                )->order(8);
-            }
-
             //Orders — nivessa.com fulfillment console (Needs Action/To Ship/
             //Pickup/Completed/Archived, status changes, cancellation). Own gate
-            //(not bundled with Events/Preorders/Email Templates above) so
-            //cashiers who actually do fulfillment (e.g. Nick) can see it via
+            //so cashiers who actually do fulfillment (e.g. Nick) can see it via
             //sell.create without needing product.create's product-management
-            //powers too.
+            //powers too. Kept top-level for one-click access.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
                 $menu->url(
                     route('website-orders.index'),
                     'Orders',
                     ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
+                )->order(7);
+            }
+
+            //Events dropdown — Events, Preorders (customer pickups), and the
+            //email copy editor grouped together since they're one workflow
+            //(previously three separate top-level links).
+            if (auth()->user()->can('product.create')) {
+                $menu->dropdown(
+                    'Events',
+                    function ($sub) {
+                        $sub->url(
+                            route('events.index'),
+                            'Events',
+                            ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
+                        );
+                        $sub->url(
+                            route('events.preordersOverview'),
+                            'Preorders',
+                            ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
+                        );
+                        $sub->url(
+                            route('email-templates.index'),
+                            'Email Templates',
+                            ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
+                        );
+                    },
+                    ['icon' => 'fa fas fa-music']
                 )->order(8);
             }
 
@@ -95,6 +86,29 @@ class AdminSidebarMenu
                     ['icon' => 'fa fas fa-percent', 'active' => request()->segment(1) == 'discounts']
                 )->order(9);
             }
+
+            //Warehouse dropdown — Storage Locations and Receiving grouped
+            //together. Deliberately ungated (not behind purchase.*): whoever
+            //finds a box or works the receiving window needs these, not just
+            //staff with purchase permissions. Kept out of the Purchases
+            //dropdown for that reason, but grouped here instead of sitting
+            //loose at top level.
+            $menu->dropdown(
+                'Warehouse',
+                function ($sub) {
+                    $sub->url(
+                        action('BuyFromCustomerController@storageLocations'),
+                        'Storage Locations',
+                        ['icon' => 'fa fas fa-boxes', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) == 'storage-locations']
+                    );
+                    $sub->url(
+                        action('ReceivingPackageController@index'),
+                        'Receiving',
+                        ['icon' => 'fa fas fa-dolly', 'active' => request()->segment(1) == 'receiving']
+                    );
+                },
+                ['icon' => 'fa fas fa-boxes']
+            )->order(12);
 
             //User management dropdown
             if (auth()->user()->can('user.view') || auth()->user()->can('user.create') || auth()->user()->can('roles.view')) {
@@ -618,7 +632,7 @@ class AdminSidebarMenu
 
             //Modules menu
             if (auth()->user()->can('manage_modules')) {
-                $menu->url(action('Install\ModulesController@index'), __('lang_v1.modules'), ['icon' => 'fa fas fa-plug', 'active' => request()->segment(1) == 'manage-modules'])->order(60);
+                $menu->url(action('Install\ModulesController@index'), __('lang_v1.modules'), ['icon' => 'fa fas fa-plug', 'active' => request()->segment(1) == 'manage-modules'])->order(61);
             }
 
             //Booking menu
