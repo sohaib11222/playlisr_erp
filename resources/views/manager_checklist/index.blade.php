@@ -115,8 +115,11 @@
     content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px;
     border: solid var(--d-accent-text); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
 }
-.open-shell .item .txt { font-size: 15px; line-height: 1.35; color: var(--d-ink); padding-top: 1px; }
-.open-shell .item input[type=checkbox]:checked + .txt { color: var(--d-ink-3); text-decoration: line-through; }
+.open-shell .item .txt-wrap { padding-top: 1px; min-width: 0; }
+.open-shell .item .txt { font-size: 15px; line-height: 1.35; color: var(--d-ink); display: block; }
+.open-shell .item .how { font-size: 13px; line-height: 1.4; color: var(--d-ink-3); margin-top: 3px; display: block; }
+.open-shell .item input[type=checkbox]:checked ~ .txt-wrap .txt { color: var(--d-ink-3); text-decoration: line-through; }
+.open-shell .item input[type=checkbox]:checked ~ .txt-wrap .how { opacity: .6; }
 
 .open-shell .item .meta {
     display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto;
@@ -172,7 +175,12 @@
                         <input type="checkbox" class="task-box"
                                data-key="{{ $t['key'] }}" data-period="{{ $t['period_key'] }}"
                                {{ $t['done'] ? 'checked' : '' }}>
-                        <span class="txt">{{ $t['label'] }}</span>
+                        <span class="txt-wrap">
+                            <span class="txt">{{ $t['label'] }}</span>
+                            @if(!empty($t['how']))
+                                <span class="how">{{ $t['how'] }}</span>
+                            @endif
+                        </span>
                     </label>
                     <div class="meta">
                         <span class="freq-badge">{{ $t['freq'] }}</span>

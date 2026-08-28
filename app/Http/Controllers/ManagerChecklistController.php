@@ -69,27 +69,64 @@ class ManagerChecklistController extends Controller
     const MONTHLY_LOOKBACK_MONTHS  = 2;
     const MONTHLY_LOOKAHEAD_MONTHS = 2;
 
-    /** Daily duties — one instance per calendar day. */
+    /**
+     * Daily duties — one instance per calendar day. Each item is
+     * ['label' => task name, 'how' => plain instructions for exactly what to do],
+     * so a first-time manager doesn't have to guess what the task means.
+     */
     const DAILY = [
-        'sales_check'  => 'Sales check - where do we stand today',
-        'open_close'   => 'Open/close checklist done',
-        'new_arrivals' => 'New arrivals out',
+        'sales_check' => [
+            'label' => 'Sales check - where do we stand today',
+            'how'   => "Open the Like-for-Like Sales report on the dashboard, check today's total so far against the same day last year.",
+        ],
+        'open_close' => [
+            'label' => 'Open/close checklist done',
+            'how'   => "Confirm whoever opened or closed today actually completed the checklist - don't just assume it happened.",
+        ],
+        'new_arrivals' => [
+            'label' => 'New arrivals out',
+            'how'   => 'Check the back stock/receiving area for anything priced and ready that has not hit the floor yet, get it out.',
+        ],
     ];
 
     /** Weekly duties — one instance per week, due the Sunday that ends it. */
     const WEEKLY = [
-        'team_1on1s'      => 'Team 1:1s (each employee)',
-        'supplies_check'  => 'Supplies check',
-        'inventory_check' => 'Inventory check',
-        'training_review' => 'Training checklist review - where each hire stands',
-        'merch_walk'      => 'Section/merchandising standards walk',
+        'team_1on1s' => [
+            'label' => 'Team 1:1s (each employee)',
+            'how'   => "10-15 min one-on-one with each person who worked this week - how they're doing, feedback, priorities, anything ongoing.",
+        ],
+        'supplies_check' => [
+            'label' => 'Supplies check',
+            'how'   => 'Check bags, tape, cleaning supplies, receipt paper, and register supplies. Low on anything? Tell Jon/Sarah.',
+        ],
+        'inventory_check' => [
+            'label' => 'Inventory check',
+            'how'   => "Spot-check a section against what the system says is in stock. Flag any mismatch.",
+        ],
+        'training_review' => [
+            'label' => 'Training checklist review - where each hire stands',
+            'how'   => 'For anyone still ramping up, check where they stand on register, buys, theft awareness, and the floor.',
+        ],
+        'merch_walk' => [
+            'label' => 'Section/merchandising standards walk',
+            'how'   => 'Walk every section - genres in order, no gaps, priced right, looks clean.',
+        ],
     ];
 
     /** Monthly duties — one instance per calendar month, due the last day. */
     const MONTHLY = [
-        'sales_vs_goal'       => 'Sales vs. goal review',
-        'shrink_loss'         => 'Shrink/loss review',
-        'cash_close_accuracy' => 'Cash close accuracy review',
+        'sales_vs_goal' => [
+            'label' => 'Sales vs. goal review',
+            'how'   => "Compare this month's total to goal on the dashboard. Note what worked and what didn't.",
+        ],
+        'shrink_loss' => [
+            'label' => 'Shrink/loss review',
+            'how'   => "Look at this month's inventory checks for missing stock. Flag anything that looks like theft or a process gap.",
+        ],
+        'cash_close_accuracy' => [
+            'label' => 'Cash close accuracy review',
+            'how'   => "Check this month's register closes for accuracy - drawer counts matching, no repeated discrepancies.",
+        ],
     ];
 
     /**
@@ -361,11 +398,12 @@ class ManagerChecklistController extends Controller
         $rows = [];
         foreach (self::groups() as $groupName => $items) {
             foreach ($instancesByGroup[$groupName] as $inst) {
-                foreach ($items as $itemKey => $label) {
+                foreach ($items as $itemKey => $item) {
                     $isDone = isset($done[$itemKey . '|' . $inst['period_key']]);
                     $rows[] = [
                         'key'         => $itemKey,
-                        'label'       => $label,
+                        'label'       => $item['label'],
+                        'how'         => $item['how'],
                         'freq'        => $groupName,
                         'period_key'  => $inst['period_key'],
                         'period_note' => $inst['period_note'],

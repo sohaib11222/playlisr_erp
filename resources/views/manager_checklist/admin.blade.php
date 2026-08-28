@@ -149,7 +149,7 @@
                             <div class="row {{ $t['overdue'] ? 'overdue' : '' }} {{ $t['done'] ? 'done' : '' }}">
                                 <div class="main">
                                     <span class="dot {{ $t['done'] ? 'on' : 'off' }}"><i class="fa {{ $t['done'] ? 'fa-check' : 'fa-times' }}"></i></span>
-                                    <span class="label">{{ $t['label'] }}</span>
+                                    <span class="label" title="{{ $t['how'] ?? '' }}">{{ $t['label'] }}</span>
                                 </div>
                                 <div class="meta">
                                     <span class="freq-badge">{{ $t['freq'] }}</span>
