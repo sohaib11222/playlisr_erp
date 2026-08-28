@@ -51,8 +51,9 @@
     border: 1px solid var(--pe-line);
     border-radius: var(--pe-radius);
     box-shadow: var(--pe-shadow-sm);
-    padding: 12px 14px;
+    padding: 16px 20px;
     margin-bottom: 10px;
+    max-width: 920px;
 }
 .product-add-v2 .pe-card-title {
     font-size: 13px;
@@ -65,20 +66,10 @@
     border-bottom: 1px solid var(--pe-line);
 }
 .product-add-v2 .form-group { margin-bottom: 14px; }
-/* Keep individual inputs a sane reading width even inside a wide column —
-   stops "Product Name" etc. from stretching edge-to-edge on a wide card. */
-.product-add-v2 .form-control,
-.product-add-v2 .select2-container {
-    max-width: 420px;
-}
-/* select2 sets an inline pixel width computed at init time — force it back
-   to fill its column (up to the 420px cap above) instead of trusting that. */
+/* Card is capped to 920px (above) so columns are already a sane width —
+   let inputs fill their column instead of floating in leftover space. */
 .product-add-v2 .select2-container {
     width: 100% !important;
-}
-.product-add-v2 select[id="product_locations"] + .select2-container,
-.product-add-v2 textarea.form-control {
-    max-width: none;
 }
 .product-add-v2 label,
 .product-add-v2 .form-group label {
@@ -152,7 +143,6 @@
 
 .product-add-v2 .add-product-price-table {
     width: 100%;
-    max-width: 760px;
     border-collapse: separate;
     border-spacing: 0;
 }
@@ -180,6 +170,7 @@
     box-shadow: var(--pe-shadow-md);
     padding: 14px 20px;
     margin: 20px 0 0;
+    max-width: 920px;
     display: flex; justify-content: flex-end; gap: 10px;
     position: sticky; bottom: 12px; z-index: 50;
 }
