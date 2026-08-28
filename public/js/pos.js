@@ -1832,7 +1832,7 @@ $(document).ready(function() {
                             // missing/broken prompt partial can never touch the
                             // sale that already committed above.
                             if (result.transaction_id && typeof window.__promptEmailReceipt === 'function') {
-                                window.__promptEmailReceipt(result.transaction_id, result.customer_email);
+                                window.__promptEmailReceipt(result.transaction_id, result.customer_email, result.customer_phone);
                             }
 
                             // Refresh the customer's stored-credit balance in the

@@ -406,6 +406,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/pos/override-payment-method', 'SellPosController@overridePaymentMethod')->name('pos.overridePaymentMethod');
         Route::post('/pos/sale-backdate', 'SellPosController@backdateSale')->name('pos.backdateSale');
         Route::post('/pos/{transaction_id}/email-receipt', 'SellPosController@emailReceipt')->name('pos.emailReceipt');
+        Route::post('/pos/{transaction_id}/text-receipt', 'SellPosController@textReceipt')->name('pos.textReceipt');
 
         Route::resource('pos', 'SellPosController');
     });

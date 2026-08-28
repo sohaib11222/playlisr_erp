@@ -2242,72 +2242,12 @@ class SellPosController extends Controller
         }
 
         try {
-            $lines = $transaction->sell_lines()->with('product')->get();
-            $items = [];
-            foreach ($lines as $line) {
-                $qty = (float) ($line->quantity ?? 0) - (float) ($line->quantity_returned ?? 0);
-                if ($qty <= 0) {
-                    continue;
-                }
-                $unitPrice = (float) ($line->unit_price_inc_tax ?? $line->unit_price ?? 0);
-                $items[] = [
-                    'name' => !empty($line->product) ? $line->product->name : 'Item',
-                    'quantity' => $qty,
-                    'price' => $unitPrice,
-                ];
-            }
-            if (empty($items)) {
+            $base = $this->buildReceiptPayloadBase($transaction);
+            if ($base === null) {
                 return response()->json(['success' => false, 'msg' => 'No items on this sale.']);
             }
 
-            $discountDollar = 0.0;
-            if (!empty($transaction->discount_amount)) {
-                $discountDollar = $transaction->discount_type === 'percentage'
-                    ? round(((float) $transaction->total_before_tax) * ((float) $transaction->discount_amount) / 100, 2)
-                    : (float) $transaction->discount_amount;
-            }
-
-            // Card-tender list mirrors cardLineCountByTx above — same
-            // definition of "card" used by the Clover reconciliation report.
-            $card_methods = [
-                'clover', 'card', 'credit_card', 'credit_sale',
-                'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
-                'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
-            ];
-            $labels = [];
-            foreach ($transaction->payment_lines()->pluck('method') as $m) {
-                if ($m === 'advance') {
-                    $labels[] = 'Store Credit';
-                } elseif (in_array($m, $card_methods)) {
-                    $labels[] = 'Card';
-                } else {
-                    $labels[] = ucfirst((string) $m);
-                }
-            }
-            $paymentMethod = implode(' + ', array_values(array_unique($labels))) ?: 'Card';
-
-            $customer = $transaction->contact;
-            $customerName = (!empty($customer) && !empty($customer->first_name)) ? $customer->first_name : 'there';
-
-            $saleDate = \Carbon\Carbon::parse($transaction->transaction_date)
-                ->timezone('America/Los_Angeles')
-                ->format('F j, Y \a\t g:i A');
-
-            $storeLocation = strtolower((string) optional($transaction->location)->name);
-
-            $sent = $this->pushReceiptEmail([
-                'to' => $email,
-                'customerName' => $customerName,
-                'receiptNo' => $transaction->invoice_no,
-                'saleDate' => $saleDate,
-                'storeLocation' => $storeLocation,
-                'paymentMethod' => $paymentMethod,
-                'items' => $items,
-                'subtotal' => (float) $transaction->total_before_tax,
-                'discount' => $discountDollar,
-                'tax' => (float) $transaction->tax_amount,
-                'total' => (float) $transaction->final_total,
-            ]);
+            $sent = $this->pushReceiptEmail(array_merge(['to' => $email], $base));
 
             if (!$sent) {
                 return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
@@ -2327,6 +2267,126 @@ class SellPosController extends Controller
             \Log::warning('emailReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
         }
+    }
+
+    /**
+     * POST /pos/{transaction_id}/text-receipt
+     *
+     * Same cashier opt-in flow as emailReceipt, via OpenPhone instead —
+     * texts a short summary + a link to the public receipt page, since a
+     * full item list doesn't fit in a text. See erpReceipt.controller.js
+     * on the website for the token snapshot + OpenPhone call.
+     */
+    public function textReceipt(Request $request, $transaction_id)
+    {
+        if (!auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $phone = preg_replace('/[^\d+]/', '', (string) $request->input('phone'));
+        if (strlen(preg_replace('/\D/', '', $phone)) < 10) {
+            return response()->json(['success' => false, 'msg' => 'Enter a valid phone number.']);
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $transaction = Transaction::where('business_id', $business_id)
+            ->where('id', $transaction_id)
+            ->where('type', 'sell')
+            ->first();
+        if (!$transaction) {
+            return response()->json(['success' => false, 'msg' => 'Sale not found.']);
+        }
+
+        try {
+            $base = $this->buildReceiptPayloadBase($transaction);
+            if ($base === null) {
+                return response()->json(['success' => false, 'msg' => 'No items on this sale.']);
+            }
+
+            $sent = $this->pushReceiptText(array_merge(['to' => $phone], $base));
+
+            if (!$sent) {
+                return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+            }
+
+            return response()->json(['success' => true, 'msg' => 'Receipt texted.']);
+        } catch (\Throwable $e) {
+            \Log::warning('textReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+        }
+    }
+
+    /**
+     * Shared sale → receipt-payload shape used by both emailReceipt and
+     * textReceipt. Returns null when the sale has no real line items.
+     */
+    private function buildReceiptPayloadBase($transaction): ?array
+    {
+        $lines = $transaction->sell_lines()->with('product')->get();
+        $items = [];
+        foreach ($lines as $line) {
+            $qty = (float) ($line->quantity ?? 0) - (float) ($line->quantity_returned ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+            $unitPrice = (float) ($line->unit_price_inc_tax ?? $line->unit_price ?? 0);
+            $items[] = [
+                'name' => !empty($line->product) ? $line->product->name : 'Item',
+                'quantity' => $qty,
+                'price' => $unitPrice,
+            ];
+        }
+        if (empty($items)) {
+            return null;
+        }
+
+        $discountDollar = 0.0;
+        if (!empty($transaction->discount_amount)) {
+            $discountDollar = $transaction->discount_type === 'percentage'
+                ? round(((float) $transaction->total_before_tax) * ((float) $transaction->discount_amount) / 100, 2)
+                : (float) $transaction->discount_amount;
+        }
+
+        // Card-tender list mirrors cardLineCountByTx above — same
+        // definition of "card" used by the Clover reconciliation report.
+        $card_methods = [
+            'clover', 'card', 'credit_card', 'credit_sale',
+            'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4',
+            'custom_pay_5', 'custom_pay_6', 'custom_pay_7',
+        ];
+        $labels = [];
+        foreach ($transaction->payment_lines()->pluck('method') as $m) {
+            if ($m === 'advance') {
+                $labels[] = 'Store Credit';
+            } elseif (in_array($m, $card_methods)) {
+                $labels[] = 'Card';
+            } else {
+                $labels[] = ucfirst((string) $m);
+            }
+        }
+        $paymentMethod = implode(' + ', array_values(array_unique($labels))) ?: 'Card';
+
+        $customer = $transaction->contact;
+        $customerName = (!empty($customer) && !empty($customer->first_name)) ? $customer->first_name : 'there';
+
+        $saleDate = \Carbon\Carbon::parse($transaction->transaction_date)
+            ->timezone('America/Los_Angeles')
+            ->format('F j, Y \a\t g:i A');
+
+        $storeLocation = strtolower((string) optional($transaction->location)->name);
+
+        return [
+            'customerName' => $customerName,
+            'receiptNo' => $transaction->invoice_no,
+            'saleDate' => $saleDate,
+            'storeLocation' => $storeLocation,
+            'paymentMethod' => $paymentMethod,
+            'items' => $items,
+            'subtotal' => (float) $transaction->total_before_tax,
+            'discount' => $discountDollar,
+            'tax' => (float) $transaction->tax_amount,
+            'total' => (float) $transaction->final_total,
+        ];
     }
 
     /**
@@ -2388,6 +2448,20 @@ class SellPosController extends Controller
      */
     private function pushReceiptEmail(array $payload): bool
     {
+        return $this->pushToErpBridge('/erp/receipts/email', $payload, 'emailReceipt');
+    }
+
+    /**
+     * POST the receipt payload to the website's ERP bridge (/api/v1/erp/receipts/text).
+     * Same bridge, same key resolution as the email push — just a different path.
+     */
+    private function pushReceiptText(array $payload): bool
+    {
+        return $this->pushToErpBridge('/erp/receipts/text', $payload, 'textReceipt');
+    }
+
+    private function pushToErpBridge(string $path, array $payload, string $logTag): bool
+    {
         $base = trim((string) config('constants.nivessa_api'));
         if ($base === '') {
             $base = trim((string) env('NIVESSA_API', ''));
@@ -2408,11 +2482,11 @@ class SellPosController extends Controller
             $key = $this->readErpKeyFromStore();
         }
         if ($base === '' || $key === '') {
-            \Log::warning('emailReceipt: website base/key not configured.');
+            \Log::warning($logTag . ': website base/key not configured.');
             return false;
         }
 
-        $ch = curl_init($base . '/erp/receipts/email');
+        $ch = curl_init($base . $path);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 3,
@@ -2431,7 +2505,7 @@ class SellPosController extends Controller
         curl_close($ch);
 
         if ($code < 200 || $code >= 300) {
-            \Log::warning('emailReceipt push failed: HTTP ' . $code . ($err ? " curl_err={$err}" : '') . ' body=' . substr((string) $resp, 0, 300));
+            \Log::warning($logTag . ' push failed: HTTP ' . $code . ($err ? " curl_err={$err}" : '') . ' body=' . substr((string) $resp, 0, 300));
             return false;
         }
         return true;
@@ -5106,6 +5180,7 @@ class SellPosController extends Controller
                     $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
                     $output['transaction_id'] = $transaction->id ?? null;
                     $output['customer_email'] = optional($transaction->contact)->email;
+                    $output['customer_phone'] = optional($transaction->contact)->mobile;
 
                     if (!empty($whatsapp_link)) {
                         $output['whatsapp_link'] = $whatsapp_link;
@@ -5859,6 +5934,8 @@ class SellPosController extends Controller
 
                 $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
                 $output['transaction_id'] = $transaction->id ?? null;
+                $output['customer_email'] = optional($transaction->contact)->email;
+                $output['customer_phone'] = optional($transaction->contact)->mobile;
 
                 if (!empty($whatsapp_link)) {
                     $output['whatsapp_link'] = $whatsapp_link;
