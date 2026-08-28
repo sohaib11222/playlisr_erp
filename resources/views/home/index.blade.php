@@ -121,6 +121,14 @@
         </a>
     @endif
 
+    <div style="background:#E9F5EC;border:1px solid #9FCFA9;border-left:6px solid #4C9A5E;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-family:'Inter Tight',system-ui,sans-serif;">
+        <i class="fa fas fa-phone" style="font-size:26px;color:#2E7D42;"></i>
+        <div style="flex:1 1 280px;min-width:220px;">
+            <div style="font-size:16px;font-weight:800;color:#1E4A2A;">Keep OpenPhone open</div>
+            <div style="font-size:13.5px;color:#3d6b48;margin-top:2px;">Answer calls and texts as they come in - don't let it sit, especially in the afternoon and evening.</div>
+        </div>
+    </div>
+
     <style>
         .niv-card { background:#fff; border:1px solid #e6e8ec; border-radius:10px; padding:14px 16px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.03); }
         .niv-card h3 { margin:0 0 10px 0; font-size:15px; text-transform:uppercase; letter-spacing:.6px; color:#1b6ca8; font-weight:700; border-bottom:1px solid #eef0f3; padding-bottom:8px; }
