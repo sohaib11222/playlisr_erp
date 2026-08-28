@@ -30,7 +30,7 @@
   .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
   .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .wo-tbl { width:100%; border-collapse:collapse; }
+  .wo-tbl { width:100%; table-layout:fixed; border-collapse:collapse; }
   .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
   .wo-tbl tbody tr.wo-row { border-bottom:1px solid #f0f0f0; }
   .wo-tbl tbody tr.wo-row:hover { background:#fafafa; }
@@ -58,8 +58,9 @@
   .wo-total { font-weight:600; color:#111827; }
   .wo-placed { font-size:13px; color:#6b7280; white-space:nowrap; }
 
-  .wo-row-actions { display:flex; flex-direction:column; gap:6px; min-width:150px; }
-  .wo-btn { font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#374151; text-align:center; }
+  .wo-row-actions { display:flex; flex-direction:column; gap:6px; width:132px; }
+  .wo-row-actions form { margin:0; }
+  .wo-btn { display:block; width:100%; box-sizing:border-box; font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#374151; text-align:center; }
   .wo-btn:hover { background:#f9fafb; }
   .wo-btn-primary { background:#111827; color:#fff; border-color:#111827; }
   .wo-btn-primary:hover { background:#1f2937; }
@@ -194,6 +195,14 @@
       <div class="wo-card">
         <div style="overflow-x:auto;">
         <table class="wo-tbl">
+          <colgroup>
+            <col style="width:26%">
+            <col style="width:13%">
+            <col style="width:15%">
+            <col style="width:10%">
+            <col style="width:16%">
+            <col style="width:160px">
+          </colgroup>
           <thead><tr>
             <th>Buyer</th>
             <th>Status</th>
