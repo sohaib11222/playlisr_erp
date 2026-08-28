@@ -625,7 +625,15 @@ class CloverController extends Controller
         $flagKey = 'clover.sync.run.' . $runId;
         \Illuminate\Support\Facades\Cache::put($flagKey, 'running', now()->addMinutes(30));
 
-        $php = PHP_BINARY ?: 'php';
+        // PHP_BINARY under PHP-FPM points at php-fpm itself (e.g. php-fpm7.4),
+        // which isn't a CLI-capable binary — passing it the artisan path just
+        // prints php-fpm's own usage text and exits, so the sync never runs.
+        // Fall back to the bare `php` on PATH whenever PHP_BINARY looks like
+        // an FPM/CGI binary rather than the CLI.
+        $php = PHP_BINARY;
+        if (!$php || preg_match('/fpm|cgi/i', basename($php))) {
+            $php = 'php';
+        }
         $artisan = base_path('artisan');
 
         // Payments sync is a separate Artisan command — the card sales
