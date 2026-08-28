@@ -77,7 +77,17 @@ class DiscogsStreetDateBackfillService
                 // Stored as Y-m-d (ISO) — the website sync (jonhedvat/server)
                 // parses this field as a date, so keep the stored format
                 // stable. Only the admin-page display below is MM/DD/YYYY.
-                \DB::table('products')->where('id', $p->id)->update(['product_custom_field2' => $date]);
+                // Explicitly bump updated_at: DB::table()->update() (query
+                // builder, not Eloquent) does NOT touch it automatically, but
+                // the website's nightly incremental sync pulls only the
+                // ~2,000 most-recently-*updated* ERP products (order_by
+                // updated_at desc) — without this a freshly-dated product
+                // could sit unsynced indefinitely if anything else is
+                // touching newer rows in the meantime.
+                \DB::table('products')->where('id', $p->id)->update([
+                    'product_custom_field2' => $date,
+                    'updated_at' => now(),
+                ]);
             }
             $updated++;
             $results[] = ['id' => $p->id, 'name' => $p->name, 'discogs_release_id' => $p->discogs_release_id, 'status' => 'found', 'detail' => \Carbon\Carbon::createFromFormat('Y-m-d', $date)->format('m/d/Y')];
