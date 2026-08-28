@@ -29,8 +29,7 @@
     font-family: "Inter Tight", system-ui, sans-serif;
     color: var(--pe-ink);
     -webkit-font-smoothing: antialiased;
-    margin: -15px;
-    padding: 10px 14px 32px;
+    padding: 20px 24px 32px;
     min-height: calc(100vh - 50px);
 }
 .product-add-v2 .row { margin-left: -6px; margin-right: -6px; }
