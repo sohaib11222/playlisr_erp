@@ -74,7 +74,6 @@ class ManagerChecklistController extends Controller
         'sales_check'  => 'Sales check - where do we stand today',
         'open_close'   => 'Open/close checklist done',
         'new_arrivals' => 'New arrivals out',
-        'floor_walk'   => 'Floor/theft walk',
     ];
 
     /** Weekly duties — one instance per week, due the Sunday that ends it. */
