@@ -3800,6 +3800,13 @@ function pos_order_tax(price_total, discount) {
         }
     }
 
+    // Round to the cent here so the displayed Tax line and the amount that
+    // actually flows into total_payable always agree. Previously the raw
+    // sub-cent value (e.g. 0.000975) was used for the total while the
+    // display rounded independently, so "Subtotal + Tax" could be a penny
+    // off from "Total + Tax" on small carts.
+    order_tax = Math.round(order_tax * 100) / 100;
+
     $('span#order_tax').text(__currency_trans_from_en(order_tax, false));
     // Also update tax display in totals section
     $('span#order_tax_display').text(__currency_trans_from_en(order_tax, false));
