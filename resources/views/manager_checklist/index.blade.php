@@ -3,11 +3,11 @@
 
 @section('content')
 @php
-    $notReady = $notReady ?? false;
-    $groups   = $groups   ?? [];
-    $checked  = $checked  ?? [];
-    $periods  = $periods  ?? [];
-    $meta     = $meta     ?? ['label' => '', 'store' => ''];
+    $notReady     = $notReady ?? false;
+    $tasks        = $tasks ?? [];
+    $overdueCount = $overdueCount ?? 0;
+    $startDate    = $startDate ?? null;
+    $meta         = $meta ?? ['label' => '', 'store' => ''];
 @endphp
 {{-- Cream / pastel-yellow look to match /pos/create and /daily-checklist. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,6 +33,8 @@
     --d-accent-text: #5A4410;
     --d-good: #2E7D32;
     --d-warn: #B26A00;
+    --d-bad: #B3261E;
+    --d-bad-bg: #FBEAE8;
     --d-radius: 12px;
     --d-radius-sm: 10px;
 
@@ -67,6 +69,9 @@
     padding: 12px 16px; margin-bottom: 16px; font-weight: 700; font-size: 14.5px;
     display: flex; align-items: center; gap: 9px;
 }
+.open-shell .callout.bad {
+    background: var(--d-bad-bg); border-color: var(--d-bad); color: var(--d-bad);
+}
 
 .open-shell .topbar {
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -80,30 +85,31 @@
 .open-shell .saved-note { font-size: 13px; font-weight: 700; color: var(--d-good); opacity: 0; transition: opacity .2s; }
 .open-shell .saved-note.show { opacity: 1; }
 
-.open-shell .grp { margin-top: 18px; }
-.open-shell .grp:first-child { margin-top: 4px; }
-.open-shell .grp h3 {
-    font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-    color: var(--d-ink-2); margin: 0 0 2px; padding-bottom: 6px;
-    border-bottom: 2px solid var(--d-accent);
+.open-shell .list-head {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    margin: 4px 0 10px;
 }
-.open-shell .grp h3 .period-note {
-    text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12.5px; color: var(--d-ink-3);
+.open-shell .list-head h3 {
+    font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--d-ink-2); margin: 0;
 }
+.open-shell .list-head .count { font-size: 12.5px; font-weight: 600; color: var(--d-ink-3); }
 
 .open-shell .item {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
     padding: 11px 12px; border: 1px solid var(--d-line); border-radius: var(--d-radius-sm);
     margin: 8px 0 0; transition: background .12s, border-color .12s;
 }
 .open-shell .item:hover { background: var(--d-surface-2); }
-.open-shell .item-main { display: flex; align-items: flex-start; gap: 12px; flex: 1; cursor: pointer; user-select: none; }
+.open-shell .item.overdue { border-color: var(--d-bad); background: var(--d-bad-bg); }
+.open-shell .item.overdue:hover { background: var(--d-bad-bg); }
+.open-shell .item-main { display: flex; align-items: flex-start; gap: 12px; flex: 1 1 220px; cursor: pointer; user-select: none; min-width: 0; }
 .open-shell .item input[type=checkbox] {
     appearance: none; -webkit-appearance: none; flex: 0 0 auto;
     width: 22px; height: 22px; margin-top: 1px; border: 2px solid var(--d-line-2);
     border-radius: 6px; background: #fff; cursor: pointer; position: relative;
 }
+.open-shell .item.overdue input[type=checkbox] { border-color: var(--d-bad); }
 .open-shell .item input[type=checkbox]:checked { background: var(--d-accent); border-color: var(--d-accent-deep); }
 .open-shell .item input[type=checkbox]:checked::after {
     content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px;
@@ -111,6 +117,19 @@
 }
 .open-shell .item .txt { font-size: 15px; line-height: 1.35; color: var(--d-ink); padding-top: 1px; }
 .open-shell .item input[type=checkbox]:checked + .txt { color: var(--d-ink-3); text-decoration: line-through; }
+
+.open-shell .item .meta {
+    display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto;
+}
+.open-shell .freq-badge {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+    background: var(--d-surface-2); color: var(--d-ink-3); border: 1px solid var(--d-line);
+}
+.open-shell .period-note { font-size: 12.5px; color: var(--d-ink-3); white-space: nowrap; }
+.open-shell .due { font-size: 13px; font-weight: 700; color: var(--d-ink-2); white-space: nowrap; }
+.open-shell .due.due-overdue { color: var(--d-bad); }
+.open-shell .item.overdue .period-note { color: var(--d-bad); opacity: .85; }
 </style>
 
 <div class="open-shell">
@@ -119,8 +138,7 @@
             <h1>Manager Checklist</h1>
             <p>
                 {{ $meta['label'] }} - {{ $meta['store'] }}.
-                Tick each item off as you go - it saves automatically. Daily items reset every day,
-                weekly items reset Monday, monthly items reset on the 1st.
+                Tasks sorted by due date - soonest first. Tick each one off as you go, it saves automatically.
             </p>
         </div>
         @include('partials.pin_button', ['pinUrl' => url('/manager-checklist'), 'pinLabel' => 'Manager Checklist'])
@@ -132,27 +150,43 @@
             Ask Sarah or Jon to run the migration, then reload this page.
         </div>
     @else
+        @if($overdueCount > 0)
+            <div class="callout bad">
+                {{ $overdueCount }} {{ $overdueCount === 1 ? 'task is' : 'tasks are' }} overdue - see below.
+            </div>
+        @endif
+
         <div class="card">
-            @foreach ($groups as $groupName => $items)
-                <div class="grp">
-                    <h3>
-                        <span>{{ $groupName }}</span>
-                        <span class="period-note">
-                            {{ $periods[$groupName] ?? '' }}
-                            <span class="saved-note" data-saved-for="{{ $groupName }}">Saved</span>
+            <div class="list-head">
+                <h3>Tasks</h3>
+                <span class="count">{{ count($tasks) }} shown</span>
+            </div>
+
+            @forelse ($tasks as $t)
+                @php
+                    $dueDate = \Carbon\Carbon::parse($t['due_date']);
+                    $dueText = ($t['overdue'] ? 'Overdue - was due ' : 'Due ') . $dueDate->format('D, M j');
+                @endphp
+                <div class="item {{ $t['overdue'] ? 'overdue' : '' }}">
+                    <label class="item-main">
+                        <input type="checkbox" class="task-box"
+                               data-key="{{ $t['key'] }}" data-period="{{ $t['period_key'] }}"
+                               {{ $t['done'] ? 'checked' : '' }}>
+                        <span class="txt">{{ $t['label'] }}</span>
+                    </label>
+                    <div class="meta">
+                        <span class="freq-badge">{{ $t['freq'] }}</span>
+                        @if($t['period_note'])
+                            <span class="period-note">{{ $t['period_note'] }}</span>
+                        @endif
+                        <span class="due {{ $t['overdue'] ? 'due-overdue' : '' }}" data-due-for="{{ $t['key'] }}:{{ $t['period_key'] }}">
+                            {{ $dueText }}
                         </span>
-                    </h3>
-                    @foreach ($items as $key => $label)
-                        <div class="item">
-                            <label class="item-main">
-                                <input type="checkbox" class="task-box" data-group="{{ $groupName }}" value="{{ $key }}"
-                                       {{ in_array($key, $checked[$groupName] ?? [], true) ? 'checked' : '' }}>
-                                <span class="txt">{{ $label }}</span>
-                            </label>
-                        </div>
-                    @endforeach
+                    </div>
                 </div>
-            @endforeach
+            @empty
+                <div class="callout">Nothing due yet.</div>
+            @endforelse
         </div>
     @endif
 </div>
@@ -165,18 +199,12 @@
     var token = tokenEl ? tokenEl.getAttribute('content') : '';
     var boxes = document.querySelectorAll('.open-shell .task-box');
 
-    function flashSaved(group) {
-        var note = document.querySelector('.saved-note[data-saved-for="' + group + '"]');
-        if (!note) { return; }
-        note.classList.add('show');
-        setTimeout(function () { note.classList.remove('show'); }, 1200);
-    }
-
     boxes.forEach(function (b) {
         b.addEventListener('change', function () {
-            var group = b.getAttribute('data-group');
+            var row = b.closest('.item');
             var body = new FormData();
-            body.append('key', b.value);
+            body.append('key', b.getAttribute('data-key'));
+            body.append('period_key', b.getAttribute('data-period'));
             body.append('checked', b.checked ? '1' : '0');
             fetch(toggleUrl, {
                 method: 'POST', credentials: 'same-origin',
@@ -185,8 +213,10 @@
             }).then(function (r) {
                 if (!r.ok) { throw new Error('save failed'); }
                 return r.json();
-            }).then(function () {
-                flashSaved(group);
+            }).then(function (data) {
+                if (!data || !data.ok) { throw new Error('save failed'); }
+                // Checking off an overdue task clears its overdue styling immediately.
+                if (row) { row.classList.remove('overdue'); }
             }).catch(function () {
                 b.checked = !b.checked;
                 alert('Could not save that - check your connection and try again.');

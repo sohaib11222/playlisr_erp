@@ -3,12 +3,9 @@
 
 @section('content')
 @php
-    $notReady   = $notReady ?? false;
-    $managers   = $managers ?? [];
-    $groups     = $groups ?? [];
-    $periods    = $periods ?? [];
-    $dailyTotal = $dailyTotal ?? 0;
-    $history    = $history ?? [];
+    $notReady = $notReady ?? false;
+    $managers = $managers ?? [];
+    $startDate = $startDate ?? null;
 @endphp
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,6 +31,7 @@
     --d-good: #2E7D32;
     --d-warn: #B26A00;
     --d-bad: #B3261E;
+    --d-bad-bg: #FBEAE8;
     --d-radius: 12px;
     --d-radius-sm: 10px;
 
@@ -41,7 +39,7 @@
     color: var(--d-ink);
     -webkit-font-smoothing: antialiased;
     background: var(--d-bg);
-    max-width: 1080px;
+    max-width: 1200px;
     margin: 12px auto 48px;
     padding: 0 16px;
 }
@@ -58,8 +56,8 @@
 }
 
 .open-shell .managers-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px; margin-bottom: 16px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 16px; margin-bottom: 16px; align-items: start;
 }
 
 .open-shell .card {
@@ -73,38 +71,46 @@
 .open-shell .mgr-head .store { font-size: 12.5px; font-weight: 700; color: var(--d-ink-3); text-transform: uppercase; letter-spacing: .04em; }
 .open-shell .mgr-missing { font-size: 13px; color: var(--d-bad); font-weight: 700; margin-bottom: 8px; }
 
-.open-shell .grp { margin-top: 14px; }
-.open-shell .grp:first-child { margin-top: 8px; }
-.open-shell .grp h3 {
-    font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-    color: var(--d-ink-2); margin: 0 0 6px; padding-bottom: 5px; border-bottom: 2px solid var(--d-accent);
-    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+.open-shell .stat-pills { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
+.open-shell .stat-pill {
+    display: inline-flex; align-items: baseline; gap: 5px; padding: 6px 12px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; background: var(--d-surface-2); border: 1px solid var(--d-line); color: var(--d-ink-2);
 }
-.open-shell .grp h3 .period-note { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12px; color: var(--d-ink-3); }
+.open-shell .stat-pill.bad { background: var(--d-bad-bg); border-color: var(--d-bad); color: var(--d-bad); }
+.open-shell .stat-pill.good { background: #E6F4E6; border-color: var(--d-good); color: var(--d-good); }
+.open-shell .stat-pill b { font-size: 15px; }
 
-.open-shell .chk-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; }
-.open-shell .chk-row .dot { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
-.open-shell .chk-row .dot.on { background: #E6F4E6; color: var(--d-good); }
-.open-shell .chk-row .dot.off { background: #FBEAE8; color: var(--d-bad); }
-.open-shell .chk-row .dot .fa { font-size: 10px; }
-.open-shell .chk-row .done { color: var(--d-ink-3); text-decoration: line-through; }
-
-.open-shell table.hist { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.open-shell table.hist th { text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--d-ink-3); padding: 6px 8px; border-bottom: 1px solid var(--d-line); }
-.open-shell table.hist th:first-child { text-align: left; }
-.open-shell table.hist td { padding: 8px; border-bottom: 1px solid var(--d-line); vertical-align: middle; color: var(--d-ink-2); text-align: center; }
-.open-shell table.hist td:first-child { text-align: left; font-weight: 600; color: var(--d-ink); }
-.open-shell .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
-.open-shell .tag.full { background: #E6F4E6; color: var(--d-good); }
-.open-shell .tag.part { background: #FBEBD2; color: var(--d-warn); }
-.open-shell .tag.none { background: #FBEAE8; color: var(--d-bad); }
+.open-shell .task-list { max-height: 560px; overflow-y: auto; padding-right: 2px; }
+.open-shell .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    padding: 9px 10px; border: 1px solid var(--d-line); border-radius: var(--d-radius-sm);
+    margin-top: 6px; font-size: 13.5px;
+}
+.open-shell .row.overdue { border-color: var(--d-bad); background: var(--d-bad-bg); }
+.open-shell .row .main { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; min-width: 0; }
+.open-shell .row .dot { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.open-shell .row .dot.on { background: #E6F4E6; color: var(--d-good); }
+.open-shell .row .dot.off { background: var(--d-surface-2); color: var(--d-ink-3); }
+.open-shell .row.overdue .dot.off { background: var(--d-bad-bg); color: var(--d-bad); }
+.open-shell .row .dot .fa { font-size: 10px; }
+.open-shell .row .label { color: var(--d-ink); }
+.open-shell .row.overdue .label { color: var(--d-bad); font-weight: 600; }
+.open-shell .row .done .label { color: var(--d-ink-3); text-decoration: line-through; font-weight: 400; }
+.open-shell .row .meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
+.open-shell .freq-badge {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    background: var(--d-surface-2); color: var(--d-ink-3); border: 1px solid var(--d-line);
+}
+.open-shell .due { font-size: 12.5px; font-weight: 700; color: var(--d-ink-2); white-space: nowrap; }
+.open-shell .due.due-overdue { color: var(--d-bad); }
 </style>
 
 <div class="open-shell">
     <div class="open-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
         <div>
             <h1>Manager Checklists</h1>
-            <p>Zakary (Pico) and Luis (Hollywood) - current period status and recent daily history.</p>
+            <p>Zakary (Pico) and Luis (Hollywood) - full task list, soonest due date first. Overdue items are flagged red.</p>
         </div>
         @include('partials.pin_button', ['pinUrl' => url('/admin/manager-checklists'), 'pinLabel' => 'Manager Checklists'])
     </div>
@@ -125,53 +131,37 @@
                     @if(!$m['found'])
                         <div class="mgr-missing">No matching user account found (looked for first name "{{ ucfirst($key) }}").</div>
                     @endif
-                    @foreach ($groups as $groupName => $items)
-                        <div class="grp">
-                            <h3>
-                                <span>{{ $groupName }}</span>
-                                <span class="period-note">{{ $periods[$groupName] ?? '' }}</span>
-                            </h3>
-                            @foreach ($items as $itemKey => $label)
-                                @php $done = in_array($itemKey, $m['checked'][$groupName] ?? [], true); @endphp
-                                <div class="chk-row">
-                                    <span class="dot {{ $done ? 'on' : 'off' }}"><i class="fa {{ $done ? 'fa-check' : 'fa-times' }}"></i></span>
-                                    <span class="{{ $done ? 'done' : '' }}">{{ $label }}</span>
+
+                    <div class="stat-pills">
+                        <span class="stat-pill {{ $m['overdueCount'] > 0 ? 'bad' : 'good' }}">
+                            <b>{{ $m['overdueCount'] }}</b> overdue
+                        </span>
+                        <span class="stat-pill good"><b>{{ $m['doneCount'] }}</b> done</span>
+                        <span class="stat-pill"><b>{{ $m['totalCount'] }}</b> total in list</span>
+                    </div>
+
+                    <div class="task-list">
+                        @forelse ($m['tasks'] as $t)
+                            @php
+                                $dueDate = \Carbon\Carbon::parse($t['due_date']);
+                                $dueText = ($t['overdue'] ? 'Overdue - ' : 'Due ') . $dueDate->format('D, M j');
+                            @endphp
+                            <div class="row {{ $t['overdue'] ? 'overdue' : '' }} {{ $t['done'] ? 'done' : '' }}">
+                                <div class="main">
+                                    <span class="dot {{ $t['done'] ? 'on' : 'off' }}"><i class="fa {{ $t['done'] ? 'fa-check' : 'fa-times' }}"></i></span>
+                                    <span class="label">{{ $t['label'] }}</span>
                                 </div>
-                            @endforeach
-                        </div>
-                    @endforeach
+                                <div class="meta">
+                                    <span class="freq-badge">{{ $t['freq'] }}</span>
+                                    <span class="due {{ $t['overdue'] ? 'due-overdue' : '' }}">{{ $dueText }}</span>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="callout">Nothing in the list yet.</div>
+                        @endforelse
+                    </div>
                 </div>
             @endforeach
-        </div>
-
-        <div class="card">
-            <div class="grp" style="margin-top:0">
-                <h3><span>Daily - last 7 days</span></h3>
-                <table class="hist">
-                    <thead>
-                        <tr>
-                            <th>Day</th>
-                            @foreach ($managers as $m)
-                                <th>{{ $m['label'] }}</th>
-                            @endforeach
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($history as $row)
-                            <tr>
-                                <td>{{ $row['label'] }}</td>
-                                @foreach ($managers as $key => $m)
-                                    @php
-                                        $cnt = $row[$key] ?? 0;
-                                        $tag = $cnt >= $dailyTotal ? 'full' : ($cnt > 0 ? 'part' : 'none');
-                                    @endphp
-                                    <td><span class="tag {{ $tag }}">{{ $cnt }}/{{ $dailyTotal }}</span></td>
-                                @endforeach
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
         </div>
     @endif
 </div>
