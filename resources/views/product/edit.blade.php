@@ -257,6 +257,14 @@
                 </div>
             </div>
 
+            <div class="col-sm-3">
+                <div class="form-group">
+                    {!! Form::label('product_custom_field2', 'Street / Release Date:') !!}
+                    {!! Form::date('product_custom_field2', !empty($product->product_custom_field2) ? $product->product_custom_field2 : null, ['class' => 'form-control']) !!}
+                    <p class="help-block">Future date = preorder</p>
+                </div>
+            </div>
+
             <div class="col-sm-12">
                 <div class="form-group">
                     {!! Form::label('product_locations', __('business.business_locations') . ':') !!} @show_tooltip(__('lang_v1.product_location_help'))

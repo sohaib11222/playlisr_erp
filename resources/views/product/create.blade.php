@@ -428,6 +428,14 @@
                         </div>
                     </div>
 
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            {!! Form::label('product_custom_field2', 'Street / Release Date') !!}
+                            {!! Form::date('product_custom_field2', !empty($duplicate_product->product_custom_field2) ? $duplicate_product->product_custom_field2 : null, ['class' => 'form-control']) !!}
+                            <p class="help-block">A future date makes this a preorder on the website until that date. Leave blank for a regular in-stock item.</p>
+                        </div>
+                    </div>
+
                     @php
                         $default_location = null;
                         if(count($business_locations) == 1){
