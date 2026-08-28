@@ -2,13 +2,21 @@
     $dueDate = \Carbon\Carbon::parse($t['due_date']);
     $dueText = $dueDate->format('M j');
 @endphp
-<div class="task-row {{ $t['overdue'] ? 'overdue' : '' }} {{ $t['done'] ? 'done' : '' }}">
+<div class="task-row {{ $t['overdue'] ? 'overdue' : '' }} {{ $t['done'] ? 'done' : '' }}"
+     data-id="{{ $t['id'] }}"
+     data-title="{{ $t['title'] }}"
+     data-notes="{{ $t['notes'] }}"
+     data-assignee="{{ $t['assignee_name'] ?? 'Anyone on shift' }}"
+     data-due="{{ $t['overdue'] ? 'Overdue - was due ' : 'Due ' }}{{ $dueText }}"
+     data-repeat="{{ $t['recurrence'] === 'weekly' ? 'Repeats weekly' . ($t['weekday'] ? ' on ' . $weekdayNames[$t['weekday']] : '') : '' }}">
     <input type="checkbox" class="task-box" data-id="{{ $t['id'] }}" data-period="{{ $t['period_key'] }}" {{ $t['done'] ? 'checked' : '' }}>
 
-    <div class="task-main">
+    <div class="task-main task-open">
         <span class="task-title">{{ $t['title'] }}</span>
         @if(!empty($t['notes']))
             <span class="task-notes">{{ $t['notes'] }}</span>
+        @else
+            <span class="task-notes task-notes-empty">Add description...</span>
         @endif
         @if($t['done'] && $t['done_by'])
             <span class="task-done-by">Done by {{ $t['done_by'] }}</span>

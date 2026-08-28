@@ -179,6 +179,60 @@
     border-color: var(--d-line-2); background: var(--d-surface); color: var(--d-ink-2); opacity: 1; outline: none;
 }
 .et-shell .empty-note { padding: 4px 16px 14px; font-size: 13px; color: var(--d-ink-3); }
+
+.et-shell .task-open { cursor: pointer; }
+.et-shell .task-notes-empty { color: var(--d-ink-3); opacity: 0; font-style: italic; transition: opacity .1s; }
+.et-shell .task-row:hover .task-notes-empty { opacity: .7; }
+
+.et-modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(23,24,26,.4); z-index: 1000;
+    align-items: flex-start; justify-content: center; padding: 8vh 16px;
+}
+.et-modal-backdrop.open { display: flex; }
+.et-modal {
+    background: #fff; border-radius: 10px; width: 100%; max-width: 560px; max-height: 78vh; overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(23,24,26,.25); font-family: "Inter Tight", system-ui, sans-serif;
+}
+.et-modal-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    padding: 18px 20px 4px;
+}
+.et-modal-close {
+    border: none; background: transparent; color: var(--d-ink-3); font-size: 20px; cursor: pointer;
+    width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
+}
+.et-modal-close:hover { background: var(--d-surface-2); color: var(--d-ink); }
+.et-modal-body { padding: 4px 20px 20px; }
+.et-modal-title {
+    width: 100%; font-family: inherit; font-size: 19px; font-weight: 700; color: var(--d-ink);
+    border: 1px solid transparent; border-radius: var(--d-radius-sm); padding: 6px 8px; margin: 0 0 10px -8px;
+}
+.et-modal-title:hover, .et-modal-title:focus { border-color: var(--d-line-2); outline: none; }
+.et-modal-title[readonly] { cursor: default; }
+.et-modal-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 18px; }
+.et-modal-meta .meta-item { font-size: 12.5px; }
+.et-modal-meta .meta-item .k { display: block; color: var(--d-ink-3); font-weight: 600; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; font-size: 10.5px; }
+.et-modal-meta .meta-item .v { color: var(--d-ink); font-weight: 600; }
+.et-modal-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--d-ink-3);
+    margin: 0 0 6px;
+}
+.et-modal-notes {
+    width: 100%; min-height: 110px; font-family: inherit; font-size: 14px; line-height: 1.5; color: var(--d-ink);
+    border: 1px solid var(--d-line-2); border-radius: var(--d-radius-sm); padding: 10px 12px; resize: vertical;
+}
+.et-modal-notes:focus { outline: none; border-color: var(--d-ink-3); }
+.et-modal-notes[readonly] { border-color: transparent; background: var(--d-surface-2); resize: none; }
+.et-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.et-modal-actions button {
+    font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 8px 16px; border-radius: var(--d-radius-sm); cursor: pointer;
+}
+.et-modal-save { border: none; background: var(--d-ink); color: #fff; }
+.et-modal-save:hover { opacity: .9; }
+.et-modal-cancel { border: 1px solid var(--d-line-2); background: #fff; color: var(--d-ink-2); }
+.et-modal-cancel:hover { background: var(--d-surface-2); }
+.et-modal-saved { font-size: 12.5px; color: var(--d-good); font-weight: 600; align-self: center; margin-right: auto; opacity: 0; transition: opacity .15s; }
+.et-modal-saved.show { opacity: 1; }
 </style>
 
 <div class="et-shell">
@@ -285,6 +339,31 @@
                 </div>
             </div>
         </div>
+
+        <div class="et-modal-backdrop" id="task-modal-backdrop">
+            <div class="et-modal">
+                <div class="et-modal-head">
+                    <input type="text" class="et-modal-title" id="task-modal-title" maxlength="200" {{ $canManage ? '' : 'readonly' }}>
+                    <button type="button" class="et-modal-close" id="task-modal-close">&times;</button>
+                </div>
+                <div class="et-modal-body">
+                    <div class="et-modal-meta">
+                        <div class="meta-item"><span class="k">Assignee</span><span class="v" id="task-modal-assignee"></span></div>
+                        <div class="meta-item"><span class="k">Due</span><span class="v" id="task-modal-due"></span></div>
+                        <div class="meta-item" id="task-modal-repeat-wrap" style="display:none;"><span class="k">Repeats</span><span class="v" id="task-modal-repeat"></span></div>
+                    </div>
+                    <p class="et-modal-label">Description - how to do it</p>
+                    <textarea class="et-modal-notes" id="task-modal-notes" placeholder="{{ $canManage ? 'Add instructions for whoever does this...' : 'No description added.' }}" {{ $canManage ? '' : 'readonly' }}></textarea>
+                    @if($canManage)
+                        <div class="et-modal-actions">
+                            <span class="et-modal-saved" id="task-modal-saved">Saved</span>
+                            <button type="button" class="et-modal-cancel" id="task-modal-cancel">Close</button>
+                            <button type="button" class="et-modal-save" id="task-modal-save">Save</button>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
     @endif
 </div>
 
@@ -371,6 +450,72 @@
         post(urls.store, data)
             .then(function () { window.location.reload(); })
             .catch(function (e) { alert('Could not add that task.\n' + e.message); });
+    }
+
+    // Task detail modal - click a task's title/description to open it, see
+    // the full (untruncated) description, and (managers) edit title + notes.
+    var backdrop  = document.getElementById('task-modal-backdrop');
+    var modalTitle = document.getElementById('task-modal-title');
+    var modalNotes = document.getElementById('task-modal-notes');
+    var modalAssignee = document.getElementById('task-modal-assignee');
+    var modalDue = document.getElementById('task-modal-due');
+    var modalRepeatWrap = document.getElementById('task-modal-repeat-wrap');
+    var modalRepeat = document.getElementById('task-modal-repeat');
+    var modalSave = document.getElementById('task-modal-save');
+    var modalCancel = document.getElementById('task-modal-cancel');
+    var modalClose = document.getElementById('task-modal-close');
+    var modalSaved = document.getElementById('task-modal-saved');
+    var openTaskId = null;
+
+    function openModal(row) {
+        openTaskId = row.getAttribute('data-id');
+        modalTitle.value = row.getAttribute('data-title') || '';
+        modalNotes.value = row.getAttribute('data-notes') || '';
+        modalAssignee.textContent = row.getAttribute('data-assignee') || 'Anyone on shift';
+        modalDue.textContent = row.getAttribute('data-due') || '';
+        var repeat = row.getAttribute('data-repeat') || '';
+        if (repeat) { modalRepeat.textContent = repeat; modalRepeatWrap.style.display = ''; }
+        else { modalRepeatWrap.style.display = 'none'; }
+        if (modalSaved) { modalSaved.classList.remove('show'); }
+        backdrop.classList.add('open');
+    }
+
+    function closeModal() {
+        backdrop.classList.remove('open');
+        openTaskId = null;
+    }
+
+    document.querySelectorAll('.et-shell .task-open').forEach(function (el) {
+        el.addEventListener('click', function () {
+            openModal(el.closest('.task-row'));
+        });
+    });
+
+    if (backdrop) {
+        backdrop.addEventListener('click', function (e) { if (e.target === backdrop) { closeModal(); } });
+    }
+    if (modalClose) { modalClose.addEventListener('click', closeModal); }
+    if (modalCancel) { modalCancel.addEventListener('click', closeModal); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && backdrop && backdrop.classList.contains('open')) { closeModal(); }
+    });
+
+    if (modalSave) {
+        modalSave.addEventListener('click', function () {
+            if (!openTaskId) { return; }
+            var title = modalTitle.value.trim();
+            if (!title) { alert('Task needs a title.'); return; }
+            post(urls.update, { id: openTaskId, title: title, notes: modalNotes.value })
+                .then(function () {
+                    if (modalSaved) {
+                        modalSaved.classList.add('show');
+                        setTimeout(function () { window.location.reload(); }, 450);
+                    } else {
+                        window.location.reload();
+                    }
+                })
+                .catch(function (e) { alert('Could not save that.\n' + e.message); });
+        });
     }
 })();
 </script>
