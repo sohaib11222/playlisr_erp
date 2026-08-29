@@ -81,7 +81,14 @@ class ReceivingPackageController extends Controller
                 ->editColumn('received_at', function ($row) {
                     return $row->received_at ? \Carbon::parse($row->received_at)->format('n/j/y g:i A') : '-';
                 })
-                ->rawColumns(['action', 'status'])
+                ->editColumn('photo', function ($row) {
+                    if (!$row->photo) {
+                        return '-';
+                    }
+                    $url = asset('uploads/receiving_photos/' . $row->photo);
+                    return '<a href="' . $url . '" target="_blank"><img src="' . $url . '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid #e5ddd0;"></a>';
+                })
+                ->rawColumns(['action', 'status', 'photo'])
                 ->make(true);
         }
 
