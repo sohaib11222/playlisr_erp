@@ -23,16 +23,22 @@ body.pos-v2 .btn-accent { background: var(--pos-accent); color: var(--pos-accent
   border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
 body.pos-v2 .btn-accent:hover { background: var(--pos-accent-deep); color: var(--pos-accent-text); }
 
-/* DataTable, pos-v2 skin */
-body.pos-v2 #pickup_table { width: 100% !important; border-collapse: collapse; }
-body.pos-v2 #pickup_table thead th {
+/* DataTable, pos-v2 skin — shared by the AMS pickups table and the
+   preorders table below it so both read as one design. */
+body.pos-v2 #pickup_table, body.pos-v2 #preorder_table { width: 100% !important; border-collapse: collapse; }
+body.pos-v2 #pickup_table thead th, body.pos-v2 #preorder_table thead th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: #8a8070; font-weight: 700; padding: 9px 10px; border-bottom: 1px solid var(--pos-line); background: transparent; }
-body.pos-v2 #pickup_table tbody td { padding: 11px 10px; border-bottom: 1px solid var(--pos-line); font-size: 13.5px; vertical-align: middle; color: var(--pos-ink); }
-body.pos-v2 #pickup_table tbody tr:hover { background: var(--pos-accent-soft); }
-body.pos-v2 #pickup_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
-body.pos-v2 #pickup_table .btn-group { display: inline-flex; gap: 5px; }
-body.pos-v2 #pickup_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+body.pos-v2 #pickup_table tbody td, body.pos-v2 #preorder_table tbody td { padding: 11px 10px; border-bottom: 1px solid var(--pos-line); font-size: 13.5px; vertical-align: middle; color: var(--pos-ink); }
+body.pos-v2 #pickup_table tbody tr:hover, body.pos-v2 #preorder_table tbody tr:hover { background: var(--pos-accent-soft); }
+body.pos-v2 #pickup_table .label, body.pos-v2 #preorder_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+body.pos-v2 #pickup_table .btn-group, body.pos-v2 #preorder_table .btn-group { display: inline-flex; gap: 5px; }
+body.pos-v2 #pickup_table .btn-xs, body.pos-v2 #preorder_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+body.pos-v2 #preorder_table .source-select {
+  border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 4px 8px; font-size: 12px; font-family: inherit;
+  background: #fff; color: var(--pos-ink); max-width: 170px; text-overflow: ellipsis; }
+body.pos-v2 .preorder-toggle { display: inline-flex; gap: 8px; }
+body.pos-v2 .preorder-toggle .btn-accent, body.pos-v2 .preorder-toggle .btn-ghost { padding: 8px 16px; font-size: 13px; }
 body.pos-v2 .dataTables_wrapper .dataTables_filter input,
 body.pos-v2 .dataTables_wrapper .dataTables_length select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 6px 9px; font-family: inherit; background: #fff; }
@@ -98,9 +104,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 <strong style="font-size:15px;">Party &amp; Special-Order Preorders</strong>
                 <p class="sub" style="margin:2px 0 0;">Listening-party reservations and in-store special orders — separate from AMS special orders above until they're placed with a distributor.</p>
             </div>
-            <div style="text-align:right;flex:0 1 auto;white-space:nowrap;">
-                <a class="{{ $preorderShowAll ? 'btn-ghost' : 'btn-accent' }}" href="{{ action('CustomerPickupController@index') }}#preorders" style="text-decoration:none;padding:6px 14px;border-radius:8px;">Active</a>
-                <a class="{{ $preorderShowAll ? 'btn-accent' : 'btn-ghost' }}" href="{{ action('CustomerPickupController@index', ['preorder_status' => 'all']) }}#preorders" style="text-decoration:none;padding:6px 14px;border-radius:8px;">All</a>
+            <div class="preorder-toggle" style="flex:0 1 auto;">
+                <a class="{{ $preorderShowAll ? 'btn-ghost' : 'btn-accent' }}" href="{{ action('CustomerPickupController@index') }}#preorders" style="text-decoration:none;">Active</a>
+                <a class="{{ $preorderShowAll ? 'btn-accent' : 'btn-ghost' }}" href="{{ action('CustomerPickupController@index', ['preorder_status' => 'all']) }}#preorders" style="text-decoration:none;">All</a>
             </div>
         </div>
 
@@ -118,7 +124,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             <div class="sub" style="padding:8px 2px;">{{ $preorderShowAll ? 'No preorders yet.' : 'No active preorders — everything has been picked up or canceled.' }}</div>
         @else
             @php $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
-            <table class="table table-hover" style="width:100%;">
+            <table class="table" id="preorder_table" style="width:100%;">
                 <thead>
                     <tr>
                         <th>Customer</th>
@@ -150,7 +156,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                     <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $p['id']]) }}" style="margin:0;">
                                         {{ csrf_field() }}
                                         <input type="hidden" name="filter" value="{{ $filterVal }}">
-                                        <select name="source" onchange="this.form.submit()" style="font-size:12px;padding:4px 6px;border:1px solid var(--pos-line);border-radius:8px;max-width:180px;">
+                                        <select name="source" onchange="this.form.submit()" class="source-select" title="{{ $p['source'] !== '' ? $p['source'] : ('At event' . ($p['eventName'] ? ' — ' . $p['eventName'] : '')) }}">
                                             <option value="" {{ $p['source'] === '' ? 'selected' : '' }}>At event{{ $p['eventName'] ? ' — ' . $p['eventName'] : '' }}</option>
                                             @foreach($sourceOpts as $opt)
                                                 <option value="{{ $opt }}" {{ $p['source'] === $opt ? 'selected' : '' }}>{{ $opt }}</option>
