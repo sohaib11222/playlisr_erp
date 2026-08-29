@@ -63,7 +63,7 @@
                                     {{ $offer->seller_name ?: optional($offer->contact)->name ?: '—' }}
                                 @endif
                             </td>
-                            <td>{{ $offer->lines->count() }}</td>
+                            <td>{{ $offer->total_item_quantity }}</td>
                             <td>@format_currency($finalAccepted)</td>
                             <td>
                                 <span class="bfc-loc-display" data-offer-id="{{ $offer->id }}">{{ $offer->storage_location ?: '—' }}</span>

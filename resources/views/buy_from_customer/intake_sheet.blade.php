@@ -28,7 +28,7 @@
                 <div class="text-muted">{{ @format_datetime($offer->accepted_at ?? $offer->created_at) }} &middot; {{ optional($offer->location)->name ?? '—' }}</div>
             </div>
 
-            @php $totalItems = (int) round($offer->lines->sum('quantity')); @endphp
+            @php $totalItems = $offer->total_item_quantity; @endphp
             @if($totalItems > 100)
                 <div class="bfc-warehouse-label" style="border:4px solid #b0451a; background:#fff3e0; padding:20px; margin-bottom:20px; text-align:center; border-radius:6px;">
                     <div style="font-size:22px; font-weight:800; color:#b0451a; letter-spacing:1px;">&#9888; WAREHOUSE COLLECTION &mdash; DO NOT SHELVE IN STORE &#9888;</div>
