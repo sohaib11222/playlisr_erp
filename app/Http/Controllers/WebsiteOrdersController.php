@@ -136,6 +136,52 @@ class WebsiteOrdersController extends Controller
         ]);
     }
 
+    /**
+     * Paid, not-yet-picked-up pickup orders, shaped for the Customer Pickups
+     * page (Sarah, 2026-08-29 — regular website preorders/orders held for
+     * in-store pickup weren't showing up anywhere staff actually look;
+     * they only lived here on /website-orders). Same bridge data as
+     * index(), just filtered/reshaped instead of duplicated.
+     */
+    public function pickupOrdersRows(): array
+    {
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300');
+        if ($resp === null || ($resp['success'] ?? true) === false) {
+            return [];
+        }
+        $allOrders = $resp['data'] ?? [];
+
+        $rows = array_values(array_filter($allOrders, function ($o) {
+            if (!empty($o['archived'])) return false;
+            if (($o['fulfillment_method'] ?? null) !== 'pickup') return false;
+            if (($o['payment_status'] ?? '') !== 'completed') return false;
+            $status = $o['order_status'] ?? '';
+            return in_array($status, ['processing', 'ready_for_pickup'], true);
+        }));
+
+        usort($rows, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
+
+        return array_map(function ($o) {
+            $items = array_map(function ($item) {
+                $name = $item['product_name'] ?? (($item['is_gift_card'] ?? false) ? 'Gift Card' : 'Item');
+                $qty = (int) ($item['quantity'] ?? 1);
+                return $qty > 1 ? "{$name} x{$qty}" : $name;
+            }, $o['items'] ?? []);
+
+            return [
+                'id'       => $o['_id'] ?? '',
+                'customer' => $o['user_id']['name'] ?? 'Guest',
+                'email'    => $o['user_id']['email'] ?? '',
+                'phone'    => $o['contactNumber'] ?? '',
+                'items'    => $items,
+                'total'    => (float) ($o['total_amount'] ?? 0),
+                'location' => $o['pickup_location'] ?? '',
+                'placed'   => $o['createdAt'] ?? null,
+                'status'   => $o['order_status'] ?? 'processing',
+            ];
+        }, $rows);
+    }
+
     public function updateStatus(Request $request, string $id)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {

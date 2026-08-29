@@ -103,6 +103,67 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         </div>
     </div>
 
+    <div class="pickup-card" id="website-pickups">
+        <div class="pickup-toolbar" style="justify-content:space-between;">
+            <div>
+                <strong style="font-size:15px;">Website Pickup Orders</strong>
+                <p class="sub" style="margin:2px 0 0;">Paid nivessa.com orders held for in-store pickup — regular checkout, not tied to an event or AMS special order.</p>
+            </div>
+        </div>
+
+        @if(empty($websitePickups))
+            <div class="sub" style="padding:8px 2px;">No website pickup orders waiting right now.</div>
+        @else
+            <table class="table" id="website_pickup_table" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>Customer</th>
+                        <th>Item(s)</th>
+                        <th>Total</th>
+                        <th>Placed</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($websitePickups as $wp)
+                        <tr>
+                            <td>{{ $wp['location'] === 'pico' ? 'Pico Store' : 'Hollywood Store' }}</td>
+                            <td>{{ $wp['customer'] }}
+                                <div class="sub" style="margin:0;">{{ $wp['email'] }}@if(!empty($wp['phone']))@if(!empty($wp['email'])) &middot; @endif{{ $wp['phone'] }}@endif</div>
+                            </td>
+                            <td>{{ implode(', ', $wp['items']) ?: '—' }}</td>
+                            <td>${{ number_format($wp['total'], 2) }}</td>
+                            <td class="sub">{{ !empty($wp['placed']) ? date('M j, Y g:ia', strtotime($wp['placed'])) : '—' }}</td>
+                            <td>
+                                @if($wp['status'] === 'ready_for_pickup')
+                                    <span class="label label-warning">Ready for Pickup</span>
+                                @else
+                                    <span class="label label-default">Preparing</span>
+                                @endif
+                            </td>
+                            <td style="white-space:nowrap;">
+                                @if($wp['status'] !== 'ready_for_pickup')
+                                    <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
+                                        {{ csrf_field() }}
+                                        <input type="hidden" name="status" value="ready_for_pickup">
+                                        <button type="submit" class="btn btn-default btn-xs">Mark Ready</button>
+                                    </form>
+                                @endif
+                                <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
+                                    {{ csrf_field() }}
+                                    <input type="hidden" name="status" value="picked_up">
+                                    <button type="submit" class="btn btn-success btn-xs">Mark Picked Up</button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
+    </div>
+
     <div class="pickup-card" id="preorders">
         <div class="pickup-toolbar" style="justify-content:space-between;">
             <div>

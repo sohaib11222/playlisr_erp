@@ -160,12 +160,18 @@ class CustomerPickupController extends Controller
         [$preorders, $preorderKeySet, $preorderReachable] = (new \App\Http\Controllers\EventsController())
             ->preordersRows($business_id, $preorderShowAll);
 
+        // Regular website orders held for in-store pickup (paid, not yet
+        // picked up) — same bridge as /website-orders, just surfaced here too
+        // since staff pulling pickups look at this page, not the order console.
+        $websitePickups = (new \App\Http\Controllers\WebsiteOrdersController())->pickupOrdersRows();
+
         return view('customer_pickup.index', compact(
             'statuses',
             'preorders',
             'preorderShowAll',
             'preorderKeySet',
-            'preorderReachable'
+            'preorderReachable',
+            'websitePickups'
         ));
     }
 
