@@ -164,13 +164,14 @@ class ListingCommissionController extends Controller
         }
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
-        $partyEarned = $this->partyEarnedByUser();
-        // Also fold in listening-party bonuses paid by hand via /admin/party-bonus
-        // (previously computed but never wired in) so the Listening party column
-        // shows them too, not just unpaid auto-splits.
-        foreach ($this->manualPartyEarnedByUser() as $uid => $amt) {
-            $partyEarned[(int) $uid] = ($partyEarned[(int) $uid] ?? 0) + $amt;
-        }
+        // Kept separate from the manual/paid amounts below — merging them into one
+        // number made the column claim a party was BOTH owed and paid at once
+        // (Sarah 2026-08-28: found Manolo's row showing "Owed: $19.07 / Paid:
+        // $19.07 ✓" simultaneously, which is never a true state). One is the
+        // un-paid auto-split (currently always empty, partyDates() is disabled);
+        // the other is real hand-paid entries from /admin/party-bonus.
+        $partyOwed = $this->partyEarnedByUser();
+        $partyPaidManual = $this->manualPartyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -194,11 +195,11 @@ class ListingCommissionController extends Controller
             // total payout is unchanged — it just moves each party's bonus onto
             // the floor helper who earned it.
             $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
-            // Listening party column shows only what's still OWED for a party. Hand-paid
-            // party bonuses are earned == paid so they net to $0 and drop off once paid,
-            // same as the sales/listing owed columns; the paid ones live in the weekly
-            // statement instead. (Only an un-paid auto split would show here.)
-            $p->party_earned = round($partyEarned[(int) $uid] ?? 0, 2);
+            // Owed = un-paid auto-split still outstanding. Paid = real hand-paid
+            // entries this period. Shown as two independent amounts — never claim
+            // the same dollar is both owed and already paid.
+            $p->party_owed = round($partyOwed[(int) $uid] ?? 0, 2);
+            $p->party_paid = round($partyPaidManual[(int) $uid] ?? 0, 2);
             $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
             $p->sales_owed     = $s ? (float) $s->owed     : 0.0;
