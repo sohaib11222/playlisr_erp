@@ -63,10 +63,14 @@
     table.sbh-grid td.sbh-zero { color: #C9BFA9; font-weight: 400; }
     table.sbh-grid td.sbh-total, table.sbh-grid th.sbh-total { background: #FFF6CF !important; font-weight: 800 !important; color: #5A4410 !important; }
     table.sbh-grid tfoot td { border-top: 2px solid #ECE3CF; }
+    table.sbh-grid td.sbh-below { color: #B4462F !important; font-weight: 800 !important; }
+    table.sbh-grid td.sbh-reco { color: #1F1B16; font-weight: 700; background: #FAF6EE !important; font-size: 12px; }
+    .sbh-labor-input { max-width: 120px; display: inline-block; }
 </style>
 
 @php
     $money = function ($n) { return '$' . number_format($n, 0); };
+    $moneyRate = function ($n) { return '$' . number_format($n, 2); };
     $storeLabel = $location_id ? ($locations[$location_id] ?? 'Store') : 'All stores';
 @endphp
 
@@ -106,6 +110,18 @@
                             </div>
                         </div>
                     </div>
+                    <div class="row" style="margin-top:14px;">
+                        <div class="col-md-3">
+                            <div class="form-group" style="margin-bottom:0;">
+                                {!! Form::label('labor_cost', 'Labor cost / hr:') !!}
+                                {!! Form::number('labor_cost', $labor_cost, ['step' => '0.50', 'min' => '0', 'class' => 'form-control sbh-labor-input']); !!}
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label style="display:block;">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary">Apply</button>
+                        </div>
+                    </div>
                 {!! Form::close() !!}
             @endcomponent
 
@@ -115,8 +131,10 @@
                 Register sales only &mdash; excludes Whatnot, online/marketplace, and bulk-imported/backfilled history, since those don't carry a real time-of-day.
                 @if($metric === 'avg')
                     Each cell is the average for that hour on that weekday across the range (e.g. a Saturday column divides by how many Saturdays fall in the window).
+                    Cells in <span style="color:#B4462F;font-weight:700;">red</span> average less than <strong>{{ $moneyRate($labor_cost) }}/hr</strong> — below the cost of staffing that hour.
                 @else
                     Each cell is the sum for that hour on that weekday across the whole range.
+                    Switch to <strong>Daily average</strong> to see labor-cost highlighting and recommended hours.
                 @endif
             </p>
 
@@ -154,10 +172,11 @@
                                     @foreach($day_labels as $d => $lbl)
                                         @php
                                             $v = $grid[$h][$d];
+                                            $below = $metric === 'avg' && $v > 0 && $v < $labor_cost;
                                             $ratio = $max_cell > 0 ? min(1, $v / $max_cell) : 0;
-                                            $bg = $v > 0 ? 'rgba(197,161,39,' . round($ratio * 0.85, 3) . ')' : 'transparent';
+                                            $bg = $below ? '#FBE9E7' : ($v > 0 ? 'rgba(197,161,39,' . round($ratio * 0.85, 3) . ')' : 'transparent');
                                         @endphp
-                                        <td class="sbh-cell {{ $v <= 0 ? 'sbh-zero' : '' }}" style="background: {{ $bg }};" title="{{ $lbl }} {{ \Carbon::createFromTime($h)->format('g A') }}: {{ $tx_grid[$h][$d] }} tx">
+                                        <td class="sbh-cell {{ $v <= 0 ? 'sbh-zero' : '' }} {{ $below ? 'sbh-below' : '' }}" style="background: {{ $bg }};" title="{{ $lbl }} {{ \Carbon::createFromTime($h)->format('g A') }}: {{ $tx_grid[$h][$d] }} tx{{ $below ? ' — below labor cost' : '' }}">
                                             {{ $v > 0 ? $money($v) : '-' }}
                                         </td>
                                     @endforeach
@@ -173,6 +192,21 @@
                                 @endforeach
                                 <td class="sbh-total">{{ $money($grand_total) }}</td>
                             </tr>
+                            @if($metric === 'avg')
+                                <tr>
+                                    <td class="sbh-hour-col" style="font-weight:800;">Recommended hours <span style="font-weight:400;font-size:11px;color:#8E8273;">(&ge; {{ $moneyRate($labor_cost) }}/hr)</span></td>
+                                    @foreach($day_labels as $d => $lbl)
+                                        <td class="sbh-reco">
+                                            @if(!empty($recommended[$d]))
+                                                {{ \Carbon::createFromTime($recommended[$d]['open'])->format('g A') }} &ndash; {{ \Carbon::createFromTime(($recommended[$d]['close'] + 1) % 24)->format('g A') }}
+                                            @else
+                                                <span style="color:#B4462F;">no hour clears cost</span>
+                                            @endif
+                                        </td>
+                                    @endforeach
+                                    <td class="sbh-reco">&mdash;</td>
+                                </tr>
+                            @endif
                         </tfoot>
                     </table>
                 </div>

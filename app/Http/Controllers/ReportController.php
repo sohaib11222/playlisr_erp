@@ -5117,6 +5117,10 @@ class ReportController extends Controller
         }
         $metric = $request->input('metric') === 'total' ? 'total' : 'avg';
 
+        $labor_cost_input = $request->input('labor_cost');
+        $labor_cost = ($labor_cost_input !== null && $labor_cost_input !== '')
+            ? max(0, (float) $labor_cost_input) : 20.0;
+
         $q = DB::table('transactions')
             ->where('business_id', $business_id)
             ->where('type', 'sell')
@@ -5184,6 +5188,29 @@ class ReportController extends Controller
 
         $day_labels = [1 => 'Sun', 2 => 'Mon', 3 => 'Tue', 4 => 'Wed', 5 => 'Thu', 6 => 'Fri', 7 => 'Sat'];
 
+        // Recommended hours: against $labor_cost/hr, only meaningful on the
+        // daily-average view (comparing an hourly rate to a range TOTAL isn't
+        // apples to apples). Opening hour is the first hour in 5am-2pm that
+        // clears cost; closing hour is the last hour in 1pm-11pm that clears
+        // cost. Overnight (12am-4am) is excluded from the scan on purpose —
+        // those cells are almost always the tail of a late register close
+        // getting stamped past midnight, not a real case for opening then.
+        $recommended = [];
+        if ($metric === 'avg') {
+            for ($d = 1; $d <= 7; $d++) {
+                $open = null;
+                for ($h = 5; $h <= 14; $h++) {
+                    if ($grid[$h][$d] >= $labor_cost) { $open = $h; break; }
+                }
+                $close = null;
+                for ($h = 23; $h >= 13; $h--) {
+                    if ($grid[$h][$d] >= $labor_cost) { $close = $h; break; }
+                }
+                $recommended[$d] = ($open !== null && $close !== null && $close >= $open)
+                    ? ['open' => $open, 'close' => $close] : null;
+            }
+        }
+
         return view('report.sales_by_hour')->with([
             'locations'   => $locations,
             'location_id' => $location_id,
@@ -5199,6 +5226,8 @@ class ReportController extends Controller
             'col_totals'  => $col_totals,
             'grand_total' => $grand_total,
             'max_cell'    => $max_cell,
+            'labor_cost'  => $labor_cost,
+            'recommended' => $recommended,
         ]);
     }
 
