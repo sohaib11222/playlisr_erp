@@ -35,6 +35,15 @@ class BuyCustomerOffer extends Model
         return 'BFC-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * Total item count = sum of each line's quantity, not the number of
+     * line rows entered — a row for "50x sealed 7-inches" is 50 items, not 1.
+     */
+    public function getTotalItemQuantityAttribute()
+    {
+        return (int) round($this->lines->sum('quantity'));
+    }
+
     public function lines()
     {
         return $this->hasMany(\App\BuyCustomerOfferLine::class, 'offer_id')->orderBy('line_order');
