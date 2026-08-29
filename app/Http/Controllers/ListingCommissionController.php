@@ -1437,7 +1437,11 @@ class ListingCommissionController extends Controller
                 $u['listing'] = round($u['listing'], 2);
                 $u['sales']   = round($u['sales'], 2);
                 $u['party']   = round($u['party'], 2);
-                $u['total']   = round($u['listing'] + $u['sales'] + $u['party'], 2);
+                // Total = actual cash paid out only (Sarah 2026-08-28: "that is not
+                // my total that i just paid him"). A negative component is an
+                // existing credit being applied, not money going out the door, so
+                // it doesn't subtract from what was really disbursed this row.
+                $u['total']   = round(max(0, $u['listing']) + max(0, $u['sales']) + max(0, $u['party']), 2);
                 $dtotal += $u['total'];
                 $out[] = $u;
             }
