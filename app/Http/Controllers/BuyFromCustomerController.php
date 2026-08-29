@@ -82,18 +82,26 @@ class BuyFromCustomerController extends Controller
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
 
+        // Default the Store location picker to wherever this employee is
+        // actually logged in, same session field the POS/purchase screens use
+        // to know an employee's working location. Left blank otherwise, the
+        // select just falls back to whatever location sorts first, so a
+        // cashier working one store can end up quietly attributing purchases
+        // to another. Still just a default — the dropdown stays editable.
+        $defaultLocationId = (int) request()->session()->get('user.business_location_id', 0) ?: null;
+
         // Prefill the seller when we arrive from a "Collection purchase with
         // credit" store-credit attempt (ContactController redirects here with
         // ?contact_id=…). $input_data drives the form's initial values, so
         // seed it with the picked contact in "existing account" mode.
-        $input_data = null;
+        $input_data = ['location_id' => $defaultLocationId];
         $prefillContactId = (int) request()->query('contact_id', 0);
         if ($prefillContactId > 0 && Contact::where('business_id', $business_id)->where('id', $prefillContactId)->exists()) {
-            $input_data = [
+            $input_data = array_merge($input_data, [
                 'seller_mode' => 'contact',
                 'contact_id' => $prefillContactId,
                 'payment_method' => 'store_credit',
-            ];
+            ]);
         }
 
         return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget', 'input_data'));
