@@ -224,13 +224,39 @@
                 $status = $o['order_status'] ?? '';
                 $pillClass = in_array($status, ['processing','ready_for_pickup','picked_up','shipped','email_sent','delivered','cancelled','flag'], true) ? "st-{$status}" : 'st-default';
                 $rowId = 'wo-detail-' . substr((string) ($o['_id'] ?? ''), -8);
+                // Order-level preorder flag: true if ANY item is still a
+                // preorder. Surfaced on the collapsed row (not just inside
+                // View details) so Nick doesn't hunt for stock that hasn't
+                // shipped to us yet, or cancel it thinking it's missing.
+                $rowShipDates = [];
+                $rowIsPreorder = false;
+                foreach (($o['items'] ?? []) as $rowItem) {
+                  if (!empty($rowItem['product_id']['isPreorder'])) {
+                    $rowIsPreorder = true;
+                    if (!empty($rowItem['product_id']['preorderShipDate'])) {
+                      $rowShipDates[] = $rowItem['product_id']['preorderShipDate'];
+                    }
+                  }
+                }
+                sort($rowShipDates);
+                $rowShipDate = $rowShipDates[0] ?? null;
               @endphp
               <tr class="wo-row">
                 <td>
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
-                <td><span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span></td>
+                <td>
+                  <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
+                  @if($rowIsPreorder)
+                    <div style="margin-top:6px;">
+                      <span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#f97316;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">PREORDER — NOT IN STOCK</span>
+                      @if($rowShipDate)
+                        <div style="font-size:11px;color:#9a3412;margin-top:3px;">Ships {{ gmdate('M j, Y', strtotime($rowShipDate)) }}</div>
+                      @endif
+                    </div>
+                  @endif
+                </td>
                 <td>
                   @if($isGift)
                     <span class="wo-fm-pill digital">Digital (Email)</span>
@@ -336,7 +362,7 @@
                                   @if($isPreorder)
                                     <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:#f97316;color:#fff;font-size:10px;font-weight:700;">Preorder</span>
                                     @if($shipDate)
-                                      <div style="font-size:11px;color:#c2410c;">Ships {{ date('M j, Y', strtotime($shipDate)) }}</div>
+                                      <div style="font-size:11px;color:#c2410c;">Ships {{ gmdate('M j, Y', strtotime($shipDate)) }}</div>
                                     @endif
                                   @endif
                                   <div style="font-size:11px;margin-top:3px;">
