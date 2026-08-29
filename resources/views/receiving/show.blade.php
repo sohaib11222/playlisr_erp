@@ -86,9 +86,9 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
             </div></div>
             <div class="item"><div class="k">Notes</div><div class="v">{{ $package->notes ?: '-' }}</div></div>
             @if($package->photo)
-            <div class="item"><div class="k">Photo</div><div class="v">
+            <div class="item"><div class="k">Invoice / Order Photo</div><div class="v">
                 <a href="{{ asset('uploads/receiving_photos/' . $package->photo) }}" target="_blank">
-                    <img src="{{ asset('uploads/receiving_photos/' . $package->photo) }}" alt="Package photo" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--pos-line);display:block;">
+                    <img src="{{ asset('uploads/receiving_photos/' . $package->photo) }}" alt="Invoice or order photo" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--pos-line);display:block;">
                 </a>
             </div></div>
             @endif

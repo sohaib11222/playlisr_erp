@@ -56,13 +56,13 @@
 </div>
 
 <div class="rcv-card">
-    <h2><i class="fa fa-camera"></i> Photo</h2>
+    <h2><i class="fa fa-camera"></i> Invoice / Order Photo</h2>
     @if(isset($package) && $package->photo)
         <div style="margin-bottom:10px;">
-            <img src="{{ asset('uploads/receiving_photos/' . $package->photo) }}" alt="Package photo" style="max-width:220px;border-radius:9px;border:1px solid var(--pos-line);display:block;">
+            <img src="{{ asset('uploads/receiving_photos/' . $package->photo) }}" alt="Invoice or order photo" style="max-width:220px;border-radius:9px;border:1px solid var(--pos-line);display:block;">
             <small class="help-block">Choose a new photo below to replace it.</small>
         </div>
     @endif
-    {!! Form::file('photo', ['class' => 'form-control', 'accept' => 'image/*', 'capture' => 'environment']); !!}
-    <small class="help-block">On a phone this opens the camera directly — snap what was received.</small>
+    {!! Form::file('photo', ['class' => 'form-control', 'accept' => 'image/*']); !!}
+    <small class="help-block">Upload a photo of the invoice/packing slip, or a screenshot of the order or cart — whatever shows what was ordered.</small>
 </div>
