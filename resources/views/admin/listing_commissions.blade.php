@@ -237,6 +237,8 @@
                     <input type="number" step="0.01" name="listing" placeholder="0.00" class="form-control input-sm" style="width:80px; display:inline-block; margin-right:6px;">
                     <label style="font-weight:400; margin:0 3px;">Sales $</label>
                     <input type="number" step="0.01" name="sales" placeholder="0.00" class="form-control input-sm" style="width:80px; display:inline-block; margin-right:6px;">
+                    <label style="font-weight:400; margin:0 3px;">Listening party $</label>
+                    <input type="number" step="0.01" name="party" placeholder="0.00" class="form-control input-sm" style="width:80px; display:inline-block; margin-right:6px;">
                     <input type="date" name="paid_on" class="form-control input-sm" style="width:auto; display:inline-block; margin-right:6px;" max="{{ \Carbon::now()->toDateString() }}" title="Blank = today; set a past date for an old payroll">
                     <input type="text" name="note" placeholder="note" class="form-control input-sm" style="width:140px; display:inline-block; margin-right:6px;">
                     <button type="submit" class="btn btn-primary btn-sm">Record</button>

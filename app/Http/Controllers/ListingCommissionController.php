@@ -476,6 +476,12 @@ class ListingCommissionController extends Controller
         // 6/25) land in the right ledger. Legacy single "amount" falls into sales.
         $listing = round((float) $request->input('listing', 0), 2);
         $sales   = round((float) $request->input('sales', $request->input('amount', 0)), 2);
+        // Listening party is its own field (Sarah 2026-08-28) rather than making
+        // people type "Sales $" + a note that has to start with "Listening party"
+        // to land in the right column. Still writes to the sales ledger — that's
+        // what the Listening party column and the sales-owed floor both key off —
+        // but the note prefix is forced here instead of left to hand-typed text.
+        $party = round((float) $request->input('party', 0), 2);
 
         // Optional "date paid" so past payrolls can be logged on the day they
         // actually happened; blank = today.
@@ -484,9 +490,9 @@ class ListingCommissionController extends Controller
         $dateField = $isPastDate ? $paidOn : now()->toDateString();
         $markedAt  = $isPastDate ? ($paidOn . ' 12:00:00') : now()->toDateTimeString();
 
-        if ($userId <= 0 || ($listing == 0.0 && $sales == 0.0)) {
+        if ($userId <= 0 || ($listing == 0.0 && $sales == 0.0 && $party == 0.0)) {
             return redirect('/admin/listing-commissions')
-                ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a listing or sales amount.']);
+                ->with('status', ['success' => 0, 'msg' => 'Pick a person and enter a listing, sales, or listening party amount.']);
         }
 
         $u = DB::table('users')->where('id', $userId)->first();
@@ -516,10 +522,22 @@ class ListingCommissionController extends Controller
             ];
             $this->savePayouts($lp);
         }
+        if ($party != 0.0) {
+            $partyNoteVal = 'Listening party' . ($note !== '' ? ' — ' . $note : ' — manual payment recorded');
+            $sp = $this->loadSalesPayouts();
+            $sp[] = [
+                'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                'amount' => $party, 'from_date' => $dateField, 'to_date' => $dateField,
+                'manual' => true, 'note' => $partyNoteVal,
+                'marked_by' => $request->session()->get('user.id'), 'marked_at' => $markedAt,
+            ];
+            $this->saveSalesPayouts($sp);
+        }
 
         $parts = [];
         if ($listing != 0.0) { $parts[] = 'listing $' . number_format($listing, 2); }
         if ($sales != 0.0)   { $parts[] = 'sales $' . number_format($sales, 2); }
+        if ($party != 0.0)   { $parts[] = 'listening party $' . number_format($party, 2); }
 
         return redirect('/admin/listing-commissions')->with('status', [
             'success' => 1,
