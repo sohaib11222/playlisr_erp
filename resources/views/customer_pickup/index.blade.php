@@ -142,12 +142,12 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td>{{ implode(', ', $wp['items']) ?: '—' }}</td>
                             <td>${{ number_format($wp['total'], 2) }}</td>
                             <td class="sub">{{ !empty($wp['placed']) ? date('M j, Y g:ia', strtotime($wp['placed'])) : '—' }}</td>
-                            <td>{{ $shipTs ? date('M j, Y', $shipTs) : '—' }}</td>
+                            <td>{{ $shipTs ? gmdate('M j, Y', $shipTs) : '—' }}</td>
                             <td>
                                 @if(!empty($wp['isPreorder']))
                                     <span class="label" style="background:#c9720a; font-weight:700;">PREORDER — NOT IN STOCK</span><br>
                                     @if($notYetDue)
-                                        <span class="sub" style="color:#a23;">Don't pull — ships {{ date('M j, Y', $shipTs) }}</span>
+                                        <span class="sub" style="color:#a23;">Don't pull — ships {{ gmdate('M j, Y', $shipTs) }}</span>
                                     @else
                                         <span class="sub">Street date has passed — check it's in before pulling</span>
                                     @endif
