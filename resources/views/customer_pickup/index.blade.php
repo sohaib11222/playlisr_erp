@@ -114,6 +114,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         @if(empty($websitePickups))
             <div class="sub" style="padding:8px 2px;">No website pickup orders waiting right now.</div>
         @else
+            <div class="table-responsive">
             <table class="table" id="website_pickup_table" style="width:100%;">
                 <thead>
                     <tr>
@@ -122,13 +123,18 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Item(s)</th>
                         <th>Total</th>
                         <th>Placed</th>
+                        <th>Street Date</th>
                         <th>Status</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($websitePickups as $wp)
-                        <tr>
+                        @php
+                            $shipTs = !empty($wp['shipDate']) ? strtotime($wp['shipDate']) : null;
+                            $notYetDue = !empty($wp['isPreorder']) && $shipTs && $shipTs > time();
+                        @endphp
+                        <tr @if(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                             <td>{{ $wp['location'] === 'pico' ? 'Pico Store' : 'Hollywood Store' }}</td>
                             <td>{{ $wp['customer'] }}
                                 <div class="sub" style="margin:0;">{{ $wp['email'] }}@if(!empty($wp['phone']))@if(!empty($wp['email'])) &middot; @endif{{ $wp['phone'] }}@endif</div>
@@ -136,31 +142,44 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td>{{ implode(', ', $wp['items']) ?: '—' }}</td>
                             <td>${{ number_format($wp['total'], 2) }}</td>
                             <td class="sub">{{ !empty($wp['placed']) ? date('M j, Y g:ia', strtotime($wp['placed'])) : '—' }}</td>
+                            <td>{{ $shipTs ? date('M j, Y', $shipTs) : '—' }}</td>
                             <td>
-                                @if($wp['status'] === 'ready_for_pickup')
+                                @if(!empty($wp['isPreorder']))
+                                    <span class="label" style="background:#c9720a; font-weight:700;">PREORDER — NOT IN STOCK</span><br>
+                                    @if($notYetDue)
+                                        <span class="sub" style="color:#a23;">Don't pull — ships {{ date('M j, Y', $shipTs) }}</span>
+                                    @else
+                                        <span class="sub">Street date has passed — check it's in before pulling</span>
+                                    @endif
+                                @elseif($wp['status'] === 'ready_for_pickup')
                                     <span class="label label-warning">Ready for Pickup</span>
                                 @else
                                     <span class="label label-default">Preparing</span>
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">
-                                @if($wp['status'] !== 'ready_for_pickup')
+                                @if($notYetDue)
+                                    <span class="sub">Available after street date</span>
+                                @else
+                                    @if($wp['status'] !== 'ready_for_pickup')
+                                        <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
+                                            {{ csrf_field() }}
+                                            <input type="hidden" name="status" value="ready_for_pickup">
+                                            <button type="submit" class="btn btn-default btn-xs">Mark Ready</button>
+                                        </form>
+                                    @endif
                                     <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
                                         {{ csrf_field() }}
-                                        <input type="hidden" name="status" value="ready_for_pickup">
-                                        <button type="submit" class="btn btn-default btn-xs">Mark Ready</button>
+                                        <input type="hidden" name="status" value="picked_up">
+                                        <button type="submit" class="btn btn-success btn-xs">Mark Picked Up</button>
                                     </form>
                                 @endif
-                                <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
-                                    {{ csrf_field() }}
-                                    <input type="hidden" name="status" value="picked_up">
-                                    <button type="submit" class="btn btn-success btn-xs">Mark Picked Up</button>
-                                </form>
                             </td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </div>
 
@@ -190,6 +209,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             <div class="sub" style="padding:8px 2px;">{{ $preorderShowAll ? 'No preorders yet.' : 'No active preorders — everything has been picked up or canceled.' }}</div>
         @else
             @php $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
+            <div class="table-responsive">
             <table class="table" id="preorder_table" style="width:100%;">
                 <thead>
                     <tr>
@@ -281,6 +301,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </div>
 </div>

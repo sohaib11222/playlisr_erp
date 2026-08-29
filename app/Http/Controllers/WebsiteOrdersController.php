@@ -162,22 +162,40 @@ class WebsiteOrdersController extends Controller
         usort($rows, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
 
         return array_map(function ($o) {
-            $items = array_map(function ($item) {
+            $shipDates = [];
+            $items = array_map(function ($item) use (&$shipDates) {
                 $name = $item['product_name'] ?? (($item['is_gift_card'] ?? false) ? 'Gift Card' : 'Item');
                 $qty = (int) ($item['quantity'] ?? 1);
-                return $qty > 1 ? "{$name} x{$qty}" : $name;
+                $product = $item['product_id'] ?? [];
+                $isPreorder = !empty($product['isPreorder']);
+                if ($isPreorder && !empty($product['preorderShipDate'])) {
+                    $shipDates[] = $product['preorderShipDate'];
+                }
+                return [
+                    'label'      => $qty > 1 ? "{$name} x{$qty}" : $name,
+                    'isPreorder' => $isPreorder,
+                ];
             }, $o['items'] ?? []);
 
+            // Order-level preorder flag: true if ANY item is still a
+            // preorder — that's what determines whether Nick can pull it
+            // off the shelf right now or has to wait for the street date.
+            $isPreorder = !empty(array_filter($items, fn($i) => $i['isPreorder']));
+            sort($shipDates);
+            $shipDate = $shipDates[0] ?? null;
+
             return [
-                'id'       => $o['_id'] ?? '',
-                'customer' => $o['user_id']['name'] ?? 'Guest',
-                'email'    => $o['user_id']['email'] ?? '',
-                'phone'    => $o['contactNumber'] ?? '',
-                'items'    => $items,
-                'total'    => (float) ($o['total_amount'] ?? 0),
-                'location' => $o['pickup_location'] ?? '',
-                'placed'   => $o['createdAt'] ?? null,
-                'status'   => $o['order_status'] ?? 'processing',
+                'id'          => $o['_id'] ?? '',
+                'customer'    => $o['user_id']['name'] ?? 'Guest',
+                'email'       => $o['user_id']['email'] ?? '',
+                'phone'       => $o['contactNumber'] ?? '',
+                'items'       => array_map(fn($i) => $i['label'], $items),
+                'total'       => (float) ($o['total_amount'] ?? 0),
+                'location'    => $o['pickup_location'] ?? '',
+                'placed'      => $o['createdAt'] ?? null,
+                'status'      => $o['order_status'] ?? 'processing',
+                'isPreorder'  => $isPreorder,
+                'shipDate'    => $shipDate,
             ];
         }, $rows);
     }
