@@ -39,6 +39,11 @@ body.pos-v2 #preorder_table .source-select {
   background: #fff; color: var(--pos-ink); max-width: 170px; text-overflow: ellipsis; }
 body.pos-v2 .preorder-toggle { display: inline-flex; gap: 8px; }
 body.pos-v2 .preorder-toggle .btn-accent, body.pos-v2 .preorder-toggle .btn-ghost { padding: 8px 16px; font-size: 13px; }
+/* Paid/unpaid status is information, not an action — keep it visually
+   distinct from the accent action buttons (Mark paid / Mark picked up)
+   in the same row so they don't read as the same kind of control. */
+body.pos-v2 #preorder_table .pill-paid { background: #e6f4ea; color: #2e7d32; border-color: #cce8d4; }
+body.pos-v2 #preorder_table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
 body.pos-v2 .dataTables_wrapper .dataTables_filter input,
 body.pos-v2 .dataTables_wrapper .dataTables_length select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 6px 9px; font-family: inherit; background: #fff; }
@@ -135,7 +140,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Pickup</th>
                         <th>Paid</th>
                         @if($preorderShowAll)<th>Status</th>@endif
-                        <th></th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -144,14 +149,16 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             $placed = !empty($p['placed']) ? date('M j, Y', strtotime($p['placed'])) : '—';
                             $pickup = !empty($p['pickup']) ? date('l, M j, Y', strtotime($p['pickup'])) : '—';
                             $filterVal = $preorderShowAll ? 'all' : '';
+                            $sourceForSort = $p['source'] !== '' ? $p['source'] : ('At event' . ($p['eventName'] ? ' — ' . $p['eventName'] : ''));
+                            $paidSort = !$p['paidKnown'] ? 0 : ($p['paid'] ? 2 : 1);
                         @endphp
                         <tr>
                             <td>{{ $p['name'] }}
                                 <div class="sub" style="margin:0;">{{ $p['email'] }}@if(!empty($p['phone']))@if(!empty($p['email'])) &middot; @endif{{ $p['phone'] }}@endif</div>
                             </td>
                             <td>{{ $p['item'] }}</td>
-                            <td>{{ $p['price'] !== null ? '$' . number_format((float) $p['price'], 2) : '—' }}</td>
-                            <td>
+                            <td data-order="{{ $p['price'] ?? 0 }}">{{ $p['price'] !== null ? '$' . number_format((float) $p['price'], 2) : '—' }}</td>
+                            <td data-order="{{ $sourceForSort }}">
                                 @if($p['type'] === 'event')
                                     <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $p['id']]) }}" style="margin:0;">
                                         {{ csrf_field() }}
@@ -173,38 +180,38 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                     <span class="label" style="background:#7a6a4a;">{{ $p['sourceTag'] }}</span>
                                 @endif
                             </td>
-                            <td class="sub">{{ $placed }}</td>
-                            <td>{{ $pickup }}</td>
-                            <td>
+                            <td class="sub" data-order="{{ $p['placed'] ?? '' }}">{{ $placed }}</td>
+                            <td data-order="{{ $p['pickup'] ?? '' }}">{{ $pickup }}</td>
+                            <td data-order="{{ $paidSort }}">
                                 @if(!$p['paidKnown'])
                                     <span class="sub">—</span>
                                 @elseif($p['paid'])
-                                    <span class="label label-success">Paid</span>
+                                    <span class="pill pill-paid">Paid</span>
                                 @else
-                                    <span class="label label-danger">Unpaid</span>
+                                    <span class="pill pill-unpaid">Unpaid</span>
                                 @endif
                             </td>
-                            @if($preorderShowAll)<td><span class="label label-default">{{ $p['statusLabel'] }}</span></td>@endif
+                            @if($preorderShowAll)<td>{{ $p['statusLabel'] }}</td>@endif
                             <td style="white-space:nowrap;">
                                 @if(!empty($p['active']))
                                     @if($p['type'] === 'event' && $p['paidKnown'] && empty($p['paid']))
                                         <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $p['id']]) }}" style="display:inline;">
                                             {{ csrf_field() }}
                                             <input type="hidden" name="filter" value="{{ $filterVal }}">
-                                            <button type="submit" class="btn btn-default btn-xs">Mark paid</button>
+                                            <button type="submit" class="btn-ghost" style="padding:5px 12px;font-size:12px;">Mark paid</button>
                                         </form>
                                     @endif
                                     @if($p['type'] === 'event')
                                         <form method="POST" action="{{ route('events.overviewEventPickup', ['preorderId' => $p['id']]) }}" style="display:inline;">
                                             {{ csrf_field() }}
                                             <input type="hidden" name="filter" value="{{ $filterVal }}">
-                                            <button type="submit" class="btn btn-success btn-xs">Mark picked up</button>
+                                            <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
                                         </form>
                                     @else
                                         <form method="POST" action="{{ route('events.overviewSpecialPickup', ['id' => $p['id']]) }}" style="display:inline;">
                                             {{ csrf_field() }}
                                             <input type="hidden" name="filter" value="{{ $filterVal }}">
-                                            <button type="submit" class="btn btn-success btn-xs">Mark picked up</button>
+                                            <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
                                         </form>
                                     @endif
                                 @endif
@@ -294,6 +301,20 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             ],
             order: [[1, 'desc']],
         });
+
+        // Preorders table is fully server-rendered (small, non-paginated
+        // list) — just bolt on client-side sorting, no ajax/paging/search.
+        // Sort values come from each <td>'s data-order (raw price/date/
+        // paid-priority) so sorting is correct, not alphabetical-on-HTML.
+        if ($('#preorder_table tbody tr').length) {
+            $('#preorder_table').DataTable({
+                paging: false,
+                searching: false,
+                info: false,
+                order: [],
+                columnDefs: [{ targets: -1, orderable: false }],
+            });
+        }
 
         $('#status_filter').on('change', function() {
             pickup_table.ajax.reload();
