@@ -118,9 +118,11 @@ class ReceivingPackageController extends Controller
                 'bin_location' => 'nullable|string|max:255',
                 'package_type' => 'required|in:' . implode(',', array_keys(ReceivingPackage::$packageTypes)),
                 'package_type_detail' => 'nullable|string|max:255',
+                'distributor' => 'nullable|string|max:255',
                 'order_number' => 'nullable|string|max:255',
                 'invoice_number' => 'nullable|string|max:255',
                 'notes' => 'nullable|string',
+                'photo' => 'nullable|image',
                 'purchase_order_ids' => 'nullable|array',
                 'purchase_order_ids.*' => 'exists:transactions,id',
             ]);
@@ -131,9 +133,11 @@ class ReceivingPackageController extends Controller
             $package->bin_location = $request->bin_location;
             $package->package_type = $request->package_type;
             $package->package_type_detail = $request->package_type_detail;
+            $package->distributor = $request->distributor;
             $package->order_number = $request->order_number;
             $package->invoice_number = $request->invoice_number;
             $package->notes = $request->notes;
+            $package->photo = $this->commonUtil->uploadFile($request, 'photo', 'receiving_photos', 'image');
             $package->status = 'open';
             $package->received_by = auth()->user()->id;
             $package->received_at = now();
@@ -414,9 +418,11 @@ class ReceivingPackageController extends Controller
                 'bin_location' => 'nullable|string|max:255',
                 'package_type' => 'required|in:' . implode(',', array_keys(ReceivingPackage::$packageTypes)),
                 'package_type_detail' => 'nullable|string|max:255',
+                'distributor' => 'nullable|string|max:255',
                 'order_number' => 'nullable|string|max:255',
                 'invoice_number' => 'nullable|string|max:255',
                 'notes' => 'nullable|string',
+                'photo' => 'nullable|image',
             ]);
 
             $before = clone $package;
@@ -425,9 +431,13 @@ class ReceivingPackageController extends Controller
             $package->bin_location = $request->bin_location;
             $package->package_type = $request->package_type;
             $package->package_type_detail = $request->package_type_detail;
+            $package->distributor = $request->distributor;
             $package->order_number = $request->order_number;
             $package->invoice_number = $request->invoice_number;
             $package->notes = $request->notes;
+            if ($request->hasFile('photo')) {
+                $package->photo = $this->commonUtil->uploadFile($request, 'photo', 'receiving_photos', 'image');
+            }
             $package->save();
 
             $this->commonUtil->activityLog($package, 'edited', $before, [], true, $business_id);

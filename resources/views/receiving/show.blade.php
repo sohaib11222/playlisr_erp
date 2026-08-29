@@ -72,6 +72,7 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
                     <button type="button" id="save_bin_btn" class="btn-accent" style="padding:6px 10px;font-size:12px;">Save</button>
                 </div>
             </div></div>
+            <div class="item"><div class="k">Distributor / Source</div><div class="v">{{ $package->distributor ?: '-' }}</div></div>
             <div class="item"><div class="k">Order #</div><div class="v">{{ $package->order_number ?: '-' }}</div></div>
             <div class="item"><div class="k">Invoice #</div><div class="v">{{ $package->invoice_number ?: '-' }}</div></div>
             <div class="item"><div class="k">Linked POs</div><div class="v">
@@ -84,6 +85,13 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
                 @endif
             </div></div>
             <div class="item"><div class="k">Notes</div><div class="v">{{ $package->notes ?: '-' }}</div></div>
+            @if($package->photo)
+            <div class="item"><div class="k">Photo</div><div class="v">
+                <a href="{{ asset('uploads/receiving_photos/' . $package->photo) }}" target="_blank">
+                    <img src="{{ asset('uploads/receiving_photos/' . $package->photo) }}" alt="Package photo" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--pos-line);display:block;">
+                </a>
+            </div></div>
+            @endif
         </div>
     </div>
 
