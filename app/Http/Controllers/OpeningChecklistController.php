@@ -31,7 +31,7 @@ class OpeningChecklistController extends Controller
             '1. Turn the store on' => [
                 'lights'   => 'Turn on all the lights in the main room.',
                 'music'    => 'Put on upbeat shopping music and turn it up loud enough to hear outside.',
-                'computer' => 'Turn on the computer.',
+                'computer' => 'Turn on the computer. PIN: 7421.',
                 'scent'    => 'Turn on the store scent purifier.',
             ],
             '2. Windows & entrance' => [
@@ -79,7 +79,7 @@ class OpeningChecklistController extends Controller
             ],
             '2. Turn the store on' => [
                 'lights'     => 'Turn on all three lights on the left side as you walk in.',
-                'computer'   => 'Turn on the power to the computer tower on top of the desk.',
+                'computer'   => 'Turn on the power to the computer tower on top of the desk. PIN: 7421.',
                 'music'      => 'Put on good music and turn it up.',
                 'sign_light' => 'Turn on the light on the right side of the back room door opening, which powers the listening station and the "Diggers Paradise" neon sign.',
             ],
