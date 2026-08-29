@@ -75,6 +75,8 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
             <div class="item"><div class="k">Distributor / Source</div><div class="v">{{ $package->distributor ?: '-' }}</div></div>
             <div class="item"><div class="k">Order #</div><div class="v">{{ $package->order_number ?: '-' }}</div></div>
             <div class="item"><div class="k">Invoice #</div><div class="v">{{ $package->invoice_number ?: '-' }}</div></div>
+            <div class="item"><div class="k">Shipping</div><div class="v">{{ $package->shipping_cost !== null ? '$'.number_format($package->shipping_cost, 2) : '-' }}</div></div>
+            <div class="item"><div class="k">Tax</div><div class="v">{{ $package->tax_amount !== null ? '$'.number_format($package->tax_amount, 2) : '-' }}</div></div>
             <div class="item"><div class="k">Linked POs</div><div class="v">
                 @if($package->purchaseOrders->count())
                     @foreach($package->purchaseOrders as $po)
@@ -165,6 +167,14 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
                 </tbody>
             </table>
         </div>
+        <div id="landed_cost_summary" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--pos-line);display:flex;flex-wrap:wrap;gap:20px;font-size:13.5px;">
+            <div><span style="color:#8a8070;">Item cost total:</span> <strong>$<span id="lc_items_total">0.00</span></strong></div>
+            <div><span style="color:#8a8070;">+ Shipping:</span> <strong>${{ number_format($package->shipping_cost ?? 0, 2) }}</strong></div>
+            <div><span style="color:#8a8070;">+ Tax:</span> <strong>${{ number_format($package->tax_amount ?? 0, 2) }}</strong></div>
+            <div><span style="color:#8a8070;">= Landed cost:</span> <strong>$<span id="lc_total">0.00</span></strong></div>
+            <div><span style="color:#8a8070;">Avg landed cost / unit:</span> <strong>$<span id="lc_avg_unit">0.00</span></strong> <span style="color:#8a8070;">(<span id="lc_unit_count">0</span> units)</span></div>
+        </div>
+        <small class="help-block" style="margin-top:6px;display:block;">Sell price should clear this landed cost per unit, plus margin — not just the Cost Paid column.</small>
     </div>
 
     <div class="rcv-card">
@@ -188,6 +198,27 @@ body.pos-v2 .timeline-row .when { color: #8a8070; font-size: 11.5px; }
         var packageId = {{ $package->id }};
         var addItemUrl = '{{ action("ReceivingPackageController@addItem", [$package->id]) }}';
         var csrfToken = $('meta[name="csrf-token"]').attr('content') || '';
+        var packageShipping = {{ (float) ($package->shipping_cost ?? 0) }};
+        var packageTax = {{ (float) ($package->tax_amount ?? 0) }};
+
+        function recalcLandedCost() {
+            var itemsTotal = 0;
+            var unitCount = 0;
+            $('#items_tbody tr').each(function() {
+                var qty = parseFloat($(this).find('.item-qty').val()) || 0;
+                var cost = parseFloat($(this).find('.item-cost').val()) || 0;
+                itemsTotal += qty * cost;
+                unitCount += qty;
+            });
+            var landed = itemsTotal + packageShipping + packageTax;
+            var avgUnit = unitCount > 0 ? landed / unitCount : 0;
+            $('#lc_items_total').text(itemsTotal.toFixed(2));
+            $('#lc_total').text(landed.toFixed(2));
+            $('#lc_avg_unit').text(avgUnit.toFixed(2));
+            $('#lc_unit_count').text(unitCount % 1 === 0 ? unitCount : unitCount.toFixed(2));
+        }
+        recalcLandedCost();
+        $(document).on('input', '#items_tbody .item-qty, #items_tbody .item-cost', recalcLandedCost);
 
         $('#add_item_product').select2({
             placeholder: 'Type to search the catalog...',

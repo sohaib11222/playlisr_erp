@@ -128,6 +128,8 @@ class ReceivingPackageController extends Controller
                 'distributor' => 'nullable|string|max:255',
                 'order_number' => 'nullable|string|max:255',
                 'invoice_number' => 'nullable|string|max:255',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'tax_amount' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string',
                 'photo' => 'nullable|image',
                 'purchase_order_ids' => 'nullable|array',
@@ -143,6 +145,8 @@ class ReceivingPackageController extends Controller
             $package->distributor = $request->distributor;
             $package->order_number = $request->order_number;
             $package->invoice_number = $request->invoice_number;
+            $package->shipping_cost = $request->shipping_cost;
+            $package->tax_amount = $request->tax_amount;
             $package->notes = $request->notes;
             $package->photo = $this->commonUtil->uploadFile($request, 'photo', 'receiving_photos', 'image');
             $package->status = 'open';
@@ -428,6 +432,8 @@ class ReceivingPackageController extends Controller
                 'distributor' => 'nullable|string|max:255',
                 'order_number' => 'nullable|string|max:255',
                 'invoice_number' => 'nullable|string|max:255',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'tax_amount' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string',
                 'photo' => 'nullable|image',
             ]);
@@ -441,6 +447,8 @@ class ReceivingPackageController extends Controller
             $package->distributor = $request->distributor;
             $package->order_number = $request->order_number;
             $package->invoice_number = $request->invoice_number;
+            $package->shipping_cost = $request->shipping_cost;
+            $package->tax_amount = $request->tax_amount;
             $package->notes = $request->notes;
             if ($request->hasFile('photo')) {
                 $package->photo = $this->commonUtil->uploadFile($request, 'photo', 'receiving_photos', 'image');
