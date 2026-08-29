@@ -154,7 +154,19 @@ class CustomerPickupController extends Controller
                 ->make(true);
         }
 
-        return view('customer_pickup.index', compact('statuses'));
+        // Party + in-store-special-order preorders, folded in so this page is
+        // the one place to see everything a customer is waiting on.
+        $preorderShowAll = request()->input('preorder_status') === 'all';
+        [$preorders, $preorderKeySet, $preorderReachable] = (new \App\Http\Controllers\EventsController())
+            ->preordersRows($business_id, $preorderShowAll);
+
+        return view('customer_pickup.index', compact(
+            'statuses',
+            'preorders',
+            'preorderShowAll',
+            'preorderKeySet',
+            'preorderReachable'
+        ));
     }
 
     /**

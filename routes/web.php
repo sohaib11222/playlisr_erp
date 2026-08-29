@@ -427,8 +427,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Events / Listening Parties — ERP is the source of truth; data lives in
     // a JSON sidecar (storage/app/events-{business_id}.json), website reads it.
     Route::get('/events', 'EventsController@index')->name('events.index');
-    // Preorders across all events + in-store special orders (where, pickup date)
-    Route::get('/events-preorders', 'EventsController@preordersOverview')->name('events.preordersOverview');
+    // Preorders across all events + in-store special orders now live on the
+    // Customer Pickups page — redirect the old standalone URL there.
+    Route::get('/events-preorders', function (\Illuminate\Http\Request $request) {
+        $params = $request->input('status') === 'all' ? ['preorder_status' => 'all'] : [];
+        return redirect()->action('CustomerPickupController@index', $params);
+    })->name('events.preordersOverview');
     // Per-event sales summary for the accountant: attendees + preorder interest
     // + day-of on-the-spot POS sales of the featured record (units + revenue).
     Route::get('/events-sales-report', 'EventsController@salesReport')->name('events.salesReport');

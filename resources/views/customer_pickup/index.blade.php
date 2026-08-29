@@ -4,6 +4,7 @@
 
 @section('content')
 @include('sale_pos.partials._redesign_v2')
+@include('events.partials._styles')
 <script>document.body.classList.add('pos-v2');</script>
 
 <style>
@@ -55,6 +56,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         </a>
     </div>
 
+    @if(is_string(session('status')))<div class="alert-ok">{{ session('status') }}</div>@endif
+    @if(is_string(session('error')))<div class="alert-err">{{ session('error') }}</div>@endif
+
     <div class="pickup-card">
         <div class="pickup-toolbar">
             <span class="filter-label">Show:</span>
@@ -86,6 +90,124 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 </thead>
             </table>
         </div>
+    </div>
+
+    <div class="pickup-card" id="preorders">
+        <div class="pickup-toolbar" style="justify-content:space-between;">
+            <div>
+                <strong style="font-size:15px;">Party &amp; Special-Order Preorders</strong>
+                <p class="sub" style="margin:2px 0 0;">Listening-party reservations and in-store special orders — separate from AMS special orders above until they're placed with a distributor.</p>
+            </div>
+            <div style="text-align:right;flex:0 1 auto;white-space:nowrap;">
+                <a class="{{ $preorderShowAll ? 'btn-ghost' : 'btn-accent' }}" href="{{ action('CustomerPickupController@index') }}#preorders" style="text-decoration:none;padding:6px 14px;border-radius:8px;">Active</a>
+                <a class="{{ $preorderShowAll ? 'btn-accent' : 'btn-ghost' }}" href="{{ action('CustomerPickupController@index', ['preorder_status' => 'all']) }}#preorders" style="text-decoration:none;padding:6px 14px;border-radius:8px;">All</a>
+            </div>
+        </div>
+
+        @if(!$preorderKeySet)
+            <div class="alert-ok" style="border:1px solid var(--pos-accent,#FFE08A);background:transparent;padding:10px 14px;border-radius:10px;">
+                Listening-party preorders live on nivessa.com. Set the <code>ERP_API_KEY</code> from any event's edit page to pull them in here. In-store special orders still show below.
+            </div>
+        @elseif(!$preorderReachable)
+            <div class="alert-err" style="border:1px solid #f0c2c2;background:transparent;padding:10px 14px;border-radius:10px;">
+                A key is set, but nivessa.com rejected it or was unreachable. In-store special orders still show below; re-check the key from an event's edit page.
+            </div>
+        @endif
+
+        @if(empty($preorders))
+            <div class="sub" style="padding:8px 2px;">{{ $preorderShowAll ? 'No preorders yet.' : 'No active preorders — everything has been picked up or canceled.' }}</div>
+        @else
+            @php $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
+            <table class="table table-hover" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Item</th>
+                        <th>Price</th>
+                        <th>Where placed</th>
+                        <th>Placed</th>
+                        <th>Pickup</th>
+                        <th>Paid</th>
+                        @if($preorderShowAll)<th>Status</th>@endif
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($preorders as $p)
+                        @php
+                            $placed = !empty($p['placed']) ? date('M j, Y', strtotime($p['placed'])) : '—';
+                            $pickup = !empty($p['pickup']) ? date('l, M j, Y', strtotime($p['pickup'])) : '—';
+                            $filterVal = $preorderShowAll ? 'all' : '';
+                        @endphp
+                        <tr>
+                            <td>{{ $p['name'] }}
+                                <div class="sub" style="margin:0;">{{ $p['email'] }}@if(!empty($p['phone']))@if(!empty($p['email'])) &middot; @endif{{ $p['phone'] }}@endif</div>
+                            </td>
+                            <td>{{ $p['item'] }}</td>
+                            <td>{{ $p['price'] !== null ? '$' . number_format((float) $p['price'], 2) : '—' }}</td>
+                            <td>
+                                @if($p['type'] === 'event')
+                                    <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $p['id']]) }}" style="margin:0;">
+                                        {{ csrf_field() }}
+                                        <input type="hidden" name="filter" value="{{ $filterVal }}">
+                                        <select name="source" onchange="this.form.submit()" style="font-size:12px;padding:4px 6px;border:1px solid var(--pos-line);border-radius:8px;max-width:180px;">
+                                            <option value="" {{ $p['source'] === '' ? 'selected' : '' }}>At event{{ $p['eventName'] ? ' — ' . $p['eventName'] : '' }}</option>
+                                            @foreach($sourceOpts as $opt)
+                                                <option value="{{ $opt }}" {{ $p['source'] === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                                            @endforeach
+                                            @if($p['source'] !== '' && !in_array($p['source'], $sourceOpts, true))
+                                                <option value="{{ $p['source'] }}" selected>{{ $p['source'] }}</option>
+                                            @endif
+                                        </select>
+                                    </form>
+                                    @if(!empty($p['eventId']))
+                                        <div style="margin-top:3px;"><a href="{{ route('events.edit', ['id' => $p['eventId']]) }}" style="font-size:12px;">Open event</a></div>
+                                    @endif
+                                @else
+                                    <span class="label" style="background:#7a6a4a;">{{ $p['sourceTag'] }}</span>
+                                @endif
+                            </td>
+                            <td class="sub">{{ $placed }}</td>
+                            <td>{{ $pickup }}</td>
+                            <td>
+                                @if(!$p['paidKnown'])
+                                    <span class="sub">—</span>
+                                @elseif($p['paid'])
+                                    <span class="label label-success">Paid</span>
+                                @else
+                                    <span class="label label-danger">Unpaid</span>
+                                @endif
+                            </td>
+                            @if($preorderShowAll)<td><span class="label label-default">{{ $p['statusLabel'] }}</span></td>@endif
+                            <td style="white-space:nowrap;">
+                                @if(!empty($p['active']))
+                                    @if($p['type'] === 'event' && $p['paidKnown'] && empty($p['paid']))
+                                        <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $p['id']]) }}" style="display:inline;">
+                                            {{ csrf_field() }}
+                                            <input type="hidden" name="filter" value="{{ $filterVal }}">
+                                            <button type="submit" class="btn btn-default btn-xs">Mark paid</button>
+                                        </form>
+                                    @endif
+                                    @if($p['type'] === 'event')
+                                        <form method="POST" action="{{ route('events.overviewEventPickup', ['preorderId' => $p['id']]) }}" style="display:inline;">
+                                            {{ csrf_field() }}
+                                            <input type="hidden" name="filter" value="{{ $filterVal }}">
+                                            <button type="submit" class="btn btn-success btn-xs">Mark picked up</button>
+                                        </form>
+                                    @else
+                                        <form method="POST" action="{{ route('events.overviewSpecialPickup', ['id' => $p['id']]) }}" style="display:inline;">
+                                            {{ csrf_field() }}
+                                            <input type="hidden" name="filter" value="{{ $filterVal }}">
+                                            <button type="submit" class="btn btn-success btn-xs">Mark picked up</button>
+                                        </form>
+                                    @endif
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
     </div>
 </div>
 

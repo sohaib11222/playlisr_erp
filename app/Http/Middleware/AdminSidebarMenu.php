@@ -51,9 +51,11 @@ class AdminSidebarMenu
                 )->order(7);
             }
 
-            //Events dropdown — Events, Preorders (customer pickups), and the
-            //email copy editor grouped together since they're one workflow
-            //(previously three separate top-level links).
+            //Events dropdown — Events and the email copy editor grouped
+            //together. Preorders (listening-party + in-store special orders)
+            //now live on the Customer Pickups page under Contacts, so there's
+            //one place for everything a customer is waiting on — no separate
+            //link here anymore.
             if (auth()->user()->can('product.create')) {
                 $menu->dropdown(
                     'Events',
@@ -62,11 +64,6 @@ class AdminSidebarMenu
                             route('events.index'),
                             'Events',
                             ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
-                        );
-                        $sub->url(
-                            route('events.preordersOverview'),
-                            'Preorders',
-                            ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'events-preorders']
                         );
                         $sub->url(
                             route('email-templates.index'),

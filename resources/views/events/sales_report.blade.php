@@ -61,7 +61,7 @@
         <a href="{{ route('events.salesReport', $store ? ['store' => $store] : []) }}" style="{{ $tabBase }}{{ !$archive ? $tabOn : $tabOff }}">Active (last 3 months)</a>
         <a href="{{ route('events.salesReport', array_merge($store ? ['store' => $store] : [], ['archive' => 1])) }}" style="{{ $tabBase }}{{ $archive ? $tabOn : $tabOff }}">Archive</a>
         <a href="{{ route('events.index') }}" style="{{ $tabBase }}{{ $tabOff }}">&larr; Events</a>
-        <a href="{{ route('events.preordersOverview') }}" style="{{ $tabBase }}{{ $tabOff }}">Preorders</a>
+        <a href="{{ action('CustomerPickupController@index') }}#preorders" style="{{ $tabBase }}{{ $tabOff }}">Preorders</a>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">

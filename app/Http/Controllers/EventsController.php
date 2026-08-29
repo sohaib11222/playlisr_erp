@@ -317,6 +317,25 @@ class EventsController extends Controller
         }
 
         $business_id = $this->businessId($request);
+        $showAll = $request->input('status') === 'all';
+        [$rows, $keySet, $reachable] = $this->preordersRows($business_id, $showAll);
+
+        return view('events.preorders', [
+            'preorders' => $rows,
+            'keySet'    => $keySet,
+            'reachable' => $reachable,
+            'showAll'   => $showAll,
+        ]);
+    }
+
+    /**
+     * Shared row-builder behind preordersOverview — also used by
+     * CustomerPickupController so listening-party + in-store preorders show
+     * on the Customer Pickups page instead of a second, separate page.
+     * Returns [rows, keySet, reachable].
+     */
+    public function preordersRows($business_id, bool $showAll): array
+    {
         $events = self::load($business_id)['items'];
 
         // eventId => [name, streetDate] for linking each preorder back to its
@@ -330,7 +349,6 @@ class EventsController extends Controller
         }
 
         $keySet  = $this->erpApiKey() !== '';
-        $showAll = $request->input('status') === 'all';
         $rows = [];
         $reachable = false;
 
@@ -431,19 +449,16 @@ class EventsController extends Controller
             return strcmp((string) ($b['placed'] ?? ''), (string) ($a['placed'] ?? ''));
         });
 
-        return view('events.preorders', [
-            'preorders' => $rows,
-            'keySet'    => $keySet,
-            'reachable' => $reachable,
-            'showAll'   => $showAll,
-        ]);
+        return [$rows, $keySet, $reachable];
     }
 
     /** Return to the overview keeping the Active/All filter the form carried. */
     protected function overviewRedirect(Request $request, string $key, string $msg)
     {
-        $params = $request->input('filter') === 'all' ? ['status' => 'all'] : [];
-        return redirect()->route('events.preordersOverview', $params)->with($key, $msg);
+        // Preorders now live on the Customer Pickups page — send actions
+        // taken from there back there, keeping the Active/All toggle.
+        $params = $request->input('filter') === 'all' ? ['preorder_status' => 'all'] : [];
+        return redirect()->action('CustomerPickupController@index', $params)->with($key, $msg);
     }
 
     /** Mark a listening-party preorder picked up (from the overview page). */
