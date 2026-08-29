@@ -500,14 +500,14 @@
                 <div class="col-sm-4 @if(!session('business.enable_price_tax')) hide @endif">
                     <div class="form-group">
                         {!! Form::label('tax_type', __('product.selling_price_tax_type') . ':*') !!}
-                        {!! Form::select('tax_type', ['inclusive' => __('product.inclusive'), 'exclusive' => __('product.exclusive')], $product->tax_type, ['class' => 'form-control select2', 'required']) !!}
+                        {!! Form::select('tax_type', ['inclusive' => __('product.inclusive'), 'exclusive' => __('product.exclusive')], $product->tax_type, ['class' => 'form-control select2', 'required', 'form' => 'product_add_form']) !!}
                     </div>
                 </div>
 
                 <div class="col-sm-4 @if(!session('business.enable_price_tax')) hide @endif">
                     <div class="form-group">
                         <label style="display:block; margin-bottom:6px;">
-                            {!! Form::checkbox('tax_exempt', 1, !empty($product->tax_exempt) ? $product->tax_exempt : false, ['class' => 'input-icheck']) !!}
+                            {!! Form::checkbox('tax_exempt', 1, !empty($product->tax_exempt) ? $product->tax_exempt : false, ['class' => 'input-icheck', 'form' => 'product_add_form']) !!}
                             <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">Tax Exempt</strong>
                         </label>
                         <p class="help-block">Check if this product is exempt from sales tax</p>
@@ -517,7 +517,7 @@
                 <div class="col-sm-4">
                     <div class="form-group">
                         {!! Form::label('type', __('product.product_type') . ':*') !!}
-                        {!! Form::select('type', $product_types, $product->type, ['class' => 'form-control select2', 'required', 'disabled', 'data-action' => 'edit', 'data-product_id' => $product->id]) !!}
+                        {!! Form::select('type', $product_types, $product->type, ['class' => 'form-control select2', 'required', 'disabled', 'data-action' => 'edit', 'data-product_id' => $product->id, 'form' => 'product_add_form']) !!}
                     </div>
                 </div>
 
@@ -619,6 +619,29 @@
       setMoreFieldsOpen(hasPrefilledMoreField);
 
       __page_leave_confirmation('#product_add_form');
+
+      // ---- Orphaned pricing-table fields fix -------------------------------
+      // #product_form_part sits AFTER Form::close() (Card 3, "Set Current
+      // Stock", needs its own separate <form> in between and can't nest
+      // inside the main one), so the cost/margin/selling-price/variation-id
+      // inputs product.js injects here land outside product_add_form in the
+      // DOM. HTML5's form="" attribute associates a field with a form by id
+      // regardless of DOM position — so this backfills that attribute onto
+      // every field product.js renders in here, otherwise Update silently
+      // drops them and the server 422s on "Cost is required" even though the
+      // field is right there on screen with a value. Scoped to this page only
+      // (doesn't touch product.js, which product/create.blade.php also uses
+      // and doesn't have this bug — its form wraps the pricing table there).
+      var $productFormPart = $('#product_form_part')[0];
+      if ($productFormPart) {
+        var associateOrphanedFields = function () {
+          $productFormPart.querySelectorAll('input, select, textarea').forEach(function (el) {
+            if (!el.getAttribute('form')) el.setAttribute('form', 'product_add_form');
+          });
+        };
+        associateOrphanedFields();
+        new MutationObserver(associateOrphanedFields).observe($productFormPart, { childList: true, subtree: true });
+      }
 
       // Snapshot initial stock values so we can detect changes the user made
       // before submitting the main product form.
