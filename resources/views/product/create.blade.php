@@ -96,9 +96,15 @@
     align-items: flex-start;
     max-width: var(--pe-form-width);
 }
-.product-add-v2 .pe-card-row .pe-card { margin-bottom: 0; }
+.product-add-v2 .pe-card-row > .pe-card { margin-bottom: 0; }
 .product-add-v2 .pe-card-row .pe-card-pricing { flex: 1 1 62%; }
-.product-add-v2 .pe-card-row .pe-card-description { flex: 1 1 34%; }
+.product-add-v2 .pe-card-row .pe-card-col {
+    flex: 1 1 34%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.product-add-v2 .pe-card-row .pe-card-col .pe-card { margin-bottom: 0; }
 
 .product-add-v2 .pe-card-title {
     font-size: 13px;
@@ -502,32 +508,7 @@
         </div>
     </div>
 
-    {{-- ─── Card 2: Inventory Options ───────────────────────────────────── --}}
-    <div class="pe-card pe-card-wide">
-        <h3 class="pe-card-title">Inventory Options</h3>
-        <div class="row">
-            <div class="col-sm-3">
-                <div class="form-group">
-                    <label style="display:block; margin-bottom:6px;">
-                        {!! Form::checkbox('enable_stock', 1, !empty($duplicate_product) ? $duplicate_product->enable_stock : true, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
-                        <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
-                    </label>
-                    <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
-                </div>
-            </div>
-
-            <div class="col-sm-3">
-                <div class="form-group">
-                    {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
-                    {!! Form::text('alert_quantity', !empty($duplicate_product->alert_quantity) ? $duplicate_product->alert_quantity : null, ['class' => 'form-control input_number',
-                    'placeholder' => 'e.g. 5']) !!}
-                    <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ─── Card 3: Pricing & Tax + Description (side by side) ─────────── --}}
+    {{-- ─── Card 2: Pricing & Tax + Description/Inventory (side by side) ── --}}
     <div class="pe-card-row">
         <div class="pe-card pe-card-pricing">
             <h3 class="pe-card-title">Pricing &amp; Tax</h3>
@@ -578,10 +559,30 @@
             </div>
         </div>
 
-        <div class="pe-card pe-card-description">
-            <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
-            {!! Form::textarea('product_description', !empty($duplicate_product->product_description) ? $duplicate_product->product_description : null, ['class' => 'form-control', 'rows' => 4]) !!}
-            <p class="help-block">Also shown as the product description on nivessa.com.</p>
+        <div class="pe-card-col">
+            <div class="pe-card pe-card-description">
+                <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
+                {!! Form::textarea('product_description', !empty($duplicate_product->product_description) ? $duplicate_product->product_description : null, ['class' => 'form-control', 'rows' => 4]) !!}
+                <p class="help-block">Also shown as the product description on nivessa.com.</p>
+            </div>
+
+            <div class="pe-card">
+                <h3 class="pe-card-title">Inventory Options</h3>
+                <div class="form-group">
+                    <label style="display:block; margin-bottom:6px;">
+                        {!! Form::checkbox('enable_stock', 1, !empty($duplicate_product) ? $duplicate_product->enable_stock : true, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
+                        <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
+                    </label>
+                    <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
+                </div>
+
+                <div class="form-group">
+                    {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
+                    {!! Form::text('alert_quantity', !empty($duplicate_product->alert_quantity) ? $duplicate_product->alert_quantity : null, ['class' => 'form-control input_number',
+                    'placeholder' => 'e.g. 5']) !!}
+                    <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
+                </div>
+            </div>
         </div>
     </div>
 

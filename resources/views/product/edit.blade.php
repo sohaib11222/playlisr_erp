@@ -92,9 +92,15 @@
     align-items: flex-start;
     max-width: var(--pe-form-width);
 }
-.product-edit-v2 .pe-card-row .pe-card { margin-bottom: 0; }
+.product-edit-v2 .pe-card-row > .pe-card { margin-bottom: 0; }
 .product-edit-v2 .pe-card-row .pe-card-pricing { flex: 1 1 62%; }
-.product-edit-v2 .pe-card-row .pe-card-description { flex: 1 1 34%; }
+.product-edit-v2 .pe-card-row .pe-card-col {
+    flex: 1 1 34%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.product-edit-v2 .pe-card-row .pe-card-col .pe-card { margin-bottom: 0; }
 
 .product-edit-v2 .pe-card-title {
     font-size: 13px;
@@ -429,31 +435,6 @@
         </div>
     </div>
 
-    {{-- ─── Card 2: Inventory Options ───────────────────────────────────── --}}
-    <div class="pe-card pe-card-wide">
-        <h3 class="pe-card-title">Inventory Options</h3>
-        <div class="row">
-            <div class="col-sm-3">
-                <div class="form-group">
-                    <label style="display:block; margin-bottom:6px;">
-                        {!! Form::checkbox('enable_stock', 1, $product->enable_stock, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
-                        <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
-                    </label>
-                    <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
-                </div>
-            </div>
-
-            <div class="col-sm-3">
-                <div class="form-group">
-                    {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
-                    {!! Form::text('alert_quantity', !empty($product->alert_quantity) ? $product->alert_quantity : null, ['class' => 'form-control input_number',
-                    'placeholder' => 'e.g. 5']) !!}
-                    <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
 {!! Form::close() !!}
 
     {{-- ─── Card 3: Set Current Stock (own form, AJAX) ──────────────────── --}}
@@ -546,10 +527,30 @@
             </div>
         </div>
 
-        <div class="pe-card pe-card-description">
-            <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
-            {!! Form::textarea('product_description', $product->product_description, ['class' => 'form-control', 'rows' => 4, 'form' => 'product_add_form']) !!}
-            <p class="help-block">Also shown as the product description on nivessa.com.</p>
+        <div class="pe-card-col">
+            <div class="pe-card pe-card-description">
+                <h3 class="pe-card-title">@lang('lang_v1.product_description')</h3>
+                {!! Form::textarea('product_description', $product->product_description, ['class' => 'form-control', 'rows' => 4, 'form' => 'product_add_form']) !!}
+                <p class="help-block">Also shown as the product description on nivessa.com.</p>
+            </div>
+
+            <div class="pe-card">
+                <h3 class="pe-card-title">Inventory Options</h3>
+                <div class="form-group">
+                    <label style="display:block; margin-bottom:6px;">
+                        {!! Form::checkbox('enable_stock', 1, $product->enable_stock, ['class' => 'input-icheck', 'id' => 'enable_stock', 'form' => 'product_add_form']) !!}
+                        <strong style="text-transform:none; letter-spacing:normal; font-size:13px;">@lang('product.manage_stock')</strong>
+                    </label>
+                    <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
+                </div>
+
+                <div class="form-group">
+                    {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
+                    {!! Form::text('alert_quantity', !empty($product->alert_quantity) ? $product->alert_quantity : null, ['class' => 'form-control input_number',
+                    'placeholder' => 'e.g. 5', 'form' => 'product_add_form']) !!}
+                    <p class="help-block">Shows on the dashboard's Product Stock Alert list when stock is at or below this.</p>
+                </div>
+            </div>
         </div>
     </div>
 
