@@ -81,14 +81,14 @@ class AdminSidebarMenu
             //Discounts lives inside the Products dropdown below — no longer
             //duplicated as its own top-level link.
 
-            //Warehouse dropdown — Storage Locations and Receiving grouped
-            //together. Deliberately ungated (not behind purchase.*): whoever
+            //Storage + Receiving dropdown — Storage Locations and Receiving
+            //grouped together. Deliberately ungated (not behind purchase.*): whoever
             //finds a box or works the receiving window needs these, not just
             //staff with purchase permissions. Kept out of the Purchases
             //dropdown for that reason, but grouped here instead of sitting
             //loose at top level.
             $menu->dropdown(
-                'Warehouse',
+                'Storage + Receiving',
                 function ($sub) {
                     $sub->url(
                         action('BuyFromCustomerController@storageLocations'),
