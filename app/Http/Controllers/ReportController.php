@@ -5077,6 +5077,131 @@ class ReportController extends Controller
             ->with(compact('scorecard', 'by_store', 'by_category', 'best_sellers', 'meta'));
     }
 
+    /**
+     * Sales by Hour — revenue grid of hour-of-day (rows) x day-of-week (columns)
+     * for any date range, toggled per store or combined across all stores.
+     *
+     * Register sales only (import_source IS NULL): bulk-imported/backfilled
+     * history and the sheet import are stamped at midnight and would corrupt
+     * the hour buckets, and Whatnot is excluded to match Store Performance / LFL.
+     */
+    public function salesByHour(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $business_id = $request->session()->get('user.business_id');
+
+        $date_range = $request->input('date_range');
+        if (!empty($date_range)) {
+            $parts = explode('~', $date_range);
+            $start_date = $this->transactionUtil->uf_date(trim($parts[0]));
+            $end_date   = $this->transactionUtil->uf_date(trim($parts[1] ?? $parts[0]));
+        } else {
+            $end_date   = \Carbon::today()->toDateString();
+            $start_date = \Carbon::today()->subDays(89)->toDateString();
+        }
+        $start = \Carbon::parse($start_date)->startOfDay();
+        $end   = \Carbon::parse($end_date)->endOfDay();
+
+        // Storefronts only — exclude Warehouse, matching LFL/Revenue Drivers.
+        $locations = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%')
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $location_id = $request->input('location_id');
+        if (empty($location_id) || !isset($locations[$location_id])) {
+            $location_id = null; // all stores combined
+        }
+        $metric = $request->input('metric') === 'total' ? 'total' : 'avg';
+
+        $q = DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereNull('import_source')
+            ->where(function ($w) {
+                $w->where('is_whatnot', 0)->orWhereNull('is_whatnot');
+            })
+            ->whereBetween('transaction_date', [$start, $end]);
+        if ($location_id) {
+            $q->where('location_id', $location_id);
+        }
+
+        $rows = $q->selectRaw('DAYOFWEEK(transaction_date) as dow, HOUR(transaction_date) as hr, SUM(final_total) as revenue, COUNT(*) as tx_count')
+            ->groupBy('dow', 'hr')
+            ->get();
+
+        // How many times each weekday (1=Sun..7=Sat, matching MySQL DAYOFWEEK)
+        // falls inside the selected range — the denominator for daily averages.
+        $day_counts = array_fill(1, 7, 0);
+        $cursor = \Carbon::parse($start_date);
+        $last_day = \Carbon::parse($end_date);
+        while ($cursor->lte($last_day)) {
+            $day_counts[$cursor->dayOfWeek + 1]++;
+            $cursor->addDay();
+        }
+
+        $grid = [];
+        $tx_grid = [];
+        for ($h = 0; $h < 24; $h++) {
+            $grid[$h] = array_fill(1, 7, 0.0);
+            $tx_grid[$h] = array_fill(1, 7, 0);
+        }
+        foreach ($rows as $r) {
+            $grid[(int) $r->hr][(int) $r->dow] = (float) $r->revenue;
+            $tx_grid[(int) $r->hr][(int) $r->dow] = (int) $r->tx_count;
+        }
+
+        if ($metric === 'avg') {
+            for ($h = 0; $h < 24; $h++) {
+                for ($d = 1; $d <= 7; $d++) {
+                    $cnt = $day_counts[$d];
+                    $grid[$h][$d] = $cnt > 0 ? $grid[$h][$d] / $cnt : 0.0;
+                }
+            }
+        }
+
+        $row_totals = [];
+        $col_totals = array_fill(1, 7, 0.0);
+        $grand_total = 0.0;
+        for ($h = 0; $h < 24; $h++) {
+            $row_totals[$h] = array_sum($grid[$h]);
+            foreach ($grid[$h] as $d => $v) {
+                $col_totals[$d] += $v;
+            }
+            $grand_total += $row_totals[$h];
+        }
+
+        $max_cell = 0.0;
+        foreach ($grid as $row) {
+            foreach ($row as $v) {
+                $max_cell = max($max_cell, $v);
+            }
+        }
+
+        $day_labels = [1 => 'Sun', 2 => 'Mon', 3 => 'Tue', 4 => 'Wed', 5 => 'Thu', 6 => 'Fri', 7 => 'Sat'];
+
+        return view('report.sales_by_hour')->with([
+            'locations'   => $locations,
+            'location_id' => $location_id,
+            'metric'      => $metric,
+            'date_range'  => $date_range,
+            'start_date'  => $start_date,
+            'end_date'    => $end_date,
+            'grid'        => $grid,
+            'tx_grid'     => $tx_grid,
+            'day_counts'  => $day_counts,
+            'day_labels'  => $day_labels,
+            'row_totals'  => $row_totals,
+            'col_totals'  => $col_totals,
+            'grand_total' => $grand_total,
+            'max_cell'    => $max_cell,
+        ]);
+    }
+
     private function streamLflSalesCsv($rows, $totals, $meta)
     {
         $filename = 'lfl-sales_' . $meta['start_date']

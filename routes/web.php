@@ -508,6 +508,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/lfl-sales', 'ReportController@lflSalesReport')->name('reports.lfl-sales');
     Route::post('/reports/lfl-sales/hours', 'ReportController@lflSaveStoreHours')->name('reports.lfl-sales.hours');
     Route::get('/reports/revenue-drivers', 'ReportController@revenueDrivers')->name('reports.revenue-drivers');
+    Route::get('/reports/sales-by-hour', 'ReportController@salesByHour')->name('reports.sales-by-hour');
     Route::get('/reports/service-staff-report', 'ReportController@getServiceStaffReport');
     Route::get('/reports/service-staff-line-orders', 'ReportController@serviceStaffLineOrders');
     Route::get('/reports/table-report', 'ReportController@getTableReport');
