@@ -433,7 +433,7 @@
     <div class="pe-card pe-card-wide">
         <h3 class="pe-card-title">Inventory Options</h3>
         <div class="row">
-            <div class="col-sm-6">
+            <div class="col-sm-3">
                 <div class="form-group">
                     <label style="display:block; margin-bottom:6px;">
                         {!! Form::checkbox('enable_stock', 1, $product->enable_stock, ['class' => 'input-icheck', 'id' => 'enable_stock']) !!}
@@ -443,7 +443,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6">
+            <div class="col-sm-3">
                 <div class="form-group">
                     {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
                     {!! Form::text('alert_quantity', !empty($product->alert_quantity) ? $product->alert_quantity : null, ['class' => 'form-control input_number',
