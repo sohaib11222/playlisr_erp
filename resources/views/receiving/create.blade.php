@@ -33,7 +33,7 @@ body.pos-v2 .btn-ghost { background: transparent; border: 1px solid var(--pos-li
 body.pos-v2 .rcv-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>
 
-{!! Form::open(['action' => 'ReceivingPackageController@store', 'method' => 'post', 'id' => 'receiving_form']) !!}
+{!! Form::open(['action' => 'ReceivingPackageController@store', 'method' => 'post', 'id' => 'receiving_form', 'files' => true]) !!}
 <div class="rcv-wrap">
     <h1>Log a Package</h1>
     <p class="sub">What just came in? Log it now — you'll add the contents on the next screen.</p>

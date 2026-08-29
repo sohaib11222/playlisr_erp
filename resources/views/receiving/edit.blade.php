@@ -33,7 +33,7 @@ body.pos-v2 .btn-ghost { background: transparent; border: 1px solid var(--pos-li
 body.pos-v2 .rcv-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>
 
-{!! Form::model($package, ['action' => ['ReceivingPackageController@update', $package->id], 'method' => 'put', 'id' => 'receiving_form']) !!}
+{!! Form::model($package, ['action' => ['ReceivingPackageController@update', $package->id], 'method' => 'put', 'id' => 'receiving_form', 'files' => true]) !!}
 <div class="rcv-wrap">
     <h1>Edit Package #{{ $package->id }}</h1>
     <p class="sub">Fix a mistake in how this package was logged. This doesn't touch its items or pricing.</p>
