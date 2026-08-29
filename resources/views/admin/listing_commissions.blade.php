@@ -225,6 +225,7 @@
                 <summary>Show payment history or record a payment</summary>
 
                 <form method="POST" action="{{ url('/admin/listing-commissions/record-payment') }}"
+                      onsubmit="return confirm('Record this payment?');"
                       style="margin-bottom:14px; padding:10px 12px; background:#FFF7CC; border:1px solid #E6CE5A; border-radius:8px;">
                     @csrf
                     <strong style="color:#6b5a00; margin-right:8px;">Record a payment:</strong>
@@ -272,6 +273,7 @@
                                     <td style="text-align:right; white-space:nowrap;">
                                         @foreach ($r['undos'] as $u)
                                             <form method="POST" action="{{ url('/admin/listing-commissions/' . $u['route']) }}"
+                                                  onsubmit="return confirm('Undo {{ $r['name'] }} {{ strtolower($u['label']) }} payout? That commission will be owed again.');"
                                                   style="display:inline-block; margin:0 0 0 4px;">
                                                 @csrf
                                                 <input type="hidden" name="id" value="{{ $u['id'] }}">
