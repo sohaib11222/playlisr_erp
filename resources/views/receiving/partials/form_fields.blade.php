@@ -38,7 +38,16 @@
             {!! Form::label('invoice_number', 'Invoice #') !!}
             {!! Form::text('invoice_number', null, ['class' => 'form-control', 'placeholder' => 'Optional']); !!}
         </div>
+        <div class="rcv-field">
+            {!! Form::label('shipping_cost', 'Shipping') !!}
+            {!! Form::number('shipping_cost', null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => '0.00']); !!}
+        </div>
+        <div class="rcv-field">
+            {!! Form::label('tax_amount', 'Tax') !!}
+            {!! Form::number('tax_amount', null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => '0.00']); !!}
+        </div>
     </div>
+    <small class="help-block">Whole-package totals — added to item cost below so employees see the full landed cost when pricing.</small>
     @if(!isset($package))
     <div class="rcv-row" style="margin-top: 4px;">
         <div class="rcv-field" style="flex: 1 1 100%;">
