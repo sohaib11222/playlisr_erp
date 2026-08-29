@@ -69,9 +69,11 @@ body.pos-v2 #receiving_table .label { font-size: 11px; font-weight: 600; padding
                         <th>Type</th>
                         <th>Store</th>
                         <th>Bin</th>
+                        <th>Distributor</th>
                         <th>Order #</th>
                         <th>Invoice #</th>
                         <th>Received By</th>
+                        <th>Photo</th>
                         <th>Items</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -101,9 +103,11 @@ body.pos-v2 #receiving_table .label { font-size: 11px; font-weight: 600; padding
                 { data: 'package_type', name: 'package_type' },
                 { data: 'location_name', name: 'business_locations.name', defaultContent: '-' },
                 { data: 'bin_location', name: 'receiving_packages.bin_location', defaultContent: '-' },
+                { data: 'distributor', name: 'receiving_packages.distributor', defaultContent: '-' },
                 { data: 'order_number', name: 'order_number', defaultContent: '-' },
                 { data: 'invoice_number', name: 'invoice_number', defaultContent: '-' },
                 { data: 'received_by_name', name: 'received_by_name', defaultContent: '-' },
+                { data: 'photo', name: 'receiving_packages.photo', orderable: false, searchable: false, defaultContent: '-' },
                 { data: 'items_progress', name: 'items_progress', orderable: false, searchable: false },
                 { data: 'status', name: 'status' },
                 { data: 'action', name: 'action', orderable: false, searchable: false },
