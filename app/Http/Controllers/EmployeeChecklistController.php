@@ -201,8 +201,9 @@ class EmployeeChecklistController extends Controller
      * the role Sarah hires most often. Fills the fixed cashier offer-letter
      * template (resources/views/pdf/cashier_offer_letter) with just the
      * candidate's name/start date, compiles it to a PDF with mpdf (same
-     * library TransactionUtil uses for receipts), and emails it via
-     * CashierOfferLetter (see app/Mail/CashierOfferLetter.php).
+     * library TransactionUtil uses for receipts), and emails it from
+     * sarah@nivessa.com specifically via OfferLetterMailer (its own SMTP
+     * credentials — see app/Services/OfferLetterMailer.php).
      * Covers the checklist's "sign_offer" step.
      */
     public function sendOffer(Request $request)
@@ -237,7 +238,7 @@ class EmployeeChecklistController extends Controller
         $filename = 'Offer Letter - ' . $fullName . '.pdf';
 
         try {
-            \Mail::to($email)->send(new \App\Mail\CashierOfferLetter($firstName, $pdfBinary, $filename));
+            \App\Services\OfferLetterMailer::send($email, $firstName, $pdfBinary, $filename);
         } catch (\Throwable $e) {
             \Log::warning('Cashier offer letter email failed: ' . $e->getMessage());
             return redirect()->action('EmployeeChecklistController@index', ['type' => 'onboarding'])

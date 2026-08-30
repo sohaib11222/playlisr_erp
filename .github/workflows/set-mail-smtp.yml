@@ -1,7 +1,10 @@
 # One-click, one-time setup: writes real SMTP credentials into the ERP's
 # production .env so outbound mail (currently pointed at smtp.mailtrap.io
 # with placeholder credentials — nothing has ever actually delivered) can
-# send for real, from sarah@nivessa.com.
+# send for real. This is the app's DEFAULT mailer, used for everything
+# except the cashier offer letter (that one has its own dedicated mailbox —
+# see set-offer-letter-smtp.yml). Sarah wants this default to be
+# hello@nivessa.com.
 #
 # Same safe pattern as set-nivessa-web-token.yml:
 #   - the credential value comes from a real GitHub secret (masked in logs),
@@ -15,7 +18,7 @@
 #   MAIL_SMTP_HOST       e.g. smtp.gmail.com
 #   MAIL_SMTP_PORT       e.g. 587
 #   MAIL_SMTP_ENCRYPTION e.g. tls
-#   MAIL_SMTP_USERNAME   sarah@nivessa.com
+#   MAIL_SMTP_USERNAME   hello@nivessa.com
 #   MAIL_SMTP_PASSWORD   a Google Workspace App Password for that account
 #                        (Google Account > Security > App Passwords —
 #                        needs 2-Step Verification turned on first)
