@@ -214,8 +214,11 @@ class EventsController extends Controller
         });
 
         // Default the list to listening parties (the common case); ?type=all
-        // shows every event, and ?type=<other> filters to that type.
+        // shows every event, and ?type=<other> filters to that type. The "What
+        // to order" worklist below ignores this tab filter — it always covers
+        // every orderable event type, so it doesn't go blank on a filtered tab.
         $eventTypes = self::eventTypes();
+        $orderableUpcoming = array_values(array_filter($rows, fn($e) => ($e['date'] ?? '') >= $today));
         $filterType = $request->input('type', 'listening_party');
         if ($filterType === 'all') {
             $filterType = null;
@@ -246,7 +249,7 @@ class EventsController extends Controller
             'vinylCounts'    => $counts['vinyl'],
             'cdCounts'       => $counts['cd'],
             'storeCounts'    => $counts['store'] ?? [],
-            'toOrder'        => $this->toOrderList($upcoming, $counts['store'] ?? []),
+            'toOrder'        => $this->toOrderList($orderableUpcoming, $counts['store'] ?? []),
             'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),
             'bridgeKeySet'   => $this->erpApiKey() !== '',
@@ -610,8 +613,9 @@ class EventsController extends Controller
         // shortfall to order plus the typable order-note (what was ordered +
         // tracking) saved against that store on the event.
         $events = [];
+        $orderableTypes = ['listening_party', 'album_release_event'];
         foreach ($upcoming as $ev) {
-            if (($ev['eventType'] ?? '') !== 'listening_party') { continue; }
+            if (!in_array($ev['eventType'] ?? 'listening_party', $orderableTypes, true)) { continue; }
             $k = self::normName($ev['name'] ?? '');
             $dem = $storeDemand[$k] ?? [];
             $ord = (array) ($ev['ordered'] ?? []);
