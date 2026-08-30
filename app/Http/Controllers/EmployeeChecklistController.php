@@ -196,6 +196,58 @@ class EmployeeChecklistController extends Controller
         ]);
     }
 
+    /**
+     * One-click "Compile & Send Offer" for the standard Sales Cashier hire —
+     * the role Sarah hires most often. Fills the fixed cashier offer-letter
+     * template (resources/views/pdf/cashier_offer_letter) with just the
+     * candidate's name/start date, compiles it to a PDF with mpdf (same
+     * library TransactionUtil uses for receipts), and emails it via
+     * CashierOfferLetter (see app/Mail/CashierOfferLetter.php).
+     * Covers the checklist's "sign_offer" step.
+     */
+    public function sendOffer(Request $request)
+    {
+        $this->guard();
+
+        $request->validate([
+            'full_name'  => 'required|string|max:120',
+            'email'      => 'required|email|max:190',
+            'start_date' => 'required|string|max:60',
+        ]);
+
+        $fullName = trim($request->input('full_name'));
+        $email = trim($request->input('email'));
+        $startDate = trim($request->input('start_date'));
+        $firstName = trim(explode(' ', $fullName)[0]);
+
+        $body = view('pdf.cashier_offer_letter', [
+            'firstName' => $firstName,
+            'fullName'  => $fullName,
+            'startDate' => $startDate,
+        ])->render();
+
+        $mpdf = new \Mpdf\Mpdf([
+            'tempDir' => public_path('uploads/temp'),
+            'mode'    => 'utf-8',
+            'format'  => 'A4',
+        ]);
+        $mpdf->WriteHTML($body);
+        $pdfBinary = $mpdf->Output('', 'S');
+
+        $filename = 'Offer Letter - ' . $fullName . '.pdf';
+
+        try {
+            \Mail::to($email)->send(new \App\Mail\CashierOfferLetter($firstName, $pdfBinary, $filename));
+        } catch (\Throwable $e) {
+            \Log::warning('Cashier offer letter email failed: ' . $e->getMessage());
+            return redirect()->action('EmployeeChecklistController@index', ['type' => 'onboarding'])
+                ->with('status', ['success' => 0, 'msg' => 'Could not send the offer email: ' . $e->getMessage()]);
+        }
+
+        return redirect()->action('EmployeeChecklistController@index', ['type' => 'onboarding'])
+            ->with('status', ['success' => 1, 'msg' => 'Offer letter compiled and emailed to ' . $email . ' (' . $fullName . ').']);
+    }
+
     public function complete(Request $request)
     {
         $this->guard();

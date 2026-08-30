@@ -250,6 +250,33 @@
         </div>
     @endif
 
+    @if(!$isOff)
+        <div class="card">
+            <h3 style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--d-ink-2);margin:0 0 4px;">Compile &amp; Send Offer (Sales Cashier)</h3>
+            <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 14px;">Fills the standard cashier offer letter, compiles it to a PDF, and emails it for signature. For other roles, keep sending the offer letter by hand.</p>
+            <form method="POST" action="{{ route('employee-checklist.send-offer') }}">
+                @csrf
+                <div class="topbar" style="margin-bottom:0;">
+                    <div class="fld">
+                        <label class="lbl">Full name</label>
+                        <input type="text" name="full_name" class="input" placeholder="First Last" required>
+                    </div>
+                    <div class="fld">
+                        <label class="lbl">Email</label>
+                        <input type="email" name="email" class="input" placeholder="name@email.com" required>
+                    </div>
+                    <div class="fld">
+                        <label class="lbl">Start date</label>
+                        <input type="text" name="start_date" class="input" placeholder="e.g. September 22, 2026" required>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit" class="btn">Compile &amp; Send Offer</button>
+                </div>
+            </form>
+        </div>
+    @endif
+
     <form method="POST" action="{{ action('EmployeeChecklistController@complete') }}">
         @csrf
         <input type="hidden" name="type" value="{{ $type }}">

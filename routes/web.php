@@ -1023,6 +1023,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // the controller. JSON-backed (storage/app/employee_checklist.json).
     Route::get('/employee-checklist', 'EmployeeChecklistController@index')->name('employee-checklist.index');
     Route::post('/employee-checklist', 'EmployeeChecklistController@complete')->name('employee-checklist.complete');
+    Route::post('/employee-checklist/send-offer', 'EmployeeChecklistController@sendOffer')->name('employee-checklist.send-offer');
 
     // Phone playbook — how to answer calls, triage them, and locate a record
     // across both stores. Read-only reference styled to match /pos/create.
