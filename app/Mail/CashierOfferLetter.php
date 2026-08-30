@@ -30,8 +30,9 @@ class CashierOfferLetter extends Mailable
 
     public function build()
     {
-        return $this->subject('Nivessa Offer Letter & Next Steps')
-            ->replyTo('sarah@nivessa.com', 'Sarah Hedvat')
+        return $this->from('sarah@nivessa.com', 'Sarah Hedvat')
+            ->cc('sarah@nivessa.com')
+            ->subject('Nivessa Offer Letter & Next Steps')
             ->view('emails.cashier_offer_letter')
             ->attachData($this->pdfBinary, $this->pdfFilename, [
                 'mime' => 'application/pdf',
