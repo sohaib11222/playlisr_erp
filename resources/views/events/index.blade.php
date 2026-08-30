@@ -35,10 +35,6 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
-  @if(!empty($debugToOrderDump))
-    <pre style="white-space:pre-wrap;background:#eee;padding:10px;font-size:11px;">{{ json_encode($debugToOrderDump, JSON_PRETTY_PRINT) }}</pre>
-  @endif
-
   {{-- ---------- What to order (shortfalls across upcoming events) ---------- --}}
   @if(!empty($toOrder))
     <div class="ev-card" style="border:1px solid var(--pos-accent,#FFE08A);">
