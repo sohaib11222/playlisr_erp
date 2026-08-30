@@ -1,0 +1,130 @@
+# One-click, one-time setup: writes real SMTP credentials into the ERP's
+# production .env so outbound mail (currently pointed at smtp.mailtrap.io
+# with placeholder credentials — nothing has ever actually delivered) can
+# send for real, from sarah@nivessa.com.
+#
+# Same safe pattern as set-nivessa-web-token.yml:
+#   - the credential value comes from a real GitHub secret (masked in logs),
+#     never typed into a workflow_dispatch input or seen by Claude
+#   - replaces the existing MAIL_* lines (they're placeholder junk today,
+#     not something worth preserving) rather than appending duplicates
+#   - verifies .env still parses and the site is still up afterward
+#
+# Setup (one time, in the GitHub repo's Settings > Secrets and variables >
+# Actions), before running this workflow:
+#   MAIL_SMTP_HOST       e.g. smtp.gmail.com
+#   MAIL_SMTP_PORT       e.g. 587
+#   MAIL_SMTP_ENCRYPTION e.g. tls
+#   MAIL_SMTP_USERNAME   sarah@nivessa.com
+#   MAIL_SMTP_PASSWORD   a Google Workspace App Password for that account
+#                        (Google Account > Security > App Passwords —
+#                        needs 2-Step Verification turned on first)
+#
+# Uses the same SSH secrets as Deploy production: DEPLOY_HOST, DEPLOY_USER,
+# DEPLOY_SSH_KEY, (optional DEPLOY_PORT).
+
+name: Set mail SMTP credentials
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  set-mail-smtp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Fail fast if any secret is missing
+        env:
+          MAIL_SMTP_HOST: ${{ secrets.MAIL_SMTP_HOST }}
+          MAIL_SMTP_PORT: ${{ secrets.MAIL_SMTP_PORT }}
+          MAIL_SMTP_ENCRYPTION: ${{ secrets.MAIL_SMTP_ENCRYPTION }}
+          MAIL_SMTP_USERNAME: ${{ secrets.MAIL_SMTP_USERNAME }}
+          MAIL_SMTP_PASSWORD: ${{ secrets.MAIL_SMTP_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$MAIL_SMTP_HOST" ] && missing="$missing MAIL_SMTP_HOST"
+          [ -z "$MAIL_SMTP_PORT" ] && missing="$missing MAIL_SMTP_PORT"
+          [ -z "$MAIL_SMTP_ENCRYPTION" ] && missing="$missing MAIL_SMTP_ENCRYPTION"
+          [ -z "$MAIL_SMTP_USERNAME" ] && missing="$missing MAIL_SMTP_USERNAME"
+          [ -z "$MAIL_SMTP_PASSWORD" ] && missing="$missing MAIL_SMTP_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "Missing repo secret(s):$missing — add them under Settings > Secrets and variables > Actions, then re-run."
+            exit 1
+          fi
+
+      - name: Write SMTP credentials on server (replaces existing MAIL_* values)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          MAIL_SMTP_HOST: ${{ secrets.MAIL_SMTP_HOST }}
+          MAIL_SMTP_PORT: ${{ secrets.MAIL_SMTP_PORT }}
+          MAIL_SMTP_ENCRYPTION: ${{ secrets.MAIL_SMTP_ENCRYPTION }}
+          MAIL_SMTP_USERNAME: ${{ secrets.MAIL_SMTP_USERNAME }}
+          MAIL_SMTP_PASSWORD: ${{ secrets.MAIL_SMTP_PASSWORD }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          envs: MAIL_SMTP_HOST,MAIL_SMTP_PORT,MAIL_SMTP_ENCRYPTION,MAIL_SMTP_USERNAME,MAIL_SMTP_PASSWORD
+          script: |
+            set -e
+            DEPLOY_DIR="/www/playlist.nivessa.com/app"
+            cd "$DEPLOY_DIR"
+            cp .env .env.bak.mailsmtp
+
+            set_kv() {
+              key="$1"; val="$2"
+              if grep -q "^${key}=" .env; then
+                # Escape & and | for sed replacement safety.
+                esc_val=$(printf '%s' "$val" | sed -e 's/[&|]/\\&/g')
+                sed -i "s|^${key}=.*|${key}=${esc_val}|" .env
+              else
+                printf '\n%s=%s\n' "$key" "$val" >> .env
+              fi
+            }
+
+            set_kv MAIL_DRIVER "smtp"
+            set_kv MAIL_HOST "$MAIL_SMTP_HOST"
+            set_kv MAIL_PORT "$MAIL_SMTP_PORT"
+            set_kv MAIL_ENCRYPTION "$MAIL_SMTP_ENCRYPTION"
+            set_kv MAIL_USERNAME "$MAIL_SMTP_USERNAME"
+            set_kv MAIL_PASSWORD "$MAIL_SMTP_PASSWORD"
+            set_kv MAIL_FROM_ADDRESS "$MAIL_SMTP_USERNAME"
+            set_kv MAIL_FROM_NAME "Sarah Hedvat"
+
+            echo "=== verifying .env still parses ==="
+            php artisan config:clear
+            php -r '$e = parse_ini_file(".env"); var_dump($e !== false);'
+
+            echo "=== recycling php-fpm workers so config reloads (same as deploy.sh) ==="
+            ME=$(whoami)
+            pkill -9 -u "$ME" -f 'php-?fpm.*pool' 2>&1 || true
+            sleep 3
+
+            echo "=== site still up? ==="
+            curl -s -o /dev/null -w "https://playlist.nivessa.com -> %{http_code}\n" https://playlist.nivessa.com/login
