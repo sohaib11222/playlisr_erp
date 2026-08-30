@@ -569,9 +569,11 @@
         .fsg-module { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
         .fsg-title { font-size:16px; font-weight:600; margin:0; }
         .fsg-sub { font-size:12px; color:#6b7280; margin:0 0 14px 0; }
-        .fsg-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; }
+        .fsg-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; align-items:center; justify-content:space-between; }
+        .fsg-tab-group { display:flex; gap:4px; }
         .fsg-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .fsg-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#3b6d11; }
+        .fsg-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
         .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 90px 90px; gap:12px; align-items:center; padding:12px; background:#f8fafc; border-radius:8px; margin-bottom:8px; }
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
         .fsg-label { font-size:14px; font-weight:500; margin:0; }
@@ -591,37 +593,47 @@
     <div class="fsg-module">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
             <div class="fsg-title">Fastest selling genres</div>
-            <div class="fsg-sub" style="margin-bottom:0;">Last 90 days</div>
+            <div class="fsg-sub" style="margin-bottom:0;" data-fsg-range-label>Last {{ $fsg_ranges[array_search($fsg_default_range, array_column($fsg_ranges, 'key'))]['label'] }}</div>
         </div>
         <div class="fsg-sub">Avg days from intake to sale — lower is faster (genres with ≥5 sales)</div>
 
-        {{-- Store tabs — Both / Hollywood / Pico (mirrors MTD/YTD scope keys). --}}
         <div class="fsg-tab-row" id="fsg-store-tabs">
-            @foreach($fsg_scope_keys as $i => $scope_key)
-                <div class="fsg-tab {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $scope_key }}">{{ $fsg_scope[$scope_key]['label'] }}</div>
-            @endforeach
+            {{-- Store tabs — Both / Hollywood / Pico (mirrors MTD/YTD scope keys). --}}
+            <div class="fsg-tab-group">
+                @foreach($fsg_scope_keys as $i => $scope_key)
+                    <div class="fsg-tab {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $scope_key }}">{{ $fsg_scope[$fsg_default_range][$scope_key]['label'] }}</div>
+                @endforeach
+            </div>
+            {{-- Time range — how far back the turnover average looks. --}}
+            <select class="fsg-range-select">
+                @foreach($fsg_ranges as $range)
+                    <option value="{{ $range['key'] }}" {{ $range['key'] === $fsg_default_range ? 'selected' : '' }}>{{ $range['label'] }}</option>
+                @endforeach
+            </select>
         </div>
 
-        @foreach($fsg_scope_keys as $i => $scope_key)
-            @php $rows = $fsg_scope[$scope_key]['rows']; @endphp
-            <div class="fsg-body" data-scope="{{ $scope_key }}" style="display: {{ $i === 0 ? 'block' : 'none' }};">
-                @forelse($rows as $idx => $r)
-                    <div class="fsg-row">
-                        <div class="fsg-rank">{{ $idx + 1 }}</div>
-                        <div>
-                            <p class="fsg-label">{{ $r->genre }}</p>
-                            <p class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
+        @foreach($fsg_ranges as $range)
+            @foreach($fsg_scope_keys as $i => $scope_key)
+                @php $rows = $fsg_scope[$range['key']][$scope_key]['rows']; @endphp
+                <div class="fsg-body" data-range="{{ $range['key'] }}" data-scope="{{ $scope_key }}" style="display: {{ ($range['key'] === $fsg_default_range && $i === 0) ? 'block' : 'none' }};">
+                    @forelse($rows as $idx => $r)
+                        <div class="fsg-row">
+                            <div class="fsg-rank">{{ $idx + 1 }}</div>
+                            <div>
+                                <p class="fsg-label">{{ $r->genre }}</p>
+                                <p class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
+                            </div>
+                            <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
+                            <div class="fsg-days">
+                                <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
+                            </div>
+                            <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
                         </div>
-                        <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
-                        <div class="fsg-days">
-                            <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
-                        </div>
-                        <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
-                    </div>
-                @empty
-                    <div class="fsg-empty">No genres with ≥5 sales in this window.</div>
-                @endforelse
-            </div>
+                    @empty
+                        <div class="fsg-empty">No genres with ≥5 sales in this window.</div>
+                    @endforelse
+                </div>
+            @endforeach
         @endforeach
     </div>
     @endif
@@ -1492,17 +1504,28 @@
             });
         }
 
-        // Fastest selling genres: store-scope tabs (Both / Hollywood / Pico).
-        // Same pattern as the ts-module above; lives here for the same
-        // reason (jQuery loads at the bottom of the layout).
+        // Fastest selling genres: store-scope tabs (Both / Hollywood / Pico)
+        // plus a time-range select. Every [range × scope] combo is
+        // pre-rendered server-side (same pattern as the ts-module above),
+        // so both toggles just swap which block is visible — no roundtrip.
         var $fsgModule = $('.fsg-module');
         if ($fsgModule.length) {
+            var fsgCurrentScope = $fsgModule.find('.fsg-tab.active').data('scope');
+            var fsgCurrentRange = $fsgModule.find('.fsg-range-select').val();
+            function fsgRefresh() {
+                $fsgModule.find('.fsg-body').hide();
+                $fsgModule.find('.fsg-body[data-range="' + fsgCurrentRange + '"][data-scope="' + fsgCurrentScope + '"]').show();
+                $fsgModule.find('[data-fsg-range-label]').text('Last ' + $fsgModule.find('.fsg-range-select option:selected').text());
+            }
             $fsgModule.on('click', '.fsg-tab', function () {
-                var scope = $(this).data('scope');
+                fsgCurrentScope = $(this).data('scope');
                 $fsgModule.find('.fsg-tab').removeClass('active');
                 $(this).addClass('active');
-                $fsgModule.find('.fsg-body').hide();
-                $fsgModule.find('.fsg-body[data-scope="' + scope + '"]').show();
+                fsgRefresh();
+            });
+            $fsgModule.on('change', '.fsg-range-select', function () {
+                fsgCurrentRange = $(this).val();
+                fsgRefresh();
             });
         }
 
