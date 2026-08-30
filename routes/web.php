@@ -701,6 +701,26 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-wants/from-pos', 'CustomerWantController@storeFromPos')->name('customer-wants.from-pos');
     Route::post('/customer-wants/{id}/fulfill-ajax', 'CustomerWantController@fulfillAjax')->name('customer-wants.fulfill-ajax');
 
+    // Tasks & Projects — team-wide weekly tasks + longer-running projects
+    // with contributor credit. See TaskController/ProjectController.
+    Route::get('/tasks', 'TaskController@index')->name('tasks.index');
+    Route::get('/tasks/create', 'TaskController@create')->name('tasks.create');
+    Route::post('/tasks', 'TaskController@store')->name('tasks.store');
+    Route::get('/tasks/{id}/edit', 'TaskController@edit')->name('tasks.edit');
+    Route::put('/tasks/{id}', 'TaskController@update')->name('tasks.update');
+    Route::post('/tasks/{id}/status', 'TaskController@updateStatus')->name('tasks.update-status');
+    Route::delete('/tasks/{id}', 'TaskController@destroy')->name('tasks.destroy');
+
+    Route::get('/tasks/projects', 'ProjectController@index')->name('projects.index');
+    Route::get('/tasks/projects/create', 'ProjectController@create')->name('projects.create');
+    Route::post('/tasks/projects', 'ProjectController@store')->name('projects.store');
+    Route::get('/tasks/projects/{id}/edit', 'ProjectController@edit')->name('projects.edit');
+    Route::put('/tasks/projects/{id}', 'ProjectController@update')->name('projects.update');
+    Route::post('/tasks/projects/{id}/status', 'ProjectController@updateStatus')->name('projects.update-status');
+    Route::post('/tasks/projects/{id}/join', 'ProjectController@join')->name('projects.join');
+    Route::delete('/tasks/projects/{id}/contributors/{userId}', 'ProjectController@removeContributor')->name('projects.contributors.remove');
+    Route::delete('/tasks/projects/{id}', 'ProjectController@destroy')->name('projects.destroy');
+
     // Customer Wants list ("call me when X comes in")
     Route::get('/customer-wants', 'CustomerWantController@index')->name('customer_wants.index');
     Route::get('/customer-wants/create', 'CustomerWantController@create')->name('customer_wants.create');
