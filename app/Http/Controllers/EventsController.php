@@ -250,6 +250,11 @@ class EventsController extends Controller
             'cdCounts'       => $counts['cd'],
             'storeCounts'    => $counts['store'] ?? [],
             'toOrder'        => $this->toOrderList($orderableUpcoming, $counts['store'] ?? []),
+            'debugToOrderDump' => $request->input('debugToOrder') === '1' ? [
+                'orderableUpcomingCount' => count($orderableUpcoming),
+                'orderableUpcomingTypes' => array_map(fn($e) => [(string) ($e['name'] ?? ''), (string) ($e['eventType'] ?? '')], $orderableUpcoming),
+                'storeCountsKeys'        => array_keys($counts['store'] ?? []),
+            ] : null,
             'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),
             'bridgeKeySet'   => $this->erpApiKey() !== '',
