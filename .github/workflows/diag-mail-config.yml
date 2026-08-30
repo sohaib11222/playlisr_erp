@@ -1,0 +1,69 @@
+# READ-ONLY diagnostic: check whether the server's mail config has real SMTP
+# credentials set, without ever printing the password itself. Used to
+# diagnose the cashier offer-letter email failing with "530 Authentication
+# required". No writes.
+name: Diag mail config
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Mail config presence check (read-only, no secrets printed)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== .env MAIL_* keys present? (values never printed) ==="
+            for key in MAIL_DRIVER MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_PASSWORD MAIL_ENCRYPTION MAIL_FROM_ADDRESS MAIL_FROM_NAME; do
+              line=$(grep "^${key}=" .env)
+              if [ -z "$line" ]; then
+                echo "$key: MISSING"
+              else
+                val="${line#*=}"
+                if [ -z "$val" ] || [ "$val" = "null" ]; then
+                  echo "$key: EMPTY"
+                else
+                  echo "$key: SET (len=${#val})"
+                fi
+              fi
+            done
+            echo "=== MAIL_HOST / MAIL_PORT actual values (not secret) ==="
+            grep "^MAIL_HOST=" .env
+            grep "^MAIL_PORT=" .env
+            grep "^MAIL_ENCRYPTION=" .env
+            echo "=== done ==="
