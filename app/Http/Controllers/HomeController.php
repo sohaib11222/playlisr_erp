@@ -738,16 +738,24 @@ class HomeController extends Controller
         // Fastest Selling Genres — turnover speed per genre.
         // Avg days from purchase/intake (purchase_lines.transaction)
         // to sale (sell_lines.transaction), grouped by sub_category.
-        // Lower avg = faster mover. Last 90 days, ≥5 sales required
-        // so a single quick flip doesn't put a thin genre at the top.
-        // Computed per scope (all / hollywood / pico) so the view can
-        // toggle without a roundtrip — reuses $sales_scope_defs which
-        // was resolved earlier for the MTD/YTD cards.
+        // ≥5 sales required so a single quick flip doesn't put a thin
+        // genre at the top. Computed per [range × scope] so the view
+        // can toggle either axis without a roundtrip — scope reuses
+        // $sales_scope_defs which was resolved earlier for the MTD/YTD
+        // cards.
         // ==========================================================
-        $fsg_start = \Carbon::now()->subDays(89)->startOfDay()->toDateTimeString();
-        $fsg_end   = \Carbon::now()->endOfDay()->toDateTimeString();
+        $fsg_ranges = [
+            ['key' => '2w',  'label' => '2 weeks',  'start' => \Carbon::now()->subWeeks(2)->startOfDay()],
+            ['key' => '4w',  'label' => '4 weeks',  'start' => \Carbon::now()->subWeeks(4)->startOfDay()],
+            ['key' => '2mo', 'label' => '2 months', 'start' => \Carbon::now()->subMonths(2)->startOfDay()],
+            ['key' => '3mo', 'label' => '3 months', 'start' => \Carbon::now()->subMonths(3)->startOfDay()],
+            ['key' => '6mo', 'label' => '6 months', 'start' => \Carbon::now()->subMonths(6)->startOfDay()],
+            ['key' => '1y',  'label' => '1 year',   'start' => \Carbon::now()->subYear()->startOfDay()],
+        ];
+        $fsg_end = \Carbon::now()->endOfDay()->toDateTimeString();
+        $fsg_default_range = '3mo';
 
-        $fsgRollup = function ($location_id) use ($business_id, $fsg_start, $fsg_end) {
+        $fsgRollup = function ($location_id, $start, $end) use ($business_id) {
             $q = \DB::table('transaction_sell_lines_purchase_lines as tslp')
                 ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
                 ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
@@ -759,7 +767,7 @@ class HomeController extends Controller
                 ->where('sale.type', 'sell')
                 ->where('sale.status', 'final')
                 ->whereNull('sale.import_source')
-                ->whereBetween('sale.transaction_date', [$fsg_start, $fsg_end])
+                ->whereBetween('sale.transaction_date', [$start, $end])
                 ->whereNotNull('purchase.transaction_date')
                 ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
             if (!is_null($location_id)) {
@@ -794,11 +802,13 @@ class HomeController extends Controller
         };
 
         $fsg_scope = [];
-        foreach ($sales_scope_defs as $def) {
-            $fsg_scope[$def['key']] = [
-                'label' => $def['label'],
-                'rows'  => $fsgRollup($def['loc_id']),
-            ];
+        foreach ($fsg_ranges as $range) {
+            foreach ($sales_scope_defs as $def) {
+                $fsg_scope[$range['key']][$def['key']] = [
+                    'label' => $def['label'],
+                    'rows'  => $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end),
+                ];
+            }
         }
         $fsg_scope_keys = array_column($sales_scope_defs, 'key');
 
@@ -1170,7 +1180,7 @@ class HomeController extends Controller
             // Top sellers by store module
             'ts_stores', 'ts_data', 'ts_insight',
             // Fastest selling genres module
-            'fsg_scope', 'fsg_scope_keys'
+            'fsg_scope', 'fsg_scope_keys', 'fsg_ranges', 'fsg_default_range'
         ));
     }
 
