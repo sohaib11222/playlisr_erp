@@ -457,9 +457,12 @@
         .ts-module { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
         .ts-title { font-size:16px; font-weight:600; margin:0; }
         .ts-sub { font-size:12px; color:#6b7280; margin:0 0 14px 0; }
-        .ts-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; }
+        .ts-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; align-items:center; justify-content:space-between; }
+        .ts-tab-group { display:flex; gap:4px; }
         .ts-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .ts-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#534ab7; }
+        .ts-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
+        .ts-body.loading { opacity:0.5; }
         .ts-pill-row { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
         .ts-pill { padding:6px 12px; font-size:12px; color:#6b7280; border:1px solid #e5e7eb; border-radius:16px; cursor:pointer; background:#fff; }
         .ts-pill.active { background:#eeedfe; color:#3c3489; border-color:transparent; font-weight:600; }
@@ -488,15 +491,23 @@
     <div class="ts-module">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
             <div class="ts-title">What's hot right now</div>
-            <div class="ts-sub" style="margin-bottom:0;">Last 30 days</div>
+            <div class="ts-sub" style="margin-bottom:0;" data-ts-range-label>Last {{ $ts_ranges[array_search($ts_default_range, array_column($ts_ranges, 'key'))]['label'] }}</div>
         </div>
         <div class="ts-sub">Know what's moving, know what to push</div>
 
-        {{-- Store tabs --}}
         <div class="ts-tab-row" id="ts-store-tabs">
-            @foreach($ts_stores as $i => $s)
-                <div class="ts-tab {{ $i === 0 ? 'active' : '' }}" data-store="{{ $s['key'] }}">{{ $s['label'] }}</div>
-            @endforeach
+            {{-- Store tabs --}}
+            <div class="ts-tab-group">
+                @foreach($ts_stores as $i => $s)
+                    <div class="ts-tab {{ $i === 0 ? 'active' : '' }}" data-store="{{ $s['key'] }}">{{ $s['label'] }}</div>
+                @endforeach
+            </div>
+            {{-- Time range — the other 5 options are fetched on demand (see tsRefresh JS below). --}}
+            <select class="ts-range-select">
+                @foreach($ts_ranges as $range)
+                    <option value="{{ $range['key'] }}" {{ $range['key'] === $ts_default_range ? 'selected' : '' }}>{{ $range['label'] }}</option>
+                @endforeach
+            </select>
         </div>
 
         {{-- Dimension pills --}}
@@ -506,38 +517,14 @@
             <div class="ts-pill" data-dim="records">Individual records</div>
         </div>
 
-        {{-- Rollup tables per [store × dim] — only one visible at a time --}}
+        {{-- Rollup tables per [store × dim] at the default range — only one
+             visible at a time. Other ranges are fetched into new .ts-body
+             blocks on demand (see JS below) and cached client-side. --}}
         @foreach($ts_stores as $i => $s)
             @foreach(['genres', 'artists', 'records'] as $dim)
                 @php $rows = $ts_data[$s['key']][$dim] ?? collect(); @endphp
-                <div class="ts-body" data-store="{{ $s['key'] }}" data-dim="{{ $dim }}" style="display: {{ ($i === 0 && $dim === 'genres') ? 'block' : 'none' }};">
-                    @forelse($rows as $idx => $r)
-                        <div class="ts-row">
-                            <div class="ts-rank">{{ $idx + 1 }}</div>
-                            <div>
-                                <p class="ts-label">{{ $r->label }}</p>
-                                <p class="ts-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
-                            </div>
-                            <div class="ts-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
-                            @php
-                                if (is_null($r->trend_pct)) { $trend_cls = 'ts-trend-flat'; $trend_label = '—'; }
-                                elseif ($r->trend_pct >= 5) { $trend_cls = 'ts-trend-up'; $trend_label = '+' . number_format($r->trend_pct, 0) . '%'; }
-                                elseif ($r->trend_pct <= -5) { $trend_cls = 'ts-trend-down'; $trend_label = number_format($r->trend_pct, 0) . '%'; }
-                                else { $trend_cls = 'ts-trend-flat'; $trend_label = ($r->trend_pct >= 0 ? '+' : '') . number_format($r->trend_pct, 0) . '%'; }
-                            @endphp
-                            <div class="ts-trend {{ $trend_cls }}"><span class="arrow"></span>{{ $trend_label }}</div>
-                            <div class="ts-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
-                        </div>
-                    @empty
-                        @if($s['filter'] === '__placeholder__')
-                            <div class="ts-sub-num" style="padding:16px; text-align:center; line-height:1.5;">
-                                <strong>{{ $s['label'] }} isn't wired into the ERP yet.</strong><br>
-                                Sales from this channel aren't tagged on transactions, so there's nothing to roll up. Once an <code>is_{{ $s['key'] }}</code> flag (or <code>source='{{ $s['key'] }}'</code>) is set during import, this tab will fill in automatically.
-                            </div>
-                        @else
-                            <div class="ts-sub-num" style="padding:16px; text-align:center;">No sales in this window yet.</div>
-                        @endif
-                    @endforelse
+                <div class="ts-body" data-store="{{ $s['key'] }}" data-dim="{{ $dim }}" data-range="{{ $ts_default_range }}" style="display: {{ ($i === 0 && $dim === 'genres') ? 'block' : 'none' }};">
+                    @include('home.partials._ts-rows', ['rows' => $rows, 'store' => $s])
                 </div>
             @endforeach
         @endforeach
@@ -1486,9 +1473,47 @@
         if ($tsModule.length) {
             var tsCurrentStore = $tsModule.find('.ts-tab.active').data('store');
             var tsCurrentDim   = $tsModule.find('.ts-pill.active').data('dim');
-            function tsRefresh() {
+            var tsCurrentRange = $tsModule.find('.ts-range-select').val();
+            var tsFetching = {};
+
+            // Only the default range has every [store x dim] combo
+            // pre-rendered (see index()). Switching to another range shows
+            // a cached block if we've already fetched this exact combo, or
+            // pulls it via AJAX and appends a new .ts-body for next time.
+            function tsShowBody() {
                 $tsModule.find('.ts-body').hide();
-                $tsModule.find('.ts-body[data-store="' + tsCurrentStore + '"][data-dim="' + tsCurrentDim + '"]').show();
+                var $target = $tsModule.find('.ts-body[data-store="' + tsCurrentStore + '"][data-dim="' + tsCurrentDim + '"][data-range="' + tsCurrentRange + '"]');
+                if ($target.length) {
+                    $target.show();
+                    return true;
+                }
+                return false;
+            }
+            function tsRefresh() {
+                $tsModule.find('[data-ts-range-label]').text('Last ' + $tsModule.find('.ts-range-select option:selected').text());
+                if (tsShowBody()) return;
+
+                var key = tsCurrentStore + '|' + tsCurrentDim + '|' + tsCurrentRange;
+                if (tsFetching[key]) return;
+                tsFetching[key] = true;
+
+                var $placeholder = $('<div class="ts-body loading"></div>')
+                    .attr('data-store', tsCurrentStore)
+                    .attr('data-dim', tsCurrentDim)
+                    .attr('data-range', tsCurrentRange)
+                    .html('<div class="ts-sub-num" style="padding:16px; text-align:center;">Loading…</div>');
+                $tsModule.find('.ts-body').last().after($placeholder);
+
+                $.get('{{ url("/home/top-sellers-range") }}', { store: tsCurrentStore, dim: tsCurrentDim, range: tsCurrentRange })
+                    .done(function (resp) {
+                        $placeholder.removeClass('loading').html(resp.html);
+                    })
+                    .fail(function () {
+                        $placeholder.removeClass('loading').html('<div class="ts-sub-num" style="padding:16px; text-align:center;">Couldn\'t load this range — try again.</div>');
+                    })
+                    .always(function () {
+                        delete tsFetching[key];
+                    });
             }
             $tsModule.on('click', '.ts-tab', function () {
                 tsCurrentStore = $(this).data('store');
@@ -1500,6 +1525,10 @@
                 tsCurrentDim = $(this).data('dim');
                 $tsModule.find('.ts-pill').removeClass('active');
                 $(this).addClass('active');
+                tsRefresh();
+            });
+            $tsModule.on('change', '.ts-range-select', function () {
+                tsCurrentRange = $(this).val();
                 tsRefresh();
             });
         }
