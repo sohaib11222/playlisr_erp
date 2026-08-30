@@ -51,6 +51,26 @@ class AdminSidebarMenu
                 )->order(7);
             }
 
+            //Tasks & Projects — team-wide weekly tasks + longer-running
+            //projects with contributor credit. Open to every employee, no
+            //permission gate (mirrors Customer Wants' convention).
+            $menu->dropdown(
+                'Tasks & Projects',
+                function ($sub) {
+                    $sub->url(
+                        route('tasks.index'),
+                        'Weekly Tasks',
+                        ['icon' => 'fa fas fa-calendar-check', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) != 'projects']
+                    );
+                    $sub->url(
+                        route('projects.index'),
+                        'Projects',
+                        ['icon' => 'fa fas fa-project-diagram', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'projects']
+                    );
+                },
+                ['icon' => 'fa fas fa-tasks']
+            )->order(9);
+
             //Events dropdown — Events and the email copy editor grouped
             //together. Preorders (listening-party + in-store special orders)
             //now live on the Customer Pickups page under Contacts, so there's
