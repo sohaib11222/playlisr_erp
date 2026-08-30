@@ -616,109 +616,28 @@ class HomeController extends Controller
 
         // ==========================================================
         // Top Sellers by Store (genres / artists / records) module
-        // Windowed rollup with trend vs previous window.
+        // Windowed rollup with trend vs previous window. Only the
+        // default range is precomputed here for every [store × dim]
+        // combo (same pattern as before); switching the range dropdown
+        // fetches the other 5 ranges on demand via /home/top-sellers-range
+        // (getTopSellersRange() below) — precomputing all 6 up front
+        // would 6x the store×dim×curr/prev queries on every home load.
         // ==========================================================
-        $ts_now = \Carbon::now();
-        $ts_curr_start = $ts_now->copy()->subDays(29)->startOfDay()->toDateTimeString();
-        $ts_curr_end   = $ts_now->copy()->endOfDay()->toDateTimeString();
-        $ts_prev_start = $ts_now->copy()->subDays(59)->startOfDay()->toDateTimeString();
-        $ts_prev_end   = $ts_now->copy()->subDays(30)->endOfDay()->toDateTimeString();
-
-        // "Genre" = sub_category (Rock, Pop, Hip Hop…); parent category is condition+format
-        // (Sealed Vinyl, Used Vinyl, CD…). Render as "Rock · Sealed Vinyl" so the user can
-        // distinguish Rock Sealed vs Rock Used.
-        $ts_dim_select = [
-            'genres'  => "CASE
-                WHEN sc.name IS NOT NULL AND c.name IS NOT NULL THEN CONCAT(sc.name, ' · ', c.name)
-                WHEN c.name IS NOT NULL THEN c.name
-                ELSE '(uncategorized)'
-            END as label",
-            'artists' => "COALESCE(NULLIF(p.artist, ''), '(unknown artist)') as label",
-            'records' => "CONCAT(COALESCE(NULLIF(p.artist, ''), ''), CASE WHEN p.artist IS NOT NULL AND p.artist != '' THEN ' — ' ELSE '' END, p.name) as label",
-        ];
-        $ts_dim_group = [
-            'genres'  => ['sc.name', 'c.name'],
-            'artists' => ['p.artist'],
-            'records' => ['p.artist', 'p.name'],
-        ];
-
-        $tsRollup = function ($location_filter, $dim, $start, $end) use ($business_id, $ts_dim_select, $ts_dim_group) {
-            $q = \DB::table('transaction_sell_lines as tsl')
-                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-                ->join('products as p', 'tsl.product_id', '=', 'p.id')
-                ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
-                ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->whereNull('t.import_source')
-                ->whereBetween('t.transaction_date', [$start, $end]);
-            if ($location_filter === 'online') {
-                $q->where('t.is_whatnot', 1);
-            } elseif (!empty($location_filter)) {
-                $q->where('t.location_id', $location_filter)
-                  ->where(function ($w) { $w->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); });
-            }
-            $q->selectRaw($ts_dim_select[$dim] . ", SUM(tsl.quantity) as units, SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
-              ->groupBy($ts_dim_group[$dim])
-              ->orderByDesc('revenue')
-              ->limit(8);
-            return $q->get()->keyBy('label');
-        };
+        $ts_ranges = $this->dashboardRangeDefs();
+        $ts_default_range = '4w';
+        $ts_range_def = collect($ts_ranges)->firstWhere('key', $ts_default_range);
+        [$ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end] = $this->tsWindowFor($ts_range_def);
 
         // Physical locations were resolved earlier (see $sales_loc_* / $sales_locs
         // above); reuse them here so the ts tabs stay in sync with the MTD/YTD
         // cards.
-        $locs = $sales_locs;
-        $loc_hollywood = $sales_loc_hollywood;
-        $loc_pico      = $sales_loc_pico;
-        $ts_stores = [];
-        if ($loc_hollywood) $ts_stores[] = ['key' => 'hollywood', 'label' => $loc_hollywood->name, 'filter' => $loc_hollywood->id];
-        if ($loc_pico)      $ts_stores[] = ['key' => 'pico',      'label' => $loc_pico->name,      'filter' => $loc_pico->id];
-        // Any other in-store locations we didn't match
-        foreach ($locs as $l) {
-            if (($loc_hollywood && $l->id === $loc_hollywood->id) || ($loc_pico && $l->id === $loc_pico->id)) continue;
-            $ts_stores[] = ['key' => 'loc'.$l->id, 'label' => $l->name, 'filter' => $l->id];
-        }
-        // Online channels. Whatnot rides the existing is_whatnot=1 flag.
-        // Discogs + nivessa.com shown as disabled placeholders until each
-        // channel has a way to tag its sales in the transactions table
-        // (is_discogs / is_nivessa_online or similar) — wiring those up
-        // is a prereq migration + import change, tracked as a follow-up.
-        $ts_stores[] = ['key' => 'whatnot', 'label' => 'Whatnot',      'filter' => 'online'];
-        $ts_stores[] = ['key' => 'discogs', 'label' => 'Discogs',      'filter' => '__placeholder__'];
-        $ts_stores[] = ['key' => 'nivessa', 'label' => 'nivessa.com',  'filter' => '__placeholder__'];
+        $ts_stores = $this->tsStoreDefs($business_id, $sales_locs);
 
-        // Build the rollups for every [store × dimension]
+        // Build the rollups for every [store × dimension] at the default range
         $ts_data = [];
         foreach ($ts_stores as $s) {
             foreach (['genres', 'artists', 'records'] as $dim) {
-                $curr = $tsRollup($s['filter'], $dim, $ts_curr_start, $ts_curr_end);
-                $prev = $tsRollup($s['filter'], $dim, $ts_prev_start, $ts_prev_end);
-                $top_rev = (float) ($curr->values()->first()->revenue ?? 1);
-                $rows = $curr->take(5)->values()->map(function ($r) use ($prev, $top_rev) {
-                    $prev_row = $prev->get($r->label);
-                    $prev_rev = $prev_row ? (float) $prev_row->revenue : 0;
-                    $pct = $prev_rev > 0 ? (((float)$r->revenue - $prev_rev) / $prev_rev) * 100 : null;
-                    $tag = 'steady'; $tag_emoji = '';
-                    if (!is_null($pct)) {
-                        if ($pct >= 20) { $tag = 'hot'; $tag_emoji = '🔥'; }
-                        elseif ($pct >= 5) { $tag = 'rising'; }
-                        elseif ($pct <= -5) { $tag = 'cooling'; }
-                    } elseif (!$prev_row && $r->revenue > 0) {
-                        $tag = 'new'; $tag_emoji = '✨';
-                    }
-                    return (object) [
-                        'label' => $r->label,
-                        'units' => (int) $r->units,
-                        'revenue' => (float) $r->revenue,
-                        'bar_pct' => $top_rev > 0 ? max(4, min(100, ((float)$r->revenue / $top_rev) * 100)) : 0,
-                        'trend_pct' => $pct,
-                        'tag' => $tag,
-                        'tag_emoji' => $tag_emoji,
-                    ];
-                });
-                $ts_data[$s['key']][$dim] = $rows;
+                $ts_data[$s['key']][$dim] = $this->tsBuildRows($business_id, $s['filter'], $dim, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end);
             }
         }
 
@@ -744,14 +663,9 @@ class HomeController extends Controller
         // $sales_scope_defs which was resolved earlier for the MTD/YTD
         // cards.
         // ==========================================================
-        $fsg_ranges = [
-            ['key' => '2w',  'label' => '2 weeks',  'start' => \Carbon::now()->subWeeks(2)->startOfDay()],
-            ['key' => '4w',  'label' => '4 weeks',  'start' => \Carbon::now()->subWeeks(4)->startOfDay()],
-            ['key' => '2mo', 'label' => '2 months', 'start' => \Carbon::now()->subMonths(2)->startOfDay()],
-            ['key' => '3mo', 'label' => '3 months', 'start' => \Carbon::now()->subMonths(3)->startOfDay()],
-            ['key' => '6mo', 'label' => '6 months', 'start' => \Carbon::now()->subMonths(6)->startOfDay()],
-            ['key' => '1y',  'label' => '1 year',   'start' => \Carbon::now()->subYear()->startOfDay()],
-        ];
+        // Same range set as the "What's hot right now" module above —
+        // shared via dashboardRangeDefs() so both stay in sync.
+        $fsg_ranges = $this->dashboardRangeDefs();
         $fsg_end = \Carbon::now()->endOfDay()->toDateTimeString();
         $fsg_default_range = '3mo';
 
@@ -1178,10 +1092,198 @@ class HomeController extends Controller
             'team_location_name', 'team_today_rev', 'team_goal', 'team_pct',
             'team_goal_so_far', 'team_bar_width',
             // Top sellers by store module
-            'ts_stores', 'ts_data', 'ts_insight',
+            'ts_stores', 'ts_data', 'ts_insight', 'ts_ranges', 'ts_default_range',
             // Fastest selling genres module
             'fsg_scope', 'fsg_scope_keys', 'fsg_ranges', 'fsg_default_range'
         ));
+    }
+
+    /**
+     * Shared time-range menu for the home-dashboard rollup modules (top
+     * sellers, fastest selling genres). Freshly computed from "now" on
+     * every call — nothing here carries mutated Carbon state across
+     * requests.
+     */
+    private function dashboardRangeDefs()
+    {
+        $now = \Carbon::now();
+        return [
+            ['key' => '2w',  'label' => '2 weeks',  'start' => $now->copy()->subWeeks(2)->startOfDay()],
+            ['key' => '4w',  'label' => '4 weeks',  'start' => $now->copy()->subWeeks(4)->startOfDay()],
+            ['key' => '2mo', 'label' => '2 months', 'start' => $now->copy()->subMonths(2)->startOfDay()],
+            ['key' => '3mo', 'label' => '3 months', 'start' => $now->copy()->subMonths(3)->startOfDay()],
+            ['key' => '6mo', 'label' => '6 months', 'start' => $now->copy()->subMonths(6)->startOfDay()],
+            ['key' => '1y',  'label' => '1 year',   'start' => $now->copy()->subYear()->startOfDay()],
+        ];
+    }
+
+    // "Genre" = sub_category (Rock, Pop, Hip Hop…); parent category is condition+format
+    // (Sealed Vinyl, Used Vinyl, CD…). Render as "Rock · Sealed Vinyl" so the user can
+    // distinguish Rock Sealed vs Rock Used.
+    private function tsDimConfig()
+    {
+        return [
+            'select' => [
+                'genres'  => "CASE
+                    WHEN sc.name IS NOT NULL AND c.name IS NOT NULL THEN CONCAT(sc.name, ' · ', c.name)
+                    WHEN c.name IS NOT NULL THEN c.name
+                    ELSE '(uncategorized)'
+                END as label",
+                'artists' => "COALESCE(NULLIF(p.artist, ''), '(unknown artist)') as label",
+                'records' => "CONCAT(COALESCE(NULLIF(p.artist, ''), ''), CASE WHEN p.artist IS NOT NULL AND p.artist != '' THEN ' — ' ELSE '' END, p.name) as label",
+            ],
+            'group' => [
+                'genres'  => ['sc.name', 'c.name'],
+                'artists' => ['p.artist'],
+                'records' => ['p.artist', 'p.name'],
+            ],
+        ];
+    }
+
+    private function tsRollupQuery($business_id, $location_filter, $dim, $start, $end)
+    {
+        $cfg = $this->tsDimConfig();
+        $q = \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->join('products as p', 'tsl.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+            ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->whereNull('t.import_source')
+            ->whereBetween('t.transaction_date', [$start, $end]);
+        if ($location_filter === 'online') {
+            $q->where('t.is_whatnot', 1);
+        } elseif (!empty($location_filter)) {
+            $q->where('t.location_id', $location_filter)
+              ->where(function ($w) { $w->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); });
+        }
+        $q->selectRaw($cfg['select'][$dim] . ", SUM(tsl.quantity) as units, SUM(tsl.quantity * tsl.unit_price_inc_tax) as revenue")
+          ->groupBy($cfg['group'][$dim])
+          ->orderByDesc('revenue')
+          ->limit(8);
+        return $q->get()->keyBy('label');
+    }
+
+    private function tsBuildRows($business_id, $location_filter, $dim, $curr_start, $curr_end, $prev_start, $prev_end)
+    {
+        $curr = $this->tsRollupQuery($business_id, $location_filter, $dim, $curr_start, $curr_end);
+        $prev = $this->tsRollupQuery($business_id, $location_filter, $dim, $prev_start, $prev_end);
+        $top_rev = (float) ($curr->values()->first()->revenue ?? 1);
+        return $curr->take(5)->values()->map(function ($r) use ($prev, $top_rev) {
+            $prev_row = $prev->get($r->label);
+            $prev_rev = $prev_row ? (float) $prev_row->revenue : 0;
+            $pct = $prev_rev > 0 ? (((float)$r->revenue - $prev_rev) / $prev_rev) * 100 : null;
+            $tag = 'steady'; $tag_emoji = '';
+            if (!is_null($pct)) {
+                if ($pct >= 20) { $tag = 'hot'; $tag_emoji = '🔥'; }
+                elseif ($pct >= 5) { $tag = 'rising'; }
+                elseif ($pct <= -5) { $tag = 'cooling'; }
+            } elseif (!$prev_row && $r->revenue > 0) {
+                $tag = 'new'; $tag_emoji = '✨';
+            }
+            return (object) [
+                'label' => $r->label,
+                'units' => (int) $r->units,
+                'revenue' => (float) $r->revenue,
+                'bar_pct' => $top_rev > 0 ? max(4, min(100, ((float)$r->revenue / $top_rev) * 100)) : 0,
+                'trend_pct' => $pct,
+                'tag' => $tag,
+                'tag_emoji' => $tag_emoji,
+            ];
+        });
+    }
+
+    private function tsStoreDefs($business_id, $locs = null)
+    {
+        $locs = $locs ?? \DB::table('business_locations')->where('business_id', $business_id)->get();
+        $findLoc = function ($needle) use ($locs) {
+            foreach ($locs as $l) {
+                if (stripos($l->name, $needle) !== false) return $l;
+            }
+            return null;
+        };
+        $loc_hollywood = $findLoc('hollywood');
+        $loc_pico      = $findLoc('pico');
+
+        $stores = [];
+        if ($loc_hollywood) $stores[] = ['key' => 'hollywood', 'label' => $loc_hollywood->name, 'filter' => $loc_hollywood->id];
+        if ($loc_pico)      $stores[] = ['key' => 'pico',      'label' => $loc_pico->name,      'filter' => $loc_pico->id];
+        // Any other in-store locations we didn't match
+        foreach ($locs as $l) {
+            if (($loc_hollywood && $l->id === $loc_hollywood->id) || ($loc_pico && $l->id === $loc_pico->id)) continue;
+            $stores[] = ['key' => 'loc'.$l->id, 'label' => $l->name, 'filter' => $l->id];
+        }
+        // Online channels. Whatnot rides the existing is_whatnot=1 flag.
+        // Discogs + nivessa.com shown as disabled placeholders until each
+        // channel has a way to tag its sales in the transactions table
+        // (is_discogs / is_nivessa_online or similar) — wiring those up
+        // is a prereq migration + import change, tracked as a follow-up.
+        $stores[] = ['key' => 'whatnot', 'label' => 'Whatnot',      'filter' => 'online'];
+        $stores[] = ['key' => 'discogs', 'label' => 'Discogs',      'filter' => '__placeholder__'];
+        $stores[] = ['key' => 'nivessa', 'label' => 'nivessa.com',  'filter' => '__placeholder__'];
+        return $stores;
+    }
+
+    /**
+     * Curr/prev window pair for a dashboardRangeDefs() range entry —
+     * prev spans the same number of days immediately preceding curr, so
+     * tsBuildRows()'s % trend compares two like-for-like periods.
+     */
+    private function tsWindowFor(array $range)
+    {
+        $curr_start = $range['start']->copy();
+        $curr_end   = \Carbon::now()->endOfDay();
+        $days = $curr_start->copy()->startOfDay()->diffInDays($curr_end->copy()->startOfDay()) + 1;
+        $prev_end   = $curr_start->copy()->subSecond();
+        $prev_start = $curr_start->copy()->subDays($days)->startOfDay();
+        return [
+            $curr_start->toDateTimeString(), $curr_end->toDateTimeString(),
+            $prev_start->toDateTimeString(), $prev_end->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * AJAX: recompute "What's hot right now" for one [store × dim ×
+     * range] combo. Only the default range (see $ts_default_range in
+     * index()) is precomputed for every combo up front — the other 5
+     * ranges would 6x the store×dim×curr/prev queries on every home
+     * load, so they're fetched here one combo at a time and cached
+     * client-side (see the fsgModule/tsModule JS in home/index.blade.php).
+     */
+    public function getTopSellersRange()
+    {
+        if (!request()->ajax()) {
+            abort(404);
+        }
+        $business_id = request()->session()->get('user.business_id');
+        $dim = request()->input('dim');
+        $store_key = request()->input('store');
+        $range_key = request()->input('range');
+
+        if (!in_array($dim, ['genres', 'artists', 'records'], true)) {
+            abort(422, 'Invalid dim');
+        }
+
+        $ranges = collect($this->dashboardRangeDefs())->keyBy('key');
+        if (!$ranges->has($range_key)) {
+            abort(422, 'Invalid range');
+        }
+        $range = $ranges->get($range_key);
+
+        $stores = collect($this->tsStoreDefs($business_id))->keyBy('key');
+        if (!$stores->has($store_key)) {
+            abort(422, 'Invalid store');
+        }
+        $store = $stores->get($store_key);
+
+        [$curr_start, $curr_end, $prev_start, $prev_end] = $this->tsWindowFor($range);
+        $rows = $this->tsBuildRows($business_id, $store['filter'], $dim, $curr_start, $curr_end, $prev_start, $prev_end);
+
+        return response()->json([
+            'html' => view('home.partials._ts-rows', ['rows' => $rows, 'store' => $store])->render(),
+        ]);
     }
 
     public function getShiftProgress()
