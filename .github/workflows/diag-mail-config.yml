@@ -94,5 +94,5 @@ jobs:
             sed -i "s|^OFFER_MAIL_PASSWORD=.*|OFFER_MAIL_PASSWORD=${esc_newval}|" .env
 
             echo "=== re-checking dotenv parse after fix ==="
-            php artisan tinker --execute="echo config('app.name');" 2>&1 | tail -5
+            php artisan --version 2>&1 | tail -5
             echo "=== done ==="
