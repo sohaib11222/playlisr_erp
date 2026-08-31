@@ -287,6 +287,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::post('/products/merge/preview', 'ProductMergeController@preview')->name('products.merge.preview');
     Route::post('/products/merge/scan', 'ProductMergeController@scan')->name('products.merge.scan');
+    Route::get('/products/merge/name-duplicates', 'ProductMergeController@nameDupScan')->name('products.merge.name-duplicates');
     Route::get('/products/merge/scan-export', 'ProductMergeController@scanExport')->name('products.merge.scan-export');
     Route::post('/products/merge/bulk', 'ProductMergeController@bulk')->name('products.merge.bulk');
     Route::post('/products/merge/selected', 'ProductMergeController@mergeSelected')->name('products.merge.selected');

@@ -648,6 +648,107 @@ class ProductMergeController extends Controller
     }
 
     /**
+     * Read-only diagnostic: of the ACTIVE products entered in a given year
+     * that still show stock on hand, how many share a normalized title
+     * (nameSig — case/accent/punctuation-insensitive, word-order-insensitive)
+     * with ANOTHER active product elsewhere in the catalog, in the same
+     * category. This is a superset of what /products/merge finds — that tool
+     * only matches on an identical barcode, so it misses a re-entered product
+     * whose SKU wasn't carried over or was typed differently. This flags
+     * likely duplicate ENTRIES by title alone. Makes no writes.
+     */
+    public function nameDupScan(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $year = (int) $request->input('year', 2024);
+        $yearStart = $year . '-01-01 00:00:00';
+        $yearEnd = ($year + 1) . '-01-01 00:00:00';
+
+        // Every active product's id/name/category — used to build the
+        // nameSig index. One pass, no per-row subqueries.
+        $all = \DB::table('products')
+            ->where('business_id', $business_id)
+            ->where('is_inactive', 0)
+            ->select('id', 'name', 'sku', 'category_id', 'created_at')
+            ->get();
+
+        $byKey = [];
+        foreach ($all as $p) {
+            $sig = $this->nameSig($p->name);
+            if ($sig === '') { continue; }
+            $key = ((int) $p->category_id) . '|' . $sig;
+            $byKey[$key][] = $p;
+        }
+        // Only groups with 2+ members are duplicate candidates.
+        $dupeGroups = array_filter($byKey, function ($rows) { return count($rows) > 1; });
+
+        // Which group members were created in $year? Stock is computed only
+        // for that subset — one bulk grouped query, not per-row.
+        $yearIds = [];
+        foreach ($dupeGroups as $rows) {
+            foreach ($rows as $r) {
+                if ($r->created_at && $r->created_at >= $yearStart && $r->created_at < $yearEnd) {
+                    $yearIds[] = (int) $r->id;
+                }
+            }
+        }
+        $yearIds = array_values(array_unique($yearIds));
+
+        $stockMap = [];
+        if (!empty($yearIds)) {
+            $stockMap = \DB::table('variations as v')
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->whereNull('v.deleted_at')
+                ->whereIn('v.product_id', $yearIds)
+                ->groupBy('v.product_id')
+                ->select('v.product_id', \DB::raw('SUM(vld.qty_available) as qty'))
+                ->pluck('qty', 'product_id');
+        }
+
+        $catNames = \DB::table('categories')->where('business_id', $business_id)->pluck('name', 'id');
+
+        $flagged = [];
+        foreach ($dupeGroups as $rows) {
+            foreach ($rows as $r) {
+                $isYear = $r->created_at && $r->created_at >= $yearStart && $r->created_at < $yearEnd;
+                if (!$isYear) { continue; }
+                $stock = (float) ($stockMap[$r->id] ?? 0);
+                if ($stock <= 0) { continue; }
+
+                $others = array_values(array_filter($rows, function ($o) use ($r) { return $o->id !== $r->id; }));
+                $flagged[] = [
+                    'id' => (int) $r->id,
+                    'name' => $r->name,
+                    'sku' => $r->sku,
+                    'category' => $catNames[(int) $r->category_id] ?? 'Uncategorized',
+                    'created_date' => substr((string) $r->created_at, 0, 10),
+                    'stock' => $stock,
+                    'matches' => array_map(function ($o) {
+                        return [
+                            'id' => (int) $o->id,
+                            'name' => $o->name,
+                            'sku' => $o->sku,
+                            'created_date' => $o->created_at ? substr((string) $o->created_at, 0, 10) : '',
+                        ];
+                    }, $others),
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'year' => $year,
+            'flagged_count' => count($flagged),
+            'preview' => array_slice($flagged, 0, 500),
+        ]);
+    }
+
+    /**
      * Process one batch of the catalog sweep: merge up to `max` duplicates
      * (default 150) and report how many remain. The UI calls this in a loop
      * until remaining hits 0. Each call writes one "merge-products-bulk"
