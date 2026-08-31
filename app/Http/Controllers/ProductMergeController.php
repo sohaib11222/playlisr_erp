@@ -669,6 +669,17 @@ class ProductMergeController extends Controller
         $yearStart = $year . '-01-01 00:00:00';
         $yearEnd = ($year + 1) . '-01-01 00:00:00';
 
+        // Categories excluded from title matching: merch/non-media categories
+        // where the SAME generic label (e.g. "T-Shirt", "Retired: Rock Band
+        // Shirt") is routinely reused across many genuinely DIFFERENT physical
+        // items, unlike a record/CD title which names one specific release.
+        // Confirmed by manual audit: a "T-Shirt" nameSig group had 19 distinct
+        // members, none of them real duplicates.
+        $excludedCatIds = \DB::table('categories')
+            ->where('business_id', $business_id)
+            ->whereIn('name', ['Apparel', 'Swag', 'Snacks & Drinks', 'Gift Items', 'Accessories & Supplies', 'Services', 'Shipping', 'Toys'])
+            ->pluck('id')->map(function ($v) { return (int) $v; })->all();
+
         // Every active product's id/name/category — used to build the
         // nameSig index. One pass, no per-row subqueries.
         $all = \DB::table('products')
@@ -679,6 +690,7 @@ class ProductMergeController extends Controller
 
         $byKey = [];
         foreach ($all as $p) {
+            if (in_array((int) $p->category_id, $excludedCatIds, true)) { continue; }
             $sig = $this->nameSig($p->name);
             if ($sig === '') { continue; }
             $key = ((int) $p->category_id) . '|' . $sig;
