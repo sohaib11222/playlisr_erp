@@ -5862,6 +5862,44 @@ class ProductController extends Controller
             ]);
         }
 
+        // Catalog-wide: stock rows sitting at a location the product isn't
+        // assigned to (product_locations) — invisible in the product edit
+        // page and the "Set current stock" dialog (both only loop the
+        // product's own locations), but still summed into current_stock.
+        // Found via product 716 (Kanye West - Graduation): 54 units parked at
+        // hollywood though the product is pico-only, untouched since 8/12.
+        if ($request->boolean('orphans')) {
+            $orphans = DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->where('p.business_id', $business_id)
+                ->whereNull('v.deleted_at')
+                ->where('vld.qty_available', '<>', 0)
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))->from('product_locations as pl')
+                        ->whereColumn('pl.product_id', 'p.id')
+                        ->whereColumn('pl.location_id', 'vld.location_id');
+                })
+                ->select('vld.id as vld_id', 'vld.location_id', 'vld.qty_available', 'vld.updated_at',
+                    'p.id as product_id', 'p.name', 'p.sku', 'p.is_inactive')
+                ->orderByDesc('vld.qty_available')
+                ->limit(1000)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'orphan_row_count' => $orphans->count(),
+                'orphan_qty_total' => (float) $orphans->sum('qty_available'),
+                'sample' => $orphans->take(50)->map(function ($r) {
+                    return [
+                        'product_id' => (int) $r->product_id, 'name' => $r->name, 'sku' => $r->sku,
+                        'is_inactive' => (int) $r->is_inactive, 'location_id' => (int) $r->location_id,
+                        'qty_available' => (float) $r->qty_available, 'updated_at' => (string) $r->updated_at,
+                    ];
+                }),
+            ]);
+        }
+
         $dupes = DB::table('variation_location_details as vld')
             ->join('variations as v', 'v.id', '=', 'vld.variation_id')
             ->join('products as p', 'p.id', '=', 'v.product_id')
