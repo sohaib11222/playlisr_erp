@@ -3349,6 +3349,7 @@ class ProductController extends Controller
                                 ->with(['product_locations'])
                                 ->get();
             DB::beginTransaction();
+            $removedStockSnapshot = [];
             foreach ($products as $product) {
                 $product_locations = $product->product_locations->pluck('id')->toArray();
 
@@ -3362,7 +3363,48 @@ class ProductController extends Controller
                         }
                     }
                     $product->product_locations()->sync($product_locations);
+
+                    // Removing a location must also clear any stock still on
+                    // record there — otherwise it becomes an orphaned row:
+                    // invisible in the product edit page and "Set current
+                    // stock" (both only loop the product's assigned
+                    // locations) but still counted in current_stock. Found
+                    // 1,114 of these (2,807 units) already accumulated from
+                    // this exact gap; snapshot each before deleting so it's
+                    // undoable, same as every other bulk action here.
+                    $variationIds = Variation::where('product_id', $product->id)->pluck('id');
+                    if ($variationIds->isNotEmpty() && !empty($location_ids)) {
+                        $rowsToRemove = VariationLocationDetails::whereIn('variation_id', $variationIds)
+                            ->whereIn('location_id', $location_ids)
+                            ->get();
+                        foreach ($rowsToRemove as $row) {
+                            $removedStockSnapshot[] = [
+                                'id' => (int) $row->id, 'product_id' => (int) $row->product_id,
+                                'product_variation_id' => (int) $row->product_variation_id,
+                                'variation_id' => (int) $row->variation_id, 'location_id' => (int) $row->location_id,
+                                'qty_available' => (string) $row->qty_available,
+                            ];
+                        }
+                        if ($rowsToRemove->isNotEmpty()) {
+                            VariationLocationDetails::whereIn('id', $rowsToRemove->pluck('id'))->delete();
+                        }
+                    }
                 }
+            }
+            if (!empty($removedStockSnapshot)) {
+                $timestamp = now()->format('Y-m-d_His');
+                \Storage::disk('local')->put(
+                    "admin-snapshots/remove-location-stock-cleanup-{$timestamp}.json",
+                    json_encode([
+                        'timestamp' => $timestamp,
+                        'action' => 'remove-location-stock-cleanup',
+                        'user_id' => auth()->id(),
+                        'business_id' => $business_id,
+                        'source_name' => count($removedStockSnapshot) . ' stock row(s) cleared with their location',
+                        'target_name' => 'variation_location_details',
+                        'rows' => $removedStockSnapshot,
+                    ], JSON_PRETTY_PRINT)
+                );
             }
             DB::commit();
             $output = ['success' => 1,
@@ -5939,6 +5981,83 @@ class ProductController extends Controller
                     'true_total' => (float) $r->true_total,
                 ];
             }),
+        ]);
+    }
+
+    /**
+     * Delete every EXISTING orphaned stock row (found by the ?orphans=1 scan
+     * above) — root cause was updateProductLocation()'s "remove" path never
+     * clearing stock when a location was unassigned, now fixed there. This
+     * cleans up the backlog: 1,114 rows / 2,807 units as of 2026-08-31.
+     * Snapshotted first, undoable at Admin Action History (same shape as the
+     * forward fix's own snapshot, action 'orphaned-location-stock-backfill').
+     * Owner-only, batched, POST.
+     */
+    public function backfillOrphanedLocationStock(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        $business_id = $request->session()->get('user.business_id');
+
+        $orphanRows = DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $business_id)
+            ->whereNull('v.deleted_at')
+            ->where('vld.qty_available', '<>', 0)
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))->from('product_locations as pl')
+                    ->whereColumn('pl.product_id', 'p.id')
+                    ->whereColumn('pl.location_id', 'vld.location_id');
+            })
+            ->select('vld.id', 'vld.product_id', 'vld.product_variation_id', 'vld.variation_id', 'vld.location_id', 'vld.qty_available')
+            ->get();
+
+        if ($orphanRows->isEmpty()) {
+            return response()->json(['success' => true, 'removed' => 0, 'msg' => 'Nothing to clean up.']);
+        }
+
+        $snapshot = $orphanRows->map(function ($r) {
+            return [
+                'id' => (int) $r->id, 'product_id' => (int) $r->product_id, 'product_variation_id' => (int) $r->product_variation_id,
+                'variation_id' => (int) $r->variation_id, 'location_id' => (int) $r->location_id, 'qty_available' => (string) $r->qty_available,
+            ];
+        })->all();
+
+        $timestamp = now()->format('Y-m-d_His');
+        DB::beginTransaction();
+        try {
+            \Storage::disk('local')->put(
+                "admin-snapshots/orphaned-location-stock-backfill-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'orphaned-location-stock-backfill',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => count($snapshot) . ' orphaned stock row(s)',
+                    'target_name' => 'variation_location_details',
+                    'rows' => $snapshot,
+                ], JSON_PRETTY_PRINT)
+            );
+            foreach (array_chunk(array_column($snapshot, 'id'), 500) as $chunk) {
+                DB::table('variation_location_details')->whereIn('id', $chunk)->delete();
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::emergency('backfillOrphanedLocationStock failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Cleanup failed — nothing was changed.']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'removed' => count($snapshot),
+            'qty_total' => array_sum(array_map(function ($r) { return (float) $r['qty_available']; }, $snapshot)),
+            'msg' => 'Removed ' . count($snapshot) . ' orphaned stock row(s). Undo at /admin/admin-action-history.',
         ]);
     }
 

@@ -274,7 +274,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -343,6 +343,26 @@ class AdminActionHistoryController extends Controller
                 $restored++;
             }
             $msg = "Re-inserted {$restored} removed label run(s) from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} already present." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
+        if ($action === 'remove-location-stock-cleanup' || $action === 'orphaned-location-stock-backfill') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) { continue; }
+                if (DB::table('variation_location_details')->where('id', $id)->exists()) { $skipped++; continue; }
+                DB::table('variation_location_details')->insert([
+                    'id' => $id, 'product_id' => $row['product_id'], 'product_variation_id' => $row['product_variation_id'],
+                    'variation_id' => $row['variation_id'], 'location_id' => $row['location_id'],
+                    'qty_available' => $row['qty_available'], 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $restored++;
+            }
+            $msg = "Re-inserted {$restored} stock row(s) removed with their location from snapshot {$key}";
             $msg .= $skipped > 0 ? "; skipped {$skipped} already present." : '.';
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => $msg]);
