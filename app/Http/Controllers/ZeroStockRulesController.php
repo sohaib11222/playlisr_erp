@@ -23,9 +23,28 @@ use Illuminate\Support\Facades\Storage;
  *   3. Record Store Day titles, matched by name. No structured RSD flag
  *      exists in the schema (same gap InventoryCheckService::isRsdTitle
  *      documents), so this uses the same name markers.
+ *   4. Products behind a cancelled web order whose cancellation reason
+ *      mentioned RSD / Sold Out / Sold in Store / Bootleg / Sold by Golden —
+ *      pulled from Sarah's cancelled-orders export (2026-08-30) into
+ *      cancelled_orders_zero_stock_2026_08_30.json. Two titles were
+ *      truncated in that export (cut off mid-parenthetical) and match by
+ *      name PREFIX instead of exact name — everything else is an exact,
+ *      case-insensitive product name match so this only ever touches the
+ *      specific product that order was for.
  */
 class ZeroStockRulesController extends Controller
 {
+    const CANCELLED_ORDERS_FILE = 'cancelled_orders_zero_stock_2026_08_30.json';
+
+    protected function cancelledOrderTitles()
+    {
+        $path = app_path('Services/data/' . self::CANCELLED_ORDERS_FILE);
+        if (!file_exists($path)) {
+            return [];
+        }
+        return json_decode(file_get_contents($path), true) ?: [];
+    }
+
     protected function apparelCategoryIds($businessId)
     {
         return DB::table('categories')
@@ -106,6 +125,42 @@ class ZeroStockRulesController extends Controller
                         });
                 },
             ],
+            [
+                'key'   => 'cancelled-order-flagged',
+                'label' => 'Cancelled web orders (RSD / Sold Out / Sold in Store / Bootleg / Sold by Golden)',
+                'query' => function () use ($businessId) {
+                    $titles = $this->cancelledOrderTitles();
+                    $q = Product::where('business_id', $businessId)->where('enable_stock', 1);
+                    if (empty($titles)) {
+                        return $q->whereRaw('1 = 0');
+                    }
+                    $q->where(function ($qq) use ($titles) {
+                        foreach ($titles as $t) {
+                            if (($t['match'] ?? 'exact') === 'prefix') {
+                                $qq->orWhere('name', 'LIKE', $t['title'] . '%');
+                            } else {
+                                $qq->orWhereRaw('LOWER(name) = ?', [mb_strtolower($t['title'])]);
+                            }
+                        }
+                    });
+                    return $q;
+                },
+                // Shows which cancelled-order title matched each product, so
+                // Sarah can visually confirm it's the right one before zeroing.
+                'annotate' => function ($productName) {
+                    $lower = mb_strtolower($productName);
+                    foreach ($this->cancelledOrderTitles() as $t) {
+                        if (($t['match'] ?? 'exact') === 'prefix') {
+                            if (str_starts_with($lower, mb_strtolower($t['title']))) {
+                                return $t['title'];
+                            }
+                        } elseif ($lower === mb_strtolower($t['title'])) {
+                            return $t['title'];
+                        }
+                    }
+                    return null;
+                },
+            ],
         ];
     }
 
@@ -147,11 +202,13 @@ class ZeroStockRulesController extends Controller
             $productNames = empty($productIds) ? [] : Product::whereIn('id', $productIds)
                 ->pluck('name', 'id');
 
-            $preview = $rows->groupBy('product_id')->map(function ($group, $productId) use ($productNames) {
+            $preview = $rows->groupBy('product_id')->map(function ($group, $productId) use ($productNames, $rule) {
+                $name = $productNames[$productId] ?? '(unknown)';
                 return [
-                    'id'    => $productId,
-                    'name'  => $productNames[$productId] ?? '(unknown)',
-                    'stock' => $group->sum('qty_available'),
+                    'id'     => $productId,
+                    'name'   => $name,
+                    'stock'  => $group->sum('qty_available'),
+                    'source' => isset($rule['annotate']) ? $rule['annotate']($name) : null,
                 ];
             })->values()->sortBy('name')->values();
 

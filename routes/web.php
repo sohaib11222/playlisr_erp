@@ -288,6 +288,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/zero-stock-rules', 'ZeroStockRulesController@index');
     Route::post('/admin/zero-stock-rules/run', 'ZeroStockRulesController@run');
 
+    // Bootleg vendor (Adam Mayes) catalog match: fuzzy-matches his uploaded
+    // price list against real inventory, Sarah checks off actual bootleg
+    // copies to zero. Snapshot + undo via admin-action-history
+    // ('zero-bootleg-stock').
+    Route::get('/admin/bootleg-vendor-match', 'BootlegVendorMatchController@index');
+    Route::post('/admin/bootleg-vendor-match/apply', 'BootlegVendorMatchController@apply');
+
     // Owner-only merge-duplicates tool. Declared BEFORE the products resource
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');

@@ -18,6 +18,7 @@
                     <li>Name starts with "RETIRED:" and the product is not in the Apparel category</li>
                     <li>Kanye West - Graduation, Vinyl and Cassette formats only</li>
                     <li>Record Store Day titles (name contains "RSD" or "Record Store Day")</li>
+                    <li>Cancelled web orders flagged RSD / Sold Out / Sold in Store / Bootleg / Sold by Golden</li>
                 </ul>
 
                 <form method="POST" action="{{ url('/admin/zero-stock-rules/run') }}" style="margin-top:16px;" id="zsr-form">
@@ -93,6 +94,9 @@
                                                 <tr>
                                                     <th style="width:80px;padding-left:32px;">Product ID</th>
                                                     <th>Name</th>
+                                                    @if (collect($row['preview'])->contains(fn($p) => !empty($p['source'])))
+                                                        <th>Matched from</th>
+                                                    @endif
                                                     <th style="text-align:right;width:140px;">{{ $mode === 'commit' ? 'Stock cleared' : 'Current stock' }}</th>
                                                 </tr>
                                             </thead>
@@ -101,6 +105,9 @@
                                                     <tr>
                                                         <td style="padding-left:32px;">{{ $p['id'] }}</td>
                                                         <td>{{ $p['name'] }}</td>
+                                                        @if (collect($row['preview'])->contains(fn($x) => !empty($x['source'])))
+                                                            <td class="text-muted">{{ $p['source'] ?? '' }}</td>
+                                                        @endif
                                                         <td style="text-align:right;">{{ number_format($p['stock']) }}</td>
                                                     </tr>
                                                 @endforeach

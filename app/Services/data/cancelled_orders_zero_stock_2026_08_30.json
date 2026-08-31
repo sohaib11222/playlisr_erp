@@ -1,0 +1,90 @@
+[
+  {
+    "title": "2nd II None",
+    "match": "exact"
+  },
+  {
+    "title": "BEABADOOBEE / LIVE & ACOUSTIC IN LONDON",
+    "match": "exact"
+  },
+  {
+    "title": "BEYONCE / HOMECOMING: THE LIVE ALBUM",
+    "match": "exact"
+  },
+  {
+    "title": "BRING ME THE HORIZON / LO-FILES (2LP/DIE-CUT SLEEVE) (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "BRUNO MARS / COLLABORATIONS (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "Bad Bunny - Nadie Sabe Lo Que Va a Pasar Ma\u00f1ana",
+    "match": "exact"
+  },
+  {
+    "title": "Broken Soul Jamboree Tipper",
+    "match": "exact"
+  },
+  {
+    "title": "CAAMP / CAAMP (2LP/REMASTERED/COKE BOTTLE CLEAR VINYL) (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "ETHEL CAIN / INBRED (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "FREEMAN / FREEMAN (ORANGE & PURPLE SPLIT VINYL) (RSD",
+    "match": "prefix"
+  },
+  {
+    "title": "FRUSCIANTE,JOHN / TO ONLY RECORD WATER FOR TEN DAYS (2LP/BLUE",
+    "match": "prefix"
+  },
+  {
+    "title": "Jerry Garcia - Live at KSAN Pacific High Studio San Francisco",
+    "match": "exact"
+  },
+  {
+    "title": "Live In Philadelphia / Queens of the Stone Age",
+    "match": "exact"
+  },
+  {
+    "title": "METAMODERN SOUNDS IN COUNTRY MUSIC 10 YEAR ANNIVERSARY EDITION / STURGILL MAN",
+    "match": "exact"
+  },
+  {
+    "title": "POST MALONE / POST MALONE TRIBUTE TO NIRVANA",
+    "match": "exact"
+  },
+  {
+    "title": "SCOTT,JILL / WHO IS JILL SCOTT: WORDS & SOUNDS VOL. 1",
+    "match": "exact"
+  },
+  {
+    "title": "SLEEP TOKEN / EVEN IN ARCADIA (LIQUID FILLED VINYL) (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "SMITHEREENS / Joji",
+    "match": "exact"
+  },
+  {
+    "title": "SWIFT,TAYLOR / TAYLOR SWIFT",
+    "match": "exact"
+  },
+  {
+    "title": "TAKANAKA,MASAYOSHI / ON GUITAR (DEEP BLUE VINYL) (RSD)",
+    "match": "exact"
+  },
+  {
+    "title": "TWENTY ONE PILOTS - REGIONAL AT BEST",
+    "match": "exact"
+  },
+  {
+    "title": "Todav\u00eda Me Amas: Lo Mejor de Aventura",
+    "match": "exact"
+  }
+]
