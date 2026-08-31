@@ -191,7 +191,7 @@ class ProductMergeController extends Controller
             'success' => true,
             'source' => ['id' => (int) $source->id, 'name' => $source->name, 'sku' => $source->sku, 'units_sold' => $s['units_sold'], 'current_stock' => $s['current_stock']],
             'target' => ['id' => (int) $target->id, 'name' => $target->name, 'sku' => $target->sku, 'units_sold' => $t['units_sold'], 'current_stock' => $t['current_stock']],
-            'after' => ['units_sold' => $s['units_sold'] + $t['units_sold'], 'current_stock' => $s['current_stock'] + $t['current_stock']],
+            'after' => ['units_sold' => $s['units_sold'] + $t['units_sold'], 'current_stock' => $this->reconciledStock($source->id, $target->id)],
             'moves' => [
                 'sell_lines' => \DB::table('transaction_sell_lines')->where('product_id', $source->id)->count(),
                 'purchase_lines' => \DB::table('purchase_lines')->where('product_id', $source->id)->count(),
@@ -259,6 +259,59 @@ class ProductMergeController extends Controller
     // ================= SHARED MERGE CORE =================
 
     /**
+     * "Last touched" for one product — same definition the product list's
+     * real_updated_at column uses (greatest of products.updated_at and any
+     * of its variations' updated_at, ignoring future/corrupt timestamps).
+     * Used to decide whose ON-HAND STOCK is trustworthy when two duplicate
+     * listings disagree: each was very likely counted/updated independently
+     * by different staff, so the fresher one reflects the real shelf count
+     * and the staler one is stale — not something to add on top of it.
+     */
+    protected function realUpdatedAt($productId)
+    {
+        $row = \DB::selectOne('
+            SELECT GREATEST(
+                COALESCE(IF(p.updated_at > NOW(), NULL, p.updated_at), "1970-01-01"),
+                COALESCE((SELECT MAX(IF(v.updated_at > NOW(), NULL, v.updated_at)) FROM variations v
+                           WHERE v.product_id = p.id AND v.deleted_at IS NULL), "1970-01-01")
+            ) AS real_updated_at
+            FROM products p WHERE p.id = ?
+        ', [$productId]);
+        return $row ? (string) $row->real_updated_at : '1970-01-01';
+    }
+
+    /**
+     * What current_stock will be AFTER merging source into target, across
+     * every location (not floor-only — matches stats()'s all-location sum).
+     * Mirrors performMerge's actual reconciliation: per shared location the
+     * more recently touched record wins (not summed); a location only one
+     * side has just carries over.
+     */
+    protected function reconciledStock($sourceId, $targetId)
+    {
+        $sourceIsNewer = $this->realUpdatedAt($sourceId) > $this->realUpdatedAt($targetId);
+
+        $byLoc = [];
+        foreach (\DB::table('variation_location_details')
+            ->whereIn('product_id', [$sourceId, $targetId])
+            ->select('product_id', 'location_id', \DB::raw('SUM(qty_available) as qty'))
+            ->groupBy('product_id', 'location_id')->get() as $r) {
+            $side = ((int) $r->product_id === (int) $sourceId) ? 'source' : 'target';
+            $byLoc[(int) $r->location_id][$side] = (float) $r->qty;
+        }
+
+        $total = 0.0;
+        foreach ($byLoc as $v) {
+            if (isset($v['source']) && isset($v['target'])) {
+                $total += $sourceIsNewer ? $v['source'] : $v['target'];
+            } else {
+                $total += $v['source'] ?? $v['target'];
+            }
+        }
+        return $total;
+    }
+
+    /**
      * Move all history + stock from source onto target and deactivate source.
      * MUST be called inside a DB transaction. Returns the reversal payload
      * (all the ids/quantities undo needs). Does NOT write a snapshot file or
@@ -293,7 +346,14 @@ class ProductMergeController extends Controller
         \DB::table('stock_adjustment_lines')->where('product_id', $sourceId)
             ->update(['product_id' => $targetId, 'variation_id' => $targetVarId]);
 
-        // 4) Merge on-hand stock per location; then drop source stock rows.
+        // 4) Reconcile on-hand stock per location; then drop source stock rows.
+        // Where ONLY one record has a location, there's nothing to conflict
+        // with, so it just carries over (unchanged from before). Where BOTH
+        // have a row for the same location, do NOT add them together — that
+        // double-counts, since a duplicate's stock is usually a second
+        // independent count of the same physical shelf, not separate stock.
+        // Instead keep whichever record's stock is more recently touched.
+        $sourceIsNewer = $this->realUpdatedAt($sourceId) > $this->realUpdatedAt($targetId);
         $targetVldByLoc = [];
         foreach ($targetVldBefore as $tr) {
             $targetVldByLoc[$tr['location_id']] = $tr['id'];
@@ -302,8 +362,11 @@ class ProductMergeController extends Controller
         foreach ($sourceVld as $sr) {
             $loc = $sr['location_id'];
             if (isset($targetVldByLoc[$loc])) {
-                \DB::table('variation_location_details')->where('id', $targetVldByLoc[$loc])
-                    ->increment('qty_available', (float) $sr['qty_available']);
+                if ($sourceIsNewer) {
+                    \DB::table('variation_location_details')->where('id', $targetVldByLoc[$loc])
+                        ->update(['qty_available' => $sr['qty_available']]);
+                }
+                // else: target's own row is already the freshest count — leave it as-is.
             } else {
                 $newId = \DB::table('variation_location_details')->insertGetId([
                     'product_id' => $targetId,
@@ -433,6 +496,25 @@ class ProductMergeController extends Controller
             $vldMap[(int) $r->product_id][(int) $r->location_id] = (float) $r->qty;
         }
 
+        // "Last touched" per product (see realUpdatedAt()) — used below to
+        // preview the RECONCILED combined stock the same way performMerge
+        // actually computes it: freshest record wins per shared location,
+        // not a naive sum (see performMerge's stock-reconciliation comment).
+        $freshMap = [];
+        foreach (\DB::table('products as p')
+            ->leftJoin('variations as v', function ($j) {
+                $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at');
+            })
+            ->whereIn('p.id', $dupeIds)
+            ->groupBy('p.id')
+            ->select('p.id', \DB::raw('GREATEST(
+                COALESCE(IF(p.updated_at > NOW(), NULL, p.updated_at), "1970-01-01"),
+                COALESCE(MAX(IF(v.updated_at > NOW(), NULL, v.updated_at)), "1970-01-01")
+            ) as fresh'))
+            ->get() as $r) {
+            $freshMap[(int) $r->id] = (string) $r->fresh;
+        }
+
         // Live variations per product (id + product_variation_id). Groups where
         // any product isn't exactly single-variation are skipped.
         $varsByProduct = \DB::table('variations')->whereIn('product_id', $dupeIds)->whereNull('deleted_at')
@@ -535,6 +617,8 @@ class ProductMergeController extends Controller
                         'purchase_price' => $purchasePrice,
                         'units_sold' => (float) ($soldMap[$r->id] ?? 0),
                         'current_stock' => (float) $floorStock,
+                        'per_loc' => $perLoc,
+                        'fresh' => $freshMap[(int) $r->id] ?? '1970-01-01',
                     ];
                 }
                 // Label with the FORMAT (category) — that's what the group is now
@@ -554,16 +638,35 @@ class ProductMergeController extends Controller
                     return $a['id'] <=> $b['id'];
                 });
 
+                // Reconciled combined stock — NOT a sum. Mirrors performMerge:
+                // per shared location, the most recently touched record wins
+                // (two duplicates' stock is usually two independent counts of
+                // the same shelf); a location only one record has just carries
+                // over. Floor-only, matching what current_stock shows above.
+                $locBest = [];
+                foreach ($items as $it) {
+                    foreach ($it['per_loc'] as $locId => $qty) {
+                        if (!isset($locBest[$locId]) || $it['fresh'] > $locBest[$locId]['fresh']) {
+                            $locBest[$locId] = ['qty' => (float) $qty, 'fresh' => $it['fresh']];
+                        }
+                    }
+                }
+                $reconciledFloor = 0.0;
+                foreach ($locBest as $locId => $v) {
+                    if (isset($floorLocIds[(int) $locId])) { $reconciledFloor += $v['qty']; }
+                }
+
                 $keep = $items[0];
                 $mergeIn = array_slice($items, 1);
                 $totalMerges += count($mergeIn);
+                $stripCalc = function ($i) { unset($i['per_loc'], $i['fresh']); return $i; };
                 $groups[] = [
                     'key' => $key . '#' . $bucketKey,
                     'store' => $storeLabel[$keep['id']] ?? 'No store',
                     'category' => $catLabel,
-                    'keep' => $keep,
-                    'merge_in' => $mergeIn,
-                    'combined_stock' => array_sum(array_map(function ($i) { return $i['current_stock']; }, $items)),
+                    'keep' => $stripCalc($keep),
+                    'merge_in' => array_map($stripCalc, $mergeIn),
+                    'combined_stock' => $reconciledFloor,
                     'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
                 ];
             }

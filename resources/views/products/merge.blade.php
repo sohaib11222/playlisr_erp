@@ -43,7 +43,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 .mg-msg.err { display: block; background: #FDECEA; color: #B71C1C; }
 </style>
 
-<section class="content-header"><h1>Merge Duplicate Products<br><small>Move all sales &amp; stock onto the one you keep, then deactivate the duplicate. Fully undoable.</small></h1></section>
+<section class="content-header"><h1>Merge Duplicate Products<br><small>Move all sales history onto the one you keep, reconcile stock to whichever copy was most recently updated (not summed), then deactivate the duplicate. Fully undoable.</small></h1></section>
 
 <section class="content">
 <div class="mg-wrap">
@@ -51,7 +51,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 
     <div class="mg-card">
         <h2>Pick the two products</h2>
-        <p class="sub">Enter each product's SKU (or its ERP id). The one you keep stays live; the duplicate is deactivated and its sales, purchases and stock move onto the kept product.</p>
+        <p class="sub">Enter each product's SKU (or its ERP id). The one you keep stays live; the duplicate is deactivated. Sales and purchase history always move onto the kept product. Stock does NOT add together — whichever of the two was more recently updated is treated as the accurate current count (duplicates are usually two independent counts of the same shelf, not separate stock).</p>
         <div class="mg-row">
             <div class="mg-field">
                 <label>Keep this one <span class="hint">(SKU or id — survives)</span></label>
@@ -110,7 +110,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 
     <div class="mg-card">
         <h2>Or merge the whole catalog</h2>
-        <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price and totaling stock + units sold onto it. Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
+        <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price, combining units sold, and reconciling stock to whichever copy was most recently updated (not summed). Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
             <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
             <a class="mg-btn mg-btn-ghost" href="{{ route('products.merge.scan-export') }}" style="text-decoration:none;display:inline-flex;align-items:center;">Download full list (CSV)</a>
@@ -119,7 +119,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
             <div class="mg-compare" style="display:block;margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
                 <table>
-                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Format</th><th>Merging in</th><th>Combined stock</th><th>Combined sold</th></tr></thead>
+                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Format</th><th>Merging in</th><th>Stock after merge</th><th>Combined sold</th></tr></thead>
                     <tbody id="mgScanRows"></tbody>
                 </table>
             </div>
