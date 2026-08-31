@@ -744,7 +744,7 @@ class ProductMergeController extends Controller
             'success' => true,
             'year' => $year,
             'flagged_count' => count($flagged),
-            'preview' => array_slice($flagged, 0, 500),
+            'preview' => array_slice($flagged, 0, min(5000, max(1, (int) $request->input('limit', 500)))),
         ]);
     }
 
