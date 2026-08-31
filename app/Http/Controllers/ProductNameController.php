@@ -127,7 +127,7 @@ class ProductNameController extends Controller
      * be corroborated this way is left for manual review rather than mis-filled.
      * Keyed by artistKey(), value = a representative spelling.
      */
-    protected function artistSignalKeys($business_id, $catIds)
+    protected function artistSignalKeys($business_id, $catIds, array $filters = [])
     {
         // Only curated artists are trusted as a "known artist" signal.
         //
@@ -142,6 +142,63 @@ class ProductNameController extends Controller
         $keys = [];
         foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) {
             $keys[$k] = $spelling;
+        }
+        // When SCOPED to a specific creator/date batch (Sarah reviewing one
+        // onboarding period, not the whole catalog), also trust a segment that
+        // repeats 3+ times within just that batch — e.g. "Metallica" showing
+        // up on 31 different rows is obviously an artist, not a title, even
+        // though it's not in the hand-curated list. This is the same signal
+        // the whole-catalog version dropped (see above) for inverting on
+        // generic title words, but a small reviewed batch is a much narrower,
+        // safer surface for it, and every fill still goes through the normal
+        // preview/select grid before anything is written.
+        if (!empty($filters['created_by']) || !empty($filters['start_date']) || !empty($filters['end_date'])) {
+            foreach ($this->frequencyArtistKeys($business_id, $catIds, $filters) as $k => $spelling) {
+                if (!isset($keys[$k])) { $keys[$k] = $spelling; }
+            }
+        }
+        return $keys;
+    }
+
+    /**
+     * Segments that repeat >= $minCount times across the SCOPED batch of
+     * blank-artist music products — a strong signal it's an artist, not a
+     * one-off title. Filtered through the same stop-word list and sanity
+     * gates as a normally-parsed artist, so junk still gets flagged.
+     */
+    protected function frequencyArtistKeys($business_id, $catIds, array $filters, $minCount = 3)
+    {
+        $stop = $this->titleStopKeys();
+        $counts = [];   // key => count
+        $spelling = []; // key => representative spelling (prefer mixed-case)
+
+        $q = $this->artistlessMusicQuery($business_id, $catIds)->select('name');
+        if (!empty($filters['created_by'])) { $q->where('created_by', (int) $filters['created_by']); }
+        if (!empty($filters['start_date'])) { $q->where('created_at', '>=', $filters['start_date'] . ' 00:00:00'); }
+        if (!empty($filters['end_date'])) { $q->where('created_at', '<', $filters['end_date'] . ' 00:00:00'); }
+
+        $q->chunk(2000, function ($rows) use (&$counts, &$spelling, $stop) {
+            foreach ($rows as $r) {
+                $seg = ProductNameNormalizer::nameSegments($r->name);
+                if ($seg === null) { continue; }
+                foreach ([$seg[0], $seg[1]] as $s) {
+                    if ($s === '' || ProductNameNormalizer::isVariousMarker($s)) { continue; }
+                    $k = ProductNameNormalizer::artistKey($s);
+                    if ($k === '' || isset($stop[$k])) { continue; }
+                    $counts[$k] = ($counts[$k] ?? 0) + 1;
+                    if (!isset($spelling[$k]) || (!preg_match('/\p{Ll}/u', $spelling[$k]) && preg_match('/\p{Ll}/u', $s))) {
+                        $spelling[$k] = $s;
+                    }
+                }
+            }
+        });
+
+        $keys = [];
+        foreach ($counts as $k => $n) {
+            if ($n < $minCount) { continue; }
+            $candidate = ProductNameNormalizer::cleanArtistValue($spelling[$k]);
+            if (!ProductNameNormalizer::isPlausibleArtistSegment($candidate)) { continue; }
+            $keys[$k] = $candidate;
         }
         return $keys;
     }
@@ -210,7 +267,7 @@ class ProductNameController extends Controller
         return ProductNameNormalizer::artistFromName($name, $knownKeys);
     }
 
-    protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null, $filter = '')
+    protected function computeArtistBackfill($business_id, $collectFixes = true, $limit = null, $filter = '', array $scopeFilters = [])
     {
         $catIds = $this->musicCategoryIds($business_id);
         if (empty($catIds)) {
@@ -218,7 +275,7 @@ class ProductNameController extends Controller
         }
 
         $filter = mb_strtolower(trim((string) $filter));
-        $knownKeys = $this->artistSignalKeys($business_id, $catIds);
+        $knownKeys = $this->artistSignalKeys($business_id, $catIds, $scopeFilters);
         $sealedIds = array_flip($this->sealedVinylCategoryIds($business_id));
         $fixes = [];
         $flaggedRows = [];
@@ -226,8 +283,11 @@ class ProductNameController extends Controller
         $totalToFill = 0;    // all confident parses (ignores the filter)
         $flagged = 0;
 
-        $this->artistlessMusicQuery($business_id, $catIds)
-            ->select('id', 'name', 'artist', 'category_id', 'sku')
+        $baseQ = $this->artistlessMusicQuery($business_id, $catIds);
+        if (!empty($scopeFilters['created_by'])) { $baseQ->where('created_by', (int) $scopeFilters['created_by']); }
+        if (!empty($scopeFilters['start_date'])) { $baseQ->where('created_at', '>=', $scopeFilters['start_date'] . ' 00:00:00'); }
+        if (!empty($scopeFilters['end_date'])) { $baseQ->where('created_at', '<', $scopeFilters['end_date'] . ' 00:00:00'); }
+        $baseQ->select('id', 'name', 'artist', 'category_id', 'sku')
             ->orderBy('id')
             ->chunk(2000, function ($rows) use (&$fixes, &$flaggedRows, &$toFill, &$totalToFill, &$flagged, $collectFixes, $limit, $knownKeys, $filter, $sealedIds) {
                 foreach ($rows as $r) {
@@ -306,10 +366,11 @@ class ProductNameController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         $filter = (string) $request->input('filter', '');
+        $scopeFilters = $this->scopeFromRequest($request);
         try {
             // Show a big page so whole artists group on screen and can be
             // bulk-selected in one shot (grouped alphabetically by parsed artist).
-            $data = $this->computeArtistBackfill($business_id, true, 300, $filter);
+            $data = $this->computeArtistBackfill($business_id, true, 300, $filter, $scopeFilters);
             $byCategory = $this->artistlessByCategory($business_id, $data['cat_ids']);
         } catch (\Throwable $e) {
             \Log::error('artist-backfill scan failed: ' . $e->getMessage());
@@ -349,7 +410,8 @@ class ProductNameController extends Controller
             return response()->json(['success' => true, 'filled' => 0, 'remaining' => 0, 'msg' => 'No music categories found.']);
         }
 
-        $knownKeys = $this->artistSignalKeys($business_id, $catIds);
+        $scopeFilters = $this->scopeFromRequest($request);
+        $knownKeys = $this->artistSignalKeys($business_id, $catIds, $scopeFilters);
 
         // If the UI sent a specific set of product ids (checked rows), fill only
         // those; otherwise fall back to filling up to `max` confident parses.
@@ -367,6 +429,9 @@ class ProductNameController extends Controller
         $query = $this->artistlessMusicQuery($business_id, $catIds)
             ->select('id', 'name', 'artist')
             ->orderBy('id');
+        if (!empty($scopeFilters['created_by'])) { $query->where('created_by', (int) $scopeFilters['created_by']); }
+        if (!empty($scopeFilters['start_date'])) { $query->where('created_at', '>=', $scopeFilters['start_date'] . ' 00:00:00'); }
+        if (!empty($scopeFilters['end_date'])) { $query->where('created_at', '<', $scopeFilters['end_date'] . ' 00:00:00'); }
         if ($selected !== null) { $query->whereIn('id', $selected); }
         $cap = $selected !== null ? count($selected) : $max;
         if ($cap < 1) { $cap = 1; }
@@ -434,7 +499,7 @@ class ProductNameController extends Controller
 
         // The full remaining recount walks the whole catalog — skip it during the
         // auto-fill loop (it calls back many times and only cares about `filled`).
-        $remaining = $onlyHigh ? null : $this->computeArtistBackfill($business_id, false)['to_fill'];
+        $remaining = $onlyHigh ? null : $this->computeArtistBackfill($business_id, false, null, '', $scopeFilters)['to_fill'];
 
         return response()->json([
             'success' => true,

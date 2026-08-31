@@ -85,6 +85,15 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     <div class="mgn-card" style="border-color:#2E7D32;">
         <h2>Backfill missing Artist <span style="color:#8E8273;font-weight:400">(music formats only)</span></h2>
         <p class="sub">Music products (vinyl, CD, cassette, 45s) with a blank or "N/A" artist, where the artist is still sitting inside the name. Parses it from "Title / Artist" or "Artist - Title" and fills the Artist field. Only confident parses are filled; anything unclear is flagged for you to do by hand. Scanning changes nothing. Fully undoable.</p>
+        <p class="sub" style="margin-top:-8px;">Optional — scope to one creator and/or date range. When scoped, a name repeating 3+ times within just that batch is ALSO trusted as an artist (e.g. "Metallica" showing up 31 times) — a wider net than the whole-catalog scan uses, safe here because it's a small reviewed batch and everything still goes through the select-and-fill grid below. Leave blank for the normal (curated-list-only) behavior.</p>
+        <div class="mgn-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Created by (user id)</label>
+                <input type="text" id="arCreatedBy" placeholder="e.g. 10" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;width:120px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered after</label>
+                <input type="date" id="arStartDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered before</label>
+                <input type="date" id="arEndDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+        </div>
         <div class="mgn-actions">
             <button class="mgn-btn mgn-btn-ghost" id="arScanBtn" type="button">Scan missing artists</button>
             <input type="text" id="arFilter" placeholder="Filter by artist (e.g. A, or Beat…)" autocomplete="off"
@@ -462,11 +471,19 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         arFilterTimer = setTimeout(doArScan, 350);
     });
 
+    function arScope() {
+        return {
+            created_by: document.getElementById('arCreatedBy').value.trim(),
+            start_date: document.getElementById('arStartDate').value,
+            end_date: document.getElementById('arEndDate').value,
+        };
+    }
+
     function doArScan() {
         clearMsg(); arResult.style.display = 'none';
         arScanBtn.disabled = true; arScanBtn.textContent = 'Scanning…';
         markAlpha();
-        post('{{ route('products.artist.scan') }}', { filter: arFilter }).then(function (d) {
+        post('{{ route('products.artist.scan') }}', Object.assign({ filter: arFilter }, arScope())).then(function (d) {
             arScanBtn.disabled = false; arScanBtn.textContent = 'Scan missing artists';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
             arAlphaEl.style.display = 'flex';
@@ -621,7 +638,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         if (!confirm('Fill the Artist field on ' + ids.length + ' selected product(s)? Undoable from Admin Action History.')) return;
         clearMsg(); arApplyBtn.disabled = true;
         document.getElementById('arProgress').textContent = 'Filling ' + ids.length + '…';
-        post('{{ route('products.artist.apply') }}', { ids: ids }).then(function (d) {
+        post('{{ route('products.artist.apply') }}', Object.assign({ ids: ids }, arScope())).then(function (d) {
             arApplyBtn.disabled = false;
             if (!d.success) { showMsg(d.msg || 'Fill failed.', false); return; }
             // Drop the filled rows from the table.

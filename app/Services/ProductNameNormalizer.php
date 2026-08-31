@@ -574,6 +574,19 @@ class ProductNameNormalizer
     }
 
     /**
+     * Public form of validateParsedArtist's sanity gates, for a candidate
+     * that came from FREQUENCY corroboration (a segment repeated across many
+     * products in some scoped batch) rather than a name-segment split. Same
+     * rejections: blank, non-artist word, format/condition token, catalog
+     * number, pure number, non-Latin, multi-artist ";" list, too long.
+     */
+    public static function isPlausibleArtistSegment($s)
+    {
+        $res = self::validateParsedArtist($s, '', '');
+        return $res['confident'];
+    }
+
+    /**
      * Sanity-gate a parsed artist string. Rejects blanks, non-artist words
      * (unknown/various/n a), lone format/condition tokens, and bare catalog
      * numbers so those get flagged rather than written.
