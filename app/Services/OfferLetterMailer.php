@@ -13,7 +13,7 @@ namespace App\Services;
  */
 class OfferLetterMailer
 {
-    public static function send(string $toEmail, string $firstName, string $pdfBinary, string $pdfFilename)
+    public static function send(string $toEmail, string $firstName, string $jobTitle, string $pdfBinary, string $pdfFilename)
     {
         $host = env('OFFER_MAIL_HOST');
         $port = env('OFFER_MAIL_PORT');
@@ -30,7 +30,7 @@ class OfferLetterMailer
         $transport->setPassword($password);
         $mailer = new \Swift_Mailer($transport);
 
-        $html = view('emails.cashier_offer_letter', ['firstName' => $firstName])->render();
+        $html = view('emails.cashier_offer_letter', ['firstName' => $firstName, 'jobTitle' => $jobTitle])->render();
 
         $message = (new \Swift_Message('Nivessa Offer Letter & Next Steps'))
             ->setFrom([$username => 'Sarah Hedvat'])

@@ -1,6 +1,6 @@
 Hi {{ $firstName }},
 <br><br>
-We're excited to officially offer you a Sales Cashier position at Nivessa!
+We're excited to officially offer you a {{ $jobTitle }} position at Nivessa!
 <br><br>
 Attached is your offer letter outlining your position, pay, benefits, and expectations. To accept the offer, please review, sign, and return the letter to us.
 <br><br>

@@ -96,14 +96,27 @@ jobs:
             echo "=== re-checking dotenv parse after fix ==="
             php artisan --version 2>&1 | tail -5
 
-            echo "=== test-sending a real offer-letter-style email via OfferLetterMailer to sarah@nivessa.com ==="
+            echo "=== test-sending a REAL mpdf-generated offer letter via OfferLetterMailer to sarah@nivessa.com ==="
             php -r '
               require "vendor/autoload.php";
               $app = require_once "bootstrap/app.php";
               $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
               $kernel->bootstrap();
               try {
-                  \App\Services\OfferLetterMailer::send("sarah@nivessa.com", "Sarah", "%PDF-1.4 test", "Test Offer Letter.pdf");
+                  $body = view("pdf.cashier_offer_letter", [
+                      "firstName" => "Sarah",
+                      "fullName"  => "Sarah Test",
+                      "startDate" => "September 22, 2026",
+                  ])->render();
+                  $mpdf = new \Mpdf\Mpdf([
+                      "tempDir" => public_path("uploads/temp"),
+                      "mode"    => "utf-8",
+                      "format"  => "A4",
+                  ]);
+                  $mpdf->WriteHTML($body);
+                  $pdfBinary = $mpdf->Output("", "S");
+                  echo "pdf_bytes=" . strlen($pdfBinary) . " magic=" . substr($pdfBinary, 0, 4) . "\n";
+                  \App\Services\OfferLetterMailer::send("sarah@nivessa.com", "Sarah", $pdfBinary, "Test Real Offer Letter.pdf");
                   echo "SEND_OK\n";
               } catch (\Throwable $e) {
                   echo "SEND_FAILED: " . $e->getMessage() . "\n";

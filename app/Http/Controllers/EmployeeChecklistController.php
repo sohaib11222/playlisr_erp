@@ -197,10 +197,11 @@ class EmployeeChecklistController extends Controller
     }
 
     /**
-     * One-click "Compile & Send Offer" for the standard Sales Cashier hire —
-     * the role Sarah hires most often. Fills the fixed cashier offer-letter
-     * template (resources/views/pdf/cashier_offer_letter) with just the
-     * candidate's name/start date, compiles it to a PDF with mpdf (same
+     * One-click "Compile & Send Offer" — fills the standard offer-letter
+     * template (resources/views/pdf/cashier_offer_letter) with the
+     * candidate's name/start date/job title (the Job Responsibilities
+     * section is still cashier-specific regardless of title), compiles it
+     * to a PDF with mpdf (same
      * library TransactionUtil uses for receipts), and emails it from
      * sarah@nivessa.com specifically via OfferLetterMailer (its own SMTP
      * credentials — see app/Services/OfferLetterMailer.php).
@@ -214,17 +215,20 @@ class EmployeeChecklistController extends Controller
             'full_name'  => 'required|string|max:120',
             'email'      => 'required|email|max:190',
             'start_date' => 'required|string|max:60',
+            'job_title'  => 'required|string|max:120',
         ]);
 
         $fullName = trim($request->input('full_name'));
         $email = trim($request->input('email'));
         $startDate = trim($request->input('start_date'));
+        $jobTitle = trim($request->input('job_title'));
         $firstName = trim(explode(' ', $fullName)[0]);
 
         $body = view('pdf.cashier_offer_letter', [
             'firstName' => $firstName,
             'fullName'  => $fullName,
             'startDate' => $startDate,
+            'jobTitle'  => $jobTitle,
         ])->render();
 
         $mpdf = new \Mpdf\Mpdf([
@@ -238,7 +242,7 @@ class EmployeeChecklistController extends Controller
         $filename = 'Offer Letter - ' . $fullName . '.pdf';
 
         try {
-            \App\Services\OfferLetterMailer::send($email, $firstName, $pdfBinary, $filename);
+            \App\Services\OfferLetterMailer::send($email, $firstName, $jobTitle, $pdfBinary, $filename);
         } catch (\Throwable $e) {
             \Log::warning('Cashier offer letter email failed: ' . $e->getMessage());
             return redirect()->action('EmployeeChecklistController@index', ['type' => 'onboarding'])

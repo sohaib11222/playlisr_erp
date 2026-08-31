@@ -17,7 +17,7 @@
 
     <p>Dear {{ $firstName }},</p>
 
-    <p>We are pleased to offer you the position of <strong>Sales Cashier</strong> at Nivessa Records.</p>
+    <p>We are pleased to offer you the position of <strong>{{ $jobTitle }}</strong> at Nivessa Records.</p>
 
     <h2>Position Details:</h2>
     <ul>
@@ -50,7 +50,7 @@
 
     <div class="sig-line">
         <p><strong>Acceptance of Offer:</strong></p>
-        <p>I, {{ $fullName }}, accept the offer of employment as Sales Cashier at Nivessa Records.</p>
+        <p>I, {{ $fullName }}, accept the offer of employment as {{ $jobTitle }} at Nivessa Records.</p>
         <p style="margin-top:28px;">Signature: _____________________</p>
         <p style="margin-top:18px;">Date: _____________</p>
     </div>
