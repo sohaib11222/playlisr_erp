@@ -1440,6 +1440,28 @@ class ProductController extends Controller
                         continue;
                     }
 
+                    // Some (variation_id, location_id) pairs have MORE THAN ONE
+                    // stock row already (data corruption from somewhere upstream
+                    // — under investigation). updateOrCreate() only ever touches
+                    // the first one it finds, silently ignoring the rest, so the
+                    // total (which sums ALL of them) never matches what was set
+                    // here — e.g. total 57, this dialog only shows/edits a
+                    // leftover "3" row, "set to 0" lands as 57-3=54, not 0.
+                    // Consolidate onto one row every time this saves so the
+                    // total is exactly what was typed, and duplicates self-heal
+                    // as products get touched through this dialog.
+                    $existing = VariationLocationDetails::where('variation_id', $variation_id)
+                        ->where('location_id', $location_id)
+                        ->orderBy('id')
+                        ->get();
+                    if ($existing->count() > 1) {
+                        $keep = $existing->first();
+                        VariationLocationDetails::where('variation_id', $variation_id)
+                            ->where('location_id', $location_id)
+                            ->where('id', '!=', $keep->id)
+                            ->delete();
+                    }
+
                     VariationLocationDetails::updateOrCreate(
                         [
                             'variation_id'  => $variation_id,
@@ -5784,6 +5806,49 @@ class ProductController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Read-only: how many (variation_id, location_id) pairs have MORE THAN
+     * ONE stock row — the corruption behind the "Set current stock" bug
+     * (2026-08-31): the dialog and its save only ever touch the FIRST such
+     * row, so the real total (all rows summed) silently drifts from what was
+     * typed. Every "Set current stock" save now consolidates duplicates for
+     * that pair on the spot, so this count should trend toward 0 as affected
+     * products get touched, but does nothing on its own — read-only.
+     */
+    public function duplicateStockRowsScope(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+
+        $dupes = DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $business_id)
+            ->whereNull('v.deleted_at')
+            ->select('vld.variation_id', 'vld.location_id', 'p.id as product_id', 'p.name', 'p.sku',
+                DB::raw('COUNT(*) as row_count'), DB::raw('SUM(vld.qty_available) as true_total'))
+            ->groupBy('vld.variation_id', 'vld.location_id', 'p.id', 'p.name', 'p.sku')
+            ->havingRaw('COUNT(*) > 1')
+            ->orderByDesc('row_count')
+            ->limit(500)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'pair_count' => $dupes->count(),
+            'sample' => $dupes->take(50)->map(function ($r) {
+                return [
+                    'product_id' => (int) $r->product_id, 'name' => $r->name, 'sku' => $r->sku,
+                    'location_id' => (int) $r->location_id, 'row_count' => (int) $r->row_count,
+                    'true_total' => (float) $r->true_total,
+                ];
+            }),
+        ]);
     }
 
 }

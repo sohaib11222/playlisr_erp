@@ -281,6 +281,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/process-import-sold-items-from-file', 'ProductController@processImportSoldItemsFromFile')->name('products.processImportSoldItemsFromFile');
     Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
     Route::get('/products/{id}/set-current-stock-quick', 'ProductController@setCurrentStockQuickPage')->name('products.setCurrentStockQuick');
+    Route::get('/admin/duplicate-stock-rows-scope', 'ProductController@duplicateStockRowsScope')->name('products.duplicateStockRowsScope');
 
     // Zero-stock rules: named groups of products (RETIRED: prefix, Kanye
     // Graduation vinyl/cassette, ...) get Current Stock set to 0. Snapshot +

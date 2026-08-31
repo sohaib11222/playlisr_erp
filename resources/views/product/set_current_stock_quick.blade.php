@@ -47,8 +47,12 @@
                                 @foreach($product_locations as $loc)
                                     @foreach($all_variations as $var)
                                         @php
-                                            $vld = $var->variation_location_details->where('location_id', $loc->id)->first();
-                                            $current_qty = $vld ? (float) $vld->qty_available : 0;
+                                            // Sum every row for this (variation, location), not just the
+                                            // first — a handful of pairs have more than one stock row
+                                            // (data corruption elsewhere), and showing only one made this
+                                            // dialog display and edit a number lower than the real total.
+                                            // Saving through this form consolidates duplicates onto one row.
+                                            $current_qty = (float) $var->variation_location_details->where('location_id', $loc->id)->sum('qty_available');
                                             $current_qty_int = (int) round($current_qty);
                                         @endphp
                                         <tr>
