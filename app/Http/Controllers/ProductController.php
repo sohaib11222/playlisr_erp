@@ -5868,7 +5868,7 @@ class ProductController extends Controller
         // product's own locations), but still summed into current_stock.
         // Found via product 716 (Kanye West - Graduation): 54 units parked at
         // hollywood though the product is pico-only, untouched since 8/12.
-        if ($request->boolean('orphans')) {
+        if (filter_var($request->input('orphans'), FILTER_VALIDATE_BOOLEAN)) {
             $orphans = DB::table('variation_location_details as vld')
                 ->join('variations as v', 'v.id', '=', 'vld.variation_id')
                 ->join('products as p', 'p.id', '=', 'v.product_id')
