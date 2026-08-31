@@ -54,6 +54,15 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     <div class="mgn-card">
         <h2>Standard: <span style="color:#8E8273">ARTIST - TITLE</span></h2>
         <p class="sub"><b style="color:#B71C1C">Heads up:</b> this uses the Artist field, which is unreliable on a lot of products (it sometimes holds the title), so it can flip good names. Prefer "Rebuild from Discogs" below. Scanning changes nothing either way.</p>
+        <p class="sub" style="margin-top:-8px;">Optional — scope to one creator and/or date range. Leave blank to run against everything.</p>
+        <div class="mgn-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Created by (user id)</label>
+                <input type="text" id="mgnCreatedBy" placeholder="e.g. 10" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;width:120px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered after</label>
+                <input type="date" id="mgnStartDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered before</label>
+                <input type="date" id="mgnEndDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+        </div>
         <div class="mgn-actions">
             <button class="mgn-btn mgn-btn-ghost" id="mgnScanBtn" type="button">Scan names</button>
         </div>
@@ -209,10 +218,18 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
     }
 
+    function mgnScope() {
+        return {
+            created_by: document.getElementById('mgnCreatedBy').value.trim(),
+            start_date: document.getElementById('mgnStartDate').value,
+            end_date: document.getElementById('mgnEndDate').value,
+        };
+    }
+
     scanBtn.addEventListener('click', function () {
         clearMsg(); result.style.display = 'none';
         scanBtn.disabled = true; scanBtn.textContent = 'Scanning…';
-        post('{{ route('products.name.scan') }}').then(function (d) {
+        post('{{ route('products.name.scan') }}', mgnScope()).then(function (d) {
             scanBtn.disabled = false; scanBtn.textContent = 'Scan names';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
             document.getElementById('mgnSummary').innerHTML =
@@ -230,7 +247,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     });
 
     function runBatch(total) {
-        post('{{ route('products.name.apply') }}', { max: 500 }).then(function (d) {
+        post('{{ route('products.name.apply') }}', Object.assign({ max: 500 }, mgnScope())).then(function (d) {
             if (!d.success) { applyBtn.disabled = false; showMsg(d.msg || 'Rename failed.', false); return; }
             total += d.renamed;
             document.getElementById('mgnProgress').textContent = 'Renamed ' + total + ' — ' + d.remaining + ' remaining…';
