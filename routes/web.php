@@ -282,6 +282,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
     Route::get('/products/{id}/set-current-stock-quick', 'ProductController@setCurrentStockQuickPage')->name('products.setCurrentStockQuick');
 
+    // Zero-stock rules: named groups of products (RETIRED: prefix, Kanye
+    // Graduation vinyl/cassette, ...) get Current Stock set to 0. Snapshot +
+    // undo via /admin/admin-action-history ('zero-retired-stock').
+    Route::get('/admin/zero-stock-rules', 'ZeroStockRulesController@index');
+    Route::post('/admin/zero-stock-rules/run', 'ZeroStockRulesController@run');
+
     // Owner-only merge-duplicates tool. Declared BEFORE the products resource
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
