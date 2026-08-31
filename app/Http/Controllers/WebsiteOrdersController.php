@@ -93,7 +93,10 @@ class WebsiteOrdersController extends Controller
             }
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
                 $tabCounts['pickup']++;
-                if (self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS) {
+                if (
+                    !self::orderHasPreorderItem($o) &&
+                    self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS
+                ) {
                     $tabCounts['pickup_overdue']++;
                 }
             }
@@ -262,6 +265,17 @@ class WebsiteOrdersController extends Controller
             if (!$isGift) return false;
         }
         return true;
+    }
+
+    // True if any line item is stock that hasn't arrived yet. Used to keep
+    // the pickup SLA overdue count from flagging preorder orders — they
+    // can't be pulled until the street date no matter how long they've sat.
+    protected static function orderHasPreorderItem(array $order): bool
+    {
+        foreach ($order['items'] ?? [] as $item) {
+            if (!empty($item['product_id']['isPreorder'])) return true;
+        }
+        return false;
     }
 
     protected static function matchesTab(array $order, string $tab): bool
