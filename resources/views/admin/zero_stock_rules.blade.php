@@ -17,6 +17,7 @@
                 <ul>
                     <li>Name starts with "RETIRED:" and the product is not in the Apparel category</li>
                     <li>Kanye West - Graduation, Vinyl and Cassette formats only</li>
+                    <li>Record Store Day titles (name contains "RSD" or "Record Store Day")</li>
                 </ul>
 
                 <form method="POST" action="{{ url('/admin/zero-stock-rules/run') }}" style="margin-top:16px;" id="zsr-form">

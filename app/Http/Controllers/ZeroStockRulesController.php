@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\Storage;
  *      category (apparel keeps its stock; only retired media/other items
  *      get zeroed).
  *   2. Kanye West - Graduation, Vinyl and Cassette formats only.
+ *   3. Record Store Day titles, matched by name. No structured RSD flag
+ *      exists in the schema (same gap InventoryCheckService::isRsdTitle
+ *      documents), so this uses the same name markers.
  */
 class ZeroStockRulesController extends Controller
 {
@@ -89,6 +92,18 @@ class ZeroStockRulesController extends Controller
                         });
                     }
                     return $q;
+                },
+            ],
+            [
+                'key'   => 'record-store-day',
+                'label' => 'Record Store Day titles',
+                'query' => function () use ($businessId) {
+                    return Product::where('business_id', $businessId)
+                        ->where('enable_stock', 1)
+                        ->where(function ($qq) {
+                            $qq->where('name', 'LIKE', '%RSD%')
+                               ->orWhere('name', 'LIKE', '%Record Store Day%');
+                        });
                 },
             ],
         ];
