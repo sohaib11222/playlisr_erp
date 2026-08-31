@@ -83,4 +83,16 @@ jobs:
             echo "key: [$key4] valuelen=${#val4}"
             echo "=== does .env parse under Laravel's own dotenv (not strict parse_ini_file)? ==="
             php artisan tinker --execute="echo config('app.name');" 2>&1 | tail -5
+
+            echo "=== FIX: strip whitespace from OFFER_MAIL_PASSWORD (Google shows app passwords spaced; the value must not contain literal spaces for Laravel's dotenv parser) ==="
+            cp .env .env.bak.offerpwfix
+            oldline=$(grep "^OFFER_MAIL_PASSWORD=" .env)
+            oldval="${oldline#OFFER_MAIL_PASSWORD=}"
+            newval=$(echo "$oldval" | tr -d ' ')
+            echo "before_len=${#oldval} after_len=${#newval}"
+            esc_newval=$(printf '%s' "$newval" | sed -e 's/[&|]/\\&/g')
+            sed -i "s|^OFFER_MAIL_PASSWORD=.*|OFFER_MAIL_PASSWORD=${esc_newval}|" .env
+
+            echo "=== re-checking dotenv parse after fix ==="
+            php artisan tinker --execute="echo config('app.name');" 2>&1 | tail -5
             echo "=== done ==="
