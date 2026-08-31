@@ -1746,8 +1746,9 @@ class ProductController extends Controller
                 }
             }
 
+            $this->clearStockForDroppedLocations($product, $product_locations);
             $product->product_locations()->sync($product_locations);
-            
+
             if ($product->type == 'single') {
                 $single_data = $request->only(['single_variation_id', 'single_dpp', 'single_dpp_inc_tax', 'single_dsp_inc_tax', 'profit_percent', 'single_dsp']);
                 $variation = Variation::find($single_data['single_variation_id']);
@@ -3190,6 +3191,7 @@ class ProductController extends Controller
                 //Add product locations
                 $product_locations = !empty($product_data['product_locations']) ?
                                     $product_data['product_locations'] : [];
+                $this->clearStockForDroppedLocations($product, $product_locations);
                 $product->product_locations()->sync($product_locations);
 
                 $variations_data = [];
@@ -3420,6 +3422,62 @@ class ProductController extends Controller
         }
 
         return $output;
+    }
+
+    /**
+     * Shared fix for the orphaned-stock bug (2026-08-31): whenever a
+     * product's location list is synced and a location DROPS off it, its
+     * stock row there must go with it — otherwise it becomes invisible
+     * (product edit page / "Set current stock" both only loop the product's
+     * CURRENT locations) while still summed into current_stock forever.
+     * updateProductLocation() (bulk "Remove from location") already had its
+     * own inline version of this; this is the same fix shared by the other
+     * 3 places that call product_locations()->sync() and can drop a
+     * location: update() (product edit save), bulkUpdate() (bulk-edit grid),
+     * and massStore() (mass/Discogs add, existing-product branch). Call this
+     * BEFORE sync() runs, since it needs the CURRENT location list to know
+     * what's being dropped. No-ops (and writes nothing) if nothing's
+     * actually being dropped, or the product has no stock there anyway.
+     */
+    protected function clearStockForDroppedLocations($product, array $newLocationIds)
+    {
+        $currentLocationIds = DB::table('product_locations')->where('product_id', $product->id)
+            ->pluck('location_id')->map(function ($v) { return (int) $v; })->all();
+        $newLocationIds = array_map('intval', $newLocationIds);
+        $droppedLocationIds = array_diff($currentLocationIds, $newLocationIds);
+        if (empty($droppedLocationIds)) { return; }
+
+        $variationIds = Variation::where('product_id', $product->id)->pluck('id');
+        if ($variationIds->isEmpty()) { return; }
+
+        $rowsToRemove = VariationLocationDetails::whereIn('variation_id', $variationIds)
+            ->whereIn('location_id', $droppedLocationIds)
+            ->get();
+        if ($rowsToRemove->isEmpty()) { return; }
+
+        $snapshot = $rowsToRemove->map(function ($row) {
+            return [
+                'id' => (int) $row->id, 'product_id' => (int) $row->product_id,
+                'product_variation_id' => (int) $row->product_variation_id,
+                'variation_id' => (int) $row->variation_id, 'location_id' => (int) $row->location_id,
+                'qty_available' => (string) $row->qty_available,
+            ];
+        })->all();
+
+        $timestamp = now()->format('Y-m-d_His') . '_' . substr(uniqid(), -6);
+        \Storage::disk('local')->put(
+            "admin-snapshots/remove-location-stock-cleanup-{$timestamp}.json",
+            json_encode([
+                'timestamp' => $timestamp,
+                'action' => 'remove-location-stock-cleanup',
+                'user_id' => auth()->id(),
+                'business_id' => $product->business_id,
+                'source_name' => count($snapshot) . ' stock row(s) cleared with their location',
+                'target_name' => 'variation_location_details',
+                'rows' => $snapshot,
+            ], JSON_PRETTY_PRINT)
+        );
+        VariationLocationDetails::whereIn('id', $rowsToRemove->pluck('id'))->delete();
     }
 
     public function productStockHistory($id)
@@ -3972,6 +4030,7 @@ class ProductController extends Controller
                     );
                 }
 
+                $this->clearStockForDroppedLocations($product, $productData['business_locations'] ?? []);
                 $product->product_locations()->sync($productData['business_locations'] ?? []);
 
                 foreach($product->product_locations as $loc) {
