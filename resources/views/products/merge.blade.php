@@ -219,6 +219,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
             var summary = d.total_groups + ' duplicate set(s) found — ' + d.total_merges + ' product(s) will be deactivated after merging.';
             if (d.skipped > 0) { summary += ' ' + d.skipped + ' set(s) skipped (multiple variations — merge those manually).'; }
+            if (d.price_mismatch_groups > 0) { summary += ' ' + d.price_mismatch_groups + ' set(s) held back — sell/cost price differs by 25%+ (possibly a valuable original pressing sharing a barcode with a cheaper reissue). Marked below; merge those individually above after checking prices.'; }
             document.getElementById('mgScanSummary').textContent = summary;
             var money = function (v) { return (v === null || v === undefined) ? '' : '$' + Number(v).toFixed(2); };
             var by = function (x) {
@@ -238,7 +239,9 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             };
             var rows = d.preview.map(function (g) {
                 var mergeNames = g.merge_in.map(function (m) { return link(m) + by(m); }).join('<br>');
-                return '<tr><td>' + link(g.keep) + by(g.keep) + '</td>' +
+                var warn = g.price_mismatch
+                    ? '<div class="mg-drop-tag" style="margin:0 0 6px;">PRICE MISMATCH — not auto-merged, review &amp; merge manually above</div>' : '';
+                return '<tr' + (g.price_mismatch ? ' style="background:#FFFBEF;"' : '') + '><td>' + warn + link(g.keep) + by(g.keep) + '</td>' +
                     '<td>' + esc(g.store) + '</td>' +
                     '<td>' + esc(g.category) + '</td>' +
                     '<td>' + mergeNames + '</td>' +
@@ -246,7 +249,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
                     '<td class="num">' + num(g.combined_sold) + '</td></tr>';
             }).join('');
             if (d.total_groups > d.preview.length) {
-                rows += '<tr><td colspan="6" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. All will be merged.</td></tr>';
+                rows += '<tr><td colspan="6" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. Sets flagged PRICE MISMATCH are never included in the automatic sweep.</td></tr>';
             }
             document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="6">No duplicates found.</td></tr>';
             bulkBtn.style.display = d.total_merges > 0 ? '' : 'none';
@@ -258,29 +261,32 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         });
     });
 
-    function runBulkBatch(totalDone) {
+    function runBulkBatch(totalDone, totalMismatchSkipped) {
         post('{{ route('products.merge.bulk') }}', { max: 150 }).then(function (d) {
             if (!d.success) { bulkBtn.disabled = false; showMsg(d.msg || 'Merge failed.', false); return; }
             totalDone += d.merged;
+            totalMismatchSkipped += (d.price_mismatch_skipped || 0);
             document.getElementById('mgBulkProgress').textContent =
                 'Merged ' + totalDone + ' so far — ' + d.remaining + ' remaining' + (d.failed ? ' (' + d.failed + ' skipped)' : '') + '…';
             if (d.remaining > 0 && d.merged > 0) {
-                runBulkBatch(totalDone);
+                runBulkBatch(totalDone, totalMismatchSkipped);
             } else {
                 bulkBtn.disabled = false;
                 scanResult.style.display = 'none';
-                showMsg('Done — merged ' + totalDone + ' duplicate(s) across the catalog. Undo any batch at Admin Action History.', true);
+                var doneMsg = 'Done — merged ' + totalDone + ' duplicate(s) across the catalog. Undo any batch at Admin Action History.';
+                if (totalMismatchSkipped > 0) { doneMsg += ' ' + totalMismatchSkipped + ' held back for price mismatch — merge those individually above after checking prices.'; }
+                showMsg(doneMsg, true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }).catch(function () { bulkBtn.disabled = false; showMsg('Merge failed mid-run — re-scan to see what remains.', false); });
     }
 
     bulkBtn.addEventListener('click', function () {
-        if (!confirm('Merge ALL duplicate sets across the catalog? Duplicates get deactivated and their stock + sales combine onto each survivor. Each batch is undoable from Admin Action History.')) return;
+        if (!confirm('Merge ALL duplicate sets across the catalog? Duplicates get deactivated, sales history combines onto each survivor, and stock reconciles to whichever copy was most recently updated (not summed). Sets where sell/cost price differs by 25%+ are held back for manual review. Each batch is undoable from Admin Action History.')) return;
         clearMsg();
         bulkBtn.disabled = true;
         document.getElementById('mgBulkProgress').textContent = 'Starting…';
-        runBulkBatch(0);
+        runBulkBatch(0, 0);
     });
 
     // ---- Name-only duplicate scan (by entry year) ----

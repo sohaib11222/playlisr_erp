@@ -473,7 +473,7 @@ class ProductMergeController extends Controller
         }
 
         if (empty($dupeIds)) {
-            return ['groups' => [], 'skipped' => 0, 'total_groups' => 0, 'total_merges' => 0];
+            return ['groups' => [], 'skipped' => 0, 'total_groups' => 0, 'total_merges' => 0, 'price_mismatch_groups' => 0];
         }
 
         // Bulk stats for every product in a dupe group.
@@ -554,6 +554,7 @@ class ProductMergeController extends Controller
         $groups = [];
         $skipped = 0;
         $totalMerges = 0;
+        $priceMismatchGroups = 0;
         foreach ($dupeKeys as $key => $rows) {
             // Split each barcode group by store AND format (category), so copies
             // at different stores or in different formats never merge. Genre
@@ -656,9 +657,28 @@ class ProductMergeController extends Controller
                     if (isset($floorLocIds[(int) $locId])) { $reconciledFloor += $v['qty']; }
                 }
 
+                // Same barcode does NOT guarantee same value — a reissue often
+                // reuses the original pressing's UPC, but an original first
+                // pressing can be worth far more. If sell or cost price varies
+                // by more than 25% across the group, hold it out of the
+                // automatic bulk sweep for manual review instead of silently
+                // collapsing a possibly-valuable copy into a cheaper one.
+                $priceMismatch = false;
+                foreach (['sell_price', 'purchase_price'] as $priceField) {
+                    $prices = array_values(array_filter(array_map(function ($i) use ($priceField) { return $i[$priceField]; }, $items), function ($p) { return $p !== null; }));
+                    if (count($prices) < 2) { continue; }
+                    $min = min($prices);
+                    $max = max($prices);
+                    if ($max > 0 && ($max - $min) / $max > 0.25) { $priceMismatch = true; break; }
+                }
+
                 $keep = $items[0];
                 $mergeIn = array_slice($items, 1);
-                $totalMerges += count($mergeIn);
+                if ($priceMismatch) {
+                    $priceMismatchGroups++;
+                } else {
+                    $totalMerges += count($mergeIn);
+                }
                 $stripCalc = function ($i) { unset($i['per_loc'], $i['fresh']); return $i; };
                 $groups[] = [
                     'key' => $key . '#' . $bucketKey,
@@ -668,11 +688,12 @@ class ProductMergeController extends Controller
                     'merge_in' => array_map($stripCalc, $mergeIn),
                     'combined_stock' => $reconciledFloor,
                     'combined_sold' => array_sum(array_map(function ($i) { return $i['units_sold']; }, $items)),
+                    'price_mismatch' => $priceMismatch,
                 ];
             }
         }
 
-        return ['groups' => $groups, 'skipped' => $skipped, 'total_groups' => count($groups), 'total_merges' => $totalMerges];
+        return ['groups' => $groups, 'skipped' => $skipped, 'total_groups' => count($groups), 'total_merges' => $totalMerges, 'price_mismatch_groups' => $priceMismatchGroups];
     }
 
     /** Read-only whole-catalog scan. Caps the returned list for display. */
@@ -691,6 +712,7 @@ class ProductMergeController extends Controller
             'total_groups' => $data['total_groups'],
             'total_merges' => $data['total_merges'],
             'skipped' => $data['skipped'],
+            'price_mismatch_groups' => $data['price_mismatch_groups'],
             'preview' => array_slice($data['groups'], 0, 2000),
         ]);
     }
@@ -720,7 +742,7 @@ class ProductMergeController extends Controller
         return response()->stream(function () use ($groups) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
-                'Set #', 'Role', 'Product', 'SKU', 'Store', 'Format',
+                'Set #', 'Price mismatch (not auto-merged)', 'Role', 'Product', 'SKU', 'Store', 'Format',
                 'Floor stock', 'Units sold', 'Sell price', 'Cost',
                 'Created', 'Created by', 'Verify link',
             ]);
@@ -731,6 +753,7 @@ class ProductMergeController extends Controller
                 foreach ($rows as $i => $it) {
                     fputcsv($out, [
                         $setNo,
+                        !empty($g['price_mismatch']) ? 'YES' : '',
                         $i === 0 ? 'KEEP' : 'MERGE IN',
                         $it['name'],
                         $it['sku'],
@@ -886,8 +909,17 @@ class ProductMergeController extends Controller
         $merges = [];
         $done = 0;
         $failed = 0;
+        $priceMismatchSkipped = 0;
         foreach ($data['groups'] as $group) {
             if ($done >= $max) { break; }
+            if (!empty($group['price_mismatch'])) {
+                // Same barcode but sell/cost price diverges by 25%+ — likely a
+                // valuable original pressing sharing a UPC with a cheaper
+                // reissue. Never auto-merge these; leave for manual review via
+                // the single-pair form, where you can pick which price to keep.
+                $priceMismatchSkipped += count($group['merge_in']);
+                continue;
+            }
             $keep = $group['keep'];
             $targetVars = \DB::table('variations')->where('product_id', $keep['id'])->whereNull('deleted_at')->first();
             if (!$targetVars) { $failed++; continue; }
@@ -943,6 +975,7 @@ class ProductMergeController extends Controller
             'failed' => $failed,
             'remaining' => $remaining,
             'skipped_groups' => $data['skipped'],
+            'price_mismatch_skipped' => $priceMismatchSkipped,
             'msg' => "Merged {$done} duplicate(s) this batch. {$remaining} remaining.",
         ]);
     }
