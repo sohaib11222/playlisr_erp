@@ -24,6 +24,13 @@ class EmployeeChecklistController extends Controller
 {
     const STORE_PATH = 'employee_checklist.json';
 
+    const DEFAULT_OFFER_RESPONSIBILITIES = [
+        'Sell products to customers',
+        'Assist with in-store tasks including cashier duties and maintaining store standards.',
+        'Provide responsive customer support and resolve inquiries promptly.',
+        'Help sort through the inventory at the warehouse',
+    ];
+
     const TYPE_LABELS = [
         'onboarding'  => 'Onboarding',
         'offboarding' => 'Offboarding',
@@ -199,12 +206,12 @@ class EmployeeChecklistController extends Controller
     /**
      * One-click "Compile & Send Offer" — fills the standard offer-letter
      * template (resources/views/pdf/cashier_offer_letter) with the
-     * candidate's name/start date/job title (the Job Responsibilities
-     * section is still cashier-specific regardless of title), compiles it
-     * to a PDF with mpdf (same
-     * library TransactionUtil uses for receipts), and emails it from
-     * sarah@nivessa.com specifically via OfferLetterMailer (its own SMTP
-     * credentials — see app/Services/OfferLetterMailer.php).
+     * candidate's name/start date/job title/responsibilities (falls back to
+     * the standard cashier responsibilities list if left blank), compiles
+     * it to a PDF with mpdf (same library TransactionUtil uses for
+     * receipts), and emails it from sarah@nivessa.com specifically via
+     * OfferLetterMailer (its own SMTP credentials — see
+     * app/Services/OfferLetterMailer.php).
      * Covers the checklist's "sign_offer" step.
      */
     public function sendOffer(Request $request)
@@ -212,10 +219,11 @@ class EmployeeChecklistController extends Controller
         $this->guard();
 
         $request->validate([
-            'full_name'  => 'required|string|max:120',
-            'email'      => 'required|email|max:190',
-            'start_date' => 'required|string|max:60',
-            'job_title'  => 'required|string|max:120',
+            'full_name'       => 'required|string|max:120',
+            'email'           => 'required|email|max:190',
+            'start_date'      => 'required|string|max:60',
+            'job_title'       => 'required|string|max:120',
+            'responsibilities' => 'nullable|string|max:2000',
         ]);
 
         $fullName = trim($request->input('full_name'));
@@ -224,11 +232,19 @@ class EmployeeChecklistController extends Controller
         $jobTitle = trim($request->input('job_title'));
         $firstName = trim(explode(' ', $fullName)[0]);
 
+        $responsibilities = array_values(array_filter(array_map('trim', explode(
+            "\n", str_replace("\r", '', (string) $request->input('responsibilities', ''))
+        ))));
+        if (empty($responsibilities)) {
+            $responsibilities = self::DEFAULT_OFFER_RESPONSIBILITIES;
+        }
+
         $body = view('pdf.cashier_offer_letter', [
-            'firstName' => $firstName,
-            'fullName'  => $fullName,
-            'startDate' => $startDate,
-            'jobTitle'  => $jobTitle,
+            'firstName'        => $firstName,
+            'fullName'         => $fullName,
+            'startDate'        => $startDate,
+            'jobTitle'         => $jobTitle,
+            'responsibilities' => $responsibilities,
         ])->render();
 
         $mpdf = new \Mpdf\Mpdf([

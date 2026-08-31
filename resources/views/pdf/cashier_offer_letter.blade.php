@@ -35,10 +35,9 @@
 
     <h2>Job Responsibilities:</h2>
     <ul>
-        <li>Sell products to customers</li>
-        <li>Assist with in-store tasks including cashier duties and maintaining store standards.</li>
-        <li>Provide responsive customer support and resolve inquiries promptly.</li>
-        <li>Help sort through the inventory at the warehouse</li>
+        @foreach ($responsibilities as $item)
+            <li>{{ $item }}</li>
+        @endforeach
     </ul>
 
     <h2>Additional Information:</h2>
