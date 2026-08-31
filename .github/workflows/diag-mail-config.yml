@@ -95,4 +95,19 @@ jobs:
 
             echo "=== re-checking dotenv parse after fix ==="
             php artisan --version 2>&1 | tail -5
+
+            echo "=== test-sending a real offer-letter-style email via OfferLetterMailer to sarah@nivessa.com ==="
+            php -r '
+              require "vendor/autoload.php";
+              $app = require_once "bootstrap/app.php";
+              $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+              $kernel->bootstrap();
+              try {
+                  \App\Services\OfferLetterMailer::send("sarah@nivessa.com", "Sarah", "%PDF-1.4 test", "Test Offer Letter.pdf");
+                  echo "SEND_OK\n";
+              } catch (\Throwable $e) {
+                  echo "SEND_FAILED: " . $e->getMessage() . "\n";
+              }
+            ' 2>&1
+
             echo "=== done ==="
