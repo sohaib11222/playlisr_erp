@@ -430,6 +430,13 @@ class ProductMergeController extends Controller
         $products = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereNotNull('sku')->where('sku', '!=', '')
+            // Exclude products already retired BY THIS TOOL (performMerge sets
+            // both is_inactive AND not_for_selling on the loser). Without this,
+            // an already-merged pair keeps showing up as an unmerged duplicate
+            // forever, since its variation/row still exists — just empty.
+            // A product only manually deactivated (not through a merge) won't
+            // have both flags set, so it still shows up as a real candidate.
+            ->where(function ($q) { $q->where('is_inactive', 0)->orWhere('not_for_selling', 0); })
             ->select('id', 'name', 'sku', 'is_inactive', 'category_id', 'sub_category_id', 'created_by', 'created_at')
             ->get();
 
