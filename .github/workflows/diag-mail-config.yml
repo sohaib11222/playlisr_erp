@@ -107,6 +107,7 @@ jobs:
                       "firstName" => "Sarah",
                       "fullName"  => "Sarah Test",
                       "startDate" => "September 22, 2026",
+                      "jobTitle"  => "Sales Cashier",
                   ])->render();
                   $mpdf = new \Mpdf\Mpdf([
                       "tempDir" => public_path("uploads/temp"),
@@ -116,7 +117,7 @@ jobs:
                   $mpdf->WriteHTML($body);
                   $pdfBinary = $mpdf->Output("", "S");
                   echo "pdf_bytes=" . strlen($pdfBinary) . " magic=" . substr($pdfBinary, 0, 4) . "\n";
-                  \App\Services\OfferLetterMailer::send("sarah@nivessa.com", "Sarah", $pdfBinary, "Test Real Offer Letter.pdf");
+                  \App\Services\OfferLetterMailer::send("sarah@nivessa.com", "Sarah", "Sales Cashier", $pdfBinary, "Test Real Offer Letter.pdf");
                   echo "SEND_OK\n";
               } catch (\Throwable $e) {
                   echo "SEND_FAILED: " . $e->getMessage() . "\n";
