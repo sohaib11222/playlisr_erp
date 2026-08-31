@@ -43,6 +43,28 @@ class BootlegVendorMatchController extends Controller
         'picture', 'splatter', 'translucent', 'clear', 'opaque',
     ];
 
+    // Adam's catalog is only vinyl, cassettes, 7"s, and slipmats — scoping the
+    // scan to those categories (instead of every enable_stock product in the
+    // whole catalog) is what keeps this fast enough to not time out on a
+    // full-size inventory, and also avoids matching bootleg-vinyl titles
+    // against unrelated CDs/DVDs/apparel.
+    protected function relevantCategoryIds($businessId)
+    {
+        return DB::table('categories')
+            ->where('business_id', $businessId)
+            ->whereNull('deleted_at')
+            ->where(function ($q) {
+                $q->where('name', 'LIKE', '%Vinyl%')
+                  ->orWhere('name', 'LIKE', '%Cassette%')
+                  ->orWhere('name', 'LIKE', '%45 RPM%')
+                  ->orWhere('name', 'LIKE', '%7"%')
+                  ->orWhere('name', 'LIKE', '%Accessories%');
+            })
+            ->pluck('id')
+            ->map(function ($v) { return (int) $v; })
+            ->all();
+    }
+
     protected function catalog()
     {
         $path = app_path('Services/data/' . self::CATALOG_FILE);
@@ -75,10 +97,15 @@ class BootlegVendorMatchController extends Controller
 
         $businessId = request()->session()->get('user.business_id');
         $catalog = $this->catalog();
+        $categoryIds = $this->relevantCategoryIds($businessId);
 
-        $products = Product::where('business_id', $businessId)
-            ->where('enable_stock', 1)
-            ->get(['id', 'name', 'artist']);
+        $productsQuery = Product::where('business_id', $businessId)->where('enable_stock', 1);
+        if (!empty($categoryIds)) {
+            $productsQuery->where(function ($q) use ($categoryIds) {
+                $q->whereIn('category_id', $categoryIds)->orWhereIn('sub_category_id', $categoryIds);
+            });
+        }
+        $products = $productsQuery->get(['id', 'name', 'artist']);
 
         // Inverted index: token -> [product_id, ...]. Lets us only score
         // products that share at least one word with a given catalog title
@@ -101,10 +128,12 @@ class BootlegVendorMatchController extends Controller
             $candidateIds = [];
             foreach ($catTokens as $t) {
                 if (!empty($tokenIndex[$t])) {
-                    $candidateIds = array_merge($candidateIds, $tokenIndex[$t]);
+                    foreach ($tokenIndex[$t] as $pid) {
+                        $candidateIds[$pid] = true;
+                    }
                 }
             }
-            $candidateIds = array_unique($candidateIds);
+            $candidateIds = array_keys($candidateIds);
 
             // Require at least 3 shared significant words, or 2 when the
             // catalog title itself only has 2-3 tokens (a short title can't
