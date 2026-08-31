@@ -161,6 +161,15 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     <div class="mgn-card" style="border-color:#C9A227;">
         <h2>Rebuild from Discogs <span style="color:#8E8273;font-weight:400">(accurate — recommended)</span></h2>
         <p class="sub">The Artist field is unreliable (often holds the title), so this pulls the true artist + title straight from Discogs using each product's release id, and rewrites the name as "ARTIST - TITLE". Rate-limited (~55/min), runs in batches, undoable. Only products with a Discogs release id are touched; "retired" is skipped.</p>
+        <p class="sub" style="margin-top:-8px;">Optional — scope to one creator and/or date range instead of the whole catalog, so it only re-checks the batch you actually care about (much faster than every Discogs-linked product). Leave blank to run against everything.</p>
+        <div class="mgn-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Created by (user id)</label>
+                <input type="text" id="dgCreatedBy" placeholder="e.g. 10" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;width:120px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered after</label>
+                <input type="date" id="dgStartDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+            <div><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Entered before</label>
+                <input type="date" id="dgEndDate" style="height:36px;border:1px solid #E1D7C4;border-radius:8px;padding:0 10px;font-size:14px;"></div>
+        </div>
         <div class="mgn-actions">
             <button class="mgn-btn mgn-btn-ghost" id="dgScanBtn" type="button">Check + sample</button>
         </div>
@@ -246,10 +255,18 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     var dgRunBtn = document.getElementById('dgRunBtn');
     var dgResult = document.getElementById('dgResult');
 
+    function dgScope() {
+        return {
+            created_by: document.getElementById('dgCreatedBy').value.trim(),
+            start_date: document.getElementById('dgStartDate').value,
+            end_date: document.getElementById('dgEndDate').value,
+        };
+    }
+
     dgScanBtn.addEventListener('click', function () {
         clearMsg(); dgResult.style.display = 'none';
         dgScanBtn.disabled = true; dgScanBtn.textContent = 'Checking (fetching samples)…';
-        post('{{ route('products.name.discogs.scan') }}').then(function (d) {
+        post('{{ route('products.name.discogs.scan') }}', dgScope()).then(function (d) {
             dgScanBtn.disabled = false; dgScanBtn.textContent = 'Check + sample';
             if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
             document.getElementById('dgSummary').innerHTML = '<b>' + d.total.toLocaleString() + '</b> product(s) have a Discogs id and can be rebuilt. Sample:';
@@ -263,7 +280,8 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     function dgBatch(afterId, totalRenamed, phase) {
         var phaseLabel = phase === 'rest' ? 'everything else' : 'sealed vinyl';
-        post('{{ route('products.name.discogs.rebuild') }}', { after_id: afterId, max: 20, phase: phase }).then(function (d) {
+        var body = Object.assign({ after_id: afterId, max: 20, phase: phase }, dgScope());
+        post('{{ route('products.name.discogs.rebuild') }}', body).then(function (d) {
             if (!d.success) { dgRunBtn.disabled = false; showMsg(d.msg || 'Rebuild failed.', false); return; }
             totalRenamed += d.renamed;
             var note = 'Rebuilt ' + totalRenamed + ' (' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left)';

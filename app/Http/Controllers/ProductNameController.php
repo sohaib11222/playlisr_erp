@@ -700,12 +700,37 @@ class ProductNameController extends Controller
         return $artist . ' - ' . ProductNameNormalizer::properTitle($title);
     }
 
-    protected function candidateQuery($business_id)
+    /**
+     * @param array $filters Optional 'created_by' (int), 'start_date'/'end_date'
+     *   ("Y-m-d", inclusive/exclusive on products.created_at) to scope the
+     *   rebuild to a specific entry batch (e.g. one creator's onboarding
+     *   period) instead of the whole Discogs-linked catalog.
+     */
+    protected function candidateQuery($business_id, array $filters = [])
     {
-        return \DB::table('products')
+        $q = \DB::table('products')
             ->where('business_id', $business_id)
             ->whereNotNull('discogs_release_id')
             ->where('discogs_release_id', '>', 0);
+        if (!empty($filters['created_by'])) {
+            $q->where('created_by', (int) $filters['created_by']);
+        }
+        if (!empty($filters['start_date'])) {
+            $q->where('created_at', '>=', $filters['start_date'] . ' 00:00:00');
+        }
+        if (!empty($filters['end_date'])) {
+            $q->where('created_at', '<', $filters['end_date'] . ' 00:00:00');
+        }
+        return $q;
+    }
+
+    protected function scopeFromRequest(Request $request)
+    {
+        return [
+            'created_by' => (int) $request->input('created_by', 0),
+            'start_date' => (string) $request->input('start_date', ''),
+            'end_date' => (string) $request->input('end_date', ''),
+        ];
     }
 
     /** Count Discogs-backed products + a small live sample of proposed names. */
@@ -719,7 +744,8 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'No discogs_release_id column on products.']);
         }
         $business_id = $request->session()->get('user.business_id');
-        $total = $this->candidateQuery($business_id)->count();
+        $scope = $this->scopeFromRequest($request);
+        $total = $this->candidateQuery($business_id, $scope)->count();
 
         // Live sample so she sees real Discogs-sourced names before committing.
         $svc = new DiscogsService($business_id);
@@ -727,7 +753,7 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Discogs API token not configured (Business Settings > Integrations).']);
         }
         $sample = [];
-        $rows = $this->candidateQuery($business_id)->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
+        $rows = $this->candidateQuery($business_id, $scope)->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
         foreach ($rows as $r) {
             if (stripos($r->name, 'retired') !== false) { continue; }
             $res = $svc->getReleaseById($r->discogs_release_id);
@@ -762,6 +788,7 @@ class ProductNameController extends Controller
         $afterId = (int) $request->input('after_id', 0);
         $max = (int) $request->input('max', 20);
         if ($max < 1 || $max > 40) { $max = 20; }
+        $filterScope = $this->scopeFromRequest($request);
 
         $svc = new DiscogsService($business_id);
         if (!$svc->isConfigured()) {
@@ -781,7 +808,7 @@ class ProductNameController extends Controller
             return $phase === 'sealed' ? $q->whereIn('category_id', $sealedIds) : $q->whereNotIn('category_id', $sealedIds);
         };
 
-        $rows = $scope($this->candidateQuery($business_id))
+        $rows = $scope($this->candidateQuery($business_id, $filterScope))
             ->where('id', '>', $afterId)
             ->select('id', 'name', 'discogs_release_id')
             ->orderBy('id')->limit($max)->get();
@@ -853,7 +880,7 @@ class ProductNameController extends Controller
             \Cache::forget('products_index_sold_totals:' . $business_id);
         }
 
-        $remaining = $scope($this->candidateQuery($business_id))->where('id', '>', $lastId)->count();
+        $remaining = $scope($this->candidateQuery($business_id, $filterScope))->where('id', '>', $lastId)->count();
 
         return response()->json([
             'success' => true,
