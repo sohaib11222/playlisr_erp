@@ -8,11 +8,18 @@ use Illuminate\Http\Request;
 
 class TaskController extends Controller
 {
+    // Same store keys/labels as StoreTaskController (employee_tasks board).
+    const STORE_LABELS = [
+        'pico'      => 'Pico',
+        'hollywood' => 'Hollywood',
+    ];
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
 
         $status = $request->input('status');
+        $store = $request->input('store');
 
         $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy'])
             ->where('business_id', $business_id);
@@ -20,15 +27,20 @@ class TaskController extends Controller
         if (!empty($status)) {
             $query->where('status', $status);
         }
+        if (!empty($store)) {
+            $query->where('store', $store);
+        }
 
         $tasks = $query->orderByDesc('start_date')->paginate(50)->appends($request->except('page'));
+        $storeLabels = self::STORE_LABELS;
 
-        return view('tasks.index', compact('tasks', 'status'));
+        return view('tasks.index', compact('tasks', 'status', 'store', 'storeLabels'));
     }
 
     public function create(Request $request)
     {
-        return view('tasks.create');
+        $storeLabels = self::STORE_LABELS;
+        return view('tasks.create', compact('storeLabels'));
     }
 
     public function store(Request $request)
@@ -39,6 +51,7 @@ class TaskController extends Controller
             'title' => 'required|string|max:200',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
+            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
         $data['business_id'] = $business_id;
@@ -56,7 +69,8 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
-        return view('tasks.edit', compact('task'));
+        $storeLabels = self::STORE_LABELS;
+        return view('tasks.edit', compact('task', 'storeLabels'));
     }
 
     public function update($id, Request $request)
@@ -69,6 +83,7 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'start_date' => 'required|date',
             'status' => 'required|in:not_started,in_progress,complete',
+            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
         $data['end_date'] = \Carbon\Carbon::parse($data['start_date'])->addDays(7)->toDateString();

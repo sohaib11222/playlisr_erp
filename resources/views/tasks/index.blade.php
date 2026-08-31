@@ -17,8 +17,10 @@
     @include('tasks.partials.tabs')
 
     <div class="box box-solid">
-        <div class="box-header with-border">
+        <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
+            @include('tasks.partials.store_toggle', ['indexAction' => action('TaskController@index'), 'store' => $store, 'storeLabels' => $storeLabels])
             <form method="GET" action="{{ action('TaskController@index') }}" class="form-inline">
+                @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
                 <label>Status</label>
                 <select name="status" class="form-control" onchange="this.form.submit()">
                     <option value="" @if(!$status) selected @endif>All</option>
@@ -33,6 +35,7 @@
                 <thead>
                     <tr>
                         <th>Title</th>
+                        <th>Store</th>
                         <th>Start</th>
                         <th>Ends</th>
                         <th>Status</th>
@@ -46,6 +49,7 @@
                     @forelse($tasks as $t)
                     <tr>
                         <td><strong>{{ $t->title }}</strong>@if($t->description)<div class="text-muted"><small>{{ $t->description }}</small></div>@endif</td>
+                        <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
                         <td>{{ $t->start_date->format('M j, Y') }}</td>
                         <td>{{ $t->end_date->format('M j, Y') }}</td>
                         <td>
@@ -70,7 +74,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="8" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
                     @endforelse
                 </tbody>
             </table>

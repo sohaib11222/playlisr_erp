@@ -22,6 +22,17 @@
             <small class="text-muted">Always 7 days after the start date.</small>
         </div>
     </div>
+    <div class="col-md-3">
+        <div class="form-group">
+            <label>Store</label>
+            <select name="store" class="form-control">
+                <option value="" @if(empty($task->store ?? '')) selected @endif>Both stores</option>
+                @foreach($storeLabels as $key => $label)
+                    <option value="{{ $key }}" @if(($task->store ?? '')===$key) selected @endif>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+    </div>
 </div>
 
 @push('scripts')
