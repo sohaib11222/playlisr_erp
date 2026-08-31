@@ -13,7 +13,7 @@
 </style>
 </head>
 <body>
-    <div class="logo"><img src="{{ public_path('img/nivessa-logo.png') }}"></div>
+    <div class="logo"><img src="{{ public_path('img/nivessa-logo.png') }}" width="150" height="32"></div>
 
     <p>Dear {{ $firstName }},</p>
 
