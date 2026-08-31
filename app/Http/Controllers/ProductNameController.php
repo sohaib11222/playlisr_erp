@@ -172,12 +172,12 @@ class ProductNameController extends Controller
         $counts = [];   // key => count
         $spelling = []; // key => representative spelling (prefer mixed-case)
 
-        $q = $this->artistlessMusicQuery($business_id, $catIds)->select('name');
+        $q = $this->artistlessMusicQuery($business_id, $catIds)->select('id', 'name');
         if (!empty($filters['created_by'])) { $q->where('created_by', (int) $filters['created_by']); }
         if (!empty($filters['start_date'])) { $q->where('created_at', '>=', $filters['start_date'] . ' 00:00:00'); }
         if (!empty($filters['end_date'])) { $q->where('created_at', '<', $filters['end_date'] . ' 00:00:00'); }
 
-        $q->chunk(2000, function ($rows) use (&$counts, &$spelling, $stop) {
+        $q->orderBy('id')->chunk(2000, function ($rows) use (&$counts, &$spelling, $stop) {
             foreach ($rows as $r) {
                 $seg = ProductNameNormalizer::nameSegments($r->name);
                 if ($seg === null) { continue; }
