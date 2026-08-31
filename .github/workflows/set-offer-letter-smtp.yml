@@ -89,12 +89,15 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
-          script_stop: true
+          script_stop: false
+          command_timeout: 60s
           envs: OFFER_MAIL_HOST,OFFER_MAIL_PORT,OFFER_MAIL_ENCRYPTION,OFFER_MAIL_USERNAME,OFFER_MAIL_PASSWORD
           script: |
-            set -e
+            set +e
+            echo "=== connected, starting ==="
             DEPLOY_DIR="/www/playlist.nivessa.com/app"
-            cd "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR" || { echo "Cannot cd to $DEPLOY_DIR"; exit 1; }
+            echo "=== in $DEPLOY_DIR ==="
 
             set_kv_once() {
               key="$1"; val="$2"
