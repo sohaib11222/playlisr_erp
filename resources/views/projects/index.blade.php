@@ -17,8 +17,10 @@
     @include('tasks.partials.tabs')
 
     <div class="box box-solid">
-        <div class="box-header with-border">
+        <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
+            @include('tasks.partials.store_toggle', ['indexAction' => action('ProjectController@index'), 'store' => $store, 'storeLabels' => $storeLabels])
             <form method="GET" action="{{ action('ProjectController@index') }}" class="form-inline">
+                @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
                 <label>Status</label>
                 <select name="status" class="form-control" onchange="this.form.submit()">
                     <option value="" @if(!$status) selected @endif>All</option>
@@ -32,7 +34,7 @@
             @forelse($projects as $p)
             <div class="box box-default">
                 <div class="box-header with-border">
-                    <h3 class="box-title">{{ $p->title }}</h3>
+                    <h3 class="box-title">{{ $p->title }} <span class="label label-default">{{ $p->store ? ($storeLabels[$p->store] ?? $p->store) : 'Both stores' }}</span></h3>
                     <div class="box-tools">
                         @include('tasks.partials.status_dropdown', ['action' => action('ProjectController@updateStatus', $p->id), 'status' => $p->status])
                         <a href="{{ action('ProjectController@edit', $p->id) }}" class="btn btn-xs btn-default"><i class="fa fa-edit"></i></a>

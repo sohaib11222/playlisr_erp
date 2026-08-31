@@ -9,6 +9,13 @@ use Illuminate\Http\Request;
 
 class ProjectController extends Controller
 {
+    // Same store keys/labels as StoreTaskController (employee_tasks board) /
+    // TaskController (weekly tasks).
+    const STORE_LABELS = [
+        'pico'      => 'Pico',
+        'hollywood' => 'Hollywood',
+    ];
+
     protected $businessUtil;
 
     public function __construct(BusinessUtil $businessUtil)
@@ -21,6 +28,7 @@ class ProjectController extends Controller
         $business_id = $request->session()->get('user.business_id');
 
         $status = $request->input('status');
+        $store = $request->input('store');
 
         $query = Project::with(['creator', 'startedBy', 'completedBy', 'contributors'])
             ->where('business_id', $business_id);
@@ -28,15 +36,20 @@ class ProjectController extends Controller
         if (!empty($status)) {
             $query->where('status', $status);
         }
+        if (!empty($store)) {
+            $query->where('store', $store);
+        }
 
         $projects = $query->orderByDesc('created_at')->paginate(50)->appends($request->except('page'));
+        $storeLabels = self::STORE_LABELS;
 
-        return view('projects.index', compact('projects', 'status'));
+        return view('projects.index', compact('projects', 'status', 'store', 'storeLabels'));
     }
 
     public function create(Request $request)
     {
-        return view('projects.create');
+        $storeLabels = self::STORE_LABELS;
+        return view('projects.create', compact('storeLabels'));
     }
 
     public function store(Request $request)
@@ -46,6 +59,7 @@ class ProjectController extends Controller
         $data = $request->validate([
             'title' => 'required|string|max:200',
             'description' => 'nullable|string',
+            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
         $data['business_id'] = $business_id;
@@ -65,7 +79,8 @@ class ProjectController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $project = Project::with('contributors')->where('business_id', $business_id)->findOrFail($id);
-        return view('projects.edit', compact('project'));
+        $storeLabels = self::STORE_LABELS;
+        return view('projects.edit', compact('project', 'storeLabels'));
     }
 
     public function update($id, Request $request)
@@ -77,6 +92,7 @@ class ProjectController extends Controller
             'title' => 'required|string|max:200',
             'description' => 'nullable|string',
             'status' => 'required|in:not_started,in_progress,complete',
+            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
         $this->applyStatusTransition($project, $data['status']);
