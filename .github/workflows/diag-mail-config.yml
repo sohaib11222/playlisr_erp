@@ -66,4 +66,21 @@ jobs:
             grep "^MAIL_HOST=" .env
             grep "^MAIL_PORT=" .env
             grep "^MAIL_ENCRYPTION=" .env
+            echo "=== OFFER_MAIL_* keys present? ==="
+            for key in OFFER_MAIL_HOST OFFER_MAIL_PORT OFFER_MAIL_ENCRYPTION OFFER_MAIL_USERNAME OFFER_MAIL_PASSWORD; do
+              line=$(grep "^${key}=" .env)
+              if [ -z "$line" ]; then
+                echo "$key: MISSING"
+              else
+                val="${line#*=}"
+                echo "$key: SET (len=${#val})"
+              fi
+            done
+            echo "=== .env line 4 (key name + length only, value redacted) ==="
+            line4=$(sed -n '4p' .env)
+            key4="${line4%%=*}"
+            val4="${line4#*=}"
+            echo "key: [$key4] valuelen=${#val4}"
+            echo "=== does .env parse under Laravel's own dotenv (not strict parse_ini_file)? ==="
+            php artisan tinker --execute="echo config('app.name');" 2>&1 | tail -5
             echo "=== done ==="
