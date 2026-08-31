@@ -1465,6 +1465,15 @@ class ProductController extends Controller
 
             DB::commit();
 
+            // Real-time website push — this quick-stock action bypasses the
+            // normal update() save path, so without this the site wouldn't
+            // see the new quantity until the next scheduled POS sync pass.
+            try {
+                (new \App\Services\NivessaStockNotifier())->push([(int) $product->id]);
+            } catch (\Throwable $pushEx) {
+                Log::warning('Set current stock website push failed: ' . $pushEx->getMessage());
+            }
+
             // Return saved values so frontend can update UI and user can verify response
             $saved_stock = [];
             foreach ($current_stock as $location_id => $variations) {
