@@ -86,6 +86,29 @@ body.merge-v2 .content { padding: 0 16px 60px; }
     </div>
 
     <div class="mg-card">
+        <h2>Possible duplicates by title (not barcode)</h2>
+        <p class="sub">Catches a re-entered product even when the SKU is missing or typed differently — matches by title (case/punctuation/word-order-insensitive) within the same category. Checked for a given entry year against active products with stock still on hand. This is a superset of the barcode scan above and can include false positives, so review each one before merging — nothing below is merged automatically. Merch categories (Apparel, Toys, Gift Items, etc.) are excluded; generic catch-all names there (e.g. "T-Shirt") aren't real duplicates.</p>
+        <div class="mg-row">
+            <div class="mg-field" style="flex: 0 1 160px;">
+                <label>Entry year</label>
+                <input type="text" id="ndYear" value="2024" autocomplete="off">
+            </div>
+        </div>
+        <div class="mg-actions">
+            <button class="mg-btn mg-btn-ghost" id="ndScanBtn" type="button">Scan by title</button>
+        </div>
+        <div id="ndResult" style="display:none;margin-top:18px;">
+            <div class="mg-note" id="ndSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
+            <div class="mg-compare" style="display:block;margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table>
+                    <thead><tr><th>Entered {{ '' }}<span id="ndYearLabel"></span></th><th>Category</th><th>Possible match(es)</th></tr></thead>
+                    <tbody id="ndRows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="mg-card">
         <h2>Or merge the whole catalog</h2>
         <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price and totaling stock + units sold onto it. Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
@@ -258,6 +281,62 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         bulkBtn.disabled = true;
         document.getElementById('mgBulkProgress').textContent = 'Starting…';
         runBulkBatch(0);
+    });
+
+    // ---- Name-only duplicate scan (by entry year) ----
+    var ndScanBtn = document.getElementById('ndScanBtn');
+    var ndResult = document.getElementById('ndResult');
+    var ndYearInput = document.getElementById('ndYear');
+    var prodUrl2 = function (id) { return '{{ url('/products') }}/' + id + '/edit'; };
+    var link2 = function (name, sku, id) {
+        return '<a href="' + prodUrl2(id) + '" target="_blank" rel="noopener" style="color:#1F1B16;text-decoration:underline;">' + esc(name) + '</a>'
+            + ' <small style="color:#8E8273">(SKU ' + esc(sku) + ')</small>';
+    };
+
+    ndScanBtn.addEventListener('click', function () {
+        clearMsg();
+        ndResult.style.display = 'none';
+        var year = (ndYearInput.value || '').trim() || '2024';
+        ndScanBtn.disabled = true;
+        ndScanBtn.textContent = 'Scanning…';
+        fetch('{{ route('products.merge.name-duplicates') }}?year=' + encodeURIComponent(year) + '&limit=1500', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            ndScanBtn.disabled = false;
+            ndScanBtn.textContent = 'Scan by title';
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            document.getElementById('ndYearLabel').textContent = d.year;
+            var summary = d.flagged_count + ' item(s) entered in ' + d.year + ' with stock on hand share a title with another product.';
+            if (d.flagged_count > d.preview.length) { summary += ' Showing first ' + d.preview.length + '.'; }
+            document.getElementById('ndSummary').textContent = summary;
+            var rows = d.preview.map(function (item) {
+                var matchesHtml = item.matches.map(function (m) {
+                    return '<div style="margin-bottom:6px;">' + link2(m.name, m.sku, m.id)
+                        + (m.created_date ? ' <small style="color:#8E8273">' + esc(m.created_date) + '</small>' : '')
+                        + ' <button class="mg-btn mg-btn-ghost" style="height:28px;padding:0 10px;font-size:12.5px;margin-left:6px;" data-keep="' + m.id + '" data-merge="' + item.id + '">Review &amp; merge</button>'
+                        + '</div>';
+                }).join('');
+                return '<tr>' +
+                    '<td>' + link2(item.name, item.sku, item.id) + '<br><small style="color:#8E8273">' + esc(item.created_date) + ' · stock ' + num(item.stock) + '</small></td>' +
+                    '<td>' + esc(item.category) + '</td>' +
+                    '<td>' + matchesHtml + '</td></tr>';
+            }).join('');
+            document.getElementById('ndRows').innerHTML = rows || '<tr><td colspan="3">No title duplicates found for that year.</td></tr>';
+            ndResult.style.display = 'block';
+        }).catch(function () {
+            ndScanBtn.disabled = false;
+            ndScanBtn.textContent = 'Scan by title';
+            showMsg('Scan failed — try again.', false);
+        });
+    });
+
+    document.getElementById('ndRows').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-keep]');
+        if (!btn) return;
+        document.getElementById('mgKeep').value = btn.getAttribute('data-keep');
+        document.getElementById('mgMerge').value = btn.getAttribute('data-merge');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        previewBtn.click();
     });
 })();
 </script>
