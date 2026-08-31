@@ -5825,6 +5825,43 @@ class ProductController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
 
+        // Optional: full row-by-row detail for ONE product, including stock
+        // at a location the product isn't even assigned to (product_locations)
+        // — those are invisible in the "Set current stock" dialog (it only
+        // loops the product's own locations) but still counted in the list's
+        // current_stock total, so they can silently inflate/hide stock with
+        // no UI path to see or fix them.
+        $productId = (int) $request->input('product_id', 0);
+        if ($productId > 0) {
+            $product = DB::table('products')->where('business_id', $business_id)->where('id', $productId)->first();
+            if (!$product) {
+                return response()->json(['success' => false, 'msg' => 'Product not found.'], 404);
+            }
+            $assignedLocIds = DB::table('product_locations')->where('product_id', $productId)->pluck('location_id')->map(function ($v) { return (int) $v; })->all();
+            $locNames = DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id');
+            $rows = DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->where('v.product_id', $productId)
+                ->whereNull('v.deleted_at')
+                ->select('vld.id', 'vld.variation_id', 'vld.location_id', 'vld.qty_available', 'vld.updated_at')
+                ->orderBy('vld.location_id')
+                ->get()
+                ->map(function ($r) use ($assignedLocIds, $locNames) {
+                    return [
+                        'vld_id' => (int) $r->id, 'variation_id' => (int) $r->variation_id,
+                        'location_id' => (int) $r->location_id, 'location_name' => $locNames[(int) $r->location_id] ?? ('#' . $r->location_id),
+                        'assigned_to_product' => in_array((int) $r->location_id, $assignedLocIds, true),
+                        'qty_available' => (float) $r->qty_available, 'updated_at' => (string) $r->updated_at,
+                    ];
+                });
+            return response()->json([
+                'success' => true, 'product_id' => $productId, 'name' => $product->name,
+                'sum_all_locations' => (float) $rows->sum('qty_available'),
+                'sum_assigned_locations_only' => (float) $rows->where('assigned_to_product', true)->sum('qty_available'),
+                'rows' => $rows,
+            ]);
+        }
+
         $dupes = DB::table('variation_location_details as vld')
             ->join('variations as v', 'v.id', '=', 'vld.variation_id')
             ->join('products as p', 'p.id', '=', 'v.product_id')
