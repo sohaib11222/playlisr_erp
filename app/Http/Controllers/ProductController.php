@@ -5904,6 +5904,50 @@ class ProductController extends Controller
             ]);
         }
 
+        // Sarah's exact question: of the products that have an orphaned
+        // (invisible) stock row, how many ALSO have a row at an actually-
+        // assigned location sitting at exactly 0 — i.e. she zeroed it
+        // through "Set current stock" like she intended, it just didn't
+        // stick because of the orphan elsewhere. This is the precise count
+        // of "I set this to 0 and it's not actually 0."
+        if (filter_var($request->input('zeroed_but_not'), FILTER_VALIDATE_BOOLEAN)) {
+            $orphanProductIds = DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->where('p.business_id', $business_id)
+                ->whereNull('v.deleted_at')
+                ->where('vld.qty_available', '<>', 0)
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))->from('product_locations as pl')
+                        ->whereColumn('pl.product_id', 'p.id')
+                        ->whereColumn('pl.location_id', 'vld.location_id');
+                })
+                ->select('p.id')->distinct()->pluck('id');
+
+            $matches = DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->join('product_locations as pl', function ($j) {
+                    $j->on('pl.product_id', '=', 'p.id')->on('pl.location_id', '=', 'vld.location_id');
+                })
+                ->whereIn('p.id', $orphanProductIds)
+                ->whereNull('v.deleted_at')
+                ->where('vld.qty_available', '=', 0)
+                ->select('p.id as product_id', 'p.name', 'p.sku', 'vld.location_id', 'vld.updated_at')
+                ->orderByDesc('vld.updated_at')
+                ->get()
+                ->unique('product_id');
+
+            return response()->json([
+                'success' => true,
+                'orphan_product_count' => $orphanProductIds->count(),
+                'zeroed_but_not_actually_zero_count' => $matches->count(),
+                'sample' => $matches->take(100)->map(function ($r) {
+                    return ['product_id' => (int) $r->product_id, 'name' => $r->name, 'sku' => $r->sku, 'zeroed_updated_at' => (string) $r->updated_at];
+                }),
+            ]);
+        }
+
         // Catalog-wide: stock rows sitting at a location the product isn't
         // assigned to (product_locations) — invisible in the product edit
         // page and the "Set current stock" dialog (both only loop the
