@@ -37,7 +37,7 @@ class OfferLetterMailer
             ->setTo([$toEmail])
             ->setCc([$username => 'Sarah Hedvat'])
             ->setBody($html, 'text/html')
-            ->attach(\Swift_Attachment::newInstance($pdfBinary, $pdfFilename, 'application/pdf'));
+            ->attach(new \Swift_Attachment($pdfBinary, $pdfFilename, 'application/pdf'));
 
         $sent = $mailer->send($message, $failures);
         if (!$sent) {
