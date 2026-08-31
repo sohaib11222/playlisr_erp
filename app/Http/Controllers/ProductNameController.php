@@ -533,17 +533,20 @@ class ProductNameController extends Controller
      * Walk the catalog and split into: to-fix (confident, off-standard) and
      * flagged (needs manual). Returns counts + a capped preview of to-fix.
      */
-    protected function computeChanges($business_id, $collectFixes = true, $limit = null)
+    protected function computeChanges($business_id, $collectFixes = true, $limit = null, array $filters = [])
     {
         $fixes = [];
         $toFix = 0;
         $flagged = 0;
         $compliant = 0;
 
-        \DB::table('products')
+        $q = \DB::table('products')
             ->where('business_id', $business_id)
-            ->select('id', 'name', 'artist')
-            ->orderBy('id')
+            ->select('id', 'name', 'artist');
+        if (!empty($filters['created_by'])) { $q->where('created_by', (int) $filters['created_by']); }
+        if (!empty($filters['start_date'])) { $q->where('created_at', '>=', $filters['start_date'] . ' 00:00:00'); }
+        if (!empty($filters['end_date'])) { $q->where('created_at', '<', $filters['end_date'] . ' 00:00:00'); }
+        $q->orderBy('id')
             ->chunk(2000, function ($rows) use (&$fixes, &$toFix, &$flagged, &$compliant, $collectFixes, $limit) {
                 foreach ($rows as $r) {
                     $res = ProductNameNormalizer::canonical($r->artist, $r->name);
@@ -568,7 +571,7 @@ class ProductNameController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         try {
-            $data = $this->computeChanges($business_id, true, 300);
+            $data = $this->computeChanges($business_id, true, 300, $this->scopeFromRequest($request));
         } catch (\Throwable $e) {
             \Log::error('product-name-cleanup scan failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => 'Scan failed: ' . $e->getMessage()]);
@@ -598,13 +601,17 @@ class ProductNameController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $max = (int) $request->input('max', 500);
         if ($max < 1) { $max = 500; }
+        $filterScope = $this->scopeFromRequest($request);
 
         // Gather this batch of confident, off-standard products.
         $batch = [];
-        \DB::table('products')
+        $q = \DB::table('products')
             ->where('business_id', $business_id)
-            ->select('id', 'name', 'artist')
-            ->orderBy('id')
+            ->select('id', 'name', 'artist');
+        if (!empty($filterScope['created_by'])) { $q->where('created_by', (int) $filterScope['created_by']); }
+        if (!empty($filterScope['start_date'])) { $q->where('created_at', '>=', $filterScope['start_date'] . ' 00:00:00'); }
+        if (!empty($filterScope['end_date'])) { $q->where('created_at', '<', $filterScope['end_date'] . ' 00:00:00'); }
+        $q->orderBy('id')
             ->chunk(2000, function ($rows) use (&$batch, $max) {
                 foreach ($rows as $r) {
                     $res = ProductNameNormalizer::canonical($r->artist, $r->name);
@@ -654,7 +661,7 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Rename failed — nothing was changed.']);
         }
 
-        $remaining = $this->computeChanges($business_id, false)['to_fix'];
+        $remaining = $this->computeChanges($business_id, false, null, $filterScope)['to_fix'];
 
         return response()->json([
             'success' => true,
