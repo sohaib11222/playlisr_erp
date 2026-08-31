@@ -92,7 +92,7 @@
                                                 <tr>
                                                     <th style="width:80px;padding-left:32px;">Product ID</th>
                                                     <th>Name</th>
-                                                    <th style="text-align:right;width:140px;">Current stock</th>
+                                                    <th style="text-align:right;width:140px;">{{ $mode === 'commit' ? 'Stock cleared' : 'Current stock' }}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
