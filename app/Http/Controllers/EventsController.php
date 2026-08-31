@@ -250,24 +250,6 @@ class EventsController extends Controller
             'cdCounts'       => $counts['cd'],
             'storeCounts'    => $counts['store'] ?? [],
             'toOrder'        => $this->toOrderList($orderableUpcoming, $counts['store'] ?? []),
-            'debugToOrderDump' => $request->input('debugToOrder') === '1' ? (function () use ($orderableUpcoming, $counts) {
-                $imm = null;
-                foreach ($orderableUpcoming as $e) {
-                    if (stripos((string) ($e['name'] ?? ''), 'imminence') !== false) { $imm = $e; break; }
-                }
-                if (!$imm) { return ['found' => false]; }
-                $k = self::normName($imm['name'] ?? '');
-                $dem = ($counts['store'] ?? [])[$k] ?? null;
-                return [
-                    'found'      => true,
-                    'name'       => $imm['name'] ?? '',
-                    'eventType'  => $imm['eventType'] ?? '',
-                    'normKey'    => $k,
-                    'dem'        => $dem,
-                    'ordered'    => $imm['ordered'] ?? null,
-                    'location'   => $imm['location'] ?? null,
-                ];
-            })() : null,
             'publishedMap'   => $this->publishedMap(),
             'bridgeProbe'    => $this->bridgeProbe(),
             'bridgeKeySet'   => $this->erpApiKey() !== '',
