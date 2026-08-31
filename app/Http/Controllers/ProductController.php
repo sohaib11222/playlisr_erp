@@ -5869,28 +5869,44 @@ class ProductController extends Controller
         // Found via product 716 (Kanye West - Graduation): 54 units parked at
         // hollywood though the product is pico-only, untouched since 8/12.
         if (filter_var($request->input('orphans'), FILTER_VALIDATE_BOOLEAN)) {
-            $orphans = DB::table('variation_location_details as vld')
-                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
-                ->join('products as p', 'p.id', '=', 'v.product_id')
-                ->where('p.business_id', $business_id)
-                ->whereNull('v.deleted_at')
-                ->where('vld.qty_available', '<>', 0)
-                ->whereNotExists(function ($q) {
-                    $q->select(DB::raw(1))->from('product_locations as pl')
-                        ->whereColumn('pl.product_id', 'p.id')
-                        ->whereColumn('pl.location_id', 'vld.location_id');
-                })
+            $base = function () use ($business_id) {
+                return DB::table('variation_location_details as vld')
+                    ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                    ->join('products as p', 'p.id', '=', 'v.product_id')
+                    ->where('p.business_id', $business_id)
+                    ->whereNull('v.deleted_at')
+                    ->where('vld.qty_available', '<>', 0)
+                    ->whereNotExists(function ($q) {
+                        $q->select(DB::raw(1))->from('product_locations as pl')
+                            ->whereColumn('pl.product_id', 'p.id')
+                            ->whereColumn('pl.location_id', 'vld.location_id');
+                    });
+            };
+
+            $trueRowCount = (clone $base())->count();
+            $trueQtyTotal = (clone $base())->sum('vld.qty_available');
+            // Bucket by day so a recurring job (nightly sync, etc.) shows up as
+            // repeated spikes rather than one big number.
+            $byDay = (clone $base())
+                ->select(DB::raw('DATE(vld.updated_at) as d'), DB::raw('COUNT(*) as n'), DB::raw('SUM(vld.qty_available) as qty'))
+                ->groupBy(DB::raw('DATE(vld.updated_at)'))
+                ->orderByDesc('d')
+                ->limit(30)
+                ->get();
+
+            $orphans = $base()
                 ->select('vld.id as vld_id', 'vld.location_id', 'vld.qty_available', 'vld.updated_at',
                     'p.id as product_id', 'p.name', 'p.sku', 'p.is_inactive')
                 ->orderByDesc('vld.qty_available')
-                ->limit(1000)
+                ->limit(50)
                 ->get();
 
             return response()->json([
                 'success' => true,
-                'orphan_row_count' => $orphans->count(),
-                'orphan_qty_total' => (float) $orphans->sum('qty_available'),
-                'sample' => $orphans->take(50)->map(function ($r) {
+                'orphan_row_count' => $trueRowCount,
+                'orphan_qty_total' => (float) $trueQtyTotal,
+                'by_day' => $byDay,
+                'sample' => $orphans->map(function ($r) {
                     return [
                         'product_id' => (int) $r->product_id, 'name' => $r->name, 'sku' => $r->sku,
                         'is_inactive' => (int) $r->is_inactive, 'location_id' => (int) $r->location_id,
