@@ -75,6 +75,9 @@
                     <button type="button" class="btn btn-primary btn-sm" id="btn_set_current_stock_quick">
                         @lang('messages.update') @lang('product.set_current_stock')
                     </button>
+                    <button type="button" class="btn btn-danger btn-sm" id="btn_zero_stock_instant" data-id="{{ $product->id }}">
+                        <i class="fa fa-ban"></i> Zero Stock (Instant)
+                    </button>
                     <a href="{{ action('ProductController@index') }}" class="btn btn-default btn-sm">
                         @lang('messages.close')
                     </a>
@@ -138,6 +141,39 @@
         $('#btn_set_current_stock_quick').on('click', function (e) {
             e.preventDefault();
             runSetCurrentStockQuick();
+        });
+
+        $('#btn_zero_stock_instant').on('click', function (e) {
+            e.preventDefault();
+            var $btn = $(this);
+            var productId = $btn.data('id');
+
+            if (!confirm('Zero out ALL stock for this product, right now, on the ERP and the website? This is reversible from Admin Action History.')) {
+                return;
+            }
+
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/products/' + productId + '/zero-stock',
+                type: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                dataType: 'json',
+                success: function (data) {
+                    if (data.success) {
+                        toastr.success(data.msg || 'Stock zeroed.');
+                        setTimeout(function () {
+                            window.location.href = "{{ action('ProductController@index') }}";
+                        }, 800);
+                    } else {
+                        toastr.error(data.msg || '{{ __("messages.something_went_wrong") }}');
+                        $btn.prop('disabled', false);
+                    }
+                },
+                error: function () {
+                    toastr.error('{{ __("messages.something_went_wrong") }}');
+                    $btn.prop('disabled', false);
+                }
+            });
         });
     });
 </script>

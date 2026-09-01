@@ -1829,6 +1829,39 @@
             });
         });
 
+        $(document).on('click', '.zero-product-stock', function(e) {
+            e.preventDefault();
+            var $link = $(this);
+            var productId = $link.data('id');
+            var originalIcon = 'fa-ban';
+
+            if (!confirm('Zero out ALL stock for this product, right now, on the ERP and the website? This is reversible from Admin Action History.')) {
+                return;
+            }
+
+            var $icon = $link.find('i');
+            $icon.removeClass('fa-ban').addClass('fa-spinner fa-spin');
+            $link.css('pointer-events', 'none');
+
+            $.ajax({
+                url: '/products/' + productId + '/zero-stock',
+                method: 'POST',
+                data: {},
+                dataType: 'json'
+            }).done(function(result) {
+                if (result && result.success) {
+                    toastr.success(result.msg || 'Stock zeroed.');
+                } else {
+                    toastr.error((result && result.msg) || 'Failed to zero stock.');
+                }
+            }).fail(function(xhr) {
+                toastr.error('Request failed: ' + (xhr.statusText || xhr.status));
+            }).always(function() {
+                $icon.removeClass('fa-spinner fa-spin').addClass(originalIcon);
+                $link.css('pointer-events', '');
+            });
+        });
+
         $(document).on('click', '.list-to-discogs', function(e) {
             e.preventDefault();
             var $link = $(this);

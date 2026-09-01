@@ -288,6 +288,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/process-import-sold-items-from-file', 'ProductController@processImportSoldItemsFromFile')->name('products.processImportSoldItemsFromFile');
     Route::post('/products/{id}/set-current-stock', 'ProductController@setCurrentStock')->name('products.setCurrentStock');
     Route::get('/products/{id}/set-current-stock-quick', 'ProductController@setCurrentStockQuickPage')->name('products.setCurrentStockQuick');
+    // One-click zero stock, everywhere, instantly (ERP + website). Snapshot +
+    // undo via /admin/admin-action-history ('zero-single-product-stock').
+    Route::post('/products/{id}/zero-stock', 'ProductController@zeroStock')->name('products.zeroStock');
     Route::get('/admin/duplicate-stock-rows-scope', 'ProductController@duplicateStockRowsScope')->name('products.duplicateStockRowsScope');
     Route::post('/admin/backfill-orphaned-location-stock', 'ProductController@backfillOrphanedLocationStock')->name('products.backfillOrphanedLocationStock');
     Route::get('/admin/orphaned-stock-cleanup', 'ProductController@orphanedStockCleanupPage')->name('products.orphanedStockCleanup');

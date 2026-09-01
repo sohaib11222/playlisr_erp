@@ -666,6 +666,8 @@ class ProductController extends Controller
                             // Quick access: Set current stock (small dedicated page)
                             $html .= '<li class="divider"></li>';
                             $html .= '<li><a href="' . action('ProductController@setCurrentStockQuickPage', [$row->id]) . '"><i class="fa fa-balance-scale"></i> ' . __('product.set_current_stock') . '</a></li>';
+                            // One-click: zero stock everywhere, instantly (ERP + website), no waiting on the nightly sync
+                            $html .= '<li><a href="#" data-id="' . $row->id . '" class="zero-product-stock"><i class="fa fa-ban"></i> Zero Stock (Instant)</a></li>';
                         }
 
                         $html .= '</ul></div>';
@@ -1525,6 +1527,91 @@ class ProductController extends Controller
                 'msg'     => __('messages.something_went_wrong'),
             ], 500);
         }
+    }
+
+    /**
+     * One-click: zero out a single product's stock across every
+     * location/variation and push the change to the website immediately
+     * (same NivessaStockNotifier path setCurrentStock uses), instead of
+     * waiting on the nightly sync. Snapshots the before-quantities to
+     * storage/app/admin-snapshots so it's reversible via
+     * /admin/admin-action-history (action 'zero-single-product-stock').
+     */
+    public function zeroStock(Request $request, $id)
+    {
+        if (
+            !auth()->user()->can('product.update') &&
+            !auth()->user()->can('product.opening_stock') &&
+            !$this->productUtil->is_admin(auth()->user())
+        ) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $product = Product::where('business_id', $business_id)->where('id', $id)->first();
+
+        if (!$product) {
+            return response()->json(['success' => false, 'msg' => __('product.product_not_found')], 404);
+        }
+
+        if (empty($product->enable_stock)) {
+            return response()->json(['success' => false, 'msg' => __('product.manage_stock') . ' is disabled for this product.'], 422);
+        }
+
+        $rows = DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->where('v.product_id', $product->id)
+            ->where('vld.qty_available', '>', 0)
+            ->select('vld.id', 'vld.qty_available')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'msg' => 'Stock was already 0.', 'zeroed' => 0]);
+        }
+
+        $snapshotRows = $rows->map(function ($r) {
+            return ['id' => $r->id, 'qty_available' => $r->qty_available];
+        })->all();
+
+        try {
+            DB::beginTransaction();
+            foreach ($rows->pluck('id')->chunk(500) as $chunk) {
+                DB::table('variation_location_details')
+                    ->whereIn('id', $chunk->all())
+                    ->update(['qty_available' => 0, 'updated_at' => now()]);
+            }
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Zero stock failed for product ' . $id . ': ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => __('messages.something_went_wrong')], 500);
+        }
+
+        $snapshotKey = 'zero-single-product-stock-' . now()->format('Y-m-d_His') . '-p' . $product->id;
+        Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp'    => now()->toDateTimeString(),
+                'action'       => 'zero-single-product-stock',
+                'business_id'  => $business_id,
+                'product_id'   => (int) $product->id,
+                'product_name' => $product->name,
+                'rows'         => $snapshotRows,
+            ], JSON_PRETTY_PRINT)
+        );
+
+        try {
+            (new \App\Services\NivessaStockNotifier())->push([(int) $product->id]);
+        } catch (\Throwable $pushEx) {
+            Log::warning('Zero stock website push failed for product ' . $id . ': ' . $pushEx->getMessage());
+        }
+
+        return response()->json([
+            'success'      => true,
+            'msg'          => 'Stock zeroed for "' . $product->name . '" and pushed to the website instantly.',
+            'zeroed'       => count($snapshotRows),
+            'snapshot_key' => $snapshotKey,
+        ]);
     }
 
     /**
