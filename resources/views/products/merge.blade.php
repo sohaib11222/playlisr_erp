@@ -14,10 +14,10 @@ body.merge-v2 .content-wrapper { background: #FAF6EE !important; }
 body.merge-v2 .content-header { background: transparent; padding: 28px 16px 8px; }
 body.merge-v2 .content-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.2px; color: #1F1B16; margin: 0 0 6px; }
 body.merge-v2 .content { padding: 0 16px 60px; }
-.mg-wrap { max-width: 860px; }
+.mg-wrap { max-width: 1320px; }
 .mg-card { background: #fff; border: 1px solid #ECE3D2; border-radius: 16px; padding: 22px 22px 24px; box-shadow: 0 1px 2px rgba(31,27,22,.04); margin-bottom: 18px; }
-.mg-card h2 { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
-.mg-card p.sub { color: #8E8273; font-size: 13.5px; margin: 0 0 18px; }
+.mg-card h2 { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
+.mg-card p.sub { color: #8E8273; font-size: 15px; line-height: 1.5; margin: 0 0 18px; }
 .mg-row { display: flex; gap: 16px; flex-wrap: wrap; }
 .mg-field { flex: 1 1 320px; }
 .mg-field label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
@@ -31,9 +31,26 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 .mg-actions { margin-top: 18px; display: flex; gap: 10px; align-items: center; }
 .mg-compare { display: none; }
 .mg-compare table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-.mg-compare th, .mg-compare td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #F0E9DA; font-size: 14px; }
-.mg-compare th { color: #8E8273; font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .4px; }
-.mg-compare td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mg-compare th, .mg-compare td { text-align: left; padding: 16px 18px; border-bottom: 1px solid #F0E9DA; font-size: 16px; line-height: 1.5; vertical-align: top; }
+.mg-compare th { color: #8E8273; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; }
+.mg-compare td.num { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 17px; }
+.mg-scan-item { font-size: 16px; font-weight: 600; }
+.mg-scan-meta { display: block; margin-top: 4px; font-size: 14px; color: #8E8273; line-height: 1.6; }
+.mg-scan-price { display: block; margin-top: 4px; font-size: 15px; font-weight: 600; color: #1F1B16; }
+.mg-pair-card { background: #FFFBEF; border: 1px solid #F0E2B0; border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+.mg-pair-warn { display: inline-block; background: #FDECEA; color: #B71C1C; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+.mg-pair-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 720px) { .mg-pair-cols { grid-template-columns: 1fr; } }
+.mg-pair-box { background: #fff; border: 1px solid #ECE3D2; border-radius: 10px; padding: 14px 16px; }
+.mg-pair-box .mg-pair-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
+.mg-pair-box.keep .mg-pair-tag { background: #E8F5E9; color: #1B5E20; }
+.mg-pair-box.drop .mg-pair-tag { background: #FDECEA; color: #B71C1C; }
+.mg-pair-box .mg-pair-name { font-size: 17px; font-weight: 700; color: #1F1B16; line-height: 1.35; }
+.mg-pair-box .mg-pair-sku { font-size: 13px; color: #1F1B16; margin-top: 4px; }
+.mg-pair-box .mg-pair-price { font-size: 20px; font-weight: 800; color: #1F1B16; margin-top: 10px; }
+.mg-pair-box .mg-pair-cost { font-size: 14px; color: #1F1B16; margin-top: 2px; }
+.mg-pair-box .mg-pair-meta { font-size: 13px; color: #1F1B16; margin-top: 8px; line-height: 1.6; }
+.mg-pair-actions { margin-top: 14px; }
 .mg-after { background: #FFF9E3; }
 .mg-keep-tag { display: inline-block; background: #E8F5E9; color: #1B5E20; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
 .mg-drop-tag { display: inline-block; background: #FDECEA; color: #B71C1C; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
@@ -117,12 +134,22 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         </div>
         <div id="mgScanResult" style="display:none;margin-top:18px;">
             <div class="mg-note" id="mgScanSummary" style="margin-top:0;font-size:15px;color:#1F1B16;font-weight:600;"></div>
-            <div class="mg-compare" style="display:block;margin-top:10px;max-height:75vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
-                <table>
-                    <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Format</th><th>Merging in</th><th>Stock after merge</th><th>Combined sold</th></tr></thead>
-                    <tbody id="mgScanRows"></tbody>
-                </table>
+
+            <div id="mgMismatchWrap" style="display:none;margin-top:18px;">
+                <h3 style="font-size:16px;font-weight:700;margin:0 0 10px;color:#1F1B16;">Held back — needs your review ({{ '' }}<span id="mgMismatchCount"></span>)</h3>
+                <div id="mgMismatchList"></div>
             </div>
+
+            <div id="mgCleanWrap" style="display:none;margin-top:18px;">
+                <h3 style="font-size:16px;font-weight:700;margin:0 0 10px;color:#1F1B16;">Will merge automatically (exact barcode + price match)</h3>
+                <div class="mg-compare" style="display:block;margin-top:10px;max-height:60vh;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                    <table>
+                        <thead><tr><th>Keep (survivor)</th><th>Store</th><th>Format</th><th>Merging in</th><th>Stock after merge</th><th>Combined sold</th></tr></thead>
+                        <tbody id="mgScanRows"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="mg-actions">
                 <button class="mg-btn mg-btn-primary" id="mgBulkBtn" type="button">Merge all duplicates</button>
                 <span class="mg-note" id="mgBulkProgress" style="margin-top:0"></span>
@@ -231,32 +258,63 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             if (d.skipped > 0) { summary += ' ' + d.skipped + ' set(s) skipped (multiple variations — merge those manually).'; }
             if (d.price_mismatch_groups > 0) { summary += ' ' + d.price_mismatch_groups + ' set(s) held back — sell/cost price differs by 25%+ (possibly a valuable original pressing sharing a barcode with a cheaper reissue). Marked below; merge those individually above after checking prices.'; }
             document.getElementById('mgScanSummary').textContent = summary;
-            var money = function (v) { return (v === null || v === undefined) ? '' : '$' + Number(v).toFixed(2); };
-            var by = function (x) {
-                var color = '#8E8273';
+            var money = function (v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); };
+            var meta = function (x) {
                 var bits = [];
-                if (x.sell_price !== null && x.sell_price !== undefined) { bits.push(money(x.sell_price) + ' sell'); }
-                if (x.purchase_price !== null && x.purchase_price !== undefined) { bits.push(money(x.purchase_price) + ' cost'); }
                 if (x.created_date) { bits.push(esc(x.created_date)); }
                 if (x.creator) { bits.push('by ' + esc(x.creator)); }
-                if (!bits.length) { return ''; }
-                return '<br><small style="color:' + color + '">' + bits.join(' · ') + '</small>';
+                return bits.join(' · ');
             };
             var prodUrl = function (id) { return '{{ url('/products') }}/' + id + '/edit'; };
             var link = function (x) {
                 return '<a href="' + prodUrl(x.id) + '" target="_blank" rel="noopener" style="color:#1F1B16;text-decoration:underline;">' + esc(x.name) + '</a>'
-                    + ' <small style="color:#8E8273">(SKU ' + esc(x.sku) + ')</small>';
+                    + ' <small style="color:#1F1B16">(SKU ' + esc(x.sku) + ')</small>';
             };
-            var rows = d.preview.map(function (g) {
-                var mergeNames = g.merge_in.map(function (m) {
-                    var btn = g.price_mismatch
-                        ? ' <button class="mg-btn mg-btn-ghost" style="height:26px;padding:0 10px;font-size:12px;margin-left:6px;" data-keep="' + g.keep.id + '" data-merge="' + m.id + '">Review &amp; merge</button>'
-                        : '';
-                    return link(m) + by(m) + btn;
-                }).join('<br>');
-                var warn = g.price_mismatch
-                    ? '<div class="mg-drop-tag" style="margin:0 0 6px;">PRICE MISMATCH — not auto-merged, review each pair below</div>' : '';
-                return '<tr' + (g.price_mismatch ? ' style="background:#FFFBEF;"' : '') + '><td>' + warn + link(g.keep) + by(g.keep) + '</td>' +
+            var by = function (x) {
+                var bits = [];
+                if (x.sell_price !== null && x.sell_price !== undefined) { bits.push(money(x.sell_price) + ' sell'); }
+                if (x.purchase_price !== null && x.purchase_price !== undefined) { bits.push(money(x.purchase_price) + ' cost'); }
+                var m = meta(x);
+                if (m) { bits.push(m); }
+                if (!bits.length) { return ''; }
+                return '<br><small style="color:#1F1B16">' + bits.join(' · ') + '</small>';
+            };
+
+            var cleanGroups = d.preview.filter(function (g) { return !g.price_mismatch; });
+            var mismatchGroups = d.preview.filter(function (g) { return g.price_mismatch; });
+
+            // ---- Held-back groups: one clearly-labeled KEEP-vs-MERGE card per pair ----
+            var cardBox = function (x, kind) {
+                var tagText = kind === 'keep' ? 'KEEP' : 'MERGE IN → DEACTIVATE';
+                var m = meta(x);
+                return '<div class="mg-pair-box ' + kind + '">' +
+                    '<span class="mg-pair-tag">' + tagText + '</span>' +
+                    '<div class="mg-pair-name"><a href="' + prodUrl(x.id) + '" target="_blank" rel="noopener" style="color:#1F1B16;">' + esc(x.name) + '</a></div>' +
+                    '<div class="mg-pair-sku">SKU ' + esc(x.sku) + '</div>' +
+                    '<div class="mg-pair-price">' + money(x.sell_price) + ' <span style="font-size:13px;font-weight:600;">sell</span></div>' +
+                    '<div class="mg-pair-cost">' + money(x.purchase_price) + ' cost</div>' +
+                    (m ? '<div class="mg-pair-meta">' + m + '</div>' : '') +
+                    '</div>';
+            };
+            var mismatchHtml = mismatchGroups.map(function (g) {
+                return g.merge_in.map(function (m) {
+                    var sp1 = g.keep.sell_price, sp2 = m.sell_price;
+                    var pct = (sp1 && sp2 && sp1 > 0 && sp2 > 0) ? Math.round(Math.abs(sp1 - sp2) / Math.max(sp1, sp2) * 100) : null;
+                    return '<div class="mg-pair-card">' +
+                        '<span class="mg-pair-warn">' + (pct !== null ? 'SELL PRICE DIFFERS ' + pct + '%' : 'PRICE MISMATCH') + ' — ' + esc(g.store) + ' · ' + esc(g.category) + '</span>' +
+                        '<div class="mg-pair-cols">' + cardBox(g.keep, 'keep') + cardBox(m, 'drop') + '</div>' +
+                        '<div class="mg-pair-actions"><button class="mg-btn mg-btn-primary" style="height:38px;padding:0 16px;font-size:13.5px;" data-keep="' + g.keep.id + '" data-merge="' + m.id + '">Review &amp; merge these two</button></div>' +
+                        '</div>';
+                }).join('');
+            }).join('');
+            document.getElementById('mgMismatchCount').textContent = mismatchGroups.length;
+            document.getElementById('mgMismatchList').innerHTML = mismatchHtml || '<p class="mg-note" style="margin-top:0">None.</p>';
+            document.getElementById('mgMismatchWrap').style.display = mismatchGroups.length ? 'block' : 'none';
+
+            // ---- Clean groups: auto-merge table, unchanged compact format ----
+            var rows = cleanGroups.map(function (g) {
+                var mergeNames = g.merge_in.map(function (m) { return link(m) + by(m); }).join('<br>');
+                return '<tr><td>' + link(g.keep) + by(g.keep) + '</td>' +
                     '<td>' + esc(g.store) + '</td>' +
                     '<td>' + esc(g.category) + '</td>' +
                     '<td>' + mergeNames + '</td>' +
@@ -264,9 +322,11 @@ body.merge-v2 .content { padding: 0 16px 60px; }
                     '<td class="num">' + num(g.combined_sold) + '</td></tr>';
             }).join('');
             if (d.total_groups > d.preview.length) {
-                rows += '<tr><td colspan="6" style="color:#8E8273">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown. Sets flagged PRICE MISMATCH are never included in the automatic sweep.</td></tr>';
+                rows += '<tr><td colspan="6" style="color:#1F1B16">… and ' + (d.total_groups - d.preview.length) + ' more set(s) not shown.</td></tr>';
             }
-            document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="6">No duplicates found.</td></tr>';
+            document.getElementById('mgScanRows').innerHTML = rows || '<tr><td colspan="6">None.</td></tr>';
+            document.getElementById('mgCleanWrap').style.display = cleanGroups.length ? 'block' : 'none';
+
             bulkBtn.style.display = d.total_merges > 0 ? '' : 'none';
             scanResult.style.display = 'block';
         }).catch(function () {
@@ -360,10 +420,10 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         previewBtn.click();
     });
 
-    // Price-mismatch rows in the whole-catalog scan: "Review & merge" jumps
+    // Held-back (price-mismatch) cards: "Review & merge these two" jumps
     // straight to the Preview card above with both products already filled
     // in, instead of making Sarah copy SKUs by hand.
-    document.getElementById('mgScanRows').addEventListener('click', function (e) {
+    document.getElementById('mgMismatchList').addEventListener('click', function (e) {
         var btn = e.target.closest('button[data-keep]');
         if (!btn) return;
         document.getElementById('mgKeep').value = btn.getAttribute('data-keep');
