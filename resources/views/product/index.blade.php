@@ -1851,6 +1851,7 @@
             }).done(function(result) {
                 if (result && result.success) {
                     toastr.success(result.msg || 'Stock zeroed.');
+                    if (typeof product_table !== 'undefined') { product_table.ajax.reload(null, false); }
                 } else {
                     toastr.error((result && result.msg) || 'Failed to zero stock.');
                 }
