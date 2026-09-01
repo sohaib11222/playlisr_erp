@@ -6088,6 +6088,22 @@ class ProductController extends Controller
     }
 
     /**
+     * Owner-only page with a button to run backfillOrphanedLocationStock().
+     * The endpoint existed but had no UI to trigger it, so the 1,114-row
+     * backlog (see backfillOrphanedLocationStock docblock) was never
+     * actually cleaned up — leaving some products still showing in stock on
+     * nivessa.com after being zeroed out in "Set current stock" here.
+     */
+    public function orphanedStockCleanupPage(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') {
+            abort(403, 'Owner-only.');
+        }
+        return view('products.orphaned-stock-cleanup');
+    }
+
+    /**
      * Delete every EXISTING orphaned stock row (found by the ?orphans=1 scan
      * above) — root cause was updateProductLocation()'s "remove" path never
      * clearing stock when a location was unassigned, now fixed there. This

@@ -324,6 +324,11 @@ class AdminSidebarMenu
                                 'Name Cleanup',
                                 ['icon' => 'fa fas fa-font', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'name-cleanup']
                             );
+                            $sub->url(
+                                route('products.orphanedStockCleanup'),
+                                'Orphaned Stock Cleanup',
+                                ['icon' => 'fa fas fa-eraser', 'active' => request()->segment(1) == 'admin' && request()->segment(2) == 'orphaned-stock-cleanup']
+                            );
                         }
                         if (auth()->user()->can('product.create')) {
                             $sub->url(
