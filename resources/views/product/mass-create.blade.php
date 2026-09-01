@@ -1557,6 +1557,24 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                         toastr.success(response.msg);
                         // toastr.success already triggers the gentle chime via
                         // common.js — no extra .play() needed (it'd be loud).
+
+                        // Duplicate-barcode guard: rows skipped because their
+                        // SKU/barcode already belongs to an existing product.
+                        // Nothing was auto-merged — staff add stock to the
+                        // existing listing instead. Show each one so it's not
+                        // silently lost, and hold the redirect long enough to
+                        // actually be seen.
+                        var skippedDupes = response.duplicates_skipped || [];
+                        skippedDupes.forEach(function (d) {
+                            toastr.warning(
+                                'Row ' + d.row + ' "' + d.name + '" (SKU ' + d.sku + ') already exists as "' +
+                                d.existing_product_name + '" — skipped. Open it and add stock instead: ' +
+                                d.existing_product_url,
+                                'Duplicate skipped',
+                                { timeOut: 0, extendedTimeOut: 0 }
+                            );
+                        });
+
                         const product_ids = response.product_ids;
                         var fromPurchase = window !== window.top && /from_purchase=1/.test(window.location.search);
                         if (fromPurchase && product_ids && product_ids.length) {
@@ -1575,7 +1593,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                             } else {
                                 window.location.href = `/products`;
                             }
-                        }, 300);
+                        }, skippedDupes.length ? 2500 : 300);
                     } else {
                         toastr.error('Error: ' + (response.error || response.msg));
                         document.getElementById('error-audio').play();

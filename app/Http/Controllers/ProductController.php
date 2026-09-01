@@ -4027,6 +4027,8 @@ class ProductController extends Controller
         $transactionDate = \Carbon::createFromFormat('Y-m-d', $transactionDate)->toDateTimeString();
 
         $createdProducts = [];
+        $duplicatesSkipped = [];
+        $dupService = app(\App\Services\ProductDuplicateService::class);
         $currentRow = null;
         $currentName = null;
         try {
@@ -4042,6 +4044,34 @@ class ProductController extends Controller
 
                 if (!empty($productData['id'])) {
                     $product = Product::where('id', $productId)->first();
+                }
+
+                // Duplicate-barcode guard — mass/Discogs add is a common source
+                // of the same barcode getting entered as a second, independent
+                // product row (a different staff member not realizing it's
+                // already in the catalog). Same check as the single-product
+                // create form (ProductDuplicateService), just applied per row
+                // here. A hit skips creating that row instead of failing the
+                // whole batch — the rest of the rows still go through.
+                if (empty($product) && !empty($productData['sku'])) {
+                    $conflict = $dupService->findConflict(
+                        $businessId,
+                        $productData['name'] ?? '',
+                        $productData['artist'] ?? '',
+                        $productData['sku']
+                    );
+                    if (!empty($conflict)) {
+                        $existing = $conflict['product'];
+                        $duplicatesSkipped[] = [
+                            'row' => $index + 1,
+                            'name' => $currentName,
+                            'sku' => trim((string) $productData['sku']),
+                            'existing_product_id' => (int) $existing->id,
+                            'existing_product_name' => $existing->name,
+                            'existing_product_url' => action('ProductController@view', ['id' => $existing->id]),
+                        ];
+                        continue;
+                    }
                 }
                 // Обработка загрузки изображения
                 $image = null;
@@ -4176,10 +4206,15 @@ class ProductController extends Controller
 
             DB::commit();
 
+            $msg = 'Products were created successfully!';
+            if (!empty($duplicatesSkipped)) {
+                $msg .= ' ' . count($duplicatesSkipped) . ' row(s) skipped as duplicates — see warning below.';
+            }
             $output = [
                 'success' => 1,
-                'msg' => 'Products were created successfully!',
-                'product_ids' => $createdProducts
+                'msg' => $msg,
+                'product_ids' => $createdProducts,
+                'duplicates_skipped' => $duplicatesSkipped,
             ];
         } catch (\Exception $e) {
             DB::rollBack();
