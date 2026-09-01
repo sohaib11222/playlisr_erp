@@ -5,9 +5,9 @@
 <section class="content-header">
     <h1>Bootleg Vendor Match</h1>
     <p class="text-muted">
-        Matches Adam Mayes's catalog ({{ number_format($catalogCount) }} titles, uploaded price list) against real
-        inventory by name. Check off the products that are ACTUALLY his bootleg copy, then Apply — nothing is
-        touched until you check a box and submit.
+        Matches known bootleg-vendor price lists ({{ number_format($catalogCount) }} titles across all uploaded
+        catalogs) against real inventory by name. Check off the products that are ACTUALLY the bootleg copy, then
+        Apply — nothing is touched until you check a box and submit.
     </p>
 </section>
 

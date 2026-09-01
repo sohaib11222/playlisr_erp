@@ -669,7 +669,7 @@ class AdminActionHistoryController extends Controller
         // Rules tool. Undo restores each row's qty_available unconditionally
         // by row id — a later manual stock edit on the same row would be
         // clobbered, but this is a narrow, deliberately-run admin action.
-        if ($action === 'zero-retired-stock' || $action === 'zero-bootleg-stock') {
+        if ($action === 'zero-retired-stock') {
             $restored = 0;
             foreach (array_chunk($data['rows'], 500) as $chunk) {
                 foreach ($chunk as $row) {
@@ -684,6 +684,49 @@ class AdminActionHistoryController extends Controller
             }
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => "Restored stock on {$restored} variation row(s) from snapshot {$key}."]);
+        }
+
+        // zero-bootleg-stock: rows hold {id, qty_available} for each
+        // variation_location_details row zeroed by the Bootleg Vendor Match
+        // tool, which (as of 2026-09-01) also pushes to the website on
+        // apply — so undo re-pushes too, same reasoning as
+        // zero-single-product-stock below: don't leave a restored item
+        // showing out-of-stock on nivessa.com until the next nightly sync.
+        if ($action === 'zero-bootleg-stock') {
+            $restored = 0;
+            $vldIds = [];
+            foreach (array_chunk($data['rows'], 500) as $chunk) {
+                foreach ($chunk as $row) {
+                    $id = $row['id'] ?? null;
+                    if (!$id) { continue; }
+                    DB::table('variation_location_details')->where('id', $id)->update([
+                        'qty_available' => $row['qty_available'],
+                        'updated_at'    => now(),
+                    ]);
+                    $vldIds[] = $id;
+                    $restored++;
+                }
+            }
+            $productIds = empty($vldIds) ? [] : DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->whereIn('vld.id', $vldIds)
+                ->pluck('v.product_id')
+                ->unique()
+                ->map(function ($v) { return (int) $v; })
+                ->values()
+                ->all();
+            if (!empty($productIds)) {
+                try {
+                    $notifier = new \App\Services\NivessaStockNotifier();
+                    foreach (array_chunk($productIds, 100) as $chunk) {
+                        $notifier->push($chunk);
+                    }
+                } catch (\Throwable $pushEx) {
+                    \Log::warning('Bootleg vendor match undo website push failed: ' . $pushEx->getMessage());
+                }
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Restored stock on {$restored} variation row(s) from snapshot {$key} and pushed to the website."]);
         }
 
         // zero-single-product-stock: rows hold {id, qty_available} for the

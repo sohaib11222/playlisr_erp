@@ -8,28 +8,41 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Matches Adam Mayes's bootleg-vendor catalog (a 2024-06-23 price list Sarah
- * uploaded — 402 titles across Rock Imports / Hip Hop-Pop / 7" / Cassettes /
- * Slipmats — every music title sampled was confirmed on Discogs as an
- * "Unofficial Release": unauthorized live/demo/rarity comps or unauthorized
- * colored-vinyl represses of already-released albums) against real ERP
- * inventory by fuzzy artist+title word overlap, then lets Sarah check off
- * which matched products are ACTUALLY the bootleg copy before zeroing their
- * stock. Nothing is written until she checks boxes and clicks Apply — the
- * matcher only ever produces candidates to review.
+ * Matches known bootleg-vendor catalogs against real ERP inventory by fuzzy
+ * artist+title word overlap, then lets an admin check off which matched
+ * products are ACTUALLY the bootleg copy before zeroing their stock. Nothing
+ * is written until boxes are checked and Apply is clicked — the matcher only
+ * ever produces candidates to review.
  *
- * One confirmed exception in the catalog: the C418 "Minecraft Volume Alpha"
- * cassette is a legitimate 2025 Ghostly International official release, not
- * a bootleg — still shown as a candidate (matching is name-based, not a
- * verdict), so don't check it unless her copy is actually Adam's.
+ * Catalogs (all same "Rock Imports" bootleg wholesaler, same price-sheet
+ * layout — Rock Imports / Hip Hop-Pop / 7" / Cassettes / CDs / Slipmats):
+ *  - adam_mayes_catalog_2024_06_23.json — 402 titles, Sarah's original upload.
+ *  - bootleg_removal_2026_09_01.json — Jon forwarded 7 more price sheets from
+ *    the same vendor on 2026-09-01 ("please remove these"); deduped into one
+ *    list (see class doc on the import script / PR for how the 7 were merged).
+ * catalog() merges every file below, so titles already handled by an earlier
+ * catalog just show up again as an already-zero-stock candidate (harmless —
+ * apply() only ever touches rows with qty_available > 0).
+ *
+ * One confirmed exception in the 2024 catalog: the C418 "Minecraft Volume
+ * Alpha" cassette is a legitimate 2025 Ghostly International official
+ * release, not a bootleg — still shown as a candidate (matching is
+ * name-based, not a verdict), so don't check it unless the copy in stock is
+ * actually the vendor's.
  *
  * Snapshot + undo via /admin/admin-action-history ('zero-bootleg-stock'),
  * same variation_location_details {id, qty_available} row schema as
- * ZeroStockRulesController's 'zero-retired-stock'.
+ * ZeroStockRulesController's 'zero-retired-stock' — and, like
+ * 'zero-single-product-stock', undo also re-pushes to the website so an
+ * undone item comes back in stock there immediately instead of waiting on
+ * the nightly sync.
  */
 class BootlegVendorMatchController extends Controller
 {
-    const CATALOG_FILE = 'adam_mayes_catalog_2024_06_23.json';
+    const CATALOG_FILES = [
+        'adam_mayes_catalog_2024_06_23.json',
+        'bootleg_removal_2026_09_01.json',
+    ];
 
     // Vinyl-color/format/packaging jargon and generic filler — stripped so
     // it can't itself count as a "shared word" between two unrelated titles.
@@ -67,11 +80,18 @@ class BootlegVendorMatchController extends Controller
 
     protected function catalog()
     {
-        $path = app_path('Services/data/' . self::CATALOG_FILE);
-        if (!file_exists($path)) {
-            return [];
+        $entries = [];
+        foreach (self::CATALOG_FILES as $file) {
+            $path = app_path('Services/data/' . $file);
+            if (!file_exists($path)) {
+                continue;
+            }
+            $decoded = json_decode(file_get_contents($path), true);
+            if (is_array($decoded)) {
+                $entries = array_merge($entries, $decoded);
+            }
         }
-        return json_decode(file_get_contents($path), true) ?: [];
+        return $entries;
     }
 
     protected function tokens($text)
@@ -231,7 +251,20 @@ class BootlegVendorMatchController extends Controller
             ], JSON_PRETTY_PRINT)
         );
 
+        // Push every zeroed product to the website immediately — without this,
+        // a bootleg zeroed here only reaches nivessa.com on the next nightly
+        // sync (or never, if that sync misses it), same gap this tool had
+        // before "zero" and "not on the website" were both required.
+        try {
+            $notifier = new \App\Services\NivessaStockNotifier();
+            foreach (array_chunk($validIds, 100) as $chunk) {
+                $notifier->push($chunk);
+            }
+        } catch (\Throwable $pushEx) {
+            \Log::warning('Bootleg vendor match website push failed: ' . $pushEx->getMessage());
+        }
+
         return redirect('/admin/bootleg-vendor-match')
-            ->with('status', ['success' => 1, 'msg' => "Zeroed {$zeroed} stock row(s) across " . count($validIds) . " product(s). Snapshot {$snapshotKey} — undo at Admin Action History."]);
+            ->with('status', ['success' => 1, 'msg' => "Zeroed {$zeroed} stock row(s) across " . count($validIds) . " product(s) and pushed to the website. Snapshot {$snapshotKey} — undo at Admin Action History."]);
     }
 }
