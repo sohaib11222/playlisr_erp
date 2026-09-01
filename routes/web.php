@@ -294,6 +294,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/duplicate-stock-rows-scope', 'ProductController@duplicateStockRowsScope')->name('products.duplicateStockRowsScope');
     Route::post('/admin/backfill-orphaned-location-stock', 'ProductController@backfillOrphanedLocationStock')->name('products.backfillOrphanedLocationStock');
     Route::get('/admin/orphaned-stock-cleanup', 'ProductController@orphanedStockCleanupPage')->name('products.orphanedStockCleanup');
+    Route::get('/admin/sku-correction', 'ProductController@skuCorrectionPage')->name('products.skuCorrection');
+    Route::post('/admin/sku-correction/apply', 'ProductController@applySkuCorrection')->name('products.applySkuCorrection');
 
     // Zero-stock rules: named groups of products (RETIRED: prefix, Kanye
     // Graduation vinyl/cassette, ...) get Current Stock set to 0. Snapshot +

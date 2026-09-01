@@ -274,7 +274,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -502,6 +502,32 @@ class AdminActionHistoryController extends Controller
                 $restored++;
             }
             $msg = "Reverted {$restored} product(s) out of Audio Gear from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
+        // fix-wrong-barcode-sku: snapshot rows hold {id, old_sku, new_sku} — a
+        // single product whose SKU was corrected after it was found wrongly
+        // sharing a barcode with a different album (e.g. a bulk-Discogs-add
+        // that copied one release's barcode onto several different titles).
+        // Undo restores old_sku, but only if the row still carries the SKU we
+        // set (so it isn't clobbered by a later manual edit).
+        if ($action === 'fix-wrong-barcode-sku') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) { continue; }
+                $current = DB::table('products')->where('id', $id)->first();
+                if (!$current || trim((string) $current->sku) !== trim((string) $row['new_sku'])) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table('products')->where('id', $id)->update(['sku' => $row['old_sku']]);
+                $restored++;
+            }
+            $msg = "Restored {$restored} product SKU(s) from snapshot {$key}";
             $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => $msg]);

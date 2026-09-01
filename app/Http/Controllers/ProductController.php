@@ -6219,6 +6219,94 @@ class ProductController extends Controller
     }
 
     /**
+     * Owner-only page for correcting a product's SKU/barcode one at a time —
+     * built for the case where a bulk-Discogs-add copied one release's
+     * barcode onto several different albums (found 2026-09-01 across Taylor
+     * Swift listings: Midnights/1989/Tortured Poets all sharing one SKU).
+     * Not a merge — these are genuinely different products, the barcode
+     * field itself was just wrong on some of them.
+     */
+    public function skuCorrectionPage(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') {
+            abort(403, 'Owner-only.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+        // Look up by product id so the page can show name/current SKU before
+        // Sarah confirms — never trust a typed id blind.
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->query('ids', ''))));
+        $products = empty($ids) ? collect() : Product::where('business_id', $business_id)->whereIn('id', $ids)->get(['id', 'name', 'sku', 'artist']);
+        return view('products.sku-correction', ['products' => $products]);
+    }
+
+    /**
+     * Apply a single SKU correction. Snapshotted (old_sku/new_sku), undoable
+     * at Admin Action History (action 'fix-wrong-barcode-sku'). Pushes the
+     * corrected record to the website in real time (same as any other
+     * product edit) so the wrong-barcode grouping stops showing there too.
+     * Owner-only, POST.
+     */
+    public function applySkuCorrection(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $productId = (int) $request->input('product_id');
+        $newSku = trim((string) $request->input('new_sku'));
+
+        if (!$productId || $newSku === '') {
+            return response()->json(['success' => false, 'msg' => 'Product and new SKU are required.'], 422);
+        }
+
+        $product = Product::where('business_id', $business_id)->where('id', $productId)->first();
+        if (!$product) {
+            return response()->json(['success' => false, 'msg' => 'Product not found.'], 404);
+        }
+        $oldSku = trim((string) $product->sku);
+        if ($oldSku === $newSku) {
+            return response()->json(['success' => true, 'msg' => 'Already set to that SKU — nothing to do.']);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        DB::beginTransaction();
+        try {
+            \Storage::disk('local')->put(
+                "admin-snapshots/fix-wrong-barcode-sku-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'fix-wrong-barcode-sku',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => $product->name,
+                    'target_name' => 'products.sku',
+                    'rows' => [['id' => (int) $product->id, 'old_sku' => $oldSku, 'new_sku' => $newSku]],
+                ], JSON_PRETTY_PRINT)
+            );
+            $product->sku = $newSku;
+            $product->save();
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::error('applySkuCorrection failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Save failed — nothing was changed.']);
+        }
+
+        try {
+            (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $product->id]);
+        } catch (\Throwable $pushEx) {
+            \Log::warning('SKU correction website push failed: ' . $pushEx->getMessage());
+        }
+
+        return response()->json([
+            'success' => true,
+            'msg' => "Updated \"{$product->name}\" SKU: {$oldSku} → {$newSku}. Undo at Admin Action History.",
+        ]);
+    }
+
+    /**
      * Owner-only page with a button to run backfillOrphanedLocationStock().
      * The endpoint existed but had no UI to trigger it, so the 1,114-row
      * backlog (see backfillOrphanedLocationStock docblock) was never
