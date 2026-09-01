@@ -224,7 +224,16 @@ class ZeroStockRulesController extends Controller
                         ->update(['qty_available' => 0, 'updated_at' => now()]);
                 }
                 $grandZeroed += $zeroed;
-                foreach ($rows->pluck('product_id')->unique() as $pid) {
+            }
+            if ($commit) {
+                // Push every product THIS RULE MATCHES, not just ones zeroed
+                // just now — a product zeroed by an earlier run (before this
+                // tool pushed to the website at all) is already 0 here but
+                // may still be stale/in-stock on nivessa.com. Re-pushing
+                // matched-but-already-zero products is how that backlog gets
+                // swept clean, same trick as the single-product Zero Stock
+                // (Instant) action re-pushing when it finds nothing to zero.
+                foreach ($productIds as $pid) {
                     $touchedProductIds[(int) $pid] = true;
                 }
             }
