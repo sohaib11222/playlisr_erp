@@ -77,10 +77,16 @@ class AdminSidebarMenu
             $menu->dropdown(
                 'Tasks & Projects',
                 function ($sub) {
+                    $onTasks = request()->segment(1) == 'tasks' && request()->segment(2) != 'projects';
                     $sub->url(
-                        route('tasks.index'),
+                        route('tasks.index', ['type' => 'daily']),
+                        'Daily Tasks',
+                        ['icon' => 'fa fas fa-calendar-day', 'active' => $onTasks && request()->input('type', 'weekly') == 'daily']
+                    );
+                    $sub->url(
+                        route('tasks.index', ['type' => 'weekly']),
                         'Weekly Tasks',
-                        ['icon' => 'fa fas fa-calendar-check', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) != 'projects']
+                        ['icon' => 'fa fas fa-calendar-check', 'active' => $onTasks && request()->input('type', 'weekly') == 'weekly']
                     );
                     $sub->url(
                         route('projects.index'),
