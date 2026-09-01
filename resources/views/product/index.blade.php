@@ -430,10 +430,28 @@
                 return $(this).text().trim() === 'Created at';
             }).index();
 
+            // Restore the last search term for this tab session — otherwise
+            // clicking into a product and pressing Back lands on an empty,
+            // unfiltered list instead of the search the user was just on.
+            var PRODUCT_SEARCH_KEY = 'nivessa_product_search_term';
+            var getSavedProductSearch = function() {
+                try { return sessionStorage.getItem(PRODUCT_SEARCH_KEY) || ''; }
+                catch (e) { return ''; }
+            };
+            var saveProductSearch = function(term) {
+                try { sessionStorage.setItem(PRODUCT_SEARCH_KEY, term || ''); }
+                catch (e) {}
+            };
+            var __product_search_restore = getSavedProductSearch();
+            if (__product_search_restore) {
+                $('#product_search_main').val(__product_search_restore);
+            }
+
             product_table = $('#product_table').DataTable({
                 processing: true,
                 serverSide: true,
                 aaSorting: [[createdAtColIndex >= 0 ? createdAtColIndex : 12, 'desc']],
+                search: { search: __product_search_restore },
                 scrollY:        "75vh",
                 scrollX:        true,
                 scrollCollapse: true,
@@ -612,7 +630,7 @@
             if ($('#product_search_main').length) {
                 var __search_timer = null;
                 var __search_xhr   = null;
-                var __search_last  = '';
+                var __search_last  = __product_search_restore;
 
                 // Recent searches, kept in this browser only (localStorage). Starts
                 // recording from first use — it can't recover terms typed before this
@@ -652,6 +670,7 @@
                     saveRecentTerm(term);
                     if (term === __search_last) { return; }
                     __search_last = term;
+                    saveProductSearch(term);
                     // Cancel any in-flight AJAX so old responses don't overwrite new ones
                     if (__search_xhr && __search_xhr.readyState !== 4) {
                         try { __search_xhr.abort(); } catch (e) {}
