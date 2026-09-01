@@ -43,6 +43,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
 @media (max-width: 720px) { .mg-pair-cols { grid-template-columns: 1fr; } }
 .mg-pair-box { background: #fff; border: 1px solid #ECE3D2; border-radius: 10px; padding: 14px 16px; }
 .mg-pair-box .mg-pair-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
+.mg-pair-box .mg-pair-format { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin: 0 0 8px 6px; background: #EFEAE0; color: #1F1B16; }
 .mg-pair-box.keep .mg-pair-tag { background: #E8F5E9; color: #1B5E20; }
 .mg-pair-box.drop .mg-pair-tag { background: #FDECEA; color: #B71C1C; }
 .mg-pair-box .mg-pair-name { font-size: 17px; font-weight: 700; color: #1F1B16; line-height: 1.35; }
@@ -284,11 +285,12 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             var mismatchGroups = d.preview.filter(function (g) { return g.price_mismatch; });
 
             // ---- Held-back groups: one clearly-labeled KEEP-vs-MERGE card per pair ----
-            var cardBox = function (x, kind) {
+            var cardBox = function (x, kind, format, store) {
                 var tagText = kind === 'keep' ? 'KEEP' : 'MERGE IN → DEACTIVATE';
                 var m = meta(x);
                 return '<div class="mg-pair-box ' + kind + '">' +
                     '<span class="mg-pair-tag">' + tagText + '</span>' +
+                    '<span class="mg-pair-format">' + esc(format) + ' · ' + esc(store) + '</span>' +
                     '<div class="mg-pair-name"><a href="' + prodUrl(x.id) + '" target="_blank" rel="noopener" style="color:#1F1B16;">' + esc(x.name) + '</a></div>' +
                     '<div class="mg-pair-sku">SKU ' + esc(x.sku) + '</div>' +
                     '<div class="mg-pair-price">' + money(x.sell_price) + ' <span style="font-size:13px;font-weight:600;">sell</span></div>' +
@@ -301,8 +303,8 @@ body.merge-v2 .content { padding: 0 16px 60px; }
                     var sp1 = g.keep.sell_price, sp2 = m.sell_price;
                     var pct = (sp1 && sp2 && sp1 > 0 && sp2 > 0) ? Math.round(Math.abs(sp1 - sp2) / Math.max(sp1, sp2) * 100) : null;
                     return '<div class="mg-pair-card">' +
-                        '<span class="mg-pair-warn">' + (pct !== null ? 'SELL PRICE DIFFERS ' + pct + '%' : 'PRICE MISMATCH') + ' — ' + esc(g.store) + ' · ' + esc(g.category) + '</span>' +
-                        '<div class="mg-pair-cols">' + cardBox(g.keep, 'keep') + cardBox(m, 'drop') + '</div>' +
+                        '<span class="mg-pair-warn">' + (pct !== null ? 'SELL PRICE DIFFERS ' + pct + '%' : 'PRICE MISMATCH') + '</span>' +
+                        '<div class="mg-pair-cols">' + cardBox(g.keep, 'keep', g.category, g.store) + cardBox(m, 'drop', g.category, g.store) + '</div>' +
                         '<div class="mg-pair-actions"><button class="mg-btn mg-btn-primary" style="height:38px;padding:0 16px;font-size:13.5px;" data-keep="' + g.keep.id + '" data-merge="' + m.id + '">Review &amp; merge these two</button></div>' +
                         '</div>';
                 }).join('');
