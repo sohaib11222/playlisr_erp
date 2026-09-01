@@ -183,6 +183,7 @@ class ZeroStockRulesController extends Controller
 
         $results = [];
         $snapshotRows = [];
+        $touchedProductIds = [];
         $grandZeroed = 0;
         $grandRows = 0;
 
@@ -223,6 +224,9 @@ class ZeroStockRulesController extends Controller
                         ->update(['qty_available' => 0, 'updated_at' => now()]);
                 }
                 $grandZeroed += $zeroed;
+                foreach ($rows->pluck('product_id')->unique() as $pid) {
+                    $touchedProductIds[(int) $pid] = true;
+                }
             }
 
             $grandRows += $rows->count();
@@ -250,6 +254,21 @@ class ZeroStockRulesController extends Controller
                     'rows'        => $snapshotRows,
                 ], JSON_PRETTY_PRINT)
             );
+        }
+
+        // Push every zeroed product to the website immediately — without
+        // this, a product zeroed here only reaches the website on the next
+        // nightly sync (or never, if that sync misses it), and sits stale
+        // showing old stock exactly like SKU 5833 did.
+        if (!empty($touchedProductIds)) {
+            try {
+                $notifier = new \App\Services\NivessaStockNotifier();
+                foreach (array_chunk(array_keys($touchedProductIds), 100) as $chunk) {
+                    $notifier->push($chunk);
+                }
+            } catch (\Throwable $pushEx) {
+                \Log::warning('Zero Stock Rules website push failed: ' . $pushEx->getMessage());
+            }
         }
 
         return view('admin.zero_stock_rules', [
