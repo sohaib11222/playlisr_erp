@@ -78,8 +78,13 @@
                                 'zelle_venmo' => 'Zelle / Venmo',
                             ][$offer->payment_method] ?? ucfirst(str_replace('_', ' ', $offer->payout_type));
                         @endphp
-                        <strong>@format_currency($finalAccepted)</strong>
-                        <small class="text-muted">({{ $pmLabel }})</small>
+                        @if($offer->is_donated)
+                            <strong>Donated</strong>
+                            <small class="text-muted">(no payout)</small>
+                        @else
+                            <strong>@format_currency($finalAccepted)</strong>
+                            <small class="text-muted">({{ $pmLabel }})</small>
+                        @endif
                     </td>
                 </tr>
                 <tr>
