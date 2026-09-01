@@ -14,15 +14,27 @@ class TaskController extends Controller
         'hollywood' => 'Hollywood',
     ];
 
+    /** end_date for a task of $taskType, starting $startDate. */
+    private function computeEndDate(string $taskType, string $startDate)
+    {
+        $start = \Carbon\Carbon::parse($startDate);
+        return $taskType === 'daily' ? $start->toDateString() : $start->addDays(7)->toDateString();
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
 
+        $type = $request->input('type', 'weekly');
+        if (!in_array($type, ['daily', 'weekly'])) {
+            $type = 'weekly';
+        }
         $status = $request->input('status');
         $store = $request->input('store');
 
         $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy'])
-            ->where('business_id', $business_id);
+            ->where('business_id', $business_id)
+            ->where('task_type', $type);
 
         if (!empty($status)) {
             $query->where('status', $status);
@@ -34,13 +46,17 @@ class TaskController extends Controller
         $tasks = $query->orderByDesc('start_date')->paginate(50)->appends($request->except('page'));
         $storeLabels = self::STORE_LABELS;
 
-        return view('tasks.index', compact('tasks', 'status', 'store', 'storeLabels'));
+        return view('tasks.index', compact('tasks', 'type', 'status', 'store', 'storeLabels'));
     }
 
     public function create(Request $request)
     {
         $storeLabels = self::STORE_LABELS;
-        return view('tasks.create', compact('storeLabels'));
+        $type = $request->input('type', 'weekly');
+        if (!in_array($type, ['daily', 'weekly'])) {
+            $type = 'weekly';
+        }
+        return view('tasks.create', compact('storeLabels', 'type'));
     }
 
     public function store(Request $request)
@@ -51,17 +67,18 @@ class TaskController extends Controller
             'title' => 'required|string|max:200',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
+            'task_type' => 'required|in:daily,weekly',
             'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
         $data['status'] = 'not_started';
-        $data['end_date'] = \Carbon\Carbon::parse($data['start_date'])->addDays(7)->toDateString();
+        $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
 
         WeeklyTask::create($data);
 
-        return redirect(action('TaskController@index'))
+        return redirect(action('TaskController@index', ['type' => $data['task_type']]))
             ->with('status', ['success' => true, 'msg' => 'Task added.']);
     }
 
@@ -82,17 +99,18 @@ class TaskController extends Controller
             'title' => 'required|string|max:200',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
+            'task_type' => 'required|in:daily,weekly',
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
         ]);
 
-        $data['end_date'] = \Carbon\Carbon::parse($data['start_date'])->addDays(7)->toDateString();
+        $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
 
         $this->applyStatusTransition($task, $data['status']);
         unset($data['status']);
         $task->fill($data)->save();
 
-        return redirect(action('TaskController@index'))
+        return redirect(action('TaskController@index', ['type' => $task->task_type]))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);
     }
 
@@ -109,7 +127,7 @@ class TaskController extends Controller
         $this->applyStatusTransition($task, $newStatus);
         $task->save();
 
-        return redirect(action('TaskController@index'))
+        return redirect(action('TaskController@index', ['type' => $task->task_type]))
             ->with('status', ['success' => true, 'msg' => 'Status updated.']);
     }
 
@@ -117,9 +135,10 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+        $type = $task->task_type;
         $task->delete();
 
-        return redirect(action('TaskController@index'))
+        return redirect(action('TaskController@index', ['type' => $type]))
             ->with('status', ['success' => true, 'msg' => 'Task deleted.']);
     }
 

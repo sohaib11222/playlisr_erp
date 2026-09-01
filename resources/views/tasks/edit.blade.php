@@ -5,7 +5,7 @@
 <section class="content-header"><h1>Edit Task</h1></section>
 
 <section class="content">
-    @include('tasks.partials.tabs')
+    @include('tasks.partials.tabs', ['type' => $task->task_type])
     <div class="box box-primary">
         <div class="box-body">
             <form method="POST" action="{{ action('TaskController@update', $task->id) }}">
@@ -21,7 +21,7 @@
                     </select>
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> Save</button>
-                <a href="{{ action('TaskController@index') }}" class="btn btn-default">Cancel</a>
+                <a href="{{ action('TaskController@index', ['type' => $task->task_type]) }}" class="btn btn-default">Cancel</a>
             </form>
         </div>
     </div>
