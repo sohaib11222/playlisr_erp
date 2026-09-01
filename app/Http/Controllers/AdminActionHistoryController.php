@@ -274,7 +274,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -686,13 +686,14 @@ class AdminActionHistoryController extends Controller
                 ->with('status', ['success' => 1, 'msg' => "Restored stock on {$restored} variation row(s) from snapshot {$key}."]);
         }
 
-        // zero-bootleg-stock: rows hold {id, qty_available} for each
-        // variation_location_details row zeroed by the Bootleg Vendor Match
-        // tool, which (as of 2026-09-01) also pushes to the website on
-        // apply — so undo re-pushes too, same reasoning as
-        // zero-single-product-stock below: don't leave a restored item
-        // showing out-of-stock on nivessa.com until the next nightly sync.
-        if ($action === 'zero-bootleg-stock') {
+        // zero-bootleg-stock / zero-supplier-stock: rows hold
+        // {id, qty_available} for each variation_location_details row
+        // zeroed by the Bootleg Vendor Match tool or the stock:zero-supplier
+        // command, both of which push to the website on apply — so undo
+        // re-pushes too, same reasoning as zero-single-product-stock below:
+        // don't leave a restored item showing out-of-stock on nivessa.com
+        // until the next nightly sync.
+        if ($action === 'zero-bootleg-stock' || $action === 'zero-supplier-stock') {
             $restored = 0;
             $vldIds = [];
             foreach (array_chunk($data['rows'], 500) as $chunk) {

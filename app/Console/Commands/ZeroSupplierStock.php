@@ -7,6 +7,7 @@ use App\Transaction;
 use App\VariationLocationDetails;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Sarah 2026-09-01: zero out on-hand stock for every product ever purchased
@@ -23,6 +24,16 @@ use Illuminate\Support\Facades\DB;
  *
  *   php artisan stock:zero-supplier "Adam Evan"              # dry run
  *   php artisan stock:zero-supplier "Adam Evan" --commit     # actually zero
+ *
+ * 2026-09-01 (later same day): the first two --commit runs against "Adam
+ * Evan" (209 qty / 137 rows) shipped without a snapshot or a website push —
+ * an oversight against this codebase's own "every /run action that mutates
+ * rows in bulk should write a snapshot first" rule (see
+ * AdminActionHistoryController's class doc). Added both here: snapshot goes
+ * to admin-snapshots/zero-supplier-stock-* (undo it like any other stock
+ * snapshot at /admin/admin-action-history), and every matched product —
+ * not just ones with nonzero qty this run — gets pushed to nivessa.com so a
+ * product already zeroed by an earlier unpushed run gets swept clean too.
  */
 class ZeroSupplierStock extends Command
 {
@@ -89,12 +100,16 @@ class ZeroSupplierStock extends Command
         $this->line('Distinct product/variation pairs: ' . $pairs->count());
 
         $rows = [];
+        $snapshotRows = [];
         $totalQtyBefore = 0.0;
         $vldRowsTouched = 0;
+        $touchedProductIds = [];
 
         DB::beginTransaction();
         try {
             foreach ($pairs as $pair) {
+                $touchedProductIds[(int) $pair->product_id] = true;
+
                 $vlds = VariationLocationDetails::where('product_id', $pair->product_id)
                     ->where('variation_id', $pair->variation_id)
                     ->get();
@@ -113,6 +128,7 @@ class ZeroSupplierStock extends Command
                         'qty_before' => $qty,
                     ];
                     if ($commit) {
+                        $snapshotRows[] = ['id' => $vld->id, 'qty_available' => $qty];
                         $vld->qty_available = 0;
                         $vld->save();
                     }
@@ -128,6 +144,34 @@ class ZeroSupplierStock extends Command
             DB::rollBack();
             $this->error('Failed: ' . $e->getMessage());
             return 1;
+        }
+
+        if ($commit && !empty($snapshotRows)) {
+            $timestamp = now()->format('Y-m-d_His');
+            $snapshotKey = "zero-supplier-stock-{$timestamp}";
+            Storage::disk('local')->put(
+                "admin-snapshots/{$snapshotKey}.json",
+                json_encode([
+                    'timestamp'   => now()->toDateTimeString(),
+                    'action'      => 'zero-supplier-stock',
+                    'business_id' => $businessId,
+                    'supplier'    => $supplier->name,
+                    'rows'        => $snapshotRows,
+                ], JSON_PRETTY_PRINT)
+            );
+            $this->line("Snapshot: {$snapshotKey} — undo at /admin/admin-action-history.");
+        }
+
+        if ($commit && !empty($touchedProductIds)) {
+            try {
+                $notifier = new \App\Services\NivessaStockNotifier();
+                foreach (array_chunk(array_keys($touchedProductIds), 100) as $chunk) {
+                    $notifier->push($chunk);
+                }
+                $this->line('Pushed ' . count($touchedProductIds) . ' product(s) to the website.');
+            } catch (\Throwable $pushEx) {
+                $this->error('Website push failed: ' . $pushEx->getMessage());
+            }
         }
 
         usort($rows, function ($a, $b) {
