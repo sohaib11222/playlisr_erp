@@ -136,7 +136,21 @@ class ProductMergeController extends Controller
             ->where('product_id', $product_id)
             ->sum('qty_available');
 
-        return ['units_sold' => $unitsSold, 'current_stock' => $stock];
+        // Sell/cost price — shown in the merge preview so a flagged price
+        // mismatch (possible original pressing vs. cheaper reissue sharing a
+        // barcode) can actually be judged there instead of blind.
+        $priceRow = \DB::table('variations')
+            ->where('product_id', $product_id)
+            ->orderBy('id')
+            ->select('default_sell_price', 'default_purchase_price')
+            ->first();
+
+        return [
+            'units_sold' => $unitsSold,
+            'current_stock' => $stock,
+            'sell_price' => $priceRow ? (float) $priceRow->default_sell_price : null,
+            'cost_price' => $priceRow ? (float) $priceRow->default_purchase_price : null,
+        ];
     }
 
     // ================= SINGLE-PAIR FLOW =================
@@ -189,8 +203,8 @@ class ProductMergeController extends Controller
 
         return response()->json([
             'success' => true,
-            'source' => ['id' => (int) $source->id, 'name' => $source->name, 'sku' => $source->sku, 'units_sold' => $s['units_sold'], 'current_stock' => $s['current_stock']],
-            'target' => ['id' => (int) $target->id, 'name' => $target->name, 'sku' => $target->sku, 'units_sold' => $t['units_sold'], 'current_stock' => $t['current_stock']],
+            'source' => ['id' => (int) $source->id, 'name' => $source->name, 'sku' => $source->sku, 'units_sold' => $s['units_sold'], 'current_stock' => $s['current_stock'], 'sell_price' => $s['sell_price'], 'cost_price' => $s['cost_price']],
+            'target' => ['id' => (int) $target->id, 'name' => $target->name, 'sku' => $target->sku, 'units_sold' => $t['units_sold'], 'current_stock' => $t['current_stock'], 'sell_price' => $t['sell_price'], 'cost_price' => $t['cost_price']],
             'after' => ['units_sold' => $s['units_sold'] + $t['units_sold'], 'current_stock' => $this->reconciledStock($source->id, $target->id)],
             'moves' => [
                 'sell_lines' => \DB::table('transaction_sell_lines')->where('product_id', $source->id)->count(),

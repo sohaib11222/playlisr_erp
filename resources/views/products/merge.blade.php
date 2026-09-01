@@ -71,7 +71,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         <h2>Preview</h2>
         <p class="sub">Check this is right before merging. Nothing is changed until you confirm.</p>
         <table>
-            <thead><tr><th>Product</th><th>Units sold</th><th>Current stock</th></tr></thead>
+            <thead><tr><th>Product</th><th>Sell price</th><th>Cost</th><th>Units sold</th><th>Current stock</th></tr></thead>
             <tbody>
                 <tr id="mgRowKeep"></tr>
                 <tr id="mgRowMerge"></tr>
@@ -170,17 +170,27 @@ body.merge-v2 .content { padding: 0 16px 60px; }
             previewBtn.disabled = false;
             if (!d.success) { showMsg(d.msg || 'Could not preview.', false); return; }
             lastPair = { keep: keep, merge: merge };
+            var money = function (v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); };
             document.getElementById('mgRowKeep').innerHTML =
                 '<td>' + d.target.name + ' <span class="mg-keep-tag">KEEP</span><br><small style="color:#8E8273">SKU ' + d.target.sku + '</small></td>' +
+                '<td class="num">' + money(d.target.sell_price) + '</td><td class="num">' + money(d.target.cost_price) + '</td>' +
                 '<td class="num">' + num(d.target.units_sold) + '</td><td class="num">' + num(d.target.current_stock) + '</td>';
             document.getElementById('mgRowMerge').innerHTML =
                 '<td>' + d.source.name + ' <span class="mg-drop-tag">DEACTIVATE</span><br><small style="color:#8E8273">SKU ' + d.source.sku + '</small></td>' +
+                '<td class="num">' + money(d.source.sell_price) + '</td><td class="num">' + money(d.source.cost_price) + '</td>' +
                 '<td class="num">' + num(d.source.units_sold) + '</td><td class="num">' + num(d.source.current_stock) + '</td>';
             document.getElementById('mgRowAfter').innerHTML =
-                '<td><strong>' + d.target.name + '</strong> after merge</td>' +
+                '<td><strong>' + d.target.name + '</strong> after merge</td><td></td><td></td>' +
                 '<td class="num">' + num(d.after.units_sold) + '</td><td class="num">' + num(d.after.current_stock) + '</td>';
-            document.getElementById('mgMoves').textContent =
-                'Moves ' + d.moves.sell_lines + ' sale line(s) and ' + d.moves.purchase_lines + ' purchase line(s) onto the kept product.';
+            var movesText = 'Moves ' + d.moves.sell_lines + ' sale line(s) and ' + d.moves.purchase_lines + ' purchase line(s) onto the kept product.';
+            var sp1 = d.target.sell_price, sp2 = d.source.sell_price;
+            if (sp1 != null && sp2 != null && sp1 > 0 && sp2 > 0) {
+                var diffPct = Math.abs(sp1 - sp2) / Math.max(sp1, sp2) * 100;
+                if (diffPct >= 25) {
+                    movesText = '⚠ Sell price differs by ' + Math.round(diffPct) + '% — could be a valuable original pressing vs. a cheaper reissue sharing a barcode. Check before confirming. ' + movesText;
+                }
+            }
+            document.getElementById('mgMoves').textContent = movesText;
             compare.style.display = 'block';
         }).catch(function () { previewBtn.disabled = false; showMsg('Preview failed — try again.', false); });
     });
@@ -238,9 +248,14 @@ body.merge-v2 .content { padding: 0 16px 60px; }
                     + ' <small style="color:#8E8273">(SKU ' + esc(x.sku) + ')</small>';
             };
             var rows = d.preview.map(function (g) {
-                var mergeNames = g.merge_in.map(function (m) { return link(m) + by(m); }).join('<br>');
+                var mergeNames = g.merge_in.map(function (m) {
+                    var btn = g.price_mismatch
+                        ? ' <button class="mg-btn mg-btn-ghost" style="height:26px;padding:0 10px;font-size:12px;margin-left:6px;" data-keep="' + g.keep.id + '" data-merge="' + m.id + '">Review &amp; merge</button>'
+                        : '';
+                    return link(m) + by(m) + btn;
+                }).join('<br>');
                 var warn = g.price_mismatch
-                    ? '<div class="mg-drop-tag" style="margin:0 0 6px;">PRICE MISMATCH — not auto-merged, review &amp; merge manually above</div>' : '';
+                    ? '<div class="mg-drop-tag" style="margin:0 0 6px;">PRICE MISMATCH — not auto-merged, review each pair below</div>' : '';
                 return '<tr' + (g.price_mismatch ? ' style="background:#FFFBEF;"' : '') + '><td>' + warn + link(g.keep) + by(g.keep) + '</td>' +
                     '<td>' + esc(g.store) + '</td>' +
                     '<td>' + esc(g.category) + '</td>' +
@@ -337,6 +352,18 @@ body.merge-v2 .content { padding: 0 16px 60px; }
     });
 
     document.getElementById('ndRows').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-keep]');
+        if (!btn) return;
+        document.getElementById('mgKeep').value = btn.getAttribute('data-keep');
+        document.getElementById('mgMerge').value = btn.getAttribute('data-merge');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        previewBtn.click();
+    });
+
+    // Price-mismatch rows in the whole-catalog scan: "Review & merge" jumps
+    // straight to the Preview card above with both products already filled
+    // in, instead of making Sarah copy SKUs by hand.
+    document.getElementById('mgScanRows').addEventListener('click', function (e) {
         var btn = e.target.closest('button[data-keep]');
         if (!btn) return;
         document.getElementById('mgKeep').value = btn.getAttribute('data-keep');
