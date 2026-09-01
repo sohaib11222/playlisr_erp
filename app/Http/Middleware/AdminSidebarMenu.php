@@ -49,7 +49,7 @@ class AdminSidebarMenu
             //product-management powers too.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
                 $menu->dropdown(
-                    'Orders',
+                    'Orders & Customer Pickups',
                     function ($sub) {
                         $sub->url(
                             route('website-orders.index'),
