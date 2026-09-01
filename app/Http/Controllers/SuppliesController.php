@@ -79,6 +79,7 @@ class SuppliesController extends Controller
         $this->guard();
         $business_id = request()->session()->get('user.business_id');
         $items = self::sortForDisplay(self::readSupplies());
+        $locations = BusinessLocation::forDropdown($business_id, false, false, false, false);
 
         // Anything Low or Out, grouped by store, so a manager can see at a
         // glance what needs ordering per floor without scanning the full list.
@@ -91,12 +92,35 @@ class SuppliesController extends Controller
             $needsOrderByStore[$store][] = $it;
         }
 
+        // Split into separate per-store lists (Pico / Hollywood always shown,
+        // even empty, so items can be added directly into the right one) so
+        // Sarah sees two distinct lists instead of one mixed table.
+        $itemsByStore = ['Pico' => [], 'Hollywood' => []];
+        foreach ($items as $it) {
+            $store = $it['location_name'] ?: 'All stores';
+            $itemsByStore[$store][] = $it;
+        }
+        // "All stores" (items not tied to one location) goes last if present.
+        if (isset($itemsByStore['All stores'])) {
+            $allStoresItems = $itemsByStore['All stores'];
+            unset($itemsByStore['All stores']);
+            $itemsByStore['All stores'] = $allStoresItems;
+        }
+
+        $storeLocationIds = [];
+        foreach ($locations as $lid => $lname) {
+            if (in_array($lname, ['Pico', 'Hollywood'])) {
+                $storeLocationIds[$lname] = $lid;
+            }
+        }
+
         return view('admin.supplies', [
-            'items' => $items,
+            'itemsByStore' => $itemsByStore,
+            'storeLocationIds' => $storeLocationIds,
             'needsOrder' => $needsOrder,
             'needsOrderByStore' => $needsOrderByStore,
             'statuses' => self::STATUSES,
-            'locations' => BusinessLocation::forDropdown($business_id, false, false, false, false),
+            'locations' => $locations,
         ]);
     }
 

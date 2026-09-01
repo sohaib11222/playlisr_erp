@@ -19,7 +19,6 @@
     .supplies-status-dot.dot-out { background: #dd4b39; }
     .supplies-status-dot.dot-low { background: #f39c12; }
     .supplies-status-dot.dot-ok { background: #00a65a; }
-    #supplies-table tr.supplies-group-header td { background: #f4f4f4; font-weight: 600; color: #555; padding-top: 8px; padding-bottom: 8px; border-top: 2px solid #d2d6de !important; }
 </style>
 
 <section class="content">
@@ -82,55 +81,70 @@
         <div class="box box-solid">
             <div class="box-header with-border"><h3 class="box-title">All supplies</h3></div>
             <div class="box-body">
-                <form method="POST" action="{{ url('/admin/supplies/save') }}">
+                <form method="POST" action="{{ url('/admin/supplies/save') }}" id="supplies-form">
                     @csrf
-                    <table class="table table-condensed" id="supplies-table">
-                        <thead>
-                            <tr>
-                                <th style="width:19%;">Item</th>
-                                <th style="width:14%;">Status</th>
-                                <th style="width:13%;">Store</th>
-                                <th style="width:16%;">Next restock / shipment</th>
-                                <th style="width:18%;">Where to order</th>
-                                <th>Note</th>
-                                <th style="width:40px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @php $lastStore = null; @endphp
-                            @foreach ($items as $it)
-                                @php $storeName = $it['location_name'] ?: 'All stores'; @endphp
-                                @if ($storeName !== $lastStore)
-                                    <tr class="supplies-group-header"><td colspan="7">{{ $storeName }}</td></tr>
-                                    @php $lastStore = $storeName; @endphp
-                                @endif
-                            <tr class="{{ ($it['status'] ?? 'ok') === 'out' ? 'supplies-row-out' : (($it['status'] ?? 'ok') === 'low' ? 'supplies-row-low' : '') }}">
-                                <td><input type="text" name="name[]" class="form-control input-sm" value="{{ $it['name'] ?? '' }}"></td>
-                                <td>
-                                    <select name="status[]" class="form-control input-sm">
-                                        @foreach ($statuses as $val => $label)
-                                            <option value="{{ $val }}" @if(($it['status'] ?? 'ok') === $val) selected @endif>{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                </td>
-                                <td>
-                                    <select name="location_id[]" class="form-control input-sm">
-                                        <option value="">All stores</option>
-                                        @foreach ($locations as $lid => $lname)
-                                            <option value="{{ $lid }}" @if(($it['location_id'] ?? null) == $lid) selected @endif>{{ $lname }}</option>
-                                        @endforeach
-                                    </select>
-                                </td>
-                                <td><input type="text" name="next_restock[]" class="form-control input-sm" placeholder="e.g. Mon Jun 23, or weekly" value="{{ $it['next_restock'] ?? '' }}"></td>
-                                <td><input type="text" name="order_info[]" class="form-control input-sm" placeholder="supplier name or order link" value="{{ $it['order_info'] ?? '' }}"></td>
-                                <td><input type="text" name="note[]" class="form-control input-sm" value="{{ $it['note'] ?? '' }}"></td>
-                                <td><button type="button" class="btn btn-link text-red supplies-remove" title="Remove row">&times;</button></td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
 
-                    <button type="button" class="btn btn-default btn-sm" id="supplies-add">+ Add item</button>
+                    <div class="nav-tabs-custom">
+                        <ul class="nav nav-tabs">
+                            @foreach ($itemsByStore as $storeName => $storeItems)
+                                <li class="{{ $loop->first ? 'active' : '' }}">
+                                    <a href="#tab-store-{{ $loop->index }}" data-toggle="tab">{{ $storeName }} <span class="badge">{{ count($storeItems) }}</span></a>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <div class="tab-content">
+                            @foreach ($itemsByStore as $storeName => $storeItems)
+                                <div class="tab-pane {{ $loop->first ? 'active' : '' }}" id="tab-store-{{ $loop->index }}">
+                                    <div style="margin: 10px 0;">
+                                        <button type="button" class="btn btn-default btn-sm supplies-add" data-store="{{ $storeName }}" data-default-location="{{ $storeLocationIds[$storeName] ?? '' }}">+ Add item to {{ $storeName }}</button>
+                                        <button type="button" class="btn btn-default btn-sm supplies-dedupe" title="Keeps the first row of any repeated item name in this list, removes the rest">Remove duplicates</button>
+                                    </div>
+                                    <table class="table table-condensed supplies-store-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:22%;">Item</th>
+                                                <th style="width:15%;">Status</th>
+                                                <th style="width:17%;">Next restock / shipment</th>
+                                                <th style="width:19%;">Where to order</th>
+                                                <th>Note</th>
+                                                <th style="width:40px;"></th>
+                                                <th style="display:none;">Store</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @forelse ($storeItems as $it)
+                                            <tr class="{{ ($it['status'] ?? 'ok') === 'out' ? 'supplies-row-out' : (($it['status'] ?? 'ok') === 'low' ? 'supplies-row-low' : '') }}">
+                                                <td><input type="text" name="name[]" class="form-control input-sm supplies-name" value="{{ $it['name'] ?? '' }}"></td>
+                                                <td>
+                                                    <select name="status[]" class="form-control input-sm">
+                                                        @foreach ($statuses as $val => $label)
+                                                            <option value="{{ $val }}" @if(($it['status'] ?? 'ok') === $val) selected @endif>{{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </td>
+                                                <td><input type="text" name="next_restock[]" class="form-control input-sm" placeholder="e.g. Mon Jun 23, or weekly" value="{{ $it['next_restock'] ?? '' }}"></td>
+                                                <td><input type="text" name="order_info[]" class="form-control input-sm" placeholder="supplier name or order link" value="{{ $it['order_info'] ?? '' }}"></td>
+                                                <td><input type="text" name="note[]" class="form-control input-sm" value="{{ $it['note'] ?? '' }}"></td>
+                                                <td><button type="button" class="btn btn-link text-red supplies-remove" title="Remove row">&times;</button></td>
+                                                <td style="display:none;">
+                                                    <select name="location_id[]" class="form-control input-sm">
+                                                        <option value="">All stores</option>
+                                                        @foreach ($locations as $lid => $lname)
+                                                            <option value="{{ $lid }}" @if(($it['location_id'] ?? null) == $lid) selected @endif>{{ $lname }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr class="supplies-empty-row"><td colspan="7" class="text-muted">Nothing here yet — use "Add item" above.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary btn-lg pull-right">Save</button>
                 </form>
             </div>
@@ -144,27 +158,75 @@
     var statusOptions = `@foreach($statuses as $val => $label)<option value="{{ $val }}">{{ $label }}</option>@endforeach`;
     var locationOptions = `<option value="">All stores</option>@foreach($locations as $lid => $lname)<option value="{{ $lid }}">{{ $lname }}</option>@endforeach`;
 
-    function newRow() {
+    function newRow(defaultLocationId) {
         var tr = document.createElement('tr');
         tr.innerHTML =
-            '<td><input type="text" name="name[]" class="form-control input-sm"></td>' +
+            '<td><input type="text" name="name[]" class="form-control input-sm supplies-name"></td>' +
             '<td><select name="status[]" class="form-control input-sm">' + statusOptions + '</select></td>' +
-            '<td><select name="location_id[]" class="form-control input-sm">' + locationOptions + '</select></td>' +
             '<td><input type="text" name="next_restock[]" class="form-control input-sm" placeholder="e.g. Mon Jun 23, or weekly"></td>' +
             '<td><input type="text" name="order_info[]" class="form-control input-sm" placeholder="supplier name or order link"></td>' +
             '<td><input type="text" name="note[]" class="form-control input-sm"></td>' +
-            '<td><button type="button" class="btn btn-link text-red supplies-remove" title="Remove row">&times;</button></td>';
+            '<td><button type="button" class="btn btn-link text-red supplies-remove" title="Remove row">&times;</button></td>' +
+            '<td style="display:none;"><select name="location_id[]" class="form-control input-sm">' + locationOptions + '</select></td>';
+        if (defaultLocationId) {
+            tr.querySelector('select[name="location_id[]"]').value = defaultLocationId;
+        }
         return tr;
     }
 
-    document.getElementById('supplies-add').addEventListener('click', function () {
-        document.querySelector('#supplies-table tbody').appendChild(newRow());
-    });
+    var form = document.getElementById('supplies-form');
 
-    document.getElementById('supplies-table').addEventListener('click', function (e) {
+    form.addEventListener('click', function (e) {
         if (e.target.classList.contains('supplies-remove')) {
             var tr = e.target.closest('tr');
+            var tbody = tr && tr.parentNode;
             if (tr) tr.parentNode.removeChild(tr);
+            if (tbody && !tbody.querySelector('tr')) {
+                var empty = document.createElement('tr');
+                empty.className = 'supplies-empty-row';
+                empty.innerHTML = '<td colspan="7" class="text-muted">Nothing here yet — use "Add item" above.</td>';
+                tbody.appendChild(empty);
+            }
+            return;
+        }
+
+        if (e.target.classList.contains('supplies-add')) {
+            var pane = e.target.closest('.tab-pane');
+            var tbody = pane.querySelector('.supplies-store-table tbody');
+            var emptyRow = tbody.querySelector('.supplies-empty-row');
+            if (emptyRow) emptyRow.parentNode.removeChild(emptyRow);
+            var row = newRow(e.target.getAttribute('data-default-location'));
+            tbody.appendChild(row);
+            row.querySelector('.supplies-name').focus();
+            return;
+        }
+
+        if (e.target.classList.contains('supplies-dedupe')) {
+            var pane = e.target.closest('.tab-pane');
+            var rows = Array.prototype.slice.call(pane.querySelectorAll('.supplies-store-table tbody tr')).filter(function (tr) {
+                return !tr.classList.contains('supplies-empty-row');
+            });
+            var seen = {};
+            var toRemove = [];
+            rows.forEach(function (tr) {
+                var nameInput = tr.querySelector('.supplies-name');
+                var key = (nameInput ? nameInput.value : '').trim().toLowerCase();
+                if (!key) return;
+                if (seen[key]) {
+                    toRemove.push(tr);
+                } else {
+                    seen[key] = true;
+                }
+            });
+            if (!toRemove.length) {
+                alert('No duplicate item names found in this list.');
+                return;
+            }
+            if (!confirm('Remove ' + toRemove.length + ' duplicate row' + (toRemove.length === 1 ? '' : 's') + '? The first row of each repeated item is kept.')) {
+                return;
+            }
+            toRemove.forEach(function (tr) { tr.parentNode.removeChild(tr); });
+            alert('Removed. Click Save to make it permanent.');
         }
     });
 })();
