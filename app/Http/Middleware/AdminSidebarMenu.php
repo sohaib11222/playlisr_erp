@@ -38,16 +38,36 @@ class AdminSidebarMenu
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 
-            //Orders — nivessa.com fulfillment console (Needs Action/To Ship/
-            //Pickup/Completed/Archived, status changes, cancellation). Own gate
-            //so cashiers who actually do fulfillment (e.g. Nick) can see it via
-            //sell.create without needing product.create's product-management
-            //powers too. Kept top-level for one-click access.
+            //Orders dropdown — nivessa.com fulfillment console (Needs Action/
+            //To Ship/Pickup/Completed/Archived, status changes, cancellation)
+            //plus In Store Orders (walk-in item held for a customer, price
+            //paid, notify when ready) and Customer Pickups (also linked under
+            //Contacts — kept in both places since order-fulfillment staff and
+            //customer-record staff both land on it from different angles).
+            //Own gate so cashiers who actually do fulfillment (e.g. Nick) can
+            //see it via sell.create without needing product.create's
+            //product-management powers too.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
-                $menu->url(
-                    route('website-orders.index'),
-                    'Orders',
-                    ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'website-orders']
+                $menu->dropdown(
+                    'Orders & Customer Pickups',
+                    function ($sub) {
+                        $sub->url(
+                            route('website-orders.index'),
+                            'Website Orders',
+                            ['icon' => 'fa fas fa-globe', 'active' => request()->segment(1) == 'website-orders']
+                        );
+                        $sub->url(
+                            action('InStoreOrderController@index'),
+                            'In Store Orders',
+                            ['icon' => 'fa fas fa-store', 'active' => request()->segment(1) == 'in-store-orders']
+                        );
+                        $sub->url(
+                            action('CustomerPickupController@index'),
+                            'Customer Pickups',
+                            ['icon' => 'fa fas fa-hand-holding', 'active' => request()->segment(1) == 'customer-pickups']
+                        );
+                    },
+                    ['icon' => 'fa fas fa-box']
                 )->order(7);
             }
 

@@ -196,6 +196,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-pickups/{id}/mark-picked-up', 'CustomerPickupController@markPickedUp');
     Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
 
+    // In Store Orders — quick walk-in log: customer name, item, price paid,
+    // paid/unpaid, notify when ready. Free-text customer, not tied to the
+    // Contact/Product catalog like Customer Pickups is.
+    Route::resource('in-store-orders', 'InStoreOrderController')->except(['show']);
+    Route::post('/in-store-orders/{id}/notify', 'InStoreOrderController@notify');
+    Route::post('/in-store-orders/{id}/mark-complete', 'InStoreOrderController@markComplete');
+
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
     Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
