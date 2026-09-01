@@ -1,0 +1,65 @@
+# One-click READ-ONLY check: for a list of product ids, which ones have a
+# purchase_line from a supplier matching the given name pattern. Never
+# writes anything. Used to settle bootleg-vs-real-copy ambiguity from text
+# matching by falling back to purchase-history ground truth.
+
+name: Check supplier link
+
+on:
+  workflow_dispatch:
+    inputs:
+      supplier_name:
+        description: 'Supplier name pattern to match (e.g. "Evan")'
+        required: true
+        default: "Evan"
+      product_ids:
+        description: 'Comma-separated product ids to check'
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run stock:check-supplier-link
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 10m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            php artisan stock:check-supplier-link "${{ github.event.inputs.supplier_name }}" "${{ github.event.inputs.product_ids }}" 2>&1
+            echo "=== done ==="
+            exit 0
