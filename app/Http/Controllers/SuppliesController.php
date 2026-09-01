@@ -48,21 +48,53 @@ class SuppliesController extends Controller
         return (is_array($data) && !empty($data)) ? $data : self::DEFAULT_ITEMS;
     }
 
+    // Display order: Pico and Hollywood first (the two floors staff actually
+    // shop for), then any other named location, then the "All stores" items
+    // last since those aren't tied to a single restock run.
+    const STORE_RANK = ['Pico' => 0, 'Hollywood' => 1];
+    const STATUS_RANK = ['out' => 0, 'low' => 1, 'ok' => 2];
+
+    private static function sortForDisplay(array $items)
+    {
+        usort($items, function ($a, $b) {
+            $storeA = $a['location_name'] ?: 'All stores';
+            $storeB = $b['location_name'] ?: 'All stores';
+            $rankA = self::STORE_RANK[$storeA] ?? (($storeA === 'All stores') ? 99 : 2);
+            $rankB = self::STORE_RANK[$storeB] ?? (($storeB === 'All stores') ? 99 : 2);
+            if ($rankA !== $rankB) {
+                return $rankA <=> $rankB;
+            }
+            $statusRankA = self::STATUS_RANK[$a['status'] ?? 'ok'] ?? 2;
+            $statusRankB = self::STATUS_RANK[$b['status'] ?? 'ok'] ?? 2;
+            if ($statusRankA !== $statusRankB) {
+                return $statusRankA <=> $statusRankB;
+            }
+            return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+        });
+        return $items;
+    }
+
     public function index()
     {
         $this->guard();
         $business_id = request()->session()->get('user.business_id');
-        $items = self::readSupplies();
+        $items = self::sortForDisplay(self::readSupplies());
 
-        // Reorder list: anything Low or Out, so a manager can see at a glance
-        // what needs ordering and where to order it.
+        // Anything Low or Out, grouped by store, so a manager can see at a
+        // glance what needs ordering per floor without scanning the full list.
         $needsOrder = array_values(array_filter($items, function ($it) {
             return in_array($it['status'] ?? 'ok', ['low', 'out']);
         }));
+        $needsOrderByStore = [];
+        foreach ($needsOrder as $it) {
+            $store = $it['location_name'] ?: 'All stores';
+            $needsOrderByStore[$store][] = $it;
+        }
 
         return view('admin.supplies', [
             'items' => $items,
             'needsOrder' => $needsOrder,
+            'needsOrderByStore' => $needsOrderByStore,
             'statuses' => self::STATUSES,
             'locations' => BusinessLocation::forDropdown($business_id, false, false, false, false),
         ]);
