@@ -1,0 +1,88 @@
+# One-click "zero out all stock ever purchased from this supplier" on production.
+#
+# Runs `php artisan stock:zero-supplier`. DRY RUN by default — it only
+# reports which products/quantities WOULD be zeroed. Tick the "commit" input
+# to actually zero them.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Zero supplier stock
+
+on:
+  workflow_dispatch:
+    inputs:
+      supplier_name:
+        description: 'Supplier name to match (e.g. "Adam Evan")'
+        required: true
+        default: "Adam Evan"
+      commit:
+        description: 'Actually zero the stock? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Share the deploy group so this can't race a Deploy production run.
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  zero-stock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run stock:zero-supplier
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 15m
+          envs: SUPPLIER_NAME
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            SUPPLIER_NAME="${{ github.event.inputs.supplier_name }}"
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run — zeroing stock for supplier: $SUPPLIER_NAME ==="
+              php artisan stock:zero-supplier "$SUPPLIER_NAME" --commit 2>&1
+            else
+              echo "=== DRY RUN — no changes — supplier: $SUPPLIER_NAME ==="
+              php artisan stock:zero-supplier "$SUPPLIER_NAME" 2>&1
+            fi
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              echo "=== tail laravel log (for the stack) ==="
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
+            fi
+            echo "=== done ==="
+            # Always exit 0 so drone-ssh flushes the output above; the printed
+            # exit code tells us whether the command actually succeeded.
+            exit 0
