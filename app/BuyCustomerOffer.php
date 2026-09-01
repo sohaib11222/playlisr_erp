@@ -21,6 +21,7 @@ class BuyCustomerOffer extends Model
         'final_offer_credit' => 'float',
         'compliance_items_owned' => 'boolean',
         'compliance_sales_final' => 'boolean',
+        'is_donated' => 'boolean',
     ];
 
     /**

@@ -343,7 +343,7 @@ class BuyFromCustomerController extends Controller
             // ContactController::updateStoreCredit (balance + audit + storefront
             // sync). Inside the same transaction so a failure rolls back the
             // whole acceptance rather than leaving credit without a purchase.
-            if ($offer->payout_type === 'store_credit') {
+            if ($offer->payout_type === 'store_credit' && !$offer->is_donated) {
                 $this->creditStoreCreditPayout($offer, $created['purchase']);
             }
             $created['offer_id'] = $offer->id;
@@ -623,14 +623,16 @@ class BuyFromCustomerController extends Controller
             'seller_phone.required_if' => 'Enter the seller\'s phone number before getting a quote.',
         ]);
 
-        if ($requireFinal) {
+        if ($requireFinal && !filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN)) {
             // Sarah 2026-05-19: starting / 2nd / final offers are editable again,
             // so the calculator now respects user-typed offer values. To still
             // detect when the cashier actually overrode the suggested final, we
             // recompute the calculator's pure auto-final by passing an empty
             // offerInputs array (which forces the 50% / 75% / 95% defaults), and
             // compare that to whatever the cashier submitted. If they diverge,
-            // require an override reason.
+            // require an override reason. Skipped entirely for a donated
+            // collection — dropping to $0 is the whole point of "Donated" and
+            // doesn't need a manager-approval-style reason typed in.
             $autoCalc = $this->calculator->calculate($request->input('lines', []), []);
             $pm = $request->input('payment_method');
             $autoFinal = $pm === 'store_credit' ? (float) $autoCalc['final_offer_credit'] : (float) $autoCalc['final_offer_cash'];
@@ -759,7 +761,25 @@ class BuyFromCustomerController extends Controller
             }
         }
         $offer->rejection_reason = $request->input('rejection_reason');
-        $offer->notes = $request->input('notes');
+        $notes = $request->input('notes');
+        $isDonated = filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN);
+        $offer->is_donated = $isDonated;
+        if ($isDonated) {
+            // A donated collection is never negotiated — force the whole
+            // payout ladder to $0 regardless of what the calculator or a
+            // stray submitted value said, so History/the intake sheet never
+            // show a "final offer" for a box nobody paid for.
+            $offer->starting_offer_cash = 0;
+            $offer->starting_offer_credit = 0;
+            $offer->second_offer_cash = 0;
+            $offer->second_offer_credit = 0;
+            $offer->final_offer_cash = 0;
+            $offer->final_offer_credit = 0;
+            if (strpos((string) $notes, '[DONATED]') === false) {
+                $notes = trim('[DONATED] ' . (string) $notes);
+            }
+        }
+        $offer->notes = $notes;
         $offer->price_override_reason = $request->input('price_override_reason') ?: null;
         $offer->collection_summary_json = json_encode($calculation['collection_summary'] ?? []);
         if ($request->filled('seller_signature_data')) {
@@ -927,7 +947,8 @@ class BuyFromCustomerController extends Controller
         $purchase->created_by = $offer->created_by;
         $pmLabel = $offer->payment_method ?: $payoutType;
         $purchase->additional_notes = sprintf(
-            'Buy from customer %s | payout: %s | payment: %s | record: %s | total payout: %.2f',
+            '%sBuy from customer %s | payout: %s | payment: %s | record: %s | total payout: %.2f',
+            $offer->is_donated ? '[DONATED] ' : '',
             $offer->id,
             $payoutType,
             $pmLabel,
@@ -1252,6 +1273,12 @@ class BuyFromCustomerController extends Controller
         if (Schema::hasTable('buy_customer_offers') && !Schema::hasColumn('buy_customer_offers', 'processing_status_contributors')) {
             Schema::table('buy_customer_offers', function (Blueprint $table) {
                 $table->text('processing_status_contributors')->nullable();
+            });
+        }
+
+        if (Schema::hasTable('buy_customer_offers') && !Schema::hasColumn('buy_customer_offers', 'is_donated')) {
+            Schema::table('buy_customer_offers', function (Blueprint $table) {
+                $table->boolean('is_donated')->default(false);
             });
         }
     }

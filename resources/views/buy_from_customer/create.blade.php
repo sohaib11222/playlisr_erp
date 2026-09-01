@@ -717,6 +717,15 @@ HTML;
                                 @endforeach
 
                                 <div class="well bfc-accept-well" style="margin-top:15px; max-width:920px;">
+                                    <div class="form-group" style="background:#FFF8E1; border:1px solid #F0DC7A; border-radius:6px; padding:10px 14px;">
+                                        <label style="margin:0; font-weight:600; color:#5A4410; cursor:pointer;">
+                                            <input type="checkbox" name="is_donated" value="1" id="bfc_is_donated_checkbox" style="margin-right:8px;">
+                                            This collection was donated (no payout)
+                                        </label>
+                                        <div style="font-size:12px; color:#8B6914; margin-top:4px; margin-left:24px;">
+                                            Check this when the seller gave the collection away. Final amount paid locks to $0, no override reason or store-credit payout is needed, and the record is tagged <strong>[DONATED]</strong> — including on the purchase you'll price at /products afterward.
+                                        </div>
+                                    </div>
                                     {{-- Sarah 2026-07-09: capture the amount actually handed over
                                          (cash / store credit / Zelle-Venmo) in one blank field. This is
                                          the number that gets recorded — it overrides the suggestions above. --}}
@@ -1524,6 +1533,31 @@ HTML;
             });
         })();
 
+        // "This collection was donated" — locks the final amount to $0 and
+        // hides the override-reason prompt (the accept-form submit handler
+        // below skips requiring both when this box is checked), so the
+        // cashier doesn't have to type a dollar amount that never existed.
+        (function donatedToggle() {
+            var $checkbox = $('#bfc_is_donated_checkbox');
+            var $amount = $('#bfc_accept_final_amount');
+            if (!$checkbox.length) return;
+            var priorAmount = '';
+
+            function apply() {
+                var checked = $checkbox.is(':checked');
+                if (checked) {
+                    priorAmount = $amount.val() || priorAmount;
+                    $amount.val('0.00').prop('readonly', true);
+                    $('#override_required_label').hide();
+                } else {
+                    $amount.prop('readonly', false).val(priorAmount);
+                }
+            }
+
+            $checkbox.on('change', apply);
+            apply();
+        })();
+
         (function signaturePad() {
             var canvas = document.getElementById('buy_signature_canvas');
             if (!canvas || !canvas.getContext) return;
@@ -1594,20 +1628,25 @@ HTML;
                 if (!hasSignature) {
                     problems.push('Seller must sign in the signature box.');
                 }
+                var isDonated = $('#bfc_is_donated_checkbox').is(':checked');
                 // Sarah 2026-07-09: the actual amount paid must be entered here —
-                // it's the number that gets recorded.
+                // it's the number that gets recorded. A donated collection has
+                // no payout at all, so $0 is the correct (and only) value —
+                // skip the ">0" check entirely rather than asking the cashier
+                // to justify a number that was never going to be positive.
                 var finalAmt = parseFloat($('#bfc_accept_final_amount').val());
-                if (!isFinite(finalAmt) || finalAmt <= 0) {
+                if (!isDonated && (!isFinite(finalAmt) || finalAmt <= 0)) {
                     problems.push('Enter the final amount actually paid.');
                 }
                 // Mirror the server's override gate: if the amount paid differs
                 // from the suggested final for the selected payment method, a
-                // reason is required (matches validateRequest()).
+                // reason is required (matches validateRequest()) — unless the
+                // collection was donated, where dropping to $0 IS the reason.
                 var acceptPm = $('#bfc_accept_pm').val();
                 var autoForPm = parseFloat(acceptPm === 'store_credit'
                     ? $('#bfc_final_credit').data('auto')
                     : $('#bfc_final_cash').data('auto'));
-                if (isFinite(finalAmt) && isFinite(autoForPm) && Math.abs(finalAmt - autoForPm) > 0.009
+                if (!isDonated && isFinite(finalAmt) && isFinite(autoForPm) && Math.abs(finalAmt - autoForPm) > 0.009
                     && !$.trim($('textarea[name="price_override_reason"]').val())) {
                     problems.push('Final amount differs from the suggestion — add an override reason.');
                 }

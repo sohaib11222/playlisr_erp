@@ -96,7 +96,12 @@
                                     <br><small>{{ $offer->seller_phone }}</small>
                                 @endif
                             </td>
-                            <td><span class="label bg-{{ $offer->status === 'accepted' ? 'green' : ($offer->status === 'rejected' ? 'red' : 'yellow') }}">{{ ucfirst($offer->status) }}</span></td>
+                            <td>
+                                <span class="label bg-{{ $offer->status === 'accepted' ? 'green' : ($offer->status === 'rejected' ? 'red' : 'yellow') }}">{{ ucfirst($offer->status) }}</span>
+                                @if($offer->is_donated)
+                                    <span class="label bg-orange" title="No payout — collection was donated">Donated</span>
+                                @endif
+                            </td>
                             <td>@format_currency($offer->final_offer_cash)</td>
                             <td>@format_currency($offer->final_offer_credit)</td>
                             <td>{{ $pmLabel }}</td>
