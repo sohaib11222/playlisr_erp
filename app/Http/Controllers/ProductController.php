@@ -1566,7 +1566,16 @@ class ProductController extends Controller
             ->get();
 
         if ($rows->isEmpty()) {
-            return response()->json(['success' => true, 'msg' => 'Stock was already 0.', 'zeroed' => 0]);
+            // Already 0 here — but the website may not know that yet (e.g. it
+            // was zeroed by something that didn't push, or the push never
+            // landed). Push anyway so this button doubles as "force this
+            // product to re-sync to the website right now."
+            try {
+                (new \App\Services\NivessaStockNotifier())->push([(int) $product->id]);
+            } catch (\Throwable $pushEx) {
+                Log::warning('Zero stock re-sync push failed for product ' . $id . ': ' . $pushEx->getMessage());
+            }
+            return response()->json(['success' => true, 'msg' => 'Stock was already 0 in the ERP — pushed a re-sync to the website.', 'zeroed' => 0]);
         }
 
         $snapshotRows = $rows->map(function ($r) {
