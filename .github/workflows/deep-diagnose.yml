@@ -85,6 +85,21 @@ jobs:
             grep -E "\.(ERROR|CRITICAL|EMERGENCY):" "$LOG" 2>&1 | sed -E 's/"contact_id":[0-9]+/"contact_id":N/' | sort | uniq -c | sort -rn | head -30
             echo
 
+            echo "--- normalized error signature counts, business hours 10:00-17:00 today (strips IDs/timestamps) ---"
+            grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 \
+              | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" \
+              | sed -E 's/^\[[^]]+\] [a-z]+\.(ERROR|CRITICAL|EMERGENCY): //' \
+              | sed -E 's/[0-9]+/N/g' \
+              | cut -c1-140 \
+              | sort | uniq -c | sort -rn | head -20
+            echo
+
+            echo "--- one full raw example line for the single most common daytime signature ---"
+            TOPSIG=$(grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" | sed -E 's/^\[[^]]+\] [a-z]+\.(ERROR|CRITICAL|EMERGENCY): //' | sed -E 's/[0-9]+/N/g' | cut -c1-80 | sort | uniq -c | sort -rn | head -1 | sed -E 's/^ *[0-9]+ //')
+            echo "top signature (normalized): $TOPSIG"
+            grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" | grep -F "$(echo "$TOPSIG" | cut -c1-40)" | tail -3
+            echo
+
             echo "--- POS / register / sell related errors today ---"
             grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "pos|register|sell|cashier|checkout" | tail -40
             echo
