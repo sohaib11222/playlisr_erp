@@ -17,3 +17,12 @@
         @endforeach
     </select>
 </div>
+
+<div class="form-group">
+    <label>Priority</label>
+    <select name="priority" class="form-control" style="width:auto;">
+        @foreach($priorityLabels as $key => $label)
+            <option value="{{ $key }}" @if(old('priority', $project->priority ?? 'medium')===$key) selected @endif>{{ $label }}</option>
+        @endforeach
+    </select>
+</div>

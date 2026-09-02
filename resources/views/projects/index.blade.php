@@ -18,15 +18,22 @@
 
     <div class="box box-solid">
         <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
-            @include('tasks.partials.store_toggle', ['indexAction' => action('ProjectController@index'), 'store' => $store, 'storeLabels' => $storeLabels])
+            @include('tasks.partials.store_toggle', ['indexAction' => action('ProjectController@index'), 'store' => $store, 'storeLabels' => $storeLabels, 'canToggleStore' => $canToggleStore])
             <form method="GET" action="{{ action('ProjectController@index') }}" class="form-inline">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <label>Status</label>
-                <select name="status" class="form-control" onchange="this.form.submit()">
+                <label style="margin-right:5px;">Status</label>
+                <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
                     <option value="" @if(!$status) selected @endif>All</option>
                     <option value="not_started" @if($status==='not_started') selected @endif>Not started</option>
                     <option value="in_progress" @if($status==='in_progress') selected @endif>In progress</option>
                     <option value="complete" @if($status==='complete') selected @endif>Complete</option>
+                </select>
+                <label style="margin-right:5px;">Priority</label>
+                <select name="priority" class="form-control" onchange="this.form.submit()">
+                    <option value="" @if(!$priority) selected @endif>All</option>
+                    @foreach($priorityLabels as $key => $label)
+                        <option value="{{ $key }}" @if($priority===$key) selected @endif>{{ $label }}</option>
+                    @endforeach
                 </select>
             </form>
         </div>
@@ -34,7 +41,11 @@
             @forelse($projects as $p)
             <div class="box box-default">
                 <div class="box-header with-border">
-                    <h3 class="box-title">{{ $p->title }} <span class="label label-default">{{ $p->store ? ($storeLabels[$p->store] ?? $p->store) : 'Both stores' }}</span></h3>
+                    <h3 class="box-title">
+                        {{ $p->title }}
+                        <span class="label label-default">{{ $p->store ? ($storeLabels[$p->store] ?? $p->store) : 'Both stores' }}</span>
+                        <span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$p->priority] ?? 'default' }}">{{ $priorityLabels[$p->priority] ?? ucfirst($p->priority) }}</span>
+                    </h3>
                     <div class="box-tools">
                         @include('tasks.partials.status_dropdown', ['action' => action('ProjectController@updateStatus', $p->id), 'status' => $p->status])
                         <a href="{{ action('ProjectController@edit', $p->id) }}" class="btn btn-xs btn-default"><i class="fa fa-edit"></i></a>

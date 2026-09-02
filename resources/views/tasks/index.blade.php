@@ -18,16 +18,23 @@
 
     <div class="box box-solid">
         <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
-            @include('tasks.partials.store_toggle', ['indexAction' => action('TaskController@index'), 'store' => $store, 'storeLabels' => $storeLabels])
+            @include('tasks.partials.store_toggle', ['indexAction' => action('TaskController@index'), 'store' => $store, 'storeLabels' => $storeLabels, 'canToggleStore' => $canToggleStore])
             <form method="GET" action="{{ action('TaskController@index') }}" class="form-inline">
                 <input type="hidden" name="type" value="{{ $type }}">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <label>Status</label>
-                <select name="status" class="form-control" onchange="this.form.submit()">
+                <label style="margin-right:5px;">Status</label>
+                <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
                     <option value="" @if(!$status) selected @endif>All</option>
                     <option value="not_started" @if($status==='not_started') selected @endif>Not started</option>
                     <option value="in_progress" @if($status==='in_progress') selected @endif>In progress</option>
                     <option value="complete" @if($status==='complete') selected @endif>Complete</option>
+                </select>
+                <label style="margin-right:5px;">Priority</label>
+                <select name="priority" class="form-control" onchange="this.form.submit()">
+                    <option value="" @if(!$priority) selected @endif>All</option>
+                    @foreach($priorityLabels as $key => $label)
+                        <option value="{{ $key }}" @if($priority===$key) selected @endif>{{ $label }}</option>
+                    @endforeach
                 </select>
             </form>
         </div>
@@ -37,6 +44,7 @@
                     <tr>
                         <th>Title</th>
                         <th>Store</th>
+                        <th>Priority</th>
                         @if($type === 'daily')
                             <th>Date</th>
                         @else
@@ -55,6 +63,7 @@
                     <tr>
                         <td><strong>{{ $t->title }}</strong>@if($t->description)<div class="text-muted"><small>{{ $t->description }}</small></div>@endif</td>
                         <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
+                        <td><span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$t->priority] ?? 'default' }}">{{ $priorityLabels[$t->priority] ?? ucfirst($t->priority) }}</span></td>
                         @if($type === 'daily')
                             <td>{{ $t->start_date->format('M j, Y') }}</td>
                         @else
@@ -83,7 +92,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="{{ $type === 'daily' ? 8 : 9 }}" class="text-center text-muted">No tasks yet. Click "Add {{ $type === 'daily' ? 'Daily' : 'Weekly' }} Task" to create one.</td></tr>
+                    <tr><td colspan="{{ $type === 'daily' ? 9 : 10 }}" class="text-center text-muted">No tasks yet. Click "Add {{ $type === 'daily' ? 'Daily' : 'Weekly' }} Task" to create one.</td></tr>
                     @endforelse
                 </tbody>
             </table>
