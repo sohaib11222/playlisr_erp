@@ -67,7 +67,12 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
             <h1>Communications Hub</h1>
             <p class="sub">Every inbound customer message in one place &mdash; both Quo phone lines, Instagram, WhatsApp, Facebook, TikTok. Log it, tag the topic, mark it resolved. Unhappy customers always sort to the top.</p>
         </div>
-        <button type="button" class="btn-accent" id="add_comm_btn"><i class="fa fa-plus"></i> Log Inquiry</button>
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+            <a href="{{ action('QuoWebhookController@settings') }}" class="btn-accent" style="background:var(--pos-surface);">
+                <i class="fa fa-plug"></i> Quo Setup
+            </a>
+            <button type="button" class="btn-accent" id="add_comm_btn"><i class="fa fa-plus"></i> Log Inquiry</button>
+        </div>
     </div>
 
     <div class="comm-stats">

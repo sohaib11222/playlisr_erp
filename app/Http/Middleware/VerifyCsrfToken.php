@@ -26,5 +26,6 @@ class VerifyCsrfToken extends BaseVerifier
         '/api/ecom/orders',
         '/webhooks/clover',
         '/webhooks/ebay/marketplace-account-deletion',
+        '/webhooks/quo',
     ];
 }

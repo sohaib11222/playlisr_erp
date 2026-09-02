@@ -72,6 +72,12 @@ Route::middleware(['setData'])->group(function () {
     // eBay Marketplace Account Deletion — GET challenge + POST notifications (no CSRF).
     Route::match(['get', 'post'], '/webhooks/ebay/marketplace-account-deletion', 'EbayMarketplaceDeletionController@handle')
         ->name('ebay.marketplace_deletion');
+
+    // Quo (phone) webhook — signature-verified in the controller. Must be
+    // outside the auth group (Quo calls us) and outside CSRF (see
+    // VerifyCsrfToken::$except). Logs message.received/call.missed straight
+    // into the Communications Hub.
+    Route::post('/webhooks/quo', 'QuoWebhookController@webhook')->name('quo.webhook');
 });
 
 //Routes for authenticated users only
@@ -210,6 +216,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/communications/{id}/mark-resolved', 'CommunicationController@markResolved');
     Route::post('/communications/{id}/mark-pending', 'CommunicationController@markPending');
     Route::post('/communications/{id}/assign', 'CommunicationController@assign');
+
+    // Admin-only: paste the Quo webhook signing key (stored in a gitignored
+    // file, same pattern as the shift-notes Slack webhook — Sarah has no
+    // SSH access to the server .env).
+    Route::get('/communications/quo-settings', 'QuoWebhookController@settings')->name('quo.settings');
+    Route::post('/communications/quo-settings', 'QuoWebhookController@saveSettings')->name('quo.settings.save');
 
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.

@@ -15,13 +15,21 @@ class Communication extends Model
     ];
 
     const CHANNELS = [
-        'phone_1' => 'Phone Line 1 (Quo)',
-        'phone_2' => 'Phone Line 2 (Quo)',
+        'phone_1' => 'Nivessa Pico (Quo)',
+        'phone_2' => 'Nivessa Hollywood (Quo)',
         'instagram' => 'Instagram',
         'whatsapp' => 'WhatsApp',
         'facebook' => 'Facebook',
         'tiktok' => 'TikTok',
         'other' => 'Other',
+    ];
+
+    /** Quo store numbers → our channel codes. Used by QuoWebhookController to
+     * route an inbound message/call to the right line without needing the
+     * Quo API — matched off the phone number the webhook payload carries. */
+    const QUO_NUMBERS = [
+        '+12135771648' => 'phone_1', // Nivessa Pico
+        '+12136762645' => 'phone_2', // Nivessa Hollywood
     ];
 
     const TOPICS = [
