@@ -71,6 +71,20 @@ class AdminSidebarMenu
                 )->order(7);
             }
 
+            //Communications Hub — log every inbound customer message across
+            //phone (2 Quo lines), Instagram, WhatsApp, Facebook, TikTok, with
+            //pending/resolved status and topic tags (shipping, stock, events,
+            //careers, partnerships, unhappy customer, general). Same gate as
+            //Orders & Customer Pickups above — any staff who talks to
+            //customers should see this, not just managers.
+            if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
+                $menu->url(
+                    action('CommunicationController@index'),
+                    'Communications Hub',
+                    ['icon' => 'fa fas fa-comments', 'active' => request()->segment(1) == 'communications']
+                )->order(11);
+            }
+
             //Tasks & Projects — team-wide weekly tasks + longer-running
             //projects with contributor credit. Open to every employee, no
             //permission gate (mirrors Customer Wants' convention).
