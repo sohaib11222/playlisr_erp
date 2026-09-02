@@ -100,6 +100,20 @@ jobs:
             grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" | grep -F "$(echo "$TOPSIG" | cut -c1-40)" | tail -3
             echo
 
+            echo "--- invalid_client / client authentication failed: full context (30 lines around 3 occurrences) ---"
+            grep -n "client authentication failed" "$LOG" 2>&1 | tail -3 | cut -d: -f1 | while read -r ln; do
+              echo "== around line $ln =="
+              sed -n "$((ln>15?ln-15:1)),$((ln+20))p" "$LOG" 2>&1
+              echo
+            done
+            echo
+
+            echo "--- 'total_rp' non-object: full context ---"
+            grep -n "total_rp' of non-object" "$LOG" 2>&1 | tail -1 | cut -d: -f1 | while read -r ln; do
+              sed -n "$((ln>10?ln-10:1)),$((ln+25))p" "$LOG" 2>&1
+            done
+            echo
+
             echo "--- POS / register / sell related errors today ---"
             grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "pos|register|sell|cashier|checkout" | tail -40
             echo
