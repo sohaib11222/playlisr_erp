@@ -1,10 +1,10 @@
 @extends('layouts.app')
-@section('title', $type === 'daily' ? 'Daily Tasks' : 'Weekly Tasks')
+@section('title', 'Tasks')
 
 @section('content')
 <section class="content-header">
-    <h1>Tasks &amp; Projects <small>{{ $type === 'daily' ? 'daily tasks' : 'weekly tasks' }}</small>
-        <a href="{{ action('TaskController@create', ['type' => $type]) }}" class="btn btn-primary pull-right"><i class="fa fa-plus"></i> Add {{ $type === 'daily' ? 'Daily' : 'Weekly' }} Task</a>
+    <h1>Tasks &amp; Projects <small>daily + weekly tasks</small>
+        <a href="{{ action('TaskController@create') }}" class="btn btn-primary pull-right"><i class="fa fa-plus"></i> Add Task</a>
     </h1>
 </section>
 
@@ -20,8 +20,13 @@
         <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
             @include('tasks.partials.store_toggle', ['indexAction' => action('TaskController@index'), 'store' => $store, 'storeLabels' => $storeLabels, 'canToggleStore' => $canToggleStore])
             <form method="GET" action="{{ action('TaskController@index') }}" class="form-inline">
-                <input type="hidden" name="type" value="{{ $type }}">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
+                <label style="margin-right:5px;">Type</label>
+                <select name="type" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
+                    <option value="" @if(!$type) selected @endif>Daily + Weekly</option>
+                    <option value="daily" @if($type==='daily') selected @endif>Daily</option>
+                    <option value="weekly" @if($type==='weekly') selected @endif>Weekly</option>
+                </select>
                 <label style="margin-right:5px;">Status</label>
                 <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
                     <option value="" @if(!$status) selected @endif>All</option>
@@ -43,14 +48,10 @@
                 <thead>
                     <tr>
                         <th>Title</th>
+                        <th>Type</th>
                         <th>Store</th>
                         <th>Priority</th>
-                        @if($type === 'daily')
-                            <th>Date</th>
-                        @else
-                            <th>Start</th>
-                            <th>Ends</th>
-                        @endif
+                        <th>Date</th>
                         <th>Status</th>
                         <th>Created by</th>
                         <th>Started by</th>
@@ -62,14 +63,16 @@
                     @forelse($tasks as $t)
                     <tr>
                         <td><strong>{{ $t->title }}</strong>@if($t->description)<div class="text-muted"><small>{{ $t->description }}</small></div>@endif</td>
+                        <td><span class="label label-{{ $t->task_type === 'daily' ? 'info' : 'primary' }}">{{ $t->task_type === 'daily' ? 'Daily' : 'Weekly' }}</span></td>
                         <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
                         <td><span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$t->priority] ?? 'default' }}">{{ $priorityLabels[$t->priority] ?? ucfirst($t->priority) }}</span></td>
-                        @if($type === 'daily')
-                            <td>{{ $t->start_date->format('M j, Y') }}</td>
-                        @else
-                            <td>{{ $t->start_date->format('M j, Y') }}</td>
-                            <td>{{ $t->end_date->format('M j, Y') }}</td>
-                        @endif
+                        <td>
+                            @if($t->task_type === 'daily')
+                                {{ $t->start_date->format('M j, Y') }}
+                            @else
+                                {{ $t->start_date->format('M j, Y') }} &ndash; {{ $t->end_date->format('M j, Y') }}
+                            @endif
+                        </td>
                         <td>
                             @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status])
                         </td>
@@ -92,7 +95,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="{{ $type === 'daily' ? 9 : 10 }}" class="text-center text-muted">No tasks yet. Click "Add {{ $type === 'daily' ? 'Daily' : 'Weekly' }} Task" to create one.</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
                     @endforelse
                 </tbody>
             </table>
