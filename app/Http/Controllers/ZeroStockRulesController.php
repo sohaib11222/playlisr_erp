@@ -16,9 +16,13 @@ use Illuminate\Support\Facades\Storage;
  * /admin/admin-action-history (action 'zero-retired-stock').
  *
  * Rules (edit here to add/change what gets zeroed):
- *   1. Name starts with "RETIRED:" and the product is NOT in the Apparel
- *      category (apparel keeps its stock; only retired media/other items
- *      get zeroed).
+ *   1. Name starts with "RETIRED:" — ALL categories, including Apparel.
+ *      Originally excluded Apparel, but Sarah confirmed 2026-09-01 that
+ *      "RETIRED:" always means "off the system" regardless of category
+ *      (it's how she used to pull items from sale before Zero Stock
+ *      Instant existed) — the exclusion was letting retired shirts stay
+ *      sellable with real stock (found: 3 "Retired: Rock Band Shirt" rows,
+ *      15 units combined, still In Stock on the site).
  *   2. Kanye West - Graduation, Vinyl and Cassette formats only.
  *   3. Record Store Day titles, matched by name. No structured RSD flag
  *      exists in the schema (same gap InventoryCheckService::isRsdTitle
@@ -45,17 +49,6 @@ class ZeroStockRulesController extends Controller
         return json_decode(file_get_contents($path), true) ?: [];
     }
 
-    protected function apparelCategoryIds($businessId)
-    {
-        return DB::table('categories')
-            ->where('business_id', $businessId)
-            ->whereNull('deleted_at')
-            ->whereRaw('LOWER(TRIM(name)) = ?', ['apparel'])
-            ->pluck('id')
-            ->map(function ($v) { return (int) $v; })
-            ->all();
-    }
-
     protected function vinylCassetteCategoryIds($businessId)
     {
         return DB::table('categories')
@@ -72,25 +65,16 @@ class ZeroStockRulesController extends Controller
 
     protected function rules($businessId)
     {
-        $apparelIds = $this->apparelCategoryIds($businessId);
         $vinylCassetteIds = $this->vinylCassetteCategoryIds($businessId);
 
         return [
             [
                 'key'   => 'retired-prefix',
-                'label' => 'Retired items (name starts with "RETIRED:", not Apparel)',
-                'query' => function () use ($businessId, $apparelIds) {
-                    $q = Product::where('business_id', $businessId)
+                'label' => 'Retired items (name starts with "RETIRED:", all categories)',
+                'query' => function () use ($businessId) {
+                    return Product::where('business_id', $businessId)
                         ->where('name', 'LIKE', 'RETIRED:%')
                         ->where('enable_stock', 1);
-                    if (!empty($apparelIds)) {
-                        $q->where(function ($qq) use ($apparelIds) {
-                            $qq->whereNotIn('category_id', $apparelIds)->orWhereNull('category_id');
-                        })->where(function ($qq) use ($apparelIds) {
-                            $qq->whereNotIn('sub_category_id', $apparelIds)->orWhereNull('sub_category_id');
-                        });
-                    }
-                    return $q;
                 },
             ],
             [
