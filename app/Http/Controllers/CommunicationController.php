@@ -20,7 +20,7 @@ class CommunicationController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $channels = Communication::CHANNELS;
         $topics = Communication::TOPICS;
-        $statuses = ['pending' => 'Pending', 'resolved' => 'Resolved'];
+        $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'resolved' => 'Resolved'];
 
         if (request()->ajax()) {
             $rows = Communication::where('communications.business_id', $business_id)
@@ -29,11 +29,18 @@ class CommunicationController extends Controller
                 ->select(
                     'communications.*',
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(assignee_users.first_name,''), ' ', COALESCE(assignee_users.last_name,''))), ''), assignee_users.username) as assignee_name"),
-                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name")
+                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name"),
+                    DB::raw("(communications.status = 'pending' AND communications.created_at <= (NOW() - INTERVAL 1 HOUR)) as is_overdue"),
+                    DB::raw("(communications.is_priority = 1 OR (communications.status = 'pending' AND communications.created_at <= (NOW() - INTERVAL 1 HOUR))) as priority_sort")
                 );
 
             if (request()->has('status') && request()->status != '') {
-                $rows->where('communications.status', request()->status);
+                if (request()->status == 'overdue') {
+                    $rows->where('communications.status', 'pending')
+                        ->where('communications.created_at', '<=', now()->subHour());
+                } else {
+                    $rows->where('communications.status', request()->status);
+                }
             } else {
                 $rows->where('communications.status', 'pending');
             }
@@ -48,6 +55,9 @@ class CommunicationController extends Controller
 
             return DataTables::of($rows)
                 ->addColumn('priority_flag', function ($row) {
+                    if ($row->is_overdue) {
+                        return '<span class="label label-danger" title="Unresolved 1hr+"><i class="fa fa-clock-o"></i></span>';
+                    }
                     return $row->is_priority
                         ? '<span class="label label-danger" title="Priority"><i class="fa fa-exclamation-circle"></i></span>'
                         : '';
@@ -70,8 +80,11 @@ class CommunicationController extends Controller
                     return '<span class="label ' . $class . '">' . e($text) . '</span>';
                 })
                 ->editColumn('status', function ($row) {
-                    return $row->status == 'resolved'
-                        ? '<span class="label label-success">Resolved</span>'
+                    if ($row->status == 'resolved') {
+                        return '<span class="label label-success">Resolved</span>';
+                    }
+                    return $row->is_overdue
+                        ? '<span class="label label-danger">Unresolved &ndash; High Priority</span>'
                         : '<span class="label label-warning">Pending</span>';
                 })
                 ->addColumn('customer_info', function ($row) {
@@ -112,6 +125,7 @@ class CommunicationController extends Controller
 
         $counts = [
             'pending' => Communication::where('business_id', $business_id)->where('status', 'pending')->count(),
+            'overdue' => Communication::where('business_id', $business_id)->where('status', 'pending')->where('created_at', '<=', now()->subHour())->count(),
             'resolved' => Communication::where('business_id', $business_id)->where('status', 'resolved')->count(),
         ];
 

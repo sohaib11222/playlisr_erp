@@ -11,15 +11,23 @@ body.pos-v2 .comm-wrap { max-width: 1320px; margin: 0 auto; padding: 18px 16px 6
 body.pos-v2 .comm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 body.pos-v2 .comm-head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
 body.pos-v2 .comm-head .sub { color: #6b6253; margin: 0; font-size: 14px; max-width: 60ch; }
-body.pos-v2 .comm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
-body.pos-v2 .stat-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 12px; padding: 13px 15px; }
+body.pos-v2 .comm-stats { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+body.pos-v2 .stat-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 12px; padding: 13px 15px; min-width: 130px; }
 body.pos-v2 .stat-card .n { font-size: 22px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 body.pos-v2 .stat-card .l { font-size: 11.5px; color: #8a8070; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-top: 5px; }
 body.pos-v2 .stat-card.stat-pending .n { color: #b98f00; }
 body.pos-v2 .stat-card.stat-resolved .n { color: #3d8b4c; }
-body.pos-v2 .stat-card.stat-topic { cursor: pointer; }
-body.pos-v2 .stat-card.stat-topic:hover { background: var(--pos-accent-soft); }
-body.pos-v2 .stat-card.stat-topic.is-priority .n { color: #b4432f; }
+body.pos-v2 .topic-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+body.pos-v2 .topic-tag {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 999px;
+  padding: 6px 8px 6px 13px; font-size: 12.5px; font-weight: 600; color: var(--pos-ink); line-height: 1; }
+body.pos-v2 .topic-tag:hover { background: var(--pos-accent-soft); border-color: var(--pos-accent-deep); }
+body.pos-v2 .topic-tag .count {
+  background: var(--pos-line); color: #6b6253; border-radius: 999px; padding: 3px 8px;
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+body.pos-v2 .topic-tag.is-priority { border-color: #e3b3a8; color: #b4432f; }
+body.pos-v2 .topic-tag.is-priority .count { background: #f7e4de; color: #b4432f; }
 body.pos-v2 .comm-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 14px; padding: 18px 20px; margin-bottom: 20px; }
 body.pos-v2 .comm-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 body.pos-v2 .comm-toolbar .filter-label { font-size: 12px; font-weight: 600; color: #5a5145; }
@@ -64,12 +72,15 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
 
     <div class="comm-stats">
         <div class="stat-card stat-pending"><div class="n">{{ $counts['pending'] }}</div><div class="l">Pending</div></div>
+        <div class="stat-card stat-overdue" id="overdue_stat" style="cursor:pointer;border-color:#e3b3a8;"><div class="n" style="color:#b4432f;">{{ $counts['overdue'] }}</div><div class="l">Unresolved 1hr+</div></div>
         <div class="stat-card stat-resolved"><div class="n">{{ $counts['resolved'] }}</div><div class="l">Resolved</div></div>
+    </div>
+
+    <div class="topic-tags">
         @foreach($topics as $key => $label)
-            <div class="stat-card stat-topic {{ $key == 'unhappy_customer' ? 'is-priority' : '' }}" data-topic="{{ $key }}">
-                <div class="n">{{ $topic_counts[$key] ?? 0 }}</div>
-                <div class="l">{{ $label }}</div>
-            </div>
+            <span class="topic-tag {{ $key == 'unhappy_customer' ? 'is-priority' : '' }}" data-topic="{{ $key }}">
+                {{ $label }} <span class="count">{{ $topic_counts[$key] ?? 0 }}</span>
+            </span>
         @endforeach
     </div>
 
@@ -213,14 +224,14 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 }
             },
             columns: [
-                { data: 'priority_flag', name: 'is_priority', orderable: false, searchable: false },
+                { data: 'priority_flag', name: 'priority_sort', orderable: true, searchable: false },
                 { data: 'channel', name: 'channel' },
                 { data: 'topic', name: 'topic' },
                 { data: 'customer_info', name: 'customer_name' },
                 { data: 'message_excerpt', name: 'message' },
                 { data: 'status', name: 'status' },
                 { data: 'assigned_info', name: 'assignee_name' },
-                { data: 'created_info', name: 'created_info' },
+                { data: 'created_info', name: 'created_at' },
                 { data: 'action', name: 'action', orderable: false, searchable: false },
             ],
             order: [[0, 'desc'], [7, 'desc']],
@@ -230,9 +241,15 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
 
         $('#status_filter, #topic_filter, #channel_filter').on('change', reload);
 
-        $('.stat-card.stat-topic').on('click', function() {
+        $('.topic-tag').on('click', function() {
             $('#topic_filter').val($(this).data('topic'));
             $('#status_filter').val('');
+            reload();
+        });
+
+        $('#overdue_stat').on('click', function() {
+            $('#status_filter').val('overdue');
+            $('#topic_filter').val('');
             reload();
         });
 
