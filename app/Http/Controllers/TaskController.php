@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\User;
 use App\WeeklyTask;
+use App\Utils\BusinessUtil;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -14,11 +15,65 @@ class TaskController extends Controller
         'hollywood' => 'Hollywood',
     ];
 
+    const PRIORITY_LABELS = [
+        'high'   => 'High',
+        'medium' => 'Medium',
+        'low'    => 'Low',
+    ];
+
+    protected $businessUtil;
+
+    public function __construct(BusinessUtil $businessUtil)
+    {
+        $this->businessUtil = $businessUtil;
+    }
+
     /** end_date for a task of $taskType, starting $startDate. */
     private function computeEndDate(string $taskType, string $startDate)
     {
         $start = \Carbon\Carbon::parse($startDate);
         return $taskType === 'daily' ? $start->toDateString() : $start->addDays(7)->toDateString();
+    }
+
+    private function isAdmin()
+    {
+        return $this->businessUtil->is_admin(auth()->user());
+    }
+
+    /**
+     * Stores the current user is allowed to see/manage. Admins get both, so
+     * they can toggle between them; everyone else is locked to whichever
+     * store(s) their location permissions cover (see
+     * OpeningChecklistController::storesForUser), same convention as the
+     * employee_tasks board.
+     */
+    private function availableStores()
+    {
+        if ($this->isAdmin()) {
+            return self::STORE_LABELS;
+        }
+        return OpeningChecklistController::storesForUser();
+    }
+
+    /**
+     * The store to filter the list by. Admins can pick via ?store= (or see
+     * both, unfiltered); everyone else is pinned to their own store
+     * regardless of the query string, so a Hollywood login only ever sees
+     * Hollywood tasks and a Pico login only ever sees Pico tasks.
+     */
+    private function resolveStore(Request $request, array $availableStores)
+    {
+        $requested = $request->input('store');
+
+        if ($this->isAdmin()) {
+            return (!empty($requested) && isset(self::STORE_LABELS[$requested])) ? $requested : null;
+        }
+
+        if (!empty($requested) && isset($availableStores[$requested])) {
+            return $requested;
+        }
+
+        return array_key_first($availableStores) ?: OpeningChecklistController::defaultStoreForUser();
     }
 
     public function index(Request $request)
@@ -30,7 +85,9 @@ class TaskController extends Controller
             $type = 'weekly';
         }
         $status = $request->input('status');
-        $store = $request->input('store');
+        $priority = $request->input('priority');
+        $storeLabels = $this->availableStores();
+        $store = $this->resolveStore($request, $storeLabels);
 
         $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy'])
             ->where('business_id', $business_id)
@@ -39,24 +96,35 @@ class TaskController extends Controller
         if (!empty($status)) {
             $query->where('status', $status);
         }
+        if (!empty($priority)) {
+            $query->where('priority', $priority);
+        }
         if (!empty($store)) {
-            $query->where('store', $store);
+            // A store-specific view includes that store's tasks plus any
+            // company-wide (store = null) task, but not the other store's.
+            $query->where(function ($q) use ($store) {
+                $q->where('store', $store)->orWhereNull('store');
+            });
         }
 
-        $tasks = $query->orderByDesc('start_date')->paginate(50)->appends($request->except('page'));
-        $storeLabels = self::STORE_LABELS;
+        $tasks = $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")
+            ->orderByDesc('start_date')
+            ->paginate(50)->appends($request->except('page'));
+        $priorityLabels = self::PRIORITY_LABELS;
+        $canToggleStore = $this->isAdmin();
 
-        return view('tasks.index', compact('tasks', 'type', 'status', 'store', 'storeLabels'));
+        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
 
     public function create(Request $request)
     {
-        $storeLabels = self::STORE_LABELS;
+        $storeLabels = $this->availableStores();
+        $priorityLabels = self::PRIORITY_LABELS;
         $type = $request->input('type', 'weekly');
         if (!in_array($type, ['daily', 'weekly'])) {
             $type = 'weekly';
         }
-        return view('tasks.create', compact('storeLabels', 'type'));
+        return view('tasks.create', compact('storeLabels', 'priorityLabels', 'type'));
     }
 
     public function store(Request $request)
@@ -68,7 +136,8 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
-            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
+            'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
+            'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
         ]);
 
         $data['business_id'] = $business_id;
@@ -86,8 +155,9 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
-        $storeLabels = self::STORE_LABELS;
-        return view('tasks.edit', compact('task', 'storeLabels'));
+        $storeLabels = $this->availableStores();
+        $priorityLabels = self::PRIORITY_LABELS;
+        return view('tasks.edit', compact('task', 'storeLabels', 'priorityLabels'));
     }
 
     public function update($id, Request $request)
@@ -101,7 +171,8 @@ class TaskController extends Controller
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
             'status' => 'required|in:not_started,in_progress,complete',
-            'store' => 'nullable|in:' . implode(',', array_keys(self::STORE_LABELS)),
+            'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
+            'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
         ]);
 
         $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);

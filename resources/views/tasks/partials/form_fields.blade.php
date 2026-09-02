@@ -44,6 +44,16 @@
             </select>
         </div>
     </div>
+    <div class="col-md-2">
+        <div class="form-group">
+            <label>Priority</label>
+            <select name="priority" class="form-control">
+                @foreach($priorityLabels as $key => $label)
+                    <option value="{{ $key }}" @if(old('priority', $task->priority ?? 'medium')===$key) selected @endif>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+    </div>
 </div>
 
 @push('scripts')
