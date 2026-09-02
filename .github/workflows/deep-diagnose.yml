@@ -76,12 +76,36 @@ jobs:
             ls -la storage/logs/ 2>&1 | tail -5
             LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
             echo "latest log: $LOG"
-            echo "--- close_register_modal render failure (underlying message) ---"
-            grep -nE "render failed|close_register_modal" "$LOG" 2>&1 | tail -10
-            echo "--- context around getCloseRegister stack (frames + message) ---"
-            grep -nB14 "CashRegisterController.php(517)" "$LOG" 2>&1 | grep -E "ERROR|ErrorException|#0 |#1 |#2 |#3 |#4 |Undefined|on null|Call to|syntax|views/" | tail -30
-            echo "--- last 60 lines of latest log ---"
-            tail -n 60 "$LOG" 2>&1
+
+            echo "--- ERROR-level lines by hour (today) ---"
+            grep -oE "^\[2026-09-02 [0-9]{2}" "$LOG" 2>&1 | sort | uniq -c
+            echo
+
+            echo "--- distinct ERROR/CRITICAL messages today (deduped, first line only) ---"
+            grep -E "\.(ERROR|CRITICAL|EMERGENCY):" "$LOG" 2>&1 | sed -E 's/"contact_id":[0-9]+/"contact_id":N/' | sort | uniq -c | sort -rn | head -30
+            echo
+
+            echo "--- POS / register / sell related errors today ---"
+            grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "pos|register|sell|cashier|checkout" | tail -40
+            echo
+
+            echo "--- most recent 15 ERROR/CRITICAL stack traces (first frame only) ---"
+            grep -nE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | tail -15
+            echo
+
+            echo "=== system load / disk / memory ==="
+            uptime
+            df -h / 2>&1 | tail -3
+            free -h
+            echo
+
+            echo "=== mysql connection check ==="
+            mysqladmin ping 2>&1 || true
+            mysqladmin status 2>&1 || true
+            echo
+
+            echo "=== redis check ==="
+            redis-cli ping 2>&1 || true
             echo
 
             echo "=== Laravel boot test ==="
