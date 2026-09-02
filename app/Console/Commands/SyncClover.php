@@ -281,7 +281,7 @@ class SyncClover extends Command
                         'first_name' => $fn,
                         'last_name' => $ln,
                         'email' => $email,
-                        'mobile' => $phone,
+                        'mobile' => $phone ?? '',
                         'address_line_1' => $addr['address1'] ?? null,
                         'address_line_2' => $addr['address2'] ?? null,
                         'city' => $addr['city'] ?? null,
