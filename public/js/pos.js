@@ -1839,12 +1839,19 @@ $(document).ready(function() {
                             // never fires (modal_payment already closed, etc.) —
                             // guarded so a missing/broken prompt partial can
                             // never touch the sale that already committed above.
+                            // Whichever fires first, any #modal_payment backdrop
+                            // still mid-fade is force-cleared before the new modal
+                            // shows — confirmed via testing that a stale backdrop
+                            // can still sit on top of the email/phone inputs and
+                            // eat their first click even after this deferral.
                             if (result.transaction_id && typeof window.__promptEmailReceipt === 'function') {
                                 (function () {
                                     var opened = false;
                                     var openEmailReceiptPrompt = function () {
                                         if (opened) { return; }
                                         opened = true;
+                                        $('.modal-backdrop').remove();
+                                        $('body').removeClass('modal-open');
                                         window.__promptEmailReceipt(result.transaction_id, result.customer_email, result.customer_phone);
                                     };
                                     $('#modal_payment').one('hidden.bs.modal', openEmailReceiptPrompt);
