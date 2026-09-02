@@ -1,8 +1,8 @@
 @extends('layouts.app')
-@section('title', $type === 'daily' ? 'Add Daily Task' : 'Add Weekly Task')
+@section('title', 'Add Task')
 
 @section('content')
-<section class="content-header"><h1>{{ $type === 'daily' ? 'Add Daily Task' : 'Add Weekly Task' }}</h1></section>
+<section class="content-header"><h1>Add Task</h1></section>
 
 <section class="content">
     @include('tasks.partials.tabs')
@@ -12,7 +12,7 @@
                 @csrf
                 @include('tasks.partials.form_fields', ['task' => null, 'type' => $type])
                 <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> Save</button>
-                <a href="{{ action('TaskController@index', ['type' => $type]) }}" class="btn btn-default">Cancel</a>
+                <a href="{{ action('TaskController@index') }}" class="btn btn-default">Cancel</a>
             </form>
         </div>
     </div>

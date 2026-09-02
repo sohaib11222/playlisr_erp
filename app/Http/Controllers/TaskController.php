@@ -80,9 +80,12 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
 
-        $type = $request->input('type', 'weekly');
-        if (!in_array($type, ['daily', 'weekly'])) {
-            $type = 'weekly';
+        // Daily and weekly tasks share one list now (no more separate
+        // tabs) — 'type' is just an optional filter, not the thing that
+        // decides what's on screen.
+        $type = $request->input('type');
+        if (!in_array($type, ['daily', 'weekly'], true)) {
+            $type = null;
         }
         $status = $request->input('status');
         $priority = $request->input('priority');
@@ -90,9 +93,11 @@ class TaskController extends Controller
         $store = $this->resolveStore($request, $storeLabels);
 
         $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy'])
-            ->where('business_id', $business_id)
-            ->where('task_type', $type);
+            ->where('business_id', $business_id);
 
+        if (!empty($type)) {
+            $query->where('task_type', $type);
+        }
         if (!empty($status)) {
             $query->where('status', $status);
         }
@@ -147,7 +152,7 @@ class TaskController extends Controller
 
         WeeklyTask::create($data);
 
-        return redirect(action('TaskController@index', ['type' => $data['task_type']]))
+        return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task added.']);
     }
 
@@ -181,7 +186,7 @@ class TaskController extends Controller
         unset($data['status']);
         $task->fill($data)->save();
 
-        return redirect(action('TaskController@index', ['type' => $task->task_type]))
+        return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);
     }
 
@@ -198,7 +203,7 @@ class TaskController extends Controller
         $this->applyStatusTransition($task, $newStatus);
         $task->save();
 
-        return redirect(action('TaskController@index', ['type' => $task->task_type]))
+        return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Status updated.']);
     }
 
@@ -206,10 +211,9 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
-        $type = $task->task_type;
         $task->delete();
 
-        return redirect(action('TaskController@index', ['type' => $type]))
+        return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task deleted.']);
     }
 
