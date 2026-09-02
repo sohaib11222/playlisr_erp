@@ -114,6 +114,20 @@ jobs:
             done
             echo
 
+            echo "--- close_register_modal / CashRegisterController(517) occurrences TODAY across ALL hours ---"
+            grep -n "close_register_modal\|CashRegisterController.php(517)\|CashRegisterController.php:517" "$LOG" 2>&1 | tail -20
+            echo
+
+            echo "--- grep register/close-register keyword ERROR lines today, ALL hours (not just 10-16) ---"
+            grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "register|close.?out|end.?shift" | tail -40
+            echo
+
+            echo "--- 500/exception counts TODAY grouped by hour (all severities incl WARNING) ---"
+            grep -oE "^\[2026-09-02 [0-9]{2}" "$LOG" 2>&1 | sort | uniq -c
+            echo "--- ERROR-only counts TODAY grouped by hour ---"
+            grep -E "\.(ERROR|CRITICAL|EMERGENCY):" "$LOG" 2>&1 | grep -oE "^\[2026-09-02 [0-9]{2}" | sort | uniq -c
+            echo
+
             echo "--- POS / register / sell related errors today ---"
             grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "pos|register|sell|cashier|checkout" | tail -40
             echo
