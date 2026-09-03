@@ -5179,8 +5179,14 @@ class SellPosController extends Controller
 
                     $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
                     $output['transaction_id'] = $transaction->id ?? null;
-                    $output['customer_email'] = optional($transaction->contact)->email;
-                    $output['customer_phone'] = optional($transaction->contact)->mobile;
+                    // The default Walk-In Customer contact isn't a real customer —
+                    // don't pre-fill its stored email/mobile into the receipt
+                    // prompt, or every anonymous walk-in sale shows the same
+                    // number/address as if it belonged to that customer.
+                    $receiptContact = optional($transaction->contact);
+                    $isWalkInContact = (bool) $receiptContact->is_default;
+                    $output['customer_email'] = $isWalkInContact ? null : $receiptContact->email;
+                    $output['customer_phone'] = $isWalkInContact ? null : $receiptContact->mobile;
 
                     if (!empty($whatsapp_link)) {
                         $output['whatsapp_link'] = $whatsapp_link;
@@ -5934,8 +5940,12 @@ class SellPosController extends Controller
 
                 $output = ['success' => 1, 'msg' => $msg, 'receipt' => $receipt ];
                 $output['transaction_id'] = $transaction->id ?? null;
-                $output['customer_email'] = optional($transaction->contact)->email;
-                $output['customer_phone'] = optional($transaction->contact)->mobile;
+                // Same Walk-In Customer guard as the finalize path above — its
+                // stored email/mobile isn't a real customer's info.
+                $receiptContact = optional($transaction->contact);
+                $isWalkInContact = (bool) $receiptContact->is_default;
+                $output['customer_email'] = $isWalkInContact ? null : $receiptContact->email;
+                $output['customer_phone'] = $isWalkInContact ? null : $receiptContact->mobile;
 
                 if (!empty($whatsapp_link)) {
                     $output['whatsapp_link'] = $whatsapp_link;
