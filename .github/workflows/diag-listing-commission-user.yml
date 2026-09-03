@@ -56,9 +56,24 @@ jobs:
             NAME="${{ github.event.inputs.first_name }}"
             echo "=== listing commission audit for first_name=$NAME ==="
             php artisan tinker --no-ansi <<PHP
-            \$first = strtolower(trim("$NAME"));
-            \$u = \DB::table('users')->whereRaw('LOWER(first_name) = ?', [\$first])->first();
-            if (!\$u) { echo "NO USER found with first_name=$NAME\n"; exit; }
+            \$needle = strtolower(trim("$NAME"));
+            \$u = \DB::table('users')->whereRaw('LOWER(first_name) = ?', [\$needle])->first();
+            if (!\$u) {
+              echo "no exact first_name match for '$NAME' — trying a broader search...\n";
+              \$candidates = \DB::table('users')->where(function (\$q) use (\$needle) {
+                \$q->whereRaw('LOWER(first_name) LIKE ?', ['%'.\$needle.'%'])
+                  ->orWhereRaw('LOWER(last_name) LIKE ?', ['%'.\$needle.'%'])
+                  ->orWhereRaw('LOWER(surname) LIKE ?', ['%'.\$needle.'%'])
+                  ->orWhereRaw('LOWER(username) LIKE ?', ['%'.\$needle.'%']);
+              })->get(['id', 'first_name', 'last_name', 'surname', 'username', 'status', 'allow_login']);
+              if (\$candidates->isEmpty()) { echo "NO USER found matching '$NAME' in first_name/last_name/surname/username\n"; exit; }
+              echo "candidates matching '$NAME':\n";
+              foreach (\$candidates as \$c) {
+                echo "  #".\$c->id.": ".\$c->first_name." ".\$c->last_name." (surname=".\$c->surname." username=".\$c->username." status=".\$c->status." allow_login=".\$c->allow_login.")\n";
+              }
+              \$u = \$candidates->first();
+              echo "using #".\$u->id." (".\$u->first_name." ".\$u->last_name.") for the audit below\n";
+            }
             echo "USER #".\$u->id.": ".\$u->first_name." ".\$u->last_name." business_id=".\$u->business_id."\n";
 
             \$ctrl = app(\App\Http\Controllers\ListingCommissionController::class);
