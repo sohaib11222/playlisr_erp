@@ -48,71 +48,28 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
 
-            echo "=== disk total ==="
+            echo "=== set SYSTEM_ALERT_EMAIL in prod .env if not already present ==="
+            if grep -q "^SYSTEM_ALERT_EMAIL=" .env 2>/dev/null; then
+              echo "already set: $(grep '^SYSTEM_ALERT_EMAIL=' .env)"
+            else
+              echo "SYSTEM_ALERT_EMAIL=sarah@nivessa.com" >> .env
+              echo "added SYSTEM_ALERT_EMAIL=sarah@nivessa.com"
+            fi
+            echo
+
+            echo "=== clear config cache so the new env var + command take effect ==="
+            php artisan config:clear 2>&1
+            echo
+
+            echo "=== smoke test: force the alert to fire end-to-end (threshold=0) ==="
+            php artisan system:check-disk-space --threshold=0 2>&1
+            echo
+
+            echo "=== clear the dedup lock the smoke test just set, so a real alert isn't suppressed for 6h ==="
+            php artisan tinker --execute="\Illuminate\Support\Facades\Cache::forget('system.disk_space_alert.last_sent'); echo 'cleared';" 2>&1
+            echo
+
+            echo "=== real disk usage right now (for reference, not the forced test above) ==="
             df -h / 2>&1 | tail -3
-            echo
-
-            echo "=== whoami / groups (know what we can actually read) ==="
-            whoami
-            id
-            echo
-
-            echo "=== depth-1 usage of / (top-level breakdown) ==="
-            du -x --max-depth=1 -h / 2>/dev/null | sort -rh | head -20
-            echo
-
-            echo "=== depth-1 usage under /www (per-site breakdown) ==="
-            du -x --max-depth=1 -h /www 2>/dev/null | sort -rh | head -20
-            echo
-
-            echo "=== depth-1 usage under /var (logs, mysql datadir, apt cache, etc) ==="
-            du -x --max-depth=1 -h /var 2>/dev/null | sort -rh | head -20
-            echo
-
-            echo "=== depth-2 usage under /var/log (which log is huge) ==="
-            du -x --max-depth=2 -h /var/log 2>/dev/null | sort -rh | head -20
-            echo
-
-            echo "=== mysql datadir size, if readable ==="
-            du -sh /var/lib/mysql 2>&1
-            echo
-
-            echo "=== playlist.nivessa.com app breakdown (storage/logs, vendor, node_modules) ==="
-            du -x --max-depth=1 -h /www/playlist.nivessa.com/app 2>/dev/null | sort -rh | head -20
-            echo "--- storage/logs specifically ---"
-            du -sh /www/playlist.nivessa.com/app/storage/logs 2>&1
-            ls -la /www/playlist.nivessa.com/app/storage/logs 2>&1 | sort -k5 -rn | head -15
-            echo
-            echo "--- storage/ full breakdown, depth 3 (find the 122G) ---"
-            du -x --max-depth=3 -h /www/playlist.nivessa.com/app/storage 2>/dev/null | sort -rh | head -40
-            echo
-            echo "--- largest 30 individual files under storage/ ---"
-            find /www/playlist.nivessa.com/app/storage -xdev -type f -size +50M 2>/dev/null -exec du -h {} \; | sort -rh | head -30
-            echo
-
-            echo "=== was Google Drive backup upload actually enabled? (checking what we just pruned had a copy) ==="
-            grep -E "^DB_BACKUP_GOOGLE_DRIVE_ENABLED|^DB_BACKUP_GOOGLE_DRIVE_WEBHOOK_URL|^DB_BACKUP_GOOGLE_DRIVE_FOLDER_ID" /www/playlist.nivessa.com/app/.env 2>&1 | sed -E 's/(WEBHOOK_URL|FOLDER_ID)=.+/\1=<redacted-but-present>/'
-            echo
-            echo "--- recent backup log lines: did they say 'uploaded to Google Drive'? ---"
-            grep -h "db:backup-daily\|uploaded to Google Drive\|drive:" /www/playlist.nivessa.com/app/storage/logs/laravel-2026-0[89]-*.log 2>/dev/null | tail -60
-            echo
-
-            echo "=== is there a separate host-level VPS backup/snapshot (Hostinger) we can see evidence of? ==="
-            ls -la /etc/cron.d/ 2>&1 | grep -i backup
-            crontab -l 2>&1 | grep -i backup
-
-            echo "=== disk usage ==="
-            df -h / 2>&1 | tail -3
-
-            echo "=== other top-level dirs worth checking: old kernels, journal, tmp, docker ==="
-            du -sh /var/log/journal 2>&1
-            du -sh /tmp 2>&1
-            du -sh /var/cache/apt 2>&1
-            du -sh /var/lib/docker 2>&1
-            dpkg -l 'linux-image*' 2>/dev/null | grep '^ii' | wc -l
-            echo
-
-            echo "=== largest 25 individual files anywhere under / we can see (excl proc/sys) ==="
-            find / -xdev -type f -size +200M 2>/dev/null -exec du -h {} \; | sort -rh | head -25
 
             echo
