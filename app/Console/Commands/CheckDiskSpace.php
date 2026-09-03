@@ -81,13 +81,26 @@ class CheckDiskSpace extends Command
         $fromAddress = config('mail.from.address') ?: config('mail.username') ?: 'noreply@playlist.nivessa.com';
         $fromName = config('mail.from.name') ?: 'Playlist ERP';
 
-        Mail::raw($body, function ($message) use ($to, $subject, $fromAddress, $fromName) {
-            $message->to($to)->subject($subject)->from($fromAddress, $fromName);
-        });
-
+        // Set the dedup lock before sending, not after — a broken mail
+        // server (SMTP auth, DNS, etc.) must not turn this into a scheduled
+        // job that fails every 4 hours forever. The failure is still fully
+        // visible in the log either way.
         Cache::put($cacheKey, true, now()->addHours(6));
-        Log::warning('Disk space alert email sent', ['percent_used' => $percentUsed, 'to' => $to]);
-        $this->info("Alert email sent to {$to}.");
+
+        try {
+            Mail::raw($body, function ($message) use ($to, $subject, $fromAddress, $fromName) {
+                $message->to($to)->subject($subject)->from($fromAddress, $fromName);
+            });
+            Log::warning('Disk space alert email sent', ['percent_used' => $percentUsed, 'to' => $to]);
+            $this->info("Alert email sent to {$to}.");
+        } catch (\Throwable $e) {
+            Log::error('Disk space alert email FAILED to send — check mail config', [
+                'percent_used' => $percentUsed,
+                'to' => $to,
+                'error' => $e->getMessage(),
+            ]);
+            $this->error('Disk usage is over threshold but the alert email failed to send: ' . $e->getMessage());
+        }
 
         return 0;
     }
