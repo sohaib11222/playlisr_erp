@@ -69,8 +69,20 @@ class CheckDiskSpace extends Command
             . "first if this recurs.\n\n"
             . "This alert won't repeat for 6 hours while still over threshold.";
 
-        Mail::raw($body, function ($message) use ($to, $subject) {
-            $message->to($to)->subject($subject);
+        // MAIL_FROM_ADDRESS is empty in prod .env, which makes Swift Mailer
+        // refuse to send ("Cannot send message without a sender address") —
+        // found by smoke-testing this command before trusting it. Set an
+        // explicit from address so this alert doesn't depend on that being
+        // fixed elsewhere.
+        // mail.username is the actual authenticated SMTP mailbox (same
+        // fallback the app's own commented-out scheduler code used for
+        // this), which is more likely to be accepted by the mail provider
+        // than a made-up address.
+        $fromAddress = config('mail.from.address') ?: config('mail.username') ?: 'noreply@playlist.nivessa.com';
+        $fromName = config('mail.from.name') ?: 'Playlist ERP';
+
+        Mail::raw($body, function ($message) use ($to, $subject, $fromAddress, $fromName) {
+            $message->to($to)->subject($subject)->from($fromAddress, $fromName);
         });
 
         Cache::put($cacheKey, true, now()->addHours(6));
