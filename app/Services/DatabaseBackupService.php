@@ -10,7 +10,7 @@ use Symfony\Component\Process\Process;
 class DatabaseBackupService
 {
     /** @var int */
-    const MAX_FILES_PER_BUSINESS = 5;
+    const MAX_FILES_PER_BUSINESS = 7;
 
     /**
      * Absolute path to directory where backups for this business are stored.
