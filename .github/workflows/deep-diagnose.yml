@@ -90,24 +90,7 @@ jobs:
             find /www/playlist.nivessa.com/app/storage -xdev -type f -size +50M 2>/dev/null -exec du -h {} \; | sort -rh | head -30
             echo
 
-            echo "=== CLEANUP: prune database_backups to newest 5 per business (matches app's own retention logic, just enforced now instead of waiting for tomorrow's cron) ==="
-            for d in /www/playlist.nivessa.com/app/storage/app/database_backups/*/; do
-              biz=$(basename "$d")
-              count_before=$(ls "${d}"backup_*.sql 2>/dev/null | wc -l)
-              size_before=$(du -sh "$d" 2>/dev/null | cut -f1)
-              ls -t "${d}"backup_*.sql 2>/dev/null | tail -n +6 | xargs -r rm -f --
-              count_after=$(ls "${d}"backup_*.sql 2>/dev/null | wc -l)
-              size_after=$(du -sh "$d" 2>/dev/null | cut -f1)
-              echo "business ${biz}: ${count_before} -> ${count_after} files, ${size_before} -> ${size_after}"
-            done
-            echo
-
-            echo "=== CLEANUP: compress the inactive rotated nginx log (access.log.1, not the live file) ==="
-            ls -la /var/log/nginx/access.log.1 2>&1
-            gzip -f /var/log/nginx/access.log.1 2>&1 || echo "  (skipped — no write permission, not critical)"
-            echo
-
-            echo "=== disk usage AFTER cleanup ==="
+            echo "=== disk usage ==="
             df -h / 2>&1 | tail -3
 
             echo "=== other top-level dirs worth checking: old kernels, journal, tmp, docker ==="
