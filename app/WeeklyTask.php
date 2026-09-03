@@ -12,6 +12,8 @@ class WeeklyTask extends Model
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
+        'started_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     public function creator()
