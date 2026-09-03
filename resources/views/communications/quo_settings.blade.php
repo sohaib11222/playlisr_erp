@@ -34,9 +34,9 @@ body.pos-v2 .status-line { font-size: 12.5px; color: #8a8070; margin-top: 8px; }
 
     <div class="quo-card">
         <h3>1. Create the webhook in Quo</h3>
-        <p>In Quo, go to Settings &rarr; Webhooks &rarr; Create webhook. Point it at this URL and select the <strong>message.received</strong> and <strong>call.missed</strong> events:</p>
+        <p>In Quo, go to Settings &rarr; Webhooks &rarr; Create webhook. Point it at this URL and select the <strong>message.received</strong> and <strong>call.completed</strong> events (Quo has no separate "missed call" event &mdash; call.completed with an unanswered status is what a missed call looks like):</p>
         <div class="url-box">{{ $webhook_url }}</div>
-        <p>Quo will show you a signing key starting with <code>whsec_</code> once the webhook is created &mdash; copy it.</p>
+        <p>Open the webhook you just created and reveal the <strong>Signing secret</strong> field &mdash; copy it.</p>
     </div>
 
     <div class="quo-card">

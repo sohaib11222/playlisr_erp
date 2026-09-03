@@ -77,10 +77,13 @@ class QuoWebhookController extends Controller
         $this->requireAdmin();
         $key = trim((string) $request->input('webhook_key'));
 
-        if ($key !== '' && strpos($key, 'whsec_') !== 0) {
+        // Quo's dashboard shows the signing secret as a bare base64 string
+        // (no "whsec_" prefix) — verify() below already handles either form,
+        // so we just need something non-trivially short to reject typos.
+        if ($key !== '' && strlen($key) < 16) {
             return redirect()->back()->with('status', [
                 'success' => 0,
-                'msg' => 'That does not look like a Quo webhook key (should start with whsec_).',
+                'msg' => 'That looks too short to be a Quo webhook signing secret.',
             ]);
         }
 
@@ -201,20 +204,34 @@ class QuoWebhookController extends Controller
                 $c->message = (string) ($resource['text'] ?? '');
                 $c->created_by = $system_user_id;
                 $c->save();
-            } elseif ($type === 'call.missed') {
-                $workspaceNumber = $context['participants']['workspace'][0] ?? null;
-                $callerNumber = $context['participants']['external'][0] ?? null;
-                $channel = $this->channelForNumber($workspaceNumber) ?? 'other';
+            } elseif ($type === 'call.completed') {
+                // Quo has no subscribable "missed call" event on this plan —
+                // call.completed with a non-answered status is the real
+                // signal (per docs.quo.com/webhooks-event-payloads). Only
+                // 'answered' and 'ai-handled' mean someone actually dealt
+                // with it; everything else (unanswered, abandoned, failed,
+                // forwarded, unknown) needs a callback.
+                $status = (string) ($resource['status'] ?? '');
+                if (!in_array($status, ['answered', 'ai-handled'], true)) {
+                    $workspaceNumber = $context['participants']['workspace'][0] ?? null;
+                    $callerNumber = $context['participants']['external'][0] ?? null;
+                    $channel = $this->channelForNumber($workspaceNumber) ?? 'other';
 
-                $c = new Communication();
-                $c->business_id = $business_id;
-                $c->channel = $channel;
-                $c->topic = 'general';
-                $c->status = 'pending';
-                $c->contact_info = $callerNumber;
-                $c->message = 'Missed call.';
-                $c->created_by = $system_user_id;
-                $c->save();
+                    $message = 'Missed call (' . ($status !== '' ? $status : 'unknown') . ').';
+                    if (!empty($resource['hasVoicemail'])) {
+                        $message .= ' Voicemail left — check Quo for the recording.';
+                    }
+
+                    $c = new Communication();
+                    $c->business_id = $business_id;
+                    $c->channel = $channel;
+                    $c->topic = 'general';
+                    $c->status = 'pending';
+                    $c->contact_info = $callerNumber;
+                    $c->message = $message;
+                    $c->created_by = $system_user_id;
+                    $c->save();
+                }
             }
             // Other event types (delivered, ringing, tasks, contacts, etc.)
             // are acknowledged but not logged — nothing for staff to act on.
