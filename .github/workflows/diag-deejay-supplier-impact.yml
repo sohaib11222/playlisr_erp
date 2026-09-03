@@ -1,0 +1,149 @@
+# READ-ONLY diagnostic: how many products trace back to a purchase from the
+# "deejay" supplier, and how much unpaid listing commission is currently
+# attributed to whoever's account created those products. No writes.
+name: Diag deejay supplier commission impact
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect deejay supplier impact (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== deejay supplier commission impact ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $contacts = \DB::table('contacts')
+              ->where(function ($q) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['%deejay%'])
+                  ->orWhereRaw('LOWER(COALESCE(supplier_business_name, \'\')) LIKE ?', ['%deejay%']);
+              })->get(['id', 'business_id', 'name', 'supplier_business_name', 'type']);
+            echo "matching contacts:\n";
+            foreach ($contacts as $c) {
+              echo "  #".$c->id." business=".$c->business_id." name=[".$c->name."] supplier_business_name=[".$c->supplier_business_name."] type=".$c->type."\n";
+            }
+            if ($contacts->isEmpty()) { echo "NO CONTACT matches 'deejay'\n"; exit; }
+
+            $contactIds = $contacts->pluck('id')->all();
+            $purchaseTxIds = \DB::table('transactions')
+              ->where('type', 'purchase')
+              ->whereIn('contact_id', $contactIds)
+              ->pluck('id');
+            echo "purchase transactions from this supplier = ".$purchaseTxIds->count()."\n";
+
+            $productIds = \DB::table('purchase_lines')
+              ->whereIn('transaction_id', $purchaseTxIds)
+              ->distinct()->pluck('product_id');
+            echo "distinct products ever purchased from this supplier = ".$productIds->count()."\n";
+
+            // Of those, how many are currently categorized in a way the
+            // commission filter would ALREADY exclude vs. slip through as "used"?
+            $rows = \DB::table('products as p')
+              ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+              ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+              ->whereIn('p.id', $productIds)
+              ->whereNotNull('p.created_by')
+              ->select('p.id', 'p.name', 'p.created_by', 'p.created_at', 'c.name as cat', 'sc.name as subcat')
+              ->get();
+            echo "of those, products with a created_by (candidate for commission) = ".$rows->count()."\n";
+
+            $excludedCategoryPatterns = ['sealed', 'new vinyl', 'new cd', 'new cassette'];
+            $excludedCategoryNames = ['audio gear', 'record players', 'record player', 'trading cards', 'apparel', 'clothing', 'video games', 'gift items', 'toys', 'accessories & novelties', 'acessories & novelties', 'pictures & posters'];
+            $alreadyExcluded = 0; $slippingThrough = 0;
+            $slipSample = [];
+            foreach ($rows as $r) {
+              $cat = strtolower(trim((string) $r->cat));
+              $subcat = strtolower(trim((string) $r->subcat));
+              $isExcluded = in_array($cat, $excludedCategoryNames, true) || in_array($subcat, $excludedCategoryNames, true);
+              foreach ($excludedCategoryPatterns as $pat) {
+                if (strpos($cat, $pat) !== false || strpos($subcat, $pat) !== false) { $isExcluded = true; }
+              }
+              if ($isExcluded) { $alreadyExcluded++; }
+              else {
+                $slippingThrough++;
+                if (count($slipSample) < 15) { $slipSample[] = "  product #".$r->id." [".$r->name."] cat=[".$r->cat."] subcat=[".$r->subcat."] created_by=".$r->created_by." created_at=".$r->created_at; }
+              }
+            }
+            echo "already excluded by existing category rules = ".$alreadyExcluded."\n";
+            echo "SLIPPING THROUGH as commissionable 'used' = ".$slippingThrough."\n";
+            foreach ($slipSample as $s) { echo $s."\n"; }
+
+            // Dollar impact: qualifying SOLD lines (since 2026-05-15, final sell,
+            // not import) on the slipping-through products only.
+            $slipIds = [];
+            foreach ($rows as $r) {
+              $cat = strtolower(trim((string) $r->cat));
+              $subcat = strtolower(trim((string) $r->subcat));
+              $isExcluded = in_array($cat, $excludedCategoryNames, true) || in_array($subcat, $excludedCategoryNames, true);
+              foreach ($excludedCategoryPatterns as $pat) {
+                if (strpos($cat, $pat) !== false || strpos($subcat, $pat) !== false) { $isExcluded = true; }
+              }
+              if (!$isExcluded) { $slipIds[] = $r->id; }
+            }
+            if (!empty($slipIds)) {
+              $net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+              $sold = \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->whereIn('tsl.product_id', $slipIds)
+                ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+                ->where('t.transaction_date', '>=', '2026-05-15 00:00:00')
+                ->select('tsl.id', 'tsl.product_id', DB::raw("$net as amt"))
+                ->get();
+              $sum = $sold->sum('amt');
+              echo "\nsold lines from slipping-through deejay products since 2026-05-15 = ".$sold->count()."\n";
+              echo "total sale value of those lines = \$".number_format($sum, 2)."\n";
+              echo "commission wrongly attributable (2%) = \$".number_format($sum * 0.02, 2)."\n";
+
+              // Break down by created_by
+              $byUser = [];
+              $prodOwner = [];
+              foreach ($rows as $r) { $prodOwner[$r->id] = $r->created_by; }
+              foreach ($sold as $s) {
+                $uid = $prodOwner[$s->product_id] ?? 0;
+                $byUser[$uid] = ($byUser[$uid] ?? 0) + (float) $s->amt;
+              }
+              echo "\nbreakdown by lister:\n";
+              foreach ($byUser as $uid => $amt) {
+                $u = \DB::table('users')->where('id', $uid)->first();
+                $name = $u ? trim(($u->first_name ?? '').' '.($u->last_name ?? '')) : ('User #'.$uid);
+                echo "  ".$name." (#".$uid."): \$".number_format($amt, 2)." sale value = \$".number_format($amt * 0.02, 2)." commission\n";
+              }
+            }
+            PHP
+            echo "=== done ==="
