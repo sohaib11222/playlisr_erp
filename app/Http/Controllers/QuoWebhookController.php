@@ -68,7 +68,32 @@ class QuoWebhookController extends Controller
         $env_locked = trim((string) config('nivessa.quo_webhook_key', '')) !== '';
         $webhook_url = url('/webhooks/quo');
 
-        return view('communications.quo_settings', compact('masked', 'env_locked', 'webhook_url'));
+        $api_svc = new \App\Services\OpenPhoneService();
+        $api_masked = $api_svc->maskedKey();
+        $api_env_locked = $api_svc->keyIsEnvLocked();
+
+        return view('communications.quo_settings', compact('masked', 'env_locked', 'webhook_url', 'api_masked', 'api_env_locked'));
+    }
+
+    /** Save the Quo/OpenPhone REST API key used to backfill recent inquiries (admin only). */
+    public function saveApiKey(Request $request)
+    {
+        $this->requireAdmin();
+        $key = trim((string) $request->input('api_key'));
+
+        if ($key !== '' && strlen($key) < 10) {
+            return redirect()->back()->with('status', [
+                'success' => 0,
+                'msg' => 'That looks too short to be a Quo API key.',
+            ]);
+        }
+
+        (new \App\Services\OpenPhoneService())->saveApiKey($key);
+
+        return redirect()->back()->with('status', [
+            'success' => 1,
+            'msg' => $key === '' ? 'API key cleared.' : 'Quo API key saved.',
+        ]);
     }
 
     /** Save the webhook signing key to the gitignored settings file (admin only). */
@@ -274,8 +299,8 @@ class QuoWebhookController extends Controller
         }
 
         $svc = new \App\Services\OpenPhoneService();
-        if (!$svc->isConfigured()) {
-            return response()->json(['success' => false, 'msg' => 'OpenPhone API key is not configured on the server (OPENPHONE_API_KEY).']);
+        if (!$svc->isReadConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'No OpenPhone/Quo API key set yet — add one under Quo Setup.']);
         }
 
         $numbersResp = $svc->listPhoneNumbers();

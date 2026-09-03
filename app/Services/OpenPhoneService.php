@@ -21,11 +21,61 @@ class OpenPhoneService
 {
     const API_BASE = 'https://api.openphone.com/v1';
 
+    /**
+     * Resolved API key: server .env wins (OPENPHONE_API_KEY), else an
+     * admin-pasted key stored in a gitignored file — same pattern as the
+     * Quo webhook signing key, for the same reason (no SSH to hand-edit
+     * .env on this box).
+     */
+    public function apiKey(): string
+    {
+        $env = trim((string) config('services.openphone.api_key', ''));
+        if ($env !== '') {
+            return $env;
+        }
+        try {
+            $file = storage_path('app/openphone-key.json');
+            if (is_file($file)) {
+                $data = json_decode((string) file_get_contents($file), true) ?: [];
+                return trim((string) ($data['api_key'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
+
+    public function maskedKey(): string
+    {
+        $key = $this->apiKey();
+        return $key !== '' ? '…' . substr($key, -6) : '';
+    }
+
+    public function keyIsEnvLocked(): bool
+    {
+        return trim((string) config('services.openphone.api_key', '')) !== '';
+    }
+
+    public function saveApiKey(string $key): void
+    {
+        $file = storage_path('app/openphone-key.json');
+        if (!is_dir(dirname($file))) {
+            @mkdir(dirname($file), 0775, true);
+        }
+        file_put_contents($file, json_encode(['api_key' => $key], JSON_PRETTY_PRINT));
+    }
+
+    /** For sending SMS (notify()/send()) — reading the inbox doesn't need a from_number. */
     public function isConfigured(): bool
     {
-        return !empty(config('services.openphone.api_key'))
+        return $this->apiKey() !== ''
             && !empty(config('services.openphone.from_number'))
             && (bool) config('services.openphone.enabled', true);
+    }
+
+    /** For read-only calls (listPhoneNumbers/listRecentMessages/listRecentCalls). */
+    public function isReadConfigured(): bool
+    {
+        return $this->apiKey() !== '' && (bool) config('services.openphone.enabled', true);
     }
 
     /**
@@ -55,7 +105,7 @@ class OpenPhoneService
                 CURLOPT_POST => true,
                 CURLOPT_TIMEOUT => 15,
                 CURLOPT_HTTPHEADER => [
-                    'Authorization: ' . config('services.openphone.api_key'),
+                    'Authorization: ' . $this->apiKey(),
                     'Content-Type: application/json',
                 ],
                 CURLOPT_POSTFIELDS => json_encode([
@@ -92,8 +142,8 @@ class OpenPhoneService
     /** GET wrapper — returns ['success'=>bool, 'data'=>array, 'msg'=>string]. Never throws. */
     private function get(string $path, array $query = []): array
     {
-        if (!$this->isConfigured()) {
-            return ['success' => false, 'data' => [], 'msg' => 'OpenPhone is not configured.'];
+        if (!$this->isReadConfigured()) {
+            return ['success' => false, 'data' => [], 'msg' => 'OpenPhone API key is not configured.'];
         }
 
         try {
@@ -106,7 +156,7 @@ class OpenPhoneService
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 20,
                 CURLOPT_HTTPHEADER => [
-                    'Authorization: ' . config('services.openphone.api_key'),
+                    'Authorization: ' . $this->apiKey(),
                     'Content-Type: application/json',
                 ],
             ]);

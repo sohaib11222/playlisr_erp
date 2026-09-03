@@ -53,6 +53,22 @@ body.pos-v2 .status-line { font-size: 12.5px; color: #8a8070; margin-top: 8px; }
             </form>
         @endif
     </div>
+
+    <div class="quo-card">
+        <h3>3. Pull in recent history (optional)</h3>
+        <p>Paste a Quo API key here to let the Hub's "Import Recent from Quo" button pull recent messages/calls that happened before the webhook was set up. In Quo, go to Settings &rarr; API &rarr; Generate API key (or copy an existing one).</p>
+        @if($api_env_locked)
+            <p><strong>This is set via the server environment</strong> and can't be changed from this screen.</p>
+        @else
+            <form method="POST" action="{{ action('QuoWebhookController@saveApiKey') }}">
+                @csrf
+                <label>Quo API key</label>
+                <input type="text" name="api_key" class="form-control" style="width:100%;" placeholder="paste here" value="">
+                <div class="status-line">{{ $api_masked ? 'Currently set, ending in ' . $api_masked : 'Not set yet — the Import button will show an error until this is added.' }}</div>
+                <button type="submit" class="btn-accent">Save</button>
+            </form>
+        @endif
+    </div>
 </div>
 
 @stop

@@ -222,6 +222,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // SSH access to the server .env).
     Route::get('/communications/quo-settings', 'QuoWebhookController@settings')->name('quo.settings');
     Route::post('/communications/quo-settings', 'QuoWebhookController@saveSettings')->name('quo.settings.save');
+    Route::post('/communications/quo-api-key', 'QuoWebhookController@saveApiKey')->name('quo.api_key.save');
     Route::post('/communications/quo-import', 'QuoWebhookController@importRecent')->name('quo.import');
 
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
