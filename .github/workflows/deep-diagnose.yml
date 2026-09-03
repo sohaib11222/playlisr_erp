@@ -157,4 +157,8 @@ jobs:
 
             echo
             echo "=== live re-run: clover:sync --only=customers (verifying mobile/created_by fix) ==="
-            php artisan clover:sync --only=customers 2>&1 | tail -40
+            php artisan clover:sync --only=customers --business=1 2>&1 | tail -40
+
+            echo
+            echo "=== fresh log entries since this diagnose run started (mobile/created_by check) ==="
+            grep -n "Clover sync leg failed: customers\|touched .*, created " storage/logs/laravel-2026-09-02.log 2>&1 | tail -10
