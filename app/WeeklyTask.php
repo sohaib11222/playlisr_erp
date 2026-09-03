@@ -28,4 +28,11 @@ class WeeklyTask extends Model
     {
         return $this->belongsTo(\App\User::class, 'completed_by');
     }
+
+    /** Everyone assigned to work on this task. */
+    public function assignees()
+    {
+        return $this->belongsToMany(\App\User::class, 'task_assignees', 'task_id', 'user_id')
+            ->withTimestamps();
+    }
 }

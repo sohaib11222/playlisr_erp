@@ -53,6 +53,7 @@
                         <th>Priority</th>
                         <th>Date</th>
                         <th>Status</th>
+                        <th>Assigned to</th>
                         <th>Created by</th>
                         <th>Started by</th>
                         <th>Completed by</th>
@@ -76,6 +77,13 @@
                         <td>
                             @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status])
                         </td>
+                        <td>
+                            @forelse($t->assignees as $assignee)
+                                <span class="label label-default">{{ $assignee->user_full_name }}</span>
+                            @empty
+                                <span class="text-muted">Unassigned</span>
+                            @endforelse
+                        </td>
                         <td class="text-muted">{{ $t->creator->user_full_name ?? '' }}</td>
                         <td class="text-muted">
                             {{ $t->startedBy->user_full_name ?? '—' }}
@@ -95,7 +103,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="10" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
                     @endforelse
                 </tbody>
             </table>
