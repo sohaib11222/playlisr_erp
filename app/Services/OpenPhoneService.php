@@ -89,6 +89,65 @@ class OpenPhoneService
         }
     }
 
+    /** GET wrapper — returns ['success'=>bool, 'data'=>array, 'msg'=>string]. Never throws. */
+    private function get(string $path, array $query = []): array
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'data' => [], 'msg' => 'OpenPhone is not configured.'];
+        }
+
+        try {
+            $url = self::API_BASE . $path;
+            if ($query) {
+                $url .= '?' . http_build_query($query);
+            }
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: ' . config('services.openphone.api_key'),
+                    'Content-Type: application/json',
+                ],
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($error) {
+                return ['success' => false, 'data' => [], 'msg' => 'cURL error: ' . $error];
+            }
+            if ($httpCode < 200 || $httpCode >= 300) {
+                return ['success' => false, 'data' => [], 'msg' => 'HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 500)];
+            }
+
+            $decoded = json_decode((string) $response, true);
+            return ['success' => true, 'data' => $decoded['data'] ?? [], 'msg' => 'ok'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'data' => [], 'msg' => 'OpenPhone error: ' . $e->getMessage()];
+        }
+    }
+
+    /** List the workspace's phone numbers — each has an 'id' (PN...) and 'number' (E.164). */
+    public function listPhoneNumbers(): array
+    {
+        return $this->get('/phone-numbers');
+    }
+
+    /** Most recent messages on a line, newest first. No participant filter needed on this account's v1 API. */
+    public function listRecentMessages(string $phoneNumberId, int $maxResults = 30): array
+    {
+        return $this->get('/messages', ['phoneNumberId' => $phoneNumberId, 'maxResults' => $maxResults]);
+    }
+
+    /** Most recent calls on a line, newest first. */
+    public function listRecentCalls(string $phoneNumberId, int $maxResults = 30): array
+    {
+        return $this->get('/calls', ['phoneNumberId' => $phoneNumberId, 'maxResults' => $maxResults]);
+    }
+
     /**
      * Normalize a phone to E.164. Accepts "(323) 555-1234", "323-555-1234",
      * "+13235551234", "13235551234", etc. Returns null for anything that

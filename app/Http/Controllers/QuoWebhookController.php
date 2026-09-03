@@ -233,6 +233,127 @@ class QuoWebhookController extends Controller
         return Communication::QUO_NUMBERS[$normalized] ?? null;
     }
 
+    /** Insert a pending inquiry unless one with this external_id already exists (idempotent). */
+    private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId): bool
+    {
+        if ($externalId && Communication::where('business_id', $business_id)->where('external_id', $externalId)->exists()) {
+            return false;
+        }
+
+        $c = new Communication();
+        $c->business_id = $business_id;
+        $c->channel = $channel;
+        $c->topic = 'general';
+        $c->status = 'pending';
+        $c->contact_info = $contact;
+        $c->message = $message;
+        $c->external_id = $externalId;
+        $c->created_by = $system_user_id;
+        $c->save();
+
+        return true;
+    }
+
+    /**
+     * Admin-only: pull recent messages/calls from Quo's REST API (the same
+     * OPENPHONE_API_KEY already used to send pickup-ready texts) and log
+     * anything inbound as a pending inquiry. Backfill for history the live
+     * webhook (set up 2026-09-02) never saw — safe to run repeatedly since
+     * every insert is deduped on external_id.
+     */
+    public function importRecent(Request $request)
+    {
+        $this->requireAdmin();
+
+        $business_id = optional(Business::first())->id;
+        $system_user_id = $business_id
+            ? optional(\DB::table('users')->where('business_id', $business_id)->orderBy('id')->first())->id
+            : null;
+        if (!$business_id || !$system_user_id) {
+            return response()->json(['success' => false, 'msg' => 'No business/user found to attribute imports to.']);
+        }
+
+        $svc = new \App\Services\OpenPhoneService();
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'OpenPhone API key is not configured on the server (OPENPHONE_API_KEY).']);
+        }
+
+        $numbersResp = $svc->listPhoneNumbers();
+        if (!$numbersResp['success']) {
+            return response()->json(['success' => false, 'msg' => 'Could not list Quo phone numbers: ' . $numbersResp['msg']]);
+        }
+
+        // Map our known E.164 numbers -> Quo's internal phoneNumberId.
+        $idsByE164 = [];
+        foreach ($numbersResp['data'] as $pn) {
+            $num = $svc->normalize((string) ($pn['number'] ?? ''));
+            if ($num && isset($pn['id'])) {
+                $idsByE164[$num] = $pn['id'];
+            }
+        }
+
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach (Communication::QUO_NUMBERS as $e164 => $channel) {
+            $phoneNumberId = $idsByE164[$e164] ?? null;
+            if (!$phoneNumberId) {
+                $errors[] = "$e164: not found in this workspace's phone numbers.";
+                continue;
+            }
+
+            $msgResp = $svc->listRecentMessages($phoneNumberId, 30);
+            if (!$msgResp['success']) {
+                $errors[] = "$e164 messages: " . $msgResp['msg'];
+            } else {
+                foreach ($msgResp['data'] as $m) {
+                    if (($m['direction'] ?? '') !== 'incoming') {
+                        continue;
+                    }
+                    $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
+                    $ok = $this->logCommunication(
+                        $business_id, $system_user_id, $channel,
+                        $m['from'] ?? null, (string) ($m['text'] ?? $m['body'] ?? ''), $externalId
+                    );
+                    $ok ? $imported++ : $skipped++;
+                }
+            }
+
+            $callResp = $svc->listRecentCalls($phoneNumberId, 30);
+            if (!$callResp['success']) {
+                $errors[] = "$e164 calls: " . $callResp['msg'];
+            } else {
+                foreach ($callResp['data'] as $call) {
+                    if (($call['direction'] ?? '') !== 'incoming') {
+                        continue;
+                    }
+                    $status = (string) ($call['status'] ?? '');
+                    if (in_array($status, ['answered', 'ai-handled'], true)) {
+                        continue;
+                    }
+                    $externalId = !empty($call['id']) ? 'quo-call-' . $call['id'] : null;
+                    $message = 'Missed call' . ($status !== '' ? ' (' . $status . ')' : '') . '.';
+                    if (!empty($call['hasVoicemail'])) {
+                        $message .= ' Voicemail left — check Quo for the recording.';
+                    }
+                    $ok = $this->logCommunication(
+                        $business_id, $system_user_id, $channel,
+                        $call['from'] ?? null, $message, $externalId
+                    );
+                    $ok ? $imported++ : $skipped++;
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ]);
+    }
+
     /**
      * Quo webhook endpoint. Public/unauthenticated — protected by the HMAC
      * signature instead of session auth (Quo has no ERP login).
@@ -283,16 +404,9 @@ class QuoWebhookController extends Controller
                 $recipient = $context['recipientIdentifiers'][0] ?? $resource['to'] ?? null;
                 $channel = $this->channelForNumber($recipient) ?? 'other';
                 $text = $resource['text'] ?? $resource['body'] ?? '';
+                $externalId = !empty($resource['id']) ? 'quo-msg-' . $resource['id'] : null;
 
-                $c = new Communication();
-                $c->business_id = $business_id;
-                $c->channel = $channel;
-                $c->topic = 'general';
-                $c->status = 'pending';
-                $c->contact_info = $sender;
-                $c->message = (string) $text;
-                $c->created_by = $system_user_id;
-                $c->save();
+                $this->logCommunication($business_id, $system_user_id, $channel, $sender, (string) $text, $externalId);
             } elseif ($type === 'call.completed') {
                 // Quo has no subscribable "missed call" event on this plan —
                 // call.completed with a non-answered status is the real
@@ -314,16 +428,9 @@ class QuoWebhookController extends Controller
                     if (!empty($resource['hasVoicemail'])) {
                         $message .= ' Voicemail left — check Quo for the recording.';
                     }
+                    $externalId = !empty($resource['id']) ? 'quo-call-' . $resource['id'] : null;
 
-                    $c = new Communication();
-                    $c->business_id = $business_id;
-                    $c->channel = $channel;
-                    $c->topic = 'general';
-                    $c->status = 'pending';
-                    $c->contact_info = $callerNumber;
-                    $c->message = $message;
-                    $c->created_by = $system_user_id;
-                    $c->save();
+                    $this->logCommunication($business_id, $system_user_id, $channel, $callerNumber, $message, $externalId);
                 }
             }
             // Other event types (delivered, ringing, tasks, contacts, etc.)
