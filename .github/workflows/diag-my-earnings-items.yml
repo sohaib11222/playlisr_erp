@@ -1,0 +1,70 @@
+name: Diag my-earnings items totals
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: "user_id"
+        required: true
+        default: "18"
+      filter:
+        description: "filter (all|sold|eligible|sold_eligible)"
+        required: true
+        default: "sold_eligible"
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Reproduce /my-earnings/items totals (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            UID_IN="${{ github.event.inputs.user_id }}"
+            FILTER_IN="${{ github.event.inputs.filter }}"
+            php artisan tinker --no-ansi <<PHP
+            \$ctrl = app(\App\Http\Controllers\EmployeeEarningsController::class);
+            \$req = \Illuminate\Http\Request::create('/my-earnings/items', 'GET', ['user_id' => $UID_IN, 'filter' => '$FILTER_IN', 'sort' => 'listed', 'dir' => 'desc']);
+            \$u = \DB::table('users')->where('id', $UID_IN)->first();
+            \Illuminate\Support\Facades\Auth::loginUsingId(\$u->id);
+            session(['user.business_id' => \$u->business_id]);
+            \$req->setLaravelSession(app('session.store'));
+            \$view = \$ctrl->items(\$req);
+            \$d = \$view->getData();
+            echo "user_id=$UID_IN filter=$FILTER_IN\n";
+            echo "total listed (all-time, unfiltered) = ".\$d['total']."\n";
+            echo "shown_count (matches this filter) = ".\$d['shown_count']."\n";
+            echo "sold_count = ".\$d['sold_count']."\n";
+            echo "tot_sale = \$".number_format(\$d['tot_sale'],2)."\n";
+            echo "tot_comm = \$".number_format(\$d['tot_comm'],2)."\n";
+            echo "rows on this page = ".count(\$d['rows'])."\n";
+            echo "has_more = ".(\$d['has_more'] ? 'yes' : 'no')."\n";
+            PHP
+            echo "=== done ==="
