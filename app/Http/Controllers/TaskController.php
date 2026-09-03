@@ -76,6 +76,29 @@ class TaskController extends Controller
         return array_key_first($availableStores) ?: OpeningChecklistController::defaultStoreForUser();
     }
 
+    /** Active, login-enabled employees for the assignee picker: id => full name. */
+    private function assignableUsers($business_id)
+    {
+        return User::where('business_id', $business_id)
+            ->user()
+            ->where('is_cmmsn_agnt', 0)
+            ->where('status', 'active')
+            ->where('allow_login', 1)
+            ->orderBy('first_name')
+            ->get()
+            ->mapWithKeys(function ($u) {
+                return [$u->id => trim($u->first_name . ' ' . $u->last_name)];
+            })
+            ->all();
+    }
+
+    /** Sync $task's assignees to the ids in $requestedIds, dropping anything not in $assignableUsers. */
+    private function syncAssignees(WeeklyTask $task, array $requestedIds, array $assignableUsers)
+    {
+        $validIds = array_values(array_intersect(array_map('intval', $requestedIds), array_keys($assignableUsers)));
+        $task->assignees()->sync($validIds);
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -92,7 +115,7 @@ class TaskController extends Controller
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
-        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy'])
+        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees'])
             ->where('business_id', $business_id);
 
         if (!empty($type)) {
@@ -123,13 +146,15 @@ class TaskController extends Controller
 
     public function create(Request $request)
     {
+        $business_id = $request->session()->get('user.business_id');
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
+        $assignableUsers = $this->assignableUsers($business_id);
         $type = $request->input('type', 'weekly');
         if (!in_array($type, ['daily', 'weekly'])) {
             $type = 'weekly';
         }
-        return view('tasks.create', compact('storeLabels', 'priorityLabels', 'type'));
+        return view('tasks.create', compact('storeLabels', 'priorityLabels', 'assignableUsers', 'type'));
     }
 
     public function store(Request $request)
@@ -143,14 +168,19 @@ class TaskController extends Controller
             'task_type' => 'required|in:daily,weekly',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'assignees' => 'nullable|array',
+            'assignees.*' => 'integer',
         ]);
+        $assignees = $data['assignees'] ?? [];
+        unset($data['assignees']);
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
         $data['status'] = 'not_started';
         $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
 
-        WeeklyTask::create($data);
+        $task = WeeklyTask::create($data);
+        $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task added.']);
@@ -159,10 +189,11 @@ class TaskController extends Controller
     public function edit($id, Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
-        $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+        $task = WeeklyTask::with('assignees')->where('business_id', $business_id)->findOrFail($id);
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
-        return view('tasks.edit', compact('task', 'storeLabels', 'priorityLabels'));
+        $assignableUsers = $this->assignableUsers($business_id);
+        return view('tasks.edit', compact('task', 'storeLabels', 'priorityLabels', 'assignableUsers'));
     }
 
     public function update($id, Request $request)
@@ -178,13 +209,18 @@ class TaskController extends Controller
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'assignees' => 'nullable|array',
+            'assignees.*' => 'integer',
         ]);
+        $assignees = $data['assignees'] ?? [];
+        unset($data['assignees']);
 
         $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
 
         $this->applyStatusTransition($task, $data['status']);
         unset($data['status']);
         $task->fill($data)->save();
+        $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);
