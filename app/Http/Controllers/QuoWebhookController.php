@@ -100,10 +100,14 @@ class QuoWebhookController extends Controller
     }
 
     /**
-     * Verify a Quo webhook delivery: HMAC-SHA256 over
-     * "{webhook-id}.{webhook-timestamp}.{raw-body}", keyed by the base64
-     * bytes behind the whsec_ prefix. Rejects deliveries older than 5
-     * minutes to guard against replay.
+     * Verify a Quo webhook delivery. Two schemes exist and which one an
+     * account actually gets is not up to us: docs.quo.com describes a
+     * Svix-style webhook-id/webhook-timestamp/webhook-signature triad, but
+     * this account's numbers are still served by the legacy OpenPhone v3
+     * pipeline underneath the Quo rebrand, which signs with a single
+     * "openphone-signature: hmac;1;<timestamp_ms>;<base64_sig>" header
+     * instead (confirmed against real deliveries — the account never sends
+     * the new headers at all). We accept either.
      */
     private function verify(array $headers, string $raw): bool
     {
@@ -113,31 +117,44 @@ class QuoWebhookController extends Controller
             return false;
         }
 
-        $id = $headers['webhook-id'] ?? '';
-        $timestamp = $headers['webhook-timestamp'] ?? '';
-        $signatureHeader = $headers['webhook-signature'] ?? '';
-        if ($id === '' || $timestamp === '' || $signatureHeader === '') {
-            return false;
-        }
-
-        if (!ctype_digit((string) $timestamp) || abs(time() - (int) $timestamp) > self::MAX_AGE_SECONDS) {
-            return false;
-        }
-
         $secretB64 = strpos($key, 'whsec_') === 0 ? substr($key, 6) : $key;
         $secretBytes = base64_decode($secretB64, true);
         if ($secretBytes === false) {
             return false;
         }
 
-        $signedContent = $id . '.' . $timestamp . '.' . $raw;
-        $expected = base64_encode(hash_hmac('sha256', $signedContent, $secretBytes, true));
-
-        foreach (explode(' ', trim($signatureHeader)) as $entry) {
-            $parts = explode(',', trim($entry), 2);
-            if (count($parts) === 2 && $parts[0] === 'v1' && hash_equals($expected, $parts[1])) {
-                return true;
+        $id = $headers['webhook-id'] ?? '';
+        $timestamp = $headers['webhook-timestamp'] ?? '';
+        $signatureHeader = $headers['webhook-signature'] ?? '';
+        if ($id !== '' && $timestamp !== '' && $signatureHeader !== '') {
+            if (ctype_digit((string) $timestamp) && abs(time() - (int) $timestamp) <= self::MAX_AGE_SECONDS) {
+                $signedContent = $id . '.' . $timestamp . '.' . $raw;
+                $expected = base64_encode(hash_hmac('sha256', $signedContent, $secretBytes, true));
+                foreach (explode(' ', trim($signatureHeader)) as $entry) {
+                    $parts = explode(',', trim($entry), 2);
+                    if (count($parts) === 2 && $parts[0] === 'v1' && hash_equals($expected, $parts[1])) {
+                        return true;
+                    }
+                }
             }
+            return false;
+        }
+
+        $legacy = $headers['openphone-signature'] ?? '';
+        if ($legacy !== '') {
+            $parts = explode(';', trim($legacy));
+            if (count($parts) === 4 && $parts[0] === 'hmac' && $parts[1] === '1') {
+                $timestampMs = $parts[2];
+                $signature = $parts[3];
+                if (ctype_digit($timestampMs) && abs(time() - intdiv((int) $timestampMs, 1000)) <= self::MAX_AGE_SECONDS) {
+                    $signedContent = $timestampMs . '.' . $raw;
+                    $expected = base64_encode(hash_hmac('sha256', $signedContent, $secretBytes, true));
+                    if (hash_equals($expected, $signature)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         return false;
@@ -238,7 +255,11 @@ class QuoWebhookController extends Controller
             $body = json_decode($raw, true) ?: [];
             $type = $body['type'] ?? '';
             $data = $body['data'] ?? [];
-            $resource = $data['resource'] ?? [];
+            // New Quo shape nests fields under data.resource/data.context;
+            // this account's legacy OpenPhone v3 delivery puts everything
+            // flat on data.object instead. Normalize both into $resource.
+            $legacyObject = $data['object'] ?? [];
+            $resource = $data['resource'] ?? $legacyObject;
             $context = $data['context'] ?? [];
 
             $business_id = optional(Business::first())->id;
@@ -256,16 +277,20 @@ class QuoWebhookController extends Controller
             }
 
             if ($type === 'message.received') {
-                $recipient = $context['recipientIdentifiers'][0] ?? null;
+                // New shape: context.senderIdentifier / recipientIdentifiers.
+                // Legacy (confirmed live on this account): resource.from/to.
+                $sender = $context['senderIdentifier'] ?? $resource['from'] ?? null;
+                $recipient = $context['recipientIdentifiers'][0] ?? $resource['to'] ?? null;
                 $channel = $this->channelForNumber($recipient) ?? 'other';
+                $text = $resource['text'] ?? $resource['body'] ?? '';
 
                 $c = new Communication();
                 $c->business_id = $business_id;
                 $c->channel = $channel;
                 $c->topic = 'general';
                 $c->status = 'pending';
-                $c->contact_info = $context['senderIdentifier'] ?? null;
-                $c->message = (string) ($resource['text'] ?? '');
+                $c->contact_info = $sender;
+                $c->message = (string) $text;
                 $c->created_by = $system_user_id;
                 $c->save();
             } elseif ($type === 'call.completed') {
@@ -274,14 +299,18 @@ class QuoWebhookController extends Controller
                 // signal (per docs.quo.com/webhooks-event-payloads). Only
                 // 'answered' and 'ai-handled' mean someone actually dealt
                 // with it; everything else (unanswered, abandoned, failed,
-                // forwarded, unknown) needs a callback.
+                // forwarded, unknown) needs a callback. Unconfirmed against
+                // a real legacy call payload (Quo's test-send for call
+                // events wouldn't fire on this account) — resource.from/to
+                // is a best-effort fallback alongside the documented
+                // context.participants shape.
                 $status = (string) ($resource['status'] ?? '');
                 if (!in_array($status, ['answered', 'ai-handled'], true)) {
-                    $workspaceNumber = $context['participants']['workspace'][0] ?? null;
-                    $callerNumber = $context['participants']['external'][0] ?? null;
+                    $workspaceNumber = $context['participants']['workspace'][0] ?? $resource['to'] ?? null;
+                    $callerNumber = $context['participants']['external'][0] ?? $resource['from'] ?? null;
                     $channel = $this->channelForNumber($workspaceNumber) ?? 'other';
 
-                    $message = 'Missed call (' . ($status !== '' ? $status : 'unknown') . ').';
+                    $message = 'Missed call' . ($status !== '' ? ' (' . $status . ')' : '') . '.';
                     if (!empty($resource['hasVoicemail'])) {
                         $message .= ' Voicemail left — check Quo for the recording.';
                     }
