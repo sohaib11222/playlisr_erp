@@ -48,98 +48,47 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
 
-            echo "=== nginx listening sockets ==="
-            ss -ltn 2>/dev/null | head -20
-            echo
-
-            echo "=== test localhost:80 (plain) ==="
-            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 http://localhost/ 2>&1 | tail -15
-            echo
-
-            echo "=== test localhost:443 (TLS, allow self-signed) ==="
-            curl -kv -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://localhost/ 2>&1 | tail -15
-            echo
-
-            echo "=== test playlist.nivessa.com/login from inside ==="
-            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://playlist.nivessa.com/login 2>&1 | tail -20
-            echo
-
-            echo "=== php-fpm pool status ==="
-            systemctl status php7.4-fpm --no-pager -n 5 2>&1 | head -20
-            echo
-
-            echo "=== nginx status ==="
-            systemctl status nginx --no-pager -n 5 2>&1 | head -20
-            echo
-
-            echo "=== laravel daily log (latest) ==="
-            ls -la storage/logs/ 2>&1 | tail -5
-            LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
-            echo "latest log: $LOG"
-
-            echo "--- ERROR-level lines by hour (today) ---"
-            grep -oE "^\[2026-09-02 [0-9]{2}" "$LOG" 2>&1 | sort | uniq -c
-            echo
-
-            echo "--- distinct ERROR/CRITICAL messages today (deduped, first line only) ---"
-            grep -E "\.(ERROR|CRITICAL|EMERGENCY):" "$LOG" 2>&1 | sed -E 's/"contact_id":[0-9]+/"contact_id":N/' | sort | uniq -c | sort -rn | head -30
-            echo
-
-            echo "--- normalized error signature counts, business hours 10:00-17:00 today (strips IDs/timestamps) ---"
-            grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 \
-              | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" \
-              | sed -E 's/^\[[^]]+\] [a-z]+\.(ERROR|CRITICAL|EMERGENCY): //' \
-              | sed -E 's/[0-9]+/N/g' \
-              | cut -c1-140 \
-              | sort | uniq -c | sort -rn | head -20
-            echo
-
-            echo "--- one full raw example line for the single most common daytime signature ---"
-            TOPSIG=$(grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" | sed -E 's/^\[[^]]+\] [a-z]+\.(ERROR|CRITICAL|EMERGENCY): //' | sed -E 's/[0-9]+/N/g' | cut -c1-80 | sort | uniq -c | sort -rn | head -1 | sed -E 's/^ *[0-9]+ //')
-            echo "top signature (normalized): $TOPSIG"
-            grep -E "^\[2026-09-02 (1[0-6]):" "$LOG" 2>&1 | grep -E "\.(ERROR|CRITICAL|EMERGENCY):" | grep -F "$(echo "$TOPSIG" | cut -c1-40)" | tail -3
-            echo
-
-            echo "--- invalid_client / client authentication failed: full context (30 lines around 3 occurrences) ---"
-            grep -n "client authentication failed" "$LOG" 2>&1 | tail -3 | cut -d: -f1 | while read -r ln; do
-              echo "== around line $ln =="
-              sed -n "$((ln>15?ln-15:1)),$((ln+20))p" "$LOG" 2>&1
-              echo
+            echo "=== live repro: hit the site 5x back-to-back like a browser would ==="
+            for i in 1 2 3 4 5; do
+              curl -s -o /dev/null -w "try $i: HTTP %{http_code} · time %{time_total}s\n" -m 12 https://playlist.nivessa.com/login 2>&1
             done
             echo
 
-            echo "--- 'total_rp' non-object: full context ---"
-            grep -n "total_rp' of non-object" "$LOG" 2>&1 | tail -1 | cut -d: -f1 | while read -r ln; do
-              sed -n "$((ln>10?ln-10:1)),$((ln+25))p" "$LOG" 2>&1
-            done
-            echo
-
-            echo "--- close_register_modal / CashRegisterController(517) occurrences TODAY across ALL hours ---"
-            grep -n "close_register_modal\|CashRegisterController.php(517)\|CashRegisterController.php:517" "$LOG" 2>&1 | tail -20
-            echo
-
-            echo "--- grep register/close-register keyword ERROR lines today, ALL hours (not just 10-16) ---"
-            grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "register|close.?out|end.?shift" | tail -40
-            echo
-
-            echo "--- 500/exception counts TODAY grouped by hour (all severities incl WARNING) ---"
-            grep -oE "^\[2026-09-02 [0-9]{2}" "$LOG" 2>&1 | sort | uniq -c
-            echo "--- ERROR-only counts TODAY grouped by hour ---"
-            grep -E "\.(ERROR|CRITICAL|EMERGENCY):" "$LOG" 2>&1 | grep -oE "^\[2026-09-02 [0-9]{2}" | sort | uniq -c
-            echo
-
-            echo "--- POS / register / sell related errors today ---"
-            grep -inE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | grep -iE "pos|register|sell|cashier|checkout" | tail -40
-            echo
-
-            echo "--- most recent 15 ERROR/CRITICAL stack traces (first frame only) ---"
-            grep -nE "\.(ERROR|CRITICAL):" "$LOG" 2>&1 | tail -15
-            echo
-
-            echo "=== system load / disk / memory ==="
+            echo "=== load average / uptime ==="
             uptime
-            df -h / 2>&1 | tail -3
+            echo
+
+            echo "=== memory ==="
             free -h
+            echo
+
+            echo "=== disk ==="
+            df -h / 2>&1 | tail -3
+            echo "--- top-level usage under /www (what's eating the 185G) ---"
+            du -sh /www/*/ 2>/dev/null | sort -rh | head -10
+            echo
+
+            echo "=== nginx: listening sockets + active connection count ==="
+            ss -ltn 2>/dev/null | head -20
+            echo "--- ss summary (established/time-wait counts etc) ---"
+            ss -s 2>/dev/null
+            echo
+
+            echo "=== nginx worker_connections config vs systemctl status ==="
+            grep -r "worker_connections\|worker_processes" /etc/nginx/nginx.conf 2>/dev/null
+            systemctl status nginx --no-pager -n 10 2>&1 | head -25
+            echo "--- nginx error log tail (last 60 lines, any host) ---"
+            tail -60 /var/log/nginx/error.log 2>&1
+            echo
+
+            echo "=== php-fpm: pool config (max_children etc) ==="
+            grep -E "^pm |^pm\.|^listen " /etc/php/7.4/fpm/pool.d/*.conf 2>/dev/null
+            echo "--- php-fpm service status ---"
+            systemctl status php7.4-fpm --no-pager -n 10 2>&1 | head -25
+            echo "--- php-fpm error log tail, looking for 'server reached pm.max_children' ---"
+            tail -100 /var/log/php7.4-fpm.log 2>&1
+            echo "--- count of 'max_children' warnings today ---"
+            grep -c "max_children" /var/log/php7.4-fpm.log 2>&1
             echo
 
             echo "=== mysql connection check ==="
@@ -151,7 +100,23 @@ jobs:
             redis-cli ping 2>&1 || true
             echo
 
+            echo "=== OOM killer activity today (would explain sudden hangs) ==="
+            dmesg -T 2>/dev/null | grep -i "out of memory\|oom-kill\|killed process" | tail -20
+            journalctl -k --since "today" 2>&1 | grep -i "out of memory\|oom" | tail -20
+            echo
+
+            echo "=== fail2ban status (is something getting banned/dropped intermittently) ==="
+            fail2ban-client status 2>&1 || echo "fail2ban not available"
+            echo
+
+            echo "=== top 10 processes by CPU and by memory right now ==="
+            ps aux --sort=-%cpu 2>&1 | head -11
+            echo
+            ps aux --sort=-%mem 2>&1 | head -11
+            echo
+
             echo "=== Laravel boot test ==="
+            cd /www/playlist.nivessa.com/app
             php artisan --version 2>&1 | head -5
             php artisan route:list 2>&1 | head -3
 
