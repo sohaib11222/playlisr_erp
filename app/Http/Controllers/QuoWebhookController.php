@@ -182,12 +182,14 @@ class QuoWebhookController extends Controller
             $lines = [
                 'QUO WEBHOOK DEBUG (temporary)',
                 'key length: ' . strlen($key),
-                'header keys seen: ' . implode(', ', array_keys($headers)),
                 'webhook-id: ' . $id,
                 'webhook-timestamp: ' . $timestamp . ' (server now: ' . time() . ')',
                 'webhook-signature: ' . $signatureHeader,
+                'openphone-signature: ' . ($headers['openphone-signature'] ?? '(missing)'),
+                'content-type: ' . ($headers['content-type'] ?? '(missing)'),
                 'expected v1 sig: ' . $expected,
-                'raw body: ' . substr($raw, 0, 500),
+                'body length: ' . strlen($raw),
+                'body preview: ' . substr($raw, 0, 120),
             ];
 
             $c = new Communication();
