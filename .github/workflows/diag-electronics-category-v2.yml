@@ -1,0 +1,60 @@
+name: Diag electronics category check v2
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Dump electronics genre vs category (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $rows = \DB::table('transaction_sell_lines as tsl')
+              ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+              ->join('products as p', 'tsl.product_id', '=', 'p.id')
+              ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
+              ->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')
+              ->where('t.type', 'sell')->where('t.status', 'final')
+              ->where(function($q){ $q->where('c.name','like','%electronic%')->orWhere('sc.name','like','%electronic%'); })
+              ->orderByDesc('t.transaction_date')
+              ->limit(20)
+              ->select('p.name as pname', 'c.name as cat', 'sc.name as subcat', 't.transaction_date',
+                DB::raw('(tsl.quantity - COALESCE(tsl.quantity_returned,0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax,0)) as amt'))
+              ->get();
+            echo "recent sold lines touching 'electronic' (category or subcategory):\n";
+            foreach ($rows as $r) {
+              echo "  ".$r->transaction_date."  \$".number_format((float)$r->amt,2)."  cat=[".$r->cat."] subcat=[".$r->subcat."]  ".$r->pname."\n";
+            }
+            if ($rows->isEmpty()) { echo "  none in last query window\n"; }
+            PHP
+            echo "=== done ==="
