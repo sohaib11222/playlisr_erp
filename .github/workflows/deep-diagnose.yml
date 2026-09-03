@@ -48,33 +48,11 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
 
-            echo "=== set SYSTEM_ALERT_EMAIL in prod .env if not already present ==="
-            if grep -q "^SYSTEM_ALERT_EMAIL=" .env 2>/dev/null; then
-              echo "already set: $(grep '^SYSTEM_ALERT_EMAIL=' .env)"
-            else
-              echo "SYSTEM_ALERT_EMAIL=sarah@nivessa.com" >> .env
-              echo "added SYSTEM_ALERT_EMAIL=sarah@nivessa.com"
-            fi
+            echo "=== clear the dedup lock left over from smoke-testing, so it doesn't suppress a real alert ==="
+            echo "\Illuminate\Support\Facades\Cache::forget('system.disk_space_alert.last_sent'); echo 'cleared';" | php artisan tinker 2>&1
             echo
 
-            echo "=== clear config cache so the new env var + command take effect ==="
-            php artisan config:clear 2>&1
-            echo
-
-            echo "=== mail config sanity check (no password shown) ==="
-            grep -E "^MAIL_MAILER=|^MAIL_DRIVER=|^MAIL_HOST=|^MAIL_PORT=|^MAIL_USERNAME=|^MAIL_ENCRYPTION=|^MAIL_FROM_ADDRESS=" .env 2>&1
-            echo "MAIL_PASSWORD is set: $(grep -q '^MAIL_PASSWORD=.' .env 2>/dev/null && echo yes || echo NO/EMPTY)"
-            echo
-
-            echo "=== smoke test: force the alert to fire end-to-end (threshold=0) ==="
-            php artisan system:check-disk-space --threshold=0 2>&1
-            echo
-
-            echo "=== clear the dedup lock the smoke test just set, so a real alert isn't suppressed for 6h ==="
-            php artisan tinker --execute="\Illuminate\Support\Facades\Cache::forget('system.disk_space_alert.last_sent'); echo 'cleared';" 2>&1
-            echo
-
-            echo "=== real disk usage right now (for reference, not the forced test above) ==="
+            echo "=== disk usage ==="
             df -h / 2>&1 | tail -3
 
             echo
