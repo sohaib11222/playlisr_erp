@@ -290,7 +290,7 @@ class SyncClover extends Command
                         'country' => $addr['country'] ?? null,
                         'clover_customer_id' => $cId,
                         'clover_synced_at' => now(),
-                        'created_by' => optional(auth()->user())->id,
+                        'created_by' => optional(auth()->user())->id ?? 1,
                     ]);
                     $created++;
                 }
