@@ -90,6 +90,17 @@ jobs:
             find /www/playlist.nivessa.com/app/storage -xdev -type f -size +50M 2>/dev/null -exec du -h {} \; | sort -rh | head -30
             echo
 
+            echo "=== was Google Drive backup upload actually enabled? (checking what we just pruned had a copy) ==="
+            grep -E "^DB_BACKUP_GOOGLE_DRIVE_ENABLED|^DB_BACKUP_GOOGLE_DRIVE_WEBHOOK_URL|^DB_BACKUP_GOOGLE_DRIVE_FOLDER_ID" /www/playlist.nivessa.com/app/.env 2>&1 | sed -E 's/(WEBHOOK_URL|FOLDER_ID)=.+/\1=<redacted-but-present>/'
+            echo
+            echo "--- recent backup log lines: did they say 'uploaded to Google Drive'? ---"
+            grep -h "db:backup-daily\|uploaded to Google Drive\|drive:" /www/playlist.nivessa.com/app/storage/logs/laravel-2026-0[89]-*.log 2>/dev/null | tail -60
+            echo
+
+            echo "=== is there a separate host-level VPS backup/snapshot (Hostinger) we can see evidence of? ==="
+            ls -la /etc/cron.d/ 2>&1 | grep -i backup
+            crontab -l 2>&1 | grep -i backup
+
             echo "=== disk usage ==="
             df -h / 2>&1 | tail -3
 
