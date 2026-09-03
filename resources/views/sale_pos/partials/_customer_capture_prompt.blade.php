@@ -116,7 +116,7 @@ function initCustomerCapture($) {
                     // Skip the edit-page branch — it navigates away on its own,
                     // and the fresh /pos/create load there re-shows the prompt.
                     if ($('form#edit_pos_sell_form').length === 0) {
-                        setTimeout(openPrompt, 500);
+                        scheduleReopen();
                     }
                     return ret;
                 };
@@ -125,6 +125,30 @@ function initCustomerCapture($) {
             setTimeout(function () { installResetHook(attempts - 1); }, 100);
         }
     })(20);
+
+    // The "want a receipt?" prompt (pos.js) opens on this same post-sale
+    // tick, ~350ms out, with its own backdrop:true. Opening this modal at
+    // the same time stacked a second backdrop on top of it and ate clicks
+    // on the receipt modal's email/phone inputs. Wait for the receipt
+    // prompt to actually close before showing this one; fall back to a
+    // fixed delay if it never opens at all (e.g. sale had no transaction_id).
+    function scheduleReopen() {
+        var $receipt = $('#email_receipt_modal');
+        if (!$receipt.length) {
+            setTimeout(openPrompt, 500);
+            return;
+        }
+        var opened = false;
+        var doOpen = function () {
+            if (opened) { return; }
+            opened = true;
+            openPrompt();
+        };
+        $receipt.one('hidden.bs.modal', doOpen);
+        setTimeout(function () {
+            if (!$receipt.hasClass('in')) { doOpen(); }
+        }, 900);
+    }
 
     // Yes → close and drop the cashier straight into the phone/name search.
     $modal.on('click', '.cc-btn-yes', function () {

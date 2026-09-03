@@ -43,47 +43,16 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
-          command_timeout: 60s
+          command_timeout: 240s
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
 
-            echo "=== nginx listening sockets ==="
-            ss -ltn 2>/dev/null | head -20
+            echo "=== clear the dedup lock left over from smoke-testing, so it doesn't suppress a real alert ==="
+            echo "\Illuminate\Support\Facades\Cache::forget('system.disk_space_alert.last_sent'); echo 'cleared';" | php artisan tinker 2>&1
             echo
 
-            echo "=== test localhost:80 (plain) ==="
-            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 http://localhost/ 2>&1 | tail -15
-            echo
+            echo "=== disk usage ==="
+            df -h / 2>&1 | tail -3
 
-            echo "=== test localhost:443 (TLS, allow self-signed) ==="
-            curl -kv -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://localhost/ 2>&1 | tail -15
             echo
-
-            echo "=== test playlist.nivessa.com/login from inside ==="
-            curl -v -s -o /tmp/b.html -w "HTTP %{http_code} · time %{time_total}s\n" -m 10 https://playlist.nivessa.com/login 2>&1 | tail -20
-            echo
-
-            echo "=== php-fpm pool status ==="
-            systemctl status php7.4-fpm --no-pager -n 5 2>&1 | head -20
-            echo
-
-            echo "=== nginx status ==="
-            systemctl status nginx --no-pager -n 5 2>&1 | head -20
-            echo
-
-            echo "=== laravel daily log (latest) ==="
-            ls -la storage/logs/ 2>&1 | tail -5
-            LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
-            echo "latest log: $LOG"
-            echo "--- close_register_modal render failure (underlying message) ---"
-            grep -nE "render failed|close_register_modal" "$LOG" 2>&1 | tail -10
-            echo "--- context around getCloseRegister stack (frames + message) ---"
-            grep -nB14 "CashRegisterController.php(517)" "$LOG" 2>&1 | grep -E "ERROR|ErrorException|#0 |#1 |#2 |#3 |#4 |Undefined|on null|Call to|syntax|views/" | tail -30
-            echo "--- last 60 lines of latest log ---"
-            tail -n 60 "$LOG" 2>&1
-            echo
-
-            echo "=== Laravel boot test ==="
-            php artisan --version 2>&1 | head -5
-            php artisan route:list 2>&1 | head -3
