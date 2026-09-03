@@ -81,13 +81,16 @@ jobs:
             \$m = \$ref->getMethod('ownedSoldLines');
             \$m->setAccessible(true);
             \$rows = \$m->invoke(\$ctrl, \$u->business_id, '2026-05-15', []);
-            \$mine = collect(\$rows)->where('user_id', \$u->id)
-              ->filter(function (\$r) use (\$start, \$end) {
-                return \$r->transaction_date >= \$start && \$r->transaction_date <= \$end;
-              })->values();
-
-            \$sum = \$mine->sum('sale_amount');
-            echo "this person's qualifying sold lines in the last \$days days = ".\$mine->count()."\n";
+            \$mineAll = collect(\$rows)->where('user_id', \$u->id)->values();
+            \$cnt = 0;
+            \$sum = 0.0;
+            foreach (\$mineAll as \$r) {
+              if (\$r->transaction_date >= \$start && \$r->transaction_date <= \$end) {
+                \$cnt++;
+                \$sum += (float) \$r->sale_amount;
+              }
+            }
+            echo "this person's qualifying sold lines in the last \$days days = ".\$cnt."\n";
             echo "sale value of THEIR listings sold in the window = \\\$".number_format(\$sum, 2)."\n";
             echo "commission on that (2%) = \\\$".number_format(\$sum * 0.02, 2)."\n\n";
 
