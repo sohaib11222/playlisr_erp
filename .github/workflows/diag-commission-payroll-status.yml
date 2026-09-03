@@ -99,7 +99,13 @@ jobs:
             \$partyAdjForUser = (float) (\$partyAdj[\$u->id] ?? 0);
             \$salesEarned = \$salesEarnedRaw + \$partyAdjForUser;
             \$salesPaid = \$salesSummary ? (float) \$salesSummary->paid : 0.0;
-            \$salesNet = round(\$salesEarned - \$salesPaid, 2);
+            // Mirrors the FIXED markAllPaid (commit 19da1e97): floor by lifetime
+            // party payments the same way index()'s sales_net does, so this
+            // matches what the page actually shows as "Pay now".
+            \$partyPaidAllTime = round(\$call('partyPaidAllTimeForUser', \$u->id), 2);
+            \$nonPartyNet = round(\$salesEarned - (\$salesPaid - \$partyPaidAllTime), 2);
+            \$salesNet = \$nonPartyNet < 0 ? \$nonPartyNet : max(0, round(\$nonPartyNet - \$partyPaidAllTime, 2));
+            echo "party_paid_all_time=\$".\$partyPaidAllTime."\n";
 
             echo "-- sales/party payout ledger entries for this user --\n";
             \$salesPayouts = \$call('loadSalesPayouts');
