@@ -404,9 +404,18 @@ class EmployeeEarningsController extends Controller
             $patConds[] = "LOWER(COALESCE(sc.name,'')) LIKE '{$pat}'";
         }
         $nameList = implode(',', array_map(function ($n) { return "'" . $n . "'"; }, $this->excludedCategoryNames));
+        // Distributor-sourced NEW stock (e.g. deejay.de) doesn't earn listing
+        // commission regardless of category — the barcoder didn't research/
+        // price it (Sarah 2026-09-03). Mirrors excludeDeejaySourced().
+        $deejaySourced = "EXISTS (SELECT 1 FROM purchase_lines pl"
+            . " JOIN transactions pt ON pt.id = pl.transaction_id"
+            . " JOIN contacts pc ON pc.id = pt.contact_id"
+            . " WHERE pl.product_id = p.id AND pt.type = 'purchase'"
+            . " AND (LOWER(pc.name) LIKE '%dee jay%' OR LOWER(pc.name) LIKE '%deejay%' OR LOWER(pc.name) LIKE '%dee-jay%'))";
         $ineligible = '(' . implode(' OR ', $patConds)
             . " OR LOWER(TRIM(c.name)) IN ({$nameList})"
-            . " OR LOWER(TRIM(COALESCE(sc.name,''))) IN ({$nameList}))";
+            . " OR LOWER(TRIM(COALESCE(sc.name,''))) IN ({$nameList})"
+            . " OR {$deejaySourced})";
 
         $saleExpr  = 'COALESCE(s.sale_value, 0)';
         $unitsExpr = 'COALESCE(s.units, 0)';
@@ -563,6 +572,9 @@ class EmployeeEarningsController extends Controller
                 $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
                    ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
             })
+            ->whereNotExists(function ($qq) {
+                $this->excludeDeejaySourced($qq);
+            })
             ->select(
                 'tsl.id as line_id',
                 // PRE-TAX, net of returns — identical to the leaderboard's
@@ -571,6 +583,25 @@ class EmployeeEarningsController extends Controller
                 DB::raw('((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) as sale_amount')
             )
             ->get();
+    }
+
+    // Distributor-sourced NEW stock (e.g. deejay.de) doesn't earn listing
+    // commission — the barcoder didn't research/price it, the distributor
+    // did (Sarah 2026-09-03). Mirrors
+    // ListingCommissionController::excludeDeejaySourced so the numbers agree.
+    private function excludeDeejaySourced($qq)
+    {
+        $qq->select(DB::raw(1))
+            ->from('purchase_lines as pl')
+            ->join('transactions as pt', 'pt.id', '=', 'pl.transaction_id')
+            ->join('contacts as pc', 'pc.id', '=', 'pt.contact_id')
+            ->whereColumn('pl.product_id', 'p.id')
+            ->where('pt.type', 'purchase')
+            ->where(function ($w) {
+                $w->where(DB::raw('LOWER(pc.name)'), 'LIKE', '%dee jay%')
+                  ->orWhere(DB::raw('LOWER(pc.name)'), 'LIKE', '%deejay%')
+                  ->orWhere(DB::raw('LOWER(pc.name)'), 'LIKE', '%dee-jay%');
+            });
     }
 
     private function listedCount($businessId, $userId, $start)

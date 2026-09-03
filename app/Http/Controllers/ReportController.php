@@ -15061,6 +15061,24 @@ class ReportController extends Controller
             ->whereNotNull('p.created_by')
             ->where('p.created_at', '>=', $rollout);
         $this->applyUsedItemCategoryFilter($q);
+        // Distributor-sourced NEW stock (e.g. deejay.de) doesn't earn listing
+        // commission regardless of category — the barcoder didn't research/
+        // price it, the distributor did (Sarah 2026-09-03). Deliberately NOT
+        // folded into applyUsedItemCategoryFilter(), which also drives the
+        // P&L New/Used revenue split — this only affects who gets paid.
+        $q->whereNotExists(function ($qq) {
+            $qq->select(\DB::raw(1))
+                ->from('purchase_lines as pl')
+                ->join('transactions as pt', 'pt.id', '=', 'pl.transaction_id')
+                ->join('contacts as pc', 'pc.id', '=', 'pt.contact_id')
+                ->whereColumn('pl.product_id', 'p.id')
+                ->where('pt.type', 'purchase')
+                ->where(function ($w) {
+                    $w->where(\DB::raw('LOWER(pc.name)'), 'LIKE', '%dee jay%')
+                      ->orWhere(\DB::raw('LOWER(pc.name)'), 'LIKE', '%deejay%')
+                      ->orWhere(\DB::raw('LOWER(pc.name)'), 'LIKE', '%dee-jay%');
+                });
+        });
         if (!empty($location_id)) {
             $q->where('t.location_id', $location_id);
         }

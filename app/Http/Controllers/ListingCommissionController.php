@@ -1665,6 +1665,9 @@ class ListingCommissionController extends Controller
                 }
                 $qq->whereNotIn(DB::raw('LOWER(TRIM(c.name))'), $this->excludedCategoryNames)
                    ->whereNotIn(DB::raw('LOWER(TRIM(COALESCE(sc.name, \'\')))'), $this->excludedCategoryNames);
+            })
+            ->whereNotExists(function ($qq) {
+                $this->excludeDeejaySourced($qq);
             });
         $this->excludeOwners($q);
 
@@ -1780,6 +1783,28 @@ class ListingCommissionController extends Controller
             );
         }
         return $q;
+    }
+
+    // Distributor-sourced NEW stock (e.g. deejay.de) doesn't earn listing
+    // commission — the barcoder didn't research/price it, the distributor
+    // did (Sarah 2026-09-03). Matches a product to any purchase line whose
+    // transaction's supplier/contact name contains "deejay"/"dee jay"/
+    // "dee-jay", regardless of what category the item ended up filed under.
+    // Callers pass this into ->whereNotExists() against a query that has
+    // `products as p` joined.
+    private function excludeDeejaySourced($qq)
+    {
+        $qq->select(DB::raw(1))
+            ->from('purchase_lines as pl')
+            ->join('transactions as pt', 'pt.id', '=', 'pl.transaction_id')
+            ->join('contacts as pc', 'pc.id', '=', 'pt.contact_id')
+            ->whereColumn('pl.product_id', 'p.id')
+            ->where('pt.type', 'purchase')
+            ->where(function ($w) {
+                $w->where(DB::raw('LOWER(pc.name)'), 'LIKE', '%dee jay%')
+                  ->orWhere(DB::raw('LOWER(pc.name)'), 'LIKE', '%deejay%')
+                  ->orWhere(DB::raw('LOWER(pc.name)'), 'LIKE', '%dee-jay%');
+            });
     }
 
     private function personName($row)

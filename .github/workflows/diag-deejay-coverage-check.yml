@@ -1,0 +1,73 @@
+name: Diag deejay coverage check
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Check every path a deejay product could be linked (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            echo "--- 1) contacts whose name matches deejay patterns ---\n";
+            $contacts = \DB::table('contacts')->where(function($q){ $q->where(\DB::raw('LOWER(name)'),'like','%dee jay%')->orWhere(\DB::raw('LOWER(name)'),'like','%deejay%')->orWhere(\DB::raw('LOWER(name)'),'like','%dee-jay%'); })->get(['id','name']);
+            foreach ($contacts as $c) { echo "  contact #".$c->id.": ".$c->name."\n"; }
+            if ($contacts->isEmpty()) { echo "  NONE FOUND\n"; }
+            $contactIds = $contacts->pluck('id')->all();
+
+            echo "\n--- 2) transaction TYPES used on purchase_lines linked to those contacts ---\n";
+            if (!empty($contactIds)) {
+              $types = \DB::table('purchase_lines as pl')->join('transactions as pt','pt.id','=','pl.transaction_id')->whereIn('pt.contact_id',$contactIds)->select('pt.type')->groupBy('pt.type')->selectRaw('pt.type, count(*) as cnt')->get();
+              foreach ($types as $t) { echo "  type=".$t->type."  purchase_lines=".$t->cnt."\n"; }
+            }
+
+            echo "\n--- 3) product count reachable via purchase_lines regardless of transaction type ---\n";
+            if (!empty($contactIds)) {
+              $allProdIds = \DB::table('purchase_lines as pl')->join('transactions as pt','pt.id','=','pl.transaction_id')->whereIn('pt.contact_id',$contactIds)->distinct()->pluck('pl.product_id');
+              echo "  total distinct products linked to a deejay contact via ANY purchase_lines type = ".$allProdIds->count()."\n";
+              $purchaseOnlyIds = \DB::table('purchase_lines as pl')->join('transactions as pt','pt.id','=','pl.transaction_id')->whereIn('pt.contact_id',$contactIds)->where('pt.type','purchase')->distinct()->pluck('pl.product_id');
+              echo "  distinct products where pt.type = purchase = ".$purchaseOnlyIds->count()."\n";
+              $missed = $allProdIds->diff($purchaseOnlyIds);
+              echo "  products MISSED by a type='purchase'-only filter = ".$missed->count()."\n";
+              foreach ($missed->take(10) as $pid) {
+                $p = \DB::table('products')->where('id',$pid)->first(['id','name','created_by']);
+                $ptype = \DB::table('purchase_lines as pl')->join('transactions as pt','pt.id','=','pl.transaction_id')->where('pl.product_id',$pid)->whereIn('pt.contact_id',$contactIds)->value('pt.type');
+                echo "    MISSED product #".$pid." (type=".$ptype.", created_by=".($p->created_by??'?').")  ".($p->name??'?')."\n";
+              }
+            }
+
+            echo "\n--- 4) products with NO purchase_lines row at all but name/sku hints at deejay (spot check) ---\n";
+            $noLinkCount = \DB::table('products as p')->whereNotExists(function($q){ $q->select(\DB::raw(1))->from('purchase_lines as pl')->whereColumn('pl.product_id','p.id'); })->count();
+            echo "  products with zero purchase_lines rows (business-wide) = ".$noLinkCount."\n";
+            PHP
+            echo "=== done ==="
