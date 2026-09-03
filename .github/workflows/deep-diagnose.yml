@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
-          command_timeout: 60s
+          command_timeout: 240s
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
