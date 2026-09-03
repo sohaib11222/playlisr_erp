@@ -1,0 +1,67 @@
+name: Diag deejay commission impact
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: "user_id"
+        required: true
+        default: "18"
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Compare commission with/without deejay exclusion (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            UID_IN="${{ github.event.inputs.user_id }}"
+            php artisan tinker --no-ansi <<PHP
+            \$uid = $UID_IN;
+            \$rows = \DB::table('transaction_sell_lines as tsl')->join('transactions as t', 'tsl.transaction_id', '=', 't.id')->join('products as p', 'tsl.product_id', '=', 'p.id')->leftJoin('categories as c', 'p.category_id', '=', 'c.id')->leftJoin('categories as sc', 'p.sub_category_id', '=', 'sc.id')->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')->whereBetween('t.transaction_date', ['2026-05-15 00:00:00', now()])->where('p.created_by', \$uid)->where('p.created_at', '>=', '2026-05-15 00:00:00')->where(function (\$qq) { \$qq->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', '%sealed%')->where(\DB::raw('LOWER(COALESCE(sc.name, ""))'), 'NOT LIKE', '%sealed%')->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', '%new vinyl%')->where(\DB::raw('LOWER(COALESCE(sc.name, ""))'), 'NOT LIKE', '%new vinyl%')->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', '%new cd%')->where(\DB::raw('LOWER(COALESCE(sc.name, ""))'), 'NOT LIKE', '%new cd%')->where(\DB::raw('LOWER(c.name)'), 'NOT LIKE', '%new cassette%')->where(\DB::raw('LOWER(COALESCE(sc.name, ""))'), 'NOT LIKE', '%new cassette%')->whereNotIn(\DB::raw('LOWER(TRIM(c.name))'), ['audio gear','record players','record player','trading cards','apparel','clothing','video games','gift items','toys','accessories & novelties','acessories & novelties','pictures & posters'])->whereNotIn(\DB::raw('LOWER(TRIM(COALESCE(sc.name, "")))'), ['audio gear','record players','record player','trading cards','apparel','clothing','video games','gift items','toys','accessories & novelties','acessories & novelties','pictures & posters']); })->select('tsl.id as line_id', 'p.id as product_id', \DB::raw('((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))) as sale_amount'))->get();
+            \$totalAll = round(\$rows->sum('sale_amount') * 0.02, 2);
+            echo "user_id=\$uid  qualifying sold lines = ".\$rows->count()."  commission (current, no supplier exclusion) = \$".\$totalAll."\n";
+            \$prodIds = \$rows->pluck('product_id')->unique()->values()->all();
+            \$deejayProductIds = [];
+            if (!empty(\$prodIds)) {
+              \$deejayProductIds = \DB::table('purchase_lines as pl')->join('transactions as pt', 'pt.id', '=', 'pl.transaction_id')->join('contacts as pc', 'pc.id', '=', 'pt.contact_id')->whereIn('pl.product_id', \$prodIds)->where('pt.type', 'purchase')->where(function(\$q){ \$q->where(\DB::raw('LOWER(pc.name)'), 'LIKE', '%dee jay%')->orWhere(\DB::raw('LOWER(pc.name)'), 'LIKE', '%deejay%')->orWhere(\DB::raw('LOWER(pc.name)'), 'LIKE', '%dee-jay%'); })->pluck('pl.product_id')->unique()->all();
+            }
+            echo "products among these sold lines linked to a deejay purchase = ".count(\$deejayProductIds)."\n";
+            \$excluded = \$rows->whereIn('product_id', \$deejayProductIds);
+            \$excludedSum = round(\$excluded->sum('sale_amount') * 0.02, 2);
+            echo "commission attributable to deejay-sourced items = \$".\$excludedSum." (".\$excluded->count()." lines)\n";
+            echo "commission EXCLUDING deejay = \$".round(\$totalAll - \$excludedSum, 2)."\n";
+            foreach (\$excluded->take(10) as \$r) {
+              \$pname = \DB::table('products')->where('id', \$r->product_id)->value('name');
+              echo "  DEEJAY ITEM: \$".number_format(\$r->sale_amount,2)."  ".\$pname."\n";
+            }
+            PHP
+            echo "=== done ==="
