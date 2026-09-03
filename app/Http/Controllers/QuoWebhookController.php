@@ -143,6 +143,67 @@ class QuoWebhookController extends Controller
         return false;
     }
 
+    /**
+     * TEMPORARY diagnostic: Sarah has no SSH access to tail storage/logs on
+     * this box, so on a verification failure we write what we can safely
+     * show (never the actual key) into the Hub itself as a one-off pending
+     * row, readable from the browser. Remove once Quo delivery is confirmed
+     * working end to end.
+     */
+    private function logVerifyDebug(array $headers, string $raw): void
+    {
+        try {
+            $business_id = optional(Business::first())->id;
+            if (!$business_id) {
+                return;
+            }
+            $system_user_id = optional(
+                \DB::table('users')->where('business_id', $business_id)->orderBy('id')->first()
+            )->id;
+            if (!$system_user_id) {
+                return;
+            }
+
+            $key = $this->webhookKey();
+            $id = $headers['webhook-id'] ?? '(missing)';
+            $timestamp = $headers['webhook-timestamp'] ?? '(missing)';
+            $signatureHeader = $headers['webhook-signature'] ?? '(missing)';
+
+            $expected = '(key not set)';
+            if ($key !== '' && $id !== '(missing)' && $timestamp !== '(missing)') {
+                $secretB64 = strpos($key, 'whsec_') === 0 ? substr($key, 6) : $key;
+                $secretBytes = base64_decode($secretB64, true);
+                if ($secretBytes !== false) {
+                    $signedContent = $id . '.' . $timestamp . '.' . $raw;
+                    $expected = base64_encode(hash_hmac('sha256', $signedContent, $secretBytes, true));
+                }
+            }
+
+            $lines = [
+                'QUO WEBHOOK DEBUG (temporary)',
+                'key length: ' . strlen($key),
+                'header keys seen: ' . implode(', ', array_keys($headers)),
+                'webhook-id: ' . $id,
+                'webhook-timestamp: ' . $timestamp . ' (server now: ' . time() . ')',
+                'webhook-signature: ' . $signatureHeader,
+                'expected v1 sig: ' . $expected,
+                'raw body: ' . substr($raw, 0, 500),
+            ];
+
+            $c = new Communication();
+            $c->business_id = $business_id;
+            $c->channel = 'other';
+            $c->topic = 'general';
+            $c->status = 'pending';
+            $c->contact_info = 'quo-webhook-debug';
+            $c->message = implode("\n", $lines);
+            $c->created_by = $system_user_id;
+            $c->save();
+        } catch (\Throwable $e) {
+            Log::emergency('Quo webhook debug logging failed: ' . $e->getMessage());
+        }
+    }
+
     /** Map a Quo E.164-ish number string to our channel code, or null if unknown. */
     private function channelForNumber(?string $number): ?string
     {
@@ -167,6 +228,7 @@ class QuoWebhookController extends Controller
 
         if (!$this->verify($headers, $raw)) {
             Log::warning('Quo webhook signature mismatch or missing key.');
+            $this->logVerifyDebug($headers, $raw);
             return response('forbidden', 403);
         }
 
