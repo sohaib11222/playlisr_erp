@@ -1,0 +1,121 @@
+# READ-ONLY diagnostic: reproduce ListingCommissionController::markAllPaid's
+# exact math for one person (by name, fuzzy-matched), plus dump every ledger
+# entry (listing + sales payouts) for them, so "why can't I mark X paid" /
+# "I already paid them" can be root-caused against the real ledger instead of
+# guessed at. No writes.
+name: Diag commission payroll status (by person)
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Name to look up (fuzzy match on first/last/surname/username)"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump payroll status (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            NAME="${{ github.event.inputs.name }}"
+            echo "=== payroll status audit for '$NAME' ==="
+            php artisan tinker --no-ansi <<PHP
+            \$needle = strtolower(trim("$NAME"));
+            \$u = \DB::table('users')->where(function (\$q) use (\$needle) {
+              \$q->whereRaw('LOWER(first_name) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(last_name) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(surname) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(username) LIKE ?', ['%'.\$needle.'%']);
+            })->first();
+            if (!\$u) { echo "NO USER found matching '$NAME'\n"; exit; }
+            echo "USER #".\$u->id.": ".\$u->first_name." ".\$u->last_name." (business_id=".\$u->business_id.")\n\n";
+
+            \$ctrl = app(\App\Http\Controllers\ListingCommissionController::class);
+            \$ref = new \ReflectionClass(\$ctrl);
+            \$call = function (\$name, ...\$args) use (\$ctrl, \$ref) {
+              \$m = \$ref->getMethod(\$name);
+              \$m->setAccessible(true);
+              return \$m->invoke(\$ctrl, ...\$args);
+            };
+
+            \$from = '2026-05-15';
+            \$businessId = \$u->business_id;
+
+            \$listingEarned = 0.0;
+            foreach (\$call('ownedSoldLines', \$businessId, \$from, [])->where('user_id', \$u->id) as \$row) {
+              \$listingEarned += (float) \$row->sale_amount * 0.02;
+            }
+            \$listingPayouts = \$call('loadPayouts');
+            \$listingPaid = 0.0;
+            echo "-- listing payout ledger entries for this user --\n";
+            foreach (\$listingPayouts as \$p) {
+              if ((int) (\$p['user_id'] ?? 0) === \$u->id) {
+                \$listingPaid += (float) (\$p['amount'] ?? 0);
+                echo "  \$".number_format((float) (\$p['amount'] ?? 0), 2)." on ".(\$p['marked_at'] ?? '?')." note=[".(\$p['note'] ?? '')."] manual=".((\$p['manual'] ?? false) ? 'yes' : 'no')."\n";
+              }
+            }
+            \$listingNet = round(\$listingEarned - \$listingPaid, 2);
+            echo "listing: earned=\$".round(\$listingEarned,2)." paid=\$".round(\$listingPaid,2)." net=\$".\$listingNet."\n\n";
+
+            \$salesSummary = \$ctrl->salesSummaryByUser(\$businessId)->get(\$u->id);
+            \$partyAdj = \$call('partySplitAdjustmentsByUser');
+            \$salesEarnedRaw = \$salesSummary ? (float) \$salesSummary->earned : 0.0;
+            \$partyAdjForUser = (float) (\$partyAdj[\$u->id] ?? 0);
+            \$salesEarned = \$salesEarnedRaw + \$partyAdjForUser;
+            \$salesPaid = \$salesSummary ? (float) \$salesSummary->paid : 0.0;
+            \$salesNet = round(\$salesEarned - \$salesPaid, 2);
+
+            echo "-- sales/party payout ledger entries for this user --\n";
+            \$salesPayouts = \$call('loadSalesPayouts');
+            foreach (\$salesPayouts as \$p) {
+              if ((int) (\$p['user_id'] ?? 0) === \$u->id) {
+                echo "  \$".number_format((float) (\$p['amount'] ?? 0), 2)." on ".(\$p['marked_at'] ?? '?')." note=[".(\$p['note'] ?? '')."] manual=".((\$p['manual'] ?? false) ? 'yes' : 'no')."\n";
+              }
+            }
+            echo "sales: earned(raw)=\$".round(\$salesEarnedRaw,2)." party_split_adj=\$".round(\$partyAdjForUser,2)." earned(w/party)=\$".round(\$salesEarned,2)." paid=\$".round(\$salesPaid,2)." net=\$".\$salesNet."\n\n";
+
+            \$sum = round(\$listingNet + \$salesNet, 2);
+            echo "markAllPaid total (listingNet + salesNet) = \$".\$sum."\n";
+            if (\$sum <= 0.005) {
+              echo "==> markAllPaid WOULD refuse with 'Nothing outstanding for that person (they're settled or in credit).'\n";
+            } else {
+              echo "==> markAllPaid would record listing \$".max(0,\$listingNet)." + sales \$".max(0,\$salesNet)." (whichever side is nonzero)\n";
+            }
+            PHP
+            echo "=== done ==="
