@@ -1,0 +1,81 @@
+# READ-ONLY diagnostic: checks whether an "Electronics" category exists and,
+# if so, whether it's currently excluded from the shared New-vs-Used
+# definition used across P&L/QB reporting AND listing commission
+# (ReportController::applyUsedItemCategoryFilter /
+# ListingCommissionController::$excludedCategoryNames). Also dumps a sample
+# of recently-sold Electronics lines so we can see how much revenue is
+# mis-bucketed as "used". No writes.
+name: Diag electronics category check
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump electronics category status (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $cats = \DB::table('categories')->whereRaw('LOWER(name) LIKE ?', ['%electronic%'])->get(['id', 'name', 'parent_id']);
+            echo "categories matching 'electronic':\n";
+            foreach ($cats as $c) { echo "  #".$c->id.": ".$c->name." (parent_id=".$c->parent_id.")\n"; }
+            if ($cats->isEmpty()) { echo "  none found\n"; }
+
+            $excluded = ['audio gear','record players','record player','trading cards','apparel','clothing','video games','gift items','toys','accessories & novelties','acessories & novelties','pictures & posters'];
+            foreach ($cats as $c) {
+              $inList = in_array(strtolower(trim($c->name)), $excluded, true);
+              echo "  '".$c->name."' currently excluded from Used bucket? ".($inList ? 'YES' : 'NO')."\n";
+            }
+
+            $catIds = $cats->pluck('id')->all();
+            if (!empty($catIds)) {
+              $rows = \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereIn('p.category_id', $catIds)
+                ->orderByDesc('t.transaction_date')
+                ->limit(15)
+                ->select('p.name', 't.transaction_date', DB::raw('(tsl.quantity - COALESCE(tsl.quantity_returned,0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax,0)) as amt'))
+                ->get();
+              echo "\nrecent sold lines in these categories:\n";
+              foreach ($rows as $r) { echo "  ".$r->transaction_date."  \$".number_format((float)$r->amt,2)."  ".$r->name."\n"; }
+            }
+            PHP
+            echo "=== done ==="
