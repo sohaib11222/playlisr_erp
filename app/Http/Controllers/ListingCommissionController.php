@@ -421,7 +421,14 @@ class ListingCommissionController extends Controller
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $salesEarned = ($sales ? (float) $sales->earned : 0.0) + (float) ($partyAdj[$userId] ?? 0);
         $salesPaid   = $sales ? (float) $sales->paid : 0.0;
-        $salesNet    = round($salesEarned - $salesPaid, 2);
+        // Must mirror index()'s sales_net exactly (party-payment floor included) —
+        // otherwise a person with a listening-party payment on file shows an owed
+        // balance on the page but this recompute lands at ~$0, and the button
+        // fires "nothing outstanding" even though Pay now says otherwise
+        // (Sarah 2026-09-03: hit this on Andy after actually paying him $4.16).
+        $partyPaidAllTime = round($this->partyPaidAllTimeForUser($userId), 2);
+        $nonPartyNet = round($salesEarned - ($salesPaid - $partyPaidAllTime), 2);
+        $salesNet = $nonPartyNet < 0 ? $nonPartyNet : max(0, round($nonPartyNet - $partyPaidAllTime, 2));
 
         if (round($listingNet + $salesNet, 2) <= 0.005) {
             return redirect('/admin/listing-commissions')
