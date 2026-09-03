@@ -23,16 +23,22 @@ class CommunicationController extends Controller
         $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'resolved' => 'Resolved'];
 
         if (request()->ajax()) {
+            // Bind the cutoff from PHP (app timezone, America/Los_Angeles)
+            // rather than using MySQL's NOW() — the DB session's timezone
+            // doesn't necessarily match the app's, and comparing against it
+            // directly was flagging every pending row as overdue instantly.
+            $overdue_cutoff = now()->subHour()->toDateTimeString();
+
             $rows = Communication::where('communications.business_id', $business_id)
                 ->leftJoin('users as assignee_users', 'communications.assigned_to', '=', 'assignee_users.id')
                 ->leftJoin('users as creator_users', 'communications.created_by', '=', 'creator_users.id')
                 ->select(
                     'communications.*',
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(assignee_users.first_name,''), ' ', COALESCE(assignee_users.last_name,''))), ''), assignee_users.username) as assignee_name"),
-                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name"),
-                    DB::raw("(communications.status = 'pending' AND communications.created_at <= (NOW() - INTERVAL 1 HOUR)) as is_overdue"),
-                    DB::raw("(communications.is_priority = 1 OR (communications.status = 'pending' AND communications.created_at <= (NOW() - INTERVAL 1 HOUR))) as priority_sort")
-                );
+                    DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name")
+                )
+                ->selectRaw("(communications.status = 'pending' AND communications.created_at <= ?) as is_overdue", [$overdue_cutoff])
+                ->selectRaw("(communications.is_priority = 1 OR (communications.status = 'pending' AND communications.created_at <= ?)) as priority_sort", [$overdue_cutoff]);
 
             if (request()->has('status') && request()->status != '') {
                 if (request()->status == 'overdue') {
