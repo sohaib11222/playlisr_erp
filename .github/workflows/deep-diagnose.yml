@@ -83,6 +83,12 @@ jobs:
             du -sh /www/playlist.nivessa.com/app/storage/logs 2>&1
             ls -la /www/playlist.nivessa.com/app/storage/logs 2>&1 | sort -k5 -rn | head -15
             echo
+            echo "--- storage/ full breakdown, depth 3 (find the 122G) ---"
+            du -x --max-depth=3 -h /www/playlist.nivessa.com/app/storage 2>/dev/null | sort -rh | head -40
+            echo
+            echo "--- largest 30 individual files under storage/ ---"
+            find /www/playlist.nivessa.com/app/storage -xdev -type f -size +50M 2>/dev/null -exec du -h {} \; | sort -rh | head -30
+            echo
 
             echo "=== nivessa.com-frontend / nivessa.com-api breakdown (Next.js build, node_modules) ==="
             du -x --max-depth=1 -h /www/nivessa.com-frontend 2>/dev/null | sort -rh | head -10
