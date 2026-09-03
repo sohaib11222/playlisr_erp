@@ -48,76 +48,56 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
 
-            echo "=== live repro: hit the site 5x back-to-back like a browser would ==="
-            for i in 1 2 3 4 5; do
-              curl -s -o /dev/null -w "try $i: HTTP %{http_code} · time %{time_total}s\n" -m 12 https://playlist.nivessa.com/login 2>&1
-            done
-            echo
-
-            echo "=== load average / uptime ==="
-            uptime
-            echo
-
-            echo "=== memory ==="
-            free -h
-            echo
-
-            echo "=== disk ==="
+            echo "=== disk total ==="
             df -h / 2>&1 | tail -3
-            echo "--- top-level usage under /www (what's eating the 185G) ---"
-            du -sh /www/*/ 2>/dev/null | sort -rh | head -10
             echo
 
-            echo "=== nginx: listening sockets + active connection count ==="
-            ss -ltn 2>/dev/null | head -20
-            echo "--- ss summary (established/time-wait counts etc) ---"
-            ss -s 2>/dev/null
+            echo "=== whoami / groups (know what we can actually read) ==="
+            whoami
+            id
             echo
 
-            echo "=== nginx worker_connections config vs systemctl status ==="
-            grep -r "worker_connections\|worker_processes" /etc/nginx/nginx.conf 2>/dev/null
-            systemctl status nginx --no-pager -n 10 2>&1 | head -25
-            echo "--- nginx error log tail (last 60 lines, any host) ---"
-            tail -60 /var/log/nginx/error.log 2>&1
+            echo "=== depth-1 usage of / (top-level breakdown) ==="
+            du -x --max-depth=1 -h / 2>/dev/null | sort -rh | head -20
             echo
 
-            echo "=== php-fpm: pool config (max_children etc) ==="
-            grep -E "^pm |^pm\.|^listen " /etc/php/7.4/fpm/pool.d/*.conf 2>/dev/null
-            echo "--- php-fpm service status ---"
-            systemctl status php7.4-fpm --no-pager -n 10 2>&1 | head -25
-            echo "--- php-fpm error log tail, looking for 'server reached pm.max_children' ---"
-            tail -100 /var/log/php7.4-fpm.log 2>&1
-            echo "--- count of 'max_children' warnings today ---"
-            grep -c "max_children" /var/log/php7.4-fpm.log 2>&1
+            echo "=== depth-1 usage under /www (per-site breakdown) ==="
+            du -x --max-depth=1 -h /www 2>/dev/null | sort -rh | head -20
             echo
 
-            echo "=== mysql connection check ==="
-            mysqladmin ping 2>&1 || true
-            mysqladmin status 2>&1 || true
+            echo "=== depth-1 usage under /var (logs, mysql datadir, apt cache, etc) ==="
+            du -x --max-depth=1 -h /var 2>/dev/null | sort -rh | head -20
             echo
 
-            echo "=== redis check ==="
-            redis-cli ping 2>&1 || true
+            echo "=== depth-2 usage under /var/log (which log is huge) ==="
+            du -x --max-depth=2 -h /var/log 2>/dev/null | sort -rh | head -20
             echo
 
-            echo "=== OOM killer activity today (would explain sudden hangs) ==="
-            dmesg -T 2>/dev/null | grep -i "out of memory\|oom-kill\|killed process" | tail -20
-            journalctl -k --since "today" 2>&1 | grep -i "out of memory\|oom" | tail -20
+            echo "=== mysql datadir size, if readable ==="
+            du -sh /var/lib/mysql 2>&1
             echo
 
-            echo "=== fail2ban status (is something getting banned/dropped intermittently) ==="
-            fail2ban-client status 2>&1 || echo "fail2ban not available"
+            echo "=== playlist.nivessa.com app breakdown (storage/logs, vendor, node_modules) ==="
+            du -x --max-depth=1 -h /www/playlist.nivessa.com/app 2>/dev/null | sort -rh | head -20
+            echo "--- storage/logs specifically ---"
+            du -sh /www/playlist.nivessa.com/app/storage/logs 2>&1
+            ls -la /www/playlist.nivessa.com/app/storage/logs 2>&1 | sort -k5 -rn | head -15
             echo
 
-            echo "=== top 10 processes by CPU and by memory right now ==="
-            ps aux --sort=-%cpu 2>&1 | head -11
-            echo
-            ps aux --sort=-%mem 2>&1 | head -11
+            echo "=== nivessa.com-frontend / nivessa.com-api breakdown (Next.js build, node_modules) ==="
+            du -x --max-depth=1 -h /www/nivessa.com-frontend 2>/dev/null | sort -rh | head -10
+            du -x --max-depth=1 -h /www/nivessa.com-api 2>/dev/null | sort -rh | head -10
             echo
 
-            echo "=== Laravel boot test ==="
-            cd /www/playlist.nivessa.com/app
-            php artisan --version 2>&1 | head -5
-            php artisan route:list 2>&1 | head -3
+            echo "=== other top-level dirs worth checking: old kernels, journal, tmp, docker ==="
+            du -sh /var/log/journal 2>&1
+            du -sh /tmp 2>&1
+            du -sh /var/cache/apt 2>&1
+            du -sh /var/lib/docker 2>&1
+            dpkg -l 'linux-image*' 2>/dev/null | grep '^ii' | wc -l
+            echo
+
+            echo "=== largest 25 individual files anywhere under / we can see (excl proc/sys) ==="
+            find / -xdev -type f -size +200M 2>/dev/null -exec du -h {} \; | sort -rh | head -25
 
             echo
