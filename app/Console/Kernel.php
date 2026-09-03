@@ -59,6 +59,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(180);
 
+        // Disk filled to 96% on 2026-09-02 (unbounded backup accumulation)
+        // and caused site-wide connection timeouts before anyone noticed.
+        // Check a few times a day and email if it's climbing again.
+        $schedule->command('system:check-disk-space')
+            ->cron('0 */4 * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(10);
+
         // StreetPulse daily upload (runs at 2:00 AM to upload yesterday's data)
         $schedule->command('streetpulse:upload-daily')->dailyAt('02:00');
 

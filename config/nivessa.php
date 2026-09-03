@@ -39,6 +39,10 @@ return [
     // no channel name is needed here.
     'shift_notes_slack_webhook' => env('SHIFT_NOTES_SLACK_WEBHOOK', ''),
 
+    // Where system health alerts (disk space, etc.) get emailed. See
+    // system:check-disk-space.
+    'system_alert_email' => env('SYSTEM_ALERT_EMAIL', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Database backup settings (ERP local + optional Google Drive upload)
