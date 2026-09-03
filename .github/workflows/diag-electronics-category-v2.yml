@@ -49,12 +49,12 @@ jobs:
               ->orderByDesc('t.transaction_date')
               ->limit(20)
               ->select('p.name as pname', 'c.name as cat', 'sc.name as subcat', 't.transaction_date',
-                DB::raw('(tsl.quantity - COALESCE(tsl.quantity_returned,0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax,0)) as amt'))
+                \DB::raw('(tsl.quantity - COALESCE(tsl.quantity_returned,0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax,0)) as amt'))
               ->get();
             echo "recent sold lines touching 'electronic' (category or subcategory):\n";
             foreach ($rows as $r) {
               echo "  ".$r->transaction_date."  \$".number_format((float)$r->amt,2)."  cat=[".$r->cat."] subcat=[".$r->subcat."]  ".$r->pname."\n";
             }
-            if ($rows->isEmpty()) { echo "  none in last query window\n"; }
+            if (count($rows) === 0) { echo "  none in last query window\n"; }
             PHP
             echo "=== done ==="
