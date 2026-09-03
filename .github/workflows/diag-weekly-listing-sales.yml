@@ -1,0 +1,107 @@
+# READ-ONLY diagnostic: for one person (fuzzy name match), how much of THEIR
+# listed items actually sold in a given trailing window (default 7 days) —
+# plus the store's total sell revenue in the same window for context — so a
+# "that can't be right" reaction to a cumulative commission number can be
+# checked against the real recent numbers. No writes.
+name: Diag weekly listing sales (by person)
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Name to look up (fuzzy match)"
+        required: true
+      days:
+        description: "Trailing window in days"
+        required: true
+        default: "7"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump weekly window (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            NAME="${{ github.event.inputs.name }}"
+            DAYS="${{ github.event.inputs.days }}"
+            echo "=== weekly window audit for '$NAME' (last $DAYS days) ==="
+            php artisan tinker --no-ansi <<PHP
+            \$needle = strtolower(trim("$NAME"));
+            \$u = \DB::table('users')->where(function (\$q) use (\$needle) {
+              \$q->whereRaw('LOWER(first_name) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(last_name) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(surname) LIKE ?', ['%'.\$needle.'%'])
+                ->orWhereRaw('LOWER(username) LIKE ?', ['%'.\$needle.'%']);
+            })->first();
+            if (!\$u) { echo "NO USER found matching '$NAME'\n"; exit; }
+            echo "USER #".\$u->id.": ".\$u->first_name." ".\$u->last_name."\n";
+
+            \$days = max(1, (int) "$DAYS");
+            \$start = \Carbon::now()->subDays(\$days)->toDateTimeString();
+            \$end = \Carbon::now()->toDateTimeString();
+            echo "window: \$start to \$end\n";
+
+            \$ctrl = app(\App\Http\Controllers\ListingCommissionController::class);
+            \$ref = new \ReflectionClass(\$ctrl);
+            \$m = \$ref->getMethod('ownedSoldLines');
+            \$m->setAccessible(true);
+            \$rows = \$m->invoke(\$ctrl, \$u->business_id, '2026-05-15', []);
+            \$mine = collect(\$rows)->where('user_id', \$u->id)
+              ->filter(function (\$r) use (\$start, \$end) {
+                return \$r->transaction_date >= \$start && \$r->transaction_date <= \$end;
+              })->values();
+
+            \$sum = \$mine->sum('sale_amount');
+            echo "this person's qualifying sold lines in the last \$days days = ".\$mine->count()."\n";
+            echo "sale value of THEIR listings sold in the window = \\\$".number_format(\$sum, 2)."\n";
+            echo "commission on that (2%) = \\\$".number_format(\$sum * 0.02, 2)."\n\n";
+
+            // Store-wide context: total final sell revenue (pre-tax, net of returns,
+            // non-whatnot) in the same window, so the person's share can be judged
+            // against the whole store's take.
+            \$net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+            \$storeTotal = \DB::table('transactions as t')
+              ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+              ->where('t.business_id', \$u->business_id)
+              ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+              ->where(function (\$q) { \$q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+              ->whereBetween('t.transaction_date', [\$start, \$end])
+              ->sum(\DB::raw(\$net));
+            echo "STORE-WIDE total sell revenue in the same window = \\\$".number_format((float) \$storeTotal, 2)."\n";
+            PHP
+            echo "=== done ==="
