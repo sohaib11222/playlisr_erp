@@ -14431,6 +14431,67 @@ class ReportController extends Controller
     }
 
     /**
+     * Where a business's locked-in daily commission targets live. JSON on
+     * disk — no migration, same pattern as cashflow-budget / clover-manual-
+     * matches / return-approvals.
+     */
+    protected function dailyTargetSnapshotPath($business_id)
+    {
+        return storage_path('app/daily-target-snapshots-' . $business_id . '.json');
+    }
+
+    /**
+     * Load the full locked-target map for a business: ['{location}_{user}_{date}' => target].
+     */
+    protected function loadDailyTargetSnapshots($business_id)
+    {
+        $path = $this->dailyTargetSnapshotPath($business_id);
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode(file_get_contents($path), true);
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Persist the locked-target map back to disk.
+     */
+    protected function saveDailyTargetSnapshots($business_id, array $snapshots)
+    {
+        file_put_contents($this->dailyTargetSnapshotPath($business_id), json_encode($snapshots));
+    }
+
+    /**
+     * A day's commission target used to drift forever: storeHourlyProfile()
+     * always averages the 12 weeks ending YESTERDAY (relative to whenever the
+     * page loads), never the 12 weeks that existed when the day was actually
+     * worked. So the same already-paid day kept recomputing a new (usually
+     * higher, as the store's average trends up) target every time anyone
+     * checked it, making "earned" quietly shrink under payments that had
+     * already gone out — Sarah 2026-09-03 ("if someone earns $10 and we pay
+     * them that, it shouldn't be negative $6 next week").
+     *
+     * Fix: once a date is fully in the past (not today), its target is
+     * computed once and locked forever in the snapshot map — later calls
+     * reuse the frozen number instead of recomputing off a moving window.
+     * Today's target is intentionally left live/unlocked since the day
+     * isn't finalized yet.
+     */
+    private function lockedDayTarget(array &$snapshots, &$dirty, $location_id, $user_id, $date, $liveTarget)
+    {
+        if ($date >= \Carbon::today()->toDateString()) {
+            return $liveTarget;
+        }
+        $key = $location_id . '_' . $user_id . '_' . $date;
+        if (array_key_exists($key, $snapshots)) {
+            return (float) $snapshots[$key];
+        }
+        $snapshots[$key] = round($liveTarget, 2);
+        $dirty = true;
+        return $liveTarget;
+    }
+
+    /**
      * Attach a per-person hour-based target to leaderboard rows (informational
      * only — does NOT drive commission; Sarah 2026-06-02). For each person we
      * take the exact hours they were clocked in (cash_registers, clipped to the
@@ -14605,7 +14666,9 @@ class ReportController extends Controller
             }
         }
 
-        $mapped = $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales, $bonus_start_date, $cut, $usePooled, $pooledShare) {
+        $daySnapshots = $this->loadDailyTargetSnapshots($business_id);
+        $daySnapshotsDirty = false;
+        $mapped = $rows->map(function ($r) use ($userCov, $slotStaff, $rate, $stretch, $sales_bonus_live, $daySales, $bonus_start_date, $cut, $usePooled, $pooledShare, $location_id, &$daySnapshots, &$daySnapshotsDirty) {
             $cov = $userCov[$r->user_id] ?? [];
             $peakH = 0.0; $offH = 0.0;
             $dayExpected = [];     // Y-m-d => expected store-rate $ for hours worked that day
@@ -14646,6 +14709,7 @@ class ReportController extends Controller
                 $exp = $dayExpected[$date] ?? 0.0;
                 if ($exp > 0) { $anyTarget = true; }
                 $dayTarget = $exp > 0 ? $exp * (1 + $stretch) : 0.0;
+                $dayTarget = $this->lockedDayTarget($daySnapshots, $daySnapshotsDirty, $location_id, $r->user_id, $date, $dayTarget);
                 $sold = (float) ($daySales[$r->user_id][$date] ?? 0);
 
                 $isPooled = $usePooled && strcmp($date, $cut) >= 0;
@@ -14725,6 +14789,10 @@ class ReportController extends Controller
                 ];
             }
             if (!empty($extra)) { $mapped = $mapped->concat($extra)->values(); }
+        }
+
+        if ($daySnapshotsDirty) {
+            $this->saveDailyTargetSnapshots($business_id, $daySnapshots);
         }
 
         return $mapped;
