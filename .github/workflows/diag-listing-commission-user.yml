@@ -1,0 +1,102 @@
+# READ-ONLY diagnostic: reproduce ListingCommissionController::ownedSoldLines
+# for one person by first name, line by line, so a commission total (e.g.
+# "why does Zak show $90") can be audited item-by-item instead of trusted
+# blind. No writes.
+name: Diag listing commission (by person)
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_name:
+        description: "First name to look up (case-insensitive)"
+        required: true
+        default: "zak"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump qualifying sold lines (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            NAME="${{ github.event.inputs.first_name }}"
+            echo "=== listing commission audit for first_name=$NAME ==="
+            php artisan tinker --no-ansi <<PHP
+            \$first = strtolower(trim("$NAME"));
+            \$u = \DB::table('users')->whereRaw('LOWER(first_name) = ?', [\$first])->first();
+            if (!\$u) { echo "NO USER found with first_name=$NAME\n"; exit; }
+            echo "USER #".\$u->id.": ".\$u->first_name." ".\$u->last_name." business_id=".\$u->business_id."\n";
+
+            \$ctrl = app(\App\Http\Controllers\ListingCommissionController::class);
+            \$ref = new \ReflectionClass(\$ctrl);
+
+            \$m = \$ref->getMethod('ownedSoldLines');
+            \$m->setAccessible(true);
+            \$rows = \$m->invoke(\$ctrl, \$u->business_id, '2026-05-15', []);
+            \$mine = collect(\$rows)->where('user_id', \$u->id)->values();
+
+            echo "qualifying sold lines for this user (since 2026-05-15) = ".\$mine->count()."\n";
+            \$total = 0.0;
+            foreach (\$mine as \$r) {
+              \$prod = \DB::table('transaction_sell_lines as tsl')
+                ->join('products as p', 'tsl.product_id', '=', 'p.id')
+                ->where('tsl.id', \$r->line_id)
+                ->select('p.name', 'p.created_at as listed_at', 'p.category_id', 'p.sub_category_id')
+                ->first();
+              \$comm = round((float) \$r->sale_amount * 0.02, 2);
+              \$total += \$comm;
+              echo sprintf("  line %-8d sold %s  amt=\$%-8.2f comm=\$%-6.2f  listed %s  %s\n",
+                \$r->line_id, \$r->transaction_date, (float) \$r->sale_amount, \$comm,
+                \$prod ? \$prod->listed_at : '?', \$prod ? \$prod->name : '(unknown product)');
+            }
+            echo "SUM of line commissions = \$".round(\$total, 2)."\n";
+
+            \$paidFile = storage_path('app/listing-commission-payouts.json');
+            \$paid = file_exists(\$paidFile) ? json_decode(file_get_contents(\$paidFile), true) : [];
+            \$paidLines = [];
+            \$paidAmt = 0.0;
+            foreach ((array) \$paid as \$p) {
+              if ((int) (\$p['user_id'] ?? 0) === \$u->id) {
+                \$paidAmt += (float) (\$p['amount'] ?? 0);
+                foreach ((\$p['line_ids'] ?? []) as \$lid) { \$paidLines[] = \$lid; }
+                echo "  PAYOUT: \$".number_format((float) (\$p['amount'] ?? 0), 2)." on ".(\$p['marked_at'] ?? '?')." note=".(\$p['note'] ?? '')." lines=".count(\$p['line_ids'] ?? [])."\n";
+              }
+            }
+            echo "total paid (ledger) = \$".round(\$paidAmt, 2)."\n";
+            echo "owed = earned - paid = \$".round(\$total - \$paidAmt, 2)."\n";
+            PHP
+            echo "=== done ==="
