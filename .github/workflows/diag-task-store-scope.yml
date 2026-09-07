@@ -64,11 +64,7 @@ jobs:
             echo "=== active, login-enabled users: role, access_all_locations, permitted_locations, resolved store ==="
             php artisan tinker --no-ansi <<'PHP'
             $businessId = DB::table('business')->value('id');
-            $users = App\User::where('business_id', $businessId)
-                ->where('status', 'active')
-                ->where('allow_login', 1)
-                ->orderBy('first_name')
-                ->get();
+            $users = App\User::where('business_id', $businessId)->where('status', 'active')->where('allow_login', 1)->orderBy('first_name')->get();
             foreach ($users as $u) {
                 $roles = $u->roles->pluck('name')->implode(',');
                 $allLoc = $u->can('access_all_locations') ? 'YES' : 'no';
