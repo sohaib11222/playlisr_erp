@@ -1,0 +1,66 @@
+# READ-ONLY: products bundled into confirmed RSD batch-delivery days
+# (>= 3 distinct RSD-grid titles purchased that date), not already
+# grid-covered or RSD-named. Sharper follow-up to
+# scan-rsd-window-purchases.yml, which was too noisy (322 loose
+# keyword hits across wide date windows). See
+# app/Console/Commands/ScanRsdBatchDayPurchases.php.
+#
+# No writes.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · scan RSD batch-day purchases (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      min_batch:
+        description: 'Minimum distinct RSD-grid titles on a date to count it as a confirmed batch day'
+        required: false
+        default: '3'
+
+concurrency:
+  group: nivessa-scan-rsd-batch-day-purchases
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          MIN_BATCH: ${{ github.event.inputs.min_batch }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 10m
+          envs: MIN_BATCH
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan nivessa:scan-rsd-batch-day-purchases --min-batch="${MIN_BATCH:-3}"
