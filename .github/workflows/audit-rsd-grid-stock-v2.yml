@@ -1,0 +1,55 @@
+# READ-ONLY follow-up to "Nivessa · audit RSD grid stock" — matches UPC/sku
+# with leading zeros stripped (12-digit UPC-A vs zero-padded 13-digit EAN-13),
+# which the original exact-string-match pass missed. See
+# app/Console/Commands/AuditRsdGridStockV2.php.
+#
+# No writes.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · audit RSD grid stock v2 (read-only, zero-padding-aware)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nivessa-audit-rsd-grid-stock-v2
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan nivessa:audit-rsd-grid-stock-v2
