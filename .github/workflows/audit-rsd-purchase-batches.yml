@@ -1,0 +1,63 @@
+# READ-ONLY: find purchase dates where several RSD-grid titles were
+# purchased into ERP together (likely order-grid deliveries), and their
+# current zeroed status. See
+# app/Console/Commands/AuditRsdPurchaseBatches.php.
+#
+# No writes.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · audit RSD purchase batches (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: 'Minimum distinct RSD-grid titles purchased on a date to report it'
+        required: false
+        default: '3'
+
+concurrency:
+  group: nivessa-audit-rsd-purchase-batches
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          THRESHOLD: ${{ github.event.inputs.threshold }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          envs: THRESHOLD
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan nivessa:audit-rsd-purchase-batches --threshold="${THRESHOLD:-3}"
