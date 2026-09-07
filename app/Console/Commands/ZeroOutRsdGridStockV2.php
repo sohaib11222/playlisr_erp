@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use App\Product;
 use App\Services\NivessaStockNotifier;
 
 /**
@@ -23,8 +22,12 @@ use App\Services\NivessaStockNotifier;
  * Heaven or Hell) — looks like a duplicate/typo UPC in Alliance's own
  * sheet, not a real match. Left alone pending manual review.
  *
- * Matches by whereIn()->get() (not first()), since some SKUs are shared
- * by more than one product row (see ZeroOutRsdGridStock).
+ * Matches via DB::table('products')->whereIn('sku', ...)->get() — same
+ * raw query the audit command used (not the Eloquent Product model,
+ * which mysteriously missed 2 of the 94 SKUs the raw audit query saw
+ * fine; using the same query path here avoids that discrepancy). Also
+ * not first(), since some SKUs are shared by more than one product row
+ * (see ZeroOutRsdGridStock).
  *
  * Dry-run by default. --commit writes qty_available = 0 and pushes to
  * the website via NivessaStockNotifier.
@@ -47,7 +50,7 @@ class ZeroOutRsdGridStockV2 extends Command
         $this->info($commit ? '🟢 COMMIT — writing changes' : '🔵 DRY RUN — no writes');
         $this->line('Targeting ' . count($skus) . " SKU(s).\n");
 
-        $products = Product::whereIn('sku', $skus)->get();
+        $products = DB::table('products')->whereIn('sku', $skus)->get(['id', 'sku', 'name']);
         $foundSkus = $products->pluck('sku')->unique();
         $missing = collect($skus)->diff($foundSkus);
 
