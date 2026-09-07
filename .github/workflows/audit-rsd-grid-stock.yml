@@ -1,0 +1,48 @@
+# READ-ONLY: cross-reference the 3 distributor RSD order grids against ERP
+# stock by exact UPC/sku match. See app/Console/Commands/AuditRsdGridStock.php.
+#
+# No writes. Companion to the website-side audit in server's
+# scripts/audit-rsd-grid-titles.js (run via run-seed.yml there).
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · audit RSD grid stock (read-only)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nivessa-audit-rsd-grid-stock
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan nivessa:audit-rsd-grid-stock
