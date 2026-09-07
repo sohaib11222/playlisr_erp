@@ -789,6 +789,12 @@
                  (the page now shows the full day). Field kept hidden so
                  deep links carrying ?limit=N still parse. --}}
             <input type="hidden" name="limit" value="{{ $limit }}">
+            <div style="min-width: 220px; flex: 1 1 240px;">
+                <label for="rf-search">Search</label>
+                <input type="text" id="rf-search" class="form-control" autocomplete="off"
+                       placeholder="Invoice, customer, cashier, item…"
+                       onkeydown="if(event.key === 'Enter'){ event.preventDefault(); }">
+            </div>
             <div style="min-width: 220px;">
                 <label for="rf-discrepancy">Clover sync</label>
                 <select name="discrepancy" id="rf-discrepancy" class="form-control" onchange="this.form.submit()">
@@ -804,7 +810,8 @@
                 $rowsShown = $sales->count() + $cloverShown;
             @endphp
             <div class="rf-count">
-                {{ $rowsShown }} row{{ $rowsShown === 1 ? '' : 's' }}@if($cloverShown > 0) <span style="color:#8B6A1A;">({{ $cloverShown }} Clover-only)</span>@endif
+                <span id="rf-count-base">{{ $rowsShown }} row{{ $rowsShown === 1 ? '' : 's' }}@if($cloverShown > 0) <span style="color:#8B6A1A;">({{ $cloverShown }} Clover-only)</span>@endif</span>
+                <span id="rf-search-count" style="display:none;"></span>
             </div>
             <button type="submit" class="rf-export"
                     formaction="{{ action('SellPosController@recentSalesFeedExport') }}"
@@ -1104,8 +1111,15 @@
                 $orphanCashierName = $orphanCashierId ? ($cashierNameById[$orphanCashierId] ?? null) : null;
                 $isPending = !empty($item['pending']);
                 $dupOfTxId = $orphan_duplicate_of[$cp->id] ?? null;
+                $rfSearchText = strtolower(implode(' ', array_filter([
+                    $isPending ? 'pending' : 'clover only',
+                    $cpStore,
+                    $cpCardLabel,
+                    $orphanCashierName ?: ($cp->employee_name ?? null),
+                    $cp->clover_order_id ?? null,
+                ])));
             @endphp
-            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}">
+            <div class="rf-card {{ $isPending ? 'rf-clover-pending' : 'rf-clover-orphan' }}" data-search="{{ $rfSearchText }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
                         @if($isPending)
@@ -1304,8 +1318,21 @@
                     elseif ($m === 'card') { $tenderClass = 'tender-card'; $tenderLabel = 'Card'; }
                     else { $tenderLabel = $labelFor($m); }
                 }
+                $rfItemNames = $sale->sell_lines->map(function ($line) {
+                    $product = $line->product;
+                    $itemName = $product->name ?? ($line->product_name ?? '');
+                    if ($product && !empty($product->artist) && is_string($product->artist)) {
+                        $itemName = $product->artist . ' ' . $itemName;
+                    } elseif (!empty($line->product_artist)) {
+                        $itemName = $line->product_artist . ' ' . $itemName;
+                    }
+                    return $itemName;
+                })->filter()->implode(' ');
+                $rfSearchText = strtolower(implode(' ', array_filter([
+                    $sale->invoice_no, $customer, $cashier, $store, $rfItemNames,
+                ])));
             @endphp
-            <div class="rf-card">
+            <div class="rf-card" data-search="{{ $rfSearchText }}">
                 <div class="rf-head">
                     <div class="rf-head-left">
                         <span class="rf-invoice">
@@ -1683,6 +1710,59 @@
         @endif {{-- /is_month_mode skip --}}
     </div>
 </section>
+
+<script>
+(function () {
+    // Client-side search over already-rendered cards - the page has no
+    // pagination (full day/month in one load), so filtering in place is
+    // instant and doesn't need a server round trip. Matches against
+    // data-search, a lowercased blob of invoice/customer/cashier/store/
+    // item text baked in per-card by the Blade loop above.
+    var input = document.getElementById('rf-search');
+    var baseCount = document.getElementById('rf-count-base');
+    var searchCount = document.getElementById('rf-search-count');
+    if (!input) return;
+
+    function apply() {
+        var needle = input.value.trim().toLowerCase();
+        var cards = document.querySelectorAll('.rf-card');
+        var shown = 0;
+
+        cards.forEach(function (card) {
+            var match = !needle || (card.dataset.search || '').indexOf(needle) !== -1;
+            card.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+
+        document.querySelectorAll('.rf-day-col').forEach(function (col) {
+            var visibleCards = col.querySelectorAll('.rf-card:not([style*="display: none"])');
+            var empty = col.querySelector('.rf-day-col-empty-search');
+            if (needle && visibleCards.length === 0) {
+                if (!empty) {
+                    empty = document.createElement('div');
+                    empty.className = 'rf-day-empty rf-day-col-empty-search';
+                    empty.style.marginTop = '0';
+                    empty.textContent = 'No matches for "' + input.value.trim() + '" here.';
+                    col.appendChild(empty);
+                }
+            } else if (empty) {
+                empty.remove();
+            }
+        });
+
+        if (needle) {
+            searchCount.textContent = shown + ' match' + (shown === 1 ? '' : 'es') + ' for "' + input.value.trim() + '"';
+            searchCount.style.display = '';
+            baseCount.style.display = 'none';
+        } else {
+            searchCount.style.display = 'none';
+            baseCount.style.display = '';
+        }
+    }
+
+    input.addEventListener('input', apply);
+})();
+</script>
 
 @endsection
 
