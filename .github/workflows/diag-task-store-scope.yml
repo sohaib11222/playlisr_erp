@@ -1,0 +1,80 @@
+# READ-ONLY diagnostic: figure out why Pico logins are resolving to the
+# Hollywood task list instead of Pico. Inspects the actual BusinessLocation
+# names, each active login-enabled user's `access_all_locations` permission
+# and permitted_locations(), and what OpeningChecklistController::storesForUser()
+# / TaskController's array_key_first fallback would compute for them —
+# without needing to log in as each person.
+name: Diag task store scope
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect location permission data (read-only tinker)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== business locations ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = DB::table('business')->value('id');
+            echo "business_id=".$businessId."\n";
+            foreach (App\BusinessLocation::where('business_id', $businessId)->get() as $loc) {
+                echo "  loc#{$loc->id}: name=\"{$loc->name}\"\n";
+            }
+            PHP
+            echo "=== active, login-enabled users: role, access_all_locations, permitted_locations, resolved store ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = DB::table('business')->value('id');
+            $users = App\User::where('business_id', $businessId)
+                ->where('status', 'active')
+                ->where('allow_login', 1)
+                ->orderBy('first_name')
+                ->get();
+            foreach ($users as $u) {
+                $roles = $u->roles->pluck('name')->implode(',');
+                $allLoc = $u->can('access_all_locations') ? 'YES' : 'no';
+                $permitted = $u->permitted_locations($businessId);
+                $permittedStr = is_array($permitted) ? implode(',', $permitted) : $permitted;
+                echo "user#{$u->id} {$u->first_name} {$u->last_name} | roles=[{$roles}] | access_all_locations={$allLoc} | permitted_locations=[{$permittedStr}]\n";
+            }
+            PHP
+            echo "=== done ==="
