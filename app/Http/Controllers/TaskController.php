@@ -41,11 +41,11 @@ class TaskController extends Controller
     }
 
     /**
-     * Stores the current user is allowed to see/manage. Admins get both, so
-     * they can toggle between them; everyone else is locked to whichever
-     * store(s) their location permissions cover (see
-     * OpeningChecklistController::storesForUser), same convention as the
-     * employee_tasks board.
+     * Stores the current user is allowed to see/manage. Admins always get
+     * both; everyone else gets whichever store(s) their location permissions
+     * cover (see OpeningChecklistController::storesForUser), same convention
+     * as the employee_tasks board. Staff genuinely granted both locations
+     * get a toggle too — see resolveStore().
      */
     private function availableStores()
     {
@@ -56,17 +56,19 @@ class TaskController extends Controller
     }
 
     /**
-     * The store to filter the list by. Admins can pick via ?store= (or see
-     * both, unfiltered); everyone else is pinned to their own store
-     * regardless of the query string, so a Hollywood login only ever sees
-     * Hollywood tasks and a Pico login only ever sees Pico tasks.
+     * The store to filter the list by. Anyone who can see more than one
+     * store — admins, plus any staff genuinely granted both locations — can
+     * pick via ?store= (or see both, unfiltered). Everyone else is pinned to
+     * their one store regardless of the query string, so a Hollywood login
+     * only ever sees Hollywood tasks and a Pico login only ever sees Pico
+     * tasks.
      */
     private function resolveStore(Request $request, array $availableStores)
     {
         $requested = $request->input('store');
 
-        if ($this->isAdmin()) {
-            return (!empty($requested) && isset(self::STORE_LABELS[$requested])) ? $requested : null;
+        if ($this->isAdmin() || count($availableStores) > 1) {
+            return (!empty($requested) && isset($availableStores[$requested])) ? $requested : null;
         }
 
         if (!empty($requested) && isset($availableStores[$requested])) {
@@ -139,7 +141,7 @@ class TaskController extends Controller
             ->orderByDesc('start_date')
             ->paginate(50)->appends($request->except('page'));
         $priorityLabels = self::PRIORITY_LABELS;
-        $canToggleStore = $this->isAdmin();
+        $canToggleStore = $this->isAdmin() || count($storeLabels) > 1;
 
         return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
