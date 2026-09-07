@@ -7,6 +7,7 @@
             <a href="{{ $indexAction }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key])) }}" class="btn btn-sm {{ $store===$key ? 'btn-primary' : 'btn-default' }}">{{ $label }}</a>
         @endforeach
     </div>
+    <a href="{{ url('/admin/task-store-assignments') }}" class="btn btn-sm btn-default" style="margin-right:15px;">Store assignments</a>
 @elseif($store)
     {{-- Non-admins are locked to their own store: show it, not a toggle. --}}
     <span class="label label-default" style="margin-right:15px;font-size:100%;">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>

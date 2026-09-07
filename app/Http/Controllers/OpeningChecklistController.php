@@ -148,9 +148,20 @@ class OpeningChecklistController extends Controller
      * The stores the logged-in user actually works at (subset of Hollywood /
      * Pico, in canonical order). A Hollywood-only opener never sees Pico. Falls
      * back to all stores if we can't tell, so the page is never blank.
+     *
+     * Location permissions (access_all_locations) are checked first as an
+     * inference, but most Cashier-role accounts have "all locations" POS
+     * access, so that alone can't distinguish Pico staff from Hollywood
+     * staff. `users.home_store`, set explicitly by an admin at
+     * /admin/task-store-assignments, takes priority when present.
      */
     public static function storesForUser()
     {
+        $home = self::homeStoreForUser();
+        if ($home !== null) {
+            return [$home => self::STORE_LABELS[$home]];
+        }
+
         $has = [];
         try {
             foreach (BusinessLocation::forDropdown(session('user.business_id')) as $name) {
@@ -184,9 +195,22 @@ class OpeningChecklistController extends Controller
         return array_key_first($available);
     }
 
-    /** Best guess of the logged-in user's store from their permitted locations. */
+    /** The logged-in user's explicit `home_store` assignment, or null if unset/invalid. */
+    private static function homeStoreForUser()
+    {
+        $user = auth()->user();
+        $store = $user ? $user->home_store : null;
+        return isset(self::STORE_LABELS[$store]) ? $store : null;
+    }
+
+    /** Best guess of the logged-in user's store: explicit home_store first, then permitted locations. */
     public static function defaultStoreForUser()
     {
+        $home = self::homeStoreForUser();
+        if ($home !== null) {
+            return $home;
+        }
+
         try {
             foreach (BusinessLocation::forDropdown(session('user.business_id')) as $name) {
                 if (stripos($name, 'pico') !== false) {

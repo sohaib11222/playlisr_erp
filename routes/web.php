@@ -1039,6 +1039,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/cost-price-rules', 'CostPriceRulesController@index');
     Route::post('/admin/cost-price-rules/run', 'CostPriceRulesController@run');
 
+    // Per-employee Pico/Hollywood assignment for Tasks visibility (location
+    // permissions can't tell most staff apart — see TaskStoreAssignmentsController).
+    Route::get('/admin/task-store-assignments', 'TaskStoreAssignmentsController@index')->name('task-store-assignments.index');
+    Route::post('/admin/task-store-assignments/save', 'TaskStoreAssignmentsController@save')->name('task-store-assignments.save');
+
     // Help assistant key config (self-serve, no SSH / .env editing needed).
     Route::get('/admin/help-assistant', 'HelpAssistantSettingsController@index')->name('help-assistant.settings');
     Route::post('/admin/help-assistant/save', 'HelpAssistantSettingsController@save');
