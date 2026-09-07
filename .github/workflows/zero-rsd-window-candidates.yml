@@ -1,0 +1,76 @@
+# Zero out qty_available for 4 high-confidence RSD titles found bundled
+# into confirmed RSD purchase orders by nivessa:scan-rsd-batch-day-purchases
+# (playlisr_erp #114). See app/Console/Commands/ZeroOutRsdWindowCandidates.php
+# for the SKUs and reasoning.
+#
+# Defaults to dry-run. Flip mode to "commit" only after the dry-run
+# output looks right.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · zero RSD window candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Dry-run (no writes) or commit (writes + pushes to website)
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - commit
+
+concurrency:
+  group: nivessa-zero-rsd-window-candidates
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            MODE='${{ github.event.inputs.mode }}'
+            ARGS=()
+            if [ "$MODE" = "commit" ]; then
+              ARGS+=("--commit")
+            fi
+            php artisan nivessa:zero-rsd-window-candidates "${ARGS[@]}"
+
+            echo
+            echo "=== NivessaStockNotifier log lines (latest laravel log) ==="
+            LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+            echo "log file: $LOG"
+            grep -n "NivessaStockNotifier" "$LOG" 2>&1 | tail -10
