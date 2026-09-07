@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\BusinessLocation;
 use App\User;
 use App\WeeklyTask;
 use App\Utils\BusinessUtil;
@@ -56,23 +57,59 @@ class TaskController extends Controller
     }
 
     /**
-     * The store to filter the list by. Anyone who can see more than one
-     * store — admins, plus any staff genuinely granted both locations — can
-     * pick via ?store= (or see both, unfiltered). Everyone else is pinned to
-     * their one store regardless of the query string, so a Hollywood login
-     * only ever sees Hollywood tasks and a Pico login only ever sees Pico
-     * tasks.
+     * 'pico'/'hollywood' for the store the user picked when they signed in
+     * for their current shift (ChooseRoleController@set, session
+     * 'shift_location_id'), or null if they haven't picked one / it doesn't
+     * match a known store.
+     */
+    private function shiftStore()
+    {
+        $locationId = session('shift_location_id');
+        if (empty($locationId)) {
+            return null;
+        }
+        $loc = BusinessLocation::find($locationId);
+        if (!$loc) {
+            return null;
+        }
+        if (stripos($loc->name, 'pico') !== false) {
+            return 'pico';
+        }
+        if (stripos($loc->name, 'holly') !== false) {
+            return 'hollywood';
+        }
+        return null;
+    }
+
+    /**
+     * The store to filter the list by.
+     *
+     * - An explicit ?store= (e.g. from the toggle) always wins, as long as
+     *   it's one of the user's available stores.
+     * - Otherwise, if they signed in for a shift at a specific store (see
+     *   shiftStore()), that store is the default — even someone permitted at
+     *   both locations only sees their current shift's board unless they
+     *   deliberately switch.
+     * - Otherwise, anyone who can see more than one store — admins, plus any
+     *   staff genuinely granted both locations — defaults to both, unfiltered.
+     * - Everyone else is pinned to their one store regardless of the query
+     *   string, so a Hollywood login only ever sees Hollywood tasks and a
+     *   Pico login only ever sees Pico tasks.
      */
     private function resolveStore(Request $request, array $availableStores)
     {
         $requested = $request->input('store');
-
-        if ($this->isAdmin() || count($availableStores) > 1) {
-            return (!empty($requested) && isset($availableStores[$requested])) ? $requested : null;
-        }
-
         if (!empty($requested) && isset($availableStores[$requested])) {
             return $requested;
+        }
+
+        $shiftStore = $this->shiftStore();
+        if ($shiftStore !== null && isset($availableStores[$shiftStore])) {
+            return $shiftStore;
+        }
+
+        if ($this->isAdmin() || count($availableStores) > 1) {
+            return null;
         }
 
         return array_key_first($availableStores) ?: OpeningChecklistController::defaultStoreForUser();
