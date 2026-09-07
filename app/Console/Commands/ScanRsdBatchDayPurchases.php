@@ -13,13 +13,18 @@ use Carbon\Carbon;
  * just ordinary "Live"/reissue stock that happens to land near an RSD
  * date).
  *
- * Sharper signal: first find which purchase DATES near each RSD window
- * are themselves confirmed RSD delivery days (>= 3 distinct RSD-grid
- * titles purchased that day — the same test nivessa:audit-rsd-
- * purchase-batches uses). Then, for products NOT grid-covered and NOT
- * RSD-named, only flag ones purchased on one of those CONFIRMED batch
- * dates — i.e. literally bundled into the same delivery as known RSD
- * titles, not just "somewhere in a 5-week window."
+ * A first cut of this command grouped by purchase DATE, which was
+ * still too noisy: this store receives multiple purchase orders
+ * (transactions) on the same calendar day, so date-level grouping
+ * pulled in ordinary catalog restocks (Adele, Kanye, AFI backlist)
+ * that just happened to be received the same day as an RSD delivery.
+ *
+ * Tighter signal: group by the actual purchase TRANSACTION (a single
+ * PO), not the date. Only transactions with >= 3 distinct RSD-grid
+ * titles count as a confirmed RSD order. Then, for products NOT
+ * grid-covered and NOT RSD-named, only flag ones purchased on THAT
+ * SAME transaction — i.e. literally on the same purchase order as
+ * known RSD titles, not just the same day.
  *
  * No writes.
  *
@@ -28,9 +33,9 @@ use Carbon\Carbon;
  */
 class ScanRsdBatchDayPurchases extends Command
 {
-    protected $signature = 'nivessa:scan-rsd-batch-day-purchases {--min-batch=3 : Minimum distinct RSD-grid titles on a date to count it as a confirmed batch day}';
+    protected $signature = 'nivessa:scan-rsd-batch-day-purchases {--min-batch=3 : Minimum distinct RSD-grid titles on a transaction to count it as a confirmed RSD order}';
 
-    protected $description = 'Read-only: products bundled into confirmed RSD batch-delivery days, not already grid-covered or RSD-named.';
+    protected $description = 'Read-only: products bundled into confirmed RSD purchase orders (transactions), not already grid-covered or RSD-named.';
 
     const EXCLUDE_NORMALIZED_UPC = '75678602399';
 
@@ -83,34 +88,36 @@ class ScanRsdBatchDayPurchases extends Command
 
             $lines = DB::table('purchase_lines as pl')
                 ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
-                ->select('pl.product_id', DB::raw('DATE(t.transaction_date) as d'))
+                ->select('pl.product_id', 't.id as tx_id', DB::raw('DATE(t.transaction_date) as d'))
                 ->whereBetween(DB::raw('DATE(t.transaction_date)'), [$start, $end])
                 ->get();
 
-            // Count distinct grid-matched product ids per date.
-            $gridCountByDate = [];
-            $allProductIdsByDate = [];
+            // Count distinct grid-matched product ids per TRANSACTION (not date).
+            $gridCountByTx = [];
+            $allProductIdsByTx = [];
+            $dateByTx = [];
             foreach ($lines as $l) {
-                $allProductIdsByDate[$l->d][$l->product_id] = true;
+                $allProductIdsByTx[$l->tx_id][$l->product_id] = true;
+                $dateByTx[$l->tx_id] = $l->d;
                 if (isset($gridProductIds[$l->product_id])) {
-                    $gridCountByDate[$l->d][$l->product_id] = true;
+                    $gridCountByTx[$l->tx_id][$l->product_id] = true;
                 }
             }
 
-            $batchDates = [];
-            foreach ($gridCountByDate as $d => $ids) {
-                if (count($ids) >= $minBatch) $batchDates[$d] = count($ids);
+            $batchTx = [];
+            foreach ($gridCountByTx as $tx => $ids) {
+                if (count($ids) >= $minBatch) $batchTx[$tx] = count($ids);
             }
 
-            if (empty($batchDates)) {
-                $this->line('  No confirmed RSD batch dates (>= ' . $minBatch . ' grid titles) in this window.');
+            if (empty($batchTx)) {
+                $this->line('  No confirmed RSD purchase orders (>= ' . $minBatch . ' grid titles on one transaction) in this window.');
                 continue;
             }
 
-            $this->line('  Confirmed batch date(s): ' . implode(', ', array_map(fn ($d, $c) => "{$d} ({$c} grid titles)", array_keys($batchDates), $batchDates)));
+            $this->line('  Confirmed RSD order(s): ' . implode(', ', array_map(fn ($tx, $c) => "tx#{$tx} on {$dateByTx[$tx]} ({$c} grid titles)", array_keys($batchTx), $batchTx)));
 
-            foreach ($batchDates as $date => $gridCount) {
-                $allIds = array_keys($allProductIdsByDate[$date]);
+            foreach ($batchTx as $tx => $gridCount) {
+                $allIds = array_keys($allProductIdsByTx[$tx]);
                 $bundled = array_diff($allIds, array_keys($gridProductIds));
 
                 if (empty($bundled)) continue;
@@ -120,7 +127,7 @@ class ScanRsdBatchDayPurchases extends Command
 
                 if ($notRsdNamed->isEmpty()) continue;
 
-                $this->line("\n  {$date}: " . $notRsdNamed->count() . ' non-grid, non-RSD-named product(s) bundled into this confirmed batch delivery:');
+                $this->line("\n  tx#{$tx} ({$dateByTx[$tx]}): " . $notRsdNamed->count() . ' non-grid, non-RSD-named product(s) bundled into this confirmed RSD order:');
                 foreach ($notRsdNamed as $p) {
                     $total = DB::table('variation_location_details as vld')
                         ->join('variations as v', 'v.id', '=', 'vld.variation_id')
