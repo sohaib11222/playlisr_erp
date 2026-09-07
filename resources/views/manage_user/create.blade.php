@@ -111,8 +111,8 @@
           <div class="col-md-12">
             <div class="checkbox">
                 <label>
-                  {!! Form::checkbox('access_all_locations', 'access_all_locations', true, 
-                ['class' => 'input-icheck']); !!} {{ __( 'role.all_locations' ) }} 
+                  {!! Form::checkbox('access_all_locations', 'access_all_locations', false,
+                ['class' => 'input-icheck']); !!} {{ __( 'role.all_locations' ) }}
                 </label>
                 @show_tooltip(__('tooltip.all_location_permission'))
             </div>
