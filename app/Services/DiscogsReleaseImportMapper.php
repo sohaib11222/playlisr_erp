@@ -96,10 +96,16 @@ class DiscogsReleaseImportMapper
         // bin's terms. Fall back to Discogs genres only when the artist isn't
         // in the sheet, or its bin has no matching ERP category for this
         // business.
+        // Sarah 2026-09-03: 2024+ releases are new stock we sell sealed, not
+        // the vintage-used vinyl the mass-add default assumes — flip the
+        // Used/Sealed bias below for those so e.g. a 2024 reissue resolves
+        // to "Sealed Vinyl > Genre" instead of "Used Vinyl > Genre".
+        $releaseYear = $this->extractReleaseYear($payload);
+
         $overrideTerms = $this->artistGenreLookup->termsForArtist($artistStr !== '' ? $artistStr : null);
         $resolved = null;
         if ($overrideTerms !== []) {
-            $override = $this->resolveCategoryFromGenres($businessId, $overrideTerms, [], $formatTokens, []);
+            $override = $this->resolveCategoryFromGenres($businessId, $overrideTerms, [], $formatTokens, [], $releaseYear);
             if ($override['category_id'] !== null) {
                 $resolved = $override;
                 $warnings[] = 'Category from store artist-genre list (overrode Discogs genres).';
@@ -113,7 +119,8 @@ class DiscogsReleaseImportMapper
                 $payload->genres ?? [],
                 $payload->styles ?? [],
                 $formatTokens,
-                $this->deriveTitlePriorityTerms($title, $payload->labels ?? [])
+                $this->deriveTitlePriorityTerms($title, $payload->labels ?? []),
+                $releaseYear
             );
         }
         $categoryId = $resolved['category_id'];
@@ -202,6 +209,24 @@ class DiscogsReleaseImportMapper
             }
         }
         return $first;
+    }
+
+    /**
+     * Sarah 2026-09-03: pull the release year the same way the street-date
+     * backfill does — prefer the precise `released` date over the bare
+     * `year` field — so mass-add category resolution knows how recent a
+     * release is.
+     *
+     * @param  object  $payload  json_decode object from Discogs API
+     */
+    private function extractReleaseYear(object $payload): ?int
+    {
+        $released = trim((string) ($payload->released ?? ''));
+        if (preg_match('/^(\d{4})/', $released, $m)) {
+            return (int) $m[1];
+        }
+        $year = (int) ($payload->year ?? 0);
+        return $year > 0 ? $year : null;
     }
 
     /**
@@ -446,8 +471,12 @@ class DiscogsReleaseImportMapper
      * @param  string[]  $priorityTerms lowercase terms tried before genre/style (win ties)
      * @return array{category_id: int|null, sub_category_id: int|null, warnings: string[]}
      */
-    private function resolveCategoryFromGenres(int $businessId, $genres, $styles, array $formatTokens = [], array $priorityTerms = []): array
+    private function resolveCategoryFromGenres(int $businessId, $genres, $styles, array $formatTokens = [], array $priorityTerms = [], ?int $releaseYear = null): array
     {
+        // Sarah 2026-09-03: 2024+ is new/current stock we shelve sealed, not
+        // the used vintage vinyl the scoring below defaults to.
+        $preferSealed = $releaseYear !== null && $releaseYear >= 2024;
+
         $warnings = [];
         $genreTerms = [];
         foreach (is_array($genres) ? $genres : [] as $g) {
@@ -554,32 +583,49 @@ class DiscogsReleaseImportMapper
                 $sizeConflict = !empty($parentSizes)
                     && empty(array_intersect($releaseSizes, $parentSizes));
 
-                if ($pn !== '' && mb_strpos($pn, 'used vinyl') !== false) {
-                    $score += 5;
-                }
-                // Jon 2026-05-24: same baseline bias for CDs — most CD
-                // releases coming in via bulk-Discogs are used stock, so
-                // tie-break toward "Used CD" over "Sealed CD / CD (Sealed)"
-                // when both have a matching genre subcategory.
-                if ($pn !== '' && mb_strpos($pn, 'used cd') !== false) {
-                    $score += 5;
-                }
-                // Sarah 2026-06-24: bulk-Discogs fetches are USED stock by
-                // store convention — the shop buys/lists used records and
-                // Discogs never flags an item as sealed. Actively disfavor any
-                // "Sealed …" / "New <medium>" parent so a used sibling that
-                // matches the same genre always wins (the +5 used bonuses
-                // alone weren't enough when only the sealed parent carried the
-                // matching genre subcategory, or when the used parent isn't
-                // literally named "Used Vinyl"/"Used CD"). The penalty is large
-                // but relative: a sealed parent stays selectable as a last
-                // resort when it's the ONLY genre match.
+                $isUsedParent = ($pn !== '') && (
+                    mb_strpos($pn, 'used vinyl') !== false
+                    || mb_strpos($pn, 'used cd') !== false
+                );
                 $isSealedParent = ($pn !== '') && (
                     mb_strpos($pn, 'sealed') !== false
                     || preg_match('/\bnew (vinyl|cd|cds|cassette|cassettes|lp|45s)\b/u', $pn) === 1
                 );
-                if ($isSealedParent) {
-                    $score -= 100;
+
+                if ($preferSealed) {
+                    // Sarah 2026-09-03: a 2024+ release is new stock we shelve
+                    // sealed, not the used vintage vinyl the store normally
+                    // buys via bulk-Discogs — invert the used/sealed bias
+                    // below for these so e.g. "Sealed Vinyl > Genre" wins over
+                    // "Used Vinyl > Genre". A used sibling stays selectable as
+                    // a last resort when it's the ONLY genre match.
+                    if ($isSealedParent) {
+                        $score += 5;
+                    }
+                    if ($isUsedParent) {
+                        $score -= 100;
+                    }
+                } else {
+                    // Jon 2026-05-24: same baseline bias for CDs — most CD
+                    // releases coming in via bulk-Discogs are used stock, so
+                    // tie-break toward "Used CD" over "Sealed CD / CD (Sealed)"
+                    // when both have a matching genre subcategory.
+                    if ($isUsedParent) {
+                        $score += 5;
+                    }
+                    // Sarah 2026-06-24: bulk-Discogs fetches are USED stock by
+                    // store convention — the shop buys/lists used records and
+                    // Discogs never flags an item as sealed. Actively disfavor any
+                    // "Sealed …" / "New <medium>" parent so a used sibling that
+                    // matches the same genre always wins (the +5 used bonuses
+                    // alone weren't enough when only the sealed parent carried the
+                    // matching genre subcategory, or when the used parent isn't
+                    // literally named "Used Vinyl"/"Used CD"). The penalty is large
+                    // but relative: a sealed parent stays selectable as a last
+                    // resort when it's the ONLY genre match.
+                    if ($isSealedParent) {
+                        $score -= 100;
+                    }
                 }
                 if (!$sizeConflict) {
                     foreach ($formatTokens as $tok) {
