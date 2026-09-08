@@ -1,0 +1,80 @@
+# READ-ONLY diagnostic: count/list for-sale ERP products whose stock is
+# summed <= 0 across all locations (the figure the website's connector API
+# re-pull sums up, per Modules/Connector/Transformers/ProductResource.php),
+# to spot-check against nivessa.com's "In Stock" display. No writes.
+name: Diag web stock mismatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max sample rows to list (count is always exact)"
+        required: false
+        default: "50"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Find for-sale products with total stock <= 0 (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_LIMIT: ${{ github.event.inputs.limit }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: DIAG_LIMIT
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_LIMIT
+            php artisan tinker --no-ansi <<'PHP'
+            $limit = (int) (getenv('DIAG_LIMIT') ?: 50);
+            $bizId = (int) (config('services.nivessa_web.business_id') ?: 1);
+
+            $totals = \Illuminate\Support\Facades\DB::table('products as p')
+                ->join('variations as v', function ($j) {
+                    $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at');
+                })
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->where('p.business_id', $bizId)
+                ->where('p.is_inactive', 0)
+                ->where('p.not_for_selling', 0)
+                ->groupBy('p.id', 'p.sku', 'p.name')
+                ->havingRaw('SUM(vld.qty_available) <= 0')
+                ->select('p.id as product_id', 'p.sku', 'p.name', \Illuminate\Support\Facades\DB::raw('SUM(vld.qty_available) as total_qty'))
+                ->get();
+
+            echo "for_sale_products_with_total_qty_lte_0: " . $totals->count() . "\n";
+            $sample = $totals->sortBy('total_qty')->take($limit)->values();
+            echo "RESULT_JSON: " . $sample->toJson() . "\n";
+            PHP
+            echo "=== done ==="
