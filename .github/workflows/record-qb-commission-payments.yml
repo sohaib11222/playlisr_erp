@@ -1,0 +1,92 @@
+# One-click: record Alec's and Zak's already-paid commission (via QuickBooks
+# Payroll 9/4/2026) into the ERP's own payout ledger via
+# ListingCommissionController::recordPayment, so /admin/listing-commissions
+# stops showing them as owed for money they've already received.
+#
+# Verified against QuickBooks paycheck detail (Sarah 2026-09-08):
+#   Alec Klusza  — Listing Commission $31.83 + Sales Commission $9.55 = $41.38
+#   Zakary Heimlich (Zak) — Listing Commission $60.50 (no sales-role line)
+#
+# Defaults to dry-run (prints what WOULD be written, no ledger change).
+# Flip mode to "commit" to actually record it. Idempotent-ish but NOT
+# duplicate-safe — only run commit ONCE. Each entry is undoable afterward
+# like any payout (Undo button on the commission page).
+name: Record QB commission payments (Alec + Zak, 9/4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run (default) or commit'
+        required: true
+        default: 'dry-run'
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Record payments via the real recordPayment controller method
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            MODE="${{ github.event.inputs.mode }}"
+            echo "mode=$MODE"
+            php artisan tinker --no-ansi <<PHP
+            \$commit = ('$MODE' === 'commit');
+            \$entries = [
+              ['user_id' => 28, 'listing' => 31.83, 'sales' => 9.55, 'note' => 'Paid via QuickBooks Payroll 9/4/2026', 'paid_on' => '2026-09-04'],
+              ['user_id' => 18, 'listing' => 60.50, 'sales' => 0.00, 'note' => 'Paid via QuickBooks Payroll 9/4/2026', 'paid_on' => '2026-09-04'],
+            ];
+            \$ctrl = app(\App\Http\Controllers\ListingCommissionController::class);
+            foreach (\$entries as \$e) {
+              \$u = \DB::table('users')->where('id', \$e['user_id'])->first();
+              \$name = \$u ? trim((\$u->first_name??'').' '.(\$u->last_name??'')) : ('User #'.\$e['user_id']);
+              echo "--- ".\$name." (user_id=".\$e['user_id'].") ---\n";
+              echo "  would record: listing=\$".\$e['listing']." sales=\$".\$e['sales']." note=[".\$e['note']."] paid_on=".\$e['paid_on']."\n";
+              if (\$commit) {
+                \Illuminate\Support\Facades\Auth::loginUsingId(\$u->id);
+                session(['user.id' => 1, 'user.business_id' => \$u->business_id]);
+                \$req = \Illuminate\Http\Request::create('/admin/listing-commissions/record-payment', 'POST', [
+                  'user_id' => \$e['user_id'], 'listing' => \$e['listing'], 'sales' => \$e['sales'],
+                  'note' => \$e['note'], 'paid_on' => \$e['paid_on'],
+                ]);
+                \$req->setLaravelSession(app('session.store'));
+                \$resp = \$ctrl->recordPayment(\$req);
+                echo "  RESULT: ".json_encode(\$resp->getSession()->get('status'))."\n";
+              }
+            }
+            if (!\$commit) { echo "\nDRY RUN — nothing written. Re-run with mode=commit to actually record these.\n"; }
+            PHP
+            echo "=== done ==="
