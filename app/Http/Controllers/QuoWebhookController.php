@@ -288,8 +288,13 @@ class QuoWebhookController extends Controller
      * the reply is never silently dropped. Shared by the live webhook
      * (message.delivered) and the historical backfill import.
      */
-    private function attachReply(int $business_id, int $system_user_id, ?string $recipient, ?string $sender, string $text, ?string $externalId): void
+    private function attachReply(int $business_id, int $system_user_id, $recipient, $sender, string $text, ?string $externalId): void
     {
+        // The webhook payload's "to" is a bare string; the REST API's
+        // /v1/messages "to" is an array of recipients. Normalize both.
+        $recipient = is_array($recipient) ? ($recipient[0] ?? null) : $recipient;
+        $sender = is_array($sender) ? ($sender[0] ?? null) : $sender;
+
         $text = trim($text);
         if ($text === '') {
             return;
