@@ -515,7 +515,16 @@ class QuoWebhookController extends Controller
                 if (!$msgResp['success']) {
                     $errors[] = "$e164 messages ($participant): " . $msgResp['msg'];
                 } else {
-                    foreach ($msgResp['data'] as $m) {
+                    // Quo's API returns messages newest-first; attaching
+                    // replies in that order made the resolution_notes log
+                    // read backwards (oldest reply last). Sort oldest-first
+                    // so replies get appended in true chronological order,
+                    // matching how a live webhook naturally appends them.
+                    $sortedMsgs = $msgResp['data'];
+                    usort($sortedMsgs, function ($a, $b) {
+                        return strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? '');
+                    });
+                    foreach ($sortedMsgs as $m) {
                         $direction = $m['direction'] ?? '';
                         $text = (string) ($m['text'] ?? $m['body'] ?? '');
 

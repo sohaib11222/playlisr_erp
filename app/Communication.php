@@ -100,6 +100,89 @@ class Communication extends Model
         return 'general';
     }
 
+    /** Canned auto-responses Quo sends automatically (e.g. a missed-call
+     * auto-text) — these must never count as a genuine staff reply, or
+     * the Hub falsely shows an inquiry as handled when no one actually
+     * answered it. Matched case-insensitively against reply text. */
+    const AUTO_REPLY_PATTERNS = [
+        'sorry we missed your call',
+    ];
+
+    public static function isAutoReplyText(string $text): bool
+    {
+        foreach (self::AUTO_REPLY_PATTERNS as $pattern) {
+            if (stripos($text, $pattern) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Split a resolution_notes log into individual reply entries with a
+     * parsed timestamp where possible. Entries are NOT assumed to be
+     * stored in chronological order — a backfill import can attach
+     * replies in whatever order Quo's API returned them, which is not
+     * always oldest-first — so callers that need "the latest reply"
+     * must sort by the parsed time themselves rather than trusting
+     * array position.
+     */
+    public static function parseReplyEntries(?string $notes): array
+    {
+        $notes = trim((string) $notes);
+        if ($notes === '') {
+            return [];
+        }
+
+        $parts = preg_split('/(?=^\[\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}[ap]m\])/mi', $notes, -1, PREG_SPLIT_NO_EMPTY);
+        $entries = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $time = null;
+            if (preg_match('/^\[(\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}[ap]m)\]/i', $part, $m)) {
+                try {
+                    $time = \Carbon::createFromFormat('n/j g:ia', $m[1], config('app.timezone'))->year(now()->year);
+                    if ($time->isFuture() && $time->diffInDays(now()) > 1) {
+                        $time->subYear();
+                    }
+                } catch (\Throwable $e) {
+                    $time = null;
+                }
+            }
+            $entries[] = ['text' => $part, 'time' => $time];
+        }
+        return $entries;
+    }
+
+    /**
+     * Keep has_real_reply in sync on every save, from every code path
+     * (webhook, backfill import, manual edit) — a single source of truth
+     * instead of each controller method remembering to set it.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($comm) {
+            if (empty($comm->resolution_notes)) {
+                $comm->has_real_reply = false;
+                return;
+            }
+            $notes = preg_replace('/<!--.*?-->/', '', (string) $comm->resolution_notes);
+            $hasReal = false;
+            foreach (self::parseReplyEntries($notes) as $entry) {
+                if (!self::isAutoReplyText($entry['text'])) {
+                    $hasReal = true;
+                    break;
+                }
+            }
+            $comm->has_real_reply = $hasReal;
+        });
+    }
+
     public function business()
     {
         return $this->belongsTo(Business::class);

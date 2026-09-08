@@ -45,10 +45,13 @@ class CommunicationController extends Controller
                     $rows->where('communications.status', 'pending')
                         ->where('communications.created_at', '<=', now()->subHour());
                 } elseif (request()->status == 'unreplied') {
+                    // has_real_reply excludes Quo's canned missed-call
+                    // auto-text — that's not a staff reply, so those
+                    // inquiries still count as unhandled here.
                     $rows->where('communications.status', 'pending')
-                        ->whereNull('communications.resolution_notes');
+                        ->where('communications.has_real_reply', 0);
                 } elseif (request()->status == 'replied') {
-                    $rows->whereNotNull('communications.resolution_notes');
+                    $rows->where('communications.has_real_reply', 1);
                 } else {
                     $rows->where('communications.status', request()->status);
                 }
@@ -116,10 +119,35 @@ class CommunicationController extends Controller
                     // webhook appends — for matching retried deliveries,
                     // not for display.
                     $notes = preg_replace('/<!--.*?-->/', '', $row->resolution_notes);
-                    $lines = explode("\n", trim($notes));
-                    $lastReply = trim((string) end($lines));
-                    $preview = strlen($lastReply) > 70 ? substr($lastReply, 0, 70) . '…' : $lastReply;
-                    return '<span class="label label-success" title="' . e($lastReply) . '"><i class="fa fa-reply"></i> Replied</span>'
+                    $entries = Communication::parseReplyEntries($notes);
+                    if (empty($entries)) {
+                        return '<span class="label label-default">No reply</span>';
+                    }
+                    // Entries aren't guaranteed to be stored oldest-first (a
+                    // backfill import can attach replies out of chronological
+                    // order) — sort by parsed time so "latest" is genuinely
+                    // the latest, not whichever happened to be appended last.
+                    usort($entries, function ($a, $b) {
+                        if ($a['time'] && $b['time']) return $a['time'] <=> $b['time'];
+                        return 0;
+                    });
+                    $realEntries = array_values(array_filter($entries, function ($e) {
+                        return !Communication::isAutoReplyText($e['text']);
+                    }));
+                    if (empty($realEntries)) {
+                        // Only a canned auto-response (e.g. Quo's missed-call
+                        // auto-text) — never count that as a staff reply, or
+                        // the inquiry falsely looks handled.
+                        $last = end($entries);
+                        $preview = trim(preg_replace('/^\[[^\]]+\]\s*/', '', $last['text']));
+                        $preview = strlen($preview) > 70 ? substr($preview, 0, 70) . '…' : $preview;
+                        return '<span class="label label-default" title="' . e($last['text']) . '"><i class="fa fa-bolt"></i> Auto-reply only</span>'
+                            . ($preview !== '' ? '<div class="reply-preview">' . e($preview) . '</div>' : '');
+                    }
+                    $lastReal = end($realEntries);
+                    $preview = trim(preg_replace('/^\[[^\]]+\]\s*/', '', $lastReal['text']));
+                    $preview = strlen($preview) > 70 ? substr($preview, 0, 70) . '…' : $preview;
+                    return '<span class="label label-success" title="' . e($lastReal['text']) . '"><i class="fa fa-reply"></i> Replied</span>'
                         . ($preview !== '' ? '<div class="reply-preview">' . e($preview) . '</div>' : '');
                 })
                 ->addColumn('assigned_info', function ($row) {
