@@ -39,11 +39,14 @@ body.pos-v2 .comm-toolbar select:focus { outline: none; border-color: var(--pos-
 body.pos-v2 .btn-accent { background: var(--pos-accent); color: var(--pos-accent-text); border: 1px solid var(--pos-accent-deep);
   border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
 body.pos-v2 .btn-accent:hover { background: var(--pos-accent-deep); color: var(--pos-accent-text); }
-body.pos-v2 #comm_table { width: 100% !important; border-collapse: collapse; table-layout: fixed; }
+body.pos-v2 #comm_table { width: 100% !important; border-collapse: collapse; }
 body.pos-v2 #comm_table thead th {
   text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em;
-  color: #524a3d; font-weight: 700; padding: 12px 12px; border-bottom: 2px solid var(--pos-line); background: transparent; }
-body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; }
+  color: #524a3d; font-weight: 700; padding: 12px 12px; border-bottom: 2px solid var(--pos-line); background: transparent; white-space: nowrap; }
+body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; word-break: break-word; }
+body.pos-v2 #comm_table td:nth-child(2), body.pos-v2 #comm_table td:nth-child(3) { white-space: nowrap; }
+body.pos-v2 #comm_table td:nth-child(5) { min-width: 260px; max-width: 380px; }
+body.pos-v2 #comm_table td:nth-child(4) { min-width: 130px; }
 body.pos-v2 #comm_table tbody tr:nth-child(even) { background: rgba(0,0,0,.014); }
 body.pos-v2 #comm_table tbody tr:hover { background: var(--pos-accent-soft); }
 body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: normal; }
@@ -128,18 +131,6 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
 
         <div class="table-responsive">
             <table class="table table-hover" id="comm_table" style="width:100%">
-                <colgroup>
-                    <col style="width:30px">
-                    <col style="width:120px">
-                    <col style="width:120px">
-                    <col style="width:130px">
-                    <col style="width:auto">
-                    <col style="width:150px">
-                    <col style="width:150px">
-                    <col style="width:100px">
-                    <col style="width:120px">
-                    <col style="width:110px">
-                </colgroup>
                 <thead>
                     <tr>
                         <th></th>
