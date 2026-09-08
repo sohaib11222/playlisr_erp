@@ -109,10 +109,16 @@ class CommunicationController extends Controller
                         $html = e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
                     }
                     if (!empty($row->resolution_notes)) {
-                        $lines = explode("\n", trim($row->resolution_notes));
+                        // Strip the <!--quo-reply-...--> dedupe markers appended
+                        // by the webhook — they're for matching retried
+                        // deliveries, not for display.
+                        $notes = preg_replace('/<!--.*?-->/', '', $row->resolution_notes);
+                        $lines = explode("\n", trim($notes));
                         $lastReply = trim((string) end($lines));
                         $preview = strlen($lastReply) > 80 ? substr($lastReply, 0, 80) . '…' : $lastReply;
-                        $html .= '<div class="reply-line"><i class="fa fa-reply"></i> ' . e($preview) . '</div>';
+                        if ($preview !== '') {
+                            $html .= '<div class="reply-line"><i class="fa fa-reply"></i> ' . e($preview) . '</div>';
+                        }
                     }
                     return $html;
                 })
@@ -211,6 +217,12 @@ class CommunicationController extends Controller
     {
         $business_id = request()->session()->get('user.business_id');
         $c = Communication::where('business_id', $business_id)->findOrFail($id);
+
+        // Strip the <!--quo-reply-...--> dedupe markers the webhook appends —
+        // they're only for matching retried deliveries, not for editing.
+        if (!empty($c->resolution_notes)) {
+            $c->resolution_notes = trim(preg_replace('/<!--.*?-->/', '', $c->resolution_notes));
+        }
 
         return [
             'success' => true,

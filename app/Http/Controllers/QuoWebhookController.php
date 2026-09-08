@@ -259,12 +259,13 @@ class QuoWebhookController extends Controller
     }
 
     /**
-     * Find the most recent still-pending inquiry from this customer, so an
-     * outbound reply can be attached to it. Matches on the last 10 digits
+     * Find the most recent inquiry from this customer (any status), so an
+     * outbound reply can be attached to it even if it was already marked
+     * resolved before the reply went out. Matches on the last 10 digits
      * rather than an exact string — contact_info can be stored with or
      * without a leading "+1" depending on the source event.
      */
-    private function findPendingByContact(int $business_id, ?string $rawNumber): ?Communication
+    private function findRecentByContact(int $business_id, ?string $rawNumber): ?Communication
     {
         $target = substr(preg_replace('/\D/', '', (string) $rawNumber), -10);
         if ($target === '' || strlen($target) < 7) {
@@ -272,9 +273,9 @@ class QuoWebhookController extends Controller
         }
 
         return Communication::where('business_id', $business_id)
-            ->where('status', 'pending')
             ->whereNotNull('contact_info')
             ->orderByDesc('created_at')
+            ->limit(500)
             ->get()
             ->first(function ($c) use ($target) {
                 return substr(preg_replace('/\D/', '', (string) $c->contact_info), -10) === $target;
@@ -501,20 +502,44 @@ class QuoWebhookController extends Controller
                 }
             } elseif ($type === 'message.delivered') {
                 // An outbound text — attach it to the customer's most recent
-                // pending inquiry so staff can see it got a reply, without
-                // auto-resolving (a quick reply doesn't always close it out).
+                // inquiry (any status) so staff can see it got a reply,
+                // without auto-resolving (a quick reply doesn't always close
+                // it out). If there's no matching inquiry at all — a
+                // proactive text with nothing logged yet — create one so the
+                // reply is never silently dropped.
                 $recipient = $context['recipientIdentifiers'][0] ?? $resource['to'] ?? null;
                 $recipient = is_array($recipient) ? ($recipient[0] ?? null) : $recipient;
+                $sender = $context['senderIdentifier'] ?? $resource['from'] ?? null;
                 $text = trim((string) ($resource['text'] ?? $resource['body'] ?? ''));
+                $externalId = !empty($resource['id']) ? 'quo-reply-' . $resource['id'] : null;
 
                 if ($text !== '') {
-                    $target = $this->findPendingByContact($business_id, $recipient);
-                    if ($target) {
-                        $stamp = now()->format('n/j g:ia');
+                    $target = $this->findRecentByContact($business_id, $recipient);
+                    $stamp = now()->format('n/j g:ia');
+                    // The target's own external_id is usually already taken by
+                    // the inbound message it was created from, so dedupe a
+                    // retried delivery by looking for this reply's id inside
+                    // the notes themselves rather than the external_id column.
+                    $marker = $externalId ? '<!--' . $externalId . '-->' : '';
+
+                    if ($target && ($marker === '' || strpos((string) $target->resolution_notes, $marker) === false)) {
                         $target->resolution_notes = trim(
-                            ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text
+                            ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text . $marker
                         );
                         $target->save();
+                    } elseif (!$target && (!$externalId || !Communication::where('business_id', $business_id)->where('external_id', $externalId)->exists())) {
+                        $channel = $this->channelForNumber($sender) ?? 'other';
+                        $c = new Communication();
+                        $c->business_id = $business_id;
+                        $c->channel = $channel;
+                        $c->topic = 'general';
+                        $c->status = 'resolved';
+                        $c->contact_info = $recipient;
+                        $c->message = '(no inbound message logged for this contact)';
+                        $c->resolution_notes = "[$stamp] " . $text;
+                        $c->external_id = $externalId;
+                        $c->created_by = $system_user_id;
+                        $c->save();
                     }
                 }
             }
