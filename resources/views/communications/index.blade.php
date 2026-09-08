@@ -7,7 +7,7 @@
 <script>document.body.classList.add('pos-v2');</script>
 
 <style>
-body.pos-v2 .comm-wrap { max-width: 1440px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); font-size: 15px; }
+body.pos-v2 .comm-wrap { width: 100%; margin: 0 auto; padding: 18px 28px 60px; box-sizing: border-box; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); font-size: 15px; }
 body.pos-v2 .comm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 body.pos-v2 .comm-head h1 { font-size: 26px; font-weight: 700; margin: 0 0 5px; }
 body.pos-v2 .comm-head .sub { color: #524a3d; margin: 0; font-size: 14.5px; line-height: 1.5; max-width: 62ch; }
@@ -46,8 +46,9 @@ body.pos-v2 #comm_table thead th {
 body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; word-break: break-word; }
 body.pos-v2 #comm_table td:nth-child(2) { min-width: 140px; white-space: nowrap; }
 body.pos-v2 #comm_table td:nth-child(3), body.pos-v2 #comm_table td:nth-child(7) { min-width: 110px; }
-body.pos-v2 #comm_table td:nth-child(5) { min-width: 260px; max-width: 380px; }
+body.pos-v2 #comm_table td:nth-child(5) { min-width: 260px; width: 40%; }
 body.pos-v2 #comm_table td:nth-child(4) { min-width: 130px; }
+body.pos-v2 #comm_table td:nth-child(6) { min-width: 220px; }
 body.pos-v2 #comm_table tbody tr:nth-child(even) { background: rgba(0,0,0,.014); }
 body.pos-v2 #comm_table tbody tr:hover { background: var(--pos-accent-soft); }
 body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: nowrap !important; background: #eee7da; color: #524a3d; }
