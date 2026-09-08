@@ -258,6 +258,29 @@ class QuoWebhookController extends Controller
         return Communication::QUO_NUMBERS[$normalized] ?? null;
     }
 
+    /**
+     * Find the most recent still-pending inquiry from this customer, so an
+     * outbound reply can be attached to it. Matches on the last 10 digits
+     * rather than an exact string — contact_info can be stored with or
+     * without a leading "+1" depending on the source event.
+     */
+    private function findPendingByContact(int $business_id, ?string $rawNumber): ?Communication
+    {
+        $target = substr(preg_replace('/\D/', '', (string) $rawNumber), -10);
+        if ($target === '' || strlen($target) < 7) {
+            return null;
+        }
+
+        return Communication::where('business_id', $business_id)
+            ->where('status', 'pending')
+            ->whereNotNull('contact_info')
+            ->orderByDesc('created_at')
+            ->get()
+            ->first(function ($c) use ($target) {
+                return substr(preg_replace('/\D/', '', (string) $c->contact_info), -10) === $target;
+            });
+    }
+
     /** Insert a pending inquiry unless one with this external_id already exists (idempotent). */
     private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId): bool
     {
@@ -476,9 +499,27 @@ class QuoWebhookController extends Controller
 
                     $this->logCommunication($business_id, $system_user_id, $channel, $callerNumber, $message, $externalId);
                 }
+            } elseif ($type === 'message.delivered') {
+                // An outbound text — attach it to the customer's most recent
+                // pending inquiry so staff can see it got a reply, without
+                // auto-resolving (a quick reply doesn't always close it out).
+                $recipient = $context['recipientIdentifiers'][0] ?? $resource['to'] ?? null;
+                $recipient = is_array($recipient) ? ($recipient[0] ?? null) : $recipient;
+                $text = trim((string) ($resource['text'] ?? $resource['body'] ?? ''));
+
+                if ($text !== '') {
+                    $target = $this->findPendingByContact($business_id, $recipient);
+                    if ($target) {
+                        $stamp = now()->format('n/j g:ia');
+                        $target->resolution_notes = trim(
+                            ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text
+                        );
+                        $target->save();
+                    }
+                }
             }
-            // Other event types (delivered, ringing, tasks, contacts, etc.)
-            // are acknowledged but not logged — nothing for staff to act on.
+            // Other event types (ringing, tasks, contacts, etc.) are
+            // acknowledged but not logged — nothing for staff to act on.
         } catch (\Throwable $e) {
             Log::emergency('Quo webhook processing failed: ' . $e->getMessage());
         }

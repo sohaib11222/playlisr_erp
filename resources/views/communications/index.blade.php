@@ -11,6 +11,8 @@ body.pos-v2 .comm-wrap { max-width: 1320px; margin: 0 auto; padding: 18px 16px 6
 body.pos-v2 .comm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 body.pos-v2 .comm-head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
 body.pos-v2 .comm-head .sub { color: #6b6253; margin: 0; font-size: 14px; max-width: 60ch; }
+body.pos-v2 .reply-line { margin-top: 4px; font-size: 12px; color: #3d8b4c; }
+body.pos-v2 .reply-line i { margin-right: 3px; }
 body.pos-v2 .comm-stats { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 body.pos-v2 .stat-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 12px; padding: 13px 15px; min-width: 130px; }
 body.pos-v2 .stat-card .n { font-size: 22px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }

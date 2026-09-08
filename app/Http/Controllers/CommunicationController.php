@@ -20,7 +20,7 @@ class CommunicationController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $channels = Communication::CHANNELS;
         $topics = Communication::TOPICS;
-        $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'resolved' => 'Resolved'];
+        $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'unreplied' => 'Not Replied To', 'resolved' => 'Resolved'];
 
         if (request()->ajax()) {
             // Bind the cutoff from PHP (app timezone, America/Los_Angeles)
@@ -44,6 +44,9 @@ class CommunicationController extends Controller
                 if (request()->status == 'overdue') {
                     $rows->where('communications.status', 'pending')
                         ->where('communications.created_at', '<=', now()->subHour());
+                } elseif (request()->status == 'unreplied') {
+                    $rows->where('communications.status', 'pending')
+                        ->whereNull('communications.resolution_notes');
                 } else {
                     $rows->where('communications.status', request()->status);
                 }
@@ -100,9 +103,18 @@ class CommunicationController extends Controller
                     return $parts ? implode('<br>', $parts) : '-';
                 })
                 ->addColumn('message_excerpt', function ($row) {
-                    if (empty($row->message)) return '-';
-                    $text = trim($row->message);
-                    return e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
+                    $html = '-';
+                    if (!empty($row->message)) {
+                        $text = trim($row->message);
+                        $html = e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
+                    }
+                    if (!empty($row->resolution_notes)) {
+                        $lines = explode("\n", trim($row->resolution_notes));
+                        $lastReply = trim((string) end($lines));
+                        $preview = strlen($lastReply) > 80 ? substr($lastReply, 0, 80) . '…' : $lastReply;
+                        $html .= '<div class="reply-line"><i class="fa fa-reply"></i> ' . e($preview) . '</div>';
+                    }
+                    return $html;
                 })
                 ->addColumn('assigned_info', function ($row) {
                     return !empty($row->assignee_name) ? e(trim($row->assignee_name)) : '<span class="text-muted">Unassigned</span>';
