@@ -224,7 +224,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/communications/quo-settings', 'QuoWebhookController@saveSettings')->name('quo.settings.save');
     Route::post('/communications/quo-api-key', 'QuoWebhookController@saveApiKey')->name('quo.api_key.save');
     Route::post('/communications/quo-import', 'QuoWebhookController@importRecent')->name('quo.import');
-    Route::get('/communications/quo-debug-line', 'QuoWebhookController@debugLine');
 
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
