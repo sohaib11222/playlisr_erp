@@ -37,6 +37,9 @@ jobs:
           exit 0
       - name: Compare rang totals across both code paths (read-only)
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_DATE: ${{ github.event.inputs.date }}
+          DIAG_UID: ${{ github.event.inputs.user_id }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -44,55 +47,59 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
           command_timeout: 90s
+          envs: DIAG_DATE,DIAG_UID
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            DATE_IN="${{ github.event.inputs.date }}"
-            UID_IN="${{ github.event.inputs.user_id }}"
-            php artisan tinker --no-ansi <<PHP
-            \$date = '$DATE_IN';
-            \$uid = (int) '$UID_IN';
-            \$net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
-            \$start = \$date . ' 00:00:00';
-            \$end = \$date . ' 23:59:59';
+            export DIAG_DATE DIAG_UID
+            php artisan tinker --no-ansi <<'PHP'
+            $date = getenv('DIAG_DATE');
+            $uid = (int) getenv('DIAG_UID');
+            $net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+            $start = $date . ' 00:00:00';
+            $end = $date . ' 23:59:59';
+            $bizId = (int) (DB::table('users')->where('id', $uid)->value('business_id') ?: 0);
 
-            echo "=== raw transactions for user \$uid on \$date (no location filter) ===\n";
-            \$rows = \DB::table('transactions as t')
+            echo "date=$date uid=$uid resolved business_id=$bizId\n";
+
+            echo "=== raw transactions for this user on this date (no location filter) ===\n";
+            $rows = DB::table('transactions as t')
                 ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
-                ->where('t.business_id', 1)
-                ->where('t.created_by', \$uid)
+                ->where('t.created_by', $uid)
                 ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
-                ->where(function (\$q) { \$q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
-                ->whereBetween('t.transaction_date', [\$start, \$end])
-                ->selectRaw("t.id, t.location_id, t.transaction_date, COALESCE(SUM($net), 0) as net")
-                ->groupBy('t.id', 't.location_id', 't.transaction_date')
+                ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                ->whereBetween('t.transaction_date', [$start, $end])
+                ->selectRaw("t.id, t.business_id, t.location_id, t.transaction_date, COALESCE(SUM($net), 0) as net")
+                ->groupBy('t.id', 't.business_id', 't.location_id', 't.transaction_date')
                 ->orderBy('t.transaction_date')
                 ->get();
-            \$total = 0; \$byLoc = [];
-            foreach (\$rows as \$r) {
-                \$total += (float) \$r->net;
-                \$byLoc[\$r->location_id] = (\$byLoc[\$r->location_id] ?? 0) + (float) \$r->net;
-                echo "  txn=".\$r->id." loc=".\$r->location_id." at=".\$r->transaction_date." net=".round(\$r->net,2)."\n";
+            $total = 0; $byLoc = [];
+            foreach ($rows as $r) {
+                $total += (float) $r->net;
+                $byLoc[$r->location_id] = ($byLoc[$r->location_id] ?? 0) + (float) $r->net;
+                echo "  txn={$r->id} biz={$r->business_id} loc={$r->location_id} at={$r->transaction_date} net=" . round($r->net, 2) . "\n";
             }
-            echo "TOTAL (all locations) = " . round(\$total, 2) . "\n";
-            foreach (\$byLoc as \$loc => \$sum) { echo "  loc \$loc total = " . round(\$sum, 2) . "\n"; }
+            echo "TOTAL (all locations) = " . round($total, 2) . "\n";
+            foreach ($byLoc as $loc => $sum) { echo "  loc $loc total = " . round($sum, 2) . "\n"; }
 
-            echo "\n=== business_locations ===\n";
-            foreach (\DB::table('business_locations')->where('business_id', 1)->get(['id','name']) as \$l) {
-                echo "  id=".\$l->id." name=".\$l->name."\n";
+            echo "\n=== business_locations for business_id=$bizId ===\n";
+            foreach (DB::table('business_locations')->where('business_id', $bizId)->get(['id', 'name']) as $l) {
+                echo "  id={$l->id} name={$l->name}\n";
             }
 
-            echo "\n=== attachHourTargets daySales path (location_id=2, hollywood) ===\n";
-            \$rc = app(\App\Http\Controllers\ReportController::class);
-            \$refl = new \ReflectionClass(\$rc);
-            \$m = \$refl->getMethod('attachHourTargets');
-            \$m->setAccessible(true);
-            \$lb = \$rc->buildLeaderboardRows(1, \$date, \$date, null, 2, ['with_commission' => true, 'exclude_owners' => false]);
-            \$out = \$m->invoke(\$rc, \$lb, 1, 2, \$date, \$date);
-            foreach (\$out as \$row) {
-                if ((int) \$row->user_id === \$uid) {
-                    echo "  non_whatnot_revenue=".\$row->non_whatnot_revenue."\n";
-                    echo "  daily=".json_encode(\$row->daily)."\n";
+            if ($bizId > 0) {
+                echo "\n=== attachHourTargets daySales path (location_id=2, hollywood) ===\n";
+                $rc = app(\App\Http\Controllers\ReportController::class);
+                $refl = new \ReflectionClass($rc);
+                $m = $refl->getMethod('attachHourTargets');
+                $m->setAccessible(true);
+                $lb = $rc->buildLeaderboardRows($bizId, $date, $date, null, 2, ['with_commission' => true, 'exclude_owners' => false]);
+                $out = $m->invoke($rc, $lb, $bizId, 2, $date, $date);
+                foreach ($out as $row) {
+                    if ((int) $row->user_id === $uid) {
+                        echo "  non_whatnot_revenue={$row->non_whatnot_revenue}\n";
+                        echo "  daily=" . json_encode($row->daily) . "\n";
+                    }
                 }
             }
             PHP
