@@ -72,8 +72,7 @@ class CommunicationController extends Controller
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(assignee_users.first_name,''), ' ', COALESCE(assignee_users.last_name,''))), ''), assignee_users.username) as assignee_name"),
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name")
                 )
-                ->selectRaw("(communications.status = 'pending' AND communications.created_at <= ?) as is_overdue", [$overdue_cutoff])
-                ->selectRaw("(communications.is_priority = 1 OR (communications.status = 'pending' AND communications.created_at <= ?)) as priority_sort", [$overdue_cutoff]);
+                ->selectRaw("(communications.status = 'pending' AND communications.created_at <= ?) as is_overdue", [$overdue_cutoff]);
 
             if (request()->has('status') && request()->status != '') {
                 if (request()->status == 'overdue') {
@@ -107,14 +106,6 @@ class CommunicationController extends Controller
             }
 
             return DataTables::of($rows)
-                ->addColumn('priority_flag', function ($row) {
-                    if ($row->is_overdue) {
-                        return '<span class="label label-danger" title="Unresolved 1hr+"><i class="fa fa-clock-o"></i></span>';
-                    }
-                    return $row->is_priority
-                        ? '<span class="label label-danger" title="Priority"><i class="fa fa-exclamation-circle"></i></span>'
-                        : '';
-                })
                 ->editColumn('channel', function ($row) {
                     $text = Communication::CHANNELS[$row->channel] ?? $row->channel;
                     return e($text);
@@ -221,7 +212,7 @@ class CommunicationController extends Controller
                     $html .= '</div>';
                     return $html;
                 })
-                ->rawColumns(['priority_flag', 'channel', 'topic', 'status', 'customer_info', 'message_excerpt', 'reply_status', 'assigned_info', 'created_info', 'action'])
+                ->rawColumns(['channel', 'topic', 'status', 'customer_info', 'message_excerpt', 'reply_status', 'assigned_info', 'created_info', 'action'])
                 ->make(true);
         }
 
