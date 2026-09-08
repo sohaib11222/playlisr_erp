@@ -214,6 +214,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // for now, no live API/webhook wired to those platforms yet.
     Route::resource('communications', 'CommunicationController')->except(['show', 'create']);
     Route::get('/communications-stats', 'CommunicationController@stats');
+    Route::get('/communications/{id}/thread', 'CommunicationController@thread');
+    Route::post('/communications/{id}/send-reply', 'CommunicationController@sendReply');
     Route::post('/communications/{id}/mark-resolved', 'CommunicationController@markResolved');
     Route::post('/communications/{id}/mark-pending', 'CommunicationController@markPending');
     Route::post('/communications/{id}/assign', 'CommunicationController@assign');

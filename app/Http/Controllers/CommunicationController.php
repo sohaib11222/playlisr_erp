@@ -202,6 +202,7 @@ class CommunicationController extends Controller
                 })
                 ->addColumn('action', function ($row) {
                     $html = '<div class="btn-group">';
+                    $html .= '<button type="button" class="btn btn-default btn-xs view_thread" data-id="' . $row->id . '" title="View conversation"><i class="fa fa-comments"></i></button>';
                     $html .= '<button type="button" class="btn btn-default btn-xs edit_comm" data-id="' . $row->id . '"><i class="fa fa-edit"></i></button>';
                     if ($row->status == 'pending') {
                         $html .= '<button type="button" class="btn btn-success btn-xs mark_resolved" data-href="' . action('CommunicationController@markResolved', [$row->id]) . '"><i class="fa fa-check"></i> Resolve</button>';
@@ -301,6 +302,90 @@ class CommunicationController extends Controller
             'success' => true,
             'data' => $c,
         ];
+    }
+
+    /**
+     * Full conversation view for one inquiry — every inbound message
+     * (from the "message" log) and every staff reply (from
+     * "resolution_notes") merged into one chronological thread, like
+     * Quo's own conversation view.
+     */
+    public function thread($id)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $c = Communication::where('business_id', $business_id)->findOrFail($id);
+
+        $stripPrefix = function ($text) {
+            return trim(preg_replace('/^\[[^\]]+\]\s*/', '', $text));
+        };
+
+        $inbound = array_map(function ($e) use ($stripPrefix) {
+            return ['who' => 'customer', 'text' => $stripPrefix($e['text']), 'time' => $e['time']];
+        }, Communication::parseReplyEntries($c->message));
+
+        $notes = preg_replace('/<!--.*?-->/', '', (string) $c->resolution_notes);
+        $outbound = array_map(function ($e) use ($stripPrefix) {
+            return ['who' => 'staff', 'text' => $stripPrefix($e['text']), 'time' => $e['time']];
+        }, Communication::parseReplyEntries($notes));
+
+        $entries = array_merge($inbound, $outbound);
+        usort($entries, function ($a, $b) {
+            if ($a['time'] && $b['time']) {
+                return $a['time'] <=> $b['time'];
+            }
+            return 0;
+        });
+
+        foreach ($entries as &$e) {
+            $e['time_label'] = $e['time'] ? $e['time']->format('n/j g:ia') : '';
+            unset($e['time']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $c->channel,
+            'channel_label' => Communication::CHANNELS[$c->channel] ?? $c->channel,
+            'contact_info' => $c->contact_info,
+            'can_reply' => in_array($c->channel, ['phone_1', 'phone_2'], true),
+            'entries' => $entries,
+        ]);
+    }
+
+    /**
+     * Send an actual SMS reply through Quo from whichever line (Pico or
+     * Hollywood) the customer texted, and log it the same way a live
+     * message.delivered webhook would.
+     */
+    public function sendReply(Request $request, $id)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $c = Communication::where('business_id', $business_id)->findOrFail($id);
+
+        $request->validate(['message' => 'required|string|max:1000']);
+
+        if (!in_array($c->channel, ['phone_1', 'phone_2'], true)) {
+            return response()->json(['success' => false, 'msg' => 'Direct reply from here only works for the Quo phone lines right now.']);
+        }
+        if (empty($c->contact_info)) {
+            return response()->json(['success' => false, 'msg' => 'No phone number on this inquiry to reply to.']);
+        }
+
+        $fromNumber = array_search($c->channel, Communication::QUO_NUMBERS, true);
+        if (!$fromNumber) {
+            return response()->json(['success' => false, 'msg' => 'Could not determine which Quo line to send from.']);
+        }
+
+        $svc = new \App\Services\OpenPhoneService();
+        $result = $svc->sendFrom($fromNumber, $c->contact_info, $request->message);
+        if (!$result['success']) {
+            return response()->json(['success' => false, 'msg' => $result['msg']]);
+        }
+
+        $stamp = now()->format('n/j g:ia');
+        $c->resolution_notes = trim(($c->resolution_notes ? $c->resolution_notes . "\n" : '') . "[$stamp] " . $request->message);
+        $c->save();
+
+        return response()->json(['success' => true, 'msg' => 'Sent']);
     }
 
     /**

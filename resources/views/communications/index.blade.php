@@ -49,7 +49,7 @@ body.pos-v2 #comm_table td:nth-child(2), body.pos-v2 #comm_table td:nth-child(6)
 body.pos-v2 #comm_table td:nth-child(4) { min-width: 260px; width: 40%; }
 body.pos-v2 #comm_table td:nth-child(3) { min-width: 130px; }
 body.pos-v2 #comm_table td:nth-child(5) { min-width: 220px; }
-body.pos-v2 #comm_table td:nth-child(9) { min-width: 190px; }
+body.pos-v2 #comm_table td:nth-child(9) { min-width: 230px; }
 body.pos-v2 #comm_table tbody tr:nth-child(even) { background: rgba(0,0,0,.014); }
 body.pos-v2 #comm_table tbody tr:hover { background: var(--pos-accent-soft); }
 body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: nowrap !important; background: #eee7da; color: #524a3d; }
@@ -234,8 +234,40 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
     </div>
 </div>
 
+<div class="modal fade" id="thread_modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document" style="width:560px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title">Conversation</h4>
+                <div id="thread_contact" style="font-size:13px;color:#8a8070;margin-top:2px;"></div>
+            </div>
+            <div class="modal-body">
+                <div id="thread_messages"></div>
+                <div id="thread_no_reply_note" class="text-muted" style="font-size:13px;padding:10px 0;" hidden>
+                    Direct reply from here only works for the Quo phone lines right now.
+                </div>
+            </div>
+            <div class="modal-footer" id="thread_reply_footer" style="text-align:left;">
+                <textarea class="form-control" id="thread_reply_text" rows="2" placeholder="Type a reply — sends as a real text through Quo"></textarea>
+                <button type="button" class="btn btn-success" id="thread_send_btn" style="margin-top:8px;"><i class="fa fa-paper-plane"></i> Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @stop
 @section('javascript')
+<style>
+    #thread_messages { max-height: 360px; overflow-y: auto; padding: 6px 2px; }
+    .thread-bubble-row { display: flex; margin-bottom: 10px; }
+    .thread-bubble-row.staff { justify-content: flex-end; }
+    .thread-bubble { max-width: 78%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+    .thread-bubble-row.customer .thread-bubble { background: #eee7da; color: #3a342b; border-bottom-left-radius: 4px; }
+    .thread-bubble-row.staff .thread-bubble { background: var(--pos-accent, #FFF2B3); color: #3a342b; border-bottom-right-radius: 4px; }
+    .thread-bubble-time { font-size: 11px; color: #8a8070; margin-top: 3px; }
+    .thread-bubble-row.staff .thread-bubble-time { text-align: right; }
+</style>
 <script type="text/javascript">
     $(document).ready(function() {
         var TOPICS = @json($topics);
@@ -384,6 +416,71 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 $('#comm_is_priority').prop('checked', !!row.is_priority);
                 $('#comm_modal_title').text('Edit Inquiry');
                 $('#comm_modal').modal('show');
+            });
+        });
+
+        var thread_id = null;
+
+        function renderThread(data) {
+            $('#thread_contact').text(data.channel_label + (data.contact_info ? ' — ' + data.contact_info : ''));
+            var $wrap = $('#thread_messages').empty();
+            if (!data.entries.length) {
+                $wrap.append('<div class="text-muted" style="font-size:13px;">Nothing logged yet.</div>');
+            }
+            data.entries.forEach(function(e) {
+                var $row = $('<div class="thread-bubble-row"></div>').addClass(e.who);
+                var $bubble = $('<div class="thread-bubble"></div>').text(e.text);
+                var $col = $('<div></div>').append($bubble);
+                if (e.time_label) { $col.append('<div class="thread-bubble-time">' + e.time_label + '</div>'); }
+                $row.append($col);
+                $wrap.append($row);
+            });
+            $wrap.scrollTop($wrap[0].scrollHeight);
+
+            $('#thread_reply_text').val('');
+            if (data.can_reply) {
+                $('#thread_reply_footer').show();
+                $('#thread_no_reply_note').prop('hidden', true);
+            } else {
+                $('#thread_reply_footer').hide();
+                $('#thread_no_reply_note').prop('hidden', false);
+            }
+        }
+
+        $(document).on('click', '.view_thread', function() {
+            thread_id = $(this).data('id');
+            $.get('{{ url("communications") }}/' + thread_id + '/thread', function(result) {
+                if (!result.success) { toastr.error('Could not load this conversation.'); return; }
+                renderThread(result);
+                $('#thread_modal').modal('show');
+            });
+        });
+
+        $('#thread_send_btn').on('click', function() {
+            var text = $('#thread_reply_text').val().trim();
+            if (!text || !thread_id) { return; }
+            var $btn = $(this).prop('disabled', true);
+            $.ajax({
+                method: 'POST',
+                url: '{{ url("communications") }}/' + thread_id + '/send-reply',
+                data: { _token: $('meta[name="csrf-token"]').attr('content'), message: text },
+                dataType: 'json',
+                success: function(result) {
+                    $btn.prop('disabled', false);
+                    if (result.success) {
+                        toastr.success('Reply sent.');
+                        $.get('{{ url("communications") }}/' + thread_id + '/thread', function(fresh) {
+                            if (fresh.success) { renderThread(fresh); }
+                        });
+                        reload();
+                    } else {
+                        toastr.error(result.msg || 'Could not send.');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false);
+                    toastr.error('Could not send.');
+                }
             });
         });
 

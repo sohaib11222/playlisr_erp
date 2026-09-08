@@ -93,6 +93,22 @@ class OpenPhoneService
             return ['success' => false, 'msg' => 'OpenPhone is not configured (add api_key + from_number to config/services.php).'];
         }
 
+        return $this->sendFrom((string) config('services.openphone.from_number'), $toPhone, $message);
+    }
+
+    /**
+     * Send an SMS from a specific line — used by the Communications Hub's
+     * reply box, which needs to reply from whichever Quo number (Pico or
+     * Hollywood) the customer actually texted, not a single fixed
+     * from_number. Only needs the API key, not the full isConfigured()
+     * (from_number + enabled) gate that send() uses.
+     */
+    public function sendFrom(string $fromNumber, string $toPhone, string $message): array
+    {
+        if ($this->apiKey() === '') {
+            return ['success' => false, 'msg' => 'Quo API key is not configured — add one under Quo Setup.'];
+        }
+
         $to = $this->normalize($toPhone);
         if (!$to) {
             return ['success' => false, 'msg' => 'Invalid phone number: ' . $toPhone];
@@ -109,7 +125,7 @@ class OpenPhoneService
                     'Content-Type: application/json',
                 ],
                 CURLOPT_POSTFIELDS => json_encode([
-                    'from' => config('services.openphone.from_number'),
+                    'from' => $fromNumber,
                     'to' => [$to],
                     'content' => $message,
                 ]),
