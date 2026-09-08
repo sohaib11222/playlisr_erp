@@ -1,0 +1,68 @@
+# READ-ONLY diagnostic: look up an ERP transaction by its nivessa.com website
+# order Mongo _id, checking both the ways it can land in transactions —
+# the periodic SyncNivessaWebSales backfill (import_source='nivessa_web',
+# import_external_id=<id>) and the live/manual "Website order <id>" note
+# path (additional_notes). No writes.
+name: Diag check website order
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: "nivessa.com order Mongo _id, e.g. 6a9c7e56620d59e82359bac1"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Look up website order in ERP transactions (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_ORDER_ID: ${{ github.event.inputs.order_id }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: DIAG_ORDER_ID
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_ORDER_ID
+            php artisan tinker --no-ansi <<'PHP'
+            $oid = trim((string) getenv('DIAG_ORDER_ID'));
+            $backfill = \Illuminate\Support\Facades\DB::table('transactions')->where('import_source', 'nivessa_web')->where('import_external_id', $oid)->get();
+            echo "BACKFILL_MATCH_JSON: " . $backfill->toJson() . "\n";
+            $live = \Illuminate\Support\Facades\DB::table('transactions')->where('additional_notes', 'LIKE', "%{$oid}%")->get();
+            echo "LIVE_MATCH_JSON: " . $live->toJson() . "\n";
+            $txIds = $backfill->pluck('id')->merge($live->pluck('id'))->unique()->values();
+            if ($txIds->count() > 0) { $lines = \Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl')->join('products as p', 'p.id', '=', 'tsl.product_id')->whereIn('tsl.transaction_id', $txIds)->select('tsl.transaction_id', 'tsl.product_id', 'p.sku', 'p.name', 'tsl.variation_id', 'tsl.quantity', 'tsl.quantity_returned')->get(); echo "SELL_LINES_JSON: " . $lines->toJson() . "\n"; foreach ($txIds as $txId) { $stockAtSale = \Illuminate\Support\Facades\DB::table('transactions')->where('id', $txId)->value('transaction_date'); echo "TX_{$txId}_DATE: {$stockAtSale}\n"; } }
+            PHP
+            echo "=== done ==="
