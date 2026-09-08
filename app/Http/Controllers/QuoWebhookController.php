@@ -393,9 +393,58 @@ class QuoWebhookController extends Controller
         $c->save();
     }
 
+    /**
+     * Find an already-open (pending) inquiry from this same contact on
+     * this same line, so a customer's follow-up texts land in one
+     * conversation thread instead of fragmenting into a new row per
+     * message. Bounded to the last 48 hours of activity — an old pending
+     * item that was simply never resolved shouldn't silently absorb an
+     * unrelated message from the same number weeks later.
+     */
+    private function findOpenThreadByContact(int $business_id, string $channel, ?string $contact): ?Communication
+    {
+        $target = substr(preg_replace('/\D/', '', (string) $contact), -10);
+        if ($target === '' || strlen($target) < 7) {
+            return null;
+        }
+
+        return Communication::where('business_id', $business_id)
+            ->where('channel', $channel)
+            ->where('status', 'pending')
+            ->whereNotNull('contact_info')
+            ->where('updated_at', '>=', now()->subHours(48))
+            ->orderByDesc('created_at')
+            ->get()
+            ->first(function ($c) use ($target) {
+                return substr(preg_replace('/\D/', '', (string) $c->contact_info), -10) === $target;
+            });
+    }
+
     /** Insert a pending inquiry unless one with this external_id already exists (idempotent). */
     private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId, ?string $occurredAt = null): bool
     {
+        try {
+            $eventTime = $occurredAt ? \Carbon::parse($occurredAt)->setTimezone(config('app.timezone')) : now();
+        } catch (\Throwable $e) {
+            $eventTime = now();
+        }
+        $stamp = $eventTime->format('n/j g:ia');
+        // Dedupe an appended message the same way attachReply() dedupes a
+        // reply — the row's own external_id column can only hold one
+        // value (the thread's first message), so later messages need a
+        // marker embedded in the text itself to survive a re-run import.
+        $marker = $externalId ? '<!--' . $externalId . '-->' : '';
+
+        $thread = $this->findOpenThreadByContact($business_id, $channel, $contact);
+        if ($thread) {
+            if ($marker !== '' && strpos((string) $thread->message, $marker) !== false) {
+                return false;
+            }
+            $thread->message = trim($thread->message . "\n\n[$stamp] " . $message . $marker);
+            $thread->save();
+            return true;
+        }
+
         if ($externalId) {
             $existing = Communication::where('business_id', $business_id)->where('external_id', $externalId)->first();
             if ($existing) {
@@ -426,17 +475,14 @@ class QuoWebhookController extends Controller
         $c->topic = Communication::guessTopic($message);
         $c->status = 'pending';
         $c->contact_info = $contact;
-        $c->message = $message;
+        $c->message = "[$stamp] " . $message . $marker;
         $c->external_id = $externalId;
         $c->created_by = $system_user_id;
         // Backfilled history needs its REAL contact time, not "whenever this
         // import happened to run" — matters for sort order, the 1hr-overdue
         // flag, and matching a reply to the right inquiry.
         if ($occurredAt) {
-            try {
-                $c->created_at = \Carbon::parse($occurredAt)->setTimezone(config('app.timezone'));
-            } catch (\Throwable $e) {
-            }
+            $c->created_at = $eventTime;
         }
         $c->save();
 

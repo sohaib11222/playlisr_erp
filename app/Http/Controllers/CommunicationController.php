@@ -9,6 +9,41 @@ use DB;
 
 class CommunicationController extends Controller
 {
+    /** Shared by index() (initial page render) and stats() (polled for
+     * live updates) so the two never drift out of sync. */
+    private function computeCounts(int $business_id): array
+    {
+        $counts = [
+            'pending' => Communication::where('business_id', $business_id)->where('status', 'pending')->count(),
+            'overdue' => Communication::where('business_id', $business_id)->where('status', 'pending')->where('created_at', '<=', now()->subHour())->count(),
+            'resolved' => Communication::where('business_id', $business_id)->where('status', 'resolved')->count(),
+        ];
+
+        $topic_counts = Communication::where('business_id', $business_id)
+            ->where('status', 'pending')
+            ->select('topic', DB::raw('count(*) as c'))
+            ->groupBy('topic')
+            ->pluck('c', 'topic');
+
+        return [$counts, $topic_counts];
+    }
+
+    /**
+     * Polled from the front end every ~20s so new webhook-logged inquiries
+     * and replies show up without a manual page reload — the stat cards
+     * and topic counts are otherwise only computed on initial page load.
+     */
+    public function stats()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        [$counts, $topic_counts] = $this->computeCounts($business_id);
+
+        return response()->json([
+            'counts' => $counts,
+            'topic_counts' => $topic_counts,
+        ]);
+    }
+
     /**
      * Display the Communications Hub — every inbound customer message
      * logged across phone (2 Quo lines), Instagram, WhatsApp, Facebook,
@@ -104,12 +139,27 @@ class CommunicationController extends Controller
                     return $parts ? implode('<br>', $parts) : '-';
                 })
                 ->addColumn('message_excerpt', function ($row) {
-                    $html = '-';
-                    if (!empty($row->message)) {
-                        $text = trim($row->message);
-                        $html = e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
+                    if (empty($row->message)) {
+                        return '-';
                     }
-                    return $html;
+                    // A grouped conversation thread stores each message as
+                    // its own "[m/d h:ma] ..." entry (same convention as
+                    // resolution_notes) — show the latest one, not whichever
+                    // happened to be first, so staff see what the customer
+                    // is actually asking about right now.
+                    $entries = Communication::parseReplyEntries($row->message);
+                    if (count($entries) > 1) {
+                        usort($entries, function ($a, $b) {
+                            if ($a['time'] && $b['time']) return $a['time'] <=> $b['time'];
+                            return 0;
+                        });
+                        $last = end($entries);
+                        $text = trim(preg_replace('/^\[[^\]]+\]\s*/', '', $last['text']));
+                        $preview = strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text;
+                        return e($preview) . ' <span class="text-muted" style="font-size:11px;white-space:nowrap;">(' . count($entries) . ' messages)</span>';
+                    }
+                    $text = trim(preg_replace('/^\[\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}[ap]m\]\s*/i', '', trim($row->message)));
+                    return e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
                 })
                 ->addColumn('reply_status', function ($row) {
                     if (empty($row->resolution_notes)) {
@@ -175,17 +225,7 @@ class CommunicationController extends Controller
                 ->make(true);
         }
 
-        $counts = [
-            'pending' => Communication::where('business_id', $business_id)->where('status', 'pending')->count(),
-            'overdue' => Communication::where('business_id', $business_id)->where('status', 'pending')->where('created_at', '<=', now()->subHour())->count(),
-            'resolved' => Communication::where('business_id', $business_id)->where('status', 'resolved')->count(),
-        ];
-
-        $topic_counts = Communication::where('business_id', $business_id)
-            ->where('status', 'pending')
-            ->select('topic', DB::raw('count(*) as c'))
-            ->groupBy('topic')
-            ->pluck('c', 'topic');
+        [$counts, $topic_counts] = $this->computeCounts($business_id);
 
         $users = DB::table('users')
             ->where('business_id', $business_id)

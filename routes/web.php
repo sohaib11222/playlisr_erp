@@ -213,6 +213,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // phone (2 Quo lines), Instagram, WhatsApp, Facebook, TikTok. Manual log
     // for now, no live API/webhook wired to those platforms yet.
     Route::resource('communications', 'CommunicationController')->except(['show', 'create']);
+    Route::get('/communications-stats', 'CommunicationController@stats');
     Route::post('/communications/{id}/mark-resolved', 'CommunicationController@markResolved');
     Route::post('/communications/{id}/mark-pending', 'CommunicationController@markPending');
     Route::post('/communications/{id}/assign', 'CommunicationController@assign');

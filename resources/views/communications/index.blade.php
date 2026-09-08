@@ -91,9 +91,9 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
     </div>
 
     <div class="comm-stats">
-        <div class="stat-card stat-pending"><div class="n">{{ $counts['pending'] }}</div><div class="l">Pending</div></div>
-        <div class="stat-card stat-overdue" id="overdue_stat" style="cursor:pointer;border-color:#e3b3a8;"><div class="n" style="color:#b4432f;">{{ $counts['overdue'] }}</div><div class="l">Unresolved 1hr+</div></div>
-        <div class="stat-card stat-resolved"><div class="n">{{ $counts['resolved'] }}</div><div class="l">Resolved</div></div>
+        <div class="stat-card stat-pending"><div class="n" data-stat="pending">{{ $counts['pending'] }}</div><div class="l">Pending</div></div>
+        <div class="stat-card stat-overdue" id="overdue_stat" style="cursor:pointer;border-color:#e3b3a8;"><div class="n" data-stat="overdue" style="color:#b4432f;">{{ $counts['overdue'] }}</div><div class="l">Unresolved 1hr+</div></div>
+        <div class="stat-card stat-resolved"><div class="n" data-stat="resolved">{{ $counts['resolved'] }}</div><div class="l">Resolved</div></div>
     </div>
 
     <div class="topic-tags">
@@ -268,6 +268,30 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
         });
 
         function reload() { comm_table.ajax.reload(null, false); }
+
+        // Live updates: new texts/missed calls land via the Quo webhook in
+        // the background, so without polling the page only ever reflects
+        // whatever was true at the last manual reload. Skip a tick while a
+        // modal is open so the table doesn't shift under someone mid-edit.
+        function refreshStats() {
+            $.getJSON('{{ url("communications-stats") }}', function(data) {
+                $('[data-stat="pending"]').text(data.counts.pending);
+                $('[data-stat="overdue"]').text(data.counts.overdue);
+                $('[data-stat="resolved"]').text(data.counts.resolved);
+                $('.topic-tag').each(function() {
+                    var topic = $(this).data('topic');
+                    $(this).find('.count').text(data.topic_counts[topic] || 0);
+                });
+            });
+        }
+
+        setInterval(function() {
+            if ($('.modal.in').length) {
+                return;
+            }
+            reload();
+            refreshStats();
+        }, 20000);
 
         $('#status_filter, #topic_filter, #channel_filter').on('change', reload);
 
