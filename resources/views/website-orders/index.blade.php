@@ -104,11 +104,13 @@
   @else
     @php
       $tabDefs = [
-        'needs_action' => ['label' => 'Needs Action', 'hot' => true],
-        'to_ship'      => ['label' => 'To Ship'],
-        'pickup'       => ['label' => 'Pickup'],
-        'completed'    => ['label' => 'Completed'],
-        'archived'     => ['label' => 'Archived'],
+        'needs_action'    => ['label' => 'Needs Action', 'hot' => true],
+        'to_ship'         => ['label' => 'To Ship'],
+        'pickup'          => ['label' => 'Pickup'],
+        'preorder_ship'   => ['label' => 'Preorder · To Ship'],
+        'preorder_pickup' => ['label' => 'Preorder · Pickup'],
+        'completed'       => ['label' => 'Completed'],
+        'archived'        => ['label' => 'Archived'],
       ];
       $baseQuery = array_filter([
         'status' => $statusFilter,
@@ -147,6 +149,14 @@
 
     @if($activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
       <div class="wo-banner warn">These orders need to be packed and shipped — set status to Shipped and enter a tracking number.</div>
+    @endif
+
+    @if($activeTab === 'preorder_ship')
+      <div class="wo-banner warn">These orders include at least one item that isn't in stock yet. Nothing to ship until the street date hits, check back once the item arrives.</div>
+    @endif
+
+    @if($activeTab === 'preorder_pickup')
+      <div class="wo-banner warn">These orders include at least one item that isn't in stock yet. Not shipped - the customer collects in store, sometimes later than the street date (e.g. picking up at an event).</div>
     @endif
 
     <form method="GET" action="{{ route('website-orders.index') }}" class="wo-filters">

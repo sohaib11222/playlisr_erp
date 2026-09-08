@@ -42,12 +42,18 @@ class WebsiteOrdersController extends Controller
 
     // Tab definitions — same rules as the TABS constant in
     // src/app/admin/orders/page.jsx. Archived is handled separately (it
-    // matches by the `archived` flag, not by status).
+    // matches by the `archived` flag, not by status). preorder_ship/
+    // preorder_pickup mirror the website's carve-out: an order with any
+    // not-yet-arrived item is pulled out of Needs Action/To Ship/Pickup
+    // into its own bucket, since there's nothing to action until the
+    // stock actually arrives (see matchesTab()).
     const TABS = [
-        'needs_action' => ['label' => 'Needs Action', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
-        'to_ship'      => ['label' => 'To Ship',      'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
-        'pickup'       => ['label' => 'Pickup',       'statuses' => ['processing', 'ready_for_pickup', 'pending', 'flag', ''], 'fulfillment' => 'pickup'],
-        'completed'    => ['label' => 'Completed',    'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
+        'needs_action'    => ['label' => 'Needs Action',      'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
+        'to_ship'         => ['label' => 'To Ship',           'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
+        'pickup'          => ['label' => 'Pickup',            'statuses' => ['processing', 'ready_for_pickup', 'pending', 'flag', ''], 'fulfillment' => 'pickup'],
+        'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
+        'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
+        'completed'       => ['label' => 'Completed',         'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
     ];
 
     const PICKUP_SLA_WARN_HOURS = 24;
@@ -74,8 +80,18 @@ class WebsiteOrdersController extends Controller
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
+            // Mirror the website: its badge counts only ever see orders
+            // already fetched for the active payment_status filter
+            // (useGetAllOrdersQuery({payment_status})). This bridge pulls
+            // every payment status in one shot, so the same filter has to
+            // be applied here before counting, or the badges run way
+            // ahead of what nivessa.com/admin/orders shows (pending/
+            // failed/refunded orders were inflating every count).
+            if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) {
+                continue;
+            }
             if (!empty($o['archived'])) {
                 $tabCounts['archived']++;
                 continue;
@@ -86,17 +102,28 @@ class WebsiteOrdersController extends Controller
                 $tabCounts['completed']++;
                 continue;
             }
-            if (in_array($status, self::TABS['needs_action']['statuses'], true)) $tabCounts['needs_action']++;
             if (in_array($status, self::TABS['completed']['statuses'], true)) $tabCounts['completed']++;
+
+            // Preorder orders (any item not in stock yet) get their own
+            // buckets — nothing for staff to action until the street date,
+            // so they're excluded from Needs Action/To Ship/Pickup below.
+            if (self::orderHasPreorderItem($o)) {
+                if ($fm === 'shipping' && in_array($status, self::TABS['preorder_ship']['statuses'], true)) {
+                    $tabCounts['preorder_ship']++;
+                }
+                if ($fm === 'pickup' && in_array($status, self::TABS['preorder_pickup']['statuses'], true)) {
+                    $tabCounts['preorder_pickup']++;
+                }
+                continue;
+            }
+
+            if (in_array($status, self::TABS['needs_action']['statuses'], true)) $tabCounts['needs_action']++;
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
                 $tabCounts['to_ship']++;
             }
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
                 $tabCounts['pickup']++;
-                if (
-                    !self::orderHasPreorderItem($o) &&
-                    self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS
-                ) {
+                if (self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS) {
                     $tabCounts['pickup_overdue']++;
                 }
             }
@@ -291,8 +318,20 @@ class WebsiteOrdersController extends Controller
         $def = self::TABS[$tab] ?? null;
         if (!$def) return true;
         $status = $order['order_status'] ?? '';
+        $fm = $order['fulfillment_method'] ?? null;
         $statusOk = in_array($status, $def['statuses'], true);
-        $fulfillmentOk = $def['fulfillment'] === null || ($order['fulfillment_method'] ?? null) === $def['fulfillment'];
+        $fulfillmentOk = $def['fulfillment'] === null || $fm === $def['fulfillment'];
+
+        // Same carve-out as the website: preorder orders only ever show up
+        // in preorder_ship/preorder_pickup, never in the regular buckets.
+        $isPreorder = self::orderHasPreorderItem($order);
+        if ($tab === 'preorder_ship' || $tab === 'preorder_pickup') {
+            return $isPreorder && $statusOk && $fulfillmentOk;
+        }
+        if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup'], true)) {
+            return false;
+        }
+
         return $statusOk && $fulfillmentOk;
     }
 
