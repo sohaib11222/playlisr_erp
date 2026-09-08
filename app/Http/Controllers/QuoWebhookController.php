@@ -287,9 +287,16 @@ class QuoWebhookController extends Controller
             });
 
         if ($beforeTime) {
-            $match = $candidates->first(function ($c) use ($beforeTime) {
+            $eligible = $candidates->filter(function ($c) use ($beforeTime) {
                 return $c->created_at && $c->created_at->lte($beforeTime);
             });
+            // Prefer one that hasn't already gotten a reply — if the real
+            // inbound message this is answering fell outside our fetch
+            // depth, piling onto something already-answered is a worse
+            // guess than at least flagging the newest unanswered one.
+            $match = $eligible->first(function ($c) {
+                return empty($c->resolution_notes);
+            }) ?? $eligible->first();
             if ($match) {
                 return $match;
             }
@@ -469,9 +476,13 @@ class QuoWebhookController extends Controller
             // participant) — there's no inbox-wide "recent" feed on this
             // API. /v1/conversations gives the recently-active threads
             // without needing to know a participant up front, so it's the
-            // entry point: walk the 10 most recent threads on each line,
-            // then pull each thread's last few messages/calls.
-            $convResp = $svc->listRecentConversations($phoneNumberId, 10);
+            // entry point: walk the most recent threads on each line, then
+            // pull each thread's messages/calls. Pulling only 5 per thread
+            // (the original depth) meant a customer with an active back-
+            // and-forth had replies with no real inbound match in our DB —
+            // the fallback then misattached them to whatever unrelated
+            // record was nearest. 30 covers realistic conversation lengths.
+            $convResp = $svc->listRecentConversations($phoneNumberId, 15);
             if (!$convResp['success']) {
                 $errors[] = "$e164 conversations: " . $convResp['msg'];
                 continue;
@@ -483,7 +494,7 @@ class QuoWebhookController extends Controller
                     continue;
                 }
 
-                $msgResp = $svc->listRecentMessages($phoneNumberId, $participant, 5);
+                $msgResp = $svc->listRecentMessages($phoneNumberId, $participant, 30);
                 if (!$msgResp['success']) {
                     $errors[] = "$e164 messages ($participant): " . $msgResp['msg'];
                 } else {
@@ -515,7 +526,7 @@ class QuoWebhookController extends Controller
                     }
                 }
 
-                $callResp = $svc->listRecentCalls($phoneNumberId, $participant, 5);
+                $callResp = $svc->listRecentCalls($phoneNumberId, $participant, 30);
                 if (!$callResp['success']) {
                     $errors[] = "$e164 calls ($participant): " . $callResp['msg'];
                 } else {
