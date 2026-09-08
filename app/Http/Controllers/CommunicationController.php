@@ -78,31 +78,11 @@ class CommunicationController extends Controller
                         : '';
                 })
                 ->editColumn('channel', function ($row) {
-                    $classes = [
-                        'phone_1' => 'label-primary',
-                        'phone_2' => 'label-primary',
-                        'instagram' => 'label-danger',
-                        'whatsapp' => 'label-success',
-                        'facebook' => 'label-info',
-                        'tiktok' => 'label-default',
-                        'email' => 'label-warning',
-                        'other' => 'label-default',
-                    ];
-                    $class = $classes[$row->channel] ?? 'label-default';
                     $text = Communication::CHANNELS[$row->channel] ?? $row->channel;
-                    return '<span class="label ' . $class . '">' . e($text) . '</span>';
+                    return e($text);
                 })
                 ->editColumn('topic', function ($row) {
-                    $classes = [
-                        'unhappy_customer' => 'label-danger',
-                        'shipping' => 'label-info',
-                        'stock' => 'label-primary',
-                        'events' => 'label-success',
-                        'careers' => 'label-default',
-                        'partnerships' => 'label-warning',
-                        'general' => 'label-default',
-                    ];
-                    $class = $classes[$row->topic] ?? 'label-default';
+                    $class = $row->topic === 'unhappy_customer' ? 'label-danger' : 'label-default';
                     $text = Communication::TOPICS[$row->topic] ?? $row->topic;
                     return '<span class="label ' . $class . '">' . e($text) . '</span>';
                 })
@@ -111,8 +91,8 @@ class CommunicationController extends Controller
                         return '<span class="label label-success">Resolved</span>';
                     }
                     return $row->is_overdue
-                        ? '<span class="label label-danger">Unresolved &ndash; High Priority</span>'
-                        : '<span class="label label-warning">Pending</span>';
+                        ? '<span class="label label-danger">Overdue</span>'
+                        : '<span class="label label-default">Pending</span>';
                 })
                 ->addColumn('customer_info', function ($row) {
                     $parts = [];

@@ -44,13 +44,17 @@ body.pos-v2 #comm_table thead th {
   text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em;
   color: #524a3d; font-weight: 700; padding: 12px 12px; border-bottom: 2px solid var(--pos-line); background: transparent; white-space: nowrap; }
 body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; word-break: break-word; }
-body.pos-v2 #comm_table td:nth-child(2), body.pos-v2 #comm_table td:nth-child(3) { min-width: 150px; }
-body.pos-v2 #comm_table td:nth-child(2) .label, body.pos-v2 #comm_table td:nth-child(3) .label { white-space: nowrap !important; }
+body.pos-v2 #comm_table td:nth-child(2) { min-width: 140px; white-space: nowrap; }
+body.pos-v2 #comm_table td:nth-child(3), body.pos-v2 #comm_table td:nth-child(7) { min-width: 110px; }
 body.pos-v2 #comm_table td:nth-child(5) { min-width: 260px; max-width: 380px; }
 body.pos-v2 #comm_table td:nth-child(4) { min-width: 130px; }
 body.pos-v2 #comm_table tbody tr:nth-child(even) { background: rgba(0,0,0,.014); }
 body.pos-v2 #comm_table tbody tr:hover { background: var(--pos-accent-soft); }
-body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: normal; }
+body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: nowrap !important; background: #eee7da; color: #524a3d; }
+body.pos-v2 #comm_table .label-danger { background: #f7e4de; color: #a8422f; }
+body.pos-v2 #comm_table .label-success { background: #e2ede2; color: #3d7a48; }
+body.pos-v2 #comm_table .label-warning { background: #f2e6bf; color: #8a6c00; }
+body.pos-v2 #comm_table .label-default { background: #eee7da; color: #524a3d; }
 body.pos-v2 #comm_table .btn-group { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 body.pos-v2 #comm_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; font-size: 12.5px; padding: 5px 9px; }
 body.pos-v2 #comm_table td small { color: #6b6253; font-size: 13px; }
