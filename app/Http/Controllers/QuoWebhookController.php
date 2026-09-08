@@ -327,9 +327,17 @@ class QuoWebhookController extends Controller
         // matters both for the displayed timestamp and for finding which
         // inquiry it was actually responding to (a backfill run today can
         // be attaching a reply that was really sent days ago).
+        // Quo's API returns UTC ("...Z"); parsing it without converting
+        // leaves the Carbon instance internally tagged UTC. Eloquent's
+        // date mutator writes out the wall-clock digits of whatever
+        // timezone the instance currently holds, then re-reads that same
+        // string later assuming it's in the app's timezone (Pacific) — so
+        // an unconverted UTC timestamp silently becomes 7-8 hours wrong
+        // once round-tripped, breaking chronological comparisons against
+        // natively-created (already-Pacific) rows.
         $eventTime = null;
         try {
-            $eventTime = $sentAt ? \Carbon::parse($sentAt) : now();
+            $eventTime = $sentAt ? \Carbon::parse($sentAt)->setTimezone(config('app.timezone')) : now();
         } catch (\Throwable $e) {
             $eventTime = now();
         }
@@ -382,7 +390,11 @@ class QuoWebhookController extends Controller
                 // Never touch anything staff may have already hand-edited.
                 if ($occurredAt) {
                     try {
-                        $real = \Carbon::parse($occurredAt);
+                        // Quo's API is UTC — must convert before comparing/
+                        // storing, or this "fix" just re-corrupts the row by
+                        // another ~7-8hr offset every time it runs (see the
+                        // note on the identical conversion in attachReply()).
+                        $real = \Carbon::parse($occurredAt)->setTimezone(config('app.timezone'));
                         if (!$existing->created_at || abs($existing->created_at->diffInMinutes($real)) > 2) {
                             $existing->created_at = $real;
                             $existing->save();
@@ -408,7 +420,7 @@ class QuoWebhookController extends Controller
         // flag, and matching a reply to the right inquiry.
         if ($occurredAt) {
             try {
-                $c->created_at = \Carbon::parse($occurredAt);
+                $c->created_at = \Carbon::parse($occurredAt)->setTimezone(config('app.timezone'));
             } catch (\Throwable $e) {
             }
         }
