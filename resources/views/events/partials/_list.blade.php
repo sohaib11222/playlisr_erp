@@ -118,8 +118,40 @@
         <td class="ev-meta">{{ $locLabels ? implode(' + ', $locLabels) : '—' }}@if(!empty($ev['locationDetail'])) <br>({{ ucfirst($ev['locationDetail']) }})@endif</td>
         <td class="ev-meta">{{ $eventLead !== '' ? $eventLead : '—' }}</td>
         <td style="white-space:nowrap;">{{ $rsvpCount === null ? '—' : $rsvpCount }}@if($attendByStore)<div class="ev-meta">{!! $attendByStore !!}</div>@endif</td>
-        <td style="white-space:nowrap;">{{ $vinylCount === null ? '—' : $vinylCount }}@if($vinylByStore)<div class="ev-meta">{!! $vinylByStore !!}</div>@endif</td>
-        <td style="white-space:nowrap;">{{ $cdCount === null ? '—' : $cdCount }}@if($cdByStore)<div class="ev-meta">{!! $cdByStore !!}</div>@endif</td>
+        <td>
+          @php
+            $vinylLines = [];
+            if ($sc) {
+              $hwV = (int) ($sc['hollywood']['vinyl'] ?? 0);
+              if ($hwV) { $vinylLines['HW'] = $hwV; }
+              if ($picoV) { $vinylLines['Pico'] = $picoV; }
+            }
+          @endphp
+          @if(count($vinylLines))
+            @foreach($vinylLines as $store => $n)
+              <div style="font-size:12px;line-height:1.5;white-space:nowrap;"><strong class="{{ $store === 'HW' ? 'ev-store-hollywood' : 'ev-store-pico' }}">{{ $store }}:</strong> {{ $n }} vinyl</div>
+            @endforeach
+          @else
+            <span class="ev-meta">{{ $vinylCount === null ? '—' : $vinylCount . ' vinyl' }}</span>
+          @endif
+        </td>
+        <td>
+          @php
+            $cdLines = [];
+            if ($sc) {
+              $hwC = (int) ($sc['hollywood']['cd'] ?? 0);
+              if ($hwC) { $cdLines['HW'] = $hwC; }
+              if ($picoC) { $cdLines['Pico'] = $picoC; }
+            }
+          @endphp
+          @if(count($cdLines))
+            @foreach($cdLines as $store => $n)
+              <div style="font-size:12px;line-height:1.5;white-space:nowrap;"><strong class="{{ $store === 'HW' ? 'ev-store-hollywood' : 'ev-store-pico' }}">{{ $store }}:</strong> {{ $n }} CD</div>
+            @endforeach
+          @else
+            <span class="ev-meta">{{ $cdCount === null ? '—' : $cdCount . ' CD' }}</span>
+          @endif
+        </td>
         <td>
           @if(count($orderedLines))
             @foreach($orderedLines as $store => $line)

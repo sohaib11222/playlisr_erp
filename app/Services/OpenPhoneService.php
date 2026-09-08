@@ -149,7 +149,16 @@ class OpenPhoneService
         try {
             $url = self::API_BASE . $path;
             if ($query) {
-                $url .= '?' . http_build_query($query);
+                // Array values (e.g. participants) must repeat the bare key
+                // ("participants=A&participants=B"), not PHP's default
+                // bracketed/indexed form — the Quo API rejects that shape.
+                $parts = [];
+                foreach ($query as $key => $value) {
+                    foreach ((array) $value as $v) {
+                        $parts[] = urlencode($key) . '=' . urlencode((string) $v);
+                    }
+                }
+                $url .= '?' . implode('&', $parts);
             }
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -186,16 +195,26 @@ class OpenPhoneService
         return $this->get('/phone-numbers');
     }
 
-    /** Most recent messages on a line, newest first. No participant filter needed on this account's v1 API. */
-    public function listRecentMessages(string $phoneNumberId, int $maxResults = 30): array
+    /**
+     * Recent conversations (threads) on a line, most recently active first.
+     * Unlike /messages and /calls, this endpoint doesn't need a participant
+     * up front — it's the entry point for "what's been happening lately."
+     */
+    public function listRecentConversations(string $phoneNumberId, int $maxResults = 10): array
     {
-        return $this->get('/messages', ['phoneNumberId' => $phoneNumberId, 'maxResults' => $maxResults]);
+        return $this->get('/conversations', ['phoneNumbers' => [$phoneNumberId], 'maxResults' => $maxResults]);
     }
 
-    /** Most recent calls on a line, newest first. */
-    public function listRecentCalls(string $phoneNumberId, int $maxResults = 30): array
+    /** Messages in one thread (participant required by the API), newest first. */
+    public function listRecentMessages(string $phoneNumberId, string $participant, int $maxResults = 5): array
     {
-        return $this->get('/calls', ['phoneNumberId' => $phoneNumberId, 'maxResults' => $maxResults]);
+        return $this->get('/messages', ['phoneNumberId' => $phoneNumberId, 'participants' => [$participant], 'maxResults' => $maxResults]);
+    }
+
+    /** Calls in one thread (participant required by the API), newest first. */
+    public function listRecentCalls(string $phoneNumberId, string $participant, int $maxResults = 5): array
+    {
+        return $this->get('/calls', ['phoneNumberId' => $phoneNumberId, 'participants' => [$participant], 'maxResults' => $maxResults]);
     }
 
     /**

@@ -328,45 +328,64 @@ class QuoWebhookController extends Controller
                 continue;
             }
 
-            $msgResp = $svc->listRecentMessages($phoneNumberId, 30);
-            if (!$msgResp['success']) {
-                $errors[] = "$e164 messages: " . $msgResp['msg'];
-            } else {
-                foreach ($msgResp['data'] as $m) {
-                    if (($m['direction'] ?? '') !== 'incoming') {
-                        continue;
-                    }
-                    $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
-                    $ok = $this->logCommunication(
-                        $business_id, $system_user_id, $channel,
-                        $m['from'] ?? null, (string) ($m['text'] ?? $m['body'] ?? ''), $externalId
-                    );
-                    $ok ? $imported++ : $skipped++;
-                }
+            // /v1/messages and /v1/calls are thread-scoped (they require a
+            // participant) — there's no inbox-wide "recent" feed on this
+            // API. /v1/conversations gives the recently-active threads
+            // without needing to know a participant up front, so it's the
+            // entry point: walk the 10 most recent threads on each line,
+            // then pull each thread's last few messages/calls.
+            $convResp = $svc->listRecentConversations($phoneNumberId, 10);
+            if (!$convResp['success']) {
+                $errors[] = "$e164 conversations: " . $convResp['msg'];
+                continue;
             }
 
-            $callResp = $svc->listRecentCalls($phoneNumberId, 30);
-            if (!$callResp['success']) {
-                $errors[] = "$e164 calls: " . $callResp['msg'];
-            } else {
-                foreach ($callResp['data'] as $call) {
-                    if (($call['direction'] ?? '') !== 'incoming') {
-                        continue;
+            foreach ($convResp['data'] as $conv) {
+                $participant = $conv['participants'][0] ?? null;
+                if (!$participant) {
+                    continue;
+                }
+
+                $msgResp = $svc->listRecentMessages($phoneNumberId, $participant, 5);
+                if (!$msgResp['success']) {
+                    $errors[] = "$e164 messages ($participant): " . $msgResp['msg'];
+                } else {
+                    foreach ($msgResp['data'] as $m) {
+                        if (($m['direction'] ?? '') !== 'incoming') {
+                            continue;
+                        }
+                        $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
+                        $ok = $this->logCommunication(
+                            $business_id, $system_user_id, $channel,
+                            $m['from'] ?? $participant, (string) ($m['text'] ?? $m['body'] ?? ''), $externalId
+                        );
+                        $ok ? $imported++ : $skipped++;
                     }
-                    $status = (string) ($call['status'] ?? '');
-                    if (in_array($status, ['answered', 'ai-handled'], true)) {
-                        continue;
+                }
+
+                $callResp = $svc->listRecentCalls($phoneNumberId, $participant, 5);
+                if (!$callResp['success']) {
+                    $errors[] = "$e164 calls ($participant): " . $callResp['msg'];
+                } else {
+                    foreach ($callResp['data'] as $call) {
+                        if (($call['direction'] ?? '') !== 'incoming') {
+                            continue;
+                        }
+                        $status = (string) ($call['status'] ?? '');
+                        if (in_array($status, ['answered', 'ai-handled'], true)) {
+                            continue;
+                        }
+                        $externalId = !empty($call['id']) ? 'quo-call-' . $call['id'] : null;
+                        $message = 'Missed call' . ($status !== '' ? ' (' . $status . ')' : '') . '.';
+                        if (!empty($call['hasVoicemail'])) {
+                            $message .= ' Voicemail left — check Quo for the recording.';
+                        }
+                        $ok = $this->logCommunication(
+                            $business_id, $system_user_id, $channel,
+                            $call['from'] ?? $participant, $message, $externalId
+                        );
+                        $ok ? $imported++ : $skipped++;
                     }
-                    $externalId = !empty($call['id']) ? 'quo-call-' . $call['id'] : null;
-                    $message = 'Missed call' . ($status !== '' ? ' (' . $status . ')' : '') . '.';
-                    if (!empty($call['hasVoicemail'])) {
-                        $message .= ' Voicemail left — check Quo for the recording.';
-                    }
-                    $ok = $this->logCommunication(
-                        $business_id, $system_user_id, $channel,
-                        $call['from'] ?? null, $message, $externalId
-                    );
-                    $ok ? $imported++ : $skipped++;
                 }
             }
         }
@@ -375,7 +394,7 @@ class QuoWebhookController extends Controller
             'success' => true,
             'imported' => $imported,
             'skipped' => $skipped,
-            'errors' => $errors,
+            'errors' => array_slice(array_values(array_unique($errors)), 0, 5),
         ]);
     }
 
