@@ -364,6 +364,12 @@ class QuoWebhookController extends Controller
     {
         $this->requireAdmin();
 
+        // This walks up to ~40 sequential Quo API calls and can take a
+        // couple minutes — keep running even if the browser tab that
+        // triggered it navigates away or gets closed mid-request.
+        ignore_user_abort(true);
+        set_time_limit(0);
+
         $business_id = optional(Business::first())->id;
         $system_user_id = $business_id
             ? optional(\DB::table('users')->where('business_id', $business_id)->orderBy('id')->first())->id
