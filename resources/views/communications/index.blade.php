@@ -274,7 +274,7 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 success: function(result) {
                     $btn.prop('disabled', false).html('<i class="fa fa-download"></i> Import Recent from Quo');
                     if (result.success) {
-                        toastr.success('Imported ' + result.imported + ' new, skipped ' + result.skipped + ' already-logged.');
+                        toastr.success('Imported ' + result.imported + ' new, skipped ' + result.skipped + ' already-logged, re-tagged ' + (result.recategorized || 0) + ' topics.');
                         (result.errors || []).forEach(function(e) { toastr.warning(e); });
                         reload();
                     } else {

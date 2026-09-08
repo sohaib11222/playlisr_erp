@@ -282,6 +282,56 @@ class QuoWebhookController extends Controller
             });
     }
 
+    /**
+     * Attach an outbound reply to the customer's most recent inquiry (any
+     * status), or create a standalone resolved record if none exists so
+     * the reply is never silently dropped. Shared by the live webhook
+     * (message.delivered) and the historical backfill import.
+     */
+    private function attachReply(int $business_id, int $system_user_id, ?string $recipient, ?string $sender, string $text, ?string $externalId): void
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return;
+        }
+
+        $target = $this->findRecentByContact($business_id, $recipient);
+        $stamp = now()->format('n/j g:ia');
+        // The target's own external_id is usually already taken by the
+        // inbound message it was created from, so dedupe a retried/re-run
+        // delivery by looking for this reply's id inside the notes
+        // themselves rather than the external_id column.
+        $marker = $externalId ? '<!--' . $externalId . '-->' : '';
+
+        if ($target) {
+            if ($marker !== '' && strpos((string) $target->resolution_notes, $marker) !== false) {
+                return;
+            }
+            $target->resolution_notes = trim(
+                ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text . $marker
+            );
+            $target->save();
+            return;
+        }
+
+        if ($externalId && Communication::where('business_id', $business_id)->where('external_id', $externalId)->exists()) {
+            return;
+        }
+
+        $channel = $this->channelForNumber($sender) ?? 'other';
+        $c = new Communication();
+        $c->business_id = $business_id;
+        $c->channel = $channel;
+        $c->topic = 'general';
+        $c->status = 'resolved';
+        $c->contact_info = $recipient;
+        $c->message = '(no inbound message logged for this contact)';
+        $c->resolution_notes = "[$stamp] " . $text;
+        $c->external_id = $externalId;
+        $c->created_by = $system_user_id;
+        $c->save();
+    }
+
     /** Insert a pending inquiry unless one with this external_id already exists (idempotent). */
     private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId): bool
     {
@@ -292,7 +342,7 @@ class QuoWebhookController extends Controller
         $c = new Communication();
         $c->business_id = $business_id;
         $c->channel = $channel;
-        $c->topic = 'general';
+        $c->topic = Communication::guessTopic($message);
         $c->status = 'pending';
         $c->contact_info = $contact;
         $c->message = $message;
@@ -375,15 +425,28 @@ class QuoWebhookController extends Controller
                     $errors[] = "$e164 messages ($participant): " . $msgResp['msg'];
                 } else {
                     foreach ($msgResp['data'] as $m) {
-                        if (($m['direction'] ?? '') !== 'incoming') {
-                            continue;
+                        $direction = $m['direction'] ?? '';
+                        $text = (string) ($m['text'] ?? $m['body'] ?? '');
+
+                        if ($direction === 'incoming') {
+                            $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
+                            $ok = $this->logCommunication(
+                                $business_id, $system_user_id, $channel,
+                                $m['from'] ?? $participant, $text, $externalId
+                            );
+                            $ok ? $imported++ : $skipped++;
+                        } elseif ($direction === 'outgoing') {
+                            // A reply staff already sent, possibly before this
+                            // backfill ever ran — attach it the same way a
+                            // live message.delivered webhook would, so a
+                            // conversation that's actually been handled stops
+                            // showing as untouched.
+                            $externalId = !empty($m['id']) ? 'quo-reply-' . $m['id'] : null;
+                            $this->attachReply(
+                                $business_id, $system_user_id,
+                                $m['to'] ?? $participant, $m['from'] ?? null, $text, $externalId
+                            );
                         }
-                        $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
-                        $ok = $this->logCommunication(
-                            $business_id, $system_user_id, $channel,
-                            $m['from'] ?? $participant, (string) ($m['text'] ?? $m['body'] ?? ''), $externalId
-                        );
-                        $ok ? $imported++ : $skipped++;
                     }
                 }
 
@@ -414,10 +477,35 @@ class QuoWebhookController extends Controller
             }
         }
 
+        // Re-categorize anything still sitting on the default "General
+        // Inquiry" topic — covers both what this run just imported and
+        // whatever was already logged before auto-categorization existed.
+        // Missed-call placeholders and the no-inbound-record placeholder
+        // have no real content to classify, so they're left alone.
+        $recategorized = 0;
+        Communication::where('business_id', $business_id)
+            ->where('topic', 'general')
+            ->whereNotNull('message')
+            ->where('message', '!=', '')
+            ->where('message', 'not like', 'Missed call%')
+            ->where('message', 'not like', '(no inbound message logged%')
+            ->orderBy('id')
+            ->chunkById(200, function ($rows) use (&$recategorized) {
+                foreach ($rows as $row) {
+                    $guess = Communication::guessTopic($row->message);
+                    if ($guess !== 'general' && $guess !== $row->topic) {
+                        $row->topic = $guess;
+                        $row->save();
+                        $recategorized++;
+                    }
+                }
+            });
+
         return response()->json([
             'success' => true,
             'imported' => $imported,
             'skipped' => $skipped,
+            'recategorized' => $recategorized,
             'errors' => array_slice(array_values(array_unique($errors)), 0, 5),
         ]);
     }
@@ -510,38 +598,10 @@ class QuoWebhookController extends Controller
                 $recipient = $context['recipientIdentifiers'][0] ?? $resource['to'] ?? null;
                 $recipient = is_array($recipient) ? ($recipient[0] ?? null) : $recipient;
                 $sender = $context['senderIdentifier'] ?? $resource['from'] ?? null;
-                $text = trim((string) ($resource['text'] ?? $resource['body'] ?? ''));
+                $text = (string) ($resource['text'] ?? $resource['body'] ?? '');
                 $externalId = !empty($resource['id']) ? 'quo-reply-' . $resource['id'] : null;
 
-                if ($text !== '') {
-                    $target = $this->findRecentByContact($business_id, $recipient);
-                    $stamp = now()->format('n/j g:ia');
-                    // The target's own external_id is usually already taken by
-                    // the inbound message it was created from, so dedupe a
-                    // retried delivery by looking for this reply's id inside
-                    // the notes themselves rather than the external_id column.
-                    $marker = $externalId ? '<!--' . $externalId . '-->' : '';
-
-                    if ($target && ($marker === '' || strpos((string) $target->resolution_notes, $marker) === false)) {
-                        $target->resolution_notes = trim(
-                            ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text . $marker
-                        );
-                        $target->save();
-                    } elseif (!$target && (!$externalId || !Communication::where('business_id', $business_id)->where('external_id', $externalId)->exists())) {
-                        $channel = $this->channelForNumber($sender) ?? 'other';
-                        $c = new Communication();
-                        $c->business_id = $business_id;
-                        $c->channel = $channel;
-                        $c->topic = 'general';
-                        $c->status = 'resolved';
-                        $c->contact_info = $recipient;
-                        $c->message = '(no inbound message logged for this contact)';
-                        $c->resolution_notes = "[$stamp] " . $text;
-                        $c->external_id = $externalId;
-                        $c->created_by = $system_user_id;
-                        $c->save();
-                    }
-                }
+                $this->attachReply($business_id, $system_user_id, $recipient, $sender, $text, $externalId);
             }
             // Other event types (ringing, tasks, contacts, etc.) are
             // acknowledged but not logged — nothing for staff to act on.
