@@ -20,7 +20,7 @@ class CommunicationController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $channels = Communication::CHANNELS;
         $topics = Communication::TOPICS;
-        $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'unreplied' => 'Not Replied To', 'resolved' => 'Resolved'];
+        $statuses = ['pending' => 'Pending', 'overdue' => 'Unresolved 1hr+', 'unreplied' => 'Not Replied To', 'replied' => 'Replied', 'resolved' => 'Resolved'];
 
         if (request()->ajax()) {
             // Bind the cutoff from PHP (app timezone, America/Los_Angeles)
@@ -47,6 +47,8 @@ class CommunicationController extends Controller
                 } elseif (request()->status == 'unreplied') {
                     $rows->where('communications.status', 'pending')
                         ->whereNull('communications.resolution_notes');
+                } elseif (request()->status == 'replied') {
+                    $rows->whereNotNull('communications.resolution_notes');
                 } else {
                     $rows->where('communications.status', request()->status);
                 }
