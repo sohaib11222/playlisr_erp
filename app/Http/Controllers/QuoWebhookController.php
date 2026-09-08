@@ -441,6 +441,36 @@ class QuoWebhookController extends Controller
      * webhook (set up 2026-09-02) never saw — safe to run repeatedly since
      * every insert is deduped on external_id.
      */
+    /**
+     * TEMPORARY diagnostic: raw Quo API data for one line, to check whether
+     * a gap in the Hub is a real absence of contact vs. an import/webhook
+     * bug. Remove once resolved.
+     */
+    public function debugLine(Request $request)
+    {
+        $this->requireAdmin();
+        $svc = new \App\Services\OpenPhoneService();
+        $numbersResp = $svc->listPhoneNumbers();
+        $target = $request->input('number', '+12135771648');
+
+        $phoneNumberId = null;
+        foreach ($numbersResp['data'] ?? [] as $pn) {
+            if ($svc->normalize((string) ($pn['number'] ?? '')) === $target) {
+                $phoneNumberId = $pn['id'];
+            }
+        }
+        if (!$phoneNumberId) {
+            return response()->json(['numbersResp' => $numbersResp, 'error' => 'phoneNumberId not found for ' . $target]);
+        }
+
+        $convResp = $svc->listRecentConversations($phoneNumberId, 15);
+
+        return response()->json([
+            'phoneNumberId' => $phoneNumberId,
+            'convResp' => $convResp,
+        ]);
+    }
+
     public function importRecent(Request $request)
     {
         $this->requireAdmin();
