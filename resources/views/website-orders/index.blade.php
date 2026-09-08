@@ -487,5 +487,24 @@
       }
     </script>
   @endif
+
+  {{-- Keep this page from going stale — it only pulled fresh data from the
+       website on load/navigation, so a new order or a status change made on
+       nivessa.com/admin/orders wouldn't show up until someone manually
+       reloaded. Auto-reload every 60s, skipped while a dialog is open or a
+       filter field has focus so it never yanks the page out from under
+       someone mid-edit. --}}
+  <script>
+    (function () {
+      setInterval(function () {
+        var statusDialog = document.getElementById('wo-status-dialog');
+        var cancelDialog = document.getElementById('wo-cancel-dialog');
+        if ((statusDialog && statusDialog.open) || (cancelDialog && cancelDialog.open)) return;
+        var active = document.activeElement;
+        if (active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName)) return;
+        window.location.reload();
+      }, 60000);
+    })();
+  </script>
 </div>
 @endsection
