@@ -43,7 +43,7 @@ body.pos-v2 #comm_table { width: 100% !important; border-collapse: collapse; }
 body.pos-v2 #comm_table thead th {
   text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em;
   color: #524a3d; font-weight: 700; padding: 12px 12px; border-bottom: 2px solid var(--pos-line); background: transparent; white-space: nowrap; }
-body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; word-break: break-word; }
+body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); overflow-wrap: break-word; word-break: normal; }
 body.pos-v2 #comm_table td:nth-child(2) { min-width: 140px; white-space: nowrap; }
 body.pos-v2 #comm_table td:nth-child(3), body.pos-v2 #comm_table td:nth-child(7) { min-width: 110px; }
 body.pos-v2 #comm_table td:nth-child(5) { min-width: 260px; width: 40%; }
