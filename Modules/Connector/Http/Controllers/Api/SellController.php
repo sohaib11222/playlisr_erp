@@ -11,6 +11,7 @@ use App\Transaction;
 use App\TransactionPayment;
 use App\TransactionSellLine;
 use App\Unit;
+use App\VariationLocationDetails;
 use App\Utils\BusinessUtil;
 use App\Utils\CashRegisterUtil;
 use App\Utils\ContactUtil;
@@ -958,6 +959,39 @@ class SellController extends ApiController
                                     $input['location_id'],
                                     $decrease_qty
                                 );
+
+                                // Mirrors SellPosController's oversell guard (Sarah,
+                                // 2026-07-06): a website order can also sell more
+                                // than the system counted. Never leave stock
+                                // negative — floor at 0 and log the discrepancy so
+                                // it's recorded instead of shown as a misleading
+                                // negative. Guarded so it can never break the sale.
+                                try {
+                                    $variation_location_d = VariationLocationDetails::where('variation_id', $product['variation_id'])
+                                        ->where('product_id', $product['product_id'])
+                                        ->where('location_id', $input['location_id'])
+                                        ->first();
+                                    if (!empty($variation_location_d) && $variation_location_d->qty_available < 0) {
+                                        $over_by = abs((float) $variation_location_d->qty_available);
+                                        $variation_location_d->qty_available = 0;
+                                        $variation_location_d->save();
+                                        \Illuminate\Support\Facades\Storage::disk('local')->append(
+                                            'oversell-adjustments-' . \Carbon\Carbon::now()->format('Y-m') . '.jsonl',
+                                            json_encode([
+                                                'at' => \Carbon\Carbon::now()->toDateTimeString(),
+                                                'invoice_no' => $transaction->invoice_no ?? null,
+                                                'transaction_id' => $transaction->id ?? null,
+                                                'location_id' => $input['location_id'],
+                                                'product_id' => $product['product_id'],
+                                                'variation_id' => $product['variation_id'],
+                                                'sold_over_by' => $over_by,
+                                                'source' => 'connector_api',
+                                            ])
+                                        );
+                                    }
+                                } catch (\Throwable $e) {
+                                    \Log::warning('oversell floor/log failed (connector store): ' . $e->getMessage());
+                                }
                             }
 
                             if ($product['product_type'] == 'combo') {
@@ -1003,6 +1037,18 @@ class SellController extends ApiController
                     $transaction->payment_link = $this->transactionUtil->getInvoicePaymentLink($transaction->id, $business_id);
 
                     DB::commit();
+
+                    // Nivessa (real-time stock): mirrors SellPosController's push —
+                    // the website-order path also changes stock, but previously
+                    // never notified nivessa.com, leaving it to the nightly sync
+                    // to catch up. Fire-and-forget; notifySale() itself only acts
+                    // on final sell transactions.
+                    try {
+                        (new \App\Services\NivessaStockNotifier())->notifySale($transaction);
+                    } catch (\Throwable $e) {
+                        \Log::info('nivessa_stock_push_failed (connector store): ' . $e->getMessage());
+                    }
+
                     $output[] = $transaction;
                 } catch (ModelNotFoundException $e) {
                     DB::rollback();
