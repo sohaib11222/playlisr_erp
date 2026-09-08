@@ -1,0 +1,99 @@
+name: Diag rang discrepancy (shift-commission vs attachHourTargets)
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "date to check (Y-m-d)"
+        required: true
+        default: "2026-08-25"
+      user_id:
+        description: "ERP user_id to check"
+        required: true
+        default: "56"
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Compare rang totals across both code paths (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            DATE_IN="${{ github.event.inputs.date }}"
+            UID_IN="${{ github.event.inputs.user_id }}"
+            php artisan tinker --no-ansi <<PHP
+            \$date = '$DATE_IN';
+            \$uid = (int) '$UID_IN';
+            \$net = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+            \$start = \$date . ' 00:00:00';
+            \$end = \$date . ' 23:59:59';
+
+            echo "=== raw transactions for user \$uid on \$date (no location filter) ===\n";
+            \$rows = \DB::table('transactions as t')
+                ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+                ->where('t.business_id', 1)
+                ->where('t.created_by', \$uid)
+                ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+                ->where(function (\$q) { \$q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+                ->whereBetween('t.transaction_date', [\$start, \$end])
+                ->selectRaw("t.id, t.location_id, t.transaction_date, COALESCE(SUM($net), 0) as net")
+                ->groupBy('t.id', 't.location_id', 't.transaction_date')
+                ->orderBy('t.transaction_date')
+                ->get();
+            \$total = 0; \$byLoc = [];
+            foreach (\$rows as \$r) {
+                \$total += (float) \$r->net;
+                \$byLoc[\$r->location_id] = (\$byLoc[\$r->location_id] ?? 0) + (float) \$r->net;
+                echo "  txn=".\$r->id." loc=".\$r->location_id." at=".\$r->transaction_date." net=".round(\$r->net,2)."\n";
+            }
+            echo "TOTAL (all locations) = " . round(\$total, 2) . "\n";
+            foreach (\$byLoc as \$loc => \$sum) { echo "  loc \$loc total = " . round(\$sum, 2) . "\n"; }
+
+            echo "\n=== business_locations ===\n";
+            foreach (\DB::table('business_locations')->where('business_id', 1)->get(['id','name']) as \$l) {
+                echo "  id=".\$l->id." name=".\$l->name."\n";
+            }
+
+            echo "\n=== attachHourTargets daySales path (location_id=2, hollywood) ===\n";
+            \$rc = app(\App\Http\Controllers\ReportController::class);
+            \$refl = new \ReflectionClass(\$rc);
+            \$m = \$refl->getMethod('attachHourTargets');
+            \$m->setAccessible(true);
+            \$lb = \$rc->buildLeaderboardRows(1, \$date, \$date, null, 2, ['with_commission' => true, 'exclude_owners' => false]);
+            \$out = \$m->invoke(\$rc, \$lb, 1, 2, \$date, \$date);
+            foreach (\$out as \$row) {
+                if ((int) \$row->user_id === \$uid) {
+                    echo "  non_whatnot_revenue=".\$row->non_whatnot_revenue."\n";
+                    echo "  daily=".json_encode(\$row->daily)."\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
