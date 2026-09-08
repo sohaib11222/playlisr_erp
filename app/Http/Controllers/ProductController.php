@@ -1571,7 +1571,7 @@ class ProductController extends Controller
             // landed). Push anyway so this button doubles as "force this
             // product to re-sync to the website right now."
             try {
-                (new \App\Services\NivessaStockNotifier())->push([(int) $product->id]);
+                (new \App\Services\NivessaStockNotifier())->push([(int) $product->id], true);
             } catch (\Throwable $pushEx) {
                 Log::warning('Zero stock re-sync push failed for product ' . $id . ': ' . $pushEx->getMessage());
             }
@@ -1610,7 +1610,7 @@ class ProductController extends Controller
         );
 
         try {
-            (new \App\Services\NivessaStockNotifier())->push([(int) $product->id]);
+            (new \App\Services\NivessaStockNotifier())->push([(int) $product->id], true);
         } catch (\Throwable $pushEx) {
             Log::warning('Zero stock website push failed for product ' . $id . ': ' . $pushEx->getMessage());
         }

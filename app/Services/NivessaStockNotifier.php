@@ -73,10 +73,16 @@ class NivessaStockNotifier
     /**
      * POST the affected POS product ids to the website's ERP bridge. Public so
      * ad-hoc callers (e.g. returns, manual reconciles) can reuse it directly.
+     *
+     * $force bypasses the website's "Website Order guard" (which normally
+     * protects a recent website sale from being overwritten by a routine POS
+     * sync for 48h). Only pass true for a deliberate human correction — e.g.
+     * "Zero Stock (Instant)" — never for the routine notifySale() path, since
+     * a normal sale push should never override a legitimate recent sale.
      */
-    public function push(array $posProductIds): void
+    public function push(array $posProductIds, bool $force = false): void
     {
-        $this->postIds('/erp/pos-stock-changed', $posProductIds, 'stock push');
+        $this->postIds('/erp/pos-stock-changed', $posProductIds, 'stock push', $force);
     }
 
     /**
@@ -97,7 +103,7 @@ class NivessaStockNotifier
     }
 
     /** Shared POST-ids-to-bridge implementation used by push() and pushProductChanged(). */
-    private function postIds(string $path, array $posProductIds, string $label): void
+    private function postIds(string $path, array $posProductIds, string $label, bool $force = false): void
     {
         $posProductIds = array_values(array_unique(array_filter(
             array_map('intval', $posProductIds),
@@ -115,7 +121,10 @@ class NivessaStockNotifier
             return;
         }
 
-        $payload = json_encode(['pos_product_ids' => $posProductIds]);
+        $payload = json_encode(array_filter([
+            'pos_product_ids' => $posProductIds,
+            'force'           => $force ?: null,
+        ], static fn ($v) => $v !== null));
 
         try {
             $ch = curl_init($base . $path);
