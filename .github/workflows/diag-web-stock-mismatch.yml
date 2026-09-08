@@ -11,6 +11,10 @@ on:
         description: "Max sample rows to list (count is always exact)"
         required: false
         default: "50"
+      sku:
+        description: "Optional single SKU to check directly (per-location breakdown)"
+        required: false
+        default: ""
 
 concurrency:
   group: production-diag
@@ -44,6 +48,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DIAG_LIMIT: ${{ github.event.inputs.limit }}
+          DIAG_SKU: ${{ github.event.inputs.sku }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -51,28 +56,15 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
           command_timeout: 90s
-          envs: DIAG_LIMIT
+          envs: DIAG_LIMIT,DIAG_SKU
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            export DIAG_LIMIT
+            export DIAG_LIMIT DIAG_SKU
             php artisan tinker --no-ansi <<'PHP'
-            $limit = (int) (getenv('DIAG_LIMIT') ?: 50);
-            $bizId = (int) (config('services.nivessa_web.business_id') ?: 1);
-
-            $totals = \Illuminate\Support\Facades\DB::table('products as p')
-                ->join('variations as v', function ($j) {
-                    $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at');
-                })
-                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
-                ->where('p.business_id', $bizId)
-                ->where('p.is_inactive', 0)
-                ->where('p.not_for_selling', 0)
-                ->groupBy('p.id', 'p.sku', 'p.name')
-                ->havingRaw('SUM(vld.qty_available) <= 0')
-                ->select('p.id as product_id', 'p.sku', 'p.name', \Illuminate\Support\Facades\DB::raw('SUM(vld.qty_available) as total_qty'))
-                ->get();
-
+            $limit = (int) (getenv('DIAG_LIMIT') ?: 50); $sku = trim((string) getenv('DIAG_SKU')); $bizId = (int) (config('services.nivessa_web.business_id') ?: 1);
+            if ($sku !== '') { $rows = \Illuminate\Support\Facades\DB::table('products as p')->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')->where('p.sku', $sku)->select('p.id as product_id', 'p.sku', 'p.name', 'p.is_inactive', 'p.not_for_selling', 'bl.name as location', 'vld.qty_available')->get(); echo "SKU_LOOKUP_JSON: " . $rows->toJson() . "\n"; echo "SKU_TOTAL_QTY: " . $rows->sum('qty_available') . "\n"; }
+            $totals = \Illuminate\Support\Facades\DB::table('products as p')->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')->where('p.business_id', $bizId)->where('p.is_inactive', 0)->where('p.not_for_selling', 0)->groupBy('p.id', 'p.sku', 'p.name')->havingRaw('SUM(vld.qty_available) <= 0')->select('p.id as product_id', 'p.sku', 'p.name', \Illuminate\Support\Facades\DB::raw('SUM(vld.qty_available) as total_qty'))->get();
             echo "for_sale_products_with_total_qty_lte_0: " . $totals->count() . "\n";
             $sample = $totals->sortBy('total_qty')->take($limit)->values();
             echo "RESULT_JSON: " . $sample->toJson() . "\n";
