@@ -686,14 +686,14 @@ class AdminActionHistoryController extends Controller
                 ->with('status', ['success' => 1, 'msg' => "Restored stock on {$restored} variation row(s) from snapshot {$key}."]);
         }
 
-        // zero-bootleg-stock / zero-supplier-stock: rows hold
-        // {id, qty_available} for each variation_location_details row
-        // zeroed by the Bootleg Vendor Match tool or the stock:zero-supplier
-        // command, both of which push to the website on apply — so undo
-        // re-pushes too, same reasoning as zero-single-product-stock below:
-        // don't leave a restored item showing out-of-stock on nivessa.com
-        // until the next nightly sync.
-        if ($action === 'zero-bootleg-stock' || $action === 'zero-supplier-stock') {
+        // zero-bootleg-stock / zero-supplier-stock / zero-connector-oversell-stock:
+        // rows hold {id, qty_available} for each variation_location_details row
+        // zeroed by the Bootleg Vendor Match tool, the stock:zero-supplier
+        // command, or the stock:zero-connector-oversell backfill — all of which
+        // push to the website on apply, so undo re-pushes too, same reasoning
+        // as zero-single-product-stock below: don't leave a restored item
+        // showing out-of-stock on nivessa.com until the next nightly sync.
+        if ($action === 'zero-bootleg-stock' || $action === 'zero-supplier-stock' || $action === 'zero-connector-oversell-stock') {
             $restored = 0;
             $vldIds = [];
             foreach (array_chunk($data['rows'], 500) as $chunk) {
