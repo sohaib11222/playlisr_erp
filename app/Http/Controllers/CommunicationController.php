@@ -198,7 +198,7 @@ class CommunicationController extends Controller
             if ($request->filled('resolution_notes')) {
                 $c->resolution_notes = $request->resolution_notes;
             }
-            $c->is_priority = ($request->has('is_priority') || $request->topic === 'unhappy_customer') ? 1 : 0;
+            $c->is_priority = (filter_var($request->input('is_priority'), FILTER_VALIDATE_BOOLEAN) || $request->topic === 'unhappy_customer') ? 1 : 0;
             $c->assigned_to = $request->assigned_to ?: null;
             $c->status = 'pending';
             $c->created_by = auth()->user()->id;
@@ -271,7 +271,7 @@ class CommunicationController extends Controller
             if ($request->has('resolution_notes')) {
                 $c->resolution_notes = $request->resolution_notes !== '' ? $request->resolution_notes : null;
             }
-            $c->is_priority = ($request->has('is_priority') || $request->topic === 'unhappy_customer') ? 1 : 0;
+            $c->is_priority = (filter_var($request->input('is_priority'), FILTER_VALIDATE_BOOLEAN) || $request->topic === 'unhappy_customer') ? 1 : 0;
             $c->assigned_to = $request->assigned_to ?: null;
             $c->save();
 
