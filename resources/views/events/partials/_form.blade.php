@@ -42,14 +42,14 @@
   </div>
 </div>
 
-{{-- What we ordered, per store and per SKU. Only the store(s) this event is
-     at are shown (both, for a brand-new event). --}}
+{{-- What we ordered, per store and per SKU. Always shows both stores —
+     a store can carry stock for a release even when it isn't hosting the
+     party (e.g. Pico stocking a Hollywood-only listening party). --}}
 @php
   $ordered = (array) ($e['ordered'] ?? []);
   $orderStores = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
   $orderSkus = ['indieVinyl' => 'Indie vinyl', 'stdVinyl' => 'Standard vinyl', 'deluxeVinyl' => 'Deluxe vinyl', 'cassette' => 'Cassette', 'stdCd' => 'Standard CD', 'deluxeCd' => 'Deluxe CD'];
-  $orderLocs = (array) ($e['location'] ?? []);
-  $shownStores = $orderLocs ?: array_keys($orderStores);
+  $shownStores = array_keys($orderStores);
 @endphp
 <div class="ev-row">
   <div class="ev-field" style="flex:1 1 100%;">
