@@ -21,6 +21,7 @@ class Communication extends Model
         'whatsapp' => 'WhatsApp',
         'facebook' => 'Facebook',
         'tiktok' => 'TikTok',
+        'email' => 'Email',
         'other' => 'Other',
     ];
 

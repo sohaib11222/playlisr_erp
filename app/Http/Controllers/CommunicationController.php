@@ -191,6 +191,8 @@ class CommunicationController extends Controller
                 'customer_name' => 'nullable|string|max:255',
                 'contact_info' => 'nullable|string|max:255',
                 'message' => 'nullable|string',
+                'resolution_notes' => 'nullable|string',
+                'occurred_at' => 'nullable|date',
                 'assigned_to' => 'nullable|exists:users,id',
             ]);
 
@@ -201,10 +203,22 @@ class CommunicationController extends Controller
             $c->customer_name = $request->customer_name;
             $c->contact_info = $request->contact_info;
             $c->message = $request->message;
+            if ($request->filled('resolution_notes')) {
+                $c->resolution_notes = $request->resolution_notes;
+            }
             $c->is_priority = ($request->has('is_priority') || $request->topic === 'unhappy_customer') ? 1 : 0;
             $c->assigned_to = $request->assigned_to ?: null;
             $c->status = 'pending';
             $c->created_by = auth()->user()->id;
+            // Backdating support for logging something that happened
+            // earlier (a call from this morning, an email from yesterday)
+            // rather than defaulting to "right now".
+            if ($request->filled('occurred_at')) {
+                try {
+                    $c->created_at = \Carbon::parse($request->occurred_at);
+                } catch (\Throwable $e) {
+                }
+            }
             $c->save();
 
             $output = ['success' => true, 'msg' => __('lang_v1.success'), 'id' => $c->id];
