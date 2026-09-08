@@ -316,7 +316,7 @@ class QuoWebhookController extends Controller
      * the reply is never silently dropped. Shared by the live webhook
      * (message.delivered) and the historical backfill import.
      */
-    private function attachReply(int $business_id, int $system_user_id, $recipient, $sender, string $text, ?string $externalId, ?string $sentAt = null): void
+    private function attachReply(int $business_id, int $system_user_id, $recipient, $sender, string $text, ?string $externalId, ?string $sentAt = null, bool $notify = false): void
     {
         // The webhook payload's "to" is a bare string; the REST API's
         // /v1/messages "to" is an array of recipients. Normalize both.
@@ -363,6 +363,11 @@ class QuoWebhookController extends Controller
                 ($target->resolution_notes ? $target->resolution_notes . "\n" : '') . "[$stamp] " . $text . $marker
             );
             $target->save();
+            // Only for a genuine live reply, and never for Quo's own
+            // canned auto-text — that's not staff actually calling back.
+            if ($notify && !Communication::isAutoReplyText($text)) {
+                Communication::notifyStaff($business_id, new \App\Notifications\CommunicationRepliedNotification($target));
+            }
             return;
         }
 
@@ -759,7 +764,7 @@ class QuoWebhookController extends Controller
                 $text = (string) ($resource['text'] ?? $resource['body'] ?? '');
                 $externalId = !empty($resource['id']) ? 'quo-reply-' . $resource['id'] : null;
 
-                $this->attachReply($business_id, $system_user_id, $recipient, $sender, $text, $externalId);
+                $this->attachReply($business_id, $system_user_id, $recipient, $sender, $text, $externalId, null, true);
             }
             // Other event types (ringing, tasks, contacts, etc.) are
             // acknowledged but not logged — nothing for staff to act on.

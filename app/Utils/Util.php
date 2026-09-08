@@ -1278,7 +1278,12 @@ class Util
         $notifications_data = [];
         foreach ($notifications as $notification) {
             $data = $notification->data;
-            if (in_array($notification->type, [\App\Notifications\RecurringInvoiceNotification::class, \App\Notifications\RecurringExpenseNotification::class])) {
+            if (in_array($notification->type, [
+                \App\Notifications\RecurringInvoiceNotification::class,
+                \App\Notifications\RecurringExpenseNotification::class,
+                \App\Notifications\CommunicationRepliedNotification::class,
+                \App\Notifications\CommunicationResolvedNotification::class,
+            ])) {
                 $msg = '';
                 $icon_class = '';
                 $link = '';
@@ -1307,6 +1312,22 @@ class Util
                     );
                     $icon_class = "fas fa-recycle bg-green";
                     $link = action('ExpenseController@index');
+                } else if (
+                    $notification->type ==
+                    \App\Notifications\CommunicationRepliedNotification::class
+                ) {
+                    $channelLabel = \App\Communication::CHANNELS[$data['channel'] ?? ''] ?? ($data['channel'] ?? '');
+                    $msg = 'Replied to ' . ($data['contact_info'] ?? 'a customer') . ' (' . $channelLabel . ')';
+                    $icon_class = "fas fa-reply bg-green";
+                    $link = action('CommunicationController@index');
+                } else if (
+                    $notification->type ==
+                    \App\Notifications\CommunicationResolvedNotification::class
+                ) {
+                    $channelLabel = \App\Communication::CHANNELS[$data['channel'] ?? ''] ?? ($data['channel'] ?? '');
+                    $msg = 'Resolved inquiry from ' . ($data['contact_info'] ?? 'a customer') . ' (' . $channelLabel . ')';
+                    $icon_class = "fas fa-check-circle bg-green";
+                    $link = action('CommunicationController@index');
                 }
 
                 $notifications_data[] = [

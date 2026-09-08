@@ -388,6 +388,8 @@ class CommunicationController extends Controller
         $c->resolution_notes = trim(($c->resolution_notes ? $c->resolution_notes . "\n" : '') . "[$stamp] " . $request->message);
         $c->save();
 
+        Communication::notifyStaff($business_id, new \App\Notifications\CommunicationRepliedNotification($c));
+
         return response()->json(['success' => true, 'msg' => 'Sent']);
     }
 
@@ -468,6 +470,8 @@ class CommunicationController extends Controller
                 $c->resolution_notes = $request->resolution_notes;
             }
             $c->save();
+
+            Communication::notifyStaff($business_id, new \App\Notifications\CommunicationResolvedNotification($c));
 
             $output = ['success' => true, 'msg' => 'Marked resolved'];
         } catch (\Exception $e) {

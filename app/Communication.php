@@ -185,6 +185,18 @@ class Communication extends Model
         });
     }
 
+    /** Bell-notify every active, logged-in-capable staff member on this
+     * business — shared by the "replied" and "resolved" notification
+     * triggers so both use the same active-staff definition. */
+    public static function notifyStaff(int $business_id, $notification): void
+    {
+        $staff = \App\User::where('business_id', $business_id)
+            ->where('status', 'active')
+            ->where('allow_login', 1)
+            ->get();
+        \Illuminate\Support\Facades\Notification::send($staff, $notification);
+    }
+
     public function business()
     {
         return $this->belongsTo(Business::class);
