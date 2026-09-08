@@ -1,0 +1,59 @@
+name: Diag real payout file location
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Check the actual Storage::disk('local') location (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $disk = \Illuminate\Support\Facades\Storage::disk('local');
+            echo "local disk root = ".public_path('uploads')."\n";
+            echo "listing file exists (via Storage disk) = ".($disk->exists('listing-commission-payouts.json') ? 'yes' : 'no')."\n";
+            echo "sales file exists (via Storage disk) = ".($disk->exists('sales-commission-payouts.json') ? 'yes' : 'no')."\n";
+            if ($disk->exists('listing-commission-payouts.json')) {
+              $j = json_decode($disk->get('listing-commission-payouts.json'), true);
+              echo "listing total entries = ".count($j)."\n";
+              $last = array_slice($j, -8);
+              foreach ($last as $e) { echo "  ".json_encode($e)."\n"; }
+            }
+            if ($disk->exists('sales-commission-payouts.json')) {
+              $j2 = json_decode($disk->get('sales-commission-payouts.json'), true);
+              echo "sales total entries = ".count($j2)."\n";
+              $last2 = array_slice($j2, -8);
+              foreach ($last2 as $e) { echo "  ".json_encode($e)."\n"; }
+            }
+            PHP
+            echo "=== done ==="
