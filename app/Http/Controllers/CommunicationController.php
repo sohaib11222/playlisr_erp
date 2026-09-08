@@ -249,6 +249,7 @@ class CommunicationController extends Controller
                 'customer_name' => 'nullable|string|max:255',
                 'contact_info' => 'nullable|string|max:255',
                 'message' => 'nullable|string',
+                'resolution_notes' => 'nullable|string',
                 'assigned_to' => 'nullable|exists:users,id',
             ]);
 
@@ -257,6 +258,9 @@ class CommunicationController extends Controller
             $c->customer_name = $request->customer_name;
             $c->contact_info = $request->contact_info;
             $c->message = $request->message;
+            if ($request->has('resolution_notes')) {
+                $c->resolution_notes = $request->resolution_notes !== '' ? $request->resolution_notes : null;
+            }
             $c->is_priority = ($request->has('is_priority') || $request->topic === 'unhappy_customer') ? 1 : 0;
             $c->assigned_to = $request->assigned_to ?: null;
             $c->save();

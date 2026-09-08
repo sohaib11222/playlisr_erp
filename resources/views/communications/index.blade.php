@@ -174,6 +174,9 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                     <label>What did they say / ask?</label>
                     <textarea class="form-control" id="comm_message" rows="3"></textarea>
 
+                    <label>Reply / resolution notes (optional)</label>
+                    <textarea class="form-control" id="comm_resolution_notes" rows="3" placeholder="What we told them back, if anything"></textarea>
+
                     <label>Assign to</label>
                     <select class="form-control" id="comm_assigned_to">
                         <option value="">Unassigned</option>
@@ -295,6 +298,7 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
             $('#comm_customer_name').val('');
             $('#comm_contact_info').val('');
             $('#comm_message').val('');
+            $('#comm_resolution_notes').val('');
             $('#comm_assigned_to').val('');
             $('#comm_is_priority').prop('checked', false);
         }
@@ -322,6 +326,7 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 $('#comm_customer_name').val(row.customer_name);
                 $('#comm_contact_info').val(row.contact_info);
                 $('#comm_message').val(row.message);
+                $('#comm_resolution_notes').val(row.resolution_notes || '');
                 $('#comm_assigned_to').val(row.assigned_to || '');
                 $('#comm_is_priority').prop('checked', !!row.is_priority);
                 $('#comm_modal_title').text('Edit Inquiry');
@@ -340,6 +345,7 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 customer_name: $('#comm_customer_name').val(),
                 contact_info: $('#comm_contact_info').val(),
                 message: $('#comm_message').val(),
+                resolution_notes: $('#comm_resolution_notes').val(),
                 assigned_to: $('#comm_assigned_to').val(),
                 is_priority: $('#comm_is_priority').is(':checked') ? 1 : 0,
             };
