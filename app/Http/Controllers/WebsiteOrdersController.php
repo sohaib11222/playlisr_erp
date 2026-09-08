@@ -65,11 +65,6 @@ class WebsiteOrdersController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300');
-        $bridgeError = $resp === null || ($resp['success'] ?? true) === false;
-        $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
-        $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
-
         $activeTab = $request->query('tab', 'needs_action');
         if (!array_key_exists($activeTab, self::TABS) && $activeTab !== 'archived') {
             $activeTab = 'needs_action';
@@ -79,6 +74,15 @@ class WebsiteOrdersController extends Controller
         $search = trim((string) $request->query('q', ''));
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
+
+        // payment_status is passed to the bridge itself (not just filtered
+        // client-side after) so the 300-order window is filled with orders
+        // that actually match, instead of getting crowded out by pending/
+        // failed-payment orders and pushing real matches out of the window.
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=' . urlencode($paymentStatusFilter));
+        $bridgeError = $resp === null || ($resp['success'] ?? true) === false;
+        $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
+        $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
 
         $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
@@ -175,7 +179,10 @@ class WebsiteOrdersController extends Controller
      */
     public function pickupOrdersRows(): array
     {
-        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300');
+        // Only ever wants completed-payment orders (see filter below) — pass
+        // that to the bridge itself so the 300-order window isn't crowded
+        // out by pending/failed-payment orders (same fix as index()).
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=completed');
         if ($resp === null || ($resp['success'] ?? true) === false) {
             return [];
         }
