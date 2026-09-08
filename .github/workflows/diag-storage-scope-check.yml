@@ -1,0 +1,63 @@
+name: Diag storage scope check URGENT
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Check storage/app scope, symlink status, disk (read-only, no writes)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            APP=/www/playlist.nivessa.com/app
+            cd "$APP"
+            echo "--- is storage/ a symlink? ---"
+            ls -la "$APP" | grep -E "^l|storage"
+            echo ""
+            echo "--- is storage/app a symlink? readlink -f ---"
+            readlink -f "$APP/storage" 2>&1
+            readlink -f "$APP/storage/app" 2>&1
+            echo ""
+            echo "--- what's actually in storage/app right now (count + recent) ---"
+            ls -la "$APP/storage/app" 2>&1 | head -60
+            echo ""
+            echo "--- total file count in storage/app ---"
+            find "$APP/storage/app" -maxdepth 1 -type f 2>&1 | wc -l
+            echo ""
+            echo "--- disk usage / free space on this filesystem ---"
+            df -h "$APP/storage" 2>&1
+            echo ""
+            echo "--- any other *.json sidecar files present at all? ---"
+            find "$APP/storage/app" -maxdepth 1 -iname "*.json" 2>&1
+            echo ""
+            echo "--- git status of storage dir (should be all untracked/ignored) ---"
+            git status --short storage/ 2>&1 | head -20
+            echo "=== done ==="
