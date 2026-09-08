@@ -287,8 +287,13 @@ class QuoWebhookController extends Controller
             });
 
         if ($beforeTime) {
-            $eligible = $candidates->filter(function ($c) use ($beforeTime) {
-                return $c->created_at && $c->created_at->lte($beforeTime);
+            // A small grace window: a missed call and its immediate
+            // callback can land within seconds of each other, close enough
+            // that API timestamp precision alone can put the call's
+            // created_at a few seconds AFTER the reply that's answering it.
+            $cutoff = \Carbon::parse($beforeTime)->addMinutes(2);
+            $eligible = $candidates->filter(function ($c) use ($cutoff) {
+                return $c->created_at && $c->created_at->lte($cutoff);
             });
             // Prefer one that hasn't already gotten a reply — if the real
             // inbound message this is answering fell outside our fetch
