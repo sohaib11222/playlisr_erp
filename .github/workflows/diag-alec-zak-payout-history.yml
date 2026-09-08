@@ -1,0 +1,63 @@
+name: Diag alec zak payout history
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Full payout history for Alec (28) and Zak (18) (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $disk = \Illuminate\Support\Facades\Storage::disk('local');
+            $listing = json_decode($disk->get('listing-commission-payouts.json'), true);
+            $sales = json_decode($disk->get('sales-commission-payouts.json'), true);
+            foreach ([28 => 'Alec', 18 => 'Zak'] as $uid => $label) {
+              echo "--- $label (user_id=$uid) LISTING payouts ---\n";
+              foreach ($listing as $p) {
+                if ((int)($p['user_id']??0) === $uid) {
+                  echo "  \$".($p['amount']??'?')." on ".($p['marked_at']??'?')." note=[".($p['note']??'')."]\n";
+                }
+              }
+              echo "--- $label (user_id=$uid) SALES payouts ---\n";
+              foreach ($sales as $p) {
+                if ((int)($p['user_id']??0) === $uid) {
+                  echo "  \$".($p['amount']??'?')." on ".($p['marked_at']??'?')." note=[".($p['note']??'')."]\n";
+                }
+              }
+            }
+            echo "\n--- ALL entries marked_at on/after 2026-09-01 (both files) ---\n";
+            foreach ($listing as $p) { if (($p['marked_at']??'') >= '2026-09-01') echo "  LISTING user_id=".($p['user_id']??'?')." ".($p['name']??'?')." \$".($p['amount']??'?')." ".($p['marked_at']??'?')."\n"; }
+            foreach ($sales as $p) { if (($p['marked_at']??'') >= '2026-09-01') echo "  SALES   user_id=".($p['user_id']??'?')." ".($p['name']??'?')." \$".($p['amount']??'?')." ".($p['marked_at']??'?')."\n"; }
+            PHP
+            echo "=== done ==="
