@@ -108,19 +108,21 @@ class CommunicationController extends Controller
                         $text = trim($row->message);
                         $html = e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
                     }
-                    if (!empty($row->resolution_notes)) {
-                        // Strip the <!--quo-reply-...--> dedupe markers appended
-                        // by the webhook — they're for matching retried
-                        // deliveries, not for display.
-                        $notes = preg_replace('/<!--.*?-->/', '', $row->resolution_notes);
-                        $lines = explode("\n", trim($notes));
-                        $lastReply = trim((string) end($lines));
-                        $preview = strlen($lastReply) > 80 ? substr($lastReply, 0, 80) . '…' : $lastReply;
-                        if ($preview !== '') {
-                            $html .= '<div class="reply-line"><i class="fa fa-reply"></i> ' . e($preview) . '</div>';
-                        }
-                    }
                     return $html;
+                })
+                ->addColumn('reply_status', function ($row) {
+                    if (empty($row->resolution_notes)) {
+                        return '<span class="label label-default">No reply</span>';
+                    }
+                    // Strip the <!--quo-reply-...--> dedupe markers the
+                    // webhook appends — for matching retried deliveries,
+                    // not for display.
+                    $notes = preg_replace('/<!--.*?-->/', '', $row->resolution_notes);
+                    $lines = explode("\n", trim($notes));
+                    $lastReply = trim((string) end($lines));
+                    $preview = strlen($lastReply) > 70 ? substr($lastReply, 0, 70) . '…' : $lastReply;
+                    return '<span class="label label-success" title="' . e($lastReply) . '"><i class="fa fa-reply"></i> Replied</span>'
+                        . ($preview !== '' ? '<div class="reply-preview">' . e($preview) . '</div>' : '');
                 })
                 ->addColumn('assigned_info', function ($row) {
                     return !empty($row->assignee_name) ? e(trim($row->assignee_name)) : '<span class="text-muted">Unassigned</span>';
@@ -143,7 +145,7 @@ class CommunicationController extends Controller
                     $html .= '</div>';
                     return $html;
                 })
-                ->rawColumns(['priority_flag', 'topic', 'status', 'customer_info', 'message_excerpt', 'assigned_info', 'created_info', 'action'])
+                ->rawColumns(['priority_flag', 'topic', 'status', 'customer_info', 'message_excerpt', 'reply_status', 'assigned_info', 'created_info', 'action'])
                 ->make(true);
         }
 
