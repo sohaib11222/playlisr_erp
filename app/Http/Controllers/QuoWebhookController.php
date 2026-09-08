@@ -259,27 +259,43 @@ class QuoWebhookController extends Controller
     }
 
     /**
-     * Find the most recent inquiry from this customer (any status), so an
-     * outbound reply can be attached to it even if it was already marked
-     * resolved before the reply went out. Matches on the last 10 digits
-     * rather than an exact string — contact_info can be stored with or
-     * without a leading "+1" depending on the source event.
+     * Find the inquiry a reply is actually responding to: the customer's
+     * most recent inquiry created AT OR BEFORE the reply itself. A customer
+     * can have more than one open thing going (e.g. a missed call and then
+     * a text minutes later) — without the time cutoff, a reply to the
+     * older one would wrongly attach to whichever is more recent overall.
+     * Falls back to most-recent-overall only if nothing qualifies (a reply
+     * that arrived before we have any record of contact from them at all).
+     * Matches on the last 10 digits rather than an exact string —
+     * contact_info can be stored with or without a leading "+1" depending
+     * on the source event.
      */
-    private function findRecentByContact(int $business_id, ?string $rawNumber): ?Communication
+    private function findRecentByContact(int $business_id, ?string $rawNumber, ?string $beforeTime = null): ?Communication
     {
         $target = substr(preg_replace('/\D/', '', (string) $rawNumber), -10);
         if ($target === '' || strlen($target) < 7) {
             return null;
         }
 
-        return Communication::where('business_id', $business_id)
+        $candidates = Communication::where('business_id', $business_id)
             ->whereNotNull('contact_info')
             ->orderByDesc('created_at')
             ->limit(500)
             ->get()
-            ->first(function ($c) use ($target) {
+            ->filter(function ($c) use ($target) {
                 return substr(preg_replace('/\D/', '', (string) $c->contact_info), -10) === $target;
             });
+
+        if ($beforeTime) {
+            $match = $candidates->first(function ($c) use ($beforeTime) {
+                return $c->created_at && $c->created_at->lte($beforeTime);
+            });
+            if ($match) {
+                return $match;
+            }
+        }
+
+        return $candidates->first();
     }
 
     /**
@@ -288,7 +304,7 @@ class QuoWebhookController extends Controller
      * the reply is never silently dropped. Shared by the live webhook
      * (message.delivered) and the historical backfill import.
      */
-    private function attachReply(int $business_id, int $system_user_id, $recipient, $sender, string $text, ?string $externalId): void
+    private function attachReply(int $business_id, int $system_user_id, $recipient, $sender, string $text, ?string $externalId, ?string $sentAt = null): void
     {
         // The webhook payload's "to" is a bare string; the REST API's
         // /v1/messages "to" is an array of recipients. Normalize both.
@@ -300,8 +316,19 @@ class QuoWebhookController extends Controller
             return;
         }
 
-        $target = $this->findRecentByContact($business_id, $recipient);
-        $stamp = now()->format('n/j g:ia');
+        // Use when the reply was actually sent, not when this code ran —
+        // matters both for the displayed timestamp and for finding which
+        // inquiry it was actually responding to (a backfill run today can
+        // be attaching a reply that was really sent days ago).
+        $eventTime = null;
+        try {
+            $eventTime = $sentAt ? \Carbon::parse($sentAt) : now();
+        } catch (\Throwable $e) {
+            $eventTime = now();
+        }
+
+        $target = $this->findRecentByContact($business_id, $recipient, $eventTime->toDateTimeString());
+        $stamp = $eventTime->format('n/j g:ia');
         // The target's own external_id is usually already taken by the
         // inbound message it was created from, so dedupe a retried/re-run
         // delivery by looking for this reply's id inside the notes
@@ -338,10 +365,26 @@ class QuoWebhookController extends Controller
     }
 
     /** Insert a pending inquiry unless one with this external_id already exists (idempotent). */
-    private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId): bool
+    private function logCommunication(int $business_id, int $system_user_id, string $channel, ?string $contact, string $message, ?string $externalId, ?string $occurredAt = null): bool
     {
-        if ($externalId && Communication::where('business_id', $business_id)->where('external_id', $externalId)->exists()) {
-            return false;
+        if ($externalId) {
+            $existing = Communication::where('business_id', $business_id)->where('external_id', $externalId)->first();
+            if ($existing) {
+                // Self-heal a row from before real timestamps were captured
+                // (created_at used to default to "whenever this import ran").
+                // Never touch anything staff may have already hand-edited.
+                if ($occurredAt) {
+                    try {
+                        $real = \Carbon::parse($occurredAt);
+                        if (!$existing->created_at || abs($existing->created_at->diffInMinutes($real)) > 2) {
+                            $existing->created_at = $real;
+                            $existing->save();
+                        }
+                    } catch (\Throwable $e) {
+                    }
+                }
+                return false;
+            }
         }
 
         $c = new Communication();
@@ -353,6 +396,15 @@ class QuoWebhookController extends Controller
         $c->message = $message;
         $c->external_id = $externalId;
         $c->created_by = $system_user_id;
+        // Backfilled history needs its REAL contact time, not "whenever this
+        // import happened to run" — matters for sort order, the 1hr-overdue
+        // flag, and matching a reply to the right inquiry.
+        if ($occurredAt) {
+            try {
+                $c->created_at = \Carbon::parse($occurredAt);
+            } catch (\Throwable $e) {
+            }
+        }
         $c->save();
 
         return true;
@@ -443,7 +495,8 @@ class QuoWebhookController extends Controller
                             $externalId = !empty($m['id']) ? 'quo-msg-' . $m['id'] : null;
                             $ok = $this->logCommunication(
                                 $business_id, $system_user_id, $channel,
-                                $m['from'] ?? $participant, $text, $externalId
+                                $m['from'] ?? $participant, $text, $externalId,
+                                $m['createdAt'] ?? null
                             );
                             $ok ? $imported++ : $skipped++;
                         } elseif ($direction === 'outgoing') {
@@ -455,7 +508,8 @@ class QuoWebhookController extends Controller
                             $externalId = !empty($m['id']) ? 'quo-reply-' . $m['id'] : null;
                             $this->attachReply(
                                 $business_id, $system_user_id,
-                                $m['to'] ?? $participant, $m['from'] ?? null, $text, $externalId
+                                $m['to'] ?? $participant, $m['from'] ?? null, $text, $externalId,
+                                $m['createdAt'] ?? null
                             );
                         }
                     }
@@ -480,7 +534,8 @@ class QuoWebhookController extends Controller
                         }
                         $ok = $this->logCommunication(
                             $business_id, $system_user_id, $channel,
-                            $call['from'] ?? $participant, $message, $externalId
+                            $call['from'] ?? $participant, $message, $externalId,
+                            $call['createdAt'] ?? null
                         );
                         $ok ? $imported++ : $skipped++;
                     }
