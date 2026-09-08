@@ -106,6 +106,8 @@ class Communication extends Model
      * answered it. Matched case-insensitively against reply text. */
     const AUTO_REPLY_PATTERNS = [
         'sorry we missed your call',
+        'thanks for shopping at',
+        'website sync issue',
     ];
 
     public static function isAutoReplyText(string $text): bool

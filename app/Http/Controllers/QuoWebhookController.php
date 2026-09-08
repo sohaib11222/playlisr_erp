@@ -370,6 +370,15 @@ class QuoWebhookController extends Controller
             return;
         }
 
+        // No real inquiry to attach this to, and it's a known automated
+        // business text (purchase receipt, sync-issue notice, etc.) rather
+        // than a staff reply — fabricating a standalone "resolved" inquiry
+        // out of a routine receipt text is pure noise, not a customer
+        // interaction worth tracking here.
+        if (Communication::isAutoReplyText($text)) {
+            return;
+        }
+
         $channel = $this->channelForNumber($sender) ?? 'other';
         $c = new Communication();
         $c->business_id = $business_id;
