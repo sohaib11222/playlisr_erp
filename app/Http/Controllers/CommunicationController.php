@@ -135,10 +135,12 @@ class CommunicationController extends Controller
                     }
                     // A grouped conversation thread stores each message as
                     // its own "[m/d h:ma] ..." entry (same convention as
-                    // resolution_notes) — show the latest one, not whichever
-                    // happened to be first, so staff see what the customer
-                    // is actually asking about right now.
-                    $entries = Communication::parseReplyEntries($row->message);
+                    // resolution_notes, including the hidden dedupe marker)
+                    // — show the latest one, not whichever happened to be
+                    // first, so staff see what the customer is actually
+                    // asking about right now.
+                    $message = preg_replace('/<!--.*?-->/', '', $row->message);
+                    $entries = Communication::parseReplyEntries($message);
                     if (count($entries) > 1) {
                         usort($entries, function ($a, $b) {
                             if ($a['time'] && $b['time']) return $a['time'] <=> $b['time'];
@@ -149,7 +151,7 @@ class CommunicationController extends Controller
                         $preview = strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text;
                         return e($preview) . ' <span class="text-muted" style="font-size:11px;white-space:nowrap;">(' . count($entries) . ' messages)</span>';
                     }
-                    $text = trim(preg_replace('/^\[\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}[ap]m\]\s*/i', '', trim($row->message)));
+                    $text = trim(preg_replace('/^\[\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}[ap]m\]\s*/i', '', trim($message)));
                     return e(strlen($text) > 90 ? substr($text, 0, 90) . '…' : $text);
                 })
                 ->addColumn('reply_status', function ($row) {
@@ -316,6 +318,7 @@ class CommunicationController extends Controller
         $c = Communication::where('business_id', $business_id)->findOrFail($id);
 
         $stripPrefix = function ($text) {
+            $text = preg_replace('/<!--.*?-->/', '', $text);
             return trim(preg_replace('/^\[[^\]]+\]\s*/', '', $text));
         };
 
