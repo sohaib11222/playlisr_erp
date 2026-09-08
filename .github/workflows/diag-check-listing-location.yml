@@ -1,0 +1,75 @@
+# READ-ONLY diagnostic: for a given Discogs release id, dump the ERP
+# product row's listing_location / bin_position / business location —
+# the only remaining historical record of a bulk-imported Discogs item's
+# real bin once the listing itself has sold and dropped off Discogs's
+# live inventory API. No writes.
+name: Diag check listing location
+
+on:
+  workflow_dispatch:
+    inputs:
+      discogs_release_id:
+        description: "Discogs release id to look up (products.discogs_release_id)"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Look up listing location (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            RELEASE_ID="${{ github.event.inputs.discogs_release_id }}"
+            echo "=== looking up discogs_release_id $RELEASE_ID ==="
+            php artisan tinker --no-ansi <<PHP
+            \$releaseId = (int) "$RELEASE_ID";
+            \$rows = \Illuminate\Support\Facades\DB::table('products')
+              ->where('discogs_release_id', \$releaseId)
+              ->get(['id', 'sku', 'name', 'listing_location', 'bin_position', 'business_location_id']);
+            if (\$rows->isEmpty()) {
+              echo "No ERP product found with discogs_release_id=\$releaseId\n";
+            } else {
+              foreach (\$rows as \$r) {
+                \$loc = \Illuminate\Support\Facades\DB::table('business_locations')->where('id', \$r->business_location_id)->value('name');
+                echo "product_id={\$r->id} sku={\$r->sku} name={\$r->name}\n";
+                echo "  listing_location={\$r->listing_location}\n";
+                echo "  bin_position={\$r->bin_position}\n";
+                echo "  business_location={\$loc}\n";
+              }
+            }
+            PHP
+            echo "=== done ==="
