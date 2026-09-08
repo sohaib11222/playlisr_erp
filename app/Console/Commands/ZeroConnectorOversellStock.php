@@ -136,10 +136,16 @@ class ZeroConnectorOversellStock extends Command
         if ($commit && !empty($touchedProductIds)) {
             try {
                 $notifier = new \App\Services\NivessaStockNotifier();
+                // force=true: this is a deliberate human correction of stock stuck
+                // negative from a real bug, not a routine sale push — same case the
+                // NivessaStockNotifier::push() docblock calls out force for (mirrors
+                // "Zero Stock (Instant)"). Without it, any of these products with a
+                // website sale in the last 48h would have this push silently
+                // swallowed by the website's own Website Order guard.
                 foreach (array_chunk(array_keys($touchedProductIds), 100) as $chunk) {
-                    $notifier->push($chunk);
+                    $notifier->push($chunk, true);
                 }
-                $this->line('Pushed ' . count($touchedProductIds) . ' product(s) to the website.');
+                $this->line('Pushed ' . count($touchedProductIds) . ' product(s) to the website (forced).');
             } catch (\Throwable $pushEx) {
                 $this->error('Website push failed: ' . $pushEx->getMessage());
             }
