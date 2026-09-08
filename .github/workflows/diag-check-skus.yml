@@ -1,15 +1,15 @@
-# READ-ONLY diagnostic: for a given Discogs release id, dump the ERP
-# product row's listing_location / bin_position / business location —
-# the only remaining historical record of a bulk-imported Discogs item's
-# real bin once the listing itself has sold and dropped off Discogs's
-# live inventory API. No writes.
-name: Diag check listing location
+# READ-ONLY diagnostic: for a comma-separated list of SKUs, dump the ERP
+# product row's internal id, discogs_release_id, listing_location, and
+# business location — used to check whether a website product's discogId
+# (suspected to be a mis-copied Discogs release id) actually corresponds to
+# something else, like the ERP's own internal product id. No writes.
+name: Diag check SKUs
 
 on:
   workflow_dispatch:
     inputs:
-      discogs_release_id:
-        description: "Discogs release id to look up (products.discogs_release_id)"
+      skus:
+        description: "Comma-separated SKUs to look up (products.sku)"
         required: true
 
 concurrency:
@@ -41,7 +41,7 @@ jobs:
           done
           exit 0
 
-      - name: Look up listing location (read-only)
+      - name: Look up SKUs (read-only)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -53,12 +53,12 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            RELEASE_ID="${{ github.event.inputs.discogs_release_id }}"
-            echo "=== looking up discogs_release_id $RELEASE_ID ==="
+            SKUS="${{ github.event.inputs.skus }}"
+            echo "=== looking up SKUs: $SKUS ==="
             php artisan tinker --no-ansi <<PHP
-            \$releaseId = (int) "$RELEASE_ID";
-            \$rows = \Illuminate\Support\Facades\DB::table('products')->where('discogs_release_id', \$releaseId)->get(['id', 'sku', 'name', 'listing_location', 'bin_position', 'business_location_id']);
-            \$out = \$rows->map(function (\$r) { \$loc = \Illuminate\Support\Facades\DB::table('business_locations')->where('id', \$r->business_location_id)->value('name'); return ['product_id' => \$r->id, 'sku' => \$r->sku, 'name' => \$r->name, 'listing_location' => \$r->listing_location, 'bin_position' => \$r->bin_position, 'business_location' => \$loc]; });
+            \$skuList = array_map('trim', explode(',', "$SKUS"));
+            \$rows = \Illuminate\Support\Facades\DB::table('products')->whereIn('sku', \$skuList)->get(['id', 'sku', 'name', 'discogs_release_id', 'listing_location', 'bin_position', 'business_location_id']);
+            \$out = \$rows->map(function (\$r) { \$loc = \Illuminate\Support\Facades\DB::table('business_locations')->where('id', \$r->business_location_id)->value('name'); return ['erp_product_id' => \$r->id, 'sku' => \$r->sku, 'name' => \$r->name, 'discogs_release_id' => \$r->discogs_release_id, 'listing_location' => \$r->listing_location, 'bin_position' => \$r->bin_position, 'business_location' => \$loc]; });
             echo "RESULT_JSON: " . \$out->toJson() . "\n";
             PHP
             echo "=== done ==="
