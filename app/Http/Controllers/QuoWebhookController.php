@@ -466,15 +466,18 @@ class QuoWebhookController extends Controller
         $convResp = $svc->listRecentConversations($phoneNumberId, 15);
 
         $msgResp = null;
+        $callResp = null;
         $participant = $request->input('participant');
         if ($participant) {
             $msgResp = $svc->listRecentMessages($phoneNumberId, $participant, 30);
+            $callResp = $svc->listRecentCalls($phoneNumberId, $participant, 30);
         }
 
         return response()->json([
             'phoneNumberId' => $phoneNumberId,
             'convResp' => $convResp,
             'msgResp' => $msgResp,
+            'callResp' => $callResp,
         ]);
     }
 
