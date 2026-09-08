@@ -64,6 +64,10 @@ class CommunicationController extends Controller
                 $rows->where('communications.channel', request()->channel);
             }
 
+            if (filter_var(request()->input('today'), FILTER_VALIDATE_BOOLEAN)) {
+                $rows->whereDate('communications.created_at', now()->toDateString());
+            }
+
             return DataTables::of($rows)
                 ->addColumn('priority_flag', function ($row) {
                     if ($row->is_overdue) {

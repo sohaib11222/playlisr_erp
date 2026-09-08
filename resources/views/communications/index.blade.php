@@ -118,6 +118,10 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                     <option value="{{ $key }}">{{ $label }}</option>
                 @endforeach
             </select>
+
+            <button type="button" class="btn-accent" id="today_toggle" style="background:var(--pos-surface);padding:8px 14px;font-size:13px;">
+                <i class="fa fa-calendar"></i> Today only
+            </button>
         </div>
 
         <div class="table-responsive">
@@ -234,6 +238,7 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                     d.status = $('#status_filter').val();
                     d.topic = $('#topic_filter').val();
                     d.channel = $('#channel_filter').val();
+                    d.today = $('#today_toggle').hasClass('active') ? 1 : 0;
                 }
             },
             columns: [
@@ -264,6 +269,17 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
         $('#overdue_stat').on('click', function() {
             $('#status_filter').val('overdue');
             $('#topic_filter').val('');
+            reload();
+        });
+
+        $('#today_toggle').on('click', function() {
+            var nowActive = $(this).toggleClass('active').hasClass('active');
+            $(this).css({
+                background: nowActive ? 'var(--pos-accent)' : 'var(--pos-surface)',
+            });
+            if (nowActive) {
+                $('#status_filter').val('');
+            }
             reload();
         });
 
