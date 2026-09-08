@@ -7,47 +7,49 @@
 <script>document.body.classList.add('pos-v2');</script>
 
 <style>
-body.pos-v2 .comm-wrap { max-width: 1320px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); }
+body.pos-v2 .comm-wrap { max-width: 1440px; margin: 0 auto; padding: 18px 16px 60px; font-family: "Inter Tight", system-ui, sans-serif; color: var(--pos-ink); font-size: 15px; }
 body.pos-v2 .comm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
-body.pos-v2 .comm-head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
-body.pos-v2 .comm-head .sub { color: #6b6253; margin: 0; font-size: 14px; max-width: 60ch; }
-body.pos-v2 .reply-preview { margin-top: 4px; font-size: 11.5px; color: #6b6253; max-width: 160px; }
+body.pos-v2 .comm-head h1 { font-size: 26px; font-weight: 700; margin: 0 0 5px; }
+body.pos-v2 .comm-head .sub { color: #524a3d; margin: 0; font-size: 14.5px; line-height: 1.5; max-width: 62ch; }
+body.pos-v2 .reply-preview { margin-top: 4px; font-size: 13px; color: #524a3d; max-width: 220px; white-space: normal; line-height: 1.4; }
 body.pos-v2 .comm-stats { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-body.pos-v2 .stat-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 12px; padding: 13px 15px; min-width: 130px; }
-body.pos-v2 .stat-card .n { font-size: 22px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-body.pos-v2 .stat-card .l { font-size: 11.5px; color: #8a8070; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-top: 5px; }
+body.pos-v2 .stat-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 12px; padding: 14px 18px; min-width: 140px; }
+body.pos-v2 .stat-card .n { font-size: 26px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+body.pos-v2 .stat-card .l { font-size: 12.5px; color: #6b6253; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin-top: 6px; }
 body.pos-v2 .stat-card.stat-pending .n { color: #b98f00; }
 body.pos-v2 .stat-card.stat-resolved .n { color: #3d8b4c; }
 body.pos-v2 .topic-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
 body.pos-v2 .topic-tag {
-  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
   background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 999px;
-  padding: 6px 8px 6px 13px; font-size: 12.5px; font-weight: 600; color: var(--pos-ink); line-height: 1; }
+  padding: 8px 10px 8px 15px; font-size: 13.5px; font-weight: 600; color: var(--pos-ink); line-height: 1; }
 body.pos-v2 .topic-tag:hover { background: var(--pos-accent-soft); border-color: var(--pos-accent-deep); }
 body.pos-v2 .topic-tag .count {
-  background: var(--pos-line); color: #6b6253; border-radius: 999px; padding: 3px 8px;
-  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  background: var(--pos-line); color: #524a3d; border-radius: 999px; padding: 3px 9px;
+  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 body.pos-v2 .topic-tag.is-priority { border-color: #e3b3a8; color: #b4432f; }
 body.pos-v2 .topic-tag.is-priority .count { background: #f7e4de; color: #b4432f; }
-body.pos-v2 .comm-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 14px; padding: 18px 20px; margin-bottom: 20px; }
-body.pos-v2 .comm-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-body.pos-v2 .comm-toolbar .filter-label { font-size: 12px; font-weight: 600; color: #5a5145; }
+body.pos-v2 .comm-card { background: var(--pos-surface); border: 1px solid var(--pos-line); border-radius: 14px; padding: 20px 22px; margin-bottom: 20px; }
+body.pos-v2 .comm-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+body.pos-v2 .comm-toolbar .filter-label { font-size: 13px; font-weight: 700; color: #3a342b; }
 body.pos-v2 .comm-toolbar select {
-  border: 1px solid var(--pos-line-2); border-radius: 9px; padding: 8px 11px; font-size: 14px;
+  border: 1px solid var(--pos-line-2); border-radius: 9px; padding: 9px 12px; font-size: 14.5px;
   font-family: inherit; background: #fff; box-shadow: none; height: auto; color: var(--pos-ink); min-width: 170px; }
 body.pos-v2 .comm-toolbar select:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 .btn-accent { background: var(--pos-accent); color: var(--pos-accent-text); border: 1px solid var(--pos-accent-deep);
   border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
 body.pos-v2 .btn-accent:hover { background: var(--pos-accent-deep); color: var(--pos-accent-text); }
-body.pos-v2 #comm_table { width: 100% !important; border-collapse: collapse; }
+body.pos-v2 #comm_table { width: 100% !important; border-collapse: collapse; table-layout: fixed; }
 body.pos-v2 #comm_table thead th {
-  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
-  color: #8a8070; font-weight: 700; padding: 9px 10px; border-bottom: 1px solid var(--pos-line); background: transparent; }
-body.pos-v2 #comm_table tbody td { padding: 11px 10px; border-bottom: 1px solid var(--pos-line); font-size: 13.5px; vertical-align: middle; color: var(--pos-ink); }
+  text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: #524a3d; font-weight: 700; padding: 12px 12px; border-bottom: 2px solid var(--pos-line); background: transparent; }
+body.pos-v2 #comm_table tbody td { padding: 15px 12px; border-bottom: 1px solid var(--pos-line); font-size: 14.5px; line-height: 1.5; vertical-align: middle; color: var(--pos-ink); word-wrap: break-word; }
+body.pos-v2 #comm_table tbody tr:nth-child(even) { background: rgba(0,0,0,.014); }
 body.pos-v2 #comm_table tbody tr:hover { background: var(--pos-accent-soft); }
-body.pos-v2 #comm_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
-body.pos-v2 #comm_table .btn-group { display: inline-flex; gap: 5px; }
-body.pos-v2 #comm_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+body.pos-v2 #comm_table .label { font-size: 12.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; display: inline-block; white-space: normal; }
+body.pos-v2 #comm_table .btn-group { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+body.pos-v2 #comm_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; font-size: 12.5px; padding: 5px 9px; }
+body.pos-v2 #comm_table td small { color: #6b6253; font-size: 13px; }
 body.pos-v2 .dataTables_wrapper .dataTables_filter input,
 body.pos-v2 .dataTables_wrapper .dataTables_length select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 6px 9px; font-family: inherit; background: #fff; }
@@ -126,6 +128,18 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
 
         <div class="table-responsive">
             <table class="table table-hover" id="comm_table" style="width:100%">
+                <colgroup>
+                    <col style="width:30px">
+                    <col style="width:120px">
+                    <col style="width:120px">
+                    <col style="width:130px">
+                    <col style="width:auto">
+                    <col style="width:150px">
+                    <col style="width:150px">
+                    <col style="width:100px">
+                    <col style="width:120px">
+                    <col style="width:110px">
+                </colgroup>
                 <thead>
                     <tr>
                         <th></th>

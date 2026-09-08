@@ -78,7 +78,19 @@ class CommunicationController extends Controller
                         : '';
                 })
                 ->editColumn('channel', function ($row) {
-                    return e(Communication::CHANNELS[$row->channel] ?? $row->channel);
+                    $classes = [
+                        'phone_1' => 'label-primary',
+                        'phone_2' => 'label-primary',
+                        'instagram' => 'label-danger',
+                        'whatsapp' => 'label-success',
+                        'facebook' => 'label-info',
+                        'tiktok' => 'label-default',
+                        'email' => 'label-warning',
+                        'other' => 'label-default',
+                    ];
+                    $class = $classes[$row->channel] ?? 'label-default';
+                    $text = Communication::CHANNELS[$row->channel] ?? $row->channel;
+                    return '<span class="label ' . $class . '">' . e($text) . '</span>';
                 })
                 ->editColumn('topic', function ($row) {
                     $classes = [
@@ -151,7 +163,7 @@ class CommunicationController extends Controller
                     $html .= '</div>';
                     return $html;
                 })
-                ->rawColumns(['priority_flag', 'topic', 'status', 'customer_info', 'message_excerpt', 'reply_status', 'assigned_info', 'created_info', 'action'])
+                ->rawColumns(['priority_flag', 'channel', 'topic', 'status', 'customer_info', 'message_excerpt', 'reply_status', 'assigned_info', 'created_info', 'action'])
                 ->make(true);
         }
 
