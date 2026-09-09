@@ -228,6 +228,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/communications/quo-api-key', 'QuoWebhookController@saveApiKey')->name('quo.api_key.save');
     Route::post('/communications/quo-import', 'QuoWebhookController@importRecent')->name('quo.import');
 
+    // Admin-only: paste a Google App Password for hello@ / orders@ so the
+    // Hub can poll their mail via IMAP — same gitignored-file pattern as
+    // the Quo key above.
+    Route::get('/communications/email-settings', 'CommunicationController@emailSettings')->name('email.settings');
+    Route::post('/communications/email-settings', 'CommunicationController@saveEmailAccount')->name('email.settings.save');
+    Route::post('/communications/email-import', 'CommunicationController@importEmailNow')->name('email.import');
+
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
     Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
@@ -361,6 +368,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // a release id), sealed vinyl first.
     Route::post('/products/name-cleanup/discogs-artist-scan', 'ProductNameController@discogsArtistScan')->name('products.artist.discogs.scan');
     Route::post('/products/name-cleanup/discogs-artist-fill', 'ProductNameController@discogsArtistFill')->name('products.artist.discogs');
+    // Owner-only: fill the genre COLUMN from Discogs (blank-genre products with
+    // a release id), sealed vinyl first. Same shape as the artist fill above.
+    Route::post('/products/name-cleanup/discogs-genre-scan', 'ProductNameController@discogsGenreScan')->name('products.genre.discogs.scan');
+    Route::post('/products/name-cleanup/discogs-genre-fill', 'ProductNameController@discogsGenreFill')->name('products.genre.discogs');
 
     // Owner-only one-click fix: assign blank-genre audio gear (players,
     // boomboxes, turntables) to an "Audio Gear" category. Before the resource.

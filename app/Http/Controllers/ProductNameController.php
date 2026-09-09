@@ -247,6 +247,19 @@ class ProductNameController extends Controller
             });
     }
 
+    /** Music products with a blank genre — same shape as artistlessMusicQuery. */
+    protected function genrelessMusicQuery($business_id, $catIds)
+    {
+        return \DB::table('products')
+            ->where('business_id', $business_id)
+            ->whereIn('category_id', $catIds)
+            ->where(function ($q) {
+                $q->whereNull('genre')
+                  ->orWhereRaw("TRIM(genre) = ''")
+                  ->orWhereRaw("LOWER(TRIM(genre)) REGEXP '^(n/?a|unknown|none)$'");
+            });
+    }
+
     /**
      * Split artist-less music products into: fillable (confident parse) and
      * flagged (needs manual). Returns counts + a capped preview of fillable.
@@ -762,6 +775,16 @@ class ProductNameController extends Controller
         return $artist === '' ? null : $artist;
     }
 
+    /** Comma-joined genre list from a Discogs release's top-level "genres" array. */
+    protected function genreFromRelease($data)
+    {
+        if (!$data) { return null; }
+        $data = (object) $data;
+        $genres = is_array($data->genres ?? null) ? $data->genres : [];
+        $genre = trim(implode(', ', array_filter(array_map('trim', $genres))));
+        return $genre === '' ? null : $genre;
+    }
+
     /** True artist + title from a Discogs release object -> "Artist - Title". */
     protected function nameFromRelease($data)
     {
@@ -1156,6 +1179,193 @@ class ProductNameController extends Controller
             $artist = $this->artistFromRelease($res['data'] ?? null);
             if ($artist !== null && !preg_match('/^various\b/i', trim($artist))) {
                 $sample[] = ['name' => $r->name, 'artist' => $artist];
+            }
+            usleep(1100000);
+        }
+
+        return response()->json(['success' => true, 'total' => $total, 'sample' => $sample]);
+    }
+
+    /**
+     * Fill the GENRE field (not artist/name) from Discogs for music products
+     * that have a blank genre AND a discogs_release_id. Same shape as
+     * discogsArtistFill: two passes (sealed vinyl first), cursor-paged by id,
+     * rate-limited ~55/min, snapshot + undoable via Admin Action History.
+     */
+    public function discogsGenreFill(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'genre')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/genre column on products.']);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $afterId = (int) $request->input('after_id', 0);
+        $max = (int) $request->input('max', 20);
+        if ($max < 1 || $max > 40) { $max = 20; }
+
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured (Business Settings > Integrations).']);
+        }
+
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return response()->json(['success' => true, 'filled' => 0, 'failed' => 0, 'rate_limited' => false, 'done' => true, 'after_id' => 0, 'remaining' => 0, 'phase' => 'sealed']);
+        }
+
+        $phase = $request->input('phase') === 'rest' ? 'rest' : 'sealed';
+        $sealedIds = $this->sealedVinylCategoryIds($business_id);
+        if ($phase === 'sealed' && empty($sealedIds)) {
+            return response()->json(['success' => true, 'filled' => 0, 'failed' => 0, 'rate_limited' => false, 'done' => true, 'after_id' => 0, 'remaining' => 0, 'phase' => 'sealed']);
+        }
+        $scope = function ($q) use ($phase, $sealedIds) {
+            if (empty($sealedIds)) { return $q; }
+            return $phase === 'sealed' ? $q->whereIn('category_id', $sealedIds) : $q->whereNotIn('category_id', $sealedIds);
+        };
+
+        $base = function () use ($business_id, $catIds, $scope) {
+            return $scope($this->genrelessMusicQuery($business_id, $catIds)
+                ->whereNotNull('discogs_release_id')
+                ->where('discogs_release_id', '>', 0));
+        };
+
+        $rows = $base()
+            ->where('id', '>', $afterId)
+            ->select('id', 'name', 'genre', 'discogs_release_id')
+            ->orderBy('id')->limit($max)->get();
+
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'filled' => 0, 'failed' => 0, 'rate_limited' => false, 'done' => true, 'after_id' => $afterId, 'remaining' => 0, 'phase' => $phase]);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        $changes = [];
+        $failed = 0;
+        $rateLimited = false;
+        $lastId = $afterId;
+
+        foreach ($rows as $r) {
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) {
+                if (stripos((string) $res['message'], '429') !== false || stripos((string) $res['message'], 'rate') !== false) {
+                    $rateLimited = true;
+                    break;
+                }
+                $failed++;
+                $lastId = (int) $r->id;
+                usleep(1100000);
+                continue;
+            }
+            $lastId = (int) $r->id;
+
+            if (stripos($r->name, 'retired') === false) {
+                $genre = $this->genreFromRelease($res['data'] ?? null);
+                if ($genre !== null) {
+                    $changes[] = ['id' => (int) $r->id, 'old' => (string) ($r->genre ?? ''), 'new' => $genre];
+                }
+            }
+            usleep(1100000); // ~55 calls/min, under Discogs' 60/min ceiling
+        }
+
+        $filled = 0;
+        if (!empty($changes)) {
+            \DB::beginTransaction();
+            try {
+                foreach ($changes as $c) {
+                    // Only write if still blank, so a concurrent edit isn't clobbered.
+                    $affected = \DB::table('products')
+                        ->where('id', $c['id'])
+                        ->where(function ($q) {
+                            $q->whereNull('genre')
+                              ->orWhereRaw("TRIM(genre) = ''")
+                              ->orWhereRaw("LOWER(TRIM(genre)) REGEXP '^(n/?a|unknown|none)$'");
+                        })
+                        ->update(['genre' => $c['new']]);
+                    if ($affected) { $filled++; }
+                }
+                \Storage::disk('local')->put(
+                    "admin-snapshots/backfill-genre-from-discogs-{$timestamp}.json",
+                    json_encode([
+                        'timestamp' => $timestamp,
+                        'action' => 'backfill-genre-from-discogs',
+                        'user_id' => auth()->id(),
+                        'business_id' => $business_id,
+                        'source_name' => $filled . ' genre(s) from Discogs',
+                        'target_name' => 'products.genre',
+                        'rows' => $changes,
+                    ], JSON_PRETTY_PRINT)
+                );
+                \DB::commit();
+            } catch (\Throwable $e) {
+                \DB::rollBack();
+                if (\Storage::disk('local')->exists("admin-snapshots/backfill-genre-from-discogs-{$timestamp}.json")) {
+                    \Storage::disk('local')->delete("admin-snapshots/backfill-genre-from-discogs-{$timestamp}.json");
+                }
+                return response()->json(['success' => false, 'msg' => 'Fill failed — nothing changed this batch.']);
+            }
+        }
+
+        $remaining = $base()->where('id', '>', $lastId)->count();
+
+        return response()->json([
+            'success' => true,
+            'filled' => $filled,
+            'failed' => $failed,
+            'rate_limited' => $rateLimited,
+            'after_id' => $lastId,
+            'remaining' => $remaining,
+            'done' => ($remaining === 0 && !$rateLimited),
+            'phase' => $phase,
+        ]);
+    }
+
+    /** Count blank-genre products with a Discogs id, plus a small live sample. */
+    public function discogsGenreScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'genre')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/genre column on products.']);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return response()->json(['success' => true, 'total' => 0, 'sample' => []]);
+        }
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured (Business Settings > Integrations).']);
+        }
+
+        $sealedIds = $this->sealedVinylCategoryIds($business_id);
+        $base = function () use ($business_id, $catIds) {
+            return $this->genrelessMusicQuery($business_id, $catIds)
+                ->whereNotNull('discogs_release_id')->where('discogs_release_id', '>', 0);
+        };
+        $total = $base()->count();
+
+        $q = empty($sealedIds) ? $base() : $base()->whereIn('category_id', $sealedIds);
+        $rows = $q->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
+        if ($rows->count() < 10 && !empty($sealedIds)) {
+            $more = $base()->whereNotIn('category_id', $sealedIds)
+                ->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10 - $rows->count())->get();
+            $rows = $rows->concat($more);
+        }
+
+        $sample = [];
+        foreach ($rows as $r) {
+            if (stripos($r->name, 'retired') !== false) { continue; }
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) { continue; }
+            $genre = $this->genreFromRelease($res['data'] ?? null);
+            if ($genre !== null) {
+                $sample[] = ['name' => $r->name, 'genre' => $genre];
             }
             usleep(1100000);
         }

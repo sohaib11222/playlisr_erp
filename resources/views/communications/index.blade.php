@@ -87,6 +87,12 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
             <button type="button" class="btn-accent" id="quo_import_btn" style="background:var(--pos-surface);">
                 <i class="fa fa-download"></i> Import Recent from Quo
             </button>
+            <a href="{{ action('CommunicationController@emailSettings') }}" class="btn-accent" style="background:var(--pos-surface);">
+                <i class="fa fa-envelope"></i> Email Setup
+            </a>
+            <button type="button" class="btn-accent" id="email_import_btn" style="background:var(--pos-surface);">
+                <i class="fa fa-download"></i> Import Email Now
+            </button>
             <button type="button" class="btn-accent" id="add_comm_btn"><i class="fa fa-plus"></i> Log Inquiry</button>
         </div>
     </div>
@@ -371,6 +377,29 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
                 },
                 error: function() {
                     $btn.prop('disabled', false).html('<i class="fa fa-download"></i> Import Recent from Quo');
+                    toastr.error('Import failed.');
+                }
+            });
+        });
+
+        $('#email_import_btn').on('click', function() {
+            var $btn = $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
+            $.ajax({
+                method: 'POST',
+                url: '{{ action("CommunicationController@importEmailNow") }}',
+                data: { _token: $('meta[name="csrf-token"]').attr('content') },
+                dataType: 'json',
+                success: function(result) {
+                    $btn.prop('disabled', false).html('<i class="fa fa-download"></i> Import Email Now');
+                    if (result.success) {
+                        toastr.success(result.msg || 'Done.');
+                        reload();
+                    } else {
+                        toastr.error(result.msg);
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-download"></i> Import Email Now');
                     toastr.error('Import failed.');
                 }
             });

@@ -120,6 +120,27 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 </div>
             </div>
         </div>
+        <div style="margin-top:14px;padding:14px;border:1px solid #CDE3CD;background:#F3F9F3;border-radius:10px;">
+            <div style="font-weight:600;color:#1B5E20;">Fill blank genres from Discogs (accurate, no guessing)</div>
+            <p class="sub" style="margin:6px 0 10px;">For every blank-genre music product that has a Discogs release id, this writes the <b>genre straight from Discogs</b> (its top-level genre list, comma-joined) into the Genre field. <b>Sealed vinyl first.</b> Rate-limited (~55/min), runs in batches; leave the tab open. Fully undoable. Products with no release id won't be touched.</p>
+            <div class="mgn-actions" style="margin-top:0;">
+                <button class="mgn-btn mgn-btn-ghost" id="dgGenreScanBtn" type="button">Check + preview</button>
+                <span class="mgn-note" id="dgGenreScanNote" style="margin-top:0"></span>
+            </div>
+            <div id="dgGenrePreview" style="display:none;margin-top:14px;">
+                <div class="mgn-note mgn-summary" id="dgGenreSummary" style="margin-top:0;color:#1F1B16;"></div>
+                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #E1EFE1;border-radius:10px;background:#fff;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Current name</th><th>Genre it will write (from Discogs)</th></tr></thead>
+                        <tbody id="dgGenreRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-actions" style="margin-top:14px;">
+                    <button class="mgn-btn mgn-btn-primary" id="dgGenreBtn" type="button">Looks right — fill them all</button>
+                    <span class="mgn-note" id="dgGenreProgress" style="margin-top:0"></span>
+                </div>
+            </div>
+        </div>
         <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
@@ -630,6 +651,64 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         clearMsg(); dgArtistBtn.disabled = true;
         dgArtistProgress.textContent = 'Starting with sealed vinyl…';
         dgArtistBatch(0, 0, 'sealed');
+    });
+
+    // Genre fill from Discogs — mirrors the artist fill above exactly.
+    var dgGenreScanBtn = document.getElementById('dgGenreScanBtn');
+    var dgGenreScanNote = document.getElementById('dgGenreScanNote');
+    dgGenreScanBtn.addEventListener('click', function () {
+        clearMsg();
+        dgGenreScanBtn.disabled = true; dgGenreScanBtn.textContent = 'Checking Discogs…';
+        dgGenreScanNote.textContent = 'Fetching a sample (~10s)…';
+        post('{{ route('products.genre.discogs.scan') }}', {}).then(function (d) {
+            dgGenreScanBtn.disabled = false; dgGenreScanBtn.textContent = 'Check + preview';
+            dgGenreScanNote.textContent = '';
+            if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
+            document.getElementById('dgGenreSummary').innerHTML =
+                '<b>' + d.total.toLocaleString() + '</b> blank-genre product(s) have a Discogs id and will be filled (sealed vinyl first). Sample:';
+            document.getElementById('dgGenreRows').innerHTML = (d.sample || []).length
+                ? d.sample.map(function (s) {
+                    return '<tr><td class="mgn-old">' + esc(s.name) + '</td><td class="mgn-new">' + esc(s.genre) + '</td></tr>';
+                }).join('')
+                : '<tr><td colspan="2" style="color:#8E8273">No sample rows (nothing to fill, or Discogs returned no genre).</td></tr>';
+            document.getElementById('dgGenrePreview').style.display = d.total > 0 ? 'block' : 'none';
+            if (d.total === 0) { showMsg('Nothing to fill — no blank-genre products with a Discogs id.', true); }
+        }).catch(function () { dgGenreScanBtn.disabled = false; dgGenreScanBtn.textContent = 'Check + preview'; dgGenreScanNote.textContent = ''; showMsg('Check failed — try again.', false); });
+    });
+
+    var dgGenreBtn = document.getElementById('dgGenreBtn');
+    var dgGenreProgress = document.getElementById('dgGenreProgress');
+    function dgGenreBatch(afterId, total, phase) {
+        var phaseLabel = phase === 'rest' ? 'everything else' : 'sealed vinyl';
+        post('{{ route('products.genre.discogs') }}', { after_id: afterId, max: 8, phase: phase }).then(function (d) {
+            if (!d.success) { dgGenreBtn.disabled = false; showMsg(d.msg || 'Discogs fill failed.', false); dgGenreProgress.textContent = ''; return; }
+            total += (d.filled || 0);
+            var tail = phase === 'sealed' ? ', then everything else' : '';
+            var note = 'Filled ' + total + ' so far · ' + phaseLabel + ': ' + d.remaining.toLocaleString() + ' left' + tail;
+            if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
+            dgGenreProgress.textContent = note + '…';
+            if (d.done) {
+                if (phase === 'sealed') {
+                    dgGenreProgress.textContent = 'Sealed vinyl done (' + total + '). Now everything else…';
+                    dgGenreBatch(0, total, 'rest');
+                    return;
+                }
+                dgGenreBtn.disabled = false; dgGenreProgress.textContent = '';
+                showMsg('Filled ' + total + ' genre(s) from Discogs (sealed vinyl first). Undo any batch at Admin Action History.', true);
+                return;
+            }
+            var wait = d.rate_limited ? 60000 : 300;
+            setTimeout(function () { dgGenreBatch(d.after_id, total, phase); }, wait);
+        }).catch(function () {
+            dgGenreProgress.textContent = 'Hiccup — retrying in 10s…';
+            setTimeout(function () { dgGenreBatch(afterId, total, phase); }, 10000);
+        });
+    }
+    dgGenreBtn.addEventListener('click', function () {
+        if (!confirm('Fill the Genre field from Discogs for every blank-genre product that has a release id, sealed vinyl first? Runs in batches; undoable from Admin Action History.')) { return; }
+        clearMsg(); dgGenreBtn.disabled = true;
+        dgGenreProgress.textContent = 'Starting with sealed vinyl…';
+        dgGenreBatch(0, 0, 'sealed');
     });
 
     arApplyBtn.addEventListener('click', function () {

@@ -525,4 +525,61 @@ class CommunicationController extends Controller
 
         return $output;
     }
+
+    /** Admin-only guard, same permission check as the Quo settings screen. */
+    private function requireAdmin(): void
+    {
+        $u = auth()->user();
+        $is_admin = false;
+        try {
+            $is_admin = $u && ($u->can('superadmin') || $u->hasAnyPermission('Admin#' . $u->business_id));
+        } catch (\Throwable $e) {
+        }
+        if (!$is_admin) {
+            abort(403, 'Unauthorized action.');
+        }
+    }
+
+    /** Settings screen: paste an app password for hello@ / orders@ (admin only). */
+    public function emailSettings()
+    {
+        $this->requireAdmin();
+        $svc = new \App\Services\EmailInboxService();
+        $mailboxes = $svc->mailboxes();
+        $imap_available = function_exists('imap_open');
+
+        return view('communications.email_settings', compact('mailboxes', 'imap_available'));
+    }
+
+    /** Save one mailbox's IMAP app-password credentials (admin only). */
+    public function saveEmailAccount(Request $request)
+    {
+        $this->requireAdmin();
+        $request->validate([
+            'key' => 'required|in:hello,orders',
+            'username' => 'required|email',
+            'app_password' => 'required|string|min:8',
+        ]);
+
+        (new \App\Services\EmailInboxService())->saveMailbox(
+            $request->key,
+            $request->username,
+            str_replace(' ', '', $request->app_password)
+        );
+
+        return redirect()->back()->with('status', [
+            'success' => 1,
+            'msg' => 'Saved. It\'ll start pulling in mail on the next sync (every few minutes), or click "Import Recent" to pull now.',
+        ]);
+    }
+
+    /** Manually trigger the email sync right now (admin only) — same idea as "Import Recent from Quo". */
+    public function importEmailNow()
+    {
+        $this->requireAdmin();
+        \Artisan::call('communications:import-email');
+        $output = trim(\Artisan::output());
+
+        return response()->json(['success' => true, 'msg' => $output ?: 'Done.']);
+    }
 }

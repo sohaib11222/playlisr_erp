@@ -79,6 +79,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
 
+        // Live-ish sync for the Communications Hub's email channel —
+        // hello@ / orders@nivessa.com. IMAP has no push webhook, so this
+        // polls; every 5 min is frequent enough to feel live without
+        // hammering Gmail. No-ops instantly if no mailbox is configured.
+        $schedule->command('communications:import-email')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(5);
+
         // Apple Music Top 100 refresh — daily at 09:00 PST. Public RSS
         // feed, no credentials, always safe to run. Feeds the same
         // chart_picks table with source=apple_music_top.

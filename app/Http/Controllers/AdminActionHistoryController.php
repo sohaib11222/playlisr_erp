@@ -40,7 +40,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -202,6 +202,11 @@ class AdminActionHistoryController extends Controller
             return $this->undoBackfillArtist($data, $key);
         }
 
+        // backfill-genre-from-discogs: restore each product's previous genre value.
+        if ($action === 'backfill-genre-from-discogs') {
+            return $this->undoBackfillGenre($data, $key);
+        }
+
         // ams-invoice-import: snapshot holds the purchase transaction id created
         // from an AMS PDF (no 'rows'). These are logged at status=ordered (never
         // received), so there's no stock to reverse — undo just deletes the
@@ -274,7 +279,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -1022,6 +1027,40 @@ class AdminActionHistoryController extends Controller
         }
 
         $msg = "Restored {$restored} artist value(s)";
+        $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Reverse a genre backfill: same shape as undoBackfillArtist, but for
+    // products.genre.
+    protected function undoBackfillGenre(array $data, $key)
+    {
+        $rows = $data['rows'] ?? [];
+        if (empty($rows)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot has no genres to restore.']);
+        }
+
+        $restored = 0;
+        $skipped = 0;
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $id = (int) ($r['id'] ?? 0);
+                if (!$id || !array_key_exists('old', $r) || !array_key_exists('new', $r)) { continue; }
+                $affected = DB::table('products')->where('id', $id)->where('genre', $r['new'])
+                    ->update(['genre' => $r['old']]);
+                if ($affected) { $restored++; } else { $skipped++; }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+        }
+
+        $msg = "Restored {$restored} genre value(s)";
         $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => $msg]);
