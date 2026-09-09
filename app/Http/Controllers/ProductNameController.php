@@ -247,17 +247,54 @@ class ProductNameController extends Controller
             });
     }
 
-    /** Music products with a blank genre — same shape as artistlessMusicQuery. */
+    /**
+     * Music products with no genre assigned. There is no products.genre
+     * column — "genre" is products.sub_category_id, a child row in
+     * `categories` (parent_id = the product's format category_id,
+     * category_type='product'). Confirmed via InventoryCheckService, which
+     * reads genre as `subcat.name as genre` off that same join. Blank genre
+     * = sub_category_id is null/0.
+     */
     protected function genrelessMusicQuery($business_id, $catIds)
     {
         return \DB::table('products')
             ->where('business_id', $business_id)
             ->whereIn('category_id', $catIds)
             ->where(function ($q) {
-                $q->whereNull('genre')
-                  ->orWhereRaw("TRIM(genre) = ''")
-                  ->orWhereRaw("LOWER(TRIM(genre)) REGEXP '^(n/?a|unknown|none)$'");
+                $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0);
             });
+    }
+
+    /**
+     * Find an existing sub-category under $parentCategoryId matching $name
+     * (case-insensitive), or create one. Mirrors TaxonomyController@store's
+     * field set for a product sub-category exactly (category_type='product',
+     * parent_id, business_id, created_by) so these rows behave identically to
+     * ones created by hand on /taxonomies.
+     */
+    protected function findOrCreateSubCategory($business_id, $parentCategoryId, $name, $userId)
+    {
+        $name = trim((string) $name);
+        if ($name === '' || !$parentCategoryId) { return null; }
+
+        $existing = \DB::table('categories')
+            ->where('business_id', $business_id)
+            ->where('parent_id', $parentCategoryId)
+            ->where('category_type', 'product')
+            ->whereNull('deleted_at')
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+        if ($existing) { return (int) $existing->id; }
+
+        return (int) \DB::table('categories')->insertGetId([
+            'name' => $name,
+            'category_type' => 'product',
+            'parent_id' => $parentCategoryId,
+            'business_id' => $business_id,
+            'created_by' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**
@@ -776,12 +813,18 @@ class ProductNameController extends Controller
     }
 
     /** Comma-joined genre list from a Discogs release's top-level "genres" array. */
+    /**
+     * First genre from a Discogs release's top-level "genres" array. Genre
+     * here is a single sub-category assignment (products.sub_category_id),
+     * not a free-text field, so only one value can be written — take
+     * Discogs' first (its most general/primary genre tag).
+     */
     protected function genreFromRelease($data)
     {
         if (!$data) { return null; }
         $data = (object) $data;
         $genres = is_array($data->genres ?? null) ? $data->genres : [];
-        $genre = trim(implode(', ', array_filter(array_map('trim', $genres))));
+        $genre = trim((string) ($genres[0] ?? ''));
         return $genre === '' ? null : $genre;
     }
 
@@ -1199,10 +1242,11 @@ class ProductNameController extends Controller
         if (!$this->isOwner()) {
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
-        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'genre')) {
-            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/genre column on products.']);
+        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'sub_category_id')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/sub_category_id column on products.']);
         }
         $business_id = $request->session()->get('user.business_id');
+        $userId = $request->session()->get('user.id');
         $afterId = (int) $request->input('after_id', 0);
         $max = (int) $request->input('max', 20);
         if ($max < 1 || $max > 40) { $max = 20; }
@@ -1235,7 +1279,7 @@ class ProductNameController extends Controller
 
         $rows = $base()
             ->where('id', '>', $afterId)
-            ->select('id', 'name', 'genre', 'discogs_release_id')
+            ->select('id', 'name', 'category_id', 'sub_category_id', 'discogs_release_id')
             ->orderBy('id')->limit($max)->get();
 
         if ($rows->isEmpty()) {
@@ -1262,10 +1306,15 @@ class ProductNameController extends Controller
             }
             $lastId = (int) $r->id;
 
-            if (stripos($r->name, 'retired') === false) {
-                $genre = $this->genreFromRelease($res['data'] ?? null);
-                if ($genre !== null) {
-                    $changes[] = ['id' => (int) $r->id, 'old' => (string) ($r->genre ?? ''), 'new' => $genre];
+            // No format category to file the genre under — skip rather than
+            // create an orphan top-level "genre" category.
+            if (stripos($r->name, 'retired') === false && $r->category_id) {
+                $genreName = $this->genreFromRelease($res['data'] ?? null);
+                if ($genreName !== null) {
+                    $subCatId = $this->findOrCreateSubCategory($business_id, $r->category_id, $genreName, $userId);
+                    if ($subCatId) {
+                        $changes[] = ['id' => (int) $r->id, 'old' => $r->sub_category_id ? (int) $r->sub_category_id : null, 'new' => $subCatId, 'genre_name' => $genreName];
+                    }
                 }
             }
             usleep(1100000); // ~55 calls/min, under Discogs' 60/min ceiling
@@ -1280,11 +1329,9 @@ class ProductNameController extends Controller
                     $affected = \DB::table('products')
                         ->where('id', $c['id'])
                         ->where(function ($q) {
-                            $q->whereNull('genre')
-                              ->orWhereRaw("TRIM(genre) = ''")
-                              ->orWhereRaw("LOWER(TRIM(genre)) REGEXP '^(n/?a|unknown|none)$'");
+                            $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0);
                         })
-                        ->update(['genre' => $c['new']]);
+                        ->update(['sub_category_id' => $c['new']]);
                     if ($affected) { $filled++; }
                 }
                 \Storage::disk('local')->put(
@@ -1295,7 +1342,7 @@ class ProductNameController extends Controller
                         'user_id' => auth()->id(),
                         'business_id' => $business_id,
                         'source_name' => $filled . ' genre(s) from Discogs',
-                        'target_name' => 'products.genre',
+                        'target_name' => 'products.sub_category_id',
                         'rows' => $changes,
                     ], JSON_PRETTY_PRINT)
                 );
@@ -1330,8 +1377,8 @@ class ProductNameController extends Controller
         if (!$this->isOwner()) {
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
-        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'genre')) {
-            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/genre column on products.']);
+        if (!\Schema::hasColumn('products', 'discogs_release_id') || !\Schema::hasColumn('products', 'sub_category_id')) {
+            return response()->json(['success' => false, 'msg' => 'No discogs_release_id/sub_category_id column on products.']);
         }
         $business_id = $request->session()->get('user.business_id');
         $catIds = $this->musicCategoryIds($business_id);

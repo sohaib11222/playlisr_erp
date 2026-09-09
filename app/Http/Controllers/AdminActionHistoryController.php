@@ -1034,6 +1034,11 @@ class AdminActionHistoryController extends Controller
 
     // Reverse a genre backfill: same shape as undoBackfillArtist, but for
     // products.genre.
+    // Restores products.sub_category_id (genre is a category assignment, not
+    // a free-text column — see ProductNameController::discogsGenreFill). The
+    // 'new' category row created for a genre is left in place even on undo;
+    // it's harmless and findOrCreateSubCategory reuses it next run instead
+    // of duplicating.
     protected function undoBackfillGenre(array $data, $key)
     {
         $rows = $data['rows'] ?? [];
@@ -1049,8 +1054,8 @@ class AdminActionHistoryController extends Controller
             foreach ($rows as $r) {
                 $id = (int) ($r['id'] ?? 0);
                 if (!$id || !array_key_exists('old', $r) || !array_key_exists('new', $r)) { continue; }
-                $affected = DB::table('products')->where('id', $id)->where('genre', $r['new'])
-                    ->update(['genre' => $r['old']]);
+                $affected = DB::table('products')->where('id', $id)->where('sub_category_id', $r['new'])
+                    ->update(['sub_category_id' => $r['old']]);
                 if ($affected) { $restored++; } else { $skipped++; }
             }
             DB::commit();
