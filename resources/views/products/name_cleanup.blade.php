@@ -121,8 +121,8 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             </div>
         </div>
         <div style="margin-top:14px;padding:14px;border:1px solid #CDE3CD;background:#F3F9F3;border-radius:10px;">
-            <div style="font-weight:600;color:#1B5E20;">Fill blank genres from Discogs (accurate, no guessing)</div>
-            <p class="sub" style="margin:6px 0 10px;">For every blank-genre music product that has a Discogs release id, this writes the <b>genre straight from Discogs</b> (its top-level genre list, comma-joined) into the Genre field. <b>Sealed vinyl first.</b> Rate-limited (~55/min), runs in batches; leave the tab open. Fully undoable. Products with no release id won't be touched.</p>
+            <div style="font-weight:600;color:#1B5E20;">Fill blank genres from Discogs (matches YOUR categories, never invents new ones)</div>
+            <p class="sub" style="margin:6px 0 10px;">For every blank-genre music product that has a Discogs release id, this checks Discogs' genre/style tags against your <b>existing</b> sub-categories (Rock, Alt Rock, Jazz, etc.) and only fills it in when one matches exactly — no new categories get created, nothing is guessed. Discogs' own genre list isn't in relevance order (it's alphabetical), so a raw "first genre" pick is often wrong — this only trusts a match to something you've already categorized. <b>Sealed vinyl first.</b> Rate-limited (~55/min), runs in batches; leave the tab open. Fully undoable. Products with no release id, or no match, won't be touched.</p>
             <div class="mgn-actions" style="margin-top:0;">
                 <button class="mgn-btn mgn-btn-ghost" id="dgGenreScanBtn" type="button">Check + preview</button>
                 <span class="mgn-note" id="dgGenreScanNote" style="margin-top:0"></span>
@@ -664,13 +664,14 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             dgGenreScanBtn.disabled = false; dgGenreScanBtn.textContent = 'Check + preview';
             dgGenreScanNote.textContent = '';
             if (!d.success) { showMsg(d.msg || 'Check failed.', false); return; }
+            var matchRate = d.scanned ? Math.round(100 * (d.matched || 0) / d.scanned) : 0;
             document.getElementById('dgGenreSummary').innerHTML =
-                '<b>' + d.total.toLocaleString() + '</b> blank-genre product(s) have a Discogs id and will be filled (sealed vinyl first). Sample:';
+                '<b>' + d.total.toLocaleString() + '</b> blank-genre product(s) have a Discogs id. Only filled when Discogs\' genre/style matches one of your EXISTING sub-categories — nothing new gets created, nothing guessed. Of the last ' + d.scanned + ' scanned, ' + d.matched + ' matched (' + matchRate + '%) — actual fill rate across all ' + d.total.toLocaleString() + ' will likely be similar. Sample of matches:';
             document.getElementById('dgGenreRows').innerHTML = (d.sample || []).length
                 ? d.sample.map(function (s) {
                     return '<tr><td class="mgn-old">' + esc(s.name) + '</td><td class="mgn-new">' + esc(s.genre) + '</td></tr>';
                 }).join('')
-                : '<tr><td colspan="2" style="color:#8E8273">No sample rows (nothing to fill, or Discogs returned no genre).</td></tr>';
+                : '<tr><td colspan="2" style="color:#8E8273">No matches in this sample — Discogs\' genre/style didn\'t line up with any existing sub-category for these. Nothing will be changed for them.</td></tr>';
             document.getElementById('dgGenrePreview').style.display = d.total > 0 ? 'block' : 'none';
             if (d.total === 0) { showMsg('Nothing to fill — no blank-genre products with a Discogs id.', true); }
         }).catch(function () { dgGenreScanBtn.disabled = false; dgGenreScanBtn.textContent = 'Check + preview'; dgGenreScanNote.textContent = ''; showMsg('Check failed — try again.', false); });
