@@ -546,9 +546,8 @@ class CommunicationController extends Controller
         $this->requireAdmin();
         $svc = new \App\Services\EmailInboxService();
         $mailboxes = $svc->mailboxes();
-        $imap_available = function_exists('imap_open');
 
-        return view('communications.email_settings', compact('mailboxes', 'imap_available'));
+        return view('communications.email_settings', compact('mailboxes'));
     }
 
     /** Save one mailbox's IMAP app-password credentials (admin only). */

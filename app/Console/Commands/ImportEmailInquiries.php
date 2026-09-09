@@ -30,7 +30,7 @@ class ImportEmailInquiries extends Command
     {
         $svc = new EmailInboxService();
         if (!$svc->isConfigured()) {
-            $this->warn('No email mailboxes configured (or ext-imap missing) — skipping.');
+            $this->warn('No email mailboxes configured yet — add one under Email Setup.');
             return 0;
         }
 

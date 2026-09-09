@@ -32,11 +32,6 @@ body.pos-v2 .warn-line { font-size: 13px; color: #a8422f; margin-bottom: 10px; }
         <div class="alert {{ session('status')['success'] ? 'alert-success' : 'alert-danger' }}">{{ session('status')['msg'] }}</div>
     @endif
 
-    @if(!$imap_available)
-        <div class="quo-card">
-            <p class="warn-line"><strong>The server is missing the PHP IMAP extension</strong> — this needs to be installed before email sync can run. Everything below can still be saved, it just won't pull mail until that's fixed.</p>
-        </div>
-    @endif
 
     <div class="quo-card">
         <h3>1. Turn on IMAP for each mailbox</h3>
