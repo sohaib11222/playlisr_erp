@@ -90,6 +90,9 @@ body.pos-v2 #comm_modal .checkbox-row { margin-top: 14px; }
             <a href="{{ action('CommunicationController@emailSettings') }}" class="btn-accent" style="background:var(--pos-surface);">
                 <i class="fa fa-envelope"></i> Email Setup
             </a>
+            <a href="{{ action('InstagramWebhookController@settings') }}" class="btn-accent" style="background:var(--pos-surface);">
+                <i class="fa fa-instagram"></i> Instagram Setup
+            </a>
             <button type="button" class="btn-accent" id="email_import_btn" style="background:var(--pos-surface);">
                 <i class="fa fa-download"></i> Import Email Now
             </button>

@@ -78,6 +78,12 @@ Route::middleware(['setData'])->group(function () {
     // VerifyCsrfToken::$except). Logs message.received/call.missed straight
     // into the Communications Hub.
     Route::post('/webhooks/quo', 'QuoWebhookController@webhook')->name('quo.webhook');
+
+    // Instagram DM webhook — signature-verified in the controller. GET is
+    // Meta's one-time verification handshake; POST is the actual message
+    // delivery. Both outside auth (Meta calls us) and outside CSRF.
+    Route::get('/webhooks/instagram', 'InstagramWebhookController@verify')->name('instagram.verify');
+    Route::post('/webhooks/instagram', 'InstagramWebhookController@webhook')->name('instagram.webhook');
 });
 
 //Routes for authenticated users only
@@ -234,6 +240,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/communications/email-settings', 'CommunicationController@emailSettings')->name('email.settings');
     Route::post('/communications/email-settings', 'CommunicationController@saveEmailAccount')->name('email.settings.save');
     Route::post('/communications/email-import', 'CommunicationController@importEmailNow')->name('email.import');
+
+    // Admin-only: paste the Instagram app secret / verify token / page
+    // access token — same gitignored-file pattern as Quo/email above.
+    Route::get('/communications/instagram-settings', 'InstagramWebhookController@settings')->name('instagram.settings');
+    Route::post('/communications/instagram-settings', 'InstagramWebhookController@saveSettings')->name('instagram.settings.save');
 
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
