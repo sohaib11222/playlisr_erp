@@ -1,0 +1,95 @@
+# One-click install of the PHP IMAP extension on production — needed for
+# the Communications Hub's email sync (and, it turns out, the existing
+# weekly Street Pulse/UMe chart email import, which has likely been
+# silently no-op'ing without it — see ChartEmailFetcher's own fallback).
+#
+# Detects the actual PHP version in use so it installs the matching
+# versioned package (phpX.Y-imap) rather than guessing a generic name
+# that may not exist on this box's package repo, then restarts the
+# matching php-fpm service and prints a clear pass/fail at the end.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+#
+# If the deploy user doesn't have passwordless sudo, this will fail
+# clearly at the apt-get step rather than hang or silently no-op.
+
+name: Install PHP IMAP extension
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Install php-imap and restart PHP-FPM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            echo "=== before ==="
+            php -v
+            php -m | grep -i imap && echo "imap already present?!" || echo "imap not loaded"
+            echo
+
+            PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+            echo "Detected PHP version: $PHP_VER"
+            echo
+
+            echo "=== apt-get update ==="
+            sudo -n apt-get update 2>&1 || { echo "FAILED: sudo apt-get update — deploy user likely lacks passwordless sudo. Stopping here."; exit 1; }
+            echo
+
+            echo "=== installing php${PHP_VER}-imap ==="
+            if sudo -n apt-get install -y "php${PHP_VER}-imap" 2>&1; then
+              echo "Installed php${PHP_VER}-imap"
+            else
+              echo "php${PHP_VER}-imap not found, trying generic php-imap package"
+              sudo -n apt-get install -y php-imap 2>&1 || { echo "FAILED: could not install any imap package"; exit 1; }
+            fi
+            echo
+
+            echo "=== restarting php-fpm ==="
+            if sudo -n systemctl restart "php${PHP_VER}-fpm" 2>&1; then
+              echo "Restarted php${PHP_VER}-fpm"
+            elif sudo -n systemctl restart php-fpm 2>&1; then
+              echo "Restarted generic php-fpm"
+            else
+              echo "WARNING: could not restart php-fpm automatically — the extension is installed but the running process still needs a restart to pick it up."
+            fi
+            echo
+
+            echo "=== after ==="
+            php -m | grep -i imap && echo "SUCCESS: imap extension loaded" || echo "FAILED: imap extension still not loaded after install+restart"
