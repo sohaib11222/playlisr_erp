@@ -1397,11 +1397,12 @@ class ProductNameController extends Controller
         };
         $total = $base()->count();
 
+        $sampleSize = 30;
         $q = empty($sealedIds) ? $base() : $base()->whereIn('category_id', $sealedIds);
-        $rows = $q->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10)->get();
-        if ($rows->count() < 10 && !empty($sealedIds)) {
+        $rows = $q->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit($sampleSize)->get();
+        if ($rows->count() < $sampleSize && !empty($sealedIds)) {
             $more = $base()->whereNotIn('category_id', $sealedIds)
-                ->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit(10 - $rows->count())->get();
+                ->select('id', 'name', 'discogs_release_id')->orderBy('id')->limit($sampleSize - $rows->count())->get();
             $rows = $rows->concat($more);
         }
 
