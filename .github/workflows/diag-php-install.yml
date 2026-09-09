@@ -1,0 +1,112 @@
+# Read-only diagnostic: how is PHP actually installed on this box, and
+# does the deploy user have ANY path to add an extension without needing
+# full root sudo? (install-php-imap.yml already confirmed apt-get needs
+# a sudo password this account doesn't have.) Checks for a user-writable
+# php.ini/conf.d, a custom-compiled PHP the deploy user owns, phpize/pecl
+# availability, and any scoped sudo rules — all read-only, nothing here
+# changes server state.
+
+name: Diag PHP install (read-only)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+
+      - name: Diagnose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          script: |
+            echo "=== identity ==="
+            whoami
+            id
+            echo
+
+            echo "=== sudo -l (what CAN this user run as root, if anything) ==="
+            sudo -n -l 2>&1
+            echo
+
+            echo "=== php binary + version ==="
+            which php
+            php -v
+            echo
+
+            echo "=== php --ini (where does it load config from) ==="
+            php --ini
+            echo
+
+            echo "=== ownership of php ini locations ==="
+            PHP_INI_DIR=$(php --ini | grep 'Scan for additional .ini files in' | sed 's/.*in: //')
+            echo "Scan dir: $PHP_INI_DIR"
+            ls -la "$PHP_INI_DIR" 2>&1 | head -20
+            echo
+            MAIN_INI=$(php --ini | grep 'Loaded Configuration File' | sed 's/.*File:\s*//')
+            echo "Main ini: $MAIN_INI"
+            ls -la "$MAIN_INI" 2>&1
+            [ -w "$MAIN_INI" ] && echo "MAIN INI IS WRITABLE by this user" || echo "main ini not writable"
+            [ -w "$PHP_INI_DIR" ] && echo "SCAN DIR IS WRITABLE by this user" || echo "scan dir not writable"
+            echo
+
+            echo "=== extension_dir ==="
+            EXT_DIR=$(php -r 'echo ini_get("extension_dir");')
+            echo "extension_dir: $EXT_DIR"
+            ls -ld "$EXT_DIR" 2>&1
+            [ -w "$EXT_DIR" ] && echo "EXTENSION DIR IS WRITABLE by this user" || echo "extension dir not writable"
+            echo
+
+            echo "=== is this PHP a system package or custom-compiled? ==="
+            dpkg -l | grep -i "^ii.*php" | head -5 || echo "dpkg not available or no php packages found (likely custom-compiled)"
+            echo
+
+            echo "=== phpize / pecl / build tools available? ==="
+            which phpize 2>&1
+            which pecl 2>&1
+            which gcc 2>&1
+            which make 2>&1
+            echo
+
+            echo "=== php-fpm service / how is it managed ==="
+            which systemctl 2>&1
+            systemctl status "php$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')-fpm" 2>&1 | head -10
+            ps aux | grep -i fpm | grep -v grep | head -5
+            echo
+
+            echo "=== control panel hints ==="
+            ls /usr/local/cpanel 2>&1 | head -3
+            ls /usr/local/psa 2>&1 | head -3
+            ls /etc/cloudpanel 2>&1 | head -3
+            which cloudpanel 2>&1
+            echo
+
+            echo "=== done ==="
