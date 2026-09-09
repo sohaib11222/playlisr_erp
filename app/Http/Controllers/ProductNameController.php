@@ -266,13 +266,6 @@ class ProductNameController extends Controller
     }
 
     /**
-     * Find an existing sub-category under $parentCategoryId matching $name
-     * (case-insensitive), or create one. Mirrors TaxonomyController@store's
-     * field set for a product sub-category exactly (category_type='product',
-     * parent_id, business_id, created_by) so these rows behave identically to
-     * ones created by hand on /taxonomies.
-     */
-    /**
      * Match a Discogs genre/style name against an EXISTING sub-category under
      * $parentCategoryId — never creates a new one. Sarah's own taxonomy
      * (Rock vs Alt Rock, etc.) is already more specific/curated than
@@ -301,6 +294,38 @@ class ProductNameController extends Controller
             }
         }
         return null;
+    }
+
+    /**
+     * The genre name most commonly used, in Sarah's OWN catalog, for other
+     * products by this same artist under the same format category — no
+     * Discogs involved at all. This is what she actually asked for: trust
+     * her own existing categorization over an external source. Only counts
+     * an artist as usable if it isn't blank/N-A/Various (the artist column
+     * is otherwise unreliable — see artistlessMusicQuery), and only looks at
+     * rows already sub-categorized, so a catalog with zero genre coverage
+     * for an artist correctly falls through (to the Discogs match, or stays
+     * blank) rather than matching nothing to nothing.
+     */
+    protected function mostCommonGenreNameForArtist($business_id, $categoryId, $artist)
+    {
+        $artist = trim((string) $artist);
+        if ($artist === '' || preg_match('/^(n\/?a|unknown|various|none|no artist)$/i', $artist)) {
+            return null;
+        }
+
+        $row = \DB::table('products')
+            ->join('categories', 'products.sub_category_id', '=', 'categories.id')
+            ->where('products.business_id', $business_id)
+            ->where('products.category_id', $categoryId)
+            ->whereRaw('LOWER(TRIM(products.artist)) = ?', [mb_strtolower($artist)])
+            ->whereNotNull('products.sub_category_id')
+            ->select('categories.name', \DB::raw('COUNT(*) as cnt'))
+            ->groupBy('categories.name')
+            ->orderByDesc('cnt')
+            ->first();
+
+        return $row ? $row->name : null;
     }
 
     /**
@@ -1298,7 +1323,7 @@ class ProductNameController extends Controller
 
         $rows = $base()
             ->where('id', '>', $afterId)
-            ->select('id', 'name', 'category_id', 'sub_category_id', 'discogs_release_id')
+            ->select('id', 'name', 'artist', 'category_id', 'sub_category_id', 'discogs_release_id')
             ->orderBy('id')->limit($max)->get();
 
         if ($rows->isEmpty()) {
@@ -1312,6 +1337,21 @@ class ProductNameController extends Controller
         $lastId = $afterId;
 
         foreach ($rows as $r) {
+            $lastId = (int) $r->id;
+            if (stripos($r->name, 'retired') !== false || !$r->category_id) { continue; }
+
+            // Per Sarah: trust her own existing categorization over Discogs
+            // first — same artist, same format, already sub-categorized in
+            // her catalog. No API call needed for this check.
+            $ownGenreName = $this->mostCommonGenreNameForArtist($business_id, $r->category_id, $r->artist);
+            if ($ownGenreName !== null) {
+                $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, [$ownGenreName]);
+                if ($subCatId) {
+                    $changes[] = ['id' => (int) $r->id, 'old' => $r->sub_category_id ? (int) $r->sub_category_id : null, 'new' => $subCatId];
+                    continue; // resolved from her own catalog — skip the Discogs call entirely
+                }
+            }
+
             $res = $svc->getReleaseById($r->discogs_release_id);
             if (!empty($res['error'])) {
                 if (stripos((string) $res['message'], '429') !== false || stripos((string) $res['message'], 'rate') !== false) {
@@ -1319,20 +1359,14 @@ class ProductNameController extends Controller
                     break;
                 }
                 $failed++;
-                $lastId = (int) $r->id;
                 usleep(1100000);
                 continue;
             }
-            $lastId = (int) $r->id;
 
-            // No format category to file the genre under — skip rather than
-            // create an orphan top-level "genre" category.
-            if (stripos($r->name, 'retired') === false && $r->category_id) {
-                $candidates = $this->genreCandidatesFromRelease($res['data'] ?? null);
-                $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, $candidates);
-                if ($subCatId) {
-                    $changes[] = ['id' => (int) $r->id, 'old' => $r->sub_category_id ? (int) $r->sub_category_id : null, 'new' => $subCatId];
-                }
+            $candidates = $this->genreCandidatesFromRelease($res['data'] ?? null);
+            $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, $candidates);
+            if ($subCatId) {
+                $changes[] = ['id' => (int) $r->id, 'old' => $r->sub_category_id ? (int) $r->sub_category_id : null, 'new' => $subCatId];
             }
             usleep(1100000); // ~55 calls/min, under Discogs' 60/min ceiling
         }
@@ -1429,20 +1463,31 @@ class ProductNameController extends Controller
         while (count($sample) < $sampleSize && $scanned < $scanBudget) {
             $q = empty($sealedIds) ? $base() : $base()->whereIn('category_id', $sealedIds);
             $rows = $q->where('id', '>', $afterId)
-                ->select('id', 'name', 'category_id', 'discogs_release_id')
+                ->select('id', 'name', 'artist', 'category_id', 'discogs_release_id')
                 ->orderBy('id')->limit(20)->get();
             if ($rows->isEmpty()) { break; }
             foreach ($rows as $r) {
                 $afterId = (int) $r->id;
                 $scanned++;
                 if (stripos($r->name, 'retired') !== false || !$r->category_id) { continue; }
+
+                $ownGenreName = $this->mostCommonGenreNameForArtist($business_id, $r->category_id, $r->artist);
+                if ($ownGenreName !== null) {
+                    $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, [$ownGenreName]);
+                    if ($subCatId) {
+                        $sample[] = ['name' => $r->name, 'genre' => $ownGenreName . ' (from your catalog)'];
+                        if (count($sample) >= $sampleSize || $scanned >= $scanBudget) { break; }
+                        continue;
+                    }
+                }
+
                 $res = $svc->getReleaseById($r->discogs_release_id);
                 if (!empty($res['error'])) { continue; }
                 $candidates = $this->genreCandidatesFromRelease($res['data'] ?? null);
                 $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, $candidates);
                 if ($subCatId) {
                     $genreName = \DB::table('categories')->where('id', $subCatId)->value('name');
-                    $sample[] = ['name' => $r->name, 'genre' => $genreName];
+                    $sample[] = ['name' => $r->name, 'genre' => $genreName . ' (from Discogs)'];
                 }
                 usleep(1100000);
                 if (count($sample) >= $sampleSize || $scanned >= $scanBudget) { break; }
