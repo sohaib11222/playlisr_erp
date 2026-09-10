@@ -1,0 +1,67 @@
+# Test: renders the new /tasks/end-shift page server-side (as a real
+# non-admin employee, with the auth-scoped controller/view path) and checks
+# for a successful render with no exception — catches a Blade compile error
+# or a runtime bug before a real employee ever hits it. Creates one
+# throwaway assigned task so the page has something to show, then cleans up.
+
+name: Test end shift page
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Render the end-shift page server-side
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== running test ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1; $store = 'pico';
+            $u1 = DB::table('users')->where('business_id',$biz)->where('status','active')->where('allow_login',1)->orderBy('id')->value('id');
+            $t = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_endshift_page__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'high','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $t->assignees()->sync([$u1]);
+            echo "created test task id={$t->id} for user={$u1}\n";
+            request()->session()->put('user.business_id', $biz);
+            Auth::loginUsingId($u1);
+            try { $view = app(App\Http\Controllers\TaskController::class)->endShift(request()); $html = $view->render(); echo "RENDER: PASS (" . strlen($html) . " bytes)\n"; echo (str_contains($html, '__test_endshift_page__') ? "CONTAINS TEST TASK: PASS\n" : "CONTAINS TEST TASK: FAIL\n"); echo (str_contains($html, 'Repeat daily') ? "unexpected form markup leaked: FAIL\n" : "no stray form markup: PASS\n"); } catch (\Throwable $e) { echo "RENDER: FAIL - " . get_class($e) . ": " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine() . "\n"; }
+            App\WeeklyTask::where('id', $t->id)->delete();
+            $gone = !App\WeeklyTask::where('id', $t->id)->exists();
+            echo "cleanup: " . ($gone ? "PASS" : "FAIL") . "\n";
+            PHP
+            echo "=== done ==="
