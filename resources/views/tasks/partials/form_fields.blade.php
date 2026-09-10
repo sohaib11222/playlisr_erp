@@ -22,7 +22,7 @@
     </div>
     <div class="col-md-3">
         <div class="form-group">
-            <label id="task_start_date_label">{{ $currentTaskType === 'daily' ? 'Date' : 'Start date' }} <span class="text-danger">*</span></label>
+            <label><span id="task_start_date_label_text">{{ $currentTaskType === 'daily' ? 'Date' : 'Start date' }}</span> <span class="text-danger">*</span></label>
             <input type="date" id="task_start_date" class="form-control" name="start_date" value="{{ old('start_date', isset($task) ? $task->start_date->toDateString() : now()->toDateString()) }}" required>
         </div>
     </div>
@@ -93,22 +93,60 @@
     {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}
 </div>
 
-@push('scripts')
+{{-- Plain inline script, not @push('scripts') — this layout has no
+     @stack('scripts') to render it into, so a pushed script here is
+     silently dropped and never runs. Inline (and jQuery-free, since this
+     executes before jQuery loads later in the body) is what actually
+     works on this page. --}}
 <script>
-$(function() {
-    function updateEndDatePreview() {
-        var isDaily = $('#task_type').val() === 'daily';
-        $('#task_start_date_label').text(isDaily ? 'Date' : 'Start date');
-        $('#task_end_date_wrap').toggle(!isDaily);
-        $('#task_repeat_daily_row').toggle(isDaily);
-        $('#task_repeat_weekly_row').toggle(!isDaily);
-        if (!$('#task_start_date').val()) return;
-        var d = new Date($('#task_start_date').val() + 'T00:00:00');
-        if (!isDaily) { d.setDate(d.getDate() + 7); }
+(function() {
+    function updateTaskTypeUI() {
+        var typeEl = document.getElementById('task_type');
+        var startDateEl = document.getElementById('task_start_date');
+        if (!typeEl) {
+            return;
+        }
+        var isDaily = typeEl.value === 'daily';
+
+        var labelText = document.getElementById('task_start_date_label_text');
+        if (labelText) {
+            labelText.textContent = isDaily ? 'Date' : 'Start date';
+        }
+
+        var endDateWrap = document.getElementById('task_end_date_wrap');
+        if (endDateWrap) {
+            endDateWrap.style.display = isDaily ? 'none' : '';
+        }
+
+        var dailyRow = document.getElementById('task_repeat_daily_row');
+        if (dailyRow) {
+            dailyRow.style.display = isDaily ? '' : 'none';
+        }
+
+        var weeklyRow = document.getElementById('task_repeat_weekly_row');
+        if (weeklyRow) {
+            weeklyRow.style.display = isDaily ? 'none' : '';
+        }
+
+        var endDatePreview = document.getElementById('task_end_date_preview');
+        if (!startDateEl || !startDateEl.value || !endDatePreview) {
+            return;
+        }
+        var d = new Date(startDateEl.value + 'T00:00:00');
+        if (!isDaily) {
+            d.setDate(d.getDate() + 7);
+        }
         var opts = { year: 'numeric', month: 'short', day: 'numeric' };
-        $('#task_end_date_preview').val(d.toLocaleDateString('en-US', opts));
+        endDatePreview.value = d.toLocaleDateString('en-US', opts);
     }
-    $('#task_start_date, #task_type').on('change', updateEndDatePreview);
-});
+
+    var typeEl = document.getElementById('task_type');
+    var startDateEl = document.getElementById('task_start_date');
+    if (typeEl) {
+        typeEl.addEventListener('change', updateTaskTypeUI);
+    }
+    if (startDateEl) {
+        startDateEl.addEventListener('change', updateTaskTypeUI);
+    }
+})();
 </script>
-@endpush
