@@ -1,0 +1,60 @@
+# One-click, one-off restore: recreate the "Putting away new arrivals" daily
+# repeating task that got deleted (root id 13, from the delete-cascade fix —
+# the user wanted "delete everything" for a repeating series, but this
+# specific task turned out to be a real one, not a duplicate). Field values
+# (title/description/store/priority/created_by) pulled verbatim from the
+# 2026-09-10 03:20 backup, from before the deletion. Dated to today so the
+# existing repeat-daily rollover picks it up going forward — no need to
+# resurrect the exact historical id or past-day instance rows.
+
+name: Restore arrivals task
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Recreate the task
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 60s
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $existing = App\WeeklyTask::where('business_id', 1)->where('title', 'Putting away new arrivals')->where('task_type', 'daily')->whereNull('repeat_of')->first();
+            if ($existing) { echo "Already exists as id={$existing->id}, not creating a duplicate.\n"; } else { $t = App\WeeklyTask::create(['business_id' => 1, 'title' => 'Putting away new arrivals', 'description' => "Our new arrivals are sorted by date, vinyl is separated by tabs over the course of a week. For CDs they are sorted from right (oldest) and left (newest)\r\n\r\nEach day we should make space in our new arrival bins for more product. At the start of your shift please put away both CD and vinyl in the proper area if needed. You will know it will need to be done when there is no longer space to put new media out.", 'start_date' => now()->toDateString(), 'end_date' => now()->toDateString(), 'task_type' => 'daily', 'store' => 'pico', 'priority' => 'high', 'status' => 'not_started', 'created_by' => 18, 'repeat_daily' => true, 'repeat_weekly' => false]); echo "Created id={$t->id}\n"; }
+            PHP
+            echo "=== done ==="
