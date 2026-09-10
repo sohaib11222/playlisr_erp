@@ -1,0 +1,63 @@
+# READ-ONLY diag v3: v1/v2 used multi-line fluent chains inside a tinker
+# heredoc, which broke psysh's line-by-line parser (visible as repeated
+# "unexpected T_OBJECT_OPERATOR" in those runs) — so $dupes silently became
+# an unfiltered query and ->count() just returned the total row count (23),
+# which was never actually "23 duplicate groups". This version keeps every
+# tinker statement on a single physical line to avoid that, and just dumps
+# the whole table (small — 23 rows total) for a manual eyeball check.
+
+name: Diag task duplicates v3
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump full weekly_tasks table (single-line tinker statements)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== all weekly_tasks rows, ordered by repeat series ==="
+            php artisan tinker --no-ansi <<'PHP'
+            DB::table('weekly_tasks')->orderByRaw('COALESCE(repeat_of, id)')->orderBy('start_date')->get(['id','title','repeat_of','start_date','task_type','status','business_id'])->each(function($r){ echo "id={$r->id} repeat_of=" . ($r->repeat_of ?? 'NULL') . " start={$r->start_date} type={$r->task_type} status={$r->status} biz={$r->business_id} title=\"{$r->title}\"\n"; });
+            PHP
+            echo "=== actual duplicate (repeat_of, start_date) groups, single-line query ==="
+            php artisan tinker --no-ansi <<'PHP'
+            DB::table('weekly_tasks')->select('repeat_of', 'start_date', DB::raw('COUNT(*) as cnt'), DB::raw('GROUP_CONCAT(id ORDER BY id) as ids'))->whereNotNull('repeat_of')->groupBy('repeat_of', 'start_date')->having('cnt', '>', 1)->get()->each(function($d){ echo "DUPLICATE repeat_of={$d->repeat_of} start_date={$d->start_date} cnt={$d->cnt} ids=[{$d->ids}]\n"; });
+            PHP
+            echo "=== done ==="
