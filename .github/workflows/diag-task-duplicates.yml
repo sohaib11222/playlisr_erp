@@ -1,0 +1,105 @@
+# READ-ONLY diagnostic: confirm and size the "repeat daily/weekly" duplicate
+# task bug (race condition in TaskController::rolloverRepeats — concurrent
+# /tasks loads, or a POS register-close overlapping a page load, could each
+# decide "today's instance is missing" and both create one) before writing
+# the cleanup migration. Also sanity-checks that WeeklyTask::delete()
+# actually removes a row (rules out a separate delete bug) without touching
+# real data — creates and deletes its own throwaway row.
+
+name: Diag task duplicates
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect duplicate weekly_tasks rows (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== duplicate (repeat_of, start_date) groups ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $dupes = DB::table('weekly_tasks')
+                ->select('repeat_of', 'start_date', DB::raw('COUNT(*) as cnt'), DB::raw('GROUP_CONCAT(id ORDER BY id) as ids'))
+                ->whereNotNull('repeat_of')
+                ->groupBy('repeat_of', 'start_date')
+                ->having('cnt', '>', 1)
+                ->get();
+            echo "duplicate groups: " . $dupes->count() . "\n";
+            foreach ($dupes as $d) {
+                echo "  repeat_of={$d->repeat_of} start_date={$d->start_date} count={$d->cnt} ids=[{$d->ids}]\n";
+            }
+            PHP
+            echo "=== root tasks with repeat_daily or repeat_weekly set ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $roots = DB::table('weekly_tasks')
+                ->whereNull('repeat_of')
+                ->where(function ($q) { $q->where('repeat_daily', 1)->orWhere('repeat_weekly', 1); })
+                ->get(['id', 'title', 'task_type', 'repeat_daily', 'repeat_weekly', 'start_date']);
+            foreach ($roots as $r) {
+                $instanceCount = DB::table('weekly_tasks')->where('repeat_of', $r->id)->count();
+                echo "root#{$r->id} \"{$r->title}\" type={$r->task_type} daily={$r->repeat_daily} weekly={$r->repeat_weekly} start={$r->start_date} instances={$instanceCount}\n";
+            }
+            PHP
+            echo "=== sanity check: does WeeklyTask::delete() actually remove a row? ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = DB::table('business')->value('id');
+            $userId = DB::table('users')->where('business_id', $businessId)->value('id');
+            $t = App\WeeklyTask::create([
+                'business_id' => $businessId,
+                'title' => '__diag_delete_test__',
+                'start_date' => now()->toDateString(),
+                'end_date' => now()->toDateString(),
+                'task_type' => 'daily',
+                'status' => 'not_started',
+                'created_by' => $userId,
+                'repeat_daily' => false,
+                'repeat_weekly' => false,
+            ]);
+            $id = $t->id;
+            echo "created diag row id={$id}\n";
+            $existsBefore = App\WeeklyTask::where('id', $id)->exists();
+            echo "exists before delete: " . ($existsBefore ? 'YES' : 'NO') . "\n";
+            $t->delete();
+            $existsAfter = App\WeeklyTask::where('id', $id)->exists();
+            echo "exists after delete: " . ($existsAfter ? 'YES (BUG)' : 'NO (deleted correctly)') . "\n";
+            PHP
+            echo "=== done ==="
