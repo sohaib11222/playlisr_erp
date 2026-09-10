@@ -1,0 +1,82 @@
+# Self-contained test (creates its own throwaway data, cleans it up after):
+# verifies TaskController::dueTodayForStore($business_id, $store, $userId)
+# correctly scopes to unassigned tasks + tasks assigned to that specific
+# user, and excludes tasks assigned to someone else. Prints PASS/FAIL.
+
+name: Test task assignee scoping
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run scoping test (single-line tinker statements)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== running test ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1; $store = 'pico';
+            $ids = DB::table('users')->where('business_id',$biz)->where('status','active')->where('allow_login',1)->orderBy('id')->pluck('id')->all();
+            $u1 = $ids[0] ?? null; $u2 = $ids[1] ?? null;
+            echo "test users: u1={$u1} u2={$u2}\n";
+            $tAssigned = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_assigned__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'medium','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $tAssigned->assignees()->sync([$u1]);
+            $tUnassigned = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_unassigned__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'medium','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $tOther = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_other_assignee__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'medium','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $tOther->assignees()->sync([$u2]);
+            echo "created rows: assigned={$tAssigned->id} unassigned={$tUnassigned->id} other={$tOther->id}\n";
+            $forU1 = App\Http\Controllers\TaskController::dueTodayForStore($biz, $store, $u1)->pluck('title')->all();
+            echo "seen by u1: " . implode(', ', $forU1) . "\n";
+            $forU2 = App\Http\Controllers\TaskController::dueTodayForStore($biz, $store, $u2)->pluck('title')->all();
+            echo "seen by u2: " . implode(', ', $forU2) . "\n";
+            $forAll = App\Http\Controllers\TaskController::dueTodayForStore($biz, $store, null)->pluck('title')->all();
+            $allOk = in_array('__test_assigned__', $forAll) && in_array('__test_unassigned__', $forAll) && in_array('__test_other_assignee__', $forAll);
+            echo "NO-FILTER SEES ALL THREE: " . ($allOk ? "PASS" : "FAIL") . "\n";
+            $u1Ok = in_array('__test_assigned__', $forU1) && in_array('__test_unassigned__', $forU1) && !in_array('__test_other_assignee__', $forU1);
+            echo "U1 SCOPING (sees own + unassigned, not other's): " . ($u1Ok ? "PASS" : "FAIL") . "\n";
+            $u2Ok = in_array('__test_other_assignee__', $forU2) && in_array('__test_unassigned__', $forU2) && !in_array('__test_assigned__', $forU2);
+            echo "U2 SCOPING (sees own + unassigned, not other's): " . ($u2Ok ? "PASS" : "FAIL") . "\n";
+            App\WeeklyTask::whereIn('id', [$tAssigned->id, $tUnassigned->id, $tOther->id])->delete();
+            $stillThere = App\WeeklyTask::whereIn('id', [$tAssigned->id, $tUnassigned->id, $tOther->id])->count();
+            echo "cleanup: " . ($stillThere === 0 ? "PASS (all test rows removed)" : "FAIL ({$stillThere} rows left behind)") . "\n";
+            PHP
+            echo "=== done ==="

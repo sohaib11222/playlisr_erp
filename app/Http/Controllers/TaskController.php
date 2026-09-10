@@ -186,8 +186,14 @@ class TaskController extends Controller
      * company-wide (store = null) task. Used to drive the "Tasks due today"
      * bubble shown right after a cashier closes out their register — the
      * moment they're most likely to actually look at it before leaving.
+     *
+     * When $userId is given, also scoped to that person: unassigned tasks
+     * (everyone's problem) plus tasks specifically assigned to them —
+     * never someone else's assigned task. Without $userId, every open
+     * daily task for the store is returned (used by the /tasks list page,
+     * which has its own "Assigned to" column instead of a person filter).
      */
-    public static function dueTodayForStore($business_id, $store)
+    public static function dueTodayForStore($business_id, $store, $userId = null)
     {
         self::rolloverRepeatingTasks($business_id);
 
@@ -199,6 +205,15 @@ class TaskController extends Controller
         if (!empty($store)) {
             $query->where(function ($q) use ($store) {
                 $q->where('store', $store)->orWhereNull('store');
+            });
+        }
+
+        if (!empty($userId)) {
+            $query->where(function ($q) use ($userId) {
+                $q->whereDoesntHave('assignees')
+                    ->orWhereHas('assignees', function ($aq) use ($userId) {
+                        $aq->where('users.id', $userId);
+                    });
             });
         }
 

@@ -1465,7 +1465,8 @@ class CashRegisterController extends Controller
                     if ($storeKey) {
                         $dueTasks = \App\Http\Controllers\TaskController::dueTodayForStore(
                             $request->session()->get('user.business_id'),
-                            $storeKey
+                            $storeKey,
+                            $user_id
                         );
                         if ($dueTasks->isNotEmpty()) {
                             session()->flash('tasks_due_today_bubble', $dueTasks->map(function ($t) {
