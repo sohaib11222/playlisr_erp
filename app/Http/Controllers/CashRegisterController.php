@@ -1034,6 +1034,55 @@ class CashRegisterController extends Controller
             }
         }
 
+        // Tasks this cashier completed, and any project activity (joined,
+        // started, completed) they logged this shift — so the Slack note
+        // shows whether the close-register checklist was actually worked,
+        // not just whether it was opened.
+        $tasks_completed = [];
+        if (\Schema::hasTable('weekly_tasks')) {
+            $tasks_completed = \DB::table('weekly_tasks')
+                ->where('business_id', $business_id)
+                ->where('completed_by', $user_id)
+                ->whereBetween('completed_at', [$open_time, $close_time])
+                ->orderBy('completed_at')
+                ->pluck('title')
+                ->all();
+        }
+
+        $projects_completed = [];
+        $projects_started = [];
+        $projects_joined = [];
+        if (\Schema::hasTable('projects')) {
+            $projects_completed = \DB::table('projects')
+                ->where('business_id', $business_id)
+                ->where('completed_by', $user_id)
+                ->whereBetween('completed_at', [$open_time, $close_time])
+                ->orderBy('completed_at')
+                ->pluck('title')
+                ->all();
+
+            // Only "started" if not also completed this shift, so a project
+            // worked start-to-finish in one shift is reported once, as completed.
+            $projects_started = \DB::table('projects')
+                ->where('business_id', $business_id)
+                ->where('started_by', $user_id)
+                ->whereBetween('started_at', [$open_time, $close_time])
+                ->whereNull('completed_at')
+                ->orderBy('started_at')
+                ->pluck('title')
+                ->all();
+        }
+        if (\Schema::hasTable('project_contributors')) {
+            $projects_joined = \DB::table('projects as p')
+                ->join('project_contributors as pc', 'pc.project_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)
+                ->where('pc.user_id', $user_id)
+                ->whereBetween('pc.joined_at', [$open_time, $close_time])
+                ->orderBy('pc.joined_at')
+                ->pluck('p.title')
+                ->all();
+        }
+
         return [
             'sales' => round($sales, 2),
             'transactions_count' => $transactions_count,
@@ -1049,6 +1098,10 @@ class CashRegisterController extends Controller
             'labels_categories' => $labels_categories,
             'packages_picked_count' => count($packages_picked),
             'packages_shipped_count' => count($packages_shipped),
+            'tasks_completed' => array_values($tasks_completed),
+            'projects_completed' => array_values($projects_completed),
+            'projects_started' => array_values($projects_started),
+            'projects_joined' => array_values($projects_joined),
         ];
     }
 
@@ -1284,6 +1337,29 @@ class CashRegisterController extends Controller
         }
         if (!empty($fulfil)) {
             $lines[] = ucfirst(implode(', ', $fulfil));
+        }
+
+        // Always state tasks explicitly — "none" is meaningful here (it tells
+        // a manager the close-register checklist was skipped, not that there
+        // was nothing due) — but only mention projects when something actually
+        // happened, since most shifts have no project activity at all.
+        $tasksCompleted = $s['tasks_completed'] ?? [];
+        $lines[] = empty($tasksCompleted)
+            ? 'Tasks completed: none'
+            : 'Tasks completed (' . count($tasksCompleted) . '): ' . implode(', ', $tasksCompleted);
+
+        $projectBits = [];
+        if (!empty($s['projects_completed'])) {
+            $projectBits[] = 'completed ' . implode(', ', $s['projects_completed']);
+        }
+        if (!empty($s['projects_started'])) {
+            $projectBits[] = 'started ' . implode(', ', $s['projects_started']);
+        }
+        if (!empty($s['projects_joined'])) {
+            $projectBits[] = 'joined ' . implode(', ', $s['projects_joined']);
+        }
+        if (!empty($projectBits)) {
+            $lines[] = 'Projects: ' . implode(' · ', $projectBits);
         }
 
         $note = trim((string) ($payload['note'] ?? ''));
