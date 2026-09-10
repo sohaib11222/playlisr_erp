@@ -1,0 +1,74 @@
+# Removes everything created by "E2E employee test setup": the throwaway
+# test user, any cash register rows it opened/closed, any tasks
+# created/assigned for the test, and its task_assignees rows (cascade).
+
+name: E2E employee test teardown
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Remove test user, registers, tasks
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $u = App\User::where('business_id',1)->where('username','__claude_e2e_test__')->first();
+            if (!$u) { echo "no test user found, nothing to do\n"; } else {
+              $uid = $u->id;
+              $regCount = DB::table('cash_registers')->where('user_id',$uid)->count();
+              DB::table('cash_register_transactions')->whereIn('cash_register_id', DB::table('cash_registers')->where('user_id',$uid)->pluck('id'))->delete();
+              DB::table('cash_registers')->where('user_id',$uid)->delete();
+              echo "removed {$regCount} cash_registers rows (+ their transactions)\n";
+              $taskCount = App\WeeklyTask::where('title','like','__e2e_test%')->count();
+              App\WeeklyTask::where('title','like','__e2e_test%')->delete();
+              echo "removed {$taskCount} test task rows\n";
+              $u->roles()->detach();
+              $u->forceDelete();
+              echo "removed test user id={$uid}\n";
+            }
+            PHP
+            echo "=== verify clean ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $userGone = !App\User::withTrashed()->where('username','__claude_e2e_test__')->exists();
+            echo "user gone: " . ($userGone ? "PASS" : "FAIL") . "\n";
+            $tasksGone = App\WeeklyTask::where('title','like','__e2e_test%')->count() === 0;
+            echo "tasks gone: " . ($tasksGone ? "PASS" : "FAIL") . "\n";
+            PHP
+            echo "=== done ==="

@@ -1,0 +1,71 @@
+# Sets up a throwaway test employee account for a full, real browser
+# end-to-end test of: log in -> open register -> get assigned a task ->
+# close register -> see the Tasks-due-today checklist in the modal -> mark
+# status -> confirm it updates. A companion "teardown" workflow removes
+# everything this creates. Read-mostly except for the one test user +
+# task it creates (both cleaned up by the teardown workflow after).
+
+name: E2E employee test setup
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Create test user (idempotent)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== existing roles for business 1 ==="
+            php artisan tinker --no-ansi <<'PHP'
+            DB::table('roles')->where('business_id', 1)->get(['id','name'])->each(function($r){ echo "role: {$r->name}\n"; });
+            PHP
+            echo "=== creating/confirming test user ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $existing = App\User::where('business_id',1)->where('username','__claude_e2e_test__')->first();
+            if ($existing) { echo "already exists: id={$existing->id}\n"; } else { $u = new App\User(); $u->business_id = 1; $u->username = '__claude_e2e_test__'; $u->first_name = 'Claude'; $u->last_name = 'E2E Test'; $u->email = 'claude-e2e-test@example.invalid'; $u->password = Illuminate\Support\Facades\Hash::make('ClaudeE2ETest!2026'); $u->status = 'active'; $u->allow_login = 1; $u->is_cmmsn_agnt = 0; $u->user_type = 'user'; $u->save(); $u->assignRole('Cashier#1'); echo "created: id={$u->id}\n"; }
+            PHP
+            echo "=== verify login works ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $u = App\User::where('business_id',1)->where('username','__claude_e2e_test__')->first();
+            $ok = Illuminate\Support\Facades\Hash::check('ClaudeE2ETest!2026', $u->password);
+            echo "password check: " . ($ok ? "PASS" : "FAIL") . "\n";
+            echo "roles: " . $u->roles->pluck('name')->implode(',') . "\n";
+            echo "can close_cash_register: " . ($u->can('close_cash_register') ? "YES" : "NO") . "\n";
+            PHP
+            echo "=== done ==="
