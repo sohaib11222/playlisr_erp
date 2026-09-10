@@ -1,0 +1,73 @@
+# READ-ONLY diag: find the most recent DB backup and pull the exact rows for
+# the "Putting away new arrivals" repeating task (root + generated instance)
+# that got deleted, so it can be recreated with the same title/description/
+# store/priority/assignees instead of being retyped from scratch.
+
+name: Diag task recover arrivals
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: List backups + grep for the deleted task rows
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== backup dir listing (business 1) ==="
+            ls -la storage/app/database_backups/1/ 2>&1 | tail -20
+            echo "=== most recent backup file ==="
+            LATEST=$(ls -t storage/app/database_backups/1/*.sql* 2>/dev/null | head -1)
+            echo "latest=$LATEST"
+            if [ -z "$LATEST" ]; then
+              echo "no backup files found"
+              exit 0
+            fi
+            echo "=== file info ==="
+            ls -la "$LATEST"
+            echo "=== grep weekly_tasks INSERT lines mentioning 'arrival' (case-insensitive) ==="
+            CAT="cat"
+            case "$LATEST" in
+              *.gz) CAT="zcat" ;;
+            esac
+            $CAT "$LATEST" | grep -i "arrival" | grep -i "INSERT INTO \`weekly_tasks\`" | head -20
+            echo "=== full weekly_tasks INSERT statement lines (first 3, to see column order) ==="
+            $CAT "$LATEST" | grep "INSERT INTO \`weekly_tasks\`" | head -1 | cut -c1-500
+            echo "=== task_assignees rows mentioning task ids near the arrival rows (best effort, grep by id range 10-30) ==="
+            $CAT "$LATEST" | grep "INSERT INTO \`task_assignees\`" | head -3 | cut -c1-500
+            echo "=== done ==="
