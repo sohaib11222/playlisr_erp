@@ -58,6 +58,11 @@ jobs:
             $t->assignees()->sync([$u1]);
             echo "created test task id={$t->id} for user={$u1}\n";
             $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+            $_SERVER['HTTP_USER_AGENT'] = 'test-harness';
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_SERVER['HTTP_HOST'] = 'playlist.nivessa.com';
+            $_SERVER['SERVER_NAME'] = 'playlist.nivessa.com';
+            $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en-US';
             request()->setLaravelSession(app('session.store'));
             app('session.store')->start();
             Auth::loginUsingId($u1);
