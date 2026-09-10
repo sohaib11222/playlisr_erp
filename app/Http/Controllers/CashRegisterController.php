@@ -559,18 +559,41 @@ class CashRegisterController extends Controller
             }
         }
 
+        // Tasks due today for this cashier, shown right where they're
+        // already accounting for their shift instead of a separate popup
+        // after they've submitted and moved on. Wrapped in try/catch — the
+        // close flow MUST never break because of this.
+        $due_tasks = [];
+        try {
+            $storeKey = $this->storeKeyForLocation($register_details->location_id);
+            if ($storeKey) {
+                $due_tasks = \App\Http\Controllers\TaskController::dueTodayForStore($business_id, $storeKey, $user_id)
+                    ->map(function ($t) {
+                        return [
+                            'id' => $t->id,
+                            'title' => $t->title,
+                            'priority' => $t->priority,
+                            'status' => $t->status,
+                        ];
+                    })->values()->all();
+            }
+        } catch (\Throwable $ex) {
+            \Log::warning('close_register due_tasks failed: ' . $ex->getMessage());
+        }
+
         // Render eagerly so a runtime error inside the (new) shift-summary
         // block can't escape into the middleware as a 500 — the .btn-modal
         // AJAX has no error handler, so a 500 here shows the cashier nothing
         // ("clicking Close Register does nothing"). If the modal fails to
         // render for any reason, fall back to the legacy modal with no
         // summary. The close flow MUST never break.
-        $view_data = compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name', 'shift_summary');
+        $view_data = compact('register_details', 'details', 'payment_types', 'pos_settings', 'keying_errors', 'next_deposit_seq', 'cashier_name', 'shift_summary', 'due_tasks');
         try {
             return view('cash_register.close_register_modal')->with($view_data)->render();
         } catch (\Throwable $ex) {
             \Log::error('close_register_modal render failed, falling back to legacy: ' . $ex->getMessage());
             $view_data['shift_summary'] = null;
+            $view_data['due_tasks'] = [];
             return view('cash_register.close_register_modal')->with($view_data)->render();
         }
     }
@@ -1454,35 +1477,6 @@ class CashRegisterController extends Controller
             $output = ['success' => 1,
                             'msg' => __('cash_register.close_success')
                         ];
-
-            // Surface today's still-open daily tasks right after the count,
-            // while the cashier is still looking at the screen — the "Tasks
-            // due today" bubble on the POS page. Isolated in its own
-            // try/catch so any hiccup here can never block the close.
-            if ($openRegister) {
-                try {
-                    $storeKey = $this->storeKeyForLocation($openRegister->location_id);
-                    if ($storeKey) {
-                        $dueTasks = \App\Http\Controllers\TaskController::dueTodayForStore(
-                            $request->session()->get('user.business_id'),
-                            $storeKey,
-                            $user_id
-                        );
-                        if ($dueTasks->isNotEmpty()) {
-                            session()->flash('tasks_due_today_bubble', $dueTasks->map(function ($t) {
-                                return [
-                                    'id' => $t->id,
-                                    'title' => $t->title,
-                                    'priority' => $t->priority,
-                                    'status' => $t->status,
-                                ];
-                            })->values()->all());
-                        }
-                    }
-                } catch (\Throwable $ex) {
-                    \Log::warning('tasks_due_today_bubble failed: ' . $ex->getMessage());
-                }
-            }
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
             $output = ['success' => 0,

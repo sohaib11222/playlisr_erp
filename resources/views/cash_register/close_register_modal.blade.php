@@ -643,6 +643,14 @@
 			</div>
 			@endif
 
+			{{-- Tasks due today, right where the cashier is already
+			     accounting for their shift — not a separate popup after
+			     they've already left the screen. Same checklist/status
+			     buttons as the standalone /tasks/end-shift page. --}}
+			@if(!empty($due_tasks))
+				@include('tasks.partials.due_today_bubble', ['dueTodayTasks' => $due_tasks])
+			@endif
+
 			@if(!empty($shift_summary))
 				{{-- The stats above are auto-generated and not editable, so the
 				     record reflects what was actually done in the system. The
