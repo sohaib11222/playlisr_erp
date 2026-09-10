@@ -384,16 +384,13 @@ class TaskController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
 
-        // A root repeating task's history (each instance, and who did what)
-        // lives in the rows it generated — deleting it out from under them
-        // would erase that history. Turning off "repeat daily"/"repeat
-        // weekly" on the root stops new instances without touching the ones
-        // already there; each instance can still be deleted individually.
-        if ($task->repeat_of === null && WeeklyTask::where('repeat_of', $task->id)->exists()) {
-            return redirect()->back()->with('status', [
-                'success' => false,
-                'msg' => 'This task has repeated in the past — edit it and turn off "Repeat daily"/"Repeat weekly" instead of deleting it, so the history stays intact.',
-            ]);
+        // Deleting a repeating root takes the whole series with it — every
+        // instance it generated goes too (delete children first: repeat_of
+        // is a restrict-on-delete FK, so the root can't go while instances
+        // still point at it). Deleting a single generated instance (or a
+        // non-repeating task) only ever removes that one row.
+        if ($task->repeat_of === null) {
+            WeeklyTask::where('repeat_of', $task->id)->delete();
         }
 
         $task->delete();
