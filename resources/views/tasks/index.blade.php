@@ -65,8 +65,8 @@
                     <tr>
                         <td>
                             <strong>{{ $t->title }}</strong>
-                            @if($t->repeat_daily || $t->repeat_of)
-                                <i class="fa fa-repeat text-muted" title="Repeats daily"></i>
+                            @if($t->repeat_daily || $t->repeat_weekly || $t->repeat_of)
+                                <i class="fa fa-repeat text-muted" title="Repeats {{ $t->task_type }}"></i>
                             @endif
                             @if($t->description)
                                 <div class="text-muted"><small>{{ $t->description }}</small></div>

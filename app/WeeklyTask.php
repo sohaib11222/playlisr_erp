@@ -15,6 +15,7 @@ class WeeklyTask extends Model
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'repeat_daily' => 'boolean',
+        'repeat_weekly' => 'boolean',
     ];
 
     public function creator()

@@ -29,7 +29,7 @@ class TaskController extends Controller
     }
 
     /** end_date for a task of $taskType, starting $startDate. */
-    private function computeEndDate(string $taskType, string $startDate)
+    private static function computeEndDate(string $taskType, string $startDate)
     {
         $start = \Carbon\Carbon::parse($startDate);
         return $taskType === 'daily' ? $start->toDateString() : $start->addDays(7)->toDateString();
@@ -100,53 +100,69 @@ class TaskController extends Controller
     }
 
     /**
-     * For every "repeat daily" task (root, i.e. not itself a generated
-     * instance) that has started, make sure today has its own instance row.
-     * Lazy: runs on whoever hits /tasks or closes a register first each day,
-     * rather than a cron. Idempotent — checks for today's instance before
-     * creating one, so calling this from multiple places/requests the same
-     * day is harmless.
+     * For every repeating task (root, i.e. not itself a generated instance)
+     * that has started, make sure it has an up-to-date instance: daily
+     * repeats get a fresh row once "today" doesn't have one yet; weekly
+     * repeats get a fresh row once 7+ days have passed since the last one.
+     * Lazy: runs on whoever hits /tasks or closes a register first, rather
+     * than a cron. Idempotent — safe to call from multiple places/requests.
      *
      * A generated instance keeps its own status/attribution, same as any
-     * other daily task, so yesterday's "who did it" stays intact instead of
-     * being silently reset — this only ever adds new rows, never rewrites
-     * old ones.
+     * other task, so history — who did what, which day/week — stays intact
+     * instead of being silently reset. This only ever adds new rows, never
+     * rewrites old ones.
      */
-    private static function rolloverRepeatingDailyTasks($business_id)
+    private static function rolloverRepeatingTasks($business_id)
     {
-        $today = \Carbon\Carbon::today()->toDateString();
+        self::rolloverRepeats($business_id, 'daily', 'repeat_daily');
+        self::rolloverRepeats($business_id, 'weekly', 'repeat_weekly');
+    }
+
+    private static function rolloverRepeats($business_id, $taskType, $repeatColumn)
+    {
+        $today = \Carbon\Carbon::today();
 
         $roots = WeeklyTask::with('assignees')
             ->where('business_id', $business_id)
-            ->where('task_type', 'daily')
-            ->where('repeat_daily', true)
+            ->where('task_type', $taskType)
+            ->where($repeatColumn, true)
             ->whereNull('repeat_of')
-            ->whereDate('start_date', '<=', $today)
+            ->whereDate('start_date', '<=', $today->toDateString())
             ->get();
 
         foreach ($roots as $root) {
-            $existsToday = WeeklyTask::where('business_id', $business_id)
+            $lastStart = WeeklyTask::where('business_id', $business_id)
                 ->where(function ($q) use ($root) {
                     $q->where('id', $root->id)->orWhere('repeat_of', $root->id);
                 })
-                ->whereDate('start_date', $today)
-                ->exists();
-            if ($existsToday) {
-                continue;
+                ->max('start_date');
+            $lastStart = \Carbon\Carbon::parse($lastStart);
+
+            if ($taskType === 'daily') {
+                if ($lastStart->isSameDay($today)) {
+                    continue;
+                }
+                $newStart = $today->toDateString();
+            } else {
+                if ($lastStart->copy()->addDays(7)->gt($today)) {
+                    continue;
+                }
+                $newStart = $today->toDateString();
             }
 
             $instance = WeeklyTask::create([
                 'business_id' => $business_id,
                 'title' => $root->title,
                 'description' => $root->description,
-                'start_date' => $today,
-                'end_date' => $today,
-                'task_type' => 'daily',
+                'start_date' => $newStart,
+                'end_date' => self::computeEndDate($taskType, $newStart),
+                'task_type' => $taskType,
                 'store' => $root->store,
                 'priority' => $root->priority,
                 'status' => 'not_started',
                 'created_by' => $root->created_by,
-                'repeat_daily' => true,
+                'repeat_daily' => $taskType === 'daily',
+                'repeat_weekly' => $taskType === 'weekly',
                 'repeat_of' => $root->id,
             ]);
             $instance->assignees()->sync($root->assignees->pluck('id')->all());
@@ -162,7 +178,7 @@ class TaskController extends Controller
      */
     public static function dueTodayForStore($business_id, $store)
     {
-        self::rolloverRepeatingDailyTasks($business_id);
+        self::rolloverRepeatingTasks($business_id);
 
         $query = WeeklyTask::where('business_id', $business_id)
             ->where('task_type', 'daily')
@@ -181,7 +197,7 @@ class TaskController extends Controller
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
-        self::rolloverRepeatingDailyTasks($business_id);
+        self::rolloverRepeatingTasks($business_id);
 
         // Daily and weekly tasks share one list now (no more separate
         // tabs) — 'type' is just an optional filter, not the thing that
@@ -247,6 +263,7 @@ class TaskController extends Controller
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
             'repeat_daily' => 'nullable|boolean',
+            'repeat_weekly' => 'nullable|boolean',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'assignees' => 'nullable|array',
@@ -255,15 +272,17 @@ class TaskController extends Controller
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
-        // Only a daily task can repeat — a stray checkbox value on a weekly
-        // task is silently dropped rather than validated against, since
-        // there's nothing wrong with the request, just nothing to do with it.
+        // A daily task can only repeat daily, a weekly task only weekly — a
+        // stray checkbox value for the other type is silently dropped rather
+        // than validated against, since there's nothing wrong with the
+        // request, just nothing to do with it.
         $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
+        $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
         $data['status'] = 'not_started';
-        $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
+        $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
 
         $task = WeeklyTask::create($data);
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
@@ -293,6 +312,7 @@ class TaskController extends Controller
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
             'repeat_daily' => 'nullable|boolean',
+            'repeat_weekly' => 'nullable|boolean',
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
@@ -304,14 +324,15 @@ class TaskController extends Controller
 
         // Whether a task repeats is only editable on the root task — a
         // generated instance (repeat_of set) keeps whatever the root says,
-        // so one day's row can't quietly break the rest of the series.
+        // so one day's/week's row can't quietly break the rest of the series.
         if ($task->repeat_of !== null) {
-            unset($data['repeat_daily']);
+            unset($data['repeat_daily'], $data['repeat_weekly']);
         } else {
             $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
+            $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
         }
 
-        $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
+        $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
 
         $this->applyStatusTransition($task, $data['status']);
         unset($data['status']);
@@ -352,15 +373,15 @@ class TaskController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
 
-        // A root repeating task's history (each day's instance, and who did
-        // what) lives in the rows it generated — deleting it out from under
-        // them would erase that history. Turning off "repeat daily" on the
-        // root stops new instances without touching the ones already there;
-        // each instance can still be deleted individually.
+        // A root repeating task's history (each instance, and who did what)
+        // lives in the rows it generated — deleting it out from under them
+        // would erase that history. Turning off "repeat daily"/"repeat
+        // weekly" on the root stops new instances without touching the ones
+        // already there; each instance can still be deleted individually.
         if ($task->repeat_of === null && WeeklyTask::where('repeat_of', $task->id)->exists()) {
             return redirect(action('TaskController@index'))->with('status', [
                 'success' => false,
-                'msg' => 'This task has repeated in the past — edit it and turn off "Repeat daily" instead of deleting it, so the history stays intact.',
+                'msg' => 'This task has repeated in the past — edit it and turn off "Repeat daily"/"Repeat weekly" instead of deleting it, so the history stays intact.',
             ]);
         }
 
