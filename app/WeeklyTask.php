@@ -14,6 +14,7 @@ class WeeklyTask extends Model
         'end_date' => 'date',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'repeat_daily' => 'boolean',
     ];
 
     public function creator()
@@ -36,5 +37,11 @@ class WeeklyTask extends Model
     {
         return $this->belongsToMany(\App\User::class, 'task_assignees', 'task_id', 'user_id')
             ->withTimestamps();
+    }
+
+    /** The original "repeat daily" task this instance was generated from, if any. */
+    public function repeatRoot()
+    {
+        return $this->belongsTo(\App\WeeklyTask::class, 'repeat_of');
     }
 }

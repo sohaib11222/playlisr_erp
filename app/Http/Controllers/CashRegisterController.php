@@ -1454,6 +1454,34 @@ class CashRegisterController extends Controller
             $output = ['success' => 1,
                             'msg' => __('cash_register.close_success')
                         ];
+
+            // Surface today's still-open daily tasks right after the count,
+            // while the cashier is still looking at the screen — the "Tasks
+            // due today" bubble on the POS page. Isolated in its own
+            // try/catch so any hiccup here can never block the close.
+            if ($openRegister) {
+                try {
+                    $storeKey = $this->storeKeyForLocation($openRegister->location_id);
+                    if ($storeKey) {
+                        $dueTasks = \App\Http\Controllers\TaskController::dueTodayForStore(
+                            $request->session()->get('user.business_id'),
+                            $storeKey
+                        );
+                        if ($dueTasks->isNotEmpty()) {
+                            session()->flash('tasks_due_today_bubble', $dueTasks->map(function ($t) {
+                                return [
+                                    'id' => $t->id,
+                                    'title' => $t->title,
+                                    'priority' => $t->priority,
+                                    'status' => $t->status,
+                                ];
+                            })->values()->all());
+                        }
+                    }
+                } catch (\Throwable $ex) {
+                    \Log::warning('tasks_due_today_bubble failed: ' . $ex->getMessage());
+                }
+            }
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
             $output = ['success' => 0,
@@ -1462,5 +1490,21 @@ class CashRegisterController extends Controller
         }
 
         return redirect()->back()->with('status', $output);
+    }
+
+    /** Store key ('pico'/'hollywood') for a business location id, or null if it doesn't match either. */
+    private function storeKeyForLocation($location_id)
+    {
+        $location = BusinessLocation::find($location_id);
+        if (!$location || !$location->name) {
+            return null;
+        }
+        if (stripos($location->name, 'pico') !== false) {
+            return 'pico';
+        }
+        if (stripos($location->name, 'holly') !== false) {
+            return 'hollywood';
+        }
+        return null;
     }
 }

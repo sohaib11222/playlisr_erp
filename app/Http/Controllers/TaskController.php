@@ -99,9 +99,89 @@ class TaskController extends Controller
         $task->assignees()->sync($validIds);
     }
 
+    /**
+     * For every "repeat daily" task (root, i.e. not itself a generated
+     * instance) that has started, make sure today has its own instance row.
+     * Lazy: runs on whoever hits /tasks or closes a register first each day,
+     * rather than a cron. Idempotent — checks for today's instance before
+     * creating one, so calling this from multiple places/requests the same
+     * day is harmless.
+     *
+     * A generated instance keeps its own status/attribution, same as any
+     * other daily task, so yesterday's "who did it" stays intact instead of
+     * being silently reset — this only ever adds new rows, never rewrites
+     * old ones.
+     */
+    private static function rolloverRepeatingDailyTasks($business_id)
+    {
+        $today = \Carbon\Carbon::today()->toDateString();
+
+        $roots = WeeklyTask::with('assignees')
+            ->where('business_id', $business_id)
+            ->where('task_type', 'daily')
+            ->where('repeat_daily', true)
+            ->whereNull('repeat_of')
+            ->whereDate('start_date', '<=', $today)
+            ->get();
+
+        foreach ($roots as $root) {
+            $existsToday = WeeklyTask::where('business_id', $business_id)
+                ->where(function ($q) use ($root) {
+                    $q->where('id', $root->id)->orWhere('repeat_of', $root->id);
+                })
+                ->whereDate('start_date', $today)
+                ->exists();
+            if ($existsToday) {
+                continue;
+            }
+
+            $instance = WeeklyTask::create([
+                'business_id' => $business_id,
+                'title' => $root->title,
+                'description' => $root->description,
+                'start_date' => $today,
+                'end_date' => $today,
+                'task_type' => 'daily',
+                'store' => $root->store,
+                'priority' => $root->priority,
+                'status' => 'not_started',
+                'created_by' => $root->created_by,
+                'repeat_daily' => true,
+                'repeat_of' => $root->id,
+            ]);
+            $instance->assignees()->sync($root->assignees->pluck('id')->all());
+        }
+    }
+
+    /**
+     * Daily tasks due today (not yet complete) for a store, same scoping as
+     * the store filter on the list page: that store's tasks plus any
+     * company-wide (store = null) task. Used to drive the "Tasks due today"
+     * bubble shown right after a cashier closes out their register — the
+     * moment they're most likely to actually look at it before leaving.
+     */
+    public static function dueTodayForStore($business_id, $store)
+    {
+        self::rolloverRepeatingDailyTasks($business_id);
+
+        $query = WeeklyTask::where('business_id', $business_id)
+            ->where('task_type', 'daily')
+            ->whereDate('start_date', \Carbon\Carbon::today())
+            ->where('status', '!=', 'complete');
+
+        if (!empty($store)) {
+            $query->where(function ($q) use ($store) {
+                $q->where('store', $store)->orWhereNull('store');
+            });
+        }
+
+        return $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")->get();
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
+        self::rolloverRepeatingDailyTasks($business_id);
 
         // Daily and weekly tasks share one list now (no more separate
         // tabs) — 'type' is just an optional filter, not the thing that
@@ -166,6 +246,7 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
+            'repeat_daily' => 'nullable|boolean',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'assignees' => 'nullable|array',
@@ -173,6 +254,11 @@ class TaskController extends Controller
         ]);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
+
+        // Only a daily task can repeat — a stray checkbox value on a weekly
+        // task is silently dropped rather than validated against, since
+        // there's nothing wrong with the request, just nothing to do with it.
+        $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
@@ -206,6 +292,7 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'start_date' => 'required|date',
             'task_type' => 'required|in:daily,weekly',
+            'repeat_daily' => 'nullable|boolean',
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
@@ -214,6 +301,15 @@ class TaskController extends Controller
         ]);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
+
+        // Whether a task repeats is only editable on the root task — a
+        // generated instance (repeat_of set) keeps whatever the root says,
+        // so one day's row can't quietly break the rest of the series.
+        if ($task->repeat_of !== null) {
+            unset($data['repeat_daily']);
+        } else {
+            $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
+        }
 
         $data['end_date'] = $this->computeEndDate($data['task_type'], $data['start_date']);
 
@@ -239,6 +335,14 @@ class TaskController extends Controller
         $this->applyStatusTransition($task, $newStatus);
         $task->save();
 
+        // The "Tasks due today" bubble (shown on the POS screen right after
+        // register close) updates status inline via AJAX so a cashier isn't
+        // bounced off the POS to /tasks mid-shift. The plain form on the
+        // /tasks list page still gets the normal redirect.
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'status' => $task->status]);
+        }
+
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Status updated.']);
     }
@@ -247,6 +351,19 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+
+        // A root repeating task's history (each day's instance, and who did
+        // what) lives in the rows it generated — deleting it out from under
+        // them would erase that history. Turning off "repeat daily" on the
+        // root stops new instances without touching the ones already there;
+        // each instance can still be deleted individually.
+        if ($task->repeat_of === null && WeeklyTask::where('repeat_of', $task->id)->exists()) {
+            return redirect(action('TaskController@index'))->with('status', [
+                'success' => false,
+                'msg' => 'This task has repeated in the past — edit it and turn off "Repeat daily" instead of deleting it, so the history stays intact.',
+            ]);
+        }
+
         $task->delete();
 
         return redirect(action('TaskController@index'))

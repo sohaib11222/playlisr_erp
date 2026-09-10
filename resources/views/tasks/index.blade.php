@@ -63,7 +63,7 @@
                 <tbody>
                     @forelse($tasks as $t)
                     <tr>
-                        <td><strong>{{ $t->title }}</strong>@if($t->description)<div class="text-muted"><small>{{ $t->description }}</small></div>@endif</td>
+                        <td><strong>{{ $t->title }}</strong>@if($t->repeat_daily || $t->repeat_of) <i class="fa fa-repeat text-muted" title="Repeats daily"></i>@endif@if($t->description)<div class="text-muted"><small>{{ $t->description }}</small></div>@endif</td>
                         <td><span class="label label-{{ $t->task_type === 'daily' ? 'info' : 'primary' }}">{{ $t->task_type === 'daily' ? 'Daily' : 'Weekly' }}</span></td>
                         <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
                         <td><span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$t->priority] ?? 'default' }}">{{ $priorityLabels[$t->priority] ?? ucfirst($t->priority) }}</span></td>

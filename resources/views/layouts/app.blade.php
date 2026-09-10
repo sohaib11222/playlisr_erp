@@ -75,6 +75,9 @@
                 @if (session('status'))
                     <input type="hidden" id="status_span" data-status="{{ session('status.success') }}" data-msg="{{ session('status.msg') }}">
                 @endif
+                @if (session('tasks_due_today_bubble'))
+                    @include('tasks.partials.due_today_bubble', ['dueTodayTasks' => session('tasks_due_today_bubble')])
+                @endif
                 @if(!$pos_layout && auth()->check() && auth()->user()->can('dashboard.data'))
                     @include('layouts.partials.shift-strip')
                 @endif

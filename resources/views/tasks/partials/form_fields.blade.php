@@ -33,6 +33,25 @@
             <small class="text-muted">Always 7 days after the start date.</small>
         </div>
     </div>
+    <div class="col-md-3" id="task_repeat_daily_wrap" style="{{ $currentTaskType === 'daily' ? '' : 'display:none;' }}">
+        <div class="form-group">
+            <label>&nbsp;</label>
+            @if(isset($task) && $task->repeat_of !== null)
+                <div class="checkbox" style="margin-top:7px;">
+                    <label class="text-muted"><i class="fa fa-repeat"></i> Repeats daily @if($task->repeatRoot)(from "{{ $task->repeatRoot->title }}")@endif</label>
+                </div>
+                <small class="text-muted">Only the original task controls whether the series repeats.</small>
+            @else
+                <div class="checkbox" style="margin-top:7px;">
+                    <label>
+                        <input type="checkbox" id="task_repeat_daily" name="repeat_daily" value="1" @if(old('repeat_daily', $task->repeat_daily ?? false)) checked @endif>
+                        Repeat daily
+                    </label>
+                </div>
+                <small class="text-muted">Auto-creates a fresh copy each day instead of needing to be re-added. Uncheck to stop — past days stay as history.</small>
+            @endif
+        </div>
+    </div>
     <div class="col-md-3">
         <div class="form-group">
             <label>Store</label>
@@ -69,6 +88,7 @@ $(function() {
         var isDaily = $('#task_type').val() === 'daily';
         $('#task_start_date_label').text(isDaily ? 'Date' : 'Start date');
         $('#task_end_date_wrap').toggle(!isDaily);
+        $('#task_repeat_daily_wrap').toggle(isDaily);
         if (!$('#task_start_date').val()) return;
         var d = new Date($('#task_start_date').val() + 'T00:00:00');
         if (!isDaily) { d.setDate(d.getDate() + 7); }

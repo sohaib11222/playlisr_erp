@@ -85,22 +85,23 @@ class AdminSidebarMenu
                 )->order(11);
             }
 
-            //Tasks & Projects — team-wide weekly tasks + longer-running
+            //Tasks & Projects — team-wide daily + weekly tasks + longer-running
             //projects with contributor credit. Open to every employee, no
             //permission gate (mirrors Customer Wants' convention).
+            //
+            //Daily and weekly tasks used to be two separate nav links (each
+            //pointing at /tasks with a different ?type=), which people kept
+            //reading as two different lists/places. They're actually one
+            //list with an optional type filter (TaskController@index), so
+            //there's one "Tasks" link now — the type dropdown on the page
+            //itself still lets you narrow to just Daily or just Weekly.
             $menu->dropdown(
                 'Tasks & Projects',
                 function ($sub) {
-                    $onTasks = request()->segment(1) == 'tasks' && request()->segment(2) != 'projects';
                     $sub->url(
-                        route('tasks.index', ['type' => 'daily']),
-                        'Daily Tasks',
-                        ['icon' => 'fa fas fa-calendar-day', 'active' => $onTasks && request()->input('type', 'weekly') == 'daily']
-                    );
-                    $sub->url(
-                        route('tasks.index', ['type' => 'weekly']),
-                        'Weekly Tasks',
-                        ['icon' => 'fa fas fa-calendar-check', 'active' => $onTasks && request()->input('type', 'weekly') == 'weekly']
+                        route('tasks.index'),
+                        'Tasks',
+                        ['icon' => 'fa fas fa-calendar-day', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) != 'projects']
                     );
                     $sub->url(
                         route('projects.index'),
