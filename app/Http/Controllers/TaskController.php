@@ -150,21 +150,32 @@ class TaskController extends Controller
                 $newStart = $today->toDateString();
             }
 
-            $instance = WeeklyTask::create([
-                'business_id' => $business_id,
-                'title' => $root->title,
-                'description' => $root->description,
-                'start_date' => $newStart,
-                'end_date' => self::computeEndDate($taskType, $newStart),
-                'task_type' => $taskType,
-                'store' => $root->store,
-                'priority' => $root->priority,
-                'status' => 'not_started',
-                'created_by' => $root->created_by,
-                'repeat_daily' => $taskType === 'daily',
-                'repeat_weekly' => $taskType === 'weekly',
-                'repeat_of' => $root->id,
-            ]);
+            try {
+                $instance = WeeklyTask::create([
+                    'business_id' => $business_id,
+                    'title' => $root->title,
+                    'description' => $root->description,
+                    'start_date' => $newStart,
+                    'end_date' => self::computeEndDate($taskType, $newStart),
+                    'task_type' => $taskType,
+                    'store' => $root->store,
+                    'priority' => $root->priority,
+                    'status' => 'not_started',
+                    'created_by' => $root->created_by,
+                    'repeat_daily' => $taskType === 'daily',
+                    'repeat_weekly' => $taskType === 'weekly',
+                    'repeat_of' => $root->id,
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Unique (repeat_of, start_date) constraint — an overlapping
+                // request (two /tasks loads, or a register close racing a
+                // page load) already created this instance a moment ago.
+                // That row is the one that counts; nothing to do here.
+                if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                    continue;
+                }
+                throw $e;
+            }
             $instance->assignees()->sync($root->assignees->pluck('id')->all());
         }
     }
@@ -379,7 +390,7 @@ class TaskController extends Controller
         // weekly" on the root stops new instances without touching the ones
         // already there; each instance can still be deleted individually.
         if ($task->repeat_of === null && WeeklyTask::where('repeat_of', $task->id)->exists()) {
-            return redirect(action('TaskController@index'))->with('status', [
+            return redirect()->back()->with('status', [
                 'success' => false,
                 'msg' => 'This task has repeated in the past — edit it and turn off "Repeat daily"/"Repeat weekly" instead of deleting it, so the history stays intact.',
             ]);
@@ -387,7 +398,11 @@ class TaskController extends Controller
 
         $task->delete();
 
-        return redirect(action('TaskController@index'))
+        // back() instead of a bare index redirect — keeps whatever
+        // type/store/status/page filter you were looking at, so the list
+        // you land on actually reflects what you just deleted instead of
+        // resetting to an unfiltered page 1.
+        return redirect()->back()
             ->with('status', ['success' => true, 'msg' => 'Task deleted.']);
     }
 
