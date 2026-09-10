@@ -57,6 +57,7 @@ jobs:
             $t = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_endshift_page__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'high','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
             $t->assignees()->sync([$u1]);
             echo "created test task id={$t->id} for user={$u1}\n";
+            $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
             request()->setLaravelSession(app('session.store'));
             app('session.store')->start();
             request()->session()->put('user.business_id', $biz);
