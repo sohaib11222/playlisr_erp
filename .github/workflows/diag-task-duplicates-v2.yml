@@ -1,0 +1,84 @@
+# READ-ONLY follow-up diag: the dedupe+unique-index migration
+# (2026_09_10_180000) reported success, but a re-check still showed 23
+# duplicate (repeat_of, start_date) groups. Figure out why: does the unique
+# index actually exist, what's the server's git HEAD, and are these the SAME
+# duplicate ids as before (dedup never ran) or a fresh set (something is
+# still creating duplicates despite the constraint).
+
+name: Diag task duplicates v2
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect index + duplicate ids
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== server git HEAD ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== migrate:status (last 5) ==="
+            php artisan migrate:status 2>&1 | tail -6
+            echo "=== SHOW INDEX FROM weekly_tasks ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $idx = DB::select("SHOW INDEX FROM weekly_tasks WHERE Key_name = 'weekly_tasks_repeat_of_start_date_unique'");
+            echo "index rows: " . count($idx) . "\n";
+            foreach ($idx as $row) {
+                echo "  " . json_encode($row) . "\n";
+            }
+            PHP
+            echo "=== duplicate groups with ids + created_at (full) ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $dupes = DB::table('weekly_tasks')
+                ->select('repeat_of', 'start_date', DB::raw('COUNT(*) as cnt'), DB::raw('GROUP_CONCAT(id ORDER BY id) as ids'), DB::raw('GROUP_CONCAT(created_at ORDER BY id) as created'))
+                ->whereNotNull('repeat_of')
+                ->groupBy('repeat_of', 'start_date')
+                ->having('cnt', '>', 1)
+                ->get();
+            echo "duplicate groups: " . $dupes->count() . "\n";
+            foreach ($dupes as $d) {
+                echo "  repeat_of={$d->repeat_of} start_date={$d->start_date} count={$d->cnt} ids=[{$d->ids}] created=[{$d->created}]\n";
+            }
+            PHP
+            echo "=== total weekly_tasks row count ==="
+            php artisan tinker --no-ansi <<'PHP'
+            echo DB::table('weekly_tasks')->count() . "\n";
+            PHP
+            echo "=== done ==="
