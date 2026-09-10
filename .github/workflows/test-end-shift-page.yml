@@ -57,6 +57,8 @@ jobs:
             $t = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__test_endshift_page__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>$store,'priority'=>'high','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
             $t->assignees()->sync([$u1]);
             echo "created test task id={$t->id} for user={$u1}\n";
+            request()->setLaravelSession(app('session.store'));
+            app('session.store')->start();
             request()->session()->put('user.business_id', $biz);
             Auth::loginUsingId($u1);
             try { $view = app(App\Http\Controllers\TaskController::class)->endShift(request()); $html = $view->render(); echo "RENDER: PASS (" . strlen($html) . " bytes)\n"; echo (str_contains($html, '__test_endshift_page__') ? "CONTAINS TEST TASK: PASS\n" : "CONTAINS TEST TASK: FAIL\n"); echo (str_contains($html, 'Repeat daily') ? "unexpected form markup leaked: FAIL\n" : "no stray form markup: PASS\n"); } catch (\Throwable $e) { echo "RENDER: FAIL - " . get_class($e) . ": " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine() . "\n"; }
