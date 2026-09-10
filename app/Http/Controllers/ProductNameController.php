@@ -1496,4 +1496,89 @@ class ProductNameController extends Controller
 
         return response()->json(['success' => true, 'total' => $total, 'sample' => $sample, 'scanned' => $scanned, 'matched' => count($sample)]);
     }
+
+    /**
+     * Cursor-paged, read-only: for blank-genre products where NEITHER the
+     * same-artist catalog check NOR the Discogs match found anything, tally
+     * which Discogs genre/style name was closest (its first style, or first
+     * genre if no styles) so Sarah can see which real genres are missing
+     * from her taxonomy and decide whether to add them on /taxonomies. Never
+     * writes anything.
+     */
+    public function discogsGenreUnmatchedScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $afterId = (int) $request->input('after_id', 0);
+        $max = (int) $request->input('max', 15);
+        if ($max < 1 || $max > 30) { $max = 15; }
+
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured.']);
+        }
+        $catIds = $this->musicCategoryIds($business_id);
+        if (empty($catIds)) {
+            return response()->json(['success' => true, 'tally' => [], 'scanned' => 0, 'unmatched' => 0, 'after_id' => 0, 'remaining' => 0, 'done' => true]);
+        }
+
+        $base = $this->genrelessMusicQuery($business_id, $catIds)
+            ->whereNotNull('discogs_release_id')->where('discogs_release_id', '>', 0);
+
+        $rows = (clone $base)->where('id', '>', $afterId)
+            ->select('id', 'name', 'artist', 'category_id', 'discogs_release_id')
+            ->orderBy('id')->limit($max)->get();
+
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'tally' => [], 'scanned' => 0, 'unmatched' => 0, 'after_id' => $afterId, 'remaining' => 0, 'done' => true]);
+        }
+
+        $tally = [];
+        $unmatched = 0;
+        $lastId = $afterId;
+        $rateLimited = false;
+        foreach ($rows as $r) {
+            $lastId = (int) $r->id;
+            if (stripos($r->name, 'retired') !== false || !$r->category_id) { continue; }
+
+            $ownGenreName = $this->mostCommonGenreNameForArtist($business_id, $r->category_id, $r->artist);
+            if ($ownGenreName !== null && $this->matchExistingSubCategory($business_id, $r->category_id, [$ownGenreName])) {
+                continue; // resolves fine via the catalog check — not actually unmatched
+            }
+
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            if (!empty($res['error'])) {
+                if (stripos((string) $res['message'], '429') !== false || stripos((string) $res['message'], 'rate') !== false) {
+                    $rateLimited = true;
+                    break;
+                }
+                usleep(1100000);
+                continue;
+            }
+            $candidates = $this->genreCandidatesFromRelease($res['data'] ?? null);
+            $subCatId = $this->matchExistingSubCategory($business_id, $r->category_id, $candidates);
+            if (!$subCatId) {
+                $unmatched++;
+                $label = $candidates[0] ?? '(Discogs returned no genre/style)';
+                $tally[$label] = ($tally[$label] ?? 0) + 1;
+            }
+            usleep(1100000);
+        }
+
+        $remaining = (clone $base)->where('id', '>', $lastId)->count();
+
+        return response()->json([
+            'success' => true,
+            'tally' => $tally,
+            'scanned' => $rows->count(),
+            'unmatched' => $unmatched,
+            'rate_limited' => $rateLimited,
+            'after_id' => $lastId,
+            'remaining' => $remaining,
+            'done' => ($remaining === 0 && !$rateLimited),
+        ]);
+    }
 }

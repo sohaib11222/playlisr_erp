@@ -141,6 +141,23 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 </div>
             </div>
         </div>
+        <div style="margin-top:14px;padding:14px;border:1px solid #E6DCCF;background:#FEFAF0;border-radius:10px;">
+            <div style="font-weight:600;color:#3B2E2A;">See what's missing from your genre list</div>
+            <p class="sub" style="margin:6px 0 10px;">Read-only — writes nothing. Scans blank-genre products the fill above couldn't match, and tallies which Discogs genre/style came up most often, so you can see what's worth adding as a real sub-category on <a href="/taxonomies" target="_blank">/taxonomies</a>. Rate-limited same as the fill; leave the tab open — it keeps going until you stop it or it runs out.</p>
+            <div class="mgn-actions" style="margin-top:0;">
+                <button class="mgn-btn mgn-btn-ghost" id="dgUnmatchedBtn" type="button">Scan unmatched genres</button>
+                <button class="mgn-btn mgn-btn-ghost" id="dgUnmatchedStopBtn" type="button" style="display:none;">Stop</button>
+                <span class="mgn-note" id="dgUnmatchedProgress" style="margin-top:0"></span>
+            </div>
+            <div id="dgUnmatchedResult" style="display:none;margin-top:14px;">
+                <div style="max-height:340px;overflow:auto;border:1px solid #E6DCCF;border-radius:10px;background:#fff;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Discogs genre/style</th><th style="text-align:right">Count</th></tr></thead>
+                        <tbody id="dgUnmatchedRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
         <div id="arAlpha" style="display:none;margin-top:12px;flex-wrap:wrap;gap:4px;"></div>
         <div id="arResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="arSummary" style="margin-top:0;color:#1F1B16;"></div>
@@ -711,6 +728,62 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         dgGenreProgress.textContent = 'Starting with sealed vinyl…';
         dgGenreBatch(0, 0, 'sealed');
     });
+
+    // Read-only tally of unmatched Discogs genres/styles — no writes.
+    var dgUnmatchedBtn = document.getElementById('dgUnmatchedBtn');
+    var dgUnmatchedStopBtn = document.getElementById('dgUnmatchedStopBtn');
+    var dgUnmatchedProgress = document.getElementById('dgUnmatchedProgress');
+    var dgUnmatchedResult = document.getElementById('dgUnmatchedResult');
+    var dgUnmatchedRows = document.getElementById('dgUnmatchedRows');
+    var dgUnmatchedTally = {};
+    var dgUnmatchedStopped = false;
+    function renderUnmatchedTally() {
+        var entries = Object.keys(dgUnmatchedTally).map(function (k) { return [k, dgUnmatchedTally[k]]; });
+        entries.sort(function (a, b) { return b[1] - a[1]; });
+        dgUnmatchedRows.innerHTML = entries.length
+            ? entries.map(function (e) {
+                return '<tr><td>' + esc(e[0]) + '</td><td style="text-align:right">' + e[1].toLocaleString() + '</td></tr>';
+            }).join('')
+            : '<tr><td colspan="2" style="color:#8E8273">Nothing tallied yet.</td></tr>';
+        dgUnmatchedResult.style.display = entries.length ? 'block' : 'none';
+    }
+    function dgUnmatchedBatch(afterId, scannedTotal, unmatchedTotal) {
+        if (dgUnmatchedStopped) { return; }
+        post('{{ route('products.genre.discogs.unmatched') }}', { after_id: afterId }).then(function (d) {
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); dgUnmatchedStop(); return; }
+            Object.keys(d.tally || {}).forEach(function (k) {
+                dgUnmatchedTally[k] = (dgUnmatchedTally[k] || 0) + d.tally[k];
+            });
+            scannedTotal += (d.scanned || 0);
+            unmatchedTotal += (d.unmatched || 0);
+            renderUnmatchedTally();
+            var note = 'Scanned ' + scannedTotal.toLocaleString() + ' · ' + unmatchedTotal.toLocaleString() + ' unmatched · ' + (d.remaining || 0).toLocaleString() + ' left';
+            if (d.rate_limited) { note += ' · Discogs rate limit, pausing 60s…'; }
+            dgUnmatchedProgress.textContent = note + '…';
+            if (d.done) { dgUnmatchedStop('Done — ' + note.replace(' left', '') + '.'); return; }
+            var wait = d.rate_limited ? 60000 : 300;
+            setTimeout(function () { dgUnmatchedBatch(d.after_id, scannedTotal, unmatchedTotal); }, wait);
+        }).catch(function () {
+            dgUnmatchedProgress.textContent = 'Hiccup — retrying in 10s…';
+            setTimeout(function () { dgUnmatchedBatch(afterId, scannedTotal, unmatchedTotal); }, 10000);
+        });
+    }
+    function dgUnmatchedStop(finalMsg) {
+        dgUnmatchedStopped = true;
+        dgUnmatchedBtn.disabled = false; dgUnmatchedBtn.textContent = 'Scan unmatched genres';
+        dgUnmatchedStopBtn.style.display = 'none';
+        dgUnmatchedProgress.textContent = finalMsg || '';
+    }
+    dgUnmatchedBtn.addEventListener('click', function () {
+        clearMsg();
+        dgUnmatchedTally = {}; dgUnmatchedStopped = false;
+        dgUnmatchedBtn.disabled = true; dgUnmatchedBtn.textContent = 'Scanning…';
+        dgUnmatchedStopBtn.style.display = 'inline-block';
+        dgUnmatchedProgress.textContent = 'Starting…';
+        renderUnmatchedTally();
+        dgUnmatchedBatch(0, 0, 0);
+    });
+    dgUnmatchedStopBtn.addEventListener('click', function () { dgUnmatchedStop('Stopped — tally above is what it found so far.'); });
 
     arApplyBtn.addEventListener('click', function () {
         var ids = arData.filter(function (f) { return f.sel; }).map(function (f) { return f.id; });
