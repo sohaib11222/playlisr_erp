@@ -101,7 +101,17 @@ class AdminSidebarMenu
                     $sub->url(
                         route('tasks.index'),
                         'Tasks',
-                        ['icon' => 'fa fas fa-calendar-day', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) != 'projects']
+                        ['icon' => 'fa fas fa-calendar-day', 'active' => request()->segment(1) == 'tasks' && !in_array(request()->segment(2), ['projects', 'end-shift'], true)]
+                    );
+                    // Standalone status-check prompt for anyone leaving —
+                    // not just cashiers who close a register (that flow
+                    // shows the same check automatically); warehouse/
+                    // stock-only staff never see the POS screen at all, so
+                    // this is the only place they'd get prompted.
+                    $sub->url(
+                        route('tasks.end-shift'),
+                        'End Shift',
+                        ['icon' => 'fa fas fa-door-open', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'end-shift']
                     );
                     $sub->url(
                         route('projects.index'),

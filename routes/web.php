@@ -783,6 +783,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Tasks & Projects — team-wide weekly tasks + longer-running projects
     // with contributor credit. See TaskController/ProjectController.
     Route::get('/tasks', 'TaskController@index')->name('tasks.index');
+    Route::get('/tasks/end-shift', 'TaskController@endShift')->name('tasks.end-shift');
     Route::get('/tasks/create', 'TaskController@create')->name('tasks.create');
     Route::post('/tasks', 'TaskController@store')->name('tasks.store');
     Route::get('/tasks/{id}/edit', 'TaskController@edit')->name('tasks.edit');

@@ -266,6 +266,31 @@ class TaskController extends Controller
         return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
 
+    /**
+     * Standalone "End Shift" page: the same due-today status check the
+     * register-close bubble shows, but for anyone — not just employees who
+     * close a cash register (warehouse/stock-only staff never see the POS
+     * screen at all, so they'd otherwise never get prompted).
+     */
+    public function endShift(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $storeLabels = $this->availableStores();
+        $store = $this->resolveStore($request, $storeLabels);
+
+        $dueTasks = self::dueTodayForStore($business_id, $store, auth()->id())
+            ->map(function ($t) {
+                return [
+                    'id' => $t->id,
+                    'title' => $t->title,
+                    'priority' => $t->priority,
+                    'status' => $t->status,
+                ];
+            })->values()->all();
+
+        return view('tasks.end_shift', compact('dueTasks', 'storeLabels', 'store'));
+    }
+
     public function create(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
