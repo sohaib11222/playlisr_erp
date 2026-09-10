@@ -60,8 +60,8 @@ jobs:
             $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
             request()->setLaravelSession(app('session.store'));
             app('session.store')->start();
-            request()->session()->put('user.business_id', $biz);
             Auth::loginUsingId($u1);
+            (new App\Http\Middleware\SetSessionData())->handle(request(), function ($r) { return $r; });
             try { $view = app(App\Http\Controllers\TaskController::class)->endShift(request()); $html = $view->render(); echo "RENDER: PASS (" . strlen($html) . " bytes)\n"; echo (str_contains($html, '__test_endshift_page__') ? "CONTAINS TEST TASK: PASS\n" : "CONTAINS TEST TASK: FAIL\n"); echo (str_contains($html, 'Repeat daily') ? "unexpected form markup leaked: FAIL\n" : "no stray form markup: PASS\n"); } catch (\Throwable $e) { echo "RENDER: FAIL - " . get_class($e) . ": " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine() . "\n"; }
             App\WeeklyTask::where('id', $t->id)->delete();
             $gone = !App\WeeklyTask::where('id', $t->id)->exists();
