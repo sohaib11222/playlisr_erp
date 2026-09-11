@@ -1,0 +1,49 @@
+# One-off, read-only: Sarah says she already has a "Hip Hop" sub-category,
+# but the genre backfill's report found 101 unmatched "Hip Hop" hits.
+# Finds every Hip Hop-ish category row and which format categories (Vinyl,
+# CD, etc.) do/don't have one — matching is scoped per-format, so this is
+# almost certainly a "exists under Vinyl but not CD" gap. Writes nothing.
+
+name: Diag Hip Hop category mismatch (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run diag:hip-hop-category
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 5m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan diag:hip-hop-category
