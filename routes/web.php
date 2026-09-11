@@ -791,6 +791,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/tasks/{id}/status', 'TaskController@updateStatus')->name('tasks.update-status');
     Route::delete('/tasks/{id}', 'TaskController@destroy')->name('tasks.destroy');
 
+    // Sourcing — categories we actively hunt for (toys, comics, cards, etc.)
+    // rather than reorder from a supplier. Shared across both stores. See
+    // SourcingController.
+    Route::get('/sourcing', 'SourcingController@index')->name('sourcing.index');
+    Route::post('/sourcing/{category}/priority', 'SourcingController@updatePriority')->name('sourcing.update-priority');
+    Route::post('/sourcing/{category}/target-price', 'SourcingController@updateTargetPrice')->name('sourcing.update-target-price');
+    Route::post('/sourcing/{category}/ideas', 'SourcingController@storeIdea')->name('sourcing.store-idea');
+    Route::delete('/sourcing/ideas/{id}', 'SourcingController@destroyIdea')->name('sourcing.destroy-idea');
+
     Route::get('/tasks/projects', 'ProjectController@index')->name('projects.index');
     Route::get('/tasks/projects/create', 'ProjectController@create')->name('projects.create');
     Route::post('/tasks/projects', 'ProjectController@store')->name('projects.store');

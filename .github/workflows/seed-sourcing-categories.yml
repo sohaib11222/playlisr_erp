@@ -1,0 +1,82 @@
+# One-click seed of the Sourcing module's starter categories/sub-categories
+# and default sourcing_targets rows on production.
+#
+# Runs `php artisan sourcing:seed-categories`. DRY RUN by default — it only
+# reports which rows WOULD be created. Tick the "commit" input to actually
+# create them. Idempotent either way (safe to re-run after new categories
+# are added to the taxonomy).
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Seed sourcing categories
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Actually create the rows? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Share the deploy group so this can't race a Deploy production run.
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  seed-sourcing-categories:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run sourcing:seed-categories
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 10m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run — creating sourcing categories ==="
+              php artisan sourcing:seed-categories --commit 2>&1
+            else
+              echo "=== DRY RUN — no changes ==="
+              php artisan sourcing:seed-categories 2>&1
+            fi
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              echo "=== tail laravel log (for the stack) ==="
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
+            fi
+            echo "=== done ==="
+            exit 0

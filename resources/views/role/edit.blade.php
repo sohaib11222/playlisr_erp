@@ -151,8 +151,31 @@
           <div class="col-md-12">
             <div class="checkbox">
               <label>
-                {!! Form::checkbox('permissions[]', 'roles.delete', in_array('roles.delete', $role_permissions), 
+                {!! Form::checkbox('permissions[]', 'roles.delete', in_array('roles.delete', $role_permissions),
                 [ 'class' => 'input-icheck']); !!} {{ __( 'lang_v1.delete_role' ) }}
+              </label>
+            </div>
+          </div>
+        </div>
+        </div>
+        <hr>
+        <div class="row check_group">
+        <div class="col-md-1">
+          <h4>Sourcing</h4>
+        </div>
+        <div class="col-md-2">
+          <div class="checkbox">
+              <label>
+                <input type="checkbox" class="check_all input-icheck" > {{ __( 'role.select_all' ) }}
+              </label>
+            </div>
+        </div>
+        <div class="col-md-9">
+          <div class="col-md-12">
+            <div class="checkbox">
+              <label>
+                {!! Form::checkbox('permissions[]', 'sourcing.manage', in_array('sourcing.manage', $role_permissions),
+                [ 'class' => 'input-icheck']); !!} Manage sourcing priority &amp; buy prices
               </label>
             </div>
           </div>

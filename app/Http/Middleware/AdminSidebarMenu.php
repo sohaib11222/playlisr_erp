@@ -691,6 +691,16 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-truck-loading']
             )->order(58);
 
+            //Sourcing — demand-driven merchandise categories (toys, comics,
+            //cards, etc.). Visible to every authenticated staff member, same
+            //as Reports/Inventory Check above; editing priority/buy price
+            //is gated inside SourcingController by 'sourcing.manage'.
+            $menu->url(
+                action('SourcingController@index'),
+                'Sourcing',
+                ['icon' => 'fa fas fa-search-dollar', 'active' => request()->segment(1) == 'sourcing']
+            )->order(59);
+
 
             //Backup menu
             if (auth()->user()->can('backup')) {
