@@ -1,0 +1,73 @@
+# One-off: grant the throwaway __claude_e2e_test__ user permission for the
+# Pico location specifically, since Cashier#1's actual current permissions
+# (as configured today, not the business-creation-time default) don't
+# include access_all_locations — matching how real cashiers are scoped to
+# one store. Needed so the POS duty picker offers "Pico" as a store option.
+
+name: E2E grant test user Pico location
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Grant location permission
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== current Cashier#1 permissions ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $role = Spatie\Permission\Models\Role::where('name','Cashier#1')->first();
+            echo $role ? $role->permissions->pluck('name')->implode(', ') . "\n" : "role not found\n";
+            PHP
+            echo "=== Pico location id ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $loc = App\BusinessLocation::where('business_id',1)->where('name','like','%pico%')->first();
+            echo $loc ? "id={$loc->id} name={$loc->name}\n" : "not found\n";
+            PHP
+            echo "=== granting location permission to test user ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $loc = App\BusinessLocation::where('business_id',1)->where('name','like','%pico%')->first();
+            $u = App\User::where('business_id',1)->where('username','__claude_e2e_test__')->first();
+            $permName = 'location.' . $loc->id;
+            $perm = Spatie\Permission\Models\Permission::firstOrCreate(['name'=>$permName,'guard_name'=>'web']);
+            $u->givePermissionTo($perm);
+            echo "granted {$permName} to user {$u->id}\n";
+            echo "permitted_locations: " . implode(',', $u->permitted_locations()) . "\n";
+            PHP
+            echo "=== done ==="
