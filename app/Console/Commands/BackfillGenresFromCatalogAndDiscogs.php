@@ -36,6 +36,14 @@ class BackfillGenresFromCatalogAndDiscogs extends Command
         $svc = new DiscogsGenreBackfillService();
         $deadline = time() + ($minutes * 60);
 
+        // Persisted across separate invocations (each scheduled run is a
+        // fresh process) so a 20-min-interval schedule actually advances
+        // through the whole catalog instead of re-scanning the same
+        // head-of-queue rows every time — see DiscogsGenreBackfillService's
+        // doc comment for how that showed up (0 filled across 27 rounds).
+        $cacheKey = "discogs_genre_backfill_after_id_{$businessId}";
+        $afterId = (int) \Cache::get($cacheKey, 0);
+
         $totalChecked = 0;
         $totalFilled = 0;
         $totalFailed = 0;
@@ -43,7 +51,7 @@ class BackfillGenresFromCatalogAndDiscogs extends Command
         $remaining = null;
 
         while (time() < $deadline) {
-            $result = $svc->run($businessId, $batch, $commit);
+            $result = $svc->run($businessId, $batch, $commit, $afterId);
             if (empty($result['ok'])) {
                 $this->error($result['error'] ?? 'Failed.');
                 return 1;
@@ -54,9 +62,14 @@ class BackfillGenresFromCatalogAndDiscogs extends Command
             $totalFilled += $result['filled'];
             $totalFailed += $result['failed'];
             $remaining = $result['remaining'];
+            $afterId = $result['after_id'];
+            \Cache::forever($cacheKey, $afterId);
 
             if ($result['checked'] === 0) {
-                break; // nothing left eligible
+                break; // truly nothing eligible, even after a wrap
+            }
+            if (!empty($result['wrapped'])) {
+                $this->info("round {$rounds}: reached the end of the catalog, wrapped back to the start");
             }
 
             // Same cooldown heuristic as discogs:backfill-street-dates — a
@@ -70,7 +83,7 @@ class BackfillGenresFromCatalogAndDiscogs extends Command
 
         $this->info(($commit ? 'COMMIT' : 'DRY RUN') . " — {$rounds} round(s), checked {$totalChecked}, "
             . ($commit ? 'filled' : 'would fill') . " {$totalFilled}, failed {$totalFailed}"
-            . ($remaining !== null ? ", {$remaining} still remaining." : '.'));
+            . ($remaining !== null ? ", {$remaining} still remaining, cursor at id {$afterId}." : '.'));
         return 0;
     }
 }

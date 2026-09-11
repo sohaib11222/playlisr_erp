@@ -34,8 +34,24 @@ namespace App\Services;
  */
 class DiscogsGenreBackfillService
 {
-    /** One batch: process up to $limit eligible products. */
-    public function run(int $businessId, int $limit = 20, bool $commit = false): array
+    /**
+     * One batch: process up to $limit eligible products with id > $afterId.
+     *
+     * MUST take a cursor. A matched row gets written and drops out of the
+     * "still blank" scope on its own, but an UNMATCHED or FAILED row does
+     * NOT — without an explicit id cursor, every batch would re-select the
+     * exact same head-of-queue rows forever once those particular rows
+     * don't match anything (confirmed 2026-09-10: a 15-minute scheduled run
+     * checked 540 rows, filled 0, and "remaining" didn't move at all —
+     * because every one of those 540 was actually the SAME ~20-row window
+     * re-scanned ~27 times, never advancing into the other ~22,000 rows
+     * that might have real matches). Returns after_id=0 (wrap) once a
+     * batch's id > $afterId comes back empty, so the next call restarts
+     * from the beginning — that's still useful, since Sarah adding a new
+     * sub-category later could turn a previously-unmatched row into a
+     * match on a future pass.
+     */
+    public function run(int $businessId, int $limit = 20, bool $commit = false, int $afterId = 0): array
     {
         $svc = new \App\Services\DiscogsService($businessId);
         if (!$svc->isConfigured()) {
@@ -44,17 +60,20 @@ class DiscogsGenreBackfillService
 
         $catIds = $this->musicCategoryIds($businessId);
         if (empty($catIds)) {
-            return ['ok' => true, 'checked' => 0, 'filled' => 0, 'failed' => 0, 'remaining' => 0];
+            return ['ok' => true, 'checked' => 0, 'filled' => 0, 'failed' => 0, 'remaining' => 0, 'after_id' => 0, 'wrapped' => true];
         }
         $sealedIds = $this->sealedVinylCategoryIds($businessId);
 
-        $query = \DB::table('products')
-            ->where('business_id', $businessId)
-            ->whereIn('category_id', $catIds)
-            ->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })
-            ->whereNotNull('discogs_release_id')
-            ->where('discogs_release_id', '>', 0);
+        $baseQuery = function () use ($businessId, $catIds) {
+            return \DB::table('products')
+                ->where('business_id', $businessId)
+                ->whereIn('category_id', $catIds)
+                ->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })
+                ->whereNotNull('discogs_release_id')
+                ->where('discogs_release_id', '>', 0);
+        };
 
+        $query = $baseQuery()->where('id', '>', $afterId);
         // Sealed vinyl first within a single query, rather than two phases —
         // simpler for a scheduled batch with no client-side state to track.
         if (!empty($sealedIds)) {
@@ -65,12 +84,30 @@ class DiscogsGenreBackfillService
             ->orderBy('id')
             ->limit($limit)->get();
 
+        $wrapped = false;
+        if ($rows->isEmpty() && $afterId > 0) {
+            // Reached the end of the id range — wrap and try once more from
+            // the start so a genuinely empty catalog is distinguishable
+            // from "just reached the end of this pass".
+            $afterId = 0;
+            $wrapped = true;
+            $query = $baseQuery();
+            if (!empty($sealedIds)) {
+                $sealedList = implode(',', array_map('intval', $sealedIds));
+                $query->orderByRaw("CASE WHEN category_id IN ({$sealedList}) THEN 0 ELSE 1 END");
+            }
+            $rows = $query->select('id', 'name', 'artist', 'category_id', 'sub_category_id', 'discogs_release_id')
+                ->orderBy('id')->limit($limit)->get();
+        }
+
         $timestamp = now()->format('Y-m-d_His');
         $changes = [];
         $filled = 0;
         $failed = 0;
+        $lastId = $afterId;
 
         foreach ($rows as $r) {
+            $lastId = (int) $r->id;
             if (stripos($r->name, 'retired') !== false || !$r->category_id) { continue; }
 
             $ownGenreName = $this->mostCommonGenreNameForArtist($businessId, $r->category_id, $r->artist);
@@ -124,7 +161,7 @@ class DiscogsGenreBackfillService
             $filled = count($changes); // dry-run: report what WOULD be filled
         }
 
-        $remaining = (clone $query)->count();
+        $remaining = $baseQuery()->count(); // total still-blank, independent of the cursor
 
         return [
             'ok' => true,
@@ -132,6 +169,8 @@ class DiscogsGenreBackfillService
             'filled' => $filled,
             'failed' => $failed,
             'remaining' => $remaining,
+            'after_id' => $rows->isEmpty() ? 0 : $lastId,
+            'wrapped' => $wrapped,
         ];
     }
 
