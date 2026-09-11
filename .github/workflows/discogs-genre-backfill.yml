@@ -1,0 +1,95 @@
+# Runs the genre backfill (products.sub_category_id) on the server so it
+# doesn't need Sarah's browser tab open — her 2026-09-10 manual run via the
+# /products/name-cleanup button stalled at ~22,584 of 50,077 remaining the
+# moment she closed the tab (that button's loop only advances while the page
+# is open). Same underlying logic (DiscogsGenreBackfillService), same
+# safety: never invents a category, only assigns a genre that already
+# exists in the catalog's own taxonomy; every write snapshotted for undo at
+# Admin Action History.
+#
+# Modeled directly on discogs-street-date-backfill.yml — same secrets, same
+# SSH-and-run-artisan approach, same reasoning for why a workflow (not the
+# server's own cron) is what actually runs reliably.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Backfill genres (Discogs)
+
+on:
+  schedule:
+    # Every 20 min, run for up to 8 min — same duty cycle as the street-date
+    # backfill so the two don't fight over the same ~60 req/min Discogs budget.
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Keep running for up to this many minutes
+        required: true
+        default: '8'
+      commit:
+        description: Actually write genres (false = dry run)
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+concurrency:
+  group: discogs-genre-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway, appleboy/ssh-action will handle host keys"
+          exit 0
+
+      - name: Run discogs:backfill-genres
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          RUN_MINUTES: ${{ github.event.inputs.minutes || '8' }}
+          RUN_COMMIT: ${{ github.event.inputs.commit || 'true' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          envs: RUN_MINUTES,RUN_COMMIT
+          script: |
+            set -e
+            DEPLOY_DIR="/www/playlist.nivessa.com/app"
+            cd "$DEPLOY_DIR"
+            COMMIT_FLAG=""
+            if [ "$RUN_COMMIT" = "true" ]; then
+              COMMIT_FLAG="--commit"
+            fi
+            echo "=== running discogs:backfill-genres --minutes=$RUN_MINUTES $COMMIT_FLAG ==="
+            php artisan discogs:backfill-genres --minutes="$RUN_MINUTES" $COMMIT_FLAG
+            echo
+            echo "=== done ==="
