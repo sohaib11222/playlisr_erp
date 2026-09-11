@@ -87,6 +87,24 @@
 @if(auth()->user()->can('dashboard.data'))
 <section class="content no-print" style="padding-bottom: 0;">
 
+    {{-- "Assigned to you" prompt: shows whenever the logged-in user has any
+         open (not-complete) task specifically assigned to them. Tasks & Projects
+         otherwise has no personal view at all — this is the only place an
+         employee learns something's on their plate without navigating there
+         and scanning the "Assigned to" column themselves. --}}
+    @if($my_open_task_count > 0)
+        <a href="{{ url('/tasks') }}?assigned_to_me=1" style="text-decoration:none;display:block;">
+            <div style="background:#FCEEE3;border:1px solid #E8B98A;border-left:6px solid #D59052;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-family:'Inter Tight',system-ui,sans-serif;">
+                <i class="fa fas fa-clipboard-list" style="font-size:26px;color:#B5742F;"></i>
+                <div style="flex:1 1 280px;min-width:220px;">
+                    <div style="font-size:16px;font-weight:800;color:#5A3B1E;">You have {{ $my_open_task_count }} {{ \Illuminate\Support\Str::plural('task', $my_open_task_count) }} assigned to you</div>
+                    <div style="font-size:13.5px;color:#7a5a3a;margin-top:2px;">Take a look before end of shift.</div>
+                </div>
+                <span style="background:#F5D9BC;border:1px solid #E8B98A;color:#5A3B1E;font-weight:800;font-size:14px;padding:10px 20px;border-radius:10px;white-space:nowrap;">View my tasks</span>
+            </div>
+        </a>
+    @endif
+
     {{-- Morning opening prompt: shows for store staff until today's opening
          checklist is logged for their store. Clears once someone completes it. --}}
     @php $promptStore = \App\Http\Controllers\OpeningChecklistController::promptStore(); @endphp
