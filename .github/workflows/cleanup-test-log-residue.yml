@@ -1,0 +1,59 @@
+# One-off: remove a single stray task_completion_logs row left behind by
+# an earlier test (test-daily-task-reset.yml). That test's own cleanup
+# deleted the WeeklyTask row first, which (via the weekly_task_id FK's "set
+# null on delete") nulled the log row's weekly_task_id before the test's
+# second delete statement could match it by that id — so the log entry
+# survived with weekly_task_id = NULL and title '__e2e_test_reset__'.
+# Harmless, but it's test debris sitting in a real table; removing it.
+
+name: Cleanup test log residue
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Delete the stray row
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $deleted = DB::table('task_completion_logs')->where('title', '__e2e_test_reset__')->delete();
+            echo "deleted rows: {$deleted}\n";
+            PHP
+            echo "=== done ==="
