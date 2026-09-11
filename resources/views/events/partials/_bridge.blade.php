@@ -72,23 +72,32 @@
         return ($r['eventLocationKey'] ?? '') === $storeScope;
       }));
       $hiddenByScope = $fullRsvpCount - count($rsvps);
-      // Rebuild the headline counts from the scoped list — the bridge stats
-      // row is a both-store total, so it can't be used as-is here.
-      $sYes = 0; $sMaybe = 0; $sGuests = 0;
-      foreach ($rsvps as $r) {
-        $att = $r['attendance'] ?? 'yes';
-        if ($att === 'no') { continue; }
-        if ($att === 'maybe') { $sMaybe++; } else { $sYes++; }
-        $sGuests += (int) ($r['guests'] ?? 0);
-      }
-      $stats = [
-        'attendingCount' => $sYes + $sMaybe,
-        'yesCount'       => $sYes,
-        'maybeCount'     => $sMaybe,
-        'totalGuests'    => $sGuests,
-        'totalAttendees' => $sYes + $sMaybe + $sGuests,
-      ];
     }
+    // Rebuild the headline attending/yes/maybe/guest counts from this (already
+    // eventId-matched, always-current) RSVP list rather than trust the bridge
+    // stats row as-is. Stats comes from a separate name-matched endpoint on the
+    // website and can drift stale for an event — seen live where the RSVP list
+    // here had 12 real guests but stats still said 4, because stats hadn't
+    // caught up. The list is the one fetched by the stable eventId, so it's the
+    // one that's always right; only the vinyl/CD and per-store numbers (not
+    // derivable from the list) still come from stats below.
+    $sYes = 0; $sMaybe = 0; $sGuests = 0;
+    foreach ($rsvps as $r) {
+      $att = $r['attendance'] ?? 'yes';
+      if ($att === 'no') { continue; }
+      if ($att === 'maybe') { $sMaybe++; } else { $sYes++; }
+      $sGuests += (int) ($r['guests'] ?? 0);
+    }
+    $stats = array_merge($stats ?? [], [
+      // 'attendingCount' is the headline number and includes guests (matches
+      // how the website's own stats row defines it — e.g. 39 yes + 20 guests
+      // = 59 attendingCount), not just yes+maybe.
+      'attendingCount' => $sYes + $sMaybe + $sGuests,
+      'yesCount'       => $sYes,
+      'maybeCount'     => $sMaybe,
+      'totalGuests'    => $sGuests,
+      'totalAttendees' => $sYes + $sMaybe + $sGuests,
+    ]);
 
     // ---- Preorders: shown inline in the guest table below. Split active vs
     //      canceled, then match each active preorder to an RSVP row by email /

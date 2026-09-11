@@ -237,6 +237,26 @@ class EventsController extends Controller
         // unreachable — the list degrades to "—" in those columns.
         $counts = $this->bridgeCounts();
 
+        // bridgeCounts() sums a bulk, name-matched stats endpoint that can lag
+        // behind real RSVPs for a given event (seen live: an event's own RSVP
+        // list had 12 people while stats still said 4 attending). For the
+        // small "upcoming" set shown on this page, override with each event's
+        // own eventId-matched live count instead — the same source the event's
+        // own dashboard trusts. Past events keep the bulk stats numbers; they
+        // aren't worth an extra API call per event just for a historical list.
+        if ($this->erpApiKey() !== '') {
+            foreach ($upcoming as $ev) {
+                $k = self::normName($ev['name'] ?? '');
+                if ($k === '') { continue; }
+                $live = $this->liveEventCounts($ev['name'] ?? '', $ev['id'] ?? null);
+                if ($live === null) { continue; }
+                $counts['rsvps'][$k] = $live['attending'];
+                $counts['vinyl'][$k] = $live['vinyl'];
+                $counts['cd'][$k]    = $live['cd'];
+                $counts['store'][$k] = $live['store'];
+            }
+        }
+
         return view('events.index', [
             'upcoming'       => $upcoming,
             'past'           => $past,
@@ -560,6 +580,47 @@ class EventsController extends Controller
             }
         }
 
+        return $out;
+    }
+
+    /**
+     * Live attending/vinyl/cd/store counts for ONE event, computed from its
+     * own eventId-matched RSVP list (via bridgeData(), the same call the
+     * event's dashboard page uses) rather than the bulk name-matched stats
+     * endpoint that bridgeCounts() above relies on. That stats endpoint can
+     * lag behind real RSVPs for a given event; the per-event RSVP list is the
+     * one fetched by the stable eventId, so it's the one that's always right.
+     * Returns null when the bridge is unreachable (caller should keep
+     * whatever it already had rather than zero it out).
+     */
+    protected function liveEventCounts(string $eventName, ?string $eventId): ?array
+    {
+        $bridge = $this->bridgeData($eventName, $eventId);
+        if (!($bridge['ready'] ?? false)) {
+            return null;
+        }
+        $out = [
+            'attending' => 0,
+            'vinyl' => 0,
+            'cd' => 0,
+            'store' => ['hollywood' => ['vinyl' => 0, 'cd' => 0, 'attending' => 0], 'pico' => ['vinyl' => 0, 'cd' => 0, 'attending' => 0]],
+        ];
+        foreach ($bridge['rsvps'] ?? [] as $r) {
+            if (($r['attendance'] ?? 'yes') === 'no') { continue; }
+            $guests = (int) ($r['guests'] ?? 0);
+            $out['attending'] += 1 + $guests;
+            $interest = $r['interestedInPurchase'] ?? null;
+            $wantsVinyl = ($interest === 'vinyl' || $interest === 'both');
+            $wantsCd = ($interest === 'cd' || $interest === 'both');
+            if ($wantsVinyl) { $out['vinyl']++; }
+            if ($wantsCd) { $out['cd']++; }
+            $sk = $r['eventLocationKey'] ?? '';
+            if ($sk === 'hollywood' || $sk === 'pico') {
+                $out['store'][$sk]['attending'] += 1 + $guests;
+                if ($wantsVinyl) { $out['store'][$sk]['vinyl']++; }
+                if ($wantsCd) { $out['store'][$sk]['cd']++; }
+            }
+        }
         return $out;
     }
 
