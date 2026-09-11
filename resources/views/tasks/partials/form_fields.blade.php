@@ -53,14 +53,17 @@
                         <input type="checkbox" id="task_repeat_daily" name="repeat_daily" value="1" @if(old('repeat_daily', $task->repeat_daily ?? false)) checked @endif>
                         Repeat daily
                     </label>
+                    <br>
+                    <small class="text-muted">Resets to "not started" every day instead of needing to be re-added or reset by hand. Uncheck to stop resetting.</small>
                 </div>
                 <div class="checkbox" id="task_repeat_weekly_row" style="margin-top:7px;{{ $currentTaskType === 'weekly' ? '' : 'display:none;' }}">
                     <label>
                         <input type="checkbox" id="task_repeat_weekly" name="repeat_weekly" value="1" @if(old('repeat_weekly', $task->repeat_weekly ?? false)) checked @endif>
                         Repeat weekly
                     </label>
+                    <br>
+                    <small class="text-muted">Auto-creates a fresh copy each week instead of needing to be re-added. Uncheck to stop — past ones stay as history.</small>
                 </div>
-                <small class="text-muted">Auto-creates a fresh copy on schedule instead of needing to be re-added. Uncheck to stop — past ones stay as history.</small>
             @endif
         </div>
     </div>

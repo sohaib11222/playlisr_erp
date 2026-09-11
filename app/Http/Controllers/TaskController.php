@@ -100,32 +100,81 @@ class TaskController extends Controller
     }
 
     /**
-     * For every repeating task (root, i.e. not itself a generated instance)
-     * that has started, make sure it has an up-to-date instance: daily
-     * repeats get a fresh row once "today" doesn't have one yet; weekly
-     * repeats get a fresh row once 7+ days have passed since the last one.
-     * Lazy: runs on whoever hits /tasks or closes a register first, rather
-     * than a cron. Idempotent — safe to call from multiple places/requests.
-     *
-     * A generated instance keeps its own status/attribution, same as any
-     * other task, so history — who did what, which day/week — stays intact
-     * instead of being silently reset. This only ever adds new rows, never
-     * rewrites old ones.
+     * Daily repeats reset in place (see resetRepeatingDailyTasks); weekly
+     * repeats still get a fresh row once 7+ days have passed since the last
+     * one (a week apart reads fine as separate rows — daily ones sitting a
+     * day apart is what read as duplicates to Jon/Zak/the team). Lazy: runs
+     * on whoever hits /tasks or closes a register first, rather than a
+     * cron. Idempotent — safe to call from multiple places/requests.
      */
     private static function rolloverRepeatingTasks($business_id)
     {
-        self::rolloverRepeats($business_id, 'daily', 'repeat_daily');
-        self::rolloverRepeats($business_id, 'weekly', 'repeat_weekly');
+        self::resetRepeatingDailyTasks($business_id);
+        self::rolloverRepeats($business_id);
     }
 
-    private static function rolloverRepeats($business_id, $taskType, $repeatColumn)
+    /**
+     * A repeat_daily root never grows new rows. Once a day has passed since
+     * its last reset, whatever it was left at (in_progress/complete) gets
+     * logged to task_completion_logs — a quiet history trail, not shown on
+     * the list — and the same row resets to not_started, dated today, ready
+     * to be worked again. No new row, so the list can never show "the same
+     * task twice."
+     */
+    private static function resetRepeatingDailyTasks($business_id)
+    {
+        $today = \Carbon\Carbon::today();
+
+        $roots = WeeklyTask::where('business_id', $business_id)
+            ->where('task_type', 'daily')
+            ->where('repeat_daily', true)
+            ->whereNull('repeat_of')
+            ->whereDate('start_date', '<=', $today->toDateString())
+            ->get();
+
+        foreach ($roots as $task) {
+            $lastReset = $task->last_reset_date ? \Carbon\Carbon::parse($task->last_reset_date) : null;
+            if ($lastReset && $lastReset->isSameDay($today)) {
+                continue;
+            }
+
+            if ($task->status !== 'not_started') {
+                \DB::table('task_completion_logs')->insert([
+                    'weekly_task_id' => $task->id,
+                    'business_id' => $business_id,
+                    'title' => $task->title,
+                    'store' => $task->store,
+                    'priority' => $task->priority,
+                    'log_date' => ($lastReset ?: $task->start_date)->toDateString(),
+                    'status' => $task->status,
+                    'started_by' => $task->started_by,
+                    'completed_by' => $task->completed_by,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $task->status = 'not_started';
+            $task->started_by = null;
+            $task->started_at = null;
+            $task->completed_by = null;
+            $task->completed_at = null;
+            $task->start_date = $today->toDateString();
+            $task->end_date = $today->toDateString();
+            $task->last_reset_date = $today->toDateString();
+            $task->save();
+        }
+    }
+
+    /** Weekly repeats still generate a fresh row once 7+ days have passed since the last one. */
+    private static function rolloverRepeats($business_id)
     {
         $today = \Carbon\Carbon::today();
 
         $roots = WeeklyTask::with('assignees')
             ->where('business_id', $business_id)
-            ->where('task_type', $taskType)
-            ->where($repeatColumn, true)
+            ->where('task_type', 'weekly')
+            ->where('repeat_weekly', true)
             ->whereNull('repeat_of')
             ->whereDate('start_date', '<=', $today->toDateString())
             ->get();
@@ -138,17 +187,10 @@ class TaskController extends Controller
                 ->max('start_date');
             $lastStart = \Carbon\Carbon::parse($lastStart);
 
-            if ($taskType === 'daily') {
-                if ($lastStart->isSameDay($today)) {
-                    continue;
-                }
-                $newStart = $today->toDateString();
-            } else {
-                if ($lastStart->copy()->addDays(7)->gt($today)) {
-                    continue;
-                }
-                $newStart = $today->toDateString();
+            if ($lastStart->copy()->addDays(7)->gt($today)) {
+                continue;
             }
+            $newStart = $today->toDateString();
 
             try {
                 $instance = WeeklyTask::create([
@@ -156,21 +198,19 @@ class TaskController extends Controller
                     'title' => $root->title,
                     'description' => $root->description,
                     'start_date' => $newStart,
-                    'end_date' => self::computeEndDate($taskType, $newStart),
-                    'task_type' => $taskType,
+                    'end_date' => self::computeEndDate('weekly', $newStart),
+                    'task_type' => 'weekly',
                     'store' => $root->store,
                     'priority' => $root->priority,
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
-                    'repeat_daily' => $taskType === 'daily',
-                    'repeat_weekly' => $taskType === 'weekly',
+                    'repeat_daily' => false,
+                    'repeat_weekly' => true,
                     'repeat_of' => $root->id,
                 ]);
             } catch (\Illuminate\Database\QueryException $e) {
                 // Unique (repeat_of, start_date) constraint — an overlapping
-                // request (two /tasks loads, or a register close racing a
-                // page load) already created this instance a moment ago.
-                // That row is the one that counts; nothing to do here.
+                // request already created this instance a moment ago.
                 if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
                     continue;
                 }
@@ -345,6 +385,9 @@ class TaskController extends Controller
         $data['created_by'] = auth()->id();
         $data['status'] = 'not_started';
         $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
+        // A fresh repeat_daily task shouldn't reset itself the moment
+        // someone next loads /tasks — it's already at its starting state.
+        $data['last_reset_date'] = $data['repeat_daily'] ? $data['start_date'] : null;
 
         $task = WeeklyTask::create($data);
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
@@ -390,8 +433,14 @@ class TaskController extends Controller
         if ($task->repeat_of !== null) {
             unset($data['repeat_daily'], $data['repeat_weekly']);
         } else {
+            $wasRepeatDaily = (bool) $task->repeat_daily;
             $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
             $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
+            if ($data['repeat_daily'] && !$wasRepeatDaily) {
+                // Just turned on — don't reset it the moment someone next
+                // loads /tasks; it's already at its starting state.
+                $data['last_reset_date'] = $data['start_date'];
+            }
         }
 
         $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
