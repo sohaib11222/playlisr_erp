@@ -1,0 +1,64 @@
+# Read-only: tail the Laravel log for any warnings/errors logged during the
+# e2e browser test window, to confirm nothing silently failed behind a
+# try/catch even though the UI looked clean.
+
+name: E2E check logs
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Tail recent log for errors/warnings
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== last 3 min of laravel.log, grep for ERROR/WARNING/close_register/due_tasks/e2e ==="
+            LOGFILE="storage/logs/laravel-$(date +%Y-%m-%d).log"
+            if [ -f "$LOGFILE" ]; then
+              tail -n 500 "$LOGFILE" | grep -iE "error|warning|exception|due_tasks|close_register_modal" | tail -n 60
+            else
+              echo "no log file for today at $LOGFILE"
+              ls -la storage/logs/ | tail -10
+            fi
+            echo "=== cash_registers row for test user ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $u = App\User::where('username','__claude_e2e_test__')->first();
+            DB::table('cash_registers')->where('user_id', $u->id)->get(['id','status','opening_amount','closing_amount','created_at','closed_at'])->each(function($r){ echo json_encode($r) . "\n"; });
+            PHP
+            echo "=== done ==="
