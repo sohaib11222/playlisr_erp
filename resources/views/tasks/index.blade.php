@@ -29,8 +29,7 @@
                 </select>
                 <label style="margin-right:5px;">Status</label>
                 <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="not_complete" @if($status==='not_complete') selected @endif>Not complete (default)</option>
-                    <option value="" @if($status==='') selected @endif>All (incl. complete)</option>
+                    <option value="" @if(!$status) selected @endif>All</option>
                     <option value="not_started" @if($status==='not_started') selected @endif>Not started</option>
                     <option value="in_progress" @if($status==='in_progress') selected @endif>In progress</option>
                     <option value="complete" @if($status==='complete') selected @endif>Complete</option>

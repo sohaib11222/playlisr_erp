@@ -272,16 +272,14 @@ class TaskController extends Controller
         if (!in_array($type, ['daily', 'weekly'], true)) {
             $type = null;
         }
-        // No ?status= at all (a fresh visit, not an explicit choice) defaults
-        // to hiding completed tasks. A repeating task's finished yesterday
-        // and not-started-today rows share a title, and sitting side by
-        // side in an unfiltered list they read as duplicates — that's what
-        // both Jon and Zak flagged. "All" is still one click away.
-        if ($request->has('status')) {
-            $status = $request->input('status');
-        } else {
-            $status = 'not_complete';
-        }
+        // Used to default to hiding completed tasks (avoided a repeating
+        // task's finished-yesterday row sitting next to its not-started-
+        // today row, which read as a duplicate). Daily repeats now reset in
+        // place instead of generating a new row, so that pairing can't
+        // happen anymore — and hiding completed work was actively unwanted
+        // ("keeping it up would be better, that way we can all see what we
+        // did today"). Back to showing everything by default.
+        $status = $request->input('status');
         $priority = $request->input('priority');
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
@@ -292,9 +290,7 @@ class TaskController extends Controller
         if (!empty($type)) {
             $query->where('task_type', $type);
         }
-        if ($status === 'not_complete') {
-            $query->where('status', '!=', 'complete');
-        } elseif (!empty($status)) {
+        if (!empty($status)) {
             $query->where('status', $status);
         }
         if (!empty($priority)) {
