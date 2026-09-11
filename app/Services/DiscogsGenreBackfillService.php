@@ -174,6 +174,63 @@ class DiscogsGenreBackfillService
         ];
     }
 
+    /**
+     * Read-only: for up to $limit blank-genre products with id > $afterId
+     * that DON'T resolve via run()'s own-catalog-then-Discogs check, tally
+     * which Discogs genre/style name came up (its first style, or first
+     * genre if no styles) — same idea as the "See what's missing from your
+     * genre list" button on /products/name-cleanup, but able to cover a
+     * much bigger sample in one CLI call than a browser tab reasonably can.
+     * Never writes anything.
+     */
+    public function tallyUnmatched(int $businessId, int $limit, int $afterId = 0): array
+    {
+        $svc = new \App\Services\DiscogsService($businessId);
+        if (!$svc->isConfigured()) {
+            return ['ok' => false, 'error' => 'Discogs API token not configured.'];
+        }
+        $catIds = $this->musicCategoryIds($businessId);
+        if (empty($catIds)) {
+            return ['ok' => true, 'tally' => [], 'scanned' => 0, 'unmatched' => 0, 'after_id' => 0];
+        }
+
+        $rows = \DB::table('products')
+            ->where('business_id', $businessId)
+            ->whereIn('category_id', $catIds)
+            ->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })
+            ->whereNotNull('discogs_release_id')
+            ->where('discogs_release_id', '>', 0)
+            ->where('id', '>', $afterId)
+            ->select('id', 'name', 'artist', 'category_id', 'discogs_release_id')
+            ->orderBy('id')->limit($limit)->get();
+
+        $tally = [];
+        $unmatched = 0;
+        $lastId = $afterId;
+        foreach ($rows as $r) {
+            $lastId = (int) $r->id;
+            if (stripos($r->name, 'retired') !== false || !$r->category_id) { continue; }
+
+            $ownGenreName = $this->mostCommonGenreNameForArtist($businessId, $r->category_id, $r->artist);
+            if ($ownGenreName !== null && $this->matchExistingSubCategory($businessId, $r->category_id, [$ownGenreName])) {
+                continue; // resolves fine via the catalog check
+            }
+
+            $res = $svc->getReleaseById($r->discogs_release_id);
+            usleep(1100000);
+            if (!empty($res['error'])) { continue; }
+
+            $candidates = $this->genreCandidatesFromRelease($res['data'] ?? null);
+            if (!$this->matchExistingSubCategory($businessId, $r->category_id, $candidates)) {
+                $unmatched++;
+                $label = $candidates[0] ?? '(Discogs returned no genre/style)';
+                $tally[$label] = ($tally[$label] ?? 0) + 1;
+            }
+        }
+
+        return ['ok' => true, 'tally' => $tally, 'scanned' => $rows->count(), 'unmatched' => $unmatched, 'after_id' => $rows->isEmpty() ? 0 : $lastId];
+    }
+
     protected function musicCategoryIds($business_id)
     {
         $ids = [];
