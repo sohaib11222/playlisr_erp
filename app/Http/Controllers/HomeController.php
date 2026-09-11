@@ -967,6 +967,7 @@ class HomeController extends Controller
         $team_bar_width = max(0, min(100, $team_pct));
 
         $me_first_name = auth()->user()->first_name ?? 'there';
+        $my_open_task_count = \App\Http\Controllers\TaskController::myOpenAssignedCount($business_id, $me_id);
 
         // ---- Leaderboard top 3 this week (reuses ReportController logic) ----
         $week_start = \Carbon::now()->startOfWeek()->toDateTimeString();
@@ -1082,7 +1083,7 @@ class HomeController extends Controller
             'active_wants', 'active_wants_count',
             'leaderboard_top3',
             // Personal progress dashboard
-            'me_first_name',
+            'me_first_name', 'my_open_task_count',
             'my_today_hrs', 'my_today_rev', 'my_today_rph',
             'my_30d_rph_avg', 'my_vs_30d_pct',
             'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',

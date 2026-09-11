@@ -35,12 +35,16 @@
                     <option value="complete" @if($status==='complete') selected @endif>Complete</option>
                 </select>
                 <label style="margin-right:5px;">Priority</label>
-                <select name="priority" class="form-control" onchange="this.form.submit()">
+                <select name="priority" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
                     <option value="" @if(!$priority) selected @endif>All</option>
                     @foreach($priorityLabels as $key => $label)
                         <option value="{{ $key }}" @if($priority===$key) selected @endif>{{ $label }}</option>
                     @endforeach
                 </select>
+                <label style="margin-right:5px;">
+                    <input type="checkbox" name="assigned_to_me" value="1" onchange="this.form.submit()" @if($assignedToMe) checked @endif>
+                    Assigned to me
+                </label>
             </form>
         </div>
         <div class="box-body table-responsive">

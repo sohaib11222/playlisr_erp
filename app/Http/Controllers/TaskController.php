@@ -260,6 +260,23 @@ class TaskController extends Controller
         return $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")->get();
     }
 
+    /**
+     * Count of not-yet-complete tasks specifically assigned to $userId
+     * (unassigned tasks don't count — this is "yours", not "everyone's").
+     * Drives the "assigned to you" prompt on the home dashboard.
+     */
+    public static function myOpenAssignedCount($business_id, $userId)
+    {
+        self::rolloverRepeatingTasks($business_id);
+
+        return WeeklyTask::where('business_id', $business_id)
+            ->where('status', '!=', 'complete')
+            ->whereHas('assignees', function ($q) use ($userId) {
+                $q->where('users.id', $userId);
+            })
+            ->count();
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -281,6 +298,7 @@ class TaskController extends Controller
         // did today"). Back to showing everything by default.
         $status = $request->input('status');
         $priority = $request->input('priority');
+        $assignedToMe = !empty($request->input('assigned_to_me'));
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
@@ -296,6 +314,12 @@ class TaskController extends Controller
         if (!empty($priority)) {
             $query->where('priority', $priority);
         }
+        if ($assignedToMe) {
+            $userId = auth()->id();
+            $query->whereHas('assignees', function ($q) use ($userId) {
+                $q->where('users.id', $userId);
+            });
+        }
         if (!empty($store)) {
             // A store-specific view includes that store's tasks plus any
             // company-wide (store = null) task, but not the other store's.
@@ -310,7 +334,7 @@ class TaskController extends Controller
         $priorityLabels = self::PRIORITY_LABELS;
         $canToggleStore = $this->isAdmin();
 
-        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
+        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'assignedToMe', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
 
     /**
