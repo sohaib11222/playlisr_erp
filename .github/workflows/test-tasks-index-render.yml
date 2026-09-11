@@ -1,0 +1,70 @@
+# Test: renders TaskController@index server-side (as a real logged-in
+# employee) to confirm the new default-hide-complete filter + colored
+# status dropdown compile and render with no exception — the page I just
+# changed, not a different one. Checks both the default (no ?status=) and
+# an explicit ?status= all still work.
+
+name: Test tasks index render
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Render tasks index (default + explicit status filters)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+            $_SERVER['HTTP_USER_AGENT'] = 'test-harness';
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_SERVER['HTTP_HOST'] = 'playlist.nivessa.com';
+            $_SERVER['SERVER_NAME'] = 'playlist.nivessa.com';
+            $u = App\User::where('business_id',1)->where('status','active')->where('allow_login',1)->orderBy('id')->first();
+            Auth::loginUsingId($u->id);
+            request()->setLaravelSession(app('session.store'));
+            app('session.store')->start();
+            (new App\Http\Middleware\SetSessionData())->handle(request(), function ($r) { return $r; });
+            try { $html1 = app(App\Http\Controllers\TaskController::class)->index(request())->render(); echo "DEFAULT RENDER: PASS (" . strlen($html1) . " bytes)\n"; echo (str_contains($html1, 'Not complete (default)') ? "default option present: PASS\n" : "default option present: FAIL\n"); } catch (\Throwable $e) { echo "DEFAULT RENDER: FAIL - " . get_class($e) . ": " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine() . "\n"; }
+            $r2 = Illuminate\Http\Request::create('/tasks', 'GET', ['status' => '']);
+            $r2->setLaravelSession(app('session.store'));
+            try { $html2 = app(App\Http\Controllers\TaskController::class)->index($r2)->render(); echo "EXPLICIT-ALL RENDER: PASS (" . strlen($html2) . " bytes)\n"; } catch (\Throwable $e) { echo "EXPLICIT-ALL RENDER: FAIL - " . get_class($e) . ": " . $e->getMessage() . "\n"; }
+            echo (str_contains($html1, '#D4EDDA') || str_contains($html1, '#F8D7DA') ? "status colors present: PASS\n" : "status colors present: FAIL\n");
+            PHP
+            echo "=== done ==="
