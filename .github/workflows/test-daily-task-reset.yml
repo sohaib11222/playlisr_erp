@@ -1,0 +1,77 @@
+# Test: creates a throwaway repeat_daily task, marks it complete "yesterday"
+# (backdating last_reset_date), runs the reset logic, and confirms:
+# (1) no new WeeklyTask row was created — same row, same id
+# (2) it logged the prior day's outcome to task_completion_logs
+# (3) it reset to not_started, dated today
+# Cleans up after itself.
+
+name: Test daily task reset
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run reset test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1; $u1 = DB::table('users')->where('business_id',$biz)->value('id');
+            $t = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__e2e_test_reset__','start_date'=>now()->subDay()->toDateString(),'end_date'=>now()->subDay()->toDateString(),'task_type'=>'daily','store'=>'pico','priority'=>'medium','status'=>'complete','created_by'=>$u1,'completed_by'=>$u1,'completed_at'=>now()->subDay(),'repeat_daily'=>true,'repeat_weekly'=>false,'last_reset_date'=>now()->subDay()->toDateString()]);
+            $originalId = $t->id;
+            echo "created id={$originalId} status=complete last_reset=" . now()->subDay()->toDateString() . "\n";
+            $countBefore = App\WeeklyTask::where('business_id',$biz)->count();
+            $ref = new ReflectionMethod('App\Http\Controllers\TaskController', 'resetRepeatingDailyTasks');
+            $ref->setAccessible(true);
+            $ref->invoke(null, $biz);
+            $countAfter = App\WeeklyTask::where('business_id',$biz)->count();
+            echo "row count before={$countBefore} after={$countAfter}\n";
+            echo "NO NEW ROW: " . ($countBefore === $countAfter ? "PASS" : "FAIL") . "\n";
+            $fresh = App\WeeklyTask::find($originalId);
+            echo "status={$fresh->status} start_date={$fresh->start_date->toDateString()} last_reset={$fresh->last_reset_date->toDateString()}\n";
+            echo "RESET TO NOT_STARTED: " . ($fresh->status === 'not_started' ? "PASS" : "FAIL") . "\n";
+            echo "DATED TODAY: " . ($fresh->start_date->isToday() ? "PASS" : "FAIL") . "\n";
+            $log = DB::table('task_completion_logs')->where('weekly_task_id', $originalId)->first();
+            echo "log found: " . ($log ? "PASS (status was '{$log->status}')" : "FAIL") . "\n";
+            App\WeeklyTask::where('id', $originalId)->delete();
+            DB::table('task_completion_logs')->where('weekly_task_id', $originalId)->delete();
+            $gone = !App\WeeklyTask::where('id', $originalId)->exists() && !DB::table('task_completion_logs')->where('weekly_task_id', $originalId)->exists();
+            echo "cleanup: " . ($gone ? "PASS" : "FAIL") . "\n";
+            PHP
+            echo "=== done ==="
