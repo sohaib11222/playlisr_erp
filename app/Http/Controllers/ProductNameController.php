@@ -276,6 +276,22 @@ class ProductNameController extends Controller
      * $candidateNames should be ordered most-specific first (styles, then
      * genres) — the first one that matches an existing row wins.
      */
+    /**
+     * "Hip-Hop" vs "Hip Hop": found 2026-09-11 that Sarah's own taxonomy
+     * spells the same genre differently across formats (CD/Vinyl-Sealed use
+     * a hyphen, others use a space), which silently broke the exact match
+     * for her three biggest formats. Normalize hyphens/underscores to
+     * spaces and collapse whitespace before comparing — deliberately NOT
+     * fuzzy beyond that (no substring/Levenshtein), so this can't turn into
+     * a wrong match like "Pop" matching "Pop Rock".
+     */
+    protected function normalizeGenreKey($name)
+    {
+        $s = mb_strtolower(trim((string) $name));
+        $s = str_replace(['-', '_'], ' ', $s);
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
     protected function matchExistingSubCategory($business_id, $parentCategoryId, array $candidateNames)
     {
         if (!$parentCategoryId) { return null; }
@@ -285,10 +301,10 @@ class ProductNameController extends Controller
             ->where('category_type', 'product')
             ->whereNull('deleted_at')
             ->pluck('id', 'name')
-            ->mapWithKeys(function ($id, $name) { return [mb_strtolower(trim($name)) => (int) $id]; });
+            ->mapWithKeys(function ($id, $name) { return [$this->normalizeGenreKey($name) => (int) $id]; });
 
         foreach ($candidateNames as $name) {
-            $key = mb_strtolower(trim((string) $name));
+            $key = $this->normalizeGenreKey($name);
             if ($key !== '' && $existingByLower->has($key)) {
                 return $existingByLower->get($key);
             }

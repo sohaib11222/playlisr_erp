@@ -253,6 +253,14 @@ class DiscogsGenreBackfillService
         return $ids;
     }
 
+    /** "Hip-Hop" vs "Hip Hop" — see ProductNameController::normalizeGenreKey for why. */
+    protected function normalizeGenreKey($name)
+    {
+        $s = mb_strtolower(trim((string) $name));
+        $s = str_replace(['-', '_'], ' ', $s);
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
     protected function matchExistingSubCategory($business_id, $parentCategoryId, array $candidateNames)
     {
         if (!$parentCategoryId) { return null; }
@@ -262,10 +270,10 @@ class DiscogsGenreBackfillService
             ->where('category_type', 'product')
             ->whereNull('deleted_at')
             ->pluck('id', 'name')
-            ->mapWithKeys(function ($id, $name) { return [mb_strtolower(trim($name)) => (int) $id]; });
+            ->mapWithKeys(function ($id, $name) { return [$this->normalizeGenreKey($name) => (int) $id]; });
 
         foreach ($candidateNames as $name) {
-            $key = mb_strtolower(trim((string) $name));
+            $key = $this->normalizeGenreKey($name);
             if ($key !== '' && $existingByLower->has($key)) {
                 return $existingByLower->get($key);
             }
