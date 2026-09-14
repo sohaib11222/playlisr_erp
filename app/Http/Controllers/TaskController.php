@@ -166,14 +166,21 @@ class TaskController extends Controller
         }
     }
 
-    /** Weekly repeats still generate a fresh row once 7+ days have passed since the last one. */
+    /**
+     * Weekly-cadence repeats still generate a fresh row once 7+ days have
+     * passed since the last one — regardless of whether the root itself is
+     * a "Today" (single-day window) or "This Week" (7-day window) task.
+     * A "Today" task can repeat weekly (manager decision 2026-09-14): it
+     * gets a brand-new 1-day instance every 7 days rather than resetting
+     * in place daily. The new instance always keeps the root's own
+     * task_type, so a "Today" root keeps spawning 1-day instances.
+     */
     private static function rolloverRepeats($business_id)
     {
         $today = \Carbon\Carbon::today();
 
         $roots = WeeklyTask::with('assignees')
             ->where('business_id', $business_id)
-            ->where('task_type', 'weekly')
             ->where('repeat_weekly', true)
             ->whereNull('repeat_of')
             ->whereDate('start_date', '<=', $today->toDateString())
@@ -198,8 +205,8 @@ class TaskController extends Controller
                     'title' => $root->title,
                     'description' => $root->description,
                     'start_date' => $newStart,
-                    'end_date' => self::computeEndDate('weekly', $newStart),
-                    'task_type' => 'weekly',
+                    'end_date' => self::computeEndDate($root->task_type, $newStart),
+                    'task_type' => $root->task_type,
                     'store' => $root->store,
                     'priority' => $root->priority,
                     'status' => 'not_started',
@@ -260,6 +267,27 @@ class TaskController extends Controller
         return $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")->get();
     }
 
+    /**
+     * Not-yet-complete tasks (daily or weekly) specifically assigned to
+     * $userId — unassigned tasks don't count here, this is "yours", not
+     * "everyone's". Powers the close-register modal's "all your assigned
+     * tasks" list — the cashier's own accountability list, front and
+     * center while they're already accounting for their drawer.
+     */
+    public static function myOpenAssignedTasks($business_id, $userId)
+    {
+        self::rolloverRepeatingTasks($business_id);
+
+        return WeeklyTask::where('business_id', $business_id)
+            ->where('status', '!=', 'complete')
+            ->whereHas('assignees', function ($q) use ($userId) {
+                $q->where('users.id', $userId);
+            })
+            ->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")
+            ->orderBy('start_date')
+            ->get();
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -281,6 +309,7 @@ class TaskController extends Controller
         // did today"). Back to showing everything by default.
         $status = $request->input('status');
         $priority = $request->input('priority');
+        $assignedToMe = !empty($request->input('assigned_to_me'));
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
@@ -296,6 +325,12 @@ class TaskController extends Controller
         if (!empty($priority)) {
             $query->where('priority', $priority);
         }
+        if ($assignedToMe) {
+            $userId = auth()->id();
+            $query->whereHas('assignees', function ($q) use ($userId) {
+                $q->where('users.id', $userId);
+            });
+        }
         if (!empty($store)) {
             // A store-specific view includes that store's tasks plus any
             // company-wide (store = null) task, but not the other store's.
@@ -310,7 +345,7 @@ class TaskController extends Controller
         $priorityLabels = self::PRIORITY_LABELS;
         $canToggleStore = $this->isAdmin();
 
-        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
+        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'assignedToMe', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
 
     /**
@@ -336,6 +371,35 @@ class TaskController extends Controller
             })->values()->all();
 
         return view('tasks.end_shift', compact('dueTasks', 'storeLabels', 'store'));
+    }
+
+    /**
+     * Interstitial page shown right after a cashier opens their register —
+     * their daily tasks, front and center, before they get lost in ringing
+     * sales. CashRegisterController@store routes here (instead of straight
+     * to the POS) whenever there's something due; skips straight to the POS
+     * when there's nothing to show, so an empty list never adds a click for
+     * nobody's benefit.
+     */
+    public function startShift(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $storeLabels = $this->availableStores();
+        $store = $this->resolveStore($request, $storeLabels);
+
+        $dueTasks = self::dueTodayForStore($business_id, $store, auth()->id())
+            ->map(function ($t) {
+                return [
+                    'id' => $t->id,
+                    'title' => $t->title,
+                    'priority' => $t->priority,
+                    'status' => $t->status,
+                ];
+            })->values()->all();
+
+        $continueUrl = action('SellPosController@create', array_filter(['sub_type' => $request->input('sub_type')]));
+
+        return view('tasks.start_shift', compact('dueTasks', 'storeLabels', 'store', 'continueUrl'));
     }
 
     public function create(Request $request)
@@ -370,12 +434,26 @@ class TaskController extends Controller
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
-        // A daily task can only repeat daily, a weekly task only weekly — a
-        // stray checkbox value for the other type is silently dropped rather
-        // than validated against, since there's nothing wrong with the
-        // request, just nothing to do with it.
-        $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
-        $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
+        // Repeat cadence is a real choice for a "Today" (daily-window)
+        // task — it can repeat Daily (resets in place) or Weekly (a fresh
+        // 1-day instance every 7 days). A "This Week" (weekly-window) task
+        // stays locked to weekly-only: a week-long window resetting daily
+        // doesn't make sense. Manager decision 2026-09-14.
+        if ($data['task_type'] === 'daily') {
+            $data['repeat_daily'] = !empty($data['repeat_daily']);
+            $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+            // The UI presents these as one frequency choice, but they're
+            // still two independent booleans on the wire — never let both
+            // mechanisms run on the same row (reset-in-place AND spawn a
+            // weekly child would conflict). Daily wins if somehow both
+            // arrive true.
+            if ($data['repeat_daily'] && $data['repeat_weekly']) {
+                $data['repeat_weekly'] = false;
+            }
+        } else {
+            $data['repeat_daily'] = false;
+            $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+        }
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
@@ -430,8 +508,17 @@ class TaskController extends Controller
             unset($data['repeat_daily'], $data['repeat_weekly']);
         } else {
             $wasRepeatDaily = (bool) $task->repeat_daily;
-            $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
-            $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
+            if ($data['task_type'] === 'daily') {
+                $data['repeat_daily'] = !empty($data['repeat_daily']);
+                $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+                // Same guard as store() — never let both cadences apply.
+                if ($data['repeat_daily'] && $data['repeat_weekly']) {
+                    $data['repeat_weekly'] = false;
+                }
+            } else {
+                $data['repeat_daily'] = false;
+                $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+            }
             if ($data['repeat_daily'] && !$wasRepeatDaily) {
                 // Just turned on — don't reset it the moment someone next
                 // loads /tasks; it's already at its starting state.

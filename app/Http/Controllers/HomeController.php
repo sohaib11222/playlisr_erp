@@ -968,6 +968,26 @@ class HomeController extends Controller
 
         $me_first_name = auth()->user()->first_name ?? 'there';
 
+        // Daily tasks due today for this employee's store — shown at the
+        // very top of the dashboard (manager ask, 2026-09-14: "daily tasks
+        // should be above everything"). Wrapped in try/catch — the
+        // dashboard MUST never break because of this.
+        $my_due_today_tasks = [];
+        try {
+            $my_store = \App\Http\Controllers\OpeningChecklistController::defaultStoreForUser();
+            $my_due_today_tasks = \App\Http\Controllers\TaskController::dueTodayForStore($business_id, $my_store, $me_id)
+                ->map(function ($t) {
+                    return [
+                        'id' => $t->id,
+                        'title' => $t->title,
+                        'priority' => $t->priority,
+                        'status' => $t->status,
+                    ];
+                })->values()->all();
+        } catch (\Throwable $ex) {
+            \Log::warning('home my_due_today_tasks failed: ' . $ex->getMessage());
+        }
+
         // ---- Leaderboard top 3 this week (reuses ReportController logic) ----
         $week_start = \Carbon::now()->startOfWeek()->toDateTimeString();
         $week_end = \Carbon::now()->endOfDay()->toDateTimeString();
@@ -1082,7 +1102,7 @@ class HomeController extends Controller
             'active_wants', 'active_wants_count',
             'leaderboard_top3',
             // Personal progress dashboard
-            'me_first_name',
+            'me_first_name', 'my_due_today_tasks',
             'my_today_hrs', 'my_today_rev', 'my_today_rph',
             'my_30d_rph_avg', 'my_vs_30d_pct',
             'my_7day', 'my_streak_above', 'my_7day_best_rph', 'my_7day_best_day', 'my_beat_gap',

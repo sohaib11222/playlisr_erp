@@ -308,6 +308,24 @@ class CashRegisterController extends Controller
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
         }
 
+        // Route through the "start shift" tasks page when there's anything
+        // due today for this cashier's store — the whole point is to make
+        // it obvious right when they open up, not buried in a sidebar they
+        // never click. Skip straight to the POS when there's nothing to
+        // show, so an empty list never costs anyone an extra click. Must
+        // never block opening the register itself if this check fails.
+        try {
+            $storeKey = $this->storeKeyForLocation($location_id);
+            if ($storeKey) {
+                $hasDueToday = \App\Http\Controllers\TaskController::dueTodayForStore($business_id, $storeKey, $user_id)->isNotEmpty();
+                if ($hasDueToday) {
+                    return redirect()->action('TaskController@startShift', ['sub_type' => $sub_type]);
+                }
+            }
+        } catch (\Throwable $ex) {
+            \Log::warning('start_shift redirect check failed: ' . $ex->getMessage());
+        }
+
         return redirect()->action('SellPosController@create', ['sub_type' => $sub_type]);
     }
 
@@ -559,24 +577,24 @@ class CashRegisterController extends Controller
             }
         }
 
-        // Tasks due today for this cashier, shown right where they're
-        // already accounting for their shift instead of a separate popup
-        // after they've submitted and moved on. Wrapped in try/catch — the
-        // close flow MUST never break because of this.
+        // All of this cashier's still-open assigned tasks (daily + weekly,
+        // not just what's due today), shown right where they're already
+        // accounting for their shift instead of a separate popup after
+        // they've submitted and moved on. Sarah/manager ask (2026-09-14):
+        // put this ABOVE the cash count, not below — see its @include
+        // placement near the top of the modal body. Wrapped in try/catch —
+        // the close flow MUST never break because of this.
         $due_tasks = [];
         try {
-            $storeKey = $this->storeKeyForLocation($register_details->location_id);
-            if ($storeKey) {
-                $due_tasks = \App\Http\Controllers\TaskController::dueTodayForStore($business_id, $storeKey, $user_id)
-                    ->map(function ($t) {
-                        return [
-                            'id' => $t->id,
-                            'title' => $t->title,
-                            'priority' => $t->priority,
-                            'status' => $t->status,
-                        ];
-                    })->values()->all();
-            }
+            $due_tasks = \App\Http\Controllers\TaskController::myOpenAssignedTasks($business_id, $user_id)
+                ->map(function ($t) {
+                    return [
+                        'id' => $t->id,
+                        'title' => $t->title,
+                        'priority' => $t->priority,
+                        'status' => $t->status,
+                    ];
+                })->values()->all();
         } catch (\Throwable $ex) {
             \Log::warning('close_register due_tasks failed: ' . $ex->getMessage());
         }

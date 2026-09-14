@@ -87,6 +87,17 @@
 @if(auth()->user()->can('dashboard.data'))
 <section class="content no-print" style="padding-bottom: 0;">
 
+    {{-- Daily tasks — above everything else on the dashboard (manager ask,
+         2026-09-14). Tasks & Projects otherwise has no personal view at
+         all, so this is the only place an employee sees what's on their
+         plate today without navigating there and scanning the "Assigned
+         to" column themselves. Same checklist/status buttons as the
+         standalone /tasks/end-shift page and the open/close-register
+         prompts — marking a task here updates the same row everywhere. --}}
+    @if(!empty($my_due_today_tasks))
+        @include('tasks.partials.due_today_bubble', ['dueTodayTasks' => $my_due_today_tasks])
+    @endif
+
     {{-- Morning opening prompt: shows for store staff until today's opening
          checklist is logged for their store. Clears once someone completes it. --}}
     @php $promptStore = \App\Http\Controllers\OpeningChecklistController::promptStore(); @endphp
