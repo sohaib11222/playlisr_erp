@@ -40,7 +40,7 @@
                 <div class="checkbox" style="margin-top:7px;">
                     <label class="text-muted">
                         <i class="fa fa-repeat"></i>
-                        Repeats {{ $task->task_type }}
+                        Repeats {{ $task->repeat_weekly ? 'weekly' : 'daily' }}
                         @if($task->repeatRoot)
                             (from "{{ $task->repeatRoot->title }}")
                         @endif
@@ -48,17 +48,35 @@
                 </div>
                 <small class="text-muted">Only the original task controls whether the series repeats.</small>
             @else
+                @php
+                    // "Today" tasks get a real cadence choice (manager
+                    // decision 2026-09-14): Daily resets the same row in
+                    // place every day; Weekly spawns a fresh 1-day instance
+                    // every 7 days instead. "This Week" tasks stay locked
+                    // to weekly-only (row below) — a week-long window
+                    // resetting daily doesn't make sense.
+                    $todayRepeatOn = old('repeat_daily', $task->repeat_daily ?? false) || old('repeat_weekly', $task->repeat_weekly ?? false);
+                    $todayRepeatFreq = old('repeat_weekly', $task->repeat_weekly ?? false) ? 'weekly' : 'daily';
+                @endphp
                 <div class="checkbox" id="task_repeat_daily_row" style="margin-top:7px;{{ $currentTaskType === 'daily' ? '' : 'display:none;' }}">
                     <label>
-                        <input type="checkbox" id="task_repeat_daily" name="repeat_daily" value="1" @if(old('repeat_daily', $task->repeat_daily ?? false)) checked @endif>
-                        Repeat daily
+                        <input type="checkbox" id="task_repeat_today_enabled" @if($todayRepeatOn) checked @endif @if($currentTaskType !== 'daily') disabled @endif>
+                        Repeat
                     </label>
+                    <select id="task_repeat_today_freq" class="form-control" style="width:auto;display:inline-block;margin-left:8px;{{ $todayRepeatOn ? '' : 'display:none;' }}" @if($currentTaskType !== 'daily') disabled @endif>
+                        <option value="daily" @if($todayRepeatFreq==='daily') selected @endif>Daily</option>
+                        <option value="weekly" @if($todayRepeatFreq==='weekly') selected @endif>Weekly</option>
+                    </select>
+                    <input type="hidden" id="task_repeat_daily" name="repeat_daily" value="{{ $todayRepeatOn && $todayRepeatFreq==='daily' ? '1' : '0' }}" @if($currentTaskType !== 'daily') disabled @endif>
+                    <input type="hidden" id="task_repeat_today_weekly" name="repeat_weekly" value="{{ $todayRepeatOn && $todayRepeatFreq==='weekly' ? '1' : '0' }}" @if($currentTaskType !== 'daily') disabled @endif>
                     <br>
-                    <small class="text-muted">Resets to "not started" every day instead of needing to be re-added or reset by hand. Uncheck to stop resetting.</small>
+                    <small class="text-muted" id="task_repeat_today_hint">
+                        {{ $todayRepeatFreq==='weekly' ? 'Spawns a fresh 1-day task every 7 days instead of needing to be re-added. Uncheck to stop — past ones stay as history.' : 'Resets to "not started" every day instead of needing to be re-added or reset by hand. Uncheck to stop resetting.' }}
+                    </small>
                 </div>
                 <div class="checkbox" id="task_repeat_weekly_row" style="margin-top:7px;{{ $currentTaskType === 'weekly' ? '' : 'display:none;' }}">
                     <label>
-                        <input type="checkbox" id="task_repeat_weekly" name="repeat_weekly" value="1" @if(old('repeat_weekly', $task->repeat_weekly ?? false)) checked @endif>
+                        <input type="checkbox" id="task_repeat_weekly" name="repeat_weekly" value="1" @if(old('repeat_weekly', $task->repeat_weekly ?? false)) checked @endif @if($currentTaskType !== 'weekly') disabled @endif>
                         Repeat weekly
                     </label>
                     <br>
@@ -121,14 +139,26 @@
             endDateWrap.style.display = isDaily ? 'none' : '';
         }
 
+        // Only one of the daily/weekly repeat rows is ever the "active"
+        // type at a time, but both live in the DOM together — and the
+        // daily row now also carries a hidden `repeat_weekly` field (the
+        // "Today, repeat Weekly" option) alongside the weekly row's own
+        // `repeat_weekly` checkbox. Disabling the inactive row's fields
+        // (not just hiding them) keeps only one same-named field posting.
         var dailyRow = document.getElementById('task_repeat_daily_row');
         if (dailyRow) {
             dailyRow.style.display = isDaily ? '' : 'none';
+            dailyRow.querySelectorAll('input, select').forEach(function (el) { el.disabled = !isDaily; });
         }
 
         var weeklyRow = document.getElementById('task_repeat_weekly_row');
         if (weeklyRow) {
             weeklyRow.style.display = isDaily ? 'none' : '';
+            weeklyRow.querySelectorAll('input, select').forEach(function (el) { el.disabled = isDaily; });
+        }
+
+        if (isDaily) {
+            updateRepeatTodayFields();
         }
 
         var endDatePreview = document.getElementById('task_end_date_preview');
@@ -143,6 +173,33 @@
         endDatePreview.value = d.toLocaleDateString('en-US', opts);
     }
 
+    // "Today" row's Repeat checkbox + Daily/Weekly frequency select drive
+    // two hidden inputs (task_repeat_daily / task_repeat_today_weekly)
+    // rather than posting themselves directly, since the actual submitted
+    // fields need to be "0"/"1" regardless of checkbox state.
+    function updateRepeatTodayFields() {
+        var enabled = document.getElementById('task_repeat_today_enabled');
+        var freq = document.getElementById('task_repeat_today_freq');
+        var dailyHidden = document.getElementById('task_repeat_daily');
+        var weeklyHidden = document.getElementById('task_repeat_today_weekly');
+        var hint = document.getElementById('task_repeat_today_hint');
+        if (!enabled || !freq || !dailyHidden || !weeklyHidden) {
+            return;
+        }
+
+        var on = enabled.checked;
+        freq.style.display = on ? 'inline-block' : 'none';
+
+        dailyHidden.value = (on && freq.value === 'daily') ? '1' : '0';
+        weeklyHidden.value = (on && freq.value === 'weekly') ? '1' : '0';
+
+        if (hint) {
+            hint.textContent = freq.value === 'weekly'
+                ? 'Spawns a fresh 1-day task every 7 days instead of needing to be re-added. Uncheck to stop — past ones stay as history.'
+                : 'Resets to "not started" every day instead of needing to be re-added or reset by hand. Uncheck to stop resetting.';
+        }
+    }
+
     var typeEl = document.getElementById('task_type');
     var startDateEl = document.getElementById('task_start_date');
     if (typeEl) {
@@ -151,5 +208,15 @@
     if (startDateEl) {
         startDateEl.addEventListener('change', updateTaskTypeUI);
     }
+
+    var repeatTodayEnabled = document.getElementById('task_repeat_today_enabled');
+    var repeatTodayFreq = document.getElementById('task_repeat_today_freq');
+    if (repeatTodayEnabled) {
+        repeatTodayEnabled.addEventListener('change', updateRepeatTodayFields);
+    }
+    if (repeatTodayFreq) {
+        repeatTodayFreq.addEventListener('change', updateRepeatTodayFields);
+    }
+    updateRepeatTodayFields();
 })();
 </script>

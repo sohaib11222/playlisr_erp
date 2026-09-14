@@ -166,14 +166,21 @@ class TaskController extends Controller
         }
     }
 
-    /** Weekly repeats still generate a fresh row once 7+ days have passed since the last one. */
+    /**
+     * Weekly-cadence repeats still generate a fresh row once 7+ days have
+     * passed since the last one — regardless of whether the root itself is
+     * a "Today" (single-day window) or "This Week" (7-day window) task.
+     * A "Today" task can repeat weekly (manager decision 2026-09-14): it
+     * gets a brand-new 1-day instance every 7 days rather than resetting
+     * in place daily. The new instance always keeps the root's own
+     * task_type, so a "Today" root keeps spawning 1-day instances.
+     */
     private static function rolloverRepeats($business_id)
     {
         $today = \Carbon\Carbon::today();
 
         $roots = WeeklyTask::with('assignees')
             ->where('business_id', $business_id)
-            ->where('task_type', 'weekly')
             ->where('repeat_weekly', true)
             ->whereNull('repeat_of')
             ->whereDate('start_date', '<=', $today->toDateString())
@@ -198,8 +205,8 @@ class TaskController extends Controller
                     'title' => $root->title,
                     'description' => $root->description,
                     'start_date' => $newStart,
-                    'end_date' => self::computeEndDate('weekly', $newStart),
-                    'task_type' => 'weekly',
+                    'end_date' => self::computeEndDate($root->task_type, $newStart),
+                    'task_type' => $root->task_type,
                     'store' => $root->store,
                     'priority' => $root->priority,
                     'status' => 'not_started',
@@ -427,12 +434,26 @@ class TaskController extends Controller
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
-        // A daily task can only repeat daily, a weekly task only weekly — a
-        // stray checkbox value for the other type is silently dropped rather
-        // than validated against, since there's nothing wrong with the
-        // request, just nothing to do with it.
-        $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
-        $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
+        // Repeat cadence is a real choice for a "Today" (daily-window)
+        // task — it can repeat Daily (resets in place) or Weekly (a fresh
+        // 1-day instance every 7 days). A "This Week" (weekly-window) task
+        // stays locked to weekly-only: a week-long window resetting daily
+        // doesn't make sense. Manager decision 2026-09-14.
+        if ($data['task_type'] === 'daily') {
+            $data['repeat_daily'] = !empty($data['repeat_daily']);
+            $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+            // The UI presents these as one frequency choice, but they're
+            // still two independent booleans on the wire — never let both
+            // mechanisms run on the same row (reset-in-place AND spawn a
+            // weekly child would conflict). Daily wins if somehow both
+            // arrive true.
+            if ($data['repeat_daily'] && $data['repeat_weekly']) {
+                $data['repeat_weekly'] = false;
+            }
+        } else {
+            $data['repeat_daily'] = false;
+            $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+        }
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
@@ -487,8 +508,17 @@ class TaskController extends Controller
             unset($data['repeat_daily'], $data['repeat_weekly']);
         } else {
             $wasRepeatDaily = (bool) $task->repeat_daily;
-            $data['repeat_daily'] = $data['task_type'] === 'daily' && !empty($data['repeat_daily']);
-            $data['repeat_weekly'] = $data['task_type'] === 'weekly' && !empty($data['repeat_weekly']);
+            if ($data['task_type'] === 'daily') {
+                $data['repeat_daily'] = !empty($data['repeat_daily']);
+                $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+                // Same guard as store() — never let both cadences apply.
+                if ($data['repeat_daily'] && $data['repeat_weekly']) {
+                    $data['repeat_weekly'] = false;
+                }
+            } else {
+                $data['repeat_daily'] = false;
+                $data['repeat_weekly'] = !empty($data['repeat_weekly']);
+            }
             if ($data['repeat_daily'] && !$wasRepeatDaily) {
                 // Just turned on — don't reset it the moment someone next
                 // loads /tasks; it's already at its starting state.
