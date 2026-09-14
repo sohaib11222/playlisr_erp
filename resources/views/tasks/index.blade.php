@@ -23,9 +23,9 @@
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
                 <label style="margin-right:5px;">Type</label>
                 <select name="type" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="" @if(!$type) selected @endif>Daily + Weekly</option>
-                    <option value="daily" @if($type==='daily') selected @endif>Daily</option>
-                    <option value="weekly" @if($type==='weekly') selected @endif>Weekly</option>
+                    <option value="" @if(!$type) selected @endif>Today + This Week</option>
+                    <option value="daily" @if($type==='daily') selected @endif>Today</option>
+                    <option value="weekly" @if($type==='weekly') selected @endif>This Week</option>
                 </select>
                 <label style="margin-right:5px;">Status</label>
                 <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
