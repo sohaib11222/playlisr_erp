@@ -261,11 +261,13 @@ class TaskController extends Controller
     }
 
     /**
-     * Count of not-yet-complete tasks specifically assigned to $userId
-     * (unassigned tasks don't count — this is "yours", not "everyone's").
-     * Drives the "assigned to you" prompt on the home dashboard.
+     * Not-yet-complete tasks (daily or weekly) specifically assigned to
+     * $userId — unassigned tasks don't count here, this is "yours", not
+     * "everyone's". Powers the close-register modal's "all your assigned
+     * tasks" list — the cashier's own accountability list, front and
+     * center while they're already accounting for their drawer.
      */
-    public static function myOpenAssignedCount($business_id, $userId)
+    public static function myOpenAssignedTasks($business_id, $userId)
     {
         self::rolloverRepeatingTasks($business_id);
 
@@ -274,7 +276,9 @@ class TaskController extends Controller
             ->whereHas('assignees', function ($q) use ($userId) {
                 $q->where('users.id', $userId);
             })
-            ->count();
+            ->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")
+            ->orderBy('start_date')
+            ->get();
     }
 
     public function index(Request $request)
@@ -360,6 +364,35 @@ class TaskController extends Controller
             })->values()->all();
 
         return view('tasks.end_shift', compact('dueTasks', 'storeLabels', 'store'));
+    }
+
+    /**
+     * Interstitial page shown right after a cashier opens their register —
+     * their daily tasks, front and center, before they get lost in ringing
+     * sales. CashRegisterController@store routes here (instead of straight
+     * to the POS) whenever there's something due; skips straight to the POS
+     * when there's nothing to show, so an empty list never adds a click for
+     * nobody's benefit.
+     */
+    public function startShift(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $storeLabels = $this->availableStores();
+        $store = $this->resolveStore($request, $storeLabels);
+
+        $dueTasks = self::dueTodayForStore($business_id, $store, auth()->id())
+            ->map(function ($t) {
+                return [
+                    'id' => $t->id,
+                    'title' => $t->title,
+                    'priority' => $t->priority,
+                    'status' => $t->status,
+                ];
+            })->values()->all();
+
+        $continueUrl = action('SellPosController@create', array_filter(['sub_type' => $request->input('sub_type')]));
+
+        return view('tasks.start_shift', compact('dueTasks', 'storeLabels', 'store', 'continueUrl'));
     }
 
     public function create(Request $request)

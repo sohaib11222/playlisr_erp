@@ -348,6 +348,21 @@
 
 		<div class="modal-body">
 
+			{{-- All of this cashier's still-open assigned tasks, ABOVE the
+			     cash count (manager ask, 2026-09-14) — they should see and
+			     update these before they get to counting the drawer, not
+			     after. Same checklist/status buttons as the standalone
+			     /tasks/end-shift page, just a broader "everything assigned
+			     to you" list instead of only what's due today. --}}
+			@if(!empty($due_tasks))
+				@include('tasks.partials.due_today_bubble', [
+					'dueTodayTasks' => $due_tasks,
+					'bubbleTitle' => 'Your assigned tasks',
+					'bubbleSubtitle' => 'Update these before you close out — anything still open carries over to your next shift.',
+					'bubbleLinkParams' => ['assigned_to_me' => 1],
+				])
+			@endif
+
 			{{-- HERO: count the drawer.
 				 Sarah 2026-07-09: count by bill denomination (100/50/20/10/5/1)
 				 to match the opening count on the duty picker. We add it up live
@@ -641,14 +656,6 @@
 				</div>
 				@endif
 			</div>
-			@endif
-
-			{{-- Tasks due today, right where the cashier is already
-			     accounting for their shift — not a separate popup after
-			     they've already left the screen. Same checklist/status
-			     buttons as the standalone /tasks/end-shift page. --}}
-			@if(!empty($due_tasks))
-				@include('tasks.partials.due_today_bubble', ['dueTodayTasks' => $due_tasks])
 			@endif
 
 			@if(!empty($shift_summary))

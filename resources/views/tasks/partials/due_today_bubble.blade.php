@@ -1,18 +1,27 @@
-{{-- Expects: $dueTodayTasks — array of ['id','title','priority','status'], from
-     session('tasks_due_today_bubble'). Flashed once by
-     CashRegisterController@postCloseRegister right after a successful
-     register close, so this shows exactly once, right when the cashier is
-     still looking at the screen. Marking a task here updates the same
-     weekly_tasks row shown on /tasks — it isn't a separate list, just an
-     accountability nudge at the moment people actually act on it. --}}
+{{-- Expects: $dueTodayTasks — array of ['id','title','priority','status'].
+     Optional: $bubbleTitle / $bubbleSubtitle to override the default
+     "due today" framing (the close-register modal passes its own — see
+     that include — since it shows the fuller "all your assigned tasks"
+     list, not just what's due today).
+     Marking a task here updates the same weekly_tasks row shown on
+     /tasks — it isn't a separate list, just an accountability nudge at
+     the moment people actually act on it. --}}
+@php
+    $bubbleTitle = $bubbleTitle ?? 'Tasks due today';
+    $bubbleSubtitle = $bubbleSubtitle ?? 'Mark these off before you go, or leave them for the next person.';
+    // Daily-only lists (the default) link over filtered to type=daily; the
+    // broader "all your assigned tasks" list (close-register) passes
+    // $bubbleLinkParams = [] so the link isn't misleadingly scoped to daily.
+    $bubbleLinkParams = $bubbleLinkParams ?? ['type' => 'daily'];
+@endphp
 <div id="tasks_due_today_bubble" style="background:#FFF3E0;border:1px solid #F0C27B;border-left:6px solid #E8912B;border-radius:12px;padding:16px 20px;margin:15px 0;font-family:'Inter Tight',system-ui,sans-serif;">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
         <i class="fa fas fa-list-check" style="font-size:22px;color:#B26A00;"></i>
         <div style="flex:1 1 240px;">
-            <div style="font-size:16px;font-weight:800;color:#5A4410;">Tasks due today</div>
-            <div style="font-size:13px;color:#7a6a3a;">Mark these off before you go, or leave them for the next person.</div>
+            <div style="font-size:16px;font-weight:800;color:#5A4410;">{{ $bubbleTitle }}</div>
+            <div style="font-size:13px;color:#7a6a3a;">{{ $bubbleSubtitle }}</div>
         </div>
-        <a href="{{ route('tasks.index', ['type' => 'daily']) }}" style="font-size:13px;font-weight:700;color:#B26A00;white-space:nowrap;">View in Tasks &amp; Projects &rarr;</a>
+        <a href="{{ route('tasks.index', $bubbleLinkParams) }}" style="font-size:13px;font-weight:700;color:#B26A00;white-space:nowrap;">View in Tasks &amp; Projects &rarr;</a>
     </div>
     <ul id="tasks_due_today_list" style="list-style:none;margin:0;padding:0;">
         @foreach($dueTodayTasks as $t)
