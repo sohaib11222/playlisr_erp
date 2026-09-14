@@ -15,8 +15,8 @@
         <div class="form-group">
             <label>Type</label>
             <select id="task_type" name="task_type" class="form-control">
-                <option value="daily" @if($currentTaskType==='daily') selected @endif>Daily</option>
-                <option value="weekly" @if($currentTaskType==='weekly') selected @endif>Weekly</option>
+                <option value="daily" @if($currentTaskType==='daily') selected @endif>Today</option>
+                <option value="weekly" @if($currentTaskType==='weekly') selected @endif>This Week</option>
             </select>
         </div>
     </div>
