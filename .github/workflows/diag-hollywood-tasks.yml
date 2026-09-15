@@ -1,0 +1,70 @@
+# READ-ONLY: dump all weekly_tasks rows for Hollywood (and store=null,
+# company-wide) plus Luis's own store/permission scoping, to investigate
+# "Luis saw tasks at Hollywood that shouldn't be showing."
+
+name: Diag hollywood tasks
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump Hollywood tasks + Luis's scoping
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== weekly_tasks where store=hollywood or store is null ==="
+            php artisan tinker --no-ansi <<'PHP'
+            DB::table('weekly_tasks')->where('business_id',1)->where(function($q){$q->where('store','hollywood')->orWhereNull('store');})->orderBy('id')->get(['id','title','task_type','store','repeat_daily','repeat_weekly','repeat_of','start_date','status'])->each(function($r){ echo "id={$r->id} repeat_of=" . ($r->repeat_of ?? 'NULL') . " store=" . ($r->store ?? 'NULL(both)') . " type={$r->task_type} daily={$r->repeat_daily} weekly={$r->repeat_weekly} start={$r->start_date} status={$r->status} title=\"{$r->title}\"\n"; });
+            PHP
+            echo "=== users named Luis: business locations + permitted_locations ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $users = App\User::where('business_id',1)->where('first_name','like','%Luis%')->get();
+            foreach ($users as $u) {
+                echo "user#{$u->id} {$u->first_name} {$u->last_name} status={$u->status} allow_login={$u->allow_login}\n";
+                echo "  roles: " . $u->roles->pluck('name')->implode(',') . "\n";
+                echo "  access_all_locations: " . ($u->can('access_all_locations') ? 'YES' : 'no') . "\n";
+                $pl = $u->permitted_locations(1);
+                echo "  permitted_locations: " . (is_array($pl) ? implode(',', $pl) : $pl) . "\n";
+            }
+            PHP
+            echo "=== business_locations ==="
+            php artisan tinker --no-ansi <<'PHP'
+            App\BusinessLocation::where('business_id',1)->get(['id','name'])->each(function($l){ echo "loc#{$l->id} name={$l->name}\n"; });
+            PHP
+            echo "=== done ==="
