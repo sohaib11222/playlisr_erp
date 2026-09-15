@@ -39,6 +39,7 @@ class ReportsHubController extends Controller
                     ['key' => 'sales-rep',             'name' => 'Sales Representative Report', 'icon' => 'fa-user-tie',     'action' => 'ReportController@getSalesRepresentativeReport','desc' => 'Sales by sales rep.', 'admin_only' => true],
                     ['key' => 'sell-payment',          'name' => 'Sell Payment Report',   'icon' => 'fa-money-check',        'action' => 'ReportController@sellPaymentReport',          'desc' => 'Payments against sells.', 'admin_only' => true],
                     ['key' => 'purchase-sell',         'name' => 'Purchase & Sale',       'icon' => 'fa-exchange-alt',       'action' => 'ReportController@getPurchaseSell',            'desc' => 'Purchase vs sell summary.', 'admin_only' => true],
+                    ['key' => 'archer-performance',    'name' => 'Archer x Nivessa Performance', 'icon' => 'fa-video',        'action' => 'ReportController@archerPerformance',          'desc' => 'IG follower growth + reach, and website orders before vs during his campaign.', 'admin_only' => true],
                 ],
             ],
             'inventory' => [

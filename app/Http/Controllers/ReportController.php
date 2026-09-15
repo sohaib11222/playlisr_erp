@@ -8270,6 +8270,66 @@ class ReportController extends Controller
     }
 
     /**
+     * Archer x Nivessa performance snapshot — IG follower growth + reach,
+     * and website orders in the 28 days since his campaign started (8/18)
+     * vs the 28 days before, so Sarah/Jon can see the ROI while negotiating
+     * his month-2 terms.
+     *
+     * This is a manual snapshot, not a live feed — Instagram Business Suite
+     * and the nivessa.com orders admin aren't queryable from here. Numbers
+     * below were pulled by hand on 2026-09-15; to refresh, re-check those
+     * two sources and update this array (kept in code, not storage/, so it
+     * ships with a normal git deploy — no server file access needed).
+     */
+    public function archerPerformance(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $data = [
+            'last_updated' => '2026-09-15',
+            'contract' => [
+                'start_date' => '2026-08-18',
+                'end_date' => '2026-09-18',
+                'pay_total' => 2000,
+                'pay_schedule' => '$1,000 on 2026-08-18, $1,000 on 2026-09-01',
+                'follower_goal' => 30000,
+                'follower_goal_date' => '2026-09-18',
+                'bonus_at_goal' => 500,
+            ],
+            'instagram' => [
+                'followers_start' => 11100,
+                'followers_now' => 15400,
+                'reach_last_28_days' => 103000,
+                'reach_change_pct' => -59,
+                'confirmed_collab_videos' => 15,
+            ],
+            'orders' => [
+                'baseline_period' => [
+                    'label' => 'Pre-Archer (28 days)',
+                    'start_date' => '2026-07-21',
+                    'end_date' => '2026-08-17',
+                    'order_count' => 61,
+                    'gross_revenue' => 2750.04,
+                    'net_revenue_excl_cancelled' => 1146.62,
+                    'cancelled_count' => 38,
+                ],
+                'archer_period' => [
+                    'label' => 'Archer campaign (28 days)',
+                    'start_date' => '2026-08-18',
+                    'end_date' => '2026-09-15',
+                    'order_count' => 94,
+                    'gross_revenue' => 4021.50,
+                    'net_revenue_excl_cancelled' => 1515.41,
+                    'cancelled_count' => 60,
+                ],
+                'note' => "Cancellation rate is roughly flat between periods (62% vs 64%) — that's an inventory/fulfillment issue, not something Archer's traffic caused. Order count is the fairer read on demand he's driving.",
+            ],
+        ];
+
+        return view('report.archer_performance', ['data' => $data]);
+    }
+
+    /**
      * Where the uploaded weekly budget (parsed from Sarah's "Weekly v2"
      * sheet) lives. JSON on disk — no migration, same pattern as the
      * clover-manual-matches / return-approvals stores.
