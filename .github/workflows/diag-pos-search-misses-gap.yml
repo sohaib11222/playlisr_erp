@@ -49,15 +49,18 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            echo "=== row counts by day, last 30 days ==="
+            echo "=== row counts by day, location 2, typed only, last 30 days ==="
             php artisan tinker --no-ansi <<'PHP'
-            DB::table('pos_search_misses')
-                ->selectRaw('DATE(created_at) as d, COUNT(*) as c')
-                ->where('created_at', '>=', now()->subDays(30))
-                ->groupBy('d')->orderBy('d')->get()
-                ->each(function($r){ echo "{$r->d}  {$r->c}\n"; });
-            echo "max created_at: " . DB::table('pos_search_misses')->max('created_at') . "\n";
-            echo "total rows: " . DB::table('pos_search_misses')->count() . "\n";
+            DB::table('pos_search_misses')->where('location_id', 2)->where('is_scan', 0)->where('created_at', '>=', now()->subDays(30))->selectRaw('DATE(created_at) as d, COUNT(*) as c')->groupBy('d')->orderBy('d')->get()->each(function($r){ echo "{$r->d}  {$r->c}\n"; });
+            PHP
+            echo "=== max created_at overall / per location ==="
+            php artisan tinker --no-ansi <<'PHP'
+            echo "overall max: " . DB::table('pos_search_misses')->max('created_at') . "\n";
+            DB::table('pos_search_misses')->selectRaw('location_id, is_scan, MAX(created_at) as last_seen, COUNT(*) as c')->groupBy('location_id', 'is_scan')->orderBy('location_id')->get()->each(function($r){ echo "location_id={$r->location_id} is_scan={$r->is_scan} last_seen={$r->last_seen} count={$r->c}\n"; });
+            PHP
+            echo "=== business_locations id=2 ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $r = DB::table('business_locations')->find(2); echo $r ? ($r->id . ' ' . $r->name . ' business_id=' . $r->business_id) : 'not found'; echo "\n";
             PHP
             echo "=== recent errors mentioning log-empty-search or pos_search_misses ==="
             grep -h "log-empty-search\|pos_search_miss\|PosSearchRequestController\|PosSearchMiss" storage/logs/laravel-*.log 2>/dev/null | tail -60
