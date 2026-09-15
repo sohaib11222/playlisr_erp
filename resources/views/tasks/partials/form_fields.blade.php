@@ -54,17 +54,26 @@
                      "This Week" tasks stay locked to weekly-only (row below) —
                      a week-long window resetting daily doesn't make sense.
 
-                     Two inline @php(...) statements, not a @php...@endphp
-                     block — this file already has an inline @php(...) up at
+                     Two inline @@php(...) statements, not a @@php...@@endphp
+                     block — this file already has an inline @@php(...) up at
                      the top (line 1, $currentTaskType), and combining that
-                     with a later block-style @php...@endphp inside this
-                     @else breaks Blade's compiler on this Laravel version:
-                     it fails to compile the surrounding @if/@endif at all
+                     with a later block-style @@php...@@endphp inside this
+                     @@else breaks Blade's compiler on this Laravel version:
+                     it fails to compile the surrounding @@if/@@endif at all
                      ("unexpected 'endif', expecting end of file"), even
-                     though the @if/@endif are correctly balanced. Confirmed
+                     though the @@if/@@endif are correctly balanced. Confirmed
                      by isolating both forms against the live compiler
                      before landing this fix — don't reintroduce a block
-                     @php here. --}}
+                     @@php here.
+
+                     IMPORTANT: this comment itself must keep every @@
+                     escaped like this — Blade compiles @@directives BEFORE
+                     stripping {{-- --}} comments, so a bare "@@if" or
+                     "@@php" typed as prose text in a comment gets compiled
+                     as a REAL directive and corrupts the surrounding
+                     structure. That's exactly the bug this comment is
+                     warning about; don't reintroduce it while describing
+                     it. --}}
                 @php($todayRepeatOn = old('repeat_daily', $task->repeat_daily ?? false) || old('repeat_weekly', $task->repeat_weekly ?? false))
                 @php($todayRepeatFreq = old('repeat_weekly', $task->repeat_weekly ?? false) ? 'weekly' : 'daily')
                 <div class="checkbox" id="task_repeat_daily_row" style="margin-top:7px;{{ $currentTaskType === 'daily' ? '' : 'display:none;' }}">
