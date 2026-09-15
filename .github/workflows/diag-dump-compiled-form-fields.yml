@@ -50,10 +50,6 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
             php artisan tinker --no-ansi <<'PHP'
-            // Minimal repro test: is a `//` comment containing a non-ASCII
-            // em dash INSIDE an @php block enough to break compilation of
-            // the surrounding @if/@else/@endif? Compare A (with em dash)
-            // vs B (plain ASCII comment) vs C (no comment at all).
             function tryCompile($label, $src) {
                 try {
                     $compiled = app('blade.compiler')->compileString($src);
@@ -63,20 +59,22 @@ jobs:
                     $ret = 0;
                     exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $out, $ret);
                     echo "[$label] php -l exit=$ret : " . implode(' | ', $out) . "\n";
-                    if ($ret !== 0) {
-                        echo "[$label] COMPILED OUTPUT:\n" . $compiled . "\n---\n";
-                    }
                     unlink($tmp);
                 } catch (\Throwable $e) {
                     echo "[$label] COMPILE THREW: " . $e->getMessage() . "\n";
                 }
             }
 
-            $A = "@if(true)\n  yes\n@else\n  @php\n    // comment with em dash \xe2\x80\x94 here\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
-            $B = "@if(true)\n  yes\n@else\n  @php\n    // plain ascii comment\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
-            $C = "@if(true)\n  yes\n@else\n  @php\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
-            tryCompile('A-emdash', $A);
-            tryCompile('B-ascii-comment', $B);
-            tryCompile('C-no-comment', $C);
+            $path = resource_path('views/tasks/partials/form_fields.blade.php');
+            $lines = file($path);
+            // Bisect the real file: does the isolated block (lines 36-87,
+            // 1-indexed = index 35-86) reproduce the failure on its own?
+            $block = implode('', array_slice($lines, 35, 87 - 35));
+            tryCompile('block-36-87', $block);
+            // Whole file for a baseline in the same run.
+            tryCompile('whole-file', implode('', $lines));
+            // Just the @if/@else/@endif at 39-85 (index 38-84), no wrapping divs.
+            $block2 = implode('', array_slice($lines, 38, 85 - 38));
+            tryCompile('block-39-85', $block2);
             PHP
             echo "=== done ==="
