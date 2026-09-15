@@ -67,14 +67,15 @@ jobs:
 
             $path = resource_path('views/tasks/partials/form_fields.blade.php');
             $lines = file($path);
-            // Bisect the real file: does the isolated block (lines 36-87,
-            // 1-indexed = index 35-86) reproduce the failure on its own?
-            $block = implode('', array_slice($lines, 35, 87 - 35));
-            tryCompile('block-36-87', $block);
-            // Whole file for a baseline in the same run.
-            tryCompile('whole-file', implode('', $lines));
-            // Just the @if/@else/@endif at 39-85 (index 38-84), no wrapping divs.
-            $block2 = implode('', array_slice($lines, 38, 85 - 38));
-            tryCompile('block-39-85', $block2);
+            $total = count($lines);
+            // Isolated block passes; whole file fails. Bisect by growing
+            // prefixes/suffixes to find what content elsewhere is needed
+            // to reproduce it alongside the 36-87 block.
+            tryCompile('lines-1-87',   implode('', array_slice($lines, 0, 87)));
+            tryCompile('lines-1-113',  implode('', array_slice($lines, 0, 113)));
+            tryCompile('lines-1-60',   implode('', array_slice($lines, 0, 60)));
+            tryCompile('lines-36-end', implode('', array_slice($lines, 35)));
+            tryCompile('lines-1-35+36-87', implode('', array_slice($lines, 0, 35)) . implode('', array_slice($lines, 35, 87-35)));
+            echo "total lines in file: $total\n";
             PHP
             echo "=== done ==="
