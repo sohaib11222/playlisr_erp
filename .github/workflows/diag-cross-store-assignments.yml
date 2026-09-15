@@ -1,0 +1,76 @@
+# READ-ONLY: for every active, login-enabled employee, compare their
+# permitted store(s) against any open (not complete) task assigned to them
+# whose store doesn't match — i.e. anyone else who'd have hit the same
+# "seeing another store's task" symptom Luis did, before or independent of
+# the myOpenAssignedTasks store-scope fix.
+
+name: Diag cross-store assignments
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check every employee's assignments against their store(s)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1;
+            $locStoreMap = [];
+            foreach (App\BusinessLocation::where('business_id',$biz)->get(['id','name']) as $loc) { if (stripos($loc->name,'pico') !== false) { $locStoreMap[$loc->id] = 'pico'; } elseif (stripos($loc->name,'holly') !== false) { $locStoreMap[$loc->id] = 'hollywood'; } }
+            $users = App\User::where('business_id',$biz)->where('status','active')->where('allow_login',1)->orderBy('first_name')->get();
+            $flagged = 0;
+            foreach ($users as $u) {
+                if ($u->can('access_all_locations')) { continue; }
+                $permittedLocIds = $u->permitted_locations($biz);
+                if (!is_array($permittedLocIds) || empty($permittedLocIds)) { continue; }
+                $permittedStores = array_values(array_unique(array_filter(array_map(function($lid) use ($locStoreMap) { return $locStoreMap[$lid] ?? null; }, $permittedLocIds))));
+                if (empty($permittedStores)) { continue; }
+                $tasks = App\WeeklyTask::where('business_id',$biz)->where('status','!=','complete')->whereNotNull('store')->whereNotIn('store',$permittedStores)->whereHas('assignees', function($q) use ($u) { $q->where('users.id',$u->id); })->get(['id','title','store','status']);
+                if ($tasks->isNotEmpty()) {
+                    $flagged++;
+                    echo "user#{$u->id} {$u->first_name} {$u->last_name} permitted=[" . implode(',', $permittedStores) . "]\n";
+                    foreach ($tasks as $t) {
+                        echo "  task#{$t->id} \"{$t->title}\" store={$t->store} status={$t->status}\n";
+                    }
+                }
+            }
+            echo "=== employees with a cross-store assigned task: {$flagged} ===\n";
+            PHP
+            echo "=== done ==="
