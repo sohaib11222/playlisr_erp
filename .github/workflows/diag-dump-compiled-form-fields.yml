@@ -1,0 +1,69 @@
+# READ-ONLY diagnostic: dumps the actual compiled PHP (with line numbers)
+# that Blade produces from resources/views/tasks/partials/form_fields.blade.php
+# on the server right now, focused around the line the parser chokes on
+# (see diag-tasks-edit-blade-syntax.yml, which found php -l failing at
+# compiled line 86). No writes.
+name: Diag dump compiled form_fields
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump compiled PHP with line numbers (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $path = resource_path('views/tasks/partials/form_fields.blade.php');
+            $src = file_get_contents($path);
+            $compiled = app('blade.compiler')->compileString($src);
+            $lines = explode("\n", $compiled);
+            $out = [];
+            foreach ($lines as $i => $l) {
+                $out[] = sprintf('%4d: %s', $i + 1, $l);
+            }
+            file_put_contents('/tmp/compiled_dump.txt', implode("\n", $out));
+            echo "wrote " . count($lines) . " lines\n";
+            PHP
+            echo "=== compiled lines 1-30 ==="
+            sed -n '1,30p' /tmp/compiled_dump.txt
+            echo "=== compiled lines 75-100 (error reported at 86) ==="
+            sed -n '75,100p' /tmp/compiled_dump.txt
+            rm -f /tmp/compiled_dump.txt
+            echo "=== done ==="
