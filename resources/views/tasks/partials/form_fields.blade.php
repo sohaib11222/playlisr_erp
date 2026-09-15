@@ -48,16 +48,25 @@
                 </div>
                 <small class="text-muted">Only the original task controls whether the series repeats.</small>
             @else
-                @php
-                    // "Today" tasks get a real cadence choice (manager
-                    // decision 2026-09-14): Daily resets the same row in
-                    // place every day; Weekly spawns a fresh 1-day instance
-                    // every 7 days instead. "This Week" tasks stay locked
-                    // to weekly-only (row below) — a week-long window
-                    // resetting daily doesn't make sense.
-                    $todayRepeatOn = old('repeat_daily', $task->repeat_daily ?? false) || old('repeat_weekly', $task->repeat_weekly ?? false);
-                    $todayRepeatFreq = old('repeat_weekly', $task->repeat_weekly ?? false) ? 'weekly' : 'daily';
-                @endphp
+                {{-- "Today" tasks get a real cadence choice (manager decision
+                     2026-09-14): Daily resets the same row in place every day;
+                     Weekly spawns a fresh 1-day instance every 7 days instead.
+                     "This Week" tasks stay locked to weekly-only (row below) —
+                     a week-long window resetting daily doesn't make sense.
+
+                     Two inline @php(...) statements, not a @php...@endphp
+                     block — this file already has an inline @php(...) up at
+                     the top (line 1, $currentTaskType), and combining that
+                     with a later block-style @php...@endphp inside this
+                     @else breaks Blade's compiler on this Laravel version:
+                     it fails to compile the surrounding @if/@endif at all
+                     ("unexpected 'endif', expecting end of file"), even
+                     though the @if/@endif are correctly balanced. Confirmed
+                     by isolating both forms against the live compiler
+                     before landing this fix — don't reintroduce a block
+                     @php here. --}}
+                @php($todayRepeatOn = old('repeat_daily', $task->repeat_daily ?? false) || old('repeat_weekly', $task->repeat_weekly ?? false))
+                @php($todayRepeatFreq = old('repeat_weekly', $task->repeat_weekly ?? false) ? 'weekly' : 'daily')
                 <div class="checkbox" id="task_repeat_daily_row" style="margin-top:7px;{{ $currentTaskType === 'daily' ? '' : 'display:none;' }}">
                     <label>
                         <input type="checkbox" id="task_repeat_today_enabled" @if($todayRepeatOn) checked @endif @if($currentTaskType !== 'daily') disabled @endif>

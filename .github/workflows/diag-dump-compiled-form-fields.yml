@@ -66,26 +66,7 @@ jobs:
             }
 
             $path = resource_path('views/tasks/partials/form_fields.blade.php');
-            $lines = file($path);
-            $block = implode('', array_slice($lines, 35, 87 - 35)); // lines 36-87
-            $L1 = $lines[0]; // @php($currentTaskType = ...) inline form
-
-            // Confirmed: L1 (inline @php(...)) + block reproduces the
-            // failure; block alone does not. Root cause: an inline
-            // @php(expr) BEFORE a later block-style @php...@endphp (inside
-            // the @else) breaks the surrounding @if/@endif compilation.
-            // Candidate fix: replace the block-style @php...@endphp with
-            // two inline @php(...) statements instead, keep the same L1,
-            // see if the combination now compiles clean.
-            $blockFixed = preg_replace(
-                '/@php\n(?:.*\n)*?\s*\$todayRepeatOn = old\(\'repeat_daily\', \$task->repeat_daily \?\? false\) \|\| old\(\'repeat_weekly\', \$task->repeat_weekly \?\? false\);\n\s*\$todayRepeatFreq = old\(\'repeat_weekly\', \$task->repeat_weekly \?\? false\) \? \'weekly\' : \'daily\';\n\s*@endphp\n/',
-                "@php(\$todayRepeatOn = old('repeat_daily', \$task->repeat_daily ?? false) || old('repeat_weekly', \$task->repeat_weekly ?? false))\n" .
-                "@php(\$todayRepeatFreq = old('repeat_weekly', \$task->repeat_weekly ?? false) ? 'weekly' : 'daily')\n",
-                $block
-            );
-            echo "blockFixed replacement happened: " . ($blockFixed !== $block ? 'YES' : 'NO (regex did not match!)') . "\n";
-            tryCompile('L1+block-ASIS', $L1 . $block);
-            tryCompile('L1+block-FIXED', $L1 . $blockFixed);
-            tryCompile('block-FIXED-alone', $blockFixed);
+            $src = file_get_contents($path);
+            tryCompile('real-file-now', $src);
             PHP
             echo "=== done ==="
