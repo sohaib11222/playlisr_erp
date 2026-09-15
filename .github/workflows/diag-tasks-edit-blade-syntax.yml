@@ -1,0 +1,97 @@
+# READ-ONLY diagnostic: /tasks/{id}/edit is throwing a Blade syntax error
+# ("unexpected 'endif'") on production for
+# resources/views/tasks/partials/form_fields.blade.php. Locally this file's
+# @if/@endif directives are balanced (16/16), so this checks whether the
+# server is actually on the expected commit, what bytes are really on disk,
+# and what the Blade compiler produces from them right now. No writes.
+name: Diag tasks edit blade syntax
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect server HEAD, file bytes, and Blade compile (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            F=resources/views/tasks/partials/form_fields.blade.php
+
+            echo "=== server git HEAD (expect 252d02c81c5a6ede5455a2fb98f14cd185628844) ==="
+            git rev-parse HEAD
+            git log -1 --format='%h %s'
+            echo "=== working tree clean? ==="
+            git status --porcelain -- "$F"
+            git diff --stat HEAD -- "$F"
+
+            echo "=== file checksum (local expects d11d6c0752e5a2b12c5c617eeb346324) ==="
+            md5sum "$F"
+            wc -l "$F"
+
+            echo "=== @if / @endif token counts on server ==="
+            grep -o '@if(' "$F" | wc -l
+            grep -o '@endif' "$F" | wc -l
+            grep -o '@php' "$F" | wc -l
+            grep -o '@endphp' "$F" | wc -l
+
+            echo "=== stale compiled view cache present? ==="
+            ls -la storage/framework/views | head -5
+            find storage/framework/views -name '*.php' | wc -l
+
+            echo "=== does a cached/frozen view manifest exist (php artisan view:cache was run)? ==="
+            ls -la bootstrap/cache/*.php 2>/dev/null
+
+            echo "=== attempt live Blade compile of the file as it sits on disk right now ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $path = resource_path('views/tasks/partials/form_fields.blade.php');
+            $src = file_get_contents($path);
+            try {
+                $compiled = app('blade.compiler')->compileString($src);
+                $tmp = tempnam(sys_get_temp_dir(), 'blade_check_') . '.php';
+                file_put_contents($tmp, $compiled);
+                $out = [];
+                $ret = 0;
+                exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $out, $ret);
+                echo "php -l exit=$ret\n";
+                echo implode("\n", $out) . "\n";
+                unlink($tmp);
+            } catch (\Throwable $e) {
+                echo "COMPILE THREW: " . get_class($e) . ": " . $e->getMessage() . "\n";
+            }
+            PHP
+            echo "=== done ==="
