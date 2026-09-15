@@ -62,6 +62,15 @@ jobs:
             php artisan tinker --no-ansi <<'PHP'
             $r = DB::table('business_locations')->find(2); echo $r ? ($r->id . ' ' . $r->name . ' business_id=' . $r->business_id) : 'not found'; echo "\n";
             PHP
+            echo "=== deployed HEAD + controller has this_year/all_time? ==="
+            git log -1 --format='%H %ci %s'
+            grep -n "this_year\|all_time\|last_365" app/Http/Controllers/PosSearchRequestController.php
+            echo "=== top_terms for period=this_quarter vs all_time, location 2 typed ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $c = new App\Http\Controllers\PosSearchRequestController(app(App\Utils\BusinessUtil::class));
+            $ref = new ReflectionMethod($c, 'resolveWindow'); $ref->setAccessible(true);
+            foreach (['this_quarter','all_time'] as $p) { [$start,$end] = $ref->invoke($c, $p); echo "$p: $start -> $end\n"; $rows = DB::table('pos_search_misses')->where('location_id',2)->where('is_scan',0)->whereBetween('created_at',[$start->toDateTimeString(),$end->toDateTimeString()])->select('term',DB::raw('COUNT(*) as hits'),DB::raw('MAX(created_at) as last_asked'))->groupBy('term')->orderByDesc('hits')->limit(5)->get(); foreach ($rows as $r) { echo "  {$r->term} hits={$r->hits} last_asked={$r->last_asked}\n"; } }
+            PHP
             echo "=== recent errors mentioning log-empty-search or pos_search_misses ==="
             grep -h "log-empty-search\|pos_search_miss\|PosSearchRequestController\|PosSearchMiss" storage/logs/laravel-*.log 2>/dev/null | tail -60
             echo "=== current asset_version (to check cache-busting) ==="
