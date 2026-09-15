@@ -273,17 +273,31 @@ class TaskController extends Controller
      * "everyone's". Powers the close-register modal's "all your assigned
      * tasks" list — the cashier's own accountability list, front and
      * center while they're already accounting for their drawer.
+     *
+     * $store scopes to that store's tasks plus any company-wide (store =
+     * null) task, same convention as dueTodayForStore/the list page. A
+     * Hollywood register close should never surface a Pico-tagged task
+     * just because it happens to be assigned to that person — confirmed
+     * live (Luis, Hollywood, seeing Zak's Pico tasks) that omitting this
+     * was a real bug, not a hypothetical one.
      */
-    public static function myOpenAssignedTasks($business_id, $userId)
+    public static function myOpenAssignedTasks($business_id, $userId, $store = null)
     {
         self::rolloverRepeatingTasks($business_id);
 
-        return WeeklyTask::where('business_id', $business_id)
+        $query = WeeklyTask::where('business_id', $business_id)
             ->where('status', '!=', 'complete')
             ->whereHas('assignees', function ($q) use ($userId) {
                 $q->where('users.id', $userId);
-            })
-            ->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")
+            });
+
+        if (!empty($store)) {
+            $query->where(function ($q) use ($store) {
+                $q->where('store', $store)->orWhereNull('store');
+            });
+        }
+
+        return $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")
             ->orderBy('start_date')
             ->get();
     }

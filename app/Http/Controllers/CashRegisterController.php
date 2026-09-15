@@ -586,7 +586,8 @@ class CashRegisterController extends Controller
         // the close flow MUST never break because of this.
         $due_tasks = [];
         try {
-            $due_tasks = \App\Http\Controllers\TaskController::myOpenAssignedTasks($business_id, $user_id)
+            $storeKey = $this->storeKeyForLocation($register_details->location_id);
+            $due_tasks = \App\Http\Controllers\TaskController::myOpenAssignedTasks($business_id, $user_id, $storeKey)
                 ->map(function ($t) {
                     return [
                         'id' => $t->id,

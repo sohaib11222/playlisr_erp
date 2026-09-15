@@ -1,0 +1,73 @@
+# Test: confirms myOpenAssignedTasks($business_id, $userId, $store) actually
+# excludes a task from a different store, and still includes one from the
+# matching store or store=null. Creates throwaway tasks, verifies, cleans up.
+
+name: Test myOpenAssignedTasks store scope
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run scoping test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1; $u1 = DB::table('users')->where('business_id',$biz)->value('id');
+            $tPico = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__e2e_test_pico_assigned__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>'pico','priority'=>'medium','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $tPico->assignees()->sync([$u1]);
+            $tBoth = App\WeeklyTask::create(['business_id'=>$biz,'title'=>'__e2e_test_both_assigned__','start_date'=>now()->toDateString(),'end_date'=>now()->toDateString(),'task_type'=>'daily','store'=>null,'priority'=>'medium','status'=>'not_started','created_by'=>$u1,'repeat_daily'=>false,'repeat_weekly'=>false]);
+            $tBoth->assignees()->sync([$u1]);
+            echo "created pico-task id={$tPico->id} both-store-task id={$tBoth->id} for user={$u1}\n";
+            $forHollywood = App\Http\Controllers\TaskController::myOpenAssignedTasks($biz, $u1, 'hollywood')->pluck('title')->all();
+            echo "seen at hollywood: " . implode(', ', $forHollywood) . "\n";
+            $hollywoodOk = !in_array('__e2e_test_pico_assigned__', $forHollywood) && in_array('__e2e_test_both_assigned__', $forHollywood);
+            echo "HOLLYWOOD EXCLUDES PICO TASK, INCLUDES BOTH-STORE TASK: " . ($hollywoodOk ? "PASS" : "FAIL") . "\n";
+            $forPico = App\Http\Controllers\TaskController::myOpenAssignedTasks($biz, $u1, 'pico')->pluck('title')->all();
+            echo "seen at pico: " . implode(', ', $forPico) . "\n";
+            $picoOk = in_array('__e2e_test_pico_assigned__', $forPico) && in_array('__e2e_test_both_assigned__', $forPico);
+            echo "PICO INCLUDES BOTH: " . ($picoOk ? "PASS" : "FAIL") . "\n";
+            $forNoStore = App\Http\Controllers\TaskController::myOpenAssignedTasks($biz, $u1, null)->pluck('title')->all();
+            $noStoreOk = in_array('__e2e_test_pico_assigned__', $forNoStore) && in_array('__e2e_test_both_assigned__', $forNoStore);
+            echo "NO STORE PASSED SHOWS ALL (back-compat): " . ($noStoreOk ? "PASS" : "FAIL") . "\n";
+            App\WeeklyTask::whereIn('id', [$tPico->id, $tBoth->id])->delete();
+            $gone = App\WeeklyTask::whereIn('id', [$tPico->id, $tBoth->id])->count() === 0;
+            echo "cleanup: " . ($gone ? "PASS" : "FAIL") . "\n";
+            PHP
+            echo "=== done ==="
