@@ -50,18 +50,33 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
             php artisan tinker --no-ansi <<'PHP'
-            $path = resource_path('views/tasks/partials/form_fields.blade.php');
-            $src = file_get_contents($path);
-            $compiled = app('blade.compiler')->compileString($src);
-            $lines = explode("\n", $compiled);
-            $out = [];
-            foreach ($lines as $i => $l) {
-                $out[] = sprintf('%4d: %s', $i + 1, $l);
+            // Minimal repro test: is a `//` comment containing a non-ASCII
+            // em dash INSIDE an @php block enough to break compilation of
+            // the surrounding @if/@else/@endif? Compare A (with em dash)
+            // vs B (plain ASCII comment) vs C (no comment at all).
+            function tryCompile($label, $src) {
+                try {
+                    $compiled = app('blade.compiler')->compileString($src);
+                    $tmp = tempnam(sys_get_temp_dir(), 'blade_test_') . '.php';
+                    file_put_contents($tmp, $compiled);
+                    $out = [];
+                    $ret = 0;
+                    exec('php -l ' . escapeshellarg($tmp) . ' 2>&1', $out, $ret);
+                    echo "[$label] php -l exit=$ret : " . implode(' | ', $out) . "\n";
+                    if ($ret !== 0) {
+                        echo "[$label] COMPILED OUTPUT:\n" . $compiled . "\n---\n";
+                    }
+                    unlink($tmp);
+                } catch (\Throwable $e) {
+                    echo "[$label] COMPILE THREW: " . $e->getMessage() . "\n";
+                }
             }
-            file_put_contents('/tmp/compiled_dump.txt', implode("\n", $out));
-            echo "wrote " . count($lines) . " lines\n";
+
+            $A = "@if(true)\n  yes\n@else\n  @php\n    // comment with em dash \xe2\x80\x94 here\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
+            $B = "@if(true)\n  yes\n@else\n  @php\n    // plain ascii comment\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
+            $C = "@if(true)\n  yes\n@else\n  @php\n    \$x = 1;\n  @endphp\n  no\n@endif\n";
+            tryCompile('A-emdash', $A);
+            tryCompile('B-ascii-comment', $B);
+            tryCompile('C-no-comment', $C);
             PHP
-            echo "=== compiled lines 35-90 (error reported at 86) ==="
-            sed -n '35,90p' /tmp/compiled_dump.txt
-            rm -f /tmp/compiled_dump.txt
             echo "=== done ==="
