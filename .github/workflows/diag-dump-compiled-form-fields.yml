@@ -65,23 +65,25 @@ jobs:
                 }
             }
 
-            echo "pcre.backtrack_limit=" . ini_get('pcre.backtrack_limit') . "\n";
-            echo "pcre.recursion_limit=" . ini_get('pcre.recursion_limit') . "\n";
-            echo "pcre.jit=" . ini_get('pcre.jit') . "\n";
-
             $path = resource_path('views/tasks/partials/form_fields.blade.php');
             $lines = file($path);
+            $block = implode('', array_slice($lines, 35, 87 - 35)); // index 35..86 = lines 36-87, known to pass alone
 
-            // Hypothesis: PCRE backtrack/recursion limit hit by the
-            // recursive balanced-paren directive regex once enough @if(...)
-            // directives accumulate in one compileString() call. Test by
-            // padding the KNOWN-PASSING isolated block with junk @if pairs
-            // of increasing count to see if it starts failing purely from
-            // volume, independent of the real lines-1-35 content.
-            $block = implode('', array_slice($lines, 35, 87 - 35)); // known to pass alone
-            foreach ([0, 20, 50, 100, 200, 400] as $n) {
-                $padding = str_repeat('<span @if(true) x @endif>pad</span>' . "\n", $n);
-                tryCompile("pad-$n", $padding . $block);
+            // Narrow down which sub-range of lines 1-35 is actually needed
+            // alongside the block to reproduce the failure.
+            $ranges = [
+                'L1only'   => [0, 1],
+                'L1-12'    => [0, 12],
+                'L13-22'   => [12, 10],
+                'L1-22'    => [0, 22],
+                'L23-29'   => [22, 7],
+                'L1-29'    => [0, 29],
+                'L30-35'   => [29, 6],
+                'L1-35'    => [0, 35],
+            ];
+            foreach ($ranges as $label => [$offset, $len]) {
+                $prefix = implode('', array_slice($lines, $offset, $len));
+                tryCompile($label, $prefix . $block);
             }
             PHP
             echo "=== done ==="
