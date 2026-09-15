@@ -54,26 +54,26 @@
                      "This Week" tasks stay locked to weekly-only (row below) —
                      a week-long window resetting daily doesn't make sense.
 
-                     Two inline @@php(...) statements, not a @@php...@@endphp
-                     block — this file already has an inline @@php(...) up at
-                     the top (line 1, $currentTaskType), and combining that
-                     with a later block-style @@php...@@endphp inside this
-                     @@else breaks Blade's compiler on this Laravel version:
-                     it fails to compile the surrounding @@if/@@endif at all
-                     ("unexpected 'endif', expecting end of file"), even
-                     though the @@if/@@endif are correctly balanced. Confirmed
-                     by isolating both forms against the live compiler
-                     before landing this fix — don't reintroduce a block
-                     @@php here.
+                     Two separate single-line inline PHP-expression
+                     directives below, NOT a multi-line PHP-block directive
+                     pair. This file already has one inline PHP-expression
+                     directive up at the top (line 1, setting
+                     currentTaskType), and pairing that with a later
+                     PHP-block directive here broke Blade's compiler on
+                     this Laravel version: the whole surrounding
+                     conditional block failed to compile, even though it
+                     was structurally correctly balanced. Confirmed by
+                     isolating both forms against the live compiler before
+                     landing this fix. Do not swap these back to a
+                     multi-line PHP-block form.
 
-                     IMPORTANT: this comment itself must keep every @@
-                     escaped like this — Blade compiles @@directives BEFORE
-                     stripping {{-- --}} comments, so a bare "@@if" or
-                     "@@php" typed as prose text in a comment gets compiled
-                     as a REAL directive and corrupts the surrounding
-                     structure. That's exactly the bug this comment is
-                     warning about; don't reintroduce it while describing
-                     it. --}}
+                     NOTE ON THIS COMMENT: avoid spelling out Blade's own
+                     directive syntax literally in prose anywhere in this
+                     file, including here — Blade compiles its directives
+                     before it strips block comments, and even an escaped
+                     mention can get re-processed by a later compiler pass
+                     and corrupt the surrounding structure the same way.
+                     That is exactly the failure mode described above. --}}
                 @php($todayRepeatOn = old('repeat_daily', $task->repeat_daily ?? false) || old('repeat_weekly', $task->repeat_weekly ?? false))
                 @php($todayRepeatFreq = old('repeat_weekly', $task->repeat_weekly ?? false) ? 'weekly' : 'daily')
                 <div class="checkbox" id="task_repeat_daily_row" style="margin-top:7px;{{ $currentTaskType === 'daily' ? '' : 'display:none;' }}">
