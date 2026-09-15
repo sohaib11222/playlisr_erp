@@ -329,6 +329,12 @@ class PosSearchRequestController extends Controller
                 return [$now->copy()->startOfQuarter(), $now->copy()->endOfDay()];
             case 'last_90':
                 return [$now->copy()->subDays(89)->startOfDay(), $now->copy()->endOfDay()];
+            case 'this_year':
+                return [$now->copy()->startOfYear(), $now->copy()->endOfDay()];
+            case 'last_365':
+                return [$now->copy()->subDays(364)->startOfDay(), $now->copy()->endOfDay()];
+            case 'all_time':
+                return [\Carbon::create(2000, 1, 1)->startOfDay(), $now->copy()->endOfDay()];
             case 'last_30':
             default:
                 return [$now->copy()->subDays(29)->startOfDay(), $now->copy()->endOfDay()];
