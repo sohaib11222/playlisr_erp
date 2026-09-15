@@ -68,5 +68,13 @@ jobs:
             $path = resource_path('views/tasks/partials/form_fields.blade.php');
             $src = file_get_contents($path);
             tryCompile('real-file-now', $src);
+            $compiled = app('blade.compiler')->compileString($src);
+            $lines = explode("\n", $compiled);
+            $out = [];
+            foreach ($lines as $i => $l) {
+                $out[] = sprintf('%4d: %s', $i + 1, $l);
+            }
+            echo "=== compiled lines 1-70 ===\n";
+            echo implode("\n", array_slice($out, 0, 70)) . "\n";
             PHP
             echo "=== done ==="
