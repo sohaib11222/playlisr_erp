@@ -61,9 +61,7 @@ jobs:
             file_put_contents('/tmp/compiled_dump.txt', implode("\n", $out));
             echo "wrote " . count($lines) . " lines\n";
             PHP
-            echo "=== compiled lines 1-30 ==="
-            sed -n '1,30p' /tmp/compiled_dump.txt
-            echo "=== compiled lines 75-100 (error reported at 86) ==="
-            sed -n '75,100p' /tmp/compiled_dump.txt
+            echo "=== compiled lines 35-90 (error reported at 86) ==="
+            sed -n '35,90p' /tmp/compiled_dump.txt
             rm -f /tmp/compiled_dump.txt
             echo "=== done ==="
