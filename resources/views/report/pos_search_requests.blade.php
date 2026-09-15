@@ -23,6 +23,9 @@
                         <option value="last_30" @if($period==='last_30') selected @endif>Last 30 days</option>
                         <option value="this_quarter" @if($period==='this_quarter') selected @endif>This quarter</option>
                         <option value="last_90" @if($period==='last_90') selected @endif>Last 90 days</option>
+                        <option value="this_year" @if($period==='this_year') selected @endif>This year</option>
+                        <option value="last_365" @if($period==='last_365') selected @endif>Last 12 months</option>
+                        <option value="all_time" @if($period==='all_time') selected @endif>All time</option>
                     </select>
                 </div>
                 <div class="col-md-3">
