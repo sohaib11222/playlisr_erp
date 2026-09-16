@@ -16,6 +16,7 @@ class WeeklyTask extends Model
         'completed_at' => 'datetime',
         'repeat_daily' => 'boolean',
         'repeat_weekly' => 'boolean',
+        'requires_photo' => 'boolean',
         'last_reset_date' => 'date',
     ];
 
@@ -45,5 +46,11 @@ class WeeklyTask extends Model
     public function repeatRoot()
     {
         return $this->belongsTo(\App\WeeklyTask::class, 'repeat_of');
+    }
+
+    /** Progress notes the assignee(s) posted while working this task, newest first. */
+    public function notes()
+    {
+        return $this->hasMany(\App\TaskNote::class, 'weekly_task_id')->latest();
     }
 }

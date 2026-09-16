@@ -39,6 +39,14 @@ return [
     // no channel name is needed here.
     'shift_notes_slack_webhook' => env('SHIFT_NOTES_SLACK_WEBHOOK', ''),
 
+    // Slack incoming-webhook URL for the #taskphotos channel. A task can be
+    // flagged "requires a photo of the work done" (weekly_tasks.requires_photo);
+    // uploading that photo posts it here. Needs its own webhook — a Slack
+    // incoming webhook is bound to one channel at creation, so this can't
+    // reuse the #shift-notes one above. Leave blank to accept/store the
+    // photo without posting anywhere. See TaskController::postTaskPhotoToSlack.
+    'task_photos_slack_webhook' => env('TASK_PHOTOS_SLACK_WEBHOOK', ''),
+
     // Where system health alerts (disk space, etc.) get emailed. See
     // system:check-disk-space.
     'system_alert_email' => env('SYSTEM_ALERT_EMAIL', ''),

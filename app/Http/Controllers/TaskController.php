@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\User;
 use App\WeeklyTask;
+use App\TaskNote;
 use App\Utils\BusinessUtil;
+use App\Utils\Util;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -22,10 +24,12 @@ class TaskController extends Controller
     ];
 
     protected $businessUtil;
+    protected $commonUtil;
 
-    public function __construct(BusinessUtil $businessUtil)
+    public function __construct(BusinessUtil $businessUtil, Util $commonUtil)
     {
         $this->businessUtil = $businessUtil;
+        $this->commonUtil = $commonUtil;
     }
 
     /** end_date for a task of $taskType, starting $startDate. */
@@ -159,6 +163,10 @@ class TaskController extends Controller
             $task->started_at = null;
             $task->completed_by = null;
             $task->completed_at = null;
+            // Yesterday's photo doesn't satisfy today's requirement — this
+            // row resets in place rather than spawning a fresh instance, so
+            // the photo has to be cleared explicitly here.
+            $task->photo = null;
             $task->start_date = $today->toDateString();
             $task->end_date = $today->toDateString();
             $task->last_reset_date = $today->toDateString();
@@ -209,6 +217,7 @@ class TaskController extends Controller
                     'task_type' => $root->task_type,
                     'store' => $root->store,
                     'priority' => $root->priority,
+                    'requires_photo' => $root->requires_photo,
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
                     'repeat_daily' => false,
@@ -442,9 +451,11 @@ class TaskController extends Controller
             'repeat_weekly' => 'nullable|boolean',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'requires_photo' => 'nullable|boolean',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
+        $data['requires_photo'] = !empty($data['requires_photo']);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
@@ -487,7 +498,7 @@ class TaskController extends Controller
     public function edit($id, Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
-        $task = WeeklyTask::with('assignees')->where('business_id', $business_id)->findOrFail($id);
+        $task = WeeklyTask::with(['assignees', 'notes.author'])->where('business_id', $business_id)->findOrFail($id);
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
         $assignableUsers = $this->assignableUsers($business_id);
@@ -509,11 +520,25 @@ class TaskController extends Controller
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'requires_photo' => 'nullable|boolean',
+            'photo' => 'nullable|image',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
+        $data['requires_photo'] = !empty($data['requires_photo']);
+        unset($data['photo']); // handled separately below — validate() gives us the UploadedFile, not a filename
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
+
+        // A task flagged "requires a photo of the work done" can't be
+        // marked complete until one exists — either already on the task,
+        // or uploaded in this same request.
+        $willHavePhoto = $request->hasFile('photo') || !empty($task->photo);
+        if ($data['status'] === 'complete' && $data['requires_photo'] && !$willHavePhoto) {
+            return redirect()->back()->withInput()->withErrors([
+                'photo' => 'This task requires a photo of the work done before it can be marked complete.',
+            ]);
+        }
 
         // Whether a task repeats is only editable on the root task — a
         // generated instance (repeat_of set) keeps whatever the root says,
@@ -542,10 +567,19 @@ class TaskController extends Controller
 
         $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
 
+        $newPhoto = $this->commonUtil->uploadFile($request, 'photo', 'task_photos', 'image');
+        if (!empty($newPhoto)) {
+            $data['photo'] = $newPhoto;
+        }
+
         $this->applyStatusTransition($task, $data['status']);
         unset($data['status']);
         $task->fill($data)->save();
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
+
+        if (!empty($newPhoto)) {
+            $this->postTaskPhotoToSlack($task, $newPhoto);
+        }
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);
@@ -561,6 +595,17 @@ class TaskController extends Controller
             'status' => 'required|in:not_started,in_progress,complete',
         ])['status'];
 
+        // Same photo-required gate as the full edit form (see update()) —
+        // this quick dropdown is a second path to "complete" and can't be
+        // allowed to skip it.
+        if ($newStatus === 'complete' && $task->requires_photo && empty($task->photo)) {
+            $msg = 'This task requires a photo of the work done before it can be marked complete — upload one from the task\'s edit page first.';
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'msg' => $msg], 422);
+            }
+            return redirect(action('TaskController@index'))->with('status', ['success' => false, 'msg' => $msg]);
+        }
+
         $this->applyStatusTransition($task, $newStatus);
         $task->save();
 
@@ -574,6 +619,41 @@ class TaskController extends Controller
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Status updated.']);
+    }
+
+    /**
+     * Append a progress note to a task — postable at any point while
+     * working it, by anyone who can see the task (not just the assignee),
+     * and visible to everyone viewing it afterward (managers included).
+     * Kept as its own tiny endpoint rather than folded into the big edit
+     * form, so leaving a note never requires touching/resubmitting the
+     * rest of the task's fields.
+     */
+    public function addNote($id, Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+
+        $note = $request->validate([
+            'note' => 'required|string|max:2000',
+        ])['note'];
+
+        $created = $task->notes()->create([
+            'user_id' => auth()->id(),
+            'note' => $note,
+        ]);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            $created->load('author');
+            return response()->json(['success' => true, 'note' => [
+                'note' => $created->note,
+                'author' => $created->author->first_name . ' ' . $created->author->last_name,
+                'created_at' => $created->created_at->format('M j, Y g:i A'),
+            ]]);
+        }
+
+        return redirect(action('TaskController@edit', $task->id))
+            ->with('status', ['success' => true, 'msg' => 'Note added.']);
     }
 
     public function destroy($id, Request $request)
@@ -632,5 +712,60 @@ class TaskController extends Controller
         }
 
         $task->status = $newStatus;
+    }
+
+    /**
+     * Post an uploaded task photo to #taskphotos via Slack incoming
+     * webhook — same webhook-URL-in-config, curl-with-short-timeouts,
+     * never-throws shape as CashRegisterController::postShiftNoteToSlack.
+     * Uses a Block Kit image block (not just a link) so the photo actually
+     * renders in Slack; Slack fetches $photoUrl itself, so it must be
+     * publicly reachable — same convention as receiving_photos, served
+     * straight out of public/uploads with no auth check.
+     */
+    private function postTaskPhotoToSlack(WeeklyTask $task, string $photoFilename): bool
+    {
+        $webhook = trim((string) config('nivessa.task_photos_slack_webhook', ''));
+        if ($webhook === '') {
+            return false;
+        }
+        try {
+            $photoUrl = asset('uploads/task_photos/' . $photoFilename);
+            $taskUrl = action('TaskController@edit', $task->id);
+            $who = auth()->user();
+            $whoName = $who ? trim($who->first_name . ' ' . $who->last_name) : 'Someone';
+
+            $text = sprintf(
+                '*%s* uploaded a work photo for <%s|%s>',
+                $whoName,
+                $taskUrl,
+                $task->title
+            );
+
+            $payload = [
+                'text' => $text, // fallback for notifications/unfurl-less clients
+                'blocks' => [
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $text]],
+                    ['type' => 'image', 'image_url' => $photoUrl, 'alt_text' => 'Task photo: ' . $task->title],
+                ],
+            ];
+
+            $ch = curl_init($webhook);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => json_encode($payload),
+                CURLOPT_TIMEOUT => 4,
+                CURLOPT_CONNECTTIMEOUT => 3,
+            ]);
+            curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return $code >= 200 && $code < 300;
+        } catch (\Throwable $e) {
+            \Log::warning('postTaskPhotoToSlack failed: ' . $e->getMessage());
+            return false;
+        }
     }
 }

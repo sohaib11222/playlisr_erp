@@ -124,7 +124,38 @@
             </select>
         </div>
     </div>
+    <div class="col-md-2">
+        <div class="form-group">
+            <label>&nbsp;</label>
+            <div class="checkbox" style="margin-top:7px;">
+                <label>
+                    <input type="checkbox" name="requires_photo" value="1" @if(old('requires_photo', $task->requires_photo ?? false)) checked @endif>
+                    Requires photo
+                </label>
+            </div>
+            <small class="text-muted">Of the work done, before it can be marked complete.</small>
+        </div>
+    </div>
 </div>
+
+@if(isset($task) && $task->requires_photo)
+    <div class="form-group">
+        <label>Photo of work done <span class="text-danger">*</span></label>
+        @if($task->photo)
+            <div style="margin-bottom:8px;">
+                <a href="{{ asset('uploads/task_photos/' . $task->photo) }}" target="_blank">
+                    <img src="{{ asset('uploads/task_photos/' . $task->photo) }}" alt="Task photo" style="max-width:160px;max-height:160px;border-radius:8px;border:1px solid #ddd;display:block;">
+                </a>
+                <small class="text-muted">Uploading a new photo replaces this one.</small>
+            </div>
+        @endif
+        <input type="file" name="photo" accept="image/*">
+        @if($errors->has('photo'))
+            <div class="text-danger"><small>{{ $errors->first('photo') }}</small></div>
+        @endif
+        <small class="text-muted">Posted to #taskphotos in Slack once uploaded.</small>
+    </div>
+@endif
 
 <div class="form-group">
     <label>Assigned to</label>
