@@ -18,6 +18,7 @@ class WeeklyTask extends Model
         'repeat_weekly' => 'boolean',
         'requires_photo' => 'boolean',
         'last_reset_date' => 'date',
+        'photo_confirmed_at' => 'datetime',
     ];
 
     public function creator()
@@ -33,6 +34,11 @@ class WeeklyTask extends Model
     public function completedBy()
     {
         return $this->belongsTo(\App\User::class, 'completed_by');
+    }
+
+    public function photoConfirmedBy()
+    {
+        return $this->belongsTo(\App\User::class, 'photo_confirmed_by');
     }
 
     /** Everyone assigned to work on this task. */
