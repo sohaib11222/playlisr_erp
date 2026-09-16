@@ -133,27 +133,31 @@
                     Requires photo
                 </label>
             </div>
-            <small class="text-muted">Of the work done, before it can be marked complete.</small>
+            <small class="text-muted">Post it to #taskphotos in Slack yourself — you'll confirm that below before this can be marked complete.</small>
         </div>
     </div>
 </div>
 
 @if(isset($task) && $task->requires_photo)
     <div class="form-group">
-        <label>Photo of work done <span class="text-danger">*</span></label>
-        @if($task->photo)
-            <div style="margin-bottom:8px;">
-                <a href="{{ asset('uploads/task_photos/' . $task->photo) }}" target="_blank">
-                    <img src="{{ asset('uploads/task_photos/' . $task->photo) }}" alt="Task photo" style="max-width:160px;max-height:160px;border-radius:8px;border:1px solid #ddd;display:block;">
-                </a>
-                <small class="text-muted">Uploading a new photo replaces this one.</small>
+        @if($task->photo_confirmed_at)
+            <div class="text-success">
+                <i class="fa fa-check-circle"></i>
+                Photo confirmed by {{ $task->photoConfirmedBy->user_full_name ?? 'someone' }} on {{ $task->photo_confirmed_at->format('M j, Y g:i A') }}
             </div>
+        @else
+            <div class="checkbox">
+                <label>
+                    <input type="checkbox" name="photo_confirmed" value="1" @if(old('photo_confirmed')) checked @endif>
+                    I posted a photo of the finished work to #taskphotos in Slack
+                </label>
+            </div>
+            @if($errors->has('photo_confirmed'))
+                <div class="text-danger"><small>{{ $errors->first('photo_confirmed') }}</small></div>
+            @else
+                <small class="text-muted">Required before this task can be marked complete.</small>
+            @endif
         @endif
-        <input type="file" name="photo" accept="image/*">
-        @if($errors->has('photo'))
-            <div class="text-danger"><small>{{ $errors->first('photo') }}</small></div>
-        @endif
-        <small class="text-muted">Posted to #taskphotos in Slack once uploaded.</small>
     </div>
 @endif
 

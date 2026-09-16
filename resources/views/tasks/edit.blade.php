@@ -8,7 +8,7 @@
     @include('tasks.partials.tabs')
     <div class="box box-primary">
         <div class="box-body">
-            <form method="POST" action="{{ action('TaskController@update', $task->id) }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ action('TaskController@update', $task->id) }}">
                 @csrf
                 @method('PUT')
                 @include('tasks.partials.form_fields', ['task' => $task])

@@ -6,7 +6,6 @@ use App\User;
 use App\WeeklyTask;
 use App\TaskNote;
 use App\Utils\BusinessUtil;
-use App\Utils\Util;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -23,13 +22,13 @@ class TaskController extends Controller
         'low'    => 'Low',
     ];
 
-    protected $businessUtil;
-    protected $commonUtil;
+    const PHOTO_REQUIRED_MSG = 'This task requires a photo — confirm it was posted to #taskphotos in Slack from the task\'s edit page before marking it complete.';
 
-    public function __construct(BusinessUtil $businessUtil, Util $commonUtil)
+    protected $businessUtil;
+
+    public function __construct(BusinessUtil $businessUtil)
     {
         $this->businessUtil = $businessUtil;
-        $this->commonUtil = $commonUtil;
     }
 
     /** end_date for a task of $taskType, starting $startDate. */
@@ -163,10 +162,11 @@ class TaskController extends Controller
             $task->started_at = null;
             $task->completed_by = null;
             $task->completed_at = null;
-            // Yesterday's photo doesn't satisfy today's requirement — this
-            // row resets in place rather than spawning a fresh instance, so
-            // the photo has to be cleared explicitly here.
-            $task->photo = null;
+            // Yesterday's photo confirmation doesn't satisfy today's
+            // requirement — this row resets in place rather than spawning a
+            // fresh instance, so it has to be cleared explicitly here.
+            $task->photo_confirmed_by = null;
+            $task->photo_confirmed_at = null;
             $task->start_date = $today->toDateString();
             $task->end_date = $today->toDateString();
             $task->last_reset_date = $today->toDateString();
@@ -336,7 +336,7 @@ class TaskController extends Controller
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
-        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees'])
+        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees', 'notes.author'])
             ->where('business_id', $business_id);
 
         if (!empty($type)) {
@@ -521,22 +521,24 @@ class TaskController extends Controller
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'requires_photo' => 'nullable|boolean',
-            'photo' => 'nullable|image',
+            'photo_confirmed' => 'nullable|boolean',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
-        unset($data['photo']); // handled separately below — validate() gives us the UploadedFile, not a filename
+        $photoConfirmed = !empty($data['photo_confirmed']);
+        unset($data['photo_confirmed']);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
         // A task flagged "requires a photo of the work done" can't be
-        // marked complete until one exists — either already on the task,
-        // or uploaded in this same request.
-        $willHavePhoto = $request->hasFile('photo') || !empty($task->photo);
-        if ($data['status'] === 'complete' && $data['requires_photo'] && !$willHavePhoto) {
+        // marked complete without an explicit acknowledgement that the
+        // photo was posted to #taskphotos in Slack — the photo itself
+        // lives in Slack, not this app (manager decision 2026-09-16),
+        // so there's nothing to upload/verify here, just a gate.
+        if (!$this->photoCheckPasses($task, $data['status'], $photoConfirmed)) {
             return redirect()->back()->withInput()->withErrors([
-                'photo' => 'This task requires a photo of the work done before it can be marked complete.',
+                'photo_confirmed' => self::PHOTO_REQUIRED_MSG,
             ]);
         }
 
@@ -567,19 +569,10 @@ class TaskController extends Controller
 
         $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
 
-        $newPhoto = $this->commonUtil->uploadFile($request, 'photo', 'task_photos', 'image');
-        if (!empty($newPhoto)) {
-            $data['photo'] = $newPhoto;
-        }
-
-        $this->applyStatusTransition($task, $data['status']);
+        $this->applyStatusTransition($task, $data['status'], $photoConfirmed);
         unset($data['status']);
         $task->fill($data)->save();
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
-
-        if (!empty($newPhoto)) {
-            $this->postTaskPhotoToSlack($task, $newPhoto);
-        }
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);
@@ -591,22 +584,25 @@ class TaskController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
 
-        $newStatus = $request->validate([
+        $validated = $request->validate([
             'status' => 'required|in:not_started,in_progress,complete',
-        ])['status'];
+            'photo_confirmed' => 'nullable|boolean',
+        ]);
+        $newStatus = $validated['status'];
+        $photoConfirmed = !empty($validated['photo_confirmed']);
 
         // Same photo-required gate as the full edit form (see update()) —
         // this quick dropdown is a second path to "complete" and can't be
-        // allowed to skip it.
-        if ($newStatus === 'complete' && $task->requires_photo && empty($task->photo)) {
-            $msg = 'This task requires a photo of the work done before it can be marked complete — upload one from the task\'s edit page first.';
+        // allowed to skip it. The dropdown itself has nowhere to put a
+        // confirm checkbox, so this always sends people to the edit page.
+        if (!$this->photoCheckPasses($task, $newStatus, $photoConfirmed)) {
             if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['success' => false, 'msg' => $msg], 422);
+                return response()->json(['success' => false, 'msg' => self::PHOTO_REQUIRED_MSG], 422);
             }
-            return redirect(action('TaskController@index'))->with('status', ['success' => false, 'msg' => $msg]);
+            return redirect(action('TaskController@index'))->with('status', ['success' => false, 'msg' => self::PHOTO_REQUIRED_MSG]);
         }
 
-        $this->applyStatusTransition($task, $newStatus);
+        $this->applyStatusTransition($task, $newStatus, $photoConfirmed);
         $task->save();
 
         // The "Tasks due today" bubble (shown on the POS screen right after
@@ -652,7 +648,12 @@ class TaskController extends Controller
             ]]);
         }
 
-        return redirect(action('TaskController@edit', $task->id))
+        // back() instead of a hardcoded edit-page redirect — notes can now
+        // be posted from either the task's edit page or the inline form on
+        // the /tasks list, and each should return the user to where they
+        // actually were (list filters/page intact) rather than always
+        // bouncing them to edit.
+        return redirect()->back()
             ->with('status', ['success' => true, 'msg' => 'Note added.']);
     }
 
@@ -685,12 +686,30 @@ class TaskController extends Controller
     }
 
     /**
+     * A photo-required task can't be marked complete without an explicit
+     * acknowledgement — the photo itself lives in Slack (#taskphotos), not
+     * this app, so there's nothing to upload/verify here, just a gate.
+     * Already-confirmed-this-cycle (photo_confirmed_at set) always passes,
+     * so re-saving an already-complete task doesn't re-prompt.
+     */
+    private function photoCheckPasses(WeeklyTask $task, string $newStatus, bool $photoConfirmed): bool
+    {
+        if ($newStatus !== 'complete' || !$task->requires_photo) {
+            return true;
+        }
+        return $task->photo_confirmed_at !== null || $photoConfirmed;
+    }
+
+    /**
      * Sets status plus who-started/who-completed attribution based on the
      * transition being made. Moving into a state stamps the acting user;
      * moving back out of "complete" or "in_progress" clears that stamp so
      * the board never shows stale attribution for a state the task isn't in.
+     * Caller must have already checked photoCheckPasses() before calling
+     * this — $photoConfirmed here only decides whether to stamp who
+     * confirmed the photo, not whether the transition is allowed.
      */
-    private function applyStatusTransition(WeeklyTask $task, string $newStatus)
+    private function applyStatusTransition(WeeklyTask $task, string $newStatus, bool $photoConfirmed = false)
     {
         $oldStatus = $task->status;
 
@@ -701,10 +720,16 @@ class TaskController extends Controller
         if ($newStatus === 'complete' && $oldStatus !== 'complete') {
             $task->completed_by = auth()->id();
             $task->completed_at = now();
+            if ($task->requires_photo && $photoConfirmed && !$task->photo_confirmed_at) {
+                $task->photo_confirmed_by = auth()->id();
+                $task->photo_confirmed_at = now();
+            }
         }
         if ($newStatus !== 'complete' && $oldStatus === 'complete') {
             $task->completed_by = null;
             $task->completed_at = null;
+            $task->photo_confirmed_by = null;
+            $task->photo_confirmed_at = null;
         }
         if ($newStatus === 'not_started' && $oldStatus !== 'not_started') {
             $task->started_by = null;
@@ -712,60 +737,5 @@ class TaskController extends Controller
         }
 
         $task->status = $newStatus;
-    }
-
-    /**
-     * Post an uploaded task photo to #taskphotos via Slack incoming
-     * webhook — same webhook-URL-in-config, curl-with-short-timeouts,
-     * never-throws shape as CashRegisterController::postShiftNoteToSlack.
-     * Uses a Block Kit image block (not just a link) so the photo actually
-     * renders in Slack; Slack fetches $photoUrl itself, so it must be
-     * publicly reachable — same convention as receiving_photos, served
-     * straight out of public/uploads with no auth check.
-     */
-    private function postTaskPhotoToSlack(WeeklyTask $task, string $photoFilename): bool
-    {
-        $webhook = trim((string) config('nivessa.task_photos_slack_webhook', ''));
-        if ($webhook === '') {
-            return false;
-        }
-        try {
-            $photoUrl = asset('uploads/task_photos/' . $photoFilename);
-            $taskUrl = action('TaskController@edit', $task->id);
-            $who = auth()->user();
-            $whoName = $who ? trim($who->first_name . ' ' . $who->last_name) : 'Someone';
-
-            $text = sprintf(
-                '*%s* uploaded a work photo for <%s|%s>',
-                $whoName,
-                $taskUrl,
-                $task->title
-            );
-
-            $payload = [
-                'text' => $text, // fallback for notifications/unfurl-less clients
-                'blocks' => [
-                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $text]],
-                    ['type' => 'image', 'image_url' => $photoUrl, 'alt_text' => 'Task photo: ' . $task->title],
-                ],
-            ];
-
-            $ch = curl_init($webhook);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS => json_encode($payload),
-                CURLOPT_TIMEOUT => 4,
-                CURLOPT_CONNECTTIMEOUT => 3,
-            ]);
-            curl_exec($ch);
-            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            return $code >= 200 && $code < 300;
-        } catch (\Throwable $e) {
-            \Log::warning('postTaskPhotoToSlack failed: ' . $e->getMessage());
-            return false;
-        }
     }
 }
