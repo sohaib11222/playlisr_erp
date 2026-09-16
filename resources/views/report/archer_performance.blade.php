@@ -121,7 +121,7 @@
                             ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
                             : 0;
                     @endphp
-                    {!! archerCard('Refunded / cancelled', number_format($order_stats['orders_cancelled']), $cancel_pct . '% &mdash; inventory issue, not his fault', '#d9534f') !!}
+                    {!! archerCard('Refunded / cancelled', number_format($order_stats['orders_cancelled']), $cancel_pct . '% &mdash; nivessa&#39;s own inventory issue', '#d9534f') !!}
                 </div>
                 <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
             </div>
@@ -150,7 +150,7 @@
             @if($order_stats)
                 @php $ratio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
                 <div style="font-size:20px; text-align:center; margin-bottom:8px;">
-                    Paid him <strong>${{ number_format($data['contract']['pay_total']) }}</strong>
+                    Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong>
                     &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
                 </div>
                 <div style="font-size:36px; font-weight:700; text-align:center; color:{{ $ratio >= 1 ? '#2ecc71' : '#d9534f' }};">
