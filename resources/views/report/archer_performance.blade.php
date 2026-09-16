@@ -107,7 +107,8 @@
         </p>
 
         {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
-        <h4 style="margin-top:32px;">Website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
+        <h4 style="margin-top:32px;">All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
+        <p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Discount code usage" below for what's actually attributable to him.</p>
 
         @if($order_stats_error)
             <div class="alert alert-warning">Couldn't reach the website API: {{ $order_stats_error }}</div>
@@ -116,12 +117,12 @@
                 <div class="col-sm-3">{!! archerCard('Orders placed', number_format($order_stats['orders_placed'])) !!}</div>
                 <div class="col-sm-3">{!! archerCard('Fulfilled', number_format($order_stats['orders_fulfilled']), $order_stats['orders_in_progress'] . ' still in progress') !!}</div>
                 <div class="col-sm-3">
-                    @php
-                        $cancel_pct = $order_stats['orders_placed'] > 0
-                            ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
-                            : 0;
-                    @endphp
-                    {!! archerCard('Refunded / cancelled', number_format($order_stats['orders_cancelled']), $cancel_pct . '% &mdash; nivessa&#39;s own inventory issue', '#d9534f') !!}
+                    {!! archerCard(
+                        'Cancelled',
+                        number_format($order_stats['orders_cancelled']),
+                        number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' other inventory issue',
+                        '#d9534f'
+                    ) !!}
                 </div>
                 <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
             </div>
@@ -133,8 +134,12 @@
                         <td>${{ number_format($order_stats['gross_revenue'], 2) }}</td>
                     </tr>
                     <tr>
-                        <th>Lost to cancellations</th>
-                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_revenue'], 2) }}</td>
+                        <th>Lost &mdash; sold on Discogs (unrelated to Archer)</th>
+                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</td>
+                    </tr>
+                    <tr>
+                        <th>Lost &mdash; other inventory issue</th>
+                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</td>
                     </tr>
                     <tr style="border-top:2px solid #eee;">
                         <th>Actual revenue realized</th>
@@ -173,7 +178,8 @@
 
                 @if($order_stats)
                     <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
-                        <div>Refunded (Nivessa's own inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_revenue'], 2) }}</strong></div>
+                        <div>Refunded (other inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
+                        <div>Refunded (sold on Discogs, unrelated): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</strong></div>
                         <div>Net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
                     </div>
                 @endif
