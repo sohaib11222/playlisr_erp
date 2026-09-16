@@ -21,6 +21,8 @@ class TaskController extends Controller
         'low'    => 'Low',
     ];
 
+    const PHOTO_REQUIRED_MSG = 'This task requires a photo — confirm you posted it to #taskphotos in Slack before marking it complete.';
+
     protected $businessUtil;
 
     public function __construct(BusinessUtil $businessUtil)
@@ -159,6 +161,8 @@ class TaskController extends Controller
             $task->started_at = null;
             $task->completed_by = null;
             $task->completed_at = null;
+            $task->photo_confirmed_by = null;
+            $task->photo_confirmed_at = null;
             $task->start_date = $today->toDateString();
             $task->end_date = $today->toDateString();
             $task->last_reset_date = $today->toDateString();
@@ -209,6 +213,7 @@ class TaskController extends Controller
                     'task_type' => $root->task_type,
                     'store' => $root->store,
                     'priority' => $root->priority,
+                    'requires_photo' => $root->requires_photo,
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
                     'repeat_daily' => false,
@@ -327,7 +332,7 @@ class TaskController extends Controller
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
-        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees'])
+        $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees', 'notes.author'])
             ->where('business_id', $business_id);
 
         if (!empty($type)) {
@@ -381,6 +386,8 @@ class TaskController extends Controller
                     'title' => $t->title,
                     'priority' => $t->priority,
                     'status' => $t->status,
+                    'requires_photo' => $t->requires_photo,
+                    'photo_confirmed' => (bool) $t->photo_confirmed_at,
                 ];
             })->values()->all();
 
@@ -408,6 +415,8 @@ class TaskController extends Controller
                     'title' => $t->title,
                     'priority' => $t->priority,
                     'status' => $t->status,
+                    'requires_photo' => $t->requires_photo,
+                    'photo_confirmed' => (bool) $t->photo_confirmed_at,
                 ];
             })->values()->all();
 
@@ -440,6 +449,7 @@ class TaskController extends Controller
             'task_type' => 'required|in:daily,weekly',
             'repeat_daily' => 'nullable|boolean',
             'repeat_weekly' => 'nullable|boolean',
+            'requires_photo' => 'nullable|boolean',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'assignees' => 'nullable|array',
@@ -447,6 +457,7 @@ class TaskController extends Controller
         ]);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
+        $data['requires_photo'] = !empty($data['requires_photo']);
 
         // Repeat cadence is a real choice for a "Today" (daily-window)
         // task — it can repeat Daily (resets in place) or Weekly (a fresh
@@ -506,6 +517,8 @@ class TaskController extends Controller
             'task_type' => 'required|in:daily,weekly',
             'repeat_daily' => 'nullable|boolean',
             'repeat_weekly' => 'nullable|boolean',
+            'requires_photo' => 'nullable|boolean',
+            'photo_confirmed' => 'nullable|boolean',
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
@@ -514,6 +527,14 @@ class TaskController extends Controller
         ]);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
+        $photoConfirmed = !empty($data['photo_confirmed']);
+        unset($data['photo_confirmed']);
+        $data['requires_photo'] = !empty($data['requires_photo']);
+
+        if (!$this->photoCheckPasses($task, $data['status'], $photoConfirmed)) {
+            return redirect()->back()->withInput()
+                ->with('status', ['success' => false, 'msg' => self::PHOTO_REQUIRED_MSG]);
+        }
 
         // Whether a task repeats is only editable on the root task — a
         // generated instance (repeat_of set) keeps whatever the root says,
@@ -542,7 +563,7 @@ class TaskController extends Controller
 
         $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
 
-        $this->applyStatusTransition($task, $data['status']);
+        $this->applyStatusTransition($task, $data['status'], $photoConfirmed);
         unset($data['status']);
         $task->fill($data)->save();
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
@@ -557,11 +578,22 @@ class TaskController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
 
-        $newStatus = $request->validate([
+        $validated = $request->validate([
             'status' => 'required|in:not_started,in_progress,complete',
-        ])['status'];
+            'photo_confirmed' => 'nullable|boolean',
+        ]);
+        $newStatus = $validated['status'];
+        $photoConfirmed = !empty($validated['photo_confirmed']);
 
-        $this->applyStatusTransition($task, $newStatus);
+        if (!$this->photoCheckPasses($task, $newStatus, $photoConfirmed)) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'msg' => self::PHOTO_REQUIRED_MSG], 422);
+            }
+            return redirect(action('TaskController@index'))
+                ->with('status', ['success' => false, 'msg' => self::PHOTO_REQUIRED_MSG]);
+        }
+
+        $this->applyStatusTransition($task, $newStatus, $photoConfirmed);
         $task->save();
 
         // The "Tasks due today" bubble (shown on the POS screen right after
@@ -574,6 +606,25 @@ class TaskController extends Controller
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Status updated.']);
+    }
+
+    /** Adds one entry to a task's running note log — visible to anyone who can see the task. */
+    public function addNote($id, Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+
+        $data = $request->validate([
+            'note' => 'required|string|max:2000',
+        ]);
+
+        $task->notes()->create([
+            'user_id' => auth()->id(),
+            'note' => $data['note'],
+        ]);
+
+        return redirect()->back()
+            ->with('status', ['success' => true, 'msg' => 'Note added.']);
     }
 
     public function destroy($id, Request $request)
@@ -605,12 +656,30 @@ class TaskController extends Controller
     }
 
     /**
+     * A photo-required task can't be marked complete without an explicit
+     * acknowledgement — the photo itself lives in Slack (#taskphotos), not
+     * this app, so there's nothing to upload/verify here, just a gate.
+     * Already-confirmed-this-cycle (photo_confirmed_at set) always passes,
+     * so re-saving an already-complete task doesn't re-prompt.
+     */
+    private function photoCheckPasses(WeeklyTask $task, string $newStatus, bool $photoConfirmed): bool
+    {
+        if ($newStatus !== 'complete' || !$task->requires_photo) {
+            return true;
+        }
+        return $task->photo_confirmed_at !== null || $photoConfirmed;
+    }
+
+    /**
      * Sets status plus who-started/who-completed attribution based on the
      * transition being made. Moving into a state stamps the acting user;
      * moving back out of "complete" or "in_progress" clears that stamp so
      * the board never shows stale attribution for a state the task isn't in.
+     * Caller must have already checked photoCheckPasses() before calling
+     * this — $photoConfirmed here only decides whether to stamp who
+     * confirmed the photo, not whether the transition is allowed.
      */
-    private function applyStatusTransition(WeeklyTask $task, string $newStatus)
+    private function applyStatusTransition(WeeklyTask $task, string $newStatus, bool $photoConfirmed = false)
     {
         $oldStatus = $task->status;
 
@@ -621,10 +690,16 @@ class TaskController extends Controller
         if ($newStatus === 'complete' && $oldStatus !== 'complete') {
             $task->completed_by = auth()->id();
             $task->completed_at = now();
+            if ($task->requires_photo && $photoConfirmed && !$task->photo_confirmed_at) {
+                $task->photo_confirmed_by = auth()->id();
+                $task->photo_confirmed_at = now();
+            }
         }
         if ($newStatus !== 'complete' && $oldStatus === 'complete') {
             $task->completed_by = null;
             $task->completed_at = null;
+            $task->photo_confirmed_by = null;
+            $task->photo_confirmed_at = null;
         }
         if ($newStatus === 'not_started' && $oldStatus !== 'not_started') {
             $task->started_by = null;

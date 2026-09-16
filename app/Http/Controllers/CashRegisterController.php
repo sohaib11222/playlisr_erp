@@ -594,6 +594,8 @@ class CashRegisterController extends Controller
                         'title' => $t->title,
                         'priority' => $t->priority,
                         'status' => $t->status,
+                        'requires_photo' => $t->requires_photo,
+                        'photo_confirmed' => (bool) $t->photo_confirmed_at,
                     ];
                 })->values()->all();
         } catch (\Throwable $ex) {

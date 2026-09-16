@@ -127,6 +127,16 @@
 </div>
 
 <div class="form-group">
+    <div class="checkbox">
+        <label>
+            <input type="checkbox" name="requires_photo" value="1" @if(old('requires_photo', $task->requires_photo ?? false)) checked @endif>
+            Requires a photo of the work done
+        </label>
+    </div>
+    <small class="text-muted">Post the photo directly to #taskphotos in Slack — this just requires confirming that before the task can be marked complete.</small>
+</div>
+
+<div class="form-group">
     <label>Assigned to</label>
     @php($selectedAssignees = old('assignees', isset($task) ? $task->assignees->pluck('id')->all() : []))
     {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}

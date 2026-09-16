@@ -17,6 +17,8 @@ class WeeklyTask extends Model
         'repeat_daily' => 'boolean',
         'repeat_weekly' => 'boolean',
         'last_reset_date' => 'date',
+        'requires_photo' => 'boolean',
+        'photo_confirmed_at' => 'datetime',
     ];
 
     public function creator()
@@ -32,6 +34,17 @@ class WeeklyTask extends Model
     public function completedBy()
     {
         return $this->belongsTo(\App\User::class, 'completed_by');
+    }
+
+    public function photoConfirmedBy()
+    {
+        return $this->belongsTo(\App\User::class, 'photo_confirmed_by');
+    }
+
+    /** Running note log, oldest first — everyone who can see the task sees these. */
+    public function notes()
+    {
+        return $this->hasMany(\App\TaskNote::class, 'weekly_task_id')->orderBy('created_at');
     }
 
     /** Everyone assigned to work on this task. */

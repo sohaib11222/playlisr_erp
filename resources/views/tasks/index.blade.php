@@ -67,14 +67,33 @@
                 <tbody>
                     @forelse($tasks as $t)
                     <tr>
-                        <td>
+                        <td style="min-width:220px;">
                             <strong>{{ $t->title }}</strong>
                             @if($t->repeat_daily || $t->repeat_weekly || $t->repeat_of)
                                 <i class="fa fa-repeat text-muted" title="Repeats {{ $t->task_type }}"></i>
                             @endif
+                            @if($t->requires_photo)
+                                <span class="label label-warning" title="A photo of the finished work needs to be posted to #taskphotos in Slack before this can be marked complete.">
+                                    <i class="fa fa-camera"></i> Photo required@if($t->photo_confirmed_at) &mdash; confirmed @endif
+                                </span>
+                            @endif
                             @if($t->description)
                                 <div class="text-muted"><small>{{ $t->description }}</small></div>
                             @endif
+                            <div style="margin-top:6px;">
+                                @foreach($t->notes as $note)
+                                    <div style="font-size:12px;color:#555;margin-bottom:2px;">
+                                        <strong>{{ $note->author->user_full_name ?? 'Someone' }}:</strong>
+                                        {{ $note->note }}
+                                        <span class="text-muted">({{ $note->created_at->diffForHumans() }})</span>
+                                    </div>
+                                @endforeach
+                                <form action="{{ action('TaskController@addNote', $t->id) }}" method="POST" style="display:flex;gap:4px;margin-top:4px;">
+                                    @csrf
+                                    <input type="text" name="note" class="form-control input-sm" placeholder="Add a note..." maxlength="2000" required style="max-width:220px;">
+                                    <button type="submit" class="btn btn-xs btn-default">Add</button>
+                                </form>
+                            </div>
                         </td>
                         <td><span class="label label-{{ $t->task_type === 'daily' ? 'info' : 'primary' }}">{{ $t->task_type === 'daily' ? 'Daily' : 'Weekly' }}</span></td>
                         <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
@@ -87,7 +106,7 @@
                             @endif
                         </td>
                         <td>
-                            @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status])
+                            @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status, 'requiresPhoto' => $t->requires_photo, 'photoConfirmed' => (bool) $t->photo_confirmed_at])
                         </td>
                         <td>
                             @forelse($t->assignees as $assignee)

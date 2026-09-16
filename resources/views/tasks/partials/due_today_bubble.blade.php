@@ -25,9 +25,14 @@
     </div>
     <ul id="tasks_due_today_list" style="list-style:none;margin:0;padding:0;">
         @foreach($dueTodayTasks as $t)
-        <li data-task-id="{{ $t['id'] }}" data-status-url="{{ route('tasks.update-status', $t['id']) }}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #F0DDBE;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+        <li data-task-id="{{ $t['id'] }}" data-status-url="{{ route('tasks.update-status', $t['id']) }}" data-requires-photo="{{ !empty($t['requires_photo']) ? '1' : '0' }}" data-photo-confirmed="{{ !empty($t['photo_confirmed']) ? '1' : '0' }}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #F0DDBE;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
             <span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$t['priority']] ?? 'default' }}">{{ ucfirst($t['priority']) }}</span>
-            <span style="flex:1 1 180px;font-weight:600;color:#333;">{{ $t['title'] }}</span>
+            <span style="flex:1 1 180px;font-weight:600;color:#333;">
+                {{ $t['title'] }}
+                @if(!empty($t['requires_photo']))
+                    <span class="label label-warning" title="A photo of the finished work needs to be posted to #taskphotos in Slack before this can be marked complete."><i class="fa fa-camera"></i></span>
+                @endif
+            </span>
             <button type="button" class="btn btn-xs btn-default tasks-due-today-btn" data-status="in_progress" @if($t['status']==='in_progress') disabled @endif>In progress</button>
             <button type="button" class="btn btn-xs btn-success tasks-due-today-btn" data-status="complete">Complete</button>
         </li>
@@ -46,6 +51,13 @@
         var row = btn.closest('li[data-task-id]');
         var statusUrl = row.getAttribute('data-status-url');
         var status = btn.getAttribute('data-status');
+        var requiresPhoto = row.getAttribute('data-requires-photo') === '1';
+        var photoConfirmed = row.getAttribute('data-photo-confirmed') === '1';
+
+        if (status === 'complete' && requiresPhoto && !photoConfirmed) {
+            var ok = confirm('Did you post a photo of the finished work to #taskphotos in Slack?\n\nClick OK to confirm and mark this task complete.');
+            if (!ok) { return; }
+        }
 
         row.querySelectorAll('.tasks-due-today-btn').forEach(function (b) { b.disabled = true; });
 
@@ -57,9 +69,9 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify({ status: status })
+            body: JSON.stringify({ status: status, photo_confirmed: requiresPhoto && !photoConfirmed })
         }).then(function (res) { return res.json(); }).then(function (data) {
-            if (!data.success) { throw new Error('failed'); }
+            if (!data.success) { throw new Error(data.msg || 'failed'); }
             if (status === 'complete') {
                 row.style.transition = 'opacity .25s';
                 row.style.opacity = '0';
@@ -72,8 +84,9 @@
                 row.querySelector('[data-status="in_progress"]').disabled = true;
                 row.querySelector('[data-status="complete"]').disabled = false;
             }
-        }).catch(function () {
+        }).catch(function (err) {
             row.querySelectorAll('.tasks-due-today-btn').forEach(function (b) { b.disabled = false; });
+            if (err && err.message) { alert(err.message); }
         });
     });
 })();
