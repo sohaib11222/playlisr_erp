@@ -1,0 +1,114 @@
+# READ-ONLY: Zak (Pico) reports every task shows "Completed by Manolo",
+# but Manolo says he never marked anything complete. Check what's actually
+# in weekly_tasks right now for Pico + company-wide tasks: created_by vs
+# started_by vs completed_by vs photo_confirmed_by, plus recent
+# task_completion_logs entries, to tell apart a real attribution bug from
+# a created_by/completed_by misread or a shared-login situation.
+name: Diag Manolo completed_by report
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect Pico task attribution (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1;
+            $manolo = App\User::where('business_id',$biz)
+                ->where(function($q){ $q->where('first_name','like','Manolo%')->orWhere('username','like','%manolo%'); })
+                ->first();
+            echo "Manolo user: " . ($manolo ? "id={$manolo->id} {$manolo->first_name} {$manolo->last_name} username={$manolo->username}" : "NOT FOUND") . "\n\n";
+
+            echo "=== Pico + company-wide (store null) tasks, not complete filtered out, last 25 ===\n";
+            $rows = App\WeeklyTask::where('business_id',$biz)
+                ->where(function($q){ $q->where('store','pico')->orWhereNull('store'); })
+                ->orderByDesc('id')
+                ->limit(25)
+                ->get(['id','title','store','task_type','status','created_by','started_by','completed_by','completed_at','photo_confirmed_by']);
+            foreach ($rows as $r) {
+                $cb = $r->created_by ? App\User::find($r->created_by) : null;
+                $sb = $r->started_by ? App\User::find($r->started_by) : null;
+                $fb = $r->completed_by ? App\User::find($r->completed_by) : null;
+                printf(
+                    "id=%d [%s] store=%s status=%s title=%.40s | created_by=%s | started_by=%s | completed_by=%s (at %s)\n",
+                    $r->id, $r->task_type, $r->store ?? 'BOTH', $r->status, $r->title,
+                    $cb ? $cb->first_name : '-',
+                    $sb ? $sb->first_name : '-',
+                    $fb ? $fb->first_name : '-',
+                    $r->completed_at
+                );
+            }
+
+            if ($manolo) {
+                echo "\n=== Count of Pico/company-wide tasks by completed_by = Manolo ===\n";
+                echo App\WeeklyTask::where('business_id',$biz)
+                    ->where(function($q){ $q->where('store','pico')->orWhereNull('store'); })
+                    ->where('completed_by', $manolo->id)
+                    ->count() . " tasks currently show completed_by = Manolo\n";
+
+                echo "\n=== Manolo's own store/location permissions ===\n";
+                echo "access_all_locations: " . ($manolo->can('access_all_locations') ? 'YES' : 'no') . "\n";
+                echo "home_store column: " . ($manolo->home_store ?? 'null') . "\n";
+                $locs = DB::table('permissions')
+                    ->join('model_has_permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
+                    ->where('model_has_permissions.model_id', $manolo->id)
+                    ->where('permissions.name', 'like', 'location.%')
+                    ->pluck('permissions.name');
+                echo "location permissions: " . $locs->implode(', ') . "\n";
+
+                echo "\n=== task_completion_logs rows where completed_by = Manolo, last 10 ===\n";
+                $logs = DB::table('task_completion_logs')->where('completed_by', $manolo->id)->orderByDesc('id')->limit(10)->get();
+                foreach ($logs as $l) {
+                    echo "log_date={$l->log_date} title={$l->title} status={$l->status} weekly_task_id={$l->weekly_task_id}\n";
+                }
+                if ($logs->isEmpty()) { echo "(none)\n"; }
+
+                echo "\n=== Manolo's recent login_activities, last 10 ===\n";
+                if (Schema::hasTable('login_activities')) {
+                    $la = DB::table('login_activities')->where('user_id', $manolo->id)->orderByDesc('id')->limit(10)->get();
+                    foreach ($la as $row) { echo json_encode($row) . "\n"; }
+                    if ($la->isEmpty()) { echo "(none)\n"; }
+                } else {
+                    echo "(no login_activities table)\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
