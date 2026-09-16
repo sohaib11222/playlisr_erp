@@ -8334,6 +8334,9 @@ class ReportController extends Controller
                 $coupon_zipcodes_error = $this->formatNivessaWebsiteApiFailure($zipDet);
             }
         }
+        $coupon_zipcodes_total = array_sum(array_map(function ($row) {
+            return (float) ($row['total'] ?? 0);
+        }, $coupon_zipcodes));
 
         $data = [
             'last_updated' => '2026-09-16',
@@ -8381,6 +8384,7 @@ class ReportController extends Controller
             'order_stats_error' => $order_stats_error,
             'archer_coupon' => $archer_coupon,
             'coupon_zipcodes' => $coupon_zipcodes,
+            'coupon_zipcodes_total' => $coupon_zipcodes_total,
             'coupon_zipcodes_error' => $coupon_zipcodes_error,
         ]);
     }

@@ -166,10 +166,17 @@
         <h4>Discount code usage</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
             @if($archer_coupon)
-                <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format($archer_coupon->times_used) }} uses</div>
+                <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format($archer_coupon->times_used) }} uses &middot; ${{ number_format($coupon_zipcodes_total, 2) }} total</div>
                 <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
                     Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time, real attributed conversions.
                 </div>
+
+                @if($order_stats)
+                    <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
+                        <div>Refunded (Nivessa's own inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_revenue'], 2) }}</strong></div>
+                        <div>Net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
+                    </div>
+                @endif
 
                 @if($coupon_zipcodes_error)
                     <div class="alert alert-warning" style="margin-bottom:0;">Couldn't load zip codes: {{ $coupon_zipcodes_error }}</div>
@@ -207,8 +214,7 @@
             <strong>{{ archerFmtDate($data['contract']['start_date']) }}&ndash;{{ archerFmtDate($data['contract']['end_date']) }}</strong> &middot;
             ${{ number_format($data['contract']['pay_total']) }} pay &middot;
             ${{ number_format($data['contract']['bonus_at_goal']) }} bonus at {{ number_format($data['contract']['follower_goal']) }} followers
-            by {{ archerFmtDate($data['contract']['follower_goal_date']) }}
-            (at {{ number_format($data['instagram']['followers_now']) }} now &mdash; won't hit it).
+            by {{ archerFmtDate($data['contract']['follower_goal_date']) }}.
         </div>
     @endif
 
