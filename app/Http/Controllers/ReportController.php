@@ -8354,14 +8354,22 @@ class ReportController extends Controller
                 'confirmed_collab_videos' => 22,
             ],
             'facebook' => [
-                'followers_now' => 656,
+                // Meta Business Suite doesn't expose a clean followers-on-a-
+                // specific-date figure, so this is back-calculated: current
+                // lifetime followers minus net follows over the closest
+                // available window (Aug 19-Sep 15) from the Trends tab.
+                'followers_start' => 499,
+                'followers_start_asof' => '2026-08-19',
+                'followers_now' => 658,
                 'reach_last_28_days' => 1300,
                 'reach_change_pct' => -72,
             ],
             'tiktok' => [
-                'followers_now' => 1812,
+                // Exact figures read off TikTok Studio's Followers trend
+                // chart, hovering the data point for each date.
+                'followers_start' => 895,
+                'followers_now' => 1813,
                 'total_likes' => 16300,
-                'note' => 'No follower count recorded from before 8/18, so growth over the campaign can\'t be shown yet — only the current snapshot.',
             ],
         ];
 

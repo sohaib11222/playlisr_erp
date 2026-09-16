@@ -42,10 +42,72 @@
                 <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
                 <a href="{{ action('ReportController@archerPerformance') }}" class="btn btn-default">Reset to campaign start &rarr; today</a>
             </form>
+            <p class="text-muted" style="margin:10px 0 0; font-size:12px;">
+                The website orders section below moves with this date range. Social follower counts are point-in-time
+                snapshots (start of campaign vs. today), not day-by-day, so they don't change with the filter.
+            </p>
         </div>
 
+        {{-- ═══════════ INSTAGRAM ═══════════ --}}
+        <h4 style="margin-top:0;">Instagram</h4>
+        <div class="row">
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'Followers',
+                    number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
+                    '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+                    '#2ecc71'
+                ) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Reach, last 28 days', number_format($data['instagram']['reach_last_28_days']), $data['instagram']['reach_change_pct'] . '%', '#d9534f') !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
+            </div>
+        </div>
+
+        {{-- ═══════════ TIKTOK ═══════════ --}}
+        <h4 style="margin-top:24px;">TikTok</h4>
+        <div class="row">
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'Followers',
+                    number_format($data['tiktok']['followers_start']) . ' &rarr; ' . number_format($data['tiktok']['followers_now']),
+                    '+' . number_format($data['tiktok']['followers_now'] - $data['tiktok']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+                    '#2ecc71'
+                ) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Total likes', number_format($data['tiktok']['total_likes'])) !!}
+            </div>
+        </div>
+
+        {{-- ═══════════ FACEBOOK ═══════════ --}}
+        <h4 style="margin-top:24px;">Facebook</h4>
+        <div class="row">
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'Followers',
+                    number_format($data['facebook']['followers_start']) . ' &rarr; ' . number_format($data['facebook']['followers_now']),
+                    '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_asof']),
+                    '#2ecc71'
+                ) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Reach, last 28 days', number_format($data['facebook']['reach_last_28_days']), $data['facebook']['reach_change_pct'] . '%', '#d9534f') !!}
+            </div>
+        </div>
+        <p class="text-muted" style="margin-top:10px; font-size:12px;">
+            Instagram, TikTok and Facebook followers pulled by hand from Meta Business Suite / TikTok Studio on
+            {{ archerFmtDate($data['last_updated']) }}. Facebook's start figure is back-calculated (Meta doesn't expose
+            a followers-on-a-date lookup) from {{ archerFmtDate($data['facebook']['followers_start_asof']) }}, the
+            closest available date &mdash; TikTok's start figure is exact, read directly off its followers chart for
+            {{ archerFmtDate($data['contract']['start_date']) }}.
+        </p>
+
         {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
-        <h4 style="margin-top:0;">Website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
+        <h4 style="margin-top:32px;">Website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
 
         @if($order_stats_error)
             <div class="alert alert-warning">Couldn't reach the website API: {{ $order_stats_error }}</div>
@@ -137,43 +199,6 @@
                     <a href="{{ route('coupons.index') }}">Coupons</a> to start tracking this.
                 </div>
             @endif
-        </div>
-
-        {{-- ═══════════ SOCIAL — MANUAL SNAPSHOTS ═══════════ --}}
-        <h4>Social media (manual snapshot from {{ archerFmtDate($data['last_updated']) }})</h4>
-        <div class="row">
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'Instagram followers',
-                    number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
-                    '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
-                    '#2ecc71'
-                ) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'Facebook followers',
-                    number_format($data['facebook']['followers_now']),
-                    number_format($data['facebook']['reach_last_28_days']) . ' reach (28d), ' . $data['facebook']['reach_change_pct'] . '%',
-                    '#d9534f'
-                ) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'TikTok followers',
-                    number_format($data['tiktok']['followers_now']),
-                    number_format($data['tiktok']['total_likes']) . ' total likes'
-                ) !!}
-            </div>
-        </div>
-        <p class="text-muted" style="margin-top:12px; font-size:13px;">
-            {{ $data['tiktok']['note'] }} Manual snapshot &mdash; pulled from Meta Business Suite / TikTok.
-        </p>
-
-        <div class="row" style="margin-top:8px;">
-            <div class="col-sm-12">
-                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
-            </div>
         </div>
 
         {{-- ═══════════ CONTRACT ═══════════ --}}
