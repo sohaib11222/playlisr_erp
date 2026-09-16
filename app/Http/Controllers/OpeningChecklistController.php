@@ -149,14 +149,26 @@ class OpeningChecklistController extends Controller
      * Pico, in canonical order). A Hollywood-only opener never sees Pico. Falls
      * back to all stores if we can't tell, so the page is never blank.
      *
-     * Location permissions (access_all_locations) are checked first as an
-     * inference, but most Cashier-role accounts have "all locations" POS
-     * access, so that alone can't distinguish Pico staff from Hollywood
-     * staff. `users.home_store`, set explicitly by an admin at
-     * /admin/task-store-assignments, takes priority when present.
+     * Priority: the store they're actually clocked in at THIS session (POS
+     * duty picker) beats everything else — an employee working Pico today
+     * should only see/act on Pico, even if their static home_store says
+     * Hollywood or they hold access_all_locations (manager decision
+     * 2026-09-16: reported live as an employee with no home_store and
+     * access_all_locations seeing and completing tasks at a store they
+     * weren't actually working that day). Location permissions
+     * (access_all_locations) are checked next as an inference, but most
+     * Cashier-role accounts have "all locations" POS access, so that alone
+     * can't distinguish Pico staff from Hollywood staff. `users.home_store`,
+     * set explicitly by an admin at /admin/task-store-assignments, is the
+     * last resort before falling back to "every store the business has".
      */
     public static function storesForUser()
     {
+        $session = self::currentSessionStoreKey();
+        if ($session !== null) {
+            return [$session => self::STORE_LABELS[$session]];
+        }
+
         $home = self::homeStoreForUser();
         if ($home !== null) {
             return [$home => self::STORE_LABELS[$home]];
@@ -203,9 +215,48 @@ class OpeningChecklistController extends Controller
         return isset(self::STORE_LABELS[$store]) ? $store : null;
     }
 
-    /** Best guess of the logged-in user's store: explicit home_store first, then permitted locations. */
+    /**
+     * The store this employee is actually clocked in at for THIS session,
+     * per the POS duty picker (session('pos_duty_location_id'), set at
+     * SellPosController::savePosDuty when they pick a cashier duty + a
+     * specific store — "Both" isn't offered to cashiers). Null when they
+     * haven't gone through the picker this session — a non-cashier duty,
+     * or a route outside /pos/* like /tasks itself, which isn't gated by
+     * it — so callers fall back to home_store / "all stores" exactly like
+     * before this existed.
+     */
+    private static function currentSessionStoreKey()
+    {
+        $locationId = session('pos_duty_location_id');
+        if (empty($locationId)) {
+            return null;
+        }
+
+        try {
+            $location = BusinessLocation::find($locationId);
+        } catch (\Exception $e) {
+            return null;
+        }
+        if (!$location || !$location->name) {
+            return null;
+        }
+        if (stripos($location->name, 'pico') !== false) {
+            return 'pico';
+        }
+        if (stripos($location->name, 'holly') !== false) {
+            return 'hollywood';
+        }
+        return null;
+    }
+
+    /** Best guess of the logged-in user's store: current session location first, then explicit home_store, then permitted locations. */
     public static function defaultStoreForUser()
     {
+        $session = self::currentSessionStoreKey();
+        if ($session !== null) {
+            return $session;
+        }
+
         $home = self::homeStoreForUser();
         if ($home !== null) {
             return $home;
