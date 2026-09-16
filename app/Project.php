@@ -8,6 +8,11 @@ class Project extends Model
 {
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'started_at' => 'datetime',
+        'completed_at' => 'datetime',
+    ];
+
     public function creator()
     {
         return $this->belongsTo(\App\User::class, 'created_by');
