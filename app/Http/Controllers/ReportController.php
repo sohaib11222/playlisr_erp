@@ -8351,7 +8351,7 @@ class ReportController extends Controller
                 'followers_now' => 15400,
                 'reach_last_28_days' => 103000,
                 'reach_change_pct' => -59,
-                'confirmed_collab_videos' => 15,
+                'confirmed_collab_videos' => 22,
             ],
             'facebook' => [
                 'followers_now' => 656,
