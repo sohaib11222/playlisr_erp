@@ -5,6 +5,18 @@
     if (!function_exists('archerFmtDate')) {
         function archerFmtDate($d) { return \Carbon::parse($d)->format('m/d/y'); }
     }
+    if (!function_exists('archerCard')) {
+        function archerCard($label, $value, $sub = null, $subColor = '#999') {
+            $html = '<div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; text-align:center;">';
+            $html .= '<div style="color:#999; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">' . e($label) . '</div>';
+            $html .= '<div style="font-size:32px; font-weight:700; color:#333;">' . $value . '</div>';
+            if ($sub) {
+                $html .= '<div style="color:' . $subColor . '; font-size:13px; font-weight:600; margin-top:6px;">' . $sub . '</div>';
+            }
+            $html .= '</div>';
+            return $html;
+        }
+    }
 @endphp
 
 @section('content')
@@ -15,9 +27,7 @@
 <section class="content">
 
     @if(empty($data))
-        <div class="alert alert-warning">
-            No snapshot data found.
-        </div>
+        <div class="alert alert-warning">No snapshot data found.</div>
     @else
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-bottom:20px;">
             <form method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
@@ -34,118 +44,145 @@
             </form>
         </div>
 
-        {{-- ───────── LIVE: selected date range ───────── --}}
+        {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
         <h4 style="margin-top:0;">Website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
 
-        @if($live_orders_error)
-            <div class="alert alert-warning">Couldn't reach the website API: {{ $live_orders_error }}</div>
-        @else
+        @if($order_stats_error)
+            <div class="alert alert-warning">Couldn't reach the website API: {{ $order_stats_error }}</div>
+        @elseif($order_stats)
             <div class="row">
-                <div class="col-sm-4">
-                    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; text-align:center;">
-                        <div style="color:#999; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Orders placed</div>
-                        <div style="font-size:38px; font-weight:700; color:#333;">{{ number_format($live_orders['count'] ?? 0) }}</div>
-                    </div>
+                <div class="col-sm-3">{!! archerCard('Orders placed', number_format($order_stats['orders_placed'])) !!}</div>
+                <div class="col-sm-3">{!! archerCard('Fulfilled', number_format($order_stats['orders_fulfilled']), $order_stats['orders_in_progress'] . ' still in progress') !!}</div>
+                <div class="col-sm-3">
+                    @php
+                        $cancel_pct = $order_stats['orders_placed'] > 0
+                            ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
+                            : 0;
+                    @endphp
+                    {!! archerCard('Refunded / cancelled', number_format($order_stats['orders_cancelled']), $cancel_pct . '% &mdash; inventory issue, not his fault', '#d9534f') !!}
                 </div>
-                <div class="col-sm-4">
-                    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; text-align:center;">
-                        <div style="color:#999; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Orders fulfilled (shipped)</div>
-                        <div style="font-size:38px; font-weight:700; color:#333;">{{ number_format($live_fulfillment['shipped'] ?? 0) }}</div>
-                        <div style="color:#999; font-size:13px; margin-top:6px;">+{{ number_format($live_fulfillment['picked_or_packed'] ?? 0) }} picked/packed, not yet shipped</div>
-                    </div>
-                </div>
-                <div class="col-sm-4">
-                    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; text-align:center;">
-                        <div style="color:#999; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Revenue</div>
-                        <div style="font-size:38px; font-weight:700; color:#333;">${{ number_format($live_orders['revenue'] ?? 0) }}</div>
-                    </div>
-                </div>
+                <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
+            </div>
+
+            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-top:16px;">
+                <table class="table" style="margin-bottom:0;">
+                    <tr>
+                        <th style="width:260px;">Potential revenue (if nothing cancelled)</th>
+                        <td>${{ number_format($order_stats['gross_revenue'], 2) }}</td>
+                    </tr>
+                    <tr>
+                        <th>Lost to cancellations</th>
+                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_revenue'], 2) }}</td>
+                    </tr>
+                    <tr style="border-top:2px solid #eee;">
+                        <th>Actual revenue realized</th>
+                        <td><strong>${{ number_format($order_stats['net_revenue'], 2) }}</strong></td>
+                    </tr>
+                </table>
             </div>
         @endif
 
-        {{-- ───────── Cost vs. sales ───────── --}}
-        <h4>Expense vs. sales</h4>
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
-            @php
-                $revenue_in_range = $live_orders['revenue'] ?? null;
-                $ratio = ($revenue_in_range !== null && $data['contract']['pay_total'] > 0)
-                    ? $revenue_in_range / $data['contract']['pay_total'] : null;
-            @endphp
-            <table class="table" style="margin-bottom:0;">
-                <tr>
-                    <th style="width:220px;">Paying him (total contract)</th>
-                    <td>${{ number_format($data['contract']['pay_total']) }}</td>
-                </tr>
-                <tr>
-                    <th>Website revenue, {{ archerFmtDate($start_date) }}&ndash;{{ archerFmtDate($end_date) }}</th>
-                    <td>{{ $revenue_in_range !== null ? '$' . number_format($revenue_in_range) : 'unavailable' }}</td>
-                </tr>
-                <tr>
-                    <th>Return</th>
-                    <td>
-                        @if($ratio !== null)
-                            <strong>${{ number_format($ratio, 2) }}</strong> in website revenue for every $1 paid
-                        @else
-                            &mdash;
-                        @endif
-                    </td>
-                </tr>
-            </table>
-            <p class="text-muted" style="margin-top:12px; margin-bottom:0; font-size:13px;">
-                This only counts revenue we can trace to the website in this window &mdash; it doesn't include
-                in-store sales from people who saw his videos, or the value of the show/celebrity traffic itself.
+        {{-- ═══════════ ROI ═══════════ --}}
+        <h4>ROI &mdash; is he worth what we're paying him?</h4>
+        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; margin-bottom:24px;">
+            @if($order_stats)
+                @php $ratio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
+                <div style="font-size:20px; text-align:center; margin-bottom:8px;">
+                    Paid him <strong>${{ number_format($data['contract']['pay_total']) }}</strong>
+                    &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
+                </div>
+                <div style="font-size:36px; font-weight:700; text-align:center; color:{{ $ratio >= 1 ? '#2ecc71' : '#d9534f' }};">
+                    ${{ number_format($ratio, 2) }} back per $1 spent
+                </div>
+            @endif
+            <p class="text-muted" style="margin-top:16px; margin-bottom:0; font-size:13px;">
+                This only counts website revenue net of cancellations in the window above. It does not include
+                in-store sales from people who saw his videos, the value of him bringing people into the show, or
+                anything not traceable to a website order &mdash; so treat this as a floor, not the whole picture.
             </p>
         </div>
 
-        {{-- ───────── Coupon code usage ───────── --}}
-        <h4>Discount code usage</h4>
+        {{-- ═══════════ COUPON CODE — REAL ATTRIBUTED CONVERSIONS ═══════════ --}}
+        <h4>Discount code usage &mdash; real, attributed conversions</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
             @if($archer_coupon)
                 <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format($archer_coupon->times_used) }} uses</div>
-                <div class="text-muted" style="margin-top:4px;">
+                <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
                     Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time total, not scoped to the date range above &mdash;
-                    this system doesn't log a timestamp per redemption, just a running count.
+                    this is the one number here that's a real, individually-attributed conversion (someone had to
+                    know and enter the code), not a correlation.
                 </div>
+
+                @if($coupon_zipcodes_error)
+                    <div class="alert alert-warning" style="margin-bottom:0;">Couldn't load zip codes: {{ $coupon_zipcodes_error }}</div>
+                @elseif(count($coupon_zipcodes) > 0)
+                    <table class="table table-bordered" style="margin-bottom:0;">
+                        <thead>
+                            <tr><th>Zip code</th><th>City</th><th>State</th><th>Date</th><th class="text-right">Order total</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach($coupon_zipcodes as $row)
+                                <tr>
+                                    <td>{{ $row['zip_code'] ?? '—' }}</td>
+                                    <td>{{ $row['city'] ?? '—' }}</td>
+                                    <td>{{ $row['state'] ?? '—' }}</td>
+                                    <td>{{ $row['order_date'] ? archerFmtDate($row['order_date']) : '—' }}</td>
+                                    <td class="text-right">{{ $row['total'] ? '$' . number_format($row['total'], 2) : '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @else
+                    <p class="text-muted" style="margin-bottom:0;">No orders found using this code yet.</p>
+                @endif
             @else
                 <div class="alert alert-warning" style="margin-bottom:0;">
-                    No coupon code with "archer" in it exists yet. If you want to track this going forward,
-                    create one at <a href="{{ route('coupons.index') }}">Coupons</a> first.
+                    No coupon code with "archer" in it exists yet. Create one at
+                    <a href="{{ route('coupons.index') }}">Coupons</a> to start tracking this.
                 </div>
             @endif
         </div>
 
-        {{-- ───────── Instagram (manual snapshot) ───────── --}}
-        <h4>Instagram (manual snapshot from {{ archerFmtDate($data['last_updated']) }})</h4>
+        {{-- ═══════════ SOCIAL — MANUAL SNAPSHOTS ═══════════ --}}
+        <h4>Social media (manual snapshot from {{ archerFmtDate($data['last_updated']) }})</h4>
         <div class="row">
-            <div class="col-sm-6">
-                <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; text-align:center;">
-                    <div style="color:#999; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers</div>
-                    <div style="font-size:38px; font-weight:700; color:#333;">
-                        {{ number_format($data['instagram']['followers_start'] / 1000, 1) }}K
-                        <span style="color:#ccc; font-weight:400;">&rarr;</span>
-                        {{ number_format($data['instagram']['followers_now'] / 1000, 1) }}K
-                    </div>
-                    <div style="color:#2ecc71; font-size:15px; font-weight:600; margin-top:6px;">
-                        +{{ number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) }} since {{ archerFmtDate($data['contract']['start_date']) }}
-                    </div>
-                </div>
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'Instagram followers',
+                    number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
+                    '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+                    '#2ecc71'
+                ) !!}
             </div>
-            <div class="col-sm-6">
-                <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; text-align:center;">
-                    <div style="color:#999; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Confirmed campaign videos</div>
-                    <div style="font-size:38px; font-weight:700; color:#333;">{{ $data['instagram']['confirmed_collab_videos'] }}</div>
-                    <div style="color:#999; font-size:13px; margin-top:6px;">verified as genuinely tagging @nivessarecords</div>
-                </div>
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'Facebook followers',
+                    number_format($data['facebook']['followers_now']),
+                    number_format($data['facebook']['reach_last_28_days']) . ' reach (28d), ' . $data['facebook']['reach_change_pct'] . '%',
+                    '#d9534f'
+                ) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard(
+                    'TikTok followers',
+                    number_format($data['tiktok']['followers_now']),
+                    number_format($data['tiktok']['total_likes']) . ' total likes'
+                ) !!}
+            </div>
+        </div>
+        <p class="text-muted" style="margin-top:12px; font-size:13px;">
+            {{ $data['tiktok']['note'] }} Instagram and Facebook aren't live either &mdash; pulled by hand from
+            Meta Business Suite. Refresh by re-checking there and updating this page's code.
+        </p>
+
+        <div class="row" style="margin-top:8px;">
+            <div class="col-sm-12">
+                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified as genuinely posted by @archerxvalentine and tagging @nivessarecords, checked one by one') !!}
             </div>
         </div>
 
-        <p class="text-muted" style="margin-top:16px; font-size:13px;">
-            Instagram numbers aren't live &mdash; pulled by hand from Instagram Business Suite. Refresh by
-            re-checking there and updating this page's code.
-        </p>
-
-        {{-- ───────── Contract ───────── --}}
-        <h4>Contract</h4>
+        {{-- ═══════════ CONTRACT ═══════════ --}}
+        <h4 style="margin-top:24px;">Contract</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px;">
             <strong>{{ archerFmtDate($data['contract']['start_date']) }} to {{ archerFmtDate($data['contract']['end_date']) }}</strong> &middot;
             ${{ number_format($data['contract']['pay_total']) }} total pay &middot;

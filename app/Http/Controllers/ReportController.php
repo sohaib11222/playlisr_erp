@@ -8289,40 +8289,25 @@ class ReportController extends Controller
         $start_date = $request->input('start_date') ?: '2026-08-18';
         $end_date = $request->input('end_date') ?: \Carbon::now()->format('Y-m-d');
 
-        // Live website orders + revenue for the selected range (same endpoint
-        // salesByChannel uses for the 'web' channel).
-        $live_orders = null;
-        $live_orders_error = null;
         $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
         $key = trim((string) config('nivessa.website_api_key', ''));
-        if ($key === '') {
-            $live_orders_error = 'NIVESSA_WEBSITE_API_KEY not set — cannot reach the website API.';
-        } else {
-            $ordersUrl = $base . '/api/v1/order/sales-totals?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date);
-            $ordersDet = $this->httpGetJsonDetailed($ordersUrl, $key, 10);
-            $orders = $ordersDet['decoded'] ?? null;
-            if (!empty($orders) && !empty($orders['success'])) {
-                $bm = $orders['byMethod'] ?? [];
-                $shipping = $bm['shipping'] ?? ['totalRevenue' => 0, 'count' => 0];
-                $pickup = $bm['pickup'] ?? ['totalRevenue' => 0, 'count' => 0];
-                $live_orders = [
-                    'count' => (int) ($shipping['count'] ?? 0) + (int) ($pickup['count'] ?? 0),
-                    'revenue' => (float) ($shipping['totalRevenue'] ?? 0) + (float) ($pickup['totalRevenue'] ?? 0),
-                ];
-            } else {
-                $live_orders_error = $this->formatNivessaWebsiteApiFailure($ordersDet);
-            }
 
-            // Fulfillment counts for the same range (same endpoint the
-            // shift-notes/labor report uses to credit Nick's shipping).
-            $fulfillUrl = $base . '/api/v1/admin/fulfillment-counts?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date);
-            $fulfillDet = $this->httpGetJsonDetailed($fulfillUrl, $key, 10);
-            $fulfillBody = $fulfillDet['decoded'] ?? null;
-            if (!empty($fulfillBody) && !empty($fulfillBody['success'])) {
-                $live_fulfillment = [
-                    'picked_or_packed' => (int) ($fulfillBody['picked_items'] ?? 0) + (int) ($fulfillBody['packed_items'] ?? 0),
-                    'shipped' => (int) ($fulfillBody['shipped_orders'] ?? 0),
-                ];
+        // Accurate order stats for the selected range — placed / cancelled /
+        // fulfilled, with both gross and net-of-cancellations revenue. Fixes
+        // the old sales-totals endpoint, which silently counted orders that
+        // were paid then cancelled at full value.
+        $order_stats = null;
+        $order_stats_error = null;
+        if ($key === '') {
+            $order_stats_error = 'NIVESSA_WEBSITE_API_KEY not set — cannot reach the website API.';
+        } else {
+            $statsUrl = $base . '/api/v1/admin/order-stats?start_date=' . urlencode($start_date) . '&end_date=' . urlencode($end_date);
+            $statsDet = $this->httpGetJsonDetailed($statsUrl, $key, 10);
+            $statsBody = $statsDet['decoded'] ?? null;
+            if (!empty($statsBody) && !empty($statsBody['success'])) {
+                $order_stats = $statsBody;
+            } else {
+                $order_stats_error = $this->formatNivessaWebsiteApiFailure($statsDet);
             }
         }
 
@@ -8335,8 +8320,23 @@ class ReportController extends Controller
             ->where('code', 'LIKE', '%archer%')
             ->first();
 
+        // Zip codes for orders that used the coupon — real, individually
+        // attributable conversions (someone had to know the code).
+        $coupon_zipcodes = [];
+        $coupon_zipcodes_error = null;
+        if ($archer_coupon && $key !== '') {
+            $zipUrl = $base . '/api/v1/admin/coupon-zipcodes?code=' . urlencode($archer_coupon->code);
+            $zipDet = $this->httpGetJsonDetailed($zipUrl, $key, 10);
+            $zipBody = $zipDet['decoded'] ?? null;
+            if (!empty($zipBody) && !empty($zipBody['success'])) {
+                $coupon_zipcodes = $zipBody['orders'] ?? [];
+            } else {
+                $coupon_zipcodes_error = $this->formatNivessaWebsiteApiFailure($zipDet);
+            }
+        }
+
         $data = [
-            'last_updated' => '2026-09-15',
+            'last_updated' => '2026-09-16',
             'contract' => [
                 'start_date' => '2026-08-18',
                 'end_date' => '2026-09-18',
@@ -8353,26 +8353,15 @@ class ReportController extends Controller
                 'reach_change_pct' => -59,
                 'confirmed_collab_videos' => 15,
             ],
-            'orders' => [
-                'baseline_period' => [
-                    'label' => 'Pre-Archer (28 days)',
-                    'start_date' => '2026-07-21',
-                    'end_date' => '2026-08-17',
-                    'order_count' => 61,
-                    'gross_revenue' => 2750.04,
-                    'net_revenue_excl_cancelled' => 1146.62,
-                    'cancelled_count' => 38,
-                ],
-                'archer_period' => [
-                    'label' => 'Archer campaign (28 days)',
-                    'start_date' => '2026-08-18',
-                    'end_date' => '2026-09-15',
-                    'order_count' => 94,
-                    'gross_revenue' => 4021.50,
-                    'net_revenue_excl_cancelled' => 1515.41,
-                    'cancelled_count' => 60,
-                ],
-                'note' => "Cancellation rate is roughly flat between periods (62% vs 64%) — that's an inventory/fulfillment issue, not something Archer's traffic caused. Order count is the fairer read on demand he's driving.",
+            'facebook' => [
+                'followers_now' => 656,
+                'reach_last_28_days' => 1300,
+                'reach_change_pct' => -72,
+            ],
+            'tiktok' => [
+                'followers_now' => 1812,
+                'total_likes' => 16300,
+                'note' => 'No follower count recorded from before 8/18, so growth over the campaign can\'t be shown yet — only the current snapshot.',
             ],
         ];
 
@@ -8380,10 +8369,11 @@ class ReportController extends Controller
             'data' => $data,
             'start_date' => $start_date,
             'end_date' => $end_date,
-            'live_orders' => $live_orders,
-            'live_orders_error' => $live_orders_error,
-            'live_fulfillment' => $live_fulfillment ?? null,
+            'order_stats' => $order_stats,
+            'order_stats_error' => $order_stats_error,
             'archer_coupon' => $archer_coupon,
+            'coupon_zipcodes' => $coupon_zipcodes,
+            'coupon_zipcodes_error' => $coupon_zipcodes_error,
         ]);
     }
 
