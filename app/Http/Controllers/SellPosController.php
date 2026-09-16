@@ -4545,11 +4545,11 @@ class SellPosController extends Controller
         //Added check because $users is of no use if enable_contact_assign if false
         $users = config('constants.enable_contact_assign') ? User::forDropdown($business_id, false, false, false, true) : [];
 
-        // Active percentage discounts matching preset names (Senior, Military, Student, Senior Citizens) for POS discount modal
+        // Active percentage discounts matching preset names (Senior, Military, Student, Senior Citizens, Archer promo) for POS discount modal
         $discount_presets = Discount::where('business_id', $business_id)
             ->where('is_active', 1)
             ->where('discount_type', 'percentage')
-            ->whereIn('name', ['Senior Discount', 'Military Discount', 'Student Discount', 'Senior Citizens Discount'])
+            ->whereIn('name', ['Senior Discount', 'Military Discount', 'Student Discount', 'Senior Citizens Discount', 'Archer Promo'])
             ->get(['id', 'name', 'discount_type', 'discount_amount']);
 
         $manual_item_price_rules = ManualItemPriceRule::where('business_id', $business_id)
