@@ -83,7 +83,7 @@
         @endif
 
         {{-- ═══════════ ROI ═══════════ --}}
-        <h4>ROI &mdash; is he worth what we're paying him?</h4>
+        <h4>ROI</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; margin-bottom:24px;">
             @if($order_stats)
                 @php $ratio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
@@ -96,21 +96,17 @@
                 </div>
             @endif
             <p class="text-muted" style="margin-top:16px; margin-bottom:0; font-size:13px;">
-                This only counts website revenue net of cancellations in the window above. It does not include
-                in-store sales from people who saw his videos, the value of him bringing people into the show, or
-                anything not traceable to a website order &mdash; so treat this as a floor, not the whole picture.
+                Website revenue only, net of cancellations &mdash; a floor, not the whole picture.
             </p>
         </div>
 
         {{-- ═══════════ COUPON CODE — REAL ATTRIBUTED CONVERSIONS ═══════════ --}}
-        <h4>Discount code usage &mdash; real, attributed conversions</h4>
+        <h4>Discount code usage</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
             @if($archer_coupon)
                 <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format($archer_coupon->times_used) }} uses</div>
                 <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
-                    Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time total, not scoped to the date range above &mdash;
-                    this is the one number here that's a real, individually-attributed conversion (someone had to
-                    know and enter the code), not a correlation.
+                    Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time, real attributed conversions.
                 </div>
 
                 @if($coupon_zipcodes_error)
@@ -171,24 +167,23 @@
             </div>
         </div>
         <p class="text-muted" style="margin-top:12px; font-size:13px;">
-            {{ $data['tiktok']['note'] }} Instagram and Facebook aren't live either &mdash; pulled by hand from
-            Meta Business Suite. Refresh by re-checking there and updating this page's code.
+            {{ $data['tiktok']['note'] }} Manual snapshot &mdash; pulled from Meta Business Suite / TikTok.
         </p>
 
         <div class="row" style="margin-top:8px;">
             <div class="col-sm-12">
-                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified as genuinely posted by @archerxvalentine and tagging @nivessarecords, checked one by one') !!}
+                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
             </div>
         </div>
 
         {{-- ═══════════ CONTRACT ═══════════ --}}
         <h4 style="margin-top:24px;">Contract</h4>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px;">
-            <strong>{{ archerFmtDate($data['contract']['start_date']) }} to {{ archerFmtDate($data['contract']['end_date']) }}</strong> &middot;
-            ${{ number_format($data['contract']['pay_total']) }} total pay &middot;
-            ${{ number_format($data['contract']['bonus_at_goal']) }} bonus if he hits {{ number_format($data['contract']['follower_goal']) }} followers
+            <strong>{{ archerFmtDate($data['contract']['start_date']) }}&ndash;{{ archerFmtDate($data['contract']['end_date']) }}</strong> &middot;
+            ${{ number_format($data['contract']['pay_total']) }} pay &middot;
+            ${{ number_format($data['contract']['bonus_at_goal']) }} bonus at {{ number_format($data['contract']['follower_goal']) }} followers
             by {{ archerFmtDate($data['contract']['follower_goal_date']) }}
-            (he's at {{ number_format($data['instagram']['followers_now']) }} now &mdash; won't hit it this term).
+            (at {{ number_format($data['instagram']['followers_now']) }} now &mdash; won't hit it).
         </div>
     @endif
 
