@@ -83,6 +83,30 @@
             </div>
         </div>
 
+        @if(!empty($data['tiktok']['weekly_followers']))
+            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
+                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week</div>
+                <table class="table" style="margin-bottom:0;">
+                    <thead>
+                        <tr><th>Week of</th><th class="text-right">Followers</th><th class="text-right">Change</th></tr>
+                    </thead>
+                    <tbody>
+                        @php $prevWeek = null; @endphp
+                        @foreach($data['tiktok']['weekly_followers'] as $week)
+                            <tr>
+                                <td>{{ archerFmtDate($week['date']) }}</td>
+                                <td class="text-right">{{ number_format($week['followers']) }}</td>
+                                <td class="text-right" style="color:#2ecc71;">
+                                    {{ $prevWeek !== null ? '+' . number_format($week['followers'] - $prevWeek) : '—' }}
+                                </td>
+                            </tr>
+                            @php $prevWeek = $week['followers']; @endphp
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
         {{-- ═══════════ FACEBOOK ═══════════ --}}
         <h4 style="margin-top:24px;">Facebook</h4>
         <div class="row">
@@ -103,7 +127,9 @@
             {{ archerFmtDate($data['last_updated']) }}. Facebook's start figure is back-calculated (Meta doesn't expose
             a followers-on-a-date lookup) from {{ archerFmtDate($data['facebook']['followers_start_asof']) }}, the
             closest available date &mdash; TikTok's start figure is exact, read directly off its followers chart for
-            {{ archerFmtDate($data['contract']['start_date']) }}.
+            {{ archerFmtDate($data['contract']['start_date']) }}. TikTok is the only platform with a real week-over-week
+            table above &mdash; Instagram and Facebook's own dashboards only expose a start/now snapshot here, not a
+            reliable weekly history, so no week-by-week numbers are shown for them rather than estimating.
         </p>
 
         {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
@@ -117,9 +143,14 @@
                 <div class="col-sm-3">{!! archerCard('Orders placed', number_format($order_stats['orders_placed'])) !!}</div>
                 <div class="col-sm-3">{!! archerCard('Fulfilled', number_format($order_stats['orders_fulfilled']), $order_stats['orders_in_progress'] . ' still in progress') !!}</div>
                 <div class="col-sm-3">
+                    @php
+                        $cancel_pct = $order_stats['orders_placed'] > 0
+                            ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
+                            : 0;
+                    @endphp
                     {!! archerCard(
                         'Cancelled',
-                        number_format($order_stats['orders_cancelled']),
+                        number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)',
                         number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' other inventory issue',
                         '#d9534f'
                     ) !!}
@@ -184,12 +215,19 @@
                     </div>
                 @endif
 
+                @if(!is_null($coupon_unique_customers))
+                    <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
+                        <div>New customers: <strong style="color:#2ecc71;">{{ number_format($coupon_new_customers) }}</strong></div>
+                        <div>Repeat customers (already shopped Nivessa before): <strong>{{ number_format($coupon_repeat_customers) }}</strong></div>
+                    </div>
+                @endif
+
                 @if($coupon_zipcodes_error)
                     <div class="alert alert-warning" style="margin-bottom:0;">Couldn't load zip codes: {{ $coupon_zipcodes_error }}</div>
                 @elseif(count($coupon_zipcodes) > 0)
                     <table class="table table-bordered" style="margin-bottom:0;">
                         <thead>
-                            <tr><th>Zip code</th><th>City</th><th>State</th><th>Date</th><th class="text-right">Order total</th></tr>
+                            <tr><th>Zip code</th><th>City</th><th>State</th><th>Date</th><th>Customer</th><th class="text-right">Order total</th></tr>
                         </thead>
                         <tbody>
                             @foreach($coupon_zipcodes as $row)
@@ -198,6 +236,16 @@
                                     <td>{{ $row['city'] ?? '—' }}</td>
                                     <td>{{ $row['state'] ?? '—' }}</td>
                                     <td>{{ $row['order_date'] ? archerFmtDate($row['order_date']) : '—' }}</td>
+                                    <td>
+                                        @if(isset($row['is_repeat_customer']))
+                                            {{ $row['is_repeat_customer'] ? 'Repeat' : 'New' }}
+                                            @if(($row['code_uses_by_this_customer'] ?? 1) > 1)
+                                                <span class="text-muted">&middot; used code {{ $row['code_uses_by_this_customer'] }}x</span>
+                                            @endif
+                                        @else
+                                            &mdash;
+                                        @endif
+                                    </td>
                                     <td class="text-right">{{ $row['total'] ? '$' . number_format($row['total'], 2) : '—' }}</td>
                                 </tr>
                             @endforeach

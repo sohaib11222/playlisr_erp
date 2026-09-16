@@ -8324,12 +8324,18 @@ class ReportController extends Controller
         // attributable conversions (someone had to know the code).
         $coupon_zipcodes = [];
         $coupon_zipcodes_error = null;
+        $coupon_new_customers = null;
+        $coupon_repeat_customers = null;
+        $coupon_unique_customers = null;
         if ($archer_coupon && $key !== '') {
             $zipUrl = $base . '/api/v1/admin/coupon-zipcodes?code=' . urlencode($archer_coupon->code);
             $zipDet = $this->httpGetJsonDetailed($zipUrl, $key, 10);
             $zipBody = $zipDet['decoded'] ?? null;
             if (!empty($zipBody) && !empty($zipBody['success'])) {
                 $coupon_zipcodes = $zipBody['orders'] ?? [];
+                $coupon_new_customers = $zipBody['new_customers'] ?? null;
+                $coupon_repeat_customers = $zipBody['repeat_customers'] ?? null;
+                $coupon_unique_customers = $zipBody['unique_customers'] ?? null;
             } else {
                 $coupon_zipcodes_error = $this->formatNivessaWebsiteApiFailure($zipDet);
             }
@@ -8373,6 +8379,15 @@ class ReportController extends Controller
                 'followers_start' => 895,
                 'followers_now' => 1813,
                 'total_likes' => 16300,
+                // Weekly checkpoints, same source/method as above — real
+                // points read off the chart, not interpolated.
+                'weekly_followers' => [
+                    ['date' => '2026-08-18', 'followers' => 895],
+                    ['date' => '2026-08-25', 'followers' => 1218],
+                    ['date' => '2026-09-01', 'followers' => 1512],
+                    ['date' => '2026-09-08', 'followers' => 1728],
+                    ['date' => '2026-09-15', 'followers' => 1813],
+                ],
             ],
         ];
 
@@ -8385,6 +8400,9 @@ class ReportController extends Controller
             'archer_coupon' => $archer_coupon,
             'coupon_zipcodes' => $coupon_zipcodes,
             'coupon_zipcodes_total' => $coupon_zipcodes_total,
+            'coupon_new_customers' => $coupon_new_customers,
+            'coupon_repeat_customers' => $coupon_repeat_customers,
+            'coupon_unique_customers' => $coupon_unique_customers,
             'coupon_zipcodes_error' => $coupon_zipcodes_error,
         ]);
     }
