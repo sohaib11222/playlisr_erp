@@ -72,6 +72,13 @@
                             @if($t->repeat_daily || $t->repeat_weekly || $t->repeat_of)
                                 <i class="fa fa-repeat text-muted" title="Repeats {{ $t->task_type }}"></i>
                             @endif
+                            @if($t->requires_photo)
+                                @if($t->photo)
+                                    <i class="fa fa-camera text-success" title="Requires photo — uploaded"></i>
+                                @else
+                                    <i class="fa fa-camera text-danger" title="Requires photo — not yet uploaded"></i>
+                                @endif
+                            @endif
                             @if($t->description)
                                 <div class="text-muted"><small>{{ $t->description }}</small></div>
                             @endif
