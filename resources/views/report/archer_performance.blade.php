@@ -178,6 +178,68 @@
                     </tr>
                 </table>
             </div>
+
+            @if(!empty($order_stats['orders']))
+                @php
+                    $cancelledOrders = array_values(array_filter($order_stats['orders'], fn($o) => $o['status'] === 'cancelled'));
+                @endphp
+
+                {{-- Exactly what got refunded, with a real reason per order --}}
+                <h5 style="margin-top:24px;">Exactly what got refunded ({{ count($cancelledOrders) }} orders)</h5>
+                @if(count($cancelledOrders) > 0)
+                    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:16px; max-height:400px; overflow-y:auto;">
+                        <table class="table table-bordered" style="margin-bottom:0;">
+                            <thead>
+                                <tr><th>Order #</th><th>Date</th><th>Reason</th><th class="text-right">Amount</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach($cancelledOrders as $o)
+                                    <tr>
+                                        <td>{{ $o['order_number'] ?? '—' }}</td>
+                                        <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
+                                        <td>
+                                            @if($o['cancel_reason'] === 'sold_on_discogs')
+                                                Sold on Discogs (unrelated)
+                                            @elseif($o['cancel_reason'])
+                                                {{ ucfirst(str_replace('_', ' ', $o['cancel_reason'])) }}
+                                            @else
+                                                No reason logged
+                                            @endif
+                                            @if($o['cancel_reason_note'])
+                                                <div class="text-muted" style="font-size:12px;">{{ $o['cancel_reason_note'] }}</div>
+                                            @endif
+                                        </td>
+                                        <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                {{-- Every order counted in "Orders placed" above, so the totals can be checked row by row --}}
+                <h5 style="margin-top:24px;">
+                    All {{ count($order_stats['orders']) }} orders in this window
+                    <button type="button" class="btn btn-default btn-xs" onclick="var t=document.getElementById('archerAllOrdersTable'); t.style.display = t.style.display === 'none' ? '' : 'none';">Show / hide</button>
+                </h5>
+                <div id="archerAllOrdersTable" style="display:none; background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:24px; max-height:500px; overflow-y:auto;">
+                    <table class="table table-bordered" style="margin-bottom:0;">
+                        <thead>
+                            <tr><th>Order #</th><th>Date</th><th>Status</th><th class="text-right">Amount</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach($order_stats['orders'] as $o)
+                                <tr @if($o['status'] === 'cancelled') style="color:#d9534f;" @endif>
+                                    <td>{{ $o['order_number'] ?? '—' }}</td>
+                                    <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
+                                    <td>{{ ucfirst(str_replace('_', ' ', $o['status'])) }}</td>
+                                    <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         @endif
 
         {{-- ═══════════ ROI ═══════════ --}}
