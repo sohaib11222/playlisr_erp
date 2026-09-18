@@ -58,6 +58,7 @@
                    placeholder="e.g. Sarah Hedvat · 510-809-6346 · sarah@example.com · CO0068"
                    autocomplete="off">
         </div>
+        <div id="import_rsvp_contacts_status" style="margin-bottom: 10px;"></div>
     @endif
     @component('components.filters', ['title' => __('report.filters')])
     @if($type == 'customer')
@@ -146,6 +147,11 @@
                         <a href="{{ action('ContactCampaignController@index') }}" class="btn btn-warning" style="margin-bottom: 8px;">
                             <i class="fa fa-bullhorn"></i> Customer Alerts
                         </a>
+                        @if($is_admin)
+                            <button type="button" class="btn btn-default" id="import_rsvp_contacts_btn" style="margin-bottom: 8px;">
+                                <i class="fa fa-calendar"></i> Import RSVP Contacts
+                            </button>
+                        @endif
                     @endif
                     <button type="button" class="btn btn-block btn-primary btn-modal"
                     data-href="{{action('ContactController@create', ['type' => $type])}}"
@@ -227,6 +233,52 @@ $(function () {
             }
         }, 250);
     });
+
+    // Import RSVP Contacts — pulls event RSVPs (+guests) into Customers,
+    // linking existing customers by email/mobile or creating new ones.
+    // First click is always a DRY RUN (no writes) so you see counts before
+    // anything happens; a "Confirm" button then commits. The same job also
+    // runs nightly at 3:45am on its own, so this button is for on-demand/
+    // backfill use, or just to see what it would do.
+    function runRsvpImport(commit) {
+        var btn = $('#import_rsvp_contacts_btn');
+        btn.prop('disabled', true);
+        $('#import_rsvp_contacts_status').html(
+            '<div class="alert alert-info"><i class="fa fa-spinner fa-spin"></i> ' +
+            (commit ? 'Writing contacts...' : 'Checking RSVPs against every event — this can take a minute...') +
+            '</div>'
+        );
+        $.ajax({
+            url: '{{ route("contacts.import-rsvp-contacts") }}',
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}', commit: commit ? 1 : 0 },
+            dataType: 'json',
+            timeout: 600000,
+            success: function (response) {
+                btn.prop('disabled', false);
+                var cssClass = response.success ? 'alert-success' : 'alert-danger';
+                var icon = response.success ? 'fa-check' : 'fa-times';
+                var msg = response.msg || (response.success ? 'Done.' : 'Failed.');
+                var html = '<div class="' + cssClass + ' alert"><i class="fa ' + icon + '"></i> ' + msg + '</div>';
+                if (response.success && !commit) {
+                    html += '<button type="button" class="btn btn-warning" id="confirm_rsvp_import_btn">' +
+                        '<i class="fa fa-check"></i> Confirm — write these to Customers</button>';
+                }
+                $('#import_rsvp_contacts_status').html(html);
+                if (response.success && commit && typeof contact_table !== 'undefined' && contact_table) {
+                    contact_table.ajax.reload(null, false);
+                }
+            },
+            error: function (xhr, textStatus) {
+                btn.prop('disabled', false);
+                $('#import_rsvp_contacts_status').html(
+                    '<div class="alert alert-danger"><i class="fa fa-times"></i> Error: ' + (textStatus || 'request failed') + '</div>'
+                );
+            }
+        });
+    }
+    $('#import_rsvp_contacts_btn').on('click', function () { runRsvpImport(false); });
+    $(document).on('click', '#confirm_rsvp_import_btn', function () { runRsvpImport(true); });
 });
 </script>
 @if(!empty($api_key))

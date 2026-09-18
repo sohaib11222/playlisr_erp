@@ -179,6 +179,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/contacts/{id}/adjust-credit', 'ContactController@adjustStoreCredit')->name('contacts.adjustCredit');
     Route::get('/contacts/campaigns', 'ContactCampaignController@index');
     Route::post('/contacts/campaigns/send', 'ContactCampaignController@send');
+    Route::post('/contacts/import-rsvp-contacts', 'ContactController@importRsvpContacts')->name('contacts.import-rsvp-contacts');
     Route::resource('contacts', 'ContactController');
     
     // Gift Cards

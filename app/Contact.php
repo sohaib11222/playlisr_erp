@@ -30,6 +30,7 @@ class Contact extends Authenticatable
         'shipping_custom_field_details' => 'array',
         'favorite_genres' => 'array',
         'opt_in_marketing' => 'boolean',
+        'rsvp_history' => 'array',
     ];
 
     public function getAvatarUrlAttribute()

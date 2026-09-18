@@ -119,6 +119,53 @@ class ContactController extends Controller
     }
 
     /**
+     * Admin button on the Customers page: run events:import-rsvps-as-contacts
+     * inline so the summary lands straight in the UI. Same "call the Artisan
+     * command from a web route" pattern as CloverController@syncRewards —
+     * no SSH, no queue, just a synchronous admin-triggered import.
+     *
+     * Defaults to a dry run (no `commit` param, or anything that isn't a
+     * truthy string) so the first click always previews counts before
+     * anything is written — this command has never run against production
+     * data before. Pass commit=1 to actually write, which the "Import RSVP
+     * Contacts" button's confirm step does after showing the dry-run summary.
+     */
+    public function importRsvpContacts(Request $request)
+    {
+        if (!$this->contactUtil->is_admin(auth()->user())) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $commit = filter_var($request->input('commit'), FILTER_VALIDATE_BOOLEAN);
+
+        try {
+            $params = ['--business' => $business_id];
+            if ($commit) {
+                $params['--commit'] = true;
+            }
+            $exitCode = \Artisan::call('events:import-rsvps-as-contacts', $params);
+            $output = \Artisan::output();
+
+            $summary = '';
+            foreach (array_reverse(preg_split('/\r?\n/', trim($output))) as $line) {
+                $line = trim($line);
+                if ($line !== '') { $summary = $line; break; }
+            }
+
+            return response()->json([
+                'success' => $exitCode === 0,
+                'msg' => $summary ?: ($exitCode === 0 ? 'Import complete.' : 'Import failed.'),
+                'output' => $output,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'msg' => 'Error: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Returns the database object for supplier
      *
      * @return \Illuminate\Http\Response

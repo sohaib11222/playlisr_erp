@@ -415,6 +415,39 @@ section.content.cp-page { background: transparent !important; padding: 20px 24px
     </div>
     @endif
 
+    {{-- Events Attended — from rsvp_history, populated by
+         events:import-rsvps-as-contacts (per-event RSVP -> contact link). --}}
+    @php
+        $rsvpHistory = is_array($contact->rsvp_history) ? $contact->rsvp_history : [];
+        usort($rsvpHistory, function ($a, $b) {
+            return strcmp((string) ($b['eventDate'] ?? ''), (string) ($a['eventDate'] ?? ''));
+        });
+    @endphp
+    @if(count($rsvpHistory) > 0)
+    <div class="cp-card">
+        <div class="cp-card-header">
+            <h3 class="cp-card-title">Events Attended</h3>
+        </div>
+        <table class="table" style="margin-bottom:0;">
+            <tbody>
+                @foreach($rsvpHistory as $ev)
+                    <tr>
+                        <td>{{ $ev['eventName'] ?? 'Event' }}</td>
+                        <td style="color:#888;">{{ !empty($ev['eventDate']) ? \Carbon\Carbon::parse($ev['eventDate'])->format('M d, Y') : '-' }}</td>
+                        <td>
+                            @if(!empty($ev['checkedIn']))
+                                <span class="label label-success">Checked in</span>
+                            @else
+                                <span class="label label-default">RSVP only</span>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
+
 </div>
 
 {{-- ========== RIGHT COLUMN ========== --}}

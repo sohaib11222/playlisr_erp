@@ -239,6 +239,15 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->withoutOverlapping(5);
 
+        // Event RSVPs -> Contacts. Links each RSVP/+guest to an existing
+        // customer by email/mobile, or creates a new customer contact, so
+        // anyone who's ever RSVPed shows up in Contacts > Customers search.
+        // 03:45 PST — after the other overnight syncs, before the store opens.
+        $schedule->command('events:import-rsvps-as-contacts --commit')
+            ->dailyAt('03:45')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(120);
+
         // Customer wants — scan recently-added products against open wants
         // and notify the customer when we find a match. Runs at 4 PM PST so
         // the team's morning pricing push gets a same-day check-in, and the

@@ -414,7 +414,9 @@ $(document).ready(function() {
             console.log('Columns:', columns.map(function(c) { return c.data; }));
     }
 
-    contact_table = $('#contact_table').DataTable({
+    // Also expose on window: the customer page's hero search box (contact/index.blade.php)
+    // lives in a separate <script> block and reads `contact_table` from global scope.
+    contact_table = window.contact_table = $('#contact_table').DataTable({
         processing: true,
         serverSide: true,
         // Export buttons (Excel/CSV/PDF/Copy/Print) would let any user download
