@@ -29,23 +29,10 @@
     @if(empty($data))
         <div class="alert alert-warning">No snapshot data found.</div>
     @else
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-bottom:20px;">
-            <form method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
-                <div>
-                    <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">From</label>
-                    <input type="date" name="start_date" class="form-control" value="{{ $start_date }}" onchange="this.form.submit()">
-                </div>
-                <div>
-                    <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">To</label>
-                    <input type="date" name="end_date" class="form-control" value="{{ $end_date }}" onchange="this.form.submit()">
-                </div>
-                <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
-                <a href="{{ action('ReportController@archerPerformance') }}" class="btn btn-default">Reset to campaign start &rarr; today</a>
-            </form>
-            <p class="text-muted" style="margin:10px 0 0; font-size:12px;">
-                The website orders section below moves with this date range. Social follower counts are point-in-time
-                snapshots (start of campaign vs. today), not day-by-day, so they don't change with the filter.
-            </p>
+        <div style="background:#fff9e6; border:1px solid #f0dfa0; border-radius:6px; padding:10px 16px; margin-bottom:20px; font-size:13px;">
+            Everything from here down to "Website orders" is a fixed, all-time snapshot &mdash; there is no date filter
+            up here on purpose. The filter is further down, right above "Website orders," and only that section (plus
+            ROI, which is calculated from it) moves when you change it.
         </div>
 
         {{-- ═══════════ INSTAGRAM ═══════════ --}}
@@ -122,6 +109,17 @@
                 {!! archerCard('Reach, last 28 days', number_format($data['facebook']['reach_last_28_days']), $data['facebook']['reach_change_pct'] . '%', '#d9534f') !!}
             </div>
         </div>
+        <div class="row" style="margin-top:16px;">
+            <div class="col-sm-4">
+                {!! archerCard('Engaged followers, last 28 days', number_format($data['facebook']['engaged_followers'])) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Messaging contacts, last 28 days', number_format($data['facebook']['messaging_contacts'])) !!}
+            </div>
+            <div class="col-sm-4">
+                {!! archerCard('Unfollows, last 28 days', number_format($data['facebook']['unfollows_last_28_days'])) !!}
+            </div>
+        </div>
         <p class="text-muted" style="margin-top:10px; font-size:12px;">
             Instagram, TikTok and Facebook followers pulled by hand from Meta Business Suite / TikTok Studio on
             {{ archerFmtDate($data['last_updated']) }}. Facebook's start figure is back-calculated (Meta doesn't expose
@@ -133,7 +131,23 @@
         </p>
 
         {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
-        <h4 style="margin-top:32px;">All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
+        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:32px; margin-bottom:16px;">
+            <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Filter the section below (website orders + ROI only)</div>
+            <form method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">From</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ $start_date }}" onchange="this.form.submit()">
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">To</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ $end_date }}" onchange="this.form.submit()">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
+                <a href="{{ action('ReportController@archerPerformance') }}" class="btn btn-default">Reset to campaign start &rarr; today</a>
+            </form>
+        </div>
+
+        <h4>All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
         <p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Discount code usage" below for what's actually attributable to him.</p>
 
         @if($order_stats_error)
@@ -269,11 +283,26 @@
                     Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time, real attributed conversions.
                 </div>
 
+                @php
+                    $archerCancelledCount = count(array_filter($coupon_zipcodes, fn($r) => ($r['order_status'] ?? null) === 'cancelled'));
+                    $archerCancelledTotal = array_sum(array_map(fn($r) => ($r['order_status'] ?? null) === 'cancelled' ? (float) ($r['total'] ?? 0) : 0, $coupon_zipcodes));
+                @endphp
+                <div style="background:{{ $archerCancelledCount > 0 ? '#fdf2f2' : '#f2fdf5' }}; border-radius:4px; padding:10px 14px; margin-bottom:16px; font-size:13px;">
+                    Of these {{ count($coupon_zipcodes) }} Archer-code orders,
+                    <strong>{{ $archerCancelledCount }} {{ $archerCancelledCount === 1 ? 'was' : 'were' }} refunded/cancelled</strong>
+                    @if($archerCancelledCount > 0)
+                        (${{ number_format($archerCancelledTotal, 2) }}).
+                    @else
+                        &mdash; none of his own attributed orders were refunded.
+                    @endif
+                    This is separate from the site-wide refund numbers below, which cover all website orders, not just his.
+                </div>
+
                 @if($order_stats)
                     <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
-                        <div>Refunded (other inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
-                        <div>Refunded (sold on Discogs, unrelated): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</strong></div>
-                        <div>Net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
+                        <div>Site-wide refunded (other inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
+                        <div>Site-wide refunded (sold on Discogs, unrelated): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</strong></div>
+                        <div>Site-wide net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
                     </div>
                 @endif
 

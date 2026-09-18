@@ -8366,12 +8366,16 @@ class ReportController extends Controller
                 // Meta Business Suite doesn't expose a clean followers-on-a-
                 // specific-date figure, so this is back-calculated: current
                 // lifetime followers minus net follows over the closest
-                // available window (Aug 19-Sep 15) from the Trends tab.
-                'followers_start' => 499,
-                'followers_start_asof' => '2026-08-19',
-                'followers_now' => 658,
+                // available window (Aug 20-Sep 16) from the Trends tab.
+                'followers_start' => 510,
+                'followers_start_asof' => '2026-08-20',
+                'followers_now' => 661,
                 'reach_last_28_days' => 1300,
                 'reach_change_pct' => -72,
+                // Real, from the same Trends tab, last 28 days (Aug 20-Sep 16).
+                'engaged_followers' => 0,
+                'messaging_contacts' => 2,
+                'unfollows_last_28_days' => 3,
             ],
             'tiktok' => [
                 // Exact figures read off TikTok Studio's Followers trend
