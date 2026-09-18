@@ -17,6 +17,9 @@
 .pb-staff label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #d9d2b8; border-radius: 999px; font-size: 13px; cursor: pointer; background: #fff; }
 .pb-staff input:checked + span { font-weight: 700; }
 .pb-staff label:has(input:checked) { background: #FFF2B3; border-color: #E6CE5A; }
+.pb-shift { color: #8a8a8a; font-weight: 400 !important; font-size: 12px; margin-left: 2px; }
+.pb-shift.overlap { color: #2F6B3E; }
+.pb-staff label:has(input:checked) .pb-shift.overlap { color: #2F6B3E; }
 .pb-btn { background: #FFF2B3; border: 1px solid #E6CE5A; border-radius: 8px; padding: 9px 18px; font-size: 14px; font-weight: 700; color: #6b5a00; cursor: pointer; }
 .pb-btn:hover { background: #FFE9A8; }
 .pb-result { font-size: 15px; }
@@ -68,9 +71,13 @@
     </div>
     <div class="pb-field" style="margin-top:14px;">
         <label>Who worked the party</label>
+        @if ($location_id && $date)
+            <p class="text-muted" style="margin:2px 0 6px; font-size:12px;">Shift times are from Sling. <span style="color:#2F6B3E; font-weight:700;">Green</span> = clocked in during the party window below.</p>
+        @endif
         <div class="pb-staff">
             @foreach ($staff as $s)
-                <label><input type="checkbox" name="staff[]" value="{{ $s->id }}" {{ in_array((int) $s->id, $selected, true) ? 'checked' : '' }}><span>{{ $s->label }}</span></label>
+                @php $st = $shift_times[$s->id] ?? null; @endphp
+                <label><input type="checkbox" name="staff[]" value="{{ $s->id }}" {{ in_array((int) $s->id, $selected, true) ? 'checked' : '' }}><span>{{ $s->label }}@if($st)<span class="pb-shift {{ $st['overlaps'] ? 'overlap' : '' }}"> &middot; {{ $st['label'] }}</span>@elseif($location_id && $date)<span class="pb-shift"> &middot; no shift on record</span>@endif</span></label>
             @endforeach
         </div>
     </div>
@@ -90,11 +97,12 @@
             <input type="hidden" name="date" value="{{ $date }}">
             <input type="hidden" name="location_name" value="{{ $result['location_name'] }}">
             <table class="pb-table">
-                <thead><tr><th>Staff</th><th style="text-align:right;">Amount to pay</th></tr></thead>
+                <thead><tr><th>Staff</th><th>Came in</th><th style="text-align:right;">Amount to pay</th></tr></thead>
                 <tbody>
                     @foreach ($result['people'] as $p)
                         <tr>
                             <td>{{ $p['name'] }}<input type="hidden" name="user_id[]" value="{{ $p['user_id'] }}"></td>
+                            <td style="{{ $p['overlaps'] ? 'color:#2F6B3E;' : 'color:#8a8a8a;' }}">{{ $p['shift'] }}</td>
                             <td style="text-align:right;">$<input type="number" step="0.01" min="0" class="pb-amt" name="amount[]" value="{{ number_format($p['amount'], 2, '.', '') }}"></td>
                         </tr>
                     @endforeach

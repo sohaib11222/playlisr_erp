@@ -615,6 +615,17 @@ class ListingCommissionController extends Controller
         $percent    = (float) $request->input('percent', 0);
         $selected   = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('staff', [])))));
 
+        // Each staff member's actual Sling shift that day at this store, so Sarah
+        // can see WHEN they came in before picking who gets a cut — not just a
+        // bare checkbox list. Any shift type/position counts (not just the
+        // "floor" positions shiftCommission cares about, since anyone on the
+        // schedule that day could have worked the party). Flags whether the
+        // shift overlaps the chosen party window so the picker can call that out.
+        $shiftTimes = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && $locationId > 0) {
+            $shiftTimes = $this->partyDayShiftTimes($businessId, $date, $locationId, $locations[$locationId] ?? '', $fromTime, $toTime);
+        }
+
         $result = null;
         $error  = null;
         $validWindow = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)
@@ -672,7 +683,13 @@ class ListingCommissionController extends Controller
                 }
                 $people = [];
                 foreach ($selected as $uid) {
-                    $people[] = ['user_id' => $uid, 'name' => $names[$uid] ?? ('User #' . $uid), 'amount' => $per];
+                    $people[] = [
+                        'user_id' => $uid,
+                        'name' => $names[$uid] ?? ('User #' . $uid),
+                        'amount' => $per,
+                        'shift' => $shiftTimes[$uid]['label'] ?? 'no shift on record',
+                        'overlaps' => $shiftTimes[$uid]['overlaps'] ?? false,
+                    ];
                 }
 
                 $result = [
@@ -697,9 +714,49 @@ class ListingCommissionController extends Controller
             'percent'     => $percent ?: '',
             'selected'    => $selected,
             'result'      => $result,
+            'shift_times' => $shiftTimes,
             'error'       => $error,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
+    }
+
+    // Real Sling shift times for everyone scheduled at this store on this date —
+    // what to show next to each name on the party-bonus picker so "who worked
+    // it" is backed by the actual clock, not memory. $winFrom/$winTo (HH:MM) mark
+    // whether a shift overlaps the chosen party window.
+    private function partyDayShiftTimes($businessId, $date, $locationId, $lname, $winFrom, $winTo)
+    {
+        $shifts = \App\SlingShift::where('event_type', \App\SlingShift::TYPE_SHIFT)
+            ->where('published', 1)->whereNotNull('erp_user_id')
+            ->whereDate('dtstart', $date)->get();
+
+        $matchAll = DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1)->count() <= 1;
+        $lkey = strtolower(trim((string) $lname));
+        $lfirst = strtolower(trim(explode(' ', $lkey)[0] ?? ''));
+
+        $winStart = ($winFrom !== '') ? \Carbon::parse($date . ' ' . $winFrom . ':00') : null;
+        $winEnd   = ($winTo !== '')   ? \Carbon::parse($date . ' ' . $winTo . ':59')   : null;
+
+        $out = [];
+        foreach ($shifts as $s) {
+            if (!$matchAll) {
+                $sl = strtolower(trim((string) ($s->location_name ?? '')));
+                $lm = ($sl !== '' && ($sl === $lkey || strpos($sl, $lkey) !== false || strpos($lkey, $sl) !== false || ($lfirst !== '' && strpos($sl, $lfirst) !== false)));
+                if (!$lm) { continue; }
+            }
+            $uid = (int) $s->erp_user_id;
+            $ss = \Carbon::parse($s->dtstart);
+            $se = $s->dtend ? \Carbon::parse($s->dtend) : $ss->copy()->endOfDay();
+            // A person can have more than one shift row that day (split shift) —
+            // keep the one that overlaps the party window if there is one,
+            // otherwise the first we see.
+            $overlaps = $winStart && $winEnd && $ss->lt($winEnd) && $se->gt($winStart);
+            if (isset($out[$uid]) && $out[$uid]['overlaps'] && !$overlaps) { continue; }
+            $pos = trim((string) ($s->position_name ?? ''));
+            $label = $ss->format('g:i A') . ' - ' . $se->format('g:i A') . ($pos !== '' ? ' (' . $pos . ')' : '');
+            $out[$uid] = ['label' => $label, 'from' => $ss, 'overlaps' => $overlaps];
+        }
+        return $out;
     }
 
     // Log each party worker's share to the sales payout ledger, backdated to the
