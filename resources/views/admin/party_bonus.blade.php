@@ -68,7 +68,19 @@
             </select>
         </div>
         <div class="pb-field"><label>% of window sales</label><input type="number" step="0.1" min="0" name="percent" value="{{ $percent }}" placeholder="e.g. 4"></div>
+        <div class="pb-field">
+            <label>Which party</label>
+            <input type="text" name="event_name" list="pb-events" value="{{ $event_name }}" placeholder="e.g. Kendrick Lamar Listening Party">
+            <datalist id="pb-events">
+                @foreach ($day_events as $ev)
+                    <option value="{{ $ev }}">
+                @endforeach
+            </datalist>
+        </div>
     </div>
+    @if ($date && count($day_events) > 1)
+        <p class="text-muted" style="margin-top:6px; font-size:12px;">More than one event is on the books for {{ $date }} - pick the right one above.</p>
+    @endif
     <div class="pb-field" style="margin-top:14px;">
         <label>Who worked the party</label>
         @if ($location_id && $date)
@@ -86,7 +98,7 @@
 
 @if ($result)
     <div class="pb-card pb-result">
-        <div>Sales rung at <strong>{{ $result['location_name'] }}</strong> on <strong>{{ $date }}</strong>, {{ $result['window'] }}:</div>
+        <div>Sales rung at <strong>{{ $result['location_name'] }}</strong> on <strong>{{ $date }}</strong>, {{ $result['window'] }}@if($event_name) - <strong>{{ $event_name }}</strong>@endif:</div>
         <div class="big">${{ number_format($result['sales'], 2) }}</div>
         <div style="margin-top:6px;">Bonus pool = <strong>{{ rtrim(rtrim(number_format($result['percent'], 2), '0'), '.') }}%</strong> of that = <strong>${{ number_format($result['pool'], 2) }}</strong>@if(count($result['people']) > 0), split {{ count($result['people']) }} ways = <strong>${{ number_format($result['per'], 2) }}</strong> each @endif.</div>
 
@@ -96,6 +108,7 @@
             @csrf
             <input type="hidden" name="date" value="{{ $date }}">
             <input type="hidden" name="location_name" value="{{ $result['location_name'] }}">
+            <input type="hidden" name="event_name" value="{{ $event_name }}">
             <table class="pb-table">
                 <thead><tr><th>Staff</th><th>Came in</th><th style="text-align:right;">Amount to pay</th></tr></thead>
                 <tbody>

@@ -614,6 +614,20 @@ class ListingCommissionController extends Controller
         $locationId = (int) $request->input('location_id');
         $percent    = (float) $request->input('percent', 0);
         $selected   = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('staff', [])))));
+        $eventName  = trim((string) $request->input('event_name', ''));
+
+        // Which actual event(s) are on the books for this date, so the payout
+        // note says "worked the Kendrick Lamar Listening Party" instead of a
+        // bare date — pulled from the same events file the prep checklist and
+        // website use. If there's exactly one event that day, pre-fill it.
+        $dayEvents = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
+                if (($it['date'] ?? '') === $date) { $dayEvents[] = (string) ($it['name'] ?? ''); }
+            }
+            $dayEvents = array_values(array_unique(array_filter($dayEvents)));
+            if ($eventName === '' && count($dayEvents) === 1) { $eventName = $dayEvents[0]; }
+        }
 
         // Each staff member's actual Sling shift that day at this store, so Sarah
         // can see WHEN they came in before picking who gets a cut — not just a
@@ -715,6 +729,8 @@ class ListingCommissionController extends Controller
             'selected'    => $selected,
             'result'      => $result,
             'shift_times' => $shiftTimes,
+            'event_name'  => $eventName,
+            'day_events'  => $dayEvents,
             'error'       => $error,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
@@ -767,6 +783,7 @@ class ListingCommissionController extends Controller
     {
         $date  = trim((string) $request->input('date', ''));
         $store = trim((string) $request->input('location_name', ''));
+        $event = trim((string) $request->input('event_name', ''));
         $uids  = (array) $request->input('user_id', []);
         $amts  = (array) $request->input('amount', []);
 
@@ -775,7 +792,7 @@ class ListingCommissionController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Missing party date.']);
         }
 
-        $note = 'Listening party ' . $date . ($store !== '' ? ' (' . $store . ')' : '');
+        $note = 'Listening party' . ($event !== '' ? ': ' . $event : '') . ' - ' . $date . ($store !== '' ? ' (' . $store . ')' : '');
         $sales = $this->loadSalesPayouts();
 
         $exists = function ($uid, $amount) use ($sales, $date) {
