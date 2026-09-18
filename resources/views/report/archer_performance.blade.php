@@ -33,11 +33,11 @@
             <form method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
                 <div>
                     <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">From</label>
-                    <input type="date" name="start_date" class="form-control" value="{{ $start_date }}">
+                    <input type="date" name="start_date" class="form-control" value="{{ $start_date }}" onchange="this.form.submit()">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">To</label>
-                    <input type="date" name="end_date" class="form-control" value="{{ $end_date }}">
+                    <input type="date" name="end_date" class="form-control" value="{{ $end_date }}" onchange="this.form.submit()">
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
                 <a href="{{ action('ReportController@archerPerformance') }}" class="btn btn-default">Reset to campaign start &rarr; today</a>
