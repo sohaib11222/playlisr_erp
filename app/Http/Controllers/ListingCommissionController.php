@@ -629,6 +629,37 @@ class ListingCommissionController extends Controller
             if ($eventName === '' && count($dayEvents) === 1) { $eventName = $dayEvents[0]; }
         }
 
+        // What everyone actually got paid for parties recently, so Sarah can
+        // check party payouts against a payroll run without digging through the
+        // full Commissions ledger. Defaults to the same trailing-14-days window
+        // PayrollController defaults to when no explicit period is picked.
+        $pStart = trim((string) $request->input('p_start', ''));
+        $pEnd   = trim((string) $request->input('p_end', ''));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $pStart) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $pEnd)) {
+            $pEnd   = \Carbon::now()->subDay()->toDateString();
+            $pStart = \Carbon::now()->subDays(14)->toDateString();
+        }
+        $recentParty = [];
+        foreach ($this->loadSalesPayouts() as $row) {
+            $note = (string) ($row['note'] ?? '');
+            if (stripos($note, 'Listening party') !== 0) { continue; }
+            $pdate = substr((string) ($row['from_date'] ?? $row['marked_at'] ?? ''), 0, 10);
+            if ($pdate === '' || $pdate < $pStart || $pdate > $pEnd) { continue; }
+            $recentParty[] = [
+                'name'   => (string) ($row['name'] ?? ('User #' . ($row['user_id'] ?? ''))),
+                'amount' => round((float) ($row['amount'] ?? 0), 2),
+                'date'   => $pdate,
+                'note'   => $note,
+            ];
+        }
+        usort($recentParty, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        $recentPartyTotal = round(array_sum(array_column($recentParty, 'amount')), 2);
+        $recentPartyByPerson = [];
+        foreach ($recentParty as $r) {
+            $recentPartyByPerson[$r['name']] = round(($recentPartyByPerson[$r['name']] ?? 0) + $r['amount'], 2);
+        }
+        arsort($recentPartyByPerson);
+
         // Each staff member's actual Sling shift that day at this store, so Sarah
         // can see WHEN they came in before picking who gets a cut — not just a
         // bare checkbox list. Any shift type/position counts (not just the
@@ -731,6 +762,10 @@ class ListingCommissionController extends Controller
             'shift_times' => $shiftTimes,
             'event_name'  => $eventName,
             'day_events'  => $dayEvents,
+            'p_start' => $pStart, 'p_end' => $pEnd,
+            'recent_party' => $recentParty,
+            'recent_party_total' => $recentPartyTotal,
+            'recent_party_by_person' => $recentPartyByPerson,
             'error'       => $error,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');

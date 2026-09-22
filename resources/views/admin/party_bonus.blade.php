@@ -42,6 +42,44 @@
     <div class="alert alert-danger">{{ $error }}</div>
 @endif
 
+<div class="pb-card">
+    <div style="font-weight:700; margin-bottom:10px;">Recent party payouts</div>
+    <form method="GET" action="{{ url('/admin/party-bonus') }}" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <div class="pb-field"><label>From</label><input type="date" name="p_start" value="{{ $p_start }}"></div>
+        <div class="pb-field"><label>To</label><input type="date" name="p_end" value="{{ $p_end }}"></div>
+        <button type="submit" class="pb-btn">Show payouts</button>
+        <div style="font-size:13px; color:#5b6470;">{{ count($recent_party) }} payment{{ count($recent_party) === 1 ? '' : 's' }} logged, totaling <strong>${{ number_format($recent_party_total, 2) }}</strong></div>
+    </form>
+    @if (count($recent_party) > 0)
+        <table class="pb-table" style="margin-top:12px;">
+            <thead><tr><th>Staff</th><th>Total this period</th></tr></thead>
+            <tbody>
+                @foreach ($recent_party_by_person as $name => $total)
+                    <tr><td>{{ $name }}</td><td style="text-align:right;">${{ number_format($total, 2) }}</td></tr>
+                @endforeach
+            </tbody>
+        </table>
+        <details style="margin-top:10px;">
+            <summary style="font-size:13px;">Every payment ({{ count($recent_party) }})</summary>
+            <table class="pb-table">
+                <thead><tr><th>Date</th><th>Staff</th><th>Paid for</th><th style="text-align:right;">Amount</th></tr></thead>
+                <tbody>
+                    @foreach ($recent_party as $r)
+                        <tr>
+                            <td>{{ \Carbon::parse($r['date'])->format('M j, Y') }}</td>
+                            <td>{{ $r['name'] }}</td>
+                            <td style="color:#5b6470;">{{ $r['note'] }}</td>
+                            <td style="text-align:right;">${{ number_format($r['amount'], 2) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </details>
+    @else
+        <p class="text-muted" style="margin-top:10px;">No listening-party payments logged {{ $p_start }} to {{ $p_end }}.</p>
+    @endif
+</div>
+
 <form method="GET" action="{{ url('/admin/party-bonus') }}" class="pb-card">
     <div class="pb-grid">
         <div class="pb-field"><label>Party date</label><input type="date" name="date" value="{{ $date }}" onchange="this.form.submit()"></div>
