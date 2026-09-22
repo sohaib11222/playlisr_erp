@@ -59,6 +59,29 @@ class ProjectController extends Controller
         return array_key_first($availableStores) ?: OpeningChecklistController::defaultStoreForUser();
     }
 
+    /** See TaskController::assignableUsers for the same convention. */
+    private function assignableUsers($business_id)
+    {
+        return User::where('business_id', $business_id)
+            ->user()
+            ->where('is_cmmsn_agnt', 0)
+            ->where('status', 'active')
+            ->where('allow_login', 1)
+            ->orderBy('first_name')
+            ->get()
+            ->mapWithKeys(function ($u) {
+                return [$u->id => trim($u->first_name . ' ' . $u->last_name)];
+            })
+            ->all();
+    }
+
+    /** See TaskController::syncAssignees for the same convention. */
+    private function syncAssignees(Project $project, array $requestedIds, array $assignableUsers)
+    {
+        $validIds = array_values(array_intersect(array_map('intval', $requestedIds), array_keys($assignableUsers)));
+        $project->assignees()->sync($validIds);
+    }
+
     public function index(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -68,7 +91,7 @@ class ProjectController extends Controller
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
 
-        $query = Project::with(['creator', 'startedBy', 'completedBy', 'contributors'])
+        $query = Project::with(['creator', 'startedBy', 'completedBy', 'contributors', 'assignees'])
             ->where('business_id', $business_id);
 
         if (!empty($status)) {
@@ -94,9 +117,11 @@ class ProjectController extends Controller
 
     public function create(Request $request)
     {
+        $business_id = $request->session()->get('user.business_id');
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
-        return view('projects.create', compact('storeLabels', 'priorityLabels'));
+        $assignableUsers = $this->assignableUsers($business_id);
+        return view('projects.create', compact('storeLabels', 'priorityLabels', 'assignableUsers'));
     }
 
     public function store(Request $request)
@@ -108,7 +133,11 @@ class ProjectController extends Controller
             'description' => 'nullable|string',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'assignees' => 'nullable|array',
+            'assignees.*' => 'integer',
         ]);
+        $assignees = $data['assignees'] ?? [];
+        unset($data['assignees']);
 
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
@@ -118,6 +147,8 @@ class ProjectController extends Controller
         // The person who starts a project is naturally the first one credited
         // with joining it.
         $project->contributors()->attach(auth()->id(), ['joined_at' => now()]);
+        $this->syncAssignees($project, $assignees, $this->assignableUsers($business_id));
+        $this->textAssignees($project);
 
         return redirect(action('ProjectController@index'))
             ->with('status', ['success' => true, 'msg' => 'Project added.']);
@@ -126,10 +157,11 @@ class ProjectController extends Controller
     public function edit($id, Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
-        $project = Project::with('contributors')->where('business_id', $business_id)->findOrFail($id);
+        $project = Project::with(['contributors', 'assignees'])->where('business_id', $business_id)->findOrFail($id);
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
-        return view('projects.edit', compact('project', 'storeLabels', 'priorityLabels'));
+        $assignableUsers = $this->assignableUsers($business_id);
+        return view('projects.edit', compact('project', 'storeLabels', 'priorityLabels', 'assignableUsers'));
     }
 
     public function update($id, Request $request)
@@ -143,11 +175,16 @@ class ProjectController extends Controller
             'status' => 'required|in:not_started,in_progress,complete',
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
+            'assignees' => 'nullable|array',
+            'assignees.*' => 'integer',
         ]);
+        $assignees = $data['assignees'] ?? [];
+        unset($data['assignees']);
 
         $this->applyStatusTransition($project, $data['status']);
         unset($data['status']);
         $project->fill($data)->save();
+        $this->syncAssignees($project, $assignees, $this->assignableUsers($business_id));
 
         return redirect(action('ProjectController@index'))
             ->with('status', ['success' => true, 'msg' => 'Project updated.']);
@@ -236,5 +273,24 @@ class ProjectController extends Controller
         }
 
         $project->status = $newStatus;
+    }
+
+    /** See TaskController::textAssignees for the same convention — only fires on create. */
+    private function textAssignees(Project $project): void
+    {
+        $sms = app(\App\Services\OpenPhoneService::class);
+        $projectUrl = action('ProjectController@edit', $project->id);
+        $message = "New project assigned to you: \"{$project->title}\". {$projectUrl}";
+
+        foreach ($project->assignees as $assignee) {
+            $phone = trim((string) ($assignee->contact_number ?? ''));
+            if ($phone === '') {
+                continue;
+            }
+            $result = $sms->send($phone, $message);
+            if (!$result['success']) {
+                \Log::info('textAssignees: SMS not sent to user ' . $assignee->id . ' for project ' . $project->id . ': ' . $result['msg']);
+            }
+        }
     }
 }

@@ -82,6 +82,15 @@
 
                     <hr>
 
+                    <strong>Assigned to</strong>
+                    <div style="margin-bottom:10px;">
+                        @forelse($p->assignees as $a)
+                            <span class="label label-default" style="margin-right:4px;">{{ $a->user_full_name }}</span>
+                        @empty
+                            <span class="text-muted">Unassigned</span>
+                        @endforelse
+                    </div>
+
                     <strong>Contributors</strong>
                     <div>
                         @forelse($p->contributors as $c)

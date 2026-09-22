@@ -35,4 +35,11 @@ class Project extends Model
             ->withPivot('joined_at')
             ->withTimestamps();
     }
+
+    /** Who this project is assigned to (set by whoever creates/edits it) — see project_assignees. */
+    public function assignees()
+    {
+        return $this->belongsToMany(\App\User::class, 'project_assignees', 'project_id', 'user_id')
+            ->withTimestamps();
+    }
 }

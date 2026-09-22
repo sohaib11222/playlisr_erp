@@ -26,3 +26,10 @@
         @endforeach
     </select>
 </div>
+
+<div class="form-group">
+    <label>Assigned to</label>
+    @php($selectedAssignees = old('assignees', isset($project) ? $project->assignees->pluck('id')->all() : []))
+    {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'project_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}
+    <small class="text-muted">Texted when the project is created (if they have a phone number on file). Contributors below is separate — anyone can self-join regardless of assignment.</small>
+</div>
