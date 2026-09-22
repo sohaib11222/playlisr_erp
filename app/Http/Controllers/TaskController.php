@@ -490,9 +490,38 @@ class TaskController extends Controller
 
         $task = WeeklyTask::create($data);
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
+        $this->textAssignees($task);
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task added.']);
+    }
+
+    /**
+     * Text every assignee that a new task was just created for them.
+     * Fire-and-forget over OpenPhoneService (same "never throws" SMS
+     * sender AmsArrivalNotifier uses for customer pickup alerts) — a
+     * failed/unconfigured send never blocks the task from being created.
+     * Only fires on create, not on later edits that add an assignee.
+     */
+    private function textAssignees(WeeklyTask $task): void
+    {
+        $sms = app(\App\Services\OpenPhoneService::class);
+        $taskUrl = action('TaskController@edit', $task->id);
+        $when = $task->task_type === 'daily'
+            ? $task->start_date->format('M j')
+            : $task->start_date->format('M j') . '–' . $task->end_date->format('M j');
+        $message = "New task assigned to you: \"{$task->title}\" (due {$when}). {$taskUrl}";
+
+        foreach ($task->assignees as $assignee) {
+            $phone = trim((string) ($assignee->contact_number ?? ''));
+            if ($phone === '') {
+                continue;
+            }
+            $result = $sms->send($phone, $message);
+            if (!$result['success']) {
+                \Log::info('textAssignees: SMS not sent to user ' . $assignee->id . ' for task ' . $task->id . ': ' . $result['msg']);
+            }
+        }
     }
 
     public function edit($id, Request $request)
