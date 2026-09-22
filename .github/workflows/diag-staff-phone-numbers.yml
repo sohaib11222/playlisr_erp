@@ -1,0 +1,73 @@
+# READ-ONLY diagnostic: how many active, login-enabled staff have a mobile
+# number on file (contact_number) vs not — informs whether the new
+# task/project-assignment SMS notifications will actually reach people.
+name: Diag staff phone numbers
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count staff with/without a phone number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $staff = \App\User::where('is_cmmsn_agnt', 0)
+                ->where('status', 'active')
+                ->where('allow_login', 1)
+                ->get(['id', 'first_name', 'last_name', 'contact_number']);
+
+            $withPhone = $staff->filter(fn($u) => trim((string) $u->contact_number) !== '');
+            $withoutPhone = $staff->filter(fn($u) => trim((string) $u->contact_number) === '');
+
+            echo "Total active, login-enabled staff: " . $staff->count() . "\n";
+            echo "With a phone number on file: " . $withPhone->count() . "\n";
+            echo "WITHOUT a phone number on file: " . $withoutPhone->count() . "\n";
+            echo "\n--- missing a phone number ---\n";
+            foreach ($withoutPhone as $u) {
+                echo "- {$u->first_name} {$u->last_name} (id {$u->id})\n";
+            }
+            PHP
+            echo "=== also check OpenPhone config presence (not the value) ==="
+            php artisan tinker --no-ansi <<'PHP'
+            echo "OPENPHONE_API_KEY set: " . (trim((string) config('services.openphone.api_key', '')) !== '' ? 'yes' : 'no') . "\n";
+            echo "OPENPHONE_FROM_NUMBER set: " . (trim((string) config('services.openphone.from_number', '')) !== '' ? 'yes' : 'no') . "\n";
+            echo "openphone-key.json fallback present: " . (is_file(storage_path('app/openphone-key.json')) ? 'yes' : 'no') . "\n";
+            PHP
+            echo "=== done ==="
