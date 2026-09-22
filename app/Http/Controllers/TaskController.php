@@ -503,9 +503,15 @@ class TaskController extends Controller
      * failed/unconfigured send never blocks the task from being created.
      * Only fires on create, not on later edits that add an assignee.
      */
+    /**
+     * Queue a text for every assignee rather than sending immediately —
+     * Console\Commands\SendPendingAssignmentTexts fires each one a few
+     * minutes before that assignee's next Sling shift starts (falling back
+     * to a plain send if no shift shows up in time). See that command for
+     * the actual send logic/timing.
+     */
     private function textAssignees(WeeklyTask $task): void
     {
-        $sms = app(\App\Services\OpenPhoneService::class);
         $taskUrl = action('TaskController@edit', $task->id);
         $when = $task->task_type === 'daily'
             ? $task->start_date->format('M j')
@@ -513,14 +519,11 @@ class TaskController extends Controller
         $message = "New task assigned to you: \"{$task->title}\" (due {$when}). {$taskUrl}";
 
         foreach ($task->assignees as $assignee) {
-            $phone = trim((string) ($assignee->contact_number ?? ''));
-            if ($phone === '') {
-                continue;
-            }
-            $result = $sms->send($phone, $message);
-            if (!$result['success']) {
-                \Log::info('textAssignees: SMS not sent to user ' . $assignee->id . ' for task ' . $task->id . ': ' . $result['msg']);
-            }
+            \App\PendingAssignmentText::create([
+                'weekly_task_id' => $task->id,
+                'user_id' => $assignee->id,
+                'message' => $message,
+            ]);
         }
     }
 

@@ -231,6 +231,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(60);
 
+        // Task/project assignment texts — queued at creation, sent here a
+        // few minutes before the assignee's next Sling shift starts (see
+        // SendPendingAssignmentTexts). No live API calls, just reads
+        // sling_shifts, so every-5-minutes is cheap.
+        $schedule->command('notify:pending-assignment-texts')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(5);
+
         // Customer wants — scan recently-added products against open wants
         // and notify the customer when we find a match. Runs at 4 PM PST so
         // the team's morning pricing push gets a same-day check-in, and the

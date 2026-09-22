@@ -276,21 +276,18 @@ class ProjectController extends Controller
     }
 
     /** See TaskController::textAssignees for the same convention — only fires on create. */
+    /** See TaskController::textAssignees for the queue-not-send-immediately convention. */
     private function textAssignees(Project $project): void
     {
-        $sms = app(\App\Services\OpenPhoneService::class);
         $projectUrl = action('ProjectController@edit', $project->id);
         $message = "New project assigned to you: \"{$project->title}\". {$projectUrl}";
 
         foreach ($project->assignees as $assignee) {
-            $phone = trim((string) ($assignee->contact_number ?? ''));
-            if ($phone === '') {
-                continue;
-            }
-            $result = $sms->send($phone, $message);
-            if (!$result['success']) {
-                \Log::info('textAssignees: SMS not sent to user ' . $assignee->id . ' for project ' . $project->id . ': ' . $result['msg']);
-            }
+            \App\PendingAssignmentText::create([
+                'project_id' => $project->id,
+                'user_id' => $assignee->id,
+                'message' => $message,
+            ]);
         }
     }
 }

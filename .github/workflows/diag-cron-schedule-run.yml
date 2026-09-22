@@ -1,0 +1,64 @@
+# READ-ONLY diagnostic: confirm `php artisan schedule:run` is actually
+# cron-triggered on production. The new SendPendingAssignmentTexts feature
+# (and the existing sling:sync-shifts, communications:import-email, etc.)
+# are all useless if nothing on the box ever calls schedule:run.
+name: Diag cron schedule:run
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check crontab + recent schedule:run evidence (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            echo "=== crontab -l (deploy user) ==="
+            crontab -l 2>&1
+            echo "=== /etc/cron.d (if readable) ==="
+            ls -la /etc/cron.d 2>&1
+            grep -rl "schedule:run" /etc/cron.d 2>/dev/null | xargs -r cat
+            echo "=== laravel.log mentions of scheduled commands in the last day ==="
+            cd /www/playlist.nivessa.com/app
+            find storage/framework -maxdepth 1 2>/dev/null
+            grep -c "sling:sync-shifts\|communications:import-email" storage/logs/laravel.log 2>/dev/null || echo "no matches / no log"
+            echo "=== does sling_shifts have anything synced in the last 24h? (proves sling:sync-shifts actually ran) ==="
+            php artisan tinker --no-ansi <<'PHP'
+            echo "sling_shifts rows synced in last 24h: " . \App\SlingShift::where('last_synced_at', '>=', now()->subDay())->count() . "\n";
+            echo "sling_shifts most recent last_synced_at: " . (\App\SlingShift::max('last_synced_at') ?? 'none') . "\n";
+            PHP
+            echo "=== done ==="
