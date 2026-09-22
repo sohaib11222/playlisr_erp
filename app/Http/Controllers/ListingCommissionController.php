@@ -29,6 +29,10 @@ class ListingCommissionController extends Controller
     const DEFAULT_FROM = '2026-05-15';
     const SALES_BONUS_FROM = '2026-06-15'; // sales-goal bonus go-live (matches leaderboard)
     const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
+    const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
+    const PARTY_DEFAULT_PERCENT = 4.0; // matches the % field's own "e.g. 4" placeholder — Sarah's usual rate when nothing else is picked
+    const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
+    const PARTY_DEFAULT_TO = '20:00';   // 8 PM
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
     // owed numbers match the leaderboard exactly.
@@ -683,11 +687,50 @@ class ListingCommissionController extends Controller
             foreach ($locations as $lid => $lname) {
                 if ($locKey !== '' && strpos(strtolower($lname), $locKey) !== false) { $locId = $lid; break; }
             }
+            // Auto-estimate the split so this list is useful without another
+            // click: the event's own time (falling back to the usual 6-8 PM
+            // slot) against Sarah's usual 4% rate, split among whoever's Sling
+            // floor shift actually overlapped that window at that store — the
+            // same "who was there" signal the picker below highlights in
+            // green. Clearly labeled as an estimate; nothing pays until she
+            // opens Calculate and confirms staff + amounts herself.
+            $estimate = null;
+            if ($locId) {
+                $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
+                $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
+                $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
+                $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
+                if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
+
+                $sales = $this->windowSales($businessId, $locId, $sC, $eC);
+                $shiftsHere = $this->partyDayShiftTimes($businessId, $edate, $locId, $locations[$locId], $sC->format('H:i'), $eC->format('H:i'));
+                $overlapUids = array_keys(array_filter($shiftsHere, function ($s) { return $s['overlaps']; }));
+
+                $pool = round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
+                $n = max(1, count($overlapUids));
+                $each = round($pool / $n, 2);
+                $estStaff = [];
+                foreach ($overlapUids as $uid) {
+                    $u = DB::table('users')->where('id', $uid)->first(['first_name', 'last_name', 'surname']);
+                    $estStaff[] = ['uid' => $uid, 'name' => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $uid))) : ('User #' . $uid), 'amount' => $each];
+                }
+                $estimate = [
+                    'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
+                    'percent' => self::PARTY_DEFAULT_PERCENT,
+                    'sales' => $sales,
+                    'pool' => $pool,
+                    'staff' => $estStaff,
+                    'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
+                    'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
+                ];
+            }
+
             $unpaidParties[] = [
                 'date' => $edate,
                 'name' => (string) ($it['name'] ?: 'Listening Party'),
                 'location_id' => $locId,
                 'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
+                'estimate' => $estimate,
             ];
         }
         usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
@@ -722,16 +765,8 @@ class ListingCommissionController extends Controller
                 // in-store POS sales is stored in store-local (LA) time, so a
                 // local-clock window matches directly. Same revenue basis as the
                 // leaderboard/commissions (pre-tax, net of returns, no Whatnot).
-                $net_pretax = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
-                $sales = (float) DB::table('transactions as t')
-                    ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
-                    ->where('t.business_id', $businessId)
-                    ->where('t.location_id', $locationId)
-                    ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
-                    ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
-                    ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
-                    ->sum(DB::raw($net_pretax));
-                $sales = round((float) $sales, 2);
+                $net_pretax = self::PARTY_NET_PRETAX;
+                $sales = $this->windowSales($businessId, $locationId, $startC, $endC);
 
                 // The actual sales that make up that total — one row per receipt,
                 // so the number is fully auditable (time, cashier, amount).
@@ -802,6 +837,21 @@ class ListingCommissionController extends Controller
             'error'       => $error,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
+    }
+
+    // Net pre-tax sales rung at a store during a window. Shared by the manual
+    // Calculate flow and the unpaid-parties auto-estimate below so they agree.
+    private function windowSales($businessId, $locationId, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
+    {
+        $sales = (float) DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $businessId)
+            ->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
+            ->sum(DB::raw(self::PARTY_NET_PRETAX));
+        return round((float) $sales, 2);
     }
 
     // Real Sling shift times for everyone scheduled at this store on this date —

@@ -82,16 +82,39 @@
     @if (count($unpaid_parties) > 0)
         <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
             <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
-            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Nobody's calculated a split for these. Click one to jump straight to it below.</p>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Auto-estimated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever had a floor shift then. Nothing is paid until you confirm on Calculate.</p>
             <table class="pb-table">
-                <thead><tr><th>Date</th><th>Party</th><th>Store</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Party</th><th>Store</th><th>Estimated split</th><th></th></tr></thead>
                 <tbody>
                     @foreach ($unpaid_parties as $u)
+                        @php
+                            $est = $u['estimate'];
+                            $qs = ['date' => $u['date'], 'event_name' => $u['name']];
+                            if ($u['location_id']) { $qs['location_id'] = $u['location_id']; }
+                            if ($est) {
+                                $qs['percent'] = rtrim(rtrim(number_format($est['percent'], 2), '0'), '.');
+                                $qs['from_h'] = $est['from_h']; $qs['from_m'] = $est['from_m']; $qs['from_ap'] = $est['from_ap'];
+                                $qs['to_h'] = $est['to_h']; $qs['to_m'] = $est['to_m']; $qs['to_ap'] = $est['to_ap'];
+                                $qs['staff'] = array_column($est['staff'], 'uid');
+                            }
+                        @endphp
                         <tr>
-                            <td>{{ \Carbon::parse($u['date'])->format('M j, Y') }}</td>
-                            <td>{{ $u['name'] }}</td>
-                            <td>{{ $u['location_name'] ?: '?' }}</td>
-                            <td><a class="pb-btn" style="padding:4px 12px; font-size:12px;" href="{{ url('/admin/party-bonus') }}?date={{ urlencode($u['date']) }}&event_name={{ urlencode($u['name']) }}{{ $u['location_id'] ? '&location_id=' . $u['location_id'] : '' }}">Calculate</a></td>
+                            <td style="vertical-align:top;">{{ \Carbon::parse($u['date'])->format('M j, Y') }}</td>
+                            <td style="vertical-align:top;">{{ $u['name'] }}</td>
+                            <td style="vertical-align:top;">{{ $u['location_name'] ?: '?' }}</td>
+                            <td>
+                                @if (!$est)
+                                    <span class="text-muted">Pick a store to estimate</span>
+                                @elseif (count($est['staff']) === 0)
+                                    <span class="text-muted">${{ number_format($est['sales'], 2) }} rung {{ $est['window'] }}, but nobody's Sling shift overlaps it - nothing to estimate</span>
+                                @else
+                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales &middot; ${{ number_format($est['pool'], 2) }} pool</div>
+                                    @foreach ($est['staff'] as $s)
+                                        {{ $s['name'] }}: ${{ number_format($s['amount'], 2) }}@if(!$loop->last), @endif
+                                    @endforeach
+                                @endif
+                            </td>
+                            <td style="vertical-align:top;"><a class="pb-btn" style="padding:4px 12px; font-size:12px;" href="{{ url('/admin/party-bonus') }}?{{ http_build_query($qs) }}">Calculate</a></td>
                         </tr>
                     @endforeach
                 </tbody>
