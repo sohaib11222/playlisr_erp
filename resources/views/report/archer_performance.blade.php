@@ -24,15 +24,16 @@
     <h1>Archer x Nivessa Performance</h1>
 </section>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
 <section class="content">
 
     @if(empty($data))
         <div class="alert alert-warning">No snapshot data found.</div>
     @else
-        <div style="background:#fff9e6; border:1px solid #f0dfa0; border-radius:6px; padding:10px 16px; margin-bottom:20px; font-size:13px;">
-            Everything from here down to "Website orders" is a fixed, all-time snapshot &mdash; there is no date filter
-            up here on purpose. The filter is further down, right above "Website orders," and only that section (plus
-            ROI, which is calculated from it) moves when you change it.
+        <div style="background:#f5f5f5; border-radius:6px; padding:8px 14px; margin-bottom:20px; font-size:12px; color:#888;">
+            Instagram / TikTok / Facebook below are a manual snapshot, not a live connection &mdash; they don't move with
+            the date filter. Everything from "Website orders" down is live and filters with the dates further down.
         </div>
 
         {{-- ═══════════ INSTAGRAM ═══════════ --}}
@@ -72,25 +73,11 @@
 
         @if(!empty($data['tiktok']['weekly_followers']))
             <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week</div>
-                <table class="table" style="margin-bottom:0;">
-                    <thead>
-                        <tr><th>Week of</th><th class="text-right">Followers</th><th class="text-right">Change</th></tr>
-                    </thead>
-                    <tbody>
-                        @php $prevWeek = null; @endphp
-                        @foreach($data['tiktok']['weekly_followers'] as $week)
-                            <tr>
-                                <td>{{ archerFmtDate($week['date']) }}</td>
-                                <td class="text-right">{{ number_format($week['followers']) }}</td>
-                                <td class="text-right" style="color:#2ecc71;">
-                                    {{ $prevWeek !== null ? '+' . number_format($week['followers'] - $prevWeek) : '—' }}
-                                </td>
-                            </tr>
-                            @php $prevWeek = $week['followers']; @endphp
-                        @endforeach
-                    </tbody>
-                </table>
+                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week (real, exact)</div>
+                <canvas id="archerTiktokChart" height="70"
+                    data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_followers'])) }}"
+                    data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_followers'])) }}"
+                ></canvas>
             </div>
         @endif
 
@@ -121,237 +108,49 @@
             </div>
         </div>
         <p class="text-muted" style="margin-top:10px; font-size:12px;">
-            Instagram, TikTok and Facebook followers pulled by hand from Meta Business Suite / TikTok Studio on
-            {{ archerFmtDate($data['last_updated']) }}. Facebook's start figure is back-calculated (Meta doesn't expose
-            a followers-on-a-date lookup) from {{ archerFmtDate($data['facebook']['followers_start_asof']) }}, the
-            closest available date &mdash; TikTok's start figure is exact, read directly off its followers chart for
-            {{ archerFmtDate($data['contract']['start_date']) }}. TikTok is the only platform with a real week-over-week
-            table above &mdash; Instagram and Facebook's own dashboards only expose a start/now snapshot here, not a
-            reliable weekly history, so no week-by-week numbers are shown for them rather than estimating.
+            Pulled by hand from Meta Business Suite / TikTok Studio on {{ archerFmtDate($data['last_updated']) }}.
+            Facebook's start figure is back-calculated from {{ archerFmtDate($data['facebook']['followers_start_asof']) }}
+            (closest available date); TikTok's is exact, read off its chart.
         </p>
 
-        {{-- ═══════════ WEBSITE ORDERS ═══════════ --}}
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:32px; margin-bottom:16px;">
-            <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Filter the section below (website orders + ROI only)</div>
-            <form method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+        <hr style="margin:32px 0;">
+
+        {{-- ═══════════ LIVE, FILTERABLE SECTION ═══════════ --}}
+        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px;">Filter website orders + ROI + discount code usage below</div>
+                <div id="archerFilterStatus" style="font-size:12px; color:#2ecc71;"></div>
+            </div>
+            <form id="archerFilterForm" method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-top:8px;">
                 <div>
                     <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">From</label>
-                    <input type="date" name="start_date" class="form-control" value="{{ $start_date }}" onchange="this.form.submit()">
+                    <input type="date" name="start_date" id="archerStartDate" class="form-control" value="{{ $start_date }}">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#999; margin-bottom:4px;">To</label>
-                    <input type="date" name="end_date" class="form-control" value="{{ $end_date }}" onchange="this.form.submit()">
+                    <input type="date" name="end_date" id="archerEndDate" class="form-control" value="{{ $end_date }}">
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
-                <a href="{{ action('ReportController@archerPerformance') }}" class="btn btn-default">Reset to campaign start &rarr; today</a>
+                <a href="{{ action('ReportController@archerPerformance') }}" id="archerResetLink" class="btn btn-default">Reset to campaign start &rarr; today</a>
             </form>
         </div>
 
-        <h4>All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
-        <p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Discount code usage" below for what's actually attributable to him.</p>
-
-        @if($order_stats_error)
-            <div class="alert alert-warning">Couldn't reach the website API: {{ $order_stats_error }}</div>
-        @elseif($order_stats)
-            <div class="row">
-                <div class="col-sm-3">{!! archerCard('Orders placed', number_format($order_stats['orders_placed'])) !!}</div>
-                <div class="col-sm-3">{!! archerCard('Fulfilled', number_format($order_stats['orders_fulfilled']), $order_stats['orders_in_progress'] . ' still in progress') !!}</div>
-                <div class="col-sm-3">
-                    @php
-                        $cancel_pct = $order_stats['orders_placed'] > 0
-                            ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
-                            : 0;
-                    @endphp
-                    {!! archerCard(
-                        'Cancelled',
-                        number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)',
-                        number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' other inventory issue',
-                        '#d9534f'
-                    ) !!}
-                </div>
-                <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
-            </div>
-
-            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-top:16px;">
-                <table class="table" style="margin-bottom:0;">
-                    <tr>
-                        <th style="width:260px;">Potential revenue (if nothing cancelled)</th>
-                        <td>${{ number_format($order_stats['gross_revenue'], 2) }}</td>
-                    </tr>
-                    <tr>
-                        <th>Lost &mdash; sold on Discogs (unrelated to Archer)</th>
-                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</td>
-                    </tr>
-                    <tr>
-                        <th>Lost &mdash; other inventory issue</th>
-                        <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</td>
-                    </tr>
-                    <tr style="border-top:2px solid #eee;">
-                        <th>Actual revenue realized</th>
-                        <td><strong>${{ number_format($order_stats['net_revenue'], 2) }}</strong></td>
-                    </tr>
-                </table>
-            </div>
-
-            @if(!empty($order_stats['orders']))
-                @php
-                    $cancelledOrders = array_values(array_filter($order_stats['orders'], fn($o) => $o['status'] === 'cancelled'));
-                @endphp
-
-                {{-- Exactly what got refunded, with a real reason per order --}}
-                <h5 style="margin-top:24px;">Exactly what got refunded ({{ count($cancelledOrders) }} orders)</h5>
-                @if(count($cancelledOrders) > 0)
-                    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:16px; max-height:400px; overflow-y:auto;">
-                        <table class="table table-bordered" style="margin-bottom:0;">
-                            <thead>
-                                <tr><th>Order #</th><th>Date</th><th>Reason</th><th class="text-right">Amount</th></tr>
-                            </thead>
-                            <tbody>
-                                @foreach($cancelledOrders as $o)
-                                    <tr>
-                                        <td>{{ $o['order_number'] ?? '—' }}</td>
-                                        <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
-                                        <td>
-                                            @if($o['cancel_reason'] === 'sold_on_discogs')
-                                                Sold on Discogs (unrelated)
-                                            @elseif($o['cancel_reason'])
-                                                {{ ucfirst(str_replace('_', ' ', $o['cancel_reason'])) }}
-                                            @else
-                                                No reason logged
-                                            @endif
-                                            @if($o['cancel_reason_note'])
-                                                <div class="text-muted" style="font-size:12px;">{{ $o['cancel_reason_note'] }}</div>
-                                            @endif
-                                        </td>
-                                        <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-
-                {{-- Every order counted in "Orders placed" above, so the totals can be checked row by row --}}
-                <h5 style="margin-top:24px;">
-                    All {{ count($order_stats['orders']) }} orders in this window
-                    <button type="button" class="btn btn-default btn-xs" onclick="var t=document.getElementById('archerAllOrdersTable'); t.style.display = t.style.display === 'none' ? '' : 'none';">Show / hide</button>
-                </h5>
-                <div id="archerAllOrdersTable" style="display:none; background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:24px; max-height:500px; overflow-y:auto;">
-                    <table class="table table-bordered" style="margin-bottom:0;">
-                        <thead>
-                            <tr><th>Order #</th><th>Date</th><th>Status</th><th class="text-right">Amount</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach($order_stats['orders'] as $o)
-                                <tr @if($o['status'] === 'cancelled') style="color:#d9534f;" @endif>
-                                    <td>{{ $o['order_number'] ?? '—' }}</td>
-                                    <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
-                                    <td>{{ ucfirst(str_replace('_', ' ', $o['status'])) }}</td>
-                                    <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        @endif
-
-        {{-- ═══════════ ROI ═══════════ --}}
-        <h4>ROI</h4>
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; margin-bottom:24px;">
-            @if($order_stats)
-                @php $ratio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
-                <div style="font-size:20px; text-align:center; margin-bottom:8px;">
-                    Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong>
-                    &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
-                </div>
-                <div style="font-size:36px; font-weight:700; text-align:center; color:{{ $ratio >= 1 ? '#2ecc71' : '#d9534f' }};">
-                    ${{ number_format($ratio, 2) }} back per $1 spent
-                </div>
-            @endif
-            <p class="text-muted" style="margin-top:16px; margin-bottom:0; font-size:13px;">
-                Website revenue only, net of cancellations &mdash; a floor, not the whole picture.
-            </p>
-        </div>
-
-        {{-- ═══════════ COUPON CODE — REAL ATTRIBUTED CONVERSIONS ═══════════ --}}
-        <h4>Discount code usage, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
-        <p class="text-muted" style="margin-top:-8px; font-size:12px;">Same date range as "Website orders" above &mdash; moves with the filter.</p>
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
-            @if($archer_coupon)
-                <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format(count($coupon_zipcodes)) }} uses in this range &middot; ${{ number_format($coupon_zipcodes_total, 2) }} total</div>
-                <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
-                    Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time, real attributed conversions.
-                </div>
-
-                @php
-                    $archerCancelledCount = count(array_filter($coupon_zipcodes, fn($r) => ($r['order_status'] ?? null) === 'cancelled'));
-                    $archerCancelledTotal = array_sum(array_map(fn($r) => ($r['order_status'] ?? null) === 'cancelled' ? (float) ($r['total'] ?? 0) : 0, $coupon_zipcodes));
-                @endphp
-                <div style="background:{{ $archerCancelledCount > 0 ? '#fdf2f2' : '#f2fdf5' }}; border-radius:4px; padding:10px 14px; margin-bottom:16px; font-size:13px;">
-                    Of these {{ count($coupon_zipcodes) }} Archer-code orders,
-                    <strong>{{ $archerCancelledCount }} {{ $archerCancelledCount === 1 ? 'was' : 'were' }} refunded/cancelled</strong>
-                    @if($archerCancelledCount > 0)
-                        (${{ number_format($archerCancelledTotal, 2) }}).
-                    @else
-                        &mdash; none of his own attributed orders were refunded.
-                    @endif
-                    This is separate from the site-wide refund numbers below, which cover all website orders, not just his.
-                </div>
-
-                @if($order_stats)
-                    <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
-                        <div>Site-wide refunded (other inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
-                        <div>Site-wide refunded (sold on Discogs, unrelated): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</strong></div>
-                        <div>Site-wide net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
-                    </div>
-                @endif
-
-                @if(!is_null($coupon_unique_customers))
-                    <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
-                        <div>New customers: <strong style="color:#2ecc71;">{{ number_format($coupon_new_customers) }}</strong></div>
-                        <div>Repeat customers (already shopped Nivessa before): <strong>{{ number_format($coupon_repeat_customers) }}</strong></div>
-                    </div>
-                @endif
-
-                @if($coupon_zipcodes_error)
-                    <div class="alert alert-warning" style="margin-bottom:0;">Couldn't load zip codes: {{ $coupon_zipcodes_error }}</div>
-                @elseif(count($coupon_zipcodes) > 0)
-                    <table class="table table-bordered" style="margin-bottom:0;">
-                        <thead>
-                            <tr><th>Zip code</th><th>City</th><th>State</th><th>Date</th><th>Customer</th><th class="text-right">Order total</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach($coupon_zipcodes as $row)
-                                <tr>
-                                    <td>{{ $row['zip_code'] ?? '—' }}</td>
-                                    <td>{{ $row['city'] ?? '—' }}</td>
-                                    <td>{{ $row['state'] ?? '—' }}</td>
-                                    <td>{{ $row['order_date'] ? archerFmtDate($row['order_date']) : '—' }}</td>
-                                    <td>
-                                        @if(isset($row['is_repeat_customer']))
-                                            {{ $row['is_repeat_customer'] ? 'Repeat' : 'New' }}
-                                            @if(($row['code_uses_by_this_customer'] ?? 1) > 1)
-                                                <span class="text-muted">&middot; used code {{ $row['code_uses_by_this_customer'] }}x</span>
-                                            @endif
-                                        @else
-                                            &mdash;
-                                        @endif
-                                    </td>
-                                    <td class="text-right">{{ $row['total'] ? '$' . number_format($row['total'], 2) : '—' }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                @else
-                    <p class="text-muted" style="margin-bottom:0;">No orders used this code in this date range ({{ number_format($coupon_uses_all_time) }} all-time).</p>
-                @endif
-            @else
-                <div class="alert alert-warning" style="margin-bottom:0;">
-                    No coupon code with "archer" in it exists yet. Create one at
-                    <a href="{{ route('coupons.index') }}">Coupons</a> to start tracking this.
-                </div>
-            @endif
+        <div id="archer-filtered-section" style="position:relative;">
+            @include('report.archer_performance_filtered', [
+                'start_date' => $start_date,
+                'end_date' => $end_date,
+                'data' => $data,
+                'order_stats' => $order_stats,
+                'order_stats_error' => $order_stats_error,
+                'archer_coupon' => $archer_coupon,
+                'coupon_zipcodes' => $coupon_zipcodes,
+                'coupon_zipcodes_total' => $coupon_zipcodes_total,
+                'coupon_new_customers' => $coupon_new_customers,
+                'coupon_repeat_customers' => $coupon_repeat_customers,
+                'coupon_unique_customers' => $coupon_unique_customers,
+                'coupon_uses_all_time' => $coupon_uses_all_time,
+                'coupon_zipcodes_error' => $coupon_zipcodes_error,
+            ])
         </div>
 
         {{-- ═══════════ CONTRACT ═══════════ --}}
@@ -365,4 +164,103 @@
     @endif
 
 </section>
+
+<script>
+(function() {
+    // TikTok weekly-followers chart (static content, drawn once).
+    var ttCanvas = document.getElementById('archerTiktokChart');
+    if (ttCanvas && typeof Chart !== 'undefined') {
+        new Chart(ttCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: JSON.parse(ttCanvas.dataset.labels),
+                datasets: [{
+                    label: 'TikTok followers',
+                    data: JSON.parse(ttCanvas.dataset.followers),
+                    borderColor: '#2ecc71',
+                    backgroundColor: 'rgba(46,204,113,0.1)',
+                    fill: true,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Live AJAX filtering: change either date, or hit Apply, and the
+    // Website orders / ROI / Discount code usage section refreshes in
+    // place — no full page reload. URL still updates (pushState) so the
+    // filtered view stays linkable/bookmarkable.
+    var form = document.getElementById('archerFilterForm');
+    var section = document.getElementById('archer-filtered-section');
+    var status = document.getElementById('archerFilterStatus');
+    var startInput = document.getElementById('archerStartDate');
+    var endInput = document.getElementById('archerEndDate');
+    var partialUrl = '{{ route("reports.archer-performance.filtered") }}';
+    var fullUrl = '{{ action("ReportController@archerPerformance") }}';
+
+    function loadFiltered(start, end, pushUrl) {
+        status.textContent = 'Loading...';
+        status.style.color = '#999';
+        section.style.opacity = '0.5';
+        fetch(partialUrl + '?start_date=' + encodeURIComponent(start) + '&end_date=' + encodeURIComponent(end), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function(r) { if (!r.ok) throw new Error('bad response'); return r.text(); })
+            .then(function(html) {
+                section.innerHTML = html;
+                // <script> tags set via innerHTML don't execute — re-create
+                // them so the orders-chart drawing code actually re-runs
+                // after each AJAX refresh, not just on first page load.
+                section.querySelectorAll('script').forEach(function(oldScript) {
+                    var newScript = document.createElement('script');
+                    newScript.textContent = oldScript.textContent;
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+                section.style.opacity = '1';
+                var now = new Date();
+                status.style.color = '#2ecc71';
+                status.textContent = 'Updated ' + now.toLocaleTimeString();
+                if (pushUrl) {
+                    var url = fullUrl + '?start_date=' + encodeURIComponent(start) + '&end_date=' + encodeURIComponent(end);
+                    window.history.pushState({start: start, end: end}, '', url);
+                }
+            })
+            .catch(function() {
+                section.style.opacity = '1';
+                status.style.color = '#d9534f';
+                status.textContent = 'Couldn\'t refresh — try Apply again.';
+            });
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        loadFiltered(startInput.value, endInput.value, true);
+    });
+    startInput.addEventListener('change', function() { loadFiltered(startInput.value, endInput.value, true); });
+    endInput.addEventListener('change', function() { loadFiltered(startInput.value, endInput.value, true); });
+
+    document.getElementById('archerResetLink').addEventListener('click', function(e) {
+        e.preventDefault();
+        var resetStart = '2026-08-18';
+        var resetEnd = new Date().toISOString().slice(0, 10);
+        startInput.value = resetStart;
+        endInput.value = resetEnd;
+        loadFiltered(resetStart, resetEnd, true);
+    });
+
+    window.addEventListener('popstate', function(e) {
+        if (e.state && e.state.start && e.state.end) {
+            startInput.value = e.state.start;
+            endInput.value = e.state.end;
+            loadFiltered(e.state.start, e.state.end, false);
+        }
+    });
+})();
+</script>
 @endsection

@@ -8285,10 +8285,44 @@ class ReportController extends Controller
     {
         $this->ensureAdminOnlyReportAccess();
 
-        // Default window: his campaign start (8/18) through today.
         $start_date = $request->input('start_date') ?: '2026-08-18';
         $end_date = $request->input('end_date') ?: \Carbon::now()->format('Y-m-d');
+        $business_id = $request->session()->get('user.business_id');
 
+        return view('report.archer_performance', array_merge(
+            ['start_date' => $start_date, 'end_date' => $end_date],
+            $this->archerPerformanceContext($start_date, $end_date, $business_id)
+        ));
+    }
+
+    /**
+     * AJAX partial: same date-filtered data as archerPerformance() above,
+     * rendered as just the "Website orders / ROI / Discount code usage"
+     * fragment so the date inputs can refresh it in place instead of doing
+     * a full page reload. Same admin gate, same underlying computation —
+     * this is not a separate, weaker data path.
+     */
+    public function archerPerformanceFiltered(Request $request)
+    {
+        $this->ensureAdminOnlyReportAccess();
+
+        $start_date = $request->input('start_date') ?: '2026-08-18';
+        $end_date = $request->input('end_date') ?: \Carbon::now()->format('Y-m-d');
+        $business_id = $request->session()->get('user.business_id');
+
+        return view('report.archer_performance_filtered', array_merge(
+            ['start_date' => $start_date, 'end_date' => $end_date],
+            $this->archerPerformanceContext($start_date, $end_date, $business_id)
+        ));
+    }
+
+    /**
+     * Shared data build for both the full page and the AJAX partial above
+     * — one source of truth, so the two entry points can't silently drift
+     * out of sync with each other.
+     */
+    private function archerPerformanceContext(string $start_date, string $end_date, $business_id): array
+    {
         $base = rtrim((string) config('nivessa.website_api_url', 'https://nivessa.com'), '/');
         $key = trim((string) config('nivessa.website_api_key', ''));
 
@@ -8311,11 +8345,32 @@ class ReportController extends Controller
             }
         }
 
+        // Bucket the raw order rows by day (placed vs. cancelled) for the
+        // chart — computed here from the same rows already fetched above,
+        // not a second API call.
+        if ($order_stats && !empty($order_stats['orders'])) {
+            $byDay = [];
+            foreach ($order_stats['orders'] as $o) {
+                if (empty($o['date'])) {
+                    continue;
+                }
+                $d = \Carbon::parse($o['date'])->format('Y-m-d');
+                if (!isset($byDay[$d])) {
+                    $byDay[$d] = ['date' => $d, 'placed' => 0, 'cancelled' => 0];
+                }
+                $byDay[$d]['placed']++;
+                if (($o['status'] ?? null) === 'cancelled') {
+                    $byDay[$d]['cancelled']++;
+                }
+            }
+            ksort($byDay);
+            $order_stats['daily'] = array_values($byDay);
+        }
+
         // Coupon usage — the ERP owns coupon codes/redemption counts (the
         // website keeps no copy). This is an all-time counter on the coupon
         // row, not scoped to the date range above — usage_limit/times_used
         // don't carry a per-redemption timestamp in this schema.
-        $business_id = $request->session()->get('user.business_id');
         $archer_coupon = \App\Coupon::where('business_id', $business_id)
             ->where('code', 'LIKE', '%archer%')
             ->first();
@@ -8411,10 +8466,8 @@ class ReportController extends Controller
             ],
         ];
 
-        return view('report.archer_performance', [
+        return [
             'data' => $data,
-            'start_date' => $start_date,
-            'end_date' => $end_date,
             'order_stats' => $order_stats,
             'order_stats_error' => $order_stats_error,
             'archer_coupon' => $archer_coupon,
@@ -8425,7 +8478,7 @@ class ReportController extends Controller
             'coupon_unique_customers' => $coupon_unique_customers,
             'coupon_uses_all_time' => $coupon_uses_all_time,
             'coupon_zipcodes_error' => $coupon_zipcodes_error,
-        ]);
+        ];
     }
 
     /**
