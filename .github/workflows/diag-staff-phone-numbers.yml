@@ -48,21 +48,10 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
             php artisan tinker --no-ansi <<'PHP'
-            $staff = \App\User::where('is_cmmsn_agnt', 0)
-                ->where('status', 'active')
-                ->where('allow_login', 1)
-                ->get(['id', 'first_name', 'last_name', 'contact_number']);
-
-            $withPhone = $staff->filter(fn($u) => trim((string) $u->contact_number) !== '');
-            $withoutPhone = $staff->filter(fn($u) => trim((string) $u->contact_number) === '');
-
-            echo "Total active, login-enabled staff: " . $staff->count() . "\n";
-            echo "With a phone number on file: " . $withPhone->count() . "\n";
-            echo "WITHOUT a phone number on file: " . $withoutPhone->count() . "\n";
-            echo "\n--- missing a phone number ---\n";
-            foreach ($withoutPhone as $u) {
-                echo "- {$u->first_name} {$u->last_name} (id {$u->id})\n";
-            }
+            echo "Total active, login-enabled staff: " . \App\User::where('is_cmmsn_agnt', 0)->where('status', 'active')->where('allow_login', 1)->count() . "\n";
+            echo "With a phone number on file: " . \App\User::where('is_cmmsn_agnt', 0)->where('status', 'active')->where('allow_login', 1)->whereNotNull('contact_number')->where('contact_number', '!=', '')->count() . "\n";
+            echo "WITHOUT a phone number on file: " . \App\User::where('is_cmmsn_agnt', 0)->where('status', 'active')->where('allow_login', 1)->where(function($q){ $q->whereNull('contact_number')->orWhere('contact_number', ''); })->count() . "\n";
+            echo "--- missing a phone number ---\n" . \App\User::where('is_cmmsn_agnt', 0)->where('status', 'active')->where('allow_login', 1)->where(function($q){ $q->whereNull('contact_number')->orWhere('contact_number', ''); })->get()->map(function($u){ return "- {$u->first_name} {$u->last_name} (id {$u->id})"; })->implode("\n") . "\n";
             PHP
             echo "=== also check OpenPhone config presence (not the value) ==="
             php artisan tinker --no-ansi <<'PHP'
