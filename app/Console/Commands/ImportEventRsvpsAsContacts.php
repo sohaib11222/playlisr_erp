@@ -100,6 +100,7 @@ class ImportEventRsvpsAsContacts extends Command
             'skip_dup' => 0, 'skip_no_data' => 0, 'linked' => 0, 'created' => 0, 'errors' => 0,
         ];
         $sample = [];
+        $allRows = [];
         $contactUtil = new ContactUtil();
 
         foreach ($events as $event) {
@@ -133,6 +134,9 @@ class ImportEventRsvpsAsContacts extends Command
                     if ($result['status'] !== 'skip_dup' && count($sample) < 12) {
                         $sample[] = $result['line'];
                     }
+                    if (!empty($result['row'])) {
+                        $allRows[] = $result['row'];
+                    }
                 }
             }
         }
@@ -150,6 +154,10 @@ class ImportEventRsvpsAsContacts extends Command
                 $this->line('  ' . $line);
             }
         }
+        // Machine-readable full row list, one line, for the admin UI's preview
+        // table (so Sarah can eyeball all ~3k names/emails for test data or
+        // dupes before confirming a commit). Not meant for a human to read raw.
+        $this->line('RSVP_IMPORT_ROWS_JSON:' . json_encode($allRows));
         return 0;
     }
 
@@ -190,8 +198,13 @@ class ImportEventRsvpsAsContacts extends Command
         $email = strtolower(trim($person['email']));
         $phone = $this->parsePhone($person['phone']);
 
+        $rowBase = [
+            'name' => $fullName, 'email' => $email, 'phone' => $phone ?: '',
+            'event' => $eventMeta['eventName'],
+        ];
+
         if ($fullName === '' && $email === '') {
-            return ['status' => 'skip_no_data', 'line' => '(blank RSVP row, skipped)'];
+            return ['status' => 'skip_no_data', 'line' => '(blank RSVP row, skipped)', 'row' => $rowBase + ['status' => 'skip_no_data']];
         }
 
         $externalId = $eventMeta['eventId'] . ':' . $person['externalKey'];
@@ -202,7 +215,7 @@ class ImportEventRsvpsAsContacts extends Command
             ->where('import_external_id', $externalId)
             ->exists();
         if ($already) {
-            return ['status' => 'skip_dup', 'line' => "{$fullName} (already imported)"];
+            return ['status' => 'skip_dup', 'line' => "{$fullName} (already imported)", 'row' => $rowBase + ['status' => 'skip_dup']];
         }
 
         $matched = null;
@@ -226,11 +239,15 @@ class ImportEventRsvpsAsContacts extends Command
                 $this->appendRsvpHistory($matched->id, $eventMeta, $person['checkedIn']);
                 DB::table('contacts')->where('id', $matched->id)->update(['updated_at' => now()]);
             }
-            return ['status' => 'linked', 'line' => "{$fullName} -> linked to existing {$matched->contact_id}"];
+            return [
+                'status' => 'linked',
+                'line' => "{$fullName} -> linked to existing {$matched->contact_id}",
+                'row' => $rowBase + ['status' => 'linked', 'matchedContactId' => $matched->contact_id],
+            ];
         }
 
         if (!$commit) {
-            return ['status' => 'created', 'line' => "{$fullName} -> would create new contact"];
+            return ['status' => 'created', 'line' => "{$fullName} -> would create new contact", 'row' => $rowBase + ['status' => 'created']];
         }
 
         try {
@@ -256,10 +273,18 @@ class ImportEventRsvpsAsContacts extends Command
             ];
             $out = $contactUtil->createNewContact($input);
             $contactId = $out['data']->contact_id ?? '?';
-            return ['status' => 'created', 'line' => "{$fullName} -> created {$contactId}"];
+            return [
+                'status' => 'created',
+                'line' => "{$fullName} -> created {$contactId}",
+                'row' => $rowBase + ['status' => 'created', 'contactId' => $contactId],
+            ];
         } catch (\Throwable $e) {
             $this->error("  error on {$fullName}: " . $e->getMessage());
-            return ['status' => 'errors', 'line' => "{$fullName} -> ERROR: " . $e->getMessage()];
+            return [
+                'status' => 'errors',
+                'line' => "{$fullName} -> ERROR: " . $e->getMessage(),
+                'row' => $rowBase + ['status' => 'errors', 'error' => $e->getMessage()],
+            ];
         }
     }
 

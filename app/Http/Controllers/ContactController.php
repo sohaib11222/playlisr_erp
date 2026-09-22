@@ -161,10 +161,22 @@ class ContactController extends Controller
                 }
             }
 
+            // Full per-person row list (name/email/phone/event/status), so the
+            // admin UI can show every row for review before a commit — not just
+            // a 12-row CLI sample.
+            $rows = [];
+            foreach (preg_split('/\r?\n/', $output) as $line) {
+                if (strpos($line, 'RSVP_IMPORT_ROWS_JSON:') === 0) {
+                    $decoded = json_decode(substr($line, strlen('RSVP_IMPORT_ROWS_JSON:')), true);
+                    $rows = is_array($decoded) ? $decoded : [];
+                    break;
+                }
+            }
+
             return response()->json([
                 'success' => $exitCode === 0,
                 'msg' => $summary ?: ($exitCode === 0 ? 'Import complete.' : 'Import failed.'),
-                'output' => $output,
+                'rows' => $rows,
             ]);
         } catch (\Exception $e) {
             return response()->json([

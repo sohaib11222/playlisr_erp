@@ -59,6 +59,7 @@
                    autocomplete="off">
         </div>
         <div id="import_rsvp_contacts_status" style="margin-bottom: 10px;"></div>
+        <div id="import_rsvp_contacts_preview"></div>
     @endif
     @component('components.filters', ['title' => __('report.filters')])
     @if($type == 'customer')
@@ -265,6 +266,11 @@ $(function () {
                         '<i class="fa fa-check"></i> Confirm — write these to Customers</button>';
                 }
                 $('#import_rsvp_contacts_status').html(html);
+                if (response.success && Array.isArray(response.rows) && response.rows.length > 0) {
+                    renderRsvpPreview(response.rows);
+                } else {
+                    $('#import_rsvp_contacts_preview').empty();
+                }
                 if (response.success && commit && typeof contact_table !== 'undefined' && contact_table) {
                     contact_table.ajax.reload(null, false);
                 }
@@ -279,6 +285,70 @@ $(function () {
     }
     $('#import_rsvp_contacts_btn').on('click', function () { runRsvpImport(false); });
     $(document).on('click', '#confirm_rsvp_import_btn', function () { runRsvpImport(true); });
+
+    // Preview table for the RSVP import — every row it found (not just a
+    // sample), so test names / dupes can be spotted before writing. Flags:
+    //   - same email or same normalized name appearing more than once
+    //   - names/emails that look like test data (test, asdf, n/a, example.com...)
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    var TEST_NAME_RE = /\btest\b|^n\/?a$|^(asdf|qwerty|xxx+|sample|dummy|fake|no ?name|placeholder|foo|bar|foobar)$|^.{0,1}$/i;
+    var TEST_EMAIL_RE = /@(example|test|mailinator|fake)\.[a-z]{2,}$|^test@|noreply@/i;
+    function renderRsvpPreview(rows) {
+        var emailCounts = {}, nameCounts = {};
+        rows.forEach(function (r) {
+            var e = (r.email || '').trim().toLowerCase();
+            var n = (r.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            if (e) emailCounts[e] = (emailCounts[e] || 0) + 1;
+            if (n) nameCounts[n] = (nameCounts[n] || 0) + 1;
+        });
+        var dupCount = 0, testCount = 0;
+        var rowsHtml = rows.map(function (r) {
+            var e = (r.email || '').trim().toLowerCase();
+            var n = (r.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            var isDup = (e && emailCounts[e] > 1) || (n && nameCounts[n] > 1);
+            var isTest = TEST_NAME_RE.test((r.name || '').trim()) || (e && TEST_EMAIL_RE.test(e));
+            if (isDup) dupCount++;
+            if (isTest) testCount++;
+            var rowClass = isTest ? 'style="background:#fdecea;"' : (isDup ? 'style="background:#fff8e1;"' : '');
+            var flags = (isTest ? '<span class="label label-danger">test-like</span> ' : '') +
+                        (isDup ? '<span class="label label-warning">dup</span>' : '');
+            return '<tr ' + rowClass + '>' +
+                '<td>' + escapeHtml(r.name) + '</td>' +
+                '<td>' + escapeHtml(r.email) + '</td>' +
+                '<td>' + escapeHtml(r.phone) + '</td>' +
+                '<td>' + escapeHtml(r.event) + '</td>' +
+                '<td>' + escapeHtml(r.status) + '</td>' +
+                '<td>' + flags + '</td>' +
+                '</tr>';
+        }).join('');
+
+        var html = '' +
+            '<div class="cp-card" style="margin-top:6px;">' +
+            '<div style="padding:10px 14px; font-weight:600;">' +
+            'Showing all ' + rows.length + ' rows — ' +
+            '<span style="color:#c0392b;">' + testCount + ' test-like</span>, ' +
+            '<span style="color:#b7791f;">' + dupCount + ' possible duplicates</span>' +
+            '<input type="text" id="rsvp_preview_filter" class="form-control" style="width:260px; float:right;" placeholder="Filter this list...">' +
+            '</div>' +
+            '<div style="max-height:420px; overflow:auto; border-top:1px solid #eee;">' +
+            '<table class="table table-condensed table-striped" style="margin-bottom:0;" id="rsvp_preview_table">' +
+            '<thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Event</th><th>Status</th><th>Flags</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+            '</table></div></div>';
+
+        $('#import_rsvp_contacts_preview').html(html);
+
+        $('#rsvp_preview_filter').on('input', function () {
+            var q = $(this).val().toLowerCase();
+            $('#rsvp_preview_table tbody tr').each(function () {
+                $(this).toggle($(this).text().toLowerCase().indexOf(q) !== -1);
+            });
+        });
+    }
 });
 </script>
 @if(!empty($api_key))
