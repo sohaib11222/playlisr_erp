@@ -600,13 +600,16 @@ class ListingCommissionController extends Controller
             $h24 = $ap === 'PM' ? ($h % 12) + 12 : ($h % 12);
             return sprintf('%02d:%02d', $h24, $m);
         };
-        $submitted = $request->has('date');
-        $fromH  = $submitted ? $request->input('from_h')  : 6;
-        $fromM  = $submitted ? $request->input('from_m', '00') : '00';
-        $fromAp = $submitted ? $request->input('from_ap', 'PM') : 'PM';
-        $toH    = $submitted ? $request->input('to_h')    : 8;
-        $toM    = $submitted ? $request->input('to_m', '00')   : '00';
-        $toAp   = $submitted ? $request->input('to_ap', 'PM')  : 'PM';
+        // Default to the 6-8 PM party slot whenever a time field is missing —
+        // not just on a totally fresh page load — so a link that only sets
+        // date/store/event (like the "unpaid parties" list below) still lands
+        // on a valid window instead of an "enter a valid time" error.
+        $fromH  = $request->input('from_h', 6);
+        $fromM  = $request->input('from_m', '00');
+        $fromAp = $request->input('from_ap', 'PM');
+        $toH    = $request->input('to_h', 8);
+        $toM    = $request->input('to_m', '00');
+        $toAp   = $request->input('to_ap', 'PM');
 
         $date       = trim((string) $request->input('date', ''));
         $fromTime   = $build12($fromH, $fromM, $fromAp);
@@ -659,6 +662,35 @@ class ListingCommissionController extends Controller
             $recentPartyByPerson[$r['name']] = round(($recentPartyByPerson[$r['name']] ?? 0) + $r['amount'], 2);
         }
         arsort($recentPartyByPerson);
+
+        // Parties on the calendar in this window with NO payout logged at all yet
+        // — i.e. nobody's run this page for that date. There's no separate
+        // "earned" figure to show for these: the old auto-computed floor-split
+        // owed amount was killed (Sarah 2026-08-06, partyDates() above) because
+        // it credited people who never worked the party. The only trustworthy
+        // "earned" number comes from deliberately picking the date/window/staff
+        // below, so this list is the worklist of what still needs that pass.
+        $paidDates = array_unique(array_column($recentParty, 'date'));
+        $unpaidParties = [];
+        foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
+            if (($it['eventType'] ?? '') !== 'listening_party') { continue; }
+            $edate = (string) ($it['date'] ?? '');
+            if ($edate === '' || $edate < $pStart || $edate > $pEnd) { continue; }
+            if (in_array($edate, $paidDates, true)) { continue; }
+            $locArr = (array) ($it['location'] ?? []);
+            $locKey = strtolower(trim((string) ($locArr[0] ?? '')));
+            $locId = null;
+            foreach ($locations as $lid => $lname) {
+                if ($locKey !== '' && strpos(strtolower($lname), $locKey) !== false) { $locId = $lid; break; }
+            }
+            $unpaidParties[] = [
+                'date' => $edate,
+                'name' => (string) ($it['name'] ?: 'Listening Party'),
+                'location_id' => $locId,
+                'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
+            ];
+        }
+        usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
 
         // Each staff member's actual Sling shift that day at this store, so Sarah
         // can see WHEN they came in before picking who gets a cut — not just a
@@ -766,6 +798,7 @@ class ListingCommissionController extends Controller
             'recent_party' => $recentParty,
             'recent_party_total' => $recentPartyTotal,
             'recent_party_by_person' => $recentPartyByPerson,
+            'unpaid_parties' => $unpaidParties,
             'error'       => $error,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');

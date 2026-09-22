@@ -78,6 +78,26 @@
     @else
         <p class="text-muted" style="margin-top:10px;">No listening-party payments logged {{ $p_start }} to {{ $p_end }}.</p>
     @endif
+
+    @if (count($unpaid_parties) > 0)
+        <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
+            <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Nobody's calculated a split for these. Click one to jump straight to it below.</p>
+            <table class="pb-table">
+                <thead><tr><th>Date</th><th>Party</th><th>Store</th><th></th></tr></thead>
+                <tbody>
+                    @foreach ($unpaid_parties as $u)
+                        <tr>
+                            <td>{{ \Carbon::parse($u['date'])->format('M j, Y') }}</td>
+                            <td>{{ $u['name'] }}</td>
+                            <td>{{ $u['location_name'] ?: '?' }}</td>
+                            <td><a class="pb-btn" style="padding:4px 12px; font-size:12px;" href="{{ url('/admin/party-bonus') }}?date={{ urlencode($u['date']) }}&event_name={{ urlencode($u['name']) }}{{ $u['location_id'] ? '&location_id=' . $u['location_id'] : '' }}">Calculate</a></td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
 </div>
 
 <form method="GET" action="{{ url('/admin/party-bonus') }}" class="pb-card">
