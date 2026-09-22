@@ -97,11 +97,19 @@ class ImportEventRsvpsAsContacts extends Command
 
         $summary = [
             'events' => 0, 'events_unreachable' => 0, 'people_seen' => 0,
-            'skip_dup' => 0, 'skip_no_data' => 0, 'linked' => 0, 'created' => 0, 'errors' => 0,
+            'skip_dup' => 0, 'skip_no_data' => 0, 'skip_test' => 0, 'linked' => 0, 'created' => 0, 'errors' => 0,
         ];
         $sample = [];
         $allRows = [];
         $contactUtil = new ContactUtil();
+        // Same person RSVPs to multiple events -> same email/phone appears on
+        // multiple rows in one run. Track what THIS run has already created,
+        // so the 2nd+ occurrence links instead of counting as another new
+        // contact (matches what a --commit run actually does, since each
+        // create writes to the DB immediately and the next row's own DB
+        // lookup would find it anyway — this just makes the dry-run preview
+        // agree with that instead of over-counting).
+        $seenThisRun = [];
 
         foreach ($events as $event) {
             $eventId = (string) ($event['id'] ?? '');
@@ -129,7 +137,7 @@ class ImportEventRsvpsAsContacts extends Command
                 $people = $this->peopleFromRsvp($rsvp);
                 foreach ($people as $person) {
                     $summary['people_seen']++;
-                    $result = $this->processPerson($businessId, $userId, $eventMeta, $person, $commit, $contactUtil);
+                    $result = $this->processPerson($businessId, $userId, $eventMeta, $person, $commit, $contactUtil, $seenThisRun);
                     $summary[$result['status']] = ($summary[$result['status']] ?? 0) + 1;
                     if ($result['status'] !== 'skip_dup' && count($sample) < 12) {
                         $sample[] = $result['line'];
@@ -144,9 +152,9 @@ class ImportEventRsvpsAsContacts extends Command
         $this->line('');
         $this->info($commit ? 'Contacts written.' : 'DRY RUN -- no rows written. Re-run with --commit.');
         $this->line(sprintf(
-            'Events: %d (%d unreachable) . People seen: %d . Linked to existing: %d . Created new: %d . Already imported: %d . No usable data: %d . Errors: %d',
+            'Events: %d (%d unreachable) . People seen: %d . Linked to existing: %d . Created new: %d . Already imported: %d . Test data skipped: %d . No usable data: %d . Errors: %d',
             $summary['events'], $summary['events_unreachable'], $summary['people_seen'],
-            $summary['linked'], $summary['created'], $summary['skip_dup'], $summary['skip_no_data'], $summary['errors']
+            $summary['linked'], $summary['created'], $summary['skip_dup'], $summary['skip_test'], $summary['skip_no_data'], $summary['errors']
         ));
         if (!empty($sample)) {
             $this->info('Sample:');
@@ -190,7 +198,7 @@ class ImportEventRsvpsAsContacts extends Command
         return $people;
     }
 
-    private function processPerson(int $businessId, int $userId, array $eventMeta, array $person, bool $commit, ContactUtil $contactUtil): array
+    private function processPerson(int $businessId, int $userId, array $eventMeta, array $person, bool $commit, ContactUtil $contactUtil, array &$seenThisRun): array
     {
         $firstName = trim($person['firstName']);
         $lastName = trim($person['lastName']);
@@ -207,6 +215,15 @@ class ImportEventRsvpsAsContacts extends Command
             return ['status' => 'skip_no_data', 'line' => '(blank RSVP row, skipped)', 'row' => $rowBase + ['status' => 'skip_no_data']];
         }
 
+        // Skip obvious QA/dev test RSVPs (from testing the RSVP/check-in
+        // feature itself) rather than importing them as customers. Narrow on
+        // purpose: whole-word "test" in the name, or a placeholder email
+        // domain — real names containing "test" as part of a longer word
+        // (e.g. "Testarossa") won't match.
+        if (preg_match('/\btest\b/i', $fullName) || preg_match('/@(example|test)\.[a-z]{2,}$/i', $email)) {
+            return ['status' => 'skip_test', 'line' => "{$fullName} (looks like test data, skipped)", 'row' => $rowBase + ['status' => 'skip_test']];
+        }
+
         $externalId = $eventMeta['eventId'] . ':' . $person['externalKey'];
 
         $already = DB::table('contacts')
@@ -216,6 +233,22 @@ class ImportEventRsvpsAsContacts extends Command
             ->exists();
         if ($already) {
             return ['status' => 'skip_dup', 'line' => "{$fullName} (already imported)", 'row' => $rowBase + ['status' => 'skip_dup']];
+        }
+
+        // Same person RSVPed to another event earlier in this same run —
+        // link to the contact we already created/matched for them instead
+        // of counting/creating them again.
+        $seenKey = $email !== '' ? 'e:' . $email : ($phone ? 'p:' . $phone : null);
+        if ($seenKey !== null && isset($seenThisRun[$seenKey])) {
+            $seenContactId = $seenThisRun[$seenKey];
+            if ($commit && is_int($seenContactId)) {
+                $this->appendRsvpHistory($seenContactId, $eventMeta, $person['checkedIn']);
+            }
+            return [
+                'status' => 'linked',
+                'line' => "{$fullName} -> linked (already handled earlier in this run)",
+                'row' => $rowBase + ['status' => 'linked', 'matchedContactId' => 'earlier in this run'],
+            ];
         }
 
         $matched = null;
@@ -235,6 +268,7 @@ class ImportEventRsvpsAsContacts extends Command
         }
 
         if ($matched) {
+            if ($seenKey !== null) { $seenThisRun[$seenKey] = (int) $matched->id; }
             if ($commit) {
                 $this->appendRsvpHistory($matched->id, $eventMeta, $person['checkedIn']);
                 DB::table('contacts')->where('id', $matched->id)->update(['updated_at' => now()]);
@@ -247,6 +281,7 @@ class ImportEventRsvpsAsContacts extends Command
         }
 
         if (!$commit) {
+            if ($seenKey !== null) { $seenThisRun[$seenKey] = true; }
             return ['status' => 'created', 'line' => "{$fullName} -> would create new contact", 'row' => $rowBase + ['status' => 'created']];
         }
 
@@ -273,6 +308,7 @@ class ImportEventRsvpsAsContacts extends Command
             ];
             $out = $contactUtil->createNewContact($input);
             $contactId = $out['data']->contact_id ?? '?';
+            if ($seenKey !== null) { $seenThisRun[$seenKey] = (int) ($out['data']->id ?? 0) ?: true; }
             return [
                 'status' => 'created',
                 'line' => "{$fullName} -> created {$contactId}",
