@@ -146,10 +146,19 @@ class ContactController extends Controller
             $exitCode = \Artisan::call('events:import-rsvps-as-contacts', $params);
             $output = \Artisan::output();
 
+            // The real stats line starts with "Events:" — pull that specifically
+            // rather than "last non-empty line", since the command prints a
+            // sample list of individual rows after the summary.
             $summary = '';
-            foreach (array_reverse(preg_split('/\r?\n/', trim($output))) as $line) {
+            foreach (preg_split('/\r?\n/', trim($output)) as $line) {
                 $line = trim($line);
-                if ($line !== '') { $summary = $line; break; }
+                if (strpos($line, 'Events:') === 0) { $summary = $line; break; }
+            }
+            if ($summary === '') {
+                foreach (array_reverse(preg_split('/\r?\n/', trim($output))) as $line) {
+                    $line = trim($line);
+                    if ($line !== '') { $summary = $line; break; }
+                }
             }
 
             return response()->json([
