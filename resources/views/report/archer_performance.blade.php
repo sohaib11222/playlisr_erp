@@ -275,12 +275,13 @@
         </div>
 
         {{-- ═══════════ COUPON CODE — REAL ATTRIBUTED CONVERSIONS ═══════════ --}}
-        <h4>Discount code usage</h4>
+        <h4>Discount code usage, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
+        <p class="text-muted" style="margin-top:-8px; font-size:12px;">Same date range as "Website orders" above &mdash; moves with the filter.</p>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
             @if($archer_coupon)
-                <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format($archer_coupon->times_used) }} uses &middot; ${{ number_format($coupon_zipcodes_total, 2) }} total</div>
+                <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format(count($coupon_zipcodes)) }} uses in this range &middot; ${{ number_format($coupon_zipcodes_total, 2) }} total</div>
                 <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
-                    Code <strong>{{ $archer_coupon->code }}</strong> &middot; all-time, real attributed conversions.
+                    Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time, real attributed conversions.
                 </div>
 
                 @php
@@ -343,7 +344,7 @@
                         </tbody>
                     </table>
                 @else
-                    <p class="text-muted" style="margin-bottom:0;">No orders found using this code yet.</p>
+                    <p class="text-muted" style="margin-bottom:0;">No orders used this code in this date range ({{ number_format($coupon_uses_all_time) }} all-time).</p>
                 @endif
             @else
                 <div class="alert alert-warning" style="margin-bottom:0;">

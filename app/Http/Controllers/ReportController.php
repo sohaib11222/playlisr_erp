@@ -8321,7 +8321,12 @@ class ReportController extends Controller
             ->first();
 
         // Zip codes for orders that used the coupon — real, individually
-        // attributable conversions (someone had to know the code).
+        // attributable conversions (someone had to know the code). Filtered
+        // to the same start/end window as "Website orders" below, using each
+        // row's own order_date, so this section actually moves with the date
+        // filter instead of staying frozen at all-time totals while the
+        // section above it changes (that mismatch is what looked broken).
+        $coupon_zipcodes_all_time = [];
         $coupon_zipcodes = [];
         $coupon_zipcodes_error = null;
         $coupon_new_customers = null;
@@ -8332,9 +8337,19 @@ class ReportController extends Controller
             $zipDet = $this->httpGetJsonDetailed($zipUrl, $key, 10);
             $zipBody = $zipDet['decoded'] ?? null;
             if (!empty($zipBody) && !empty($zipBody['success'])) {
-                $coupon_zipcodes = $zipBody['orders'] ?? [];
-                $coupon_new_customers = $zipBody['new_customers'] ?? null;
-                $coupon_repeat_customers = $zipBody['repeat_customers'] ?? null;
+                $coupon_zipcodes_all_time = $zipBody['orders'] ?? [];
+                $coupon_zipcodes = array_values(array_filter($coupon_zipcodes_all_time, function ($row) use ($start_date, $end_date) {
+                    if (empty($row['order_date'])) {
+                        return false;
+                    }
+                    $d = \Carbon::parse($row['order_date'])->format('Y-m-d');
+                    return $d >= $start_date && $d <= $end_date;
+                }));
+                // is_repeat_customer is already correct per-order (based on
+                // that customer's real order history before this order), so
+                // it can just be re-tallied over whichever rows are in range.
+                $coupon_new_customers = count(array_filter($coupon_zipcodes, fn($r) => empty($r['is_repeat_customer'])));
+                $coupon_repeat_customers = count(array_filter($coupon_zipcodes, fn($r) => !empty($r['is_repeat_customer'])));
                 $coupon_unique_customers = $zipBody['unique_customers'] ?? null;
             } else {
                 $coupon_zipcodes_error = $this->formatNivessaWebsiteApiFailure($zipDet);
@@ -8343,6 +8358,7 @@ class ReportController extends Controller
         $coupon_zipcodes_total = array_sum(array_map(function ($row) {
             return (float) ($row['total'] ?? 0);
         }, $coupon_zipcodes));
+        $coupon_uses_all_time = count($coupon_zipcodes_all_time);
 
         $data = [
             'last_updated' => '2026-09-16',
@@ -8407,6 +8423,7 @@ class ReportController extends Controller
             'coupon_new_customers' => $coupon_new_customers,
             'coupon_repeat_customers' => $coupon_repeat_customers,
             'coupon_unique_customers' => $coupon_unique_customers,
+            'coupon_uses_all_time' => $coupon_uses_all_time,
             'coupon_zipcodes_error' => $coupon_zipcodes_error,
         ]);
     }
