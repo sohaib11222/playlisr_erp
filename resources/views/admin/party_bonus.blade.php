@@ -44,7 +44,7 @@
 
 <form method="GET" action="{{ url('/admin/party-bonus') }}" class="pb-card">
     <div class="pb-grid">
-        <div class="pb-field"><label>Party date</label><input type="date" name="date" value="{{ $date }}"></div>
+        <div class="pb-field"><label>Party date</label><input type="date" name="date" value="{{ $date }}" onchange="this.form.submit()"></div>
         <div class="pb-field"><label>Start time</label>
             <div style="display:flex; gap:6px;">
                 <select name="from_h">@for($h=1;$h<=12;$h++)<option value="{{ $h }}" {{ (int) $from_h === $h ? 'selected' : '' }}>{{ $h }}</option>@endfor</select>
@@ -60,7 +60,7 @@
             </div>
         </div>
         <div class="pb-field"><label>Store</label>
-            <select name="location_id">
+            <select name="location_id" onchange="this.form.submit()">
                 <option value="">- pick store -</option>
                 @foreach ($locations as $lid => $lname)
                     <option value="{{ $lid }}" {{ (int) $location_id === (int) $lid ? 'selected' : '' }}>{{ $lname }}</option>
@@ -85,6 +85,8 @@
         <label>Who worked the party</label>
         @if ($location_id && $date)
             <p class="text-muted" style="margin:2px 0 6px; font-size:12px;">Shift times are from Sling. <span style="color:#2F6B3E; font-weight:700;">Green</span> = clocked in during the party window below.</p>
+        @else
+            <p class="text-muted" style="margin:2px 0 6px; font-size:12px;">Pick a date and store above to see everyone's shift time.</p>
         @endif
         <div class="pb-staff">
             @foreach ($staff as $s)
