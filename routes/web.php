@@ -180,6 +180,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/contacts/campaigns', 'ContactCampaignController@index');
     Route::post('/contacts/campaigns/send', 'ContactCampaignController@send');
     Route::post('/contacts/import-rsvp-contacts', 'ContactController@importRsvpContacts')->name('contacts.import-rsvp-contacts');
+    Route::post('/contacts/{id}/text', 'ContactController@textCustomer')->name('contacts.text');
     // Clean URLs for the two contact types — ContactController@index is
     // shared and keys off ?type=, so these just inject it and hand off.
     // The page's own AJAX/search calls still hit /contacts under the hood;

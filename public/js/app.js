@@ -391,18 +391,17 @@ $(document).ready(function() {
             columns = [
             { data: 'action', searchable: false, orderable: false },
             { data: 'contact_id', name: 'contact_id' },
-                { data: 'supplier_business_name', name: 'supplier_business_name', defaultContent: '', orderable: false },
             { data: 'name', name: 'name' },
-                { data: 'email', name: 'email', defaultContent: '', orderable: false },
+                { data: 'email', name: 'email', defaultContent: '' },
             { data: 'created_at', name: 'contacts.created_at' },
-                { data: 'mobile', name: 'mobile', defaultContent: '', orderable: false },
-                { data: 'store_credit', name: 'balance', orderable: false, defaultContent: '$0.00' },
-                { data: 'lifetime_purchases', name: 'lifetime_purchases', orderable: false, defaultContent: '0' },
-                { data: 'shop_locations', name: 'shop_locations', orderable: false, searchable: false, defaultContent: '-' },
-                { data: 'visit_count', name: 'visit_count', orderable: false, searchable: false, defaultContent: '0' },
-                { data: 'loyalty_points', name: 'loyalty_points', orderable: false, defaultContent: '0' },
-                { data: 'loyalty_tier', name: 'loyalty_tier', orderable: false, defaultContent: 'Bronze' },
-                { data: 'preorders_count', name: 'preorders_count', orderable: false, defaultContent: '0' },
+                { data: 'mobile', name: 'mobile', defaultContent: '' },
+                { data: 'store_credit', name: 'balance', defaultContent: '$0.00' },
+                { data: 'lifetime_purchases', name: 'lifetime_purchases', defaultContent: '0' },
+                { data: 'shop_locations', name: 'shop_locations', searchable: false, defaultContent: '-' },
+                { data: 'visit_count', name: 'visit_count', searchable: false, defaultContent: '0' },
+                { data: 'loyalty_points', name: 'loyalty_points', defaultContent: '0' },
+                { data: 'loyalty_tier', name: 'loyalty_tier', defaultContent: 'Bronze' },
+                { data: 'preorders_count', name: 'pending_preorders_count', defaultContent: '0' },
                 { data: 'delete_action', name: 'delete_action', orderable: false, searchable: false, defaultContent: '' },
         ];
         }
@@ -426,9 +425,11 @@ $(document).ready(function() {
         // the full customer/supplier list. Restrict to ERP admins — the blade
         // drops in #disable_contact_export for everyone else.
         buttons: ($('#disable_contact_export').length > 0) ? [] : $.fn.dataTable.defaults.buttons,
-        scrollY:        "75vh",
+        // Customers: let the table flow with the page instead of scrolling
+        // in its own little box — Sarah asked for the inner scrollbar gone.
+        scrollY:        (contact_table_type === 'customer') ? '' : '75vh',
             scrollX:        false,
-        scrollCollapse: true,
+        scrollCollapse: (contact_table_type === 'customer') ? false : true,
             autoWidth: true,
             columnDefs: [
                 { targets: '_all', defaultContent: '' }
@@ -484,9 +485,10 @@ $(document).ready(function() {
                     console.error('Response:', xhr.responseText);
             }
         },
-        // Customers: most-recently-added first (Added On, column 5). Suppliers
-        // keep the original newest-contact_id-first sort.
-        aaSorting: (contact_table_type === 'customer') ? [[5, 'desc']] : [[1, 'desc']],
+        // Customers: most-recently-added first (Added On, column 4 — Business
+        // Name was dropped from this table, shifting everything left by one).
+        // Suppliers keep the original newest-contact_id-first sort.
+        aaSorting: (contact_table_type === 'customer') ? [[4, 'desc']] : [[1, 'desc']],
         columns: columns,
         fnDrawCallback: function(oSettings) {
             __currency_convert_recursively($('#contact_table'));

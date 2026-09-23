@@ -14,8 +14,9 @@
     <h1> @lang('lang_v1.'.$type.'s')
         @if($type == 'customer')
             <span id="customer_total_count" class="label label-default" style="font-size:14px; vertical-align:middle; font-weight:600;"></span>
+        @else
+            <small>@lang( 'contact.manage_your_contact', ['contacts' =>  __('lang_v1.'.$type.'s') ])</small>
         @endif
-        <small>@lang( 'contact.manage_your_contact', ['contacts' =>  __('lang_v1.'.$type.'s') ])</small>
     </h1>
 </section>
 
@@ -38,8 +39,8 @@
                 padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
             }
             .contact-hero-search-label {
-                display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
-                letter-spacing: .06em; color: #6b7280; margin-bottom: 6px;
+                display: block; font-size: 16px; font-weight: 700;
+                color: #374151; margin-bottom: 8px;
             }
             .contact-hero-search-label i { color: #5A5045; margin-right: 6px; }
             #contact_hero_search {
@@ -68,10 +69,9 @@
                 font-size: 14px;
             }
             #contact_table thead th {
-                font-size: 12px; font-weight: 700; text-transform: uppercase;
-                letter-spacing: .04em; color: #4b5563; background: #f9fafb;
-                border-bottom: 2px solid #e5e7eb; padding: 10px 12px;
-                white-space: nowrap;
+                font-size: 13px; font-weight: 700; color: #374151; background: #f3f4f6;
+                border-bottom: 2px solid #d1d5db; padding: 12px 14px;
+                white-space: nowrap !important; vertical-align: middle;
             }
             #contact_table tbody td {
                 padding: 12px; vertical-align: middle; line-height: 1.4;
@@ -79,7 +79,7 @@
             #contact_table tbody tr:hover {
                 background-color: #f0f7ff !important;
             }
-            #contact_table tbody td:nth-child(4) {
+            #contact_table tbody td:nth-child(3) {
                 font-weight: 600; color: #1f2937;
             }
             /* View/Edit — compact, sits in its own column. */
@@ -191,7 +191,18 @@
     @endcomponent
     @endif
     <input type="hidden" value="{{$type}}" id="contact_type">
-    @component('components.widget', ['class' => 'box-primary', 'title' => __( 'contact.all_your_contact', ['contacts' => __('lang_v1.'.$type.'s') ])])
+    @component('components.widget', ['class' => 'box-primary', 'id' => 'contact_widget', 'title' => $type == 'customer' ? '' : __( 'contact.all_your_contact', ['contacts' => __('lang_v1.'.$type.'s') ])])
+        @if($type == 'customer')
+            <style>
+                /* Sarah 2026-09-23: drop "All your Customers" and the padding
+                   that came with it — the hero search + total count above
+                   already say what this box is. The header stays (it still
+                   holds the +Add button), just tighter with no empty title. */
+                #contact_widget .box-header { padding: 8px 10px; min-height: 0; }
+                #contact_widget .box-header .box-title { display: none; }
+                #contact_widget .box-body { padding: 4px 10px 10px; }
+            </style>
+        @endif
         @if(auth()->user()->can('supplier.create') || auth()->user()->can('customer.create') || auth()->user()->can('supplier.view_own') || auth()->user()->can('customer.view_own'))
             @slot('tool')
                 <div class="box-tools">
@@ -229,17 +240,16 @@
                             <th>@lang('contact.mobile')</th>
                             <th>Address</th>
                         @elseif( $type == 'customer')
-                            <th>@lang('business.business_name')</th>
                             <th>@lang('user.name')</th>
                             <th>@lang('business.email')</th>
-                            <th>@lang('lang_v1.added_on')</th>
+                            <th>Added</th>
                             <th>@lang('contact.mobile')</th>
-                            <th>Store Credit</th>
-                            <th>Lifetime Purchases</th>
+                            <th>Credit</th>
+                            <th>Lifetime</th>
                             <th>Store(s)</th>
-                            <th>Store Visits</th>
-                            <th>Loyalty Points</th>
-                            <th>Loyalty Tier</th>
+                            <th>Visits</th>
+                            <th>Points</th>
+                            <th>Tier</th>
                             <th>Preorders</th>
                             <th style="width:36px;"></th>
                         @endif
@@ -269,6 +279,28 @@
     
     @if($type == 'customer')
         @include('sale_pos.partials.customer_account_modal')
+
+        {{-- Text via Quo — small modal opened from the comment-bubble icon
+             next to a customer's mobile number. Always sends from the
+             Hollywood Quo line server-side (see ContactController@textCustomer). --}}
+        <div class="modal fade" id="text_via_quo_modal" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">Text <span id="text_via_quo_name"></span></h4>
+                    </div>
+                    <div class="modal-body">
+                        <textarea id="text_via_quo_message" class="form-control" rows="4" maxlength="1000" placeholder="Message..."></textarea>
+                        <div id="text_via_quo_status" style="margin-top: 8px;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="text_via_quo_send">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     @endif
 
 </section>
@@ -288,6 +320,46 @@ $(function () {
         if (json && typeof json.recordsTotal !== 'undefined') {
             $('#customer_total_count').text(Number(json.recordsTotal).toLocaleString() + ' total');
         }
+    });
+
+    // Text via Quo — clicking the comment-bubble icon next to a mobile
+    // number opens a small modal; Send posts to ContactController@textCustomer.
+    var text_via_quo_contact_id = null;
+    $(document).on('click', '.text_via_quo_button', function () {
+        text_via_quo_contact_id = $(this).data('contact-id');
+        $('#text_via_quo_name').text($(this).data('name') || '');
+        $('#text_via_quo_message').val('');
+        $('#text_via_quo_status').empty();
+        $('#text_via_quo_modal').modal('show');
+    });
+    $('#text_via_quo_send').on('click', function () {
+        var message = $('#text_via_quo_message').val().trim();
+        if (!message) {
+            $('#text_via_quo_status').html('<div class="alert alert-warning">Type a message first.</div>');
+            return;
+        }
+        var btn = $(this);
+        btn.prop('disabled', true);
+        $('#text_via_quo_status').html('<div class="alert alert-info"><i class="fa fa-spinner fa-spin"></i> Sending...</div>');
+        $.ajax({
+            url: '/contacts/' + text_via_quo_contact_id + '/text',
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}', message: message },
+            dataType: 'json',
+            success: function (response) {
+                btn.prop('disabled', false);
+                if (response.success) {
+                    $('#text_via_quo_status').html('<div class="alert alert-success">Sent.</div>');
+                    setTimeout(function () { $('#text_via_quo_modal').modal('hide'); }, 800);
+                } else {
+                    $('#text_via_quo_status').html('<div class="alert alert-danger">' + (response.msg || 'Failed.') + '</div>');
+                }
+            },
+            error: function () {
+                btn.prop('disabled', false);
+                $('#text_via_quo_status').html('<div class="alert alert-danger">Error sending — try again.</div>');
+            }
+        });
     });
 
     var heroTimer = null;

@@ -75,6 +75,27 @@ class ContactController extends Controller
     }
 
     /**
+     * Formats a US phone as xxx-xxx-xxxx. Returns the input unchanged
+     * (blank, "n/a", an 11-digit or non-US number, etc.) if it doesn't
+     * look like a plain 10-digit number.
+     */
+    private function formatPhone($number)
+    {
+        $number = trim((string) $number);
+        if ($number === '') {
+            return '';
+        }
+        $digits = preg_replace('/\D/', '', $number);
+        if (strlen($digits) === 11 && $digits[0] === '1') {
+            $digits = substr($digits, 1);
+        }
+        if (strlen($digits) === 10) {
+            return substr($digits, 0, 3) . '-' . substr($digits, 3, 3) . '-' . substr($digits, 6);
+        }
+        return $number;
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -184,6 +205,36 @@ class ContactController extends Controller
                 'msg' => 'Error: ' . $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Text a customer via Quo/OpenPhone, from the Customers list. Always
+     * sends from the Hollywood line — the two stores share one contact
+     * list and there's no per-customer "home store" to pick from reliably.
+     */
+    public function textCustomer(Request $request, $id)
+    {
+        if (!auth()->user()->can('customer.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $request->validate(['message' => 'required|string|max:1000']);
+
+        $business_id = $request->session()->get('user.business_id');
+        $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+
+        if (empty($contact->mobile)) {
+            return response()->json(['success' => false, 'msg' => 'No mobile number on file for this contact.']);
+        }
+
+        $fromNumber = array_search('phone_2', \App\Communication::QUO_NUMBERS, true); // Hollywood
+        if (!$fromNumber) {
+            return response()->json(['success' => false, 'msg' => 'Could not determine which Quo line to send from.']);
+        }
+
+        $svc = new \App\Services\OpenPhoneService();
+        $result = $svc->sendFrom($fromNumber, $contact->mobile, $request->message);
+
+        return response()->json(['success' => $result['success'], 'msg' => $result['success'] ? 'Sent' : $result['msg']]);
     }
 
     /**
@@ -415,6 +466,10 @@ class ContactController extends Controller
                 '=',
                 'contacts.id'
             )->addSelect(DB::raw('COALESCE(MAX(preorder_counts.pending_preorders_count), 0) as pending_preorders_count'));
+        } else {
+            // Keep the alias always selectable so sorting by it never 500s,
+            // even on an environment without the preorders table yet.
+            $query->addSelect(DB::raw('0 as pending_preorders_count'));
         }
 
         // Which store(s) this customer has actually bought from, and how many
@@ -459,7 +514,7 @@ class ContactController extends Controller
                     // right next to the buttons people actually click.
                     $html = '<div class="btn-group" style="display:inline-flex;flex-wrap:wrap;gap:4px;">' .
                         '<a href="' . action('ContactController@show', [$row->id]) . '" class="btn btn-xs btn-info contact-btn-compact">' .
-                        '<i class="fa fa-user"></i> View</a>';
+                        'View</a>';
 
                     if (auth()->user()->can('customer.update')) {
                         $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button contact-btn-compact">' .
@@ -526,7 +581,15 @@ class ContactController extends Controller
                 return $name;
             })
             ->editColumn('mobile', function ($row) use ($is_admin) {
-                return $is_admin ? ($row->mobile ?? '') : $this->maskPhone($row->mobile);
+                $display = $is_admin ? $this->formatPhone($row->mobile ?? '') : $this->maskPhone($row->mobile);
+                $digits = preg_replace('/\D/', '', (string) ($row->mobile ?? ''));
+                $html = '<span>' . e($display) . '</span>';
+                if (strlen($digits) === 10 || (strlen($digits) === 11 && $digits[0] === '1')) {
+                    $html .= ' <a href="javascript:void(0)" class="text_via_quo_button" data-contact-id="' . $row->id . '" '
+                        . 'data-name="' . e($row->name) . '" title="Text via Quo" style="color:#1b6ca8;margin-left:4px;">'
+                        . '<i class="fa fa-comment-o"></i></a>';
+                }
+                return $html;
             })
             ->addColumn('store_credit', function ($row) {
                 // Customer balance IS the store-credit pool. Surface it in the list
@@ -600,7 +663,7 @@ class ContactController extends Controller
         if (!$reward_enabled) {
             $contacts->removeColumn('total_rp');
         }
-        return $contacts->rawColumns(['action', 'delete_action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance', 'store_credit', 'shop_locations', 'preorders_count'])
+        return $contacts->rawColumns(['action', 'delete_action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance', 'mobile', 'store_credit', 'shop_locations', 'preorders_count'])
                         ->make(true);
     }
 
