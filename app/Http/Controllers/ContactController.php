@@ -481,7 +481,14 @@ class ContactController extends Controller
                 'preorder_counts.contact_id',
                 '=',
                 'contacts.id'
-            )->addSelect(DB::raw('COALESCE(MAX(preorder_counts.pending_preorders_count), 0) as pending_preorders_count'));
+            // Sarah 2026-09-23: was MAX(preorder_counts...) to survive the base
+            // query's old groupBy('contacts.id') (removed — see ContactUtil::
+            // getContactQuery). preorder_counts is already 1 row per contact
+            // via its own GROUP BY, so a bare aggregate here with no outer
+            // GROUP BY left in the query would collapse the whole result to
+            // a single row — plain COALESCE, no MAX, now that there's nothing
+            // to collapse.
+            )->addSelect(DB::raw('COALESCE(preorder_counts.pending_preorders_count, 0) as pending_preorders_count'));
         } else {
             // Keep the alias always selectable so sorting by it never 500s,
             // even on an environment without the preorders table yet.
