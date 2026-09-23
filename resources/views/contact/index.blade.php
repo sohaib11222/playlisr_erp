@@ -12,6 +12,9 @@
 <!-- Content Header (Page header) -->
 <section class="content-header">
     <h1> @lang('lang_v1.'.$type.'s')
+        @if($type == 'customer')
+            <span id="customer_total_count" class="label label-default" style="font-size:14px; vertical-align:middle; font-weight:600;"></span>
+        @endif
         <small>@lang( 'contact.manage_your_contact', ['contacts' =>  __('lang_v1.'.$type.'s') ])</small>
     </h1>
 </section>
@@ -49,6 +52,36 @@
                 box-shadow: 0 0 0 3px rgba(27, 108, 168, .18);
             }
             #contact_hero_search::placeholder { color: #9ca3af; font-weight: 400; }
+            /* Sarah 2026-09-23: just the search bar + table for the Customers
+               page — the filter panel and the DataTables toolbar (length,
+               built-in search, export buttons) are redundant with the hero
+               search above and just add clutter for a quick lookup. */
+            #contact_table_wrapper .dataTables_length,
+            #contact_table_wrapper .dataTables_filter,
+            #contact_table_wrapper .dt-buttons {
+                display: none !important;
+            }
+            /* Readability pass — the default table is dense/small. Bigger
+               type, more row breathing room, a clearer header, and a
+               visible hover so it's easy to track a row across columns. */
+            #contact_table {
+                font-size: 14px;
+            }
+            #contact_table thead th {
+                font-size: 12px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: .04em; color: #4b5563; background: #f9fafb;
+                border-bottom: 2px solid #e5e7eb; padding: 10px 12px;
+                white-space: nowrap;
+            }
+            #contact_table tbody td {
+                padding: 12px; vertical-align: middle; line-height: 1.4;
+            }
+            #contact_table tbody tr:hover {
+                background-color: #f0f7ff !important;
+            }
+            #contact_table tbody td:nth-child(4) {
+                font-weight: 600; color: #1f2937;
+            }
         </style>
         <div class="contact-hero-search-wrap">
             <label class="contact-hero-search-label" for="contact_hero_search">
@@ -61,6 +94,10 @@
         <div id="import_rsvp_contacts_status" style="margin-bottom: 10px;"></div>
         <div id="import_rsvp_contacts_preview"></div>
     @endif
+    {{-- Sarah 2026-09-23: no filter panel on the Customers page — the hero
+         search above covers the lookups staff actually do; keep it for
+         suppliers since that page has no hero search of its own. --}}
+    @if($type != 'customer')
     @component('components.filters', ['title' => __('report.filters')])
     @if($type == 'customer')
         <div class="col-md-3">
@@ -139,6 +176,7 @@
         </div>
     </div>
     @endcomponent
+    @endif
     <input type="hidden" value="{{$type}}" id="contact_type">
     @component('components.widget', ['class' => 'box-primary', 'title' => __( 'contact.all_your_contact', ['contacts' => __('lang_v1.'.$type.'s') ])])
         @if(auth()->user()->can('supplier.create') || auth()->user()->can('customer.create') || auth()->user()->can('supplier.view_own') || auth()->user()->can('customer.view_own'))
@@ -224,6 +262,15 @@
      on contact_id / name / mobile / email / supplier_business_name. --}}
 <script>
 $(function () {
+    // Total contact count next to the "Customers" heading — reads it off
+    // the DataTable's own server response (recordsTotal) each time it
+    // loads or re-filters, no extra request needed.
+    $('#contact_table').on('xhr.dt', function (e, settings, json) {
+        if (json && typeof json.recordsTotal !== 'undefined') {
+            $('#customer_total_count').text(Number(json.recordsTotal).toLocaleString() + ' total');
+        }
+    });
+
     var heroTimer = null;
     $(document).on('input', '#contact_hero_search', function () {
         clearTimeout(heroTimer);
