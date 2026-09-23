@@ -82,6 +82,19 @@
             #contact_table tbody td:nth-child(4) {
                 font-weight: 600; color: #1f2937;
             }
+            /* View/Edit — compact, sits in its own column. */
+            #contact_table .contact-btn-compact {
+                padding: 2px 7px; font-size: 11px; line-height: 1.6;
+            }
+            /* Delete — its own far-right column, small and muted so it
+               doesn't compete with View/Edit; only turns red on hover. */
+            #contact_table .contact-btn-delete-small {
+                display: inline-block; padding: 3px 6px; border-radius: 4px;
+                color: #9ca3af; font-size: 12px;
+            }
+            #contact_table .contact-btn-delete-small:hover {
+                color: #fff; background: #d9534f;
+            }
         </style>
         <div class="contact-hero-search-wrap">
             <label class="contact-hero-search-label" for="contact_hero_search">
@@ -220,9 +233,12 @@
                             <th>@lang('contact.mobile')</th>
                             <th>Store Credit</th>
                             <th>Lifetime Purchases</th>
+                            <th>Store(s)</th>
+                            <th>Store Visits</th>
                             <th>Loyalty Points</th>
                             <th>Loyalty Tier</th>
                             <th>Preorders</th>
+                            <th style="width:36px;"></th>
                         @endif
                         @php
                             $custom_labels = json_decode(session('business.custom_labels'), true);

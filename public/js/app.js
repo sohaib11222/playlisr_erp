@@ -398,9 +398,12 @@ $(document).ready(function() {
                 { data: 'mobile', name: 'mobile', defaultContent: '', orderable: false },
                 { data: 'store_credit', name: 'balance', orderable: false, defaultContent: '$0.00' },
                 { data: 'lifetime_purchases', name: 'lifetime_purchases', orderable: false, defaultContent: '0' },
+                { data: 'shop_locations', name: 'shop_locations', orderable: false, searchable: false, defaultContent: '-' },
+                { data: 'visit_count', name: 'visit_count', orderable: false, searchable: false, defaultContent: '0' },
                 { data: 'loyalty_points', name: 'loyalty_points', orderable: false, defaultContent: '0' },
                 { data: 'loyalty_tier', name: 'loyalty_tier', orderable: false, defaultContent: 'Bronze' },
                 { data: 'preorders_count', name: 'preorders_count', orderable: false, defaultContent: '0' },
+                { data: 'delete_action', name: 'delete_action', orderable: false, searchable: false, defaultContent: '' },
         ];
         }
 
@@ -481,7 +484,9 @@ $(document).ready(function() {
                     console.error('Response:', xhr.responseText);
             }
         },
-        aaSorting: [[1, 'desc']],
+        // Customers: most-recently-added first (Added On, column 5). Suppliers
+        // keep the original newest-contact_id-first sort.
+        aaSorting: (contact_table_type === 'customer') ? [[5, 'desc']] : [[1, 'desc']],
         columns: columns,
         fnDrawCallback: function(oSettings) {
             __currency_convert_recursively($('#contact_table'));

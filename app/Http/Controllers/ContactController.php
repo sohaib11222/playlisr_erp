@@ -417,6 +417,29 @@ class ContactController extends Controller
             )->addSelect(DB::raw('COALESCE(MAX(preorder_counts.pending_preorders_count), 0) as pending_preorders_count'));
         }
 
+        // Which store(s) this customer has actually bought from, and how many
+        // separate visits (finalized sells) that adds up to. Pre-aggregated in
+        // its own subquery (one row per contact) rather than joining
+        // business_locations directly into the main query, since that's
+        // already grouped by contacts.id for the SUM() columns above — a
+        // MAX() over the pre-aggregated row is safe and cheap here, same
+        // pattern as the preorder_counts join just above.
+        $query->leftJoin(
+            DB::raw("(SELECT t2.contact_id,
+                        GROUP_CONCAT(DISTINCT bl.name ORDER BY bl.name SEPARATOR ', ') as shop_locations,
+                        COUNT(DISTINCT t2.id) as visit_count
+                      FROM transactions t2
+                      LEFT JOIN business_locations bl ON bl.id = t2.location_id
+                      WHERE t2.type = 'sell' AND t2.status = 'final'
+                      GROUP BY t2.contact_id) as shop_stats"),
+            'shop_stats.contact_id',
+            '=',
+            'contacts.id'
+        )->addSelect([
+            DB::raw('MAX(shop_stats.shop_locations) as shop_locations'),
+            DB::raw('COALESCE(MAX(shop_stats.visit_count), 0) as visit_count'),
+        ]);
+
         $contacts = Datatables::of($query)
             ->addColumn('address', '{{implode(", ", array_filter([$address_line_1, $address_line_2, $city, $state, $country, $zip_code]))}}')
             ->addColumn(
@@ -430,18 +453,16 @@ class ContactController extends Controller
             ->addColumn(
                 'action',
                 function ($row) {
-                    // Use direct buttons instead of dropdown for better click reliability on customer list.
-                    // 2026-04-22: Sarah reported the yellow Adjust button was missing —
-                    // it was rendering but clipped by the narrow Action column
-                    // (5 btn-xs buttons in a single-line .btn-group overflow). Switching
-                    // to an inline-flex wrap so every button stays visible and clickable
-                    // even on a narrow screen.
-                    $html = '<div class="btn-group" style="display:inline-flex;flex-wrap:wrap;gap:4px;min-width:230px;">' .
-                        '<a href="' . action('ContactController@show', [$row->id]) . '" class="btn btn-xs btn-info">' .
+                    // Sarah 2026-09-23: View/Edit compact and in their own
+                    // column; Delete moved out to its own small column at the
+                    // far right (see 'delete_action' below) so it's not sitting
+                    // right next to the buttons people actually click.
+                    $html = '<div class="btn-group" style="display:inline-flex;flex-wrap:wrap;gap:4px;">' .
+                        '<a href="' . action('ContactController@show', [$row->id]) . '" class="btn btn-xs btn-info contact-btn-compact">' .
                         '<i class="fa fa-user"></i> View</a>';
 
                     if (auth()->user()->can('customer.update')) {
-                        $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button">' .
+                        $html .= '<a href="' . action('ContactController@edit', [$row->id]) . '" class="btn btn-xs btn-primary edit_contact_button contact-btn-compact">' .
                             '<i class="glyphicon glyphicon-edit"></i> ' . __("messages.edit") . '</a>';
                         // Store-credit add/adjust moved to the customer detail
                         // page (Sarah 2026-04-22): keeping it here duplicated the
@@ -449,14 +470,20 @@ class ContactController extends Controller
                         // without the full customer context. Cashiers now click
                         // View → Credits & Adjustments panel to add or adjust.
                     }
-                    if (!$row->is_default && auth()->user()->can('customer.delete')) {
-                        $html .= '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="btn btn-xs btn-danger delete_contact_button">' .
-                            '<i class="glyphicon glyphicon-trash"></i> ' . __("messages.delete") . '</a>';
-                    }
 
                     $html .= '</div>';
 
                     return $html;
+                }
+            )
+            ->addColumn(
+                'delete_action',
+                function ($row) {
+                    if ($row->is_default || !auth()->user()->can('customer.delete')) {
+                        return '';
+                    }
+                    return '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="delete_contact_button contact-btn-delete-small" title="' . __("messages.delete") . '">' .
+                        '<i class="glyphicon glyphicon-trash"></i></a>';
                 }
             )
             ->editColumn('opening_balance', function ($row) {
@@ -516,6 +543,16 @@ class ContactController extends Controller
                 $lifetime = $row->lifetime_purchases ?? 0;
                 return $this->transactionUtil->num_f($lifetime, true);
             })
+            ->addColumn('shop_locations', function ($row) {
+                $locations = trim((string) ($row->shop_locations ?? ''));
+                if ($locations === '') {
+                    return '<span style="color:#9ca3af;">-</span>';
+                }
+                return e($locations);
+            })
+            ->addColumn('visit_count', function ($row) {
+                return (int) ($row->visit_count ?? 0);
+            })
             ->addColumn('loyalty_points', function ($row) {
                 $points = $row->loyalty_points ?? 0;
                 // If loyalty_points column doesn't exist, try total_rp
@@ -563,7 +600,7 @@ class ContactController extends Controller
         if (!$reward_enabled) {
             $contacts->removeColumn('total_rp');
         }
-        return $contacts->rawColumns(['action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance', 'store_credit', 'preorders_count'])
+        return $contacts->rawColumns(['action', 'delete_action', 'opening_balance', 'credit_limit', 'pay_term', 'due', 'return_due', 'name', 'balance', 'store_credit', 'shop_locations', 'preorders_count'])
                         ->make(true);
     }
 
