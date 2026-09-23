@@ -238,6 +238,22 @@ class ContactController extends Controller
     }
 
     /**
+     * One-time backfill trigger for contacts:backfill-shop-visits — no
+     * permanent button, just a route so it can run without SSH (per
+     * standing policy). Delete this + the route once the backfill's done.
+     */
+    public function backfillShopVisits(Request $request)
+    {
+        if (!$this->contactUtil->is_admin(auth()->user())) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = $request->session()->get('user.business_id');
+
+        $exitCode = \Artisan::call('contacts:backfill-shop-visits', ['--business' => $business_id]);
+        return response()->json(['success' => $exitCode === 0, 'output' => \Artisan::output()]);
+    }
+
+    /**
      * Returns the database object for supplier
      *
      * @return \Illuminate\Http\Response
