@@ -2,19 +2,33 @@
 @section('title', 'Add Project')
 
 @section('content')
-<section class="content-header"><h1>Add Project</h1></section>
+@include('tasks.partials.asana_styles')
+@include('tasks.partials.asana_detail_styles')
 
 <section class="content">
-    @include('tasks.partials.tabs')
-    <div class="box box-primary">
-        <div class="box-body">
-            <form method="POST" action="{{ action('ProjectController@store') }}">
-                @csrf
-                @include('projects.partials.form_fields', ['project' => null])
-                <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> Save</button>
-                <a href="{{ action('ProjectController@index') }}" class="btn btn-default">Cancel</a>
-            </form>
-        </div>
+<div class="as-wrap as-task">
+
+    @include('tasks.partials.asana_nav')
+
+    @if($errors->any())
+        <div class="alert alert-danger">{{ $errors->first() }}</div>
+    @endif
+
+    <div class="as-task-card">
+        <form method="POST" action="{{ action('ProjectController@store') }}">
+            @csrf
+            <div class="as-task-top">
+                <strong style="font-size:14px;">New project</strong>
+                <a href="{{ action('ProjectController@index') }}" class="as-back"><i class="fa fa-times"></i> Close</a>
+            </div>
+            @include('projects.partials.asana_form', ['project' => null])
+            <div class="as-save-bar">
+                <button type="submit" class="as-btn" style="border:0;">Create project</button>
+                <a href="{{ action('ProjectController@index') }}" class="as-btn-ghost">Cancel</a>
+            </div>
+        </form>
     </div>
+
+</div>
 </section>
 @stop
