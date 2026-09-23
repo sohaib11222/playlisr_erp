@@ -48,11 +48,13 @@
     @if(!empty($order_stats['daily']))
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:16px;">
             <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Orders placed vs. cancelled, by day</div>
-            <canvas id="archerOrdersChart" height="90"
-                data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $order_stats['daily'])) }}"
-                data-placed="{{ json_encode(array_map(fn($d) => $d['placed'], $order_stats['daily'])) }}"
-                data-cancelled="{{ json_encode(array_map(fn($d) => $d['cancelled'], $order_stats['daily'])) }}"
-            ></canvas>
+            <div style="position:relative; height:220px;">
+                <canvas id="archerOrdersChart"
+                    data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $order_stats['daily'])) }}"
+                    data-placed="{{ json_encode(array_map(fn($d) => $d['placed'], $order_stats['daily'])) }}"
+                    data-cancelled="{{ json_encode(array_map(fn($d) => $d['cancelled'], $order_stats['daily'])) }}"
+                ></canvas>
+            </div>
         </div>
     @endif
 

@@ -65,10 +65,12 @@
         @if(!empty($data['instagram']['is_live']) && !empty($data['instagram']['daily']))
             <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
                 <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Instagram</div>
-                <canvas id="archerIgChart" height="70"
-                    data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
-                    data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
-                ></canvas>
+                <div style="position:relative; height:200px;">
+                    <canvas id="archerIgChart"
+                        data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
+                        data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
+                    ></canvas>
+                </div>
             </div>
         @endif
 
@@ -91,10 +93,12 @@
         @if(!empty($data['tiktok']['weekly_followers']))
             <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
                 <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week (real, exact)</div>
-                <canvas id="archerTiktokChart" height="70"
-                    data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_followers'])) }}"
-                    data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_followers'])) }}"
-                ></canvas>
+                <div style="position:relative; height:200px;">
+                    <canvas id="archerTiktokChart"
+                        data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_followers'])) }}"
+                        data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_followers'])) }}"
+                    ></canvas>
+                </div>
             </div>
         @endif
 
