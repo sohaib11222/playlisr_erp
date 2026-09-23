@@ -572,14 +572,16 @@
         .fsg-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .fsg-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#3b6d11; }
         .fsg-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
-        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 90px 90px; gap:12px; align-items:center; padding:12px; background:#f8fafc; border-radius:8px; margin-bottom:8px; }
+        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
+        .fsg-row:nth-child(odd) { background:#f8fafc; }
+        .fsg-row > div { min-width:0; }
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
-        .fsg-label { font-size:14px; font-weight:500; margin:0; }
-        .fsg-sub-num { font-size:11px; color:#6b7280; margin:2px 0 0 0; }
-        .fsg-bar { height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
+        .fsg-label { font-size:13px; font-weight:500; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fsg-sub-num { font-size:11px; font-weight:400; color:#6b7280; margin-left:6px; }
+        .fsg-bar { height:6px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
         .fsg-bar > div { height:100%; background:#3b6d11; }
         .fsg-days { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
-        .fsg-days-num { font-size:18px; }
+        .fsg-days-num { font-size:14px; }
         .fsg-days-unit { font-size:11px; color:#6b7280; margin-left:2px; }
         .fsg-tag { font-size:11px; color:#6b7280; }
         .fsg-tag.blazing { color:#9a3412; font-weight:600; }
@@ -618,8 +620,7 @@
                         <div class="fsg-row">
                             <div class="fsg-rank">{{ $idx + 1 }}</div>
                             <div>
-                                <p class="fsg-label">{{ $r->genre }}</p>
-                                <p class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</p>
+                                <p class="fsg-label">{{ $r->genre }}<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
                             </div>
                             <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
                             <div class="fsg-days">
