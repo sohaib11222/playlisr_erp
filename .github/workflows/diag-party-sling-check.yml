@@ -1,0 +1,65 @@
+# READ-ONLY diagnostic: dump the raw Sling shift rows for the 4 recent
+# listening-party dates Sarah flagged (Beck 9/18, Miley 9/15, Orville 9/13,
+# Beabadoobee 9/12) so the auto-estimate's "who rang a sale" list can be
+# cross-checked against what Sling actually had scheduled. One-off; delete
+# after use.
+name: Diag party Sling check
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump Sling shifts for the flagged party dates (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $dates = ['2026-09-12','2026-09-13','2026-09-15','2026-09-18'];
+            foreach ($dates as $d) {
+                echo "=== $d ===\n";
+                $rows = \DB::table('sling_shifts')->whereDate('dtstart', $d)
+                    ->orderBy('location_name')->orderBy('dtstart')
+                    ->get(['user_name','location_name','position_name','event_type','dtstart','dtend','published','erp_user_id']);
+                if ($rows->isEmpty()) { echo "(no Sling rows this date)\n"; }
+                foreach ($rows as $r) {
+                    echo "- {$r->user_name} | {$r->location_name} | {$r->position_name} | type={$r->event_type} | {$r->dtstart} to {$r->dtend} | published=" . ($r->published ? 'y' : 'n') . " | erp_uid={$r->erp_user_id}\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
