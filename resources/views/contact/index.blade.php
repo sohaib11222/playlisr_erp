@@ -196,14 +196,17 @@
             @slot('tool')
                 <div class="box-tools">
                     @if($type == 'customer')
-                        <a href="{{ action('ContactCampaignController@index') }}" class="btn btn-warning" style="margin-bottom: 8px;">
-                            <i class="fa fa-bullhorn"></i> Customer Alerts
-                        </a>
-                        @if($is_admin)
-                            <button type="button" class="btn btn-default" id="import_rsvp_contacts_btn" style="margin-bottom: 8px;">
-                                <i class="fa fa-calendar"></i> Import RSVP Contacts
-                            </button>
-                        @endif
+                        <div style="text-align:right; margin-bottom: 6px; font-size: 12px;">
+                            <a href="{{ action('ContactCampaignController@index') }}" style="color:#6b7280;">
+                                <i class="fa fa-bullhorn"></i> Customer Alerts
+                            </a>
+                            @if($is_admin)
+                                <span style="color:#d1d5db;"> &middot; </span>
+                                <a href="javascript:void(0)" id="import_rsvp_contacts_btn" style="color:#6b7280;">
+                                    <i class="fa fa-calendar"></i> Import RSVP Contacts
+                                </a>
+                            @endif
+                        </div>
                     @endif
                     <button type="button" class="btn btn-block btn-primary btn-modal"
                     data-href="{{action('ContactController@create', ['type' => $type])}}"
