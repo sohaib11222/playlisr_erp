@@ -699,7 +699,7 @@ class HomeController extends Controller
                 ->groupBy('sc.name', 'c.name')
                 ->havingRaw('SUM(tslp.quantity) >= 5')
                 ->orderBy('avg_sell_days', 'asc')
-                ->limit(25)
+                ->limit(50)
                 ->get();
 
             // Bar pct = fastest / this, so fastest = 100% and a genre that
