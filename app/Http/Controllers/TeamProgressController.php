@@ -10,7 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 /**
- * Read-only accountability view layered on top of Tasks (TaskController).
+ * Read-only Team Progress view layered on top of Tasks (TaskController).
  * Never writes to weekly_tasks / task_assignees — it only reads them, plus
  * task_completion_logs and sling_shifts, so nothing here changes how the
  * Tasks list, start/end shift, or register-close prompts behave.
@@ -18,9 +18,9 @@ use Illuminate\Http\Request;
  * Owner rule: a task's owner is its assignee(s). A task with no assignee is
  * owned by whoever Sling had on a Cashier shift at that task's store that
  * day (any shift at that store if no Cashier shift). Company-wide
- * (store = null) tasks with no assignee stay "No owner".
+ * (store = null) tasks with no assignee stay "Unassigned".
  */
-class TaskAccountabilityController extends Controller
+class TeamProgressController extends Controller
 {
     const STORE_LABELS = TaskController::STORE_LABELS;
 
@@ -55,7 +55,7 @@ class TaskAccountabilityController extends Controller
         // far enough to name who was on shift the day each one was due.
         $oldestOpenDue = $tasks->where('status', '!=', 'complete')->pluck('end_date')->filter()->min();
         $shiftFrom = $oldestOpenDue && $oldestOpenDue->lt($windowStart) ? $oldestOpenDue->copy() : $windowStart;
-        $onShift = $this->onShiftByDateAndStore($shiftFrom, $today);
+        $onShift = self::onShiftByDateAndStore($shiftFrom, $today);
         $names = [];
 
         // Tasks with no assignee, but Sling can still name who was on shift.
@@ -83,8 +83,9 @@ class TaskAccountabilityController extends Controller
             if ($t->status === 'complete') {
                 continue;
             }
-            if ($t->end_date && $t->end_date->lt($today)) {
-                $overdue[] = ['task' => $t, 'owner' => $ownersFor($t, $t->end_date->copy()), 'days' => $t->end_date->diffInDays($today)];
+            $due = self::dueAt($t);
+            if ($due && $due->lt(now())) {
+                $overdue[] = ['task' => $t, 'owner' => $ownersFor($t, $t->end_date->copy()), 'days' => $t->end_date->diffInDays($today), 'due' => $due];
             } elseif ($t->start_date && $t->start_date->lte($today)) {
                 $openToday[] = ['task' => $t, 'owner' => $ownersFor($t, $today)];
             }
@@ -111,7 +112,8 @@ class TaskAccountabilityController extends Controller
         foreach ($tasks as $t) {
             if ($t->status === 'complete' && $t->completed_at && $t->completed_at->gte($windowStart)) {
                 $bump($t->completed_by, 'done');
-                if ($t->end_date && $t->completed_at->copy()->startOfDay()->gt($t->end_date)) {
+                $due = self::dueAt($t);
+                if ($due && $t->completed_at->gt($due)) {
                     $bump($t->completed_by, 'late');
                 }
             }
@@ -168,7 +170,7 @@ class TaskAccountabilityController extends Controller
         }
         unset($s);
         uasort($score, function ($a, $b) {
-            return [$a['rate'] ?? 101, $a['name']] <=> [$b['rate'] ?? 101, $b['name']];
+            return [$b['done'], $a['name']] <=> [$a['done'], $b['name']];
         });
 
         $noOwnerCount = $tasks->filter(function ($t) {
@@ -178,12 +180,37 @@ class TaskAccountabilityController extends Controller
         $storeLabels = self::STORE_LABELS;
         $days = self::DAYS;
 
-        return view('tasks.accountability', compact(
+        return view('tasks.team_progress', compact(
             'openToday', 'overdue', 'score', 'missedRows', 'names', 'noOwnerCount', 'storeLabels', 'days', 'windowStart', 'today'
         ));
     }
 
-    private static function priorityRank($p)
+    /** When a task is due: its end date at due_time, or end of that day if no time is set. */
+    public static function dueAt(WeeklyTask $t)
+    {
+        if (!$t->end_date) {
+            return null;
+        }
+        $due = $t->end_date->copy();
+        return !empty($t->due_time)
+            ? $due->setTimeFromTimeString($t->due_time)
+            : $due->endOfDay();
+    }
+
+    const AVATAR_COLORS = ['#e8384f', '#fd612c', '#fd9a00', '#d9b100', '#8fbf1f', '#37c5ab', '#20aaea', '#4186e0', '#7a6ff0', '#aa62e3', '#d94fd9', '#ea4e9d'];
+
+    /** Asana-style initials avatar, colored by user id. */
+    public static function avatar($id, $name, $size = '')
+    {
+        $parts = preg_split('/\s+/', trim((string) $name));
+        $ini = mb_substr($parts[0] ?? '?', 0, 1) . (count($parts) > 1 ? mb_substr(end($parts), 0, 1) : '');
+        $color = self::AVATAR_COLORS[((int) $id) % count(self::AVATAR_COLORS)];
+        return '<span class="as-avatar ' . e($size) . '" style="background:' . $color . '" title="' . e($name) . '">' . e($ini) . '</span>';
+    }
+
+    const CHECK_SVG = '<svg viewBox="0 0 12 12" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5l2.3 2.3L9.5 3.8"/></svg>';
+
+    public static function priorityRank($p)
     {
         return ['high' => 0, 'medium' => 1, 'low' => 2][$p] ?? 3;
     }
@@ -193,7 +220,7 @@ class TaskAccountabilityController extends Controller
      * Cashier shifts win; a store/day with no Cashier shift falls back to
      * everyone scheduled there.
      */
-    private function onShiftByDateAndStore(Carbon $from, Carbon $to)
+    public static function onShiftByDateAndStore(Carbon $from, Carbon $to)
     {
         $shifts = SlingShift::where('event_type', SlingShift::TYPE_SHIFT)
             ->where('published', 1)

@@ -38,6 +38,17 @@ class TaskController extends Controller
         return $taskType === 'daily' ? $start->toDateString() : $start->addDays(7)->toDateString();
     }
 
+    /** Keep due_time only once its column exists (it ships in a migration run after deploy). */
+    private static function withDueTime(array $data)
+    {
+        if (!\Schema::hasColumn('weekly_tasks', 'due_time')) {
+            unset($data['due_time']);
+        } else {
+            $data['due_time'] = !empty($data['due_time']) ? $data['due_time'] : null;
+        }
+        return $data;
+    }
+
     private function isAdmin()
     {
         return $this->businessUtil->is_admin(auth()->user());
@@ -218,6 +229,7 @@ class TaskController extends Controller
                     'store' => $root->store,
                     'priority' => $root->priority,
                     'requires_photo' => $root->requires_photo,
+                ] + (array_key_exists('due_time', $root->getAttributes()) ? ['due_time' => $root->due_time] : []) + [
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
                     'repeat_daily' => false,
@@ -452,10 +464,12 @@ class TaskController extends Controller
             'store' => 'nullable|in:' . implode(',', array_keys($this->availableStores())),
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'requires_photo' => 'nullable|boolean',
+            'due_time' => 'nullable|date_format:H:i',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
+        $data = self::withDueTime($data);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
@@ -554,10 +568,12 @@ class TaskController extends Controller
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'requires_photo' => 'nullable|boolean',
             'photo_confirmed' => 'nullable|boolean',
+            'due_time' => 'nullable|date_format:H:i',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
+        $data = self::withDueTime($data);
         $photoConfirmed = !empty($data['photo_confirmed']);
         unset($data['photo_confirmed']);
         $assignees = $data['assignees'] ?? [];

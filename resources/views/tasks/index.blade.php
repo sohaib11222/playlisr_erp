@@ -106,6 +106,9 @@
                             @else
                                 {{ $t->start_date->format('M j, Y') }} &ndash; {{ $t->end_date->format('M j, Y') }}
                             @endif
+                            @if($t->due_time)
+                                <br><small class="text-muted">by {{ \Carbon\Carbon::parse($t->due_time)->format('g:i A') }}</small>
+                            @endif
                         </td>
                         <td>
                             @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status])

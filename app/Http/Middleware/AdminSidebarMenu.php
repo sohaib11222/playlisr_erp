@@ -99,9 +99,14 @@ class AdminSidebarMenu
                 'Tasks & Projects',
                 function ($sub) {
                     $sub->url(
+                        route('tasks.my'),
+                        'My Tasks',
+                        ['icon' => 'fa fas fa-check-circle', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'my']
+                    );
+                    $sub->url(
                         route('tasks.index'),
                         'Tasks',
-                        ['icon' => 'fa fas fa-calendar-day', 'active' => request()->segment(1) == 'tasks' && !in_array(request()->segment(2), ['projects', 'end-shift', 'accountability'], true)]
+                        ['icon' => 'fa fas fa-calendar-day', 'active' => request()->segment(1) == 'tasks' && !in_array(request()->segment(2), ['projects', 'end-shift', 'team-progress', 'my'], true)]
                     );
                     // Standalone status-check prompt for anyone leaving —
                     // not just cashiers who close a register (that flow
@@ -115,9 +120,9 @@ class AdminSidebarMenu
                     );
                     if (auth()->user()->hasRole('Admin#' . session('business.id'))) {
                         $sub->url(
-                            route('tasks.accountability'),
-                            'Accountability',
-                            ['icon' => 'fa fas fa-user-check', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'accountability']
+                            route('tasks.team-progress'),
+                            'Team Progress',
+                            ['icon' => 'fa fas fa-chart-line', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'team-progress']
                         );
                     }
                     $sub->url(

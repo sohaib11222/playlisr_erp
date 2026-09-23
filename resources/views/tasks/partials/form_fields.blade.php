@@ -26,6 +26,13 @@
             <input type="date" id="task_start_date" class="form-control" name="start_date" value="{{ old('start_date', isset($task) ? $task->start_date->toDateString() : now()->toDateString()) }}" required>
         </div>
     </div>
+    <div class="col-md-2">
+        <div class="form-group">
+            <label>Due by</label>
+            <input type="time" class="form-control" name="due_time" value="{{ old('due_time', (isset($task) && $task->due_time) ? substr($task->due_time, 0, 5) : '') }}">
+            <small class="text-muted">Optional. Blank means end of day.</small>
+        </div>
+    </div>
     <div class="col-md-3" id="task_end_date_wrap" style="{{ $currentTaskType === 'daily' ? 'display:none;' : '' }}">
         <div class="form-group">
             <label>End date</label>
