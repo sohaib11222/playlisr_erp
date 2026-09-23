@@ -578,6 +578,7 @@
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
         .fsg-label { font-size:13px; font-weight:500; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .fsg-sub-num { font-size:11px; font-weight:400; color:#6b7280; margin-left:6px; }
+        .fsg-cat { display:inline-block; font-size:11px; font-weight:500; color:#374151; background:#eef2f7; border-radius:4px; padding:0 6px; margin-left:6px; }
         .fsg-bar { height:6px; background:#e5e7eb; border-radius:4px; overflow:hidden; }
         .fsg-bar > div { height:100%; background:#3b6d11; }
         .fsg-days { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
@@ -620,7 +621,7 @@
                         <div class="fsg-row">
                             <div class="fsg-rank">{{ $idx + 1 }}</div>
                             <div>
-                                <p class="fsg-label">{{ $r->genre }}<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
+                                <p class="fsg-label">{{ $r->genre }}@if($r->category)<span class="fsg-cat">{{ $r->category }}</span>@endif<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
                             </div>
                             <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
                             <div class="fsg-days">

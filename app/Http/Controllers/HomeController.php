@@ -677,6 +677,7 @@ class HomeController extends Controller
                 ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
                 ->join('products as p', 'p.id', '=', 'tsl.product_id')
                 ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->where('sale.business_id', $business_id)
                 ->where('sale.type', 'sell')
                 ->where('sale.status', 'final')
@@ -687,11 +688,15 @@ class HomeController extends Controller
             if (!is_null($location_id)) {
                 $q->where('sale.location_id', $location_id);
             }
+            // Split by parent category (Sealed Vinyl, Used Vinyl, CD…) too,
+            // same as "What's hot" — Rock Sealed and Rock Used turn over
+            // at very different speeds.
             $rows = $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
+                    NULLIF(c.name, '') as category,
                     SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
                     SUM(tslp.quantity) as units,
                     SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
-                ->groupBy('sc.name')
+                ->groupBy('sc.name', 'c.name')
                 ->havingRaw('SUM(tslp.quantity) >= 5')
                 ->orderBy('avg_sell_days', 'asc')
                 ->limit(25)
