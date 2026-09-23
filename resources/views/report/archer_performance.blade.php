@@ -37,13 +37,20 @@
         </div>
 
         {{-- ═══════════ INSTAGRAM ═══════════ --}}
-        <h4 style="margin-top:0;">Instagram</h4>
+        <h4 style="margin-top:0;">
+            Instagram
+            @if(!empty($data['instagram']['is_live']))
+                <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
+            @endif
+        </h4>
         <div class="row">
             <div class="col-sm-4">
                 {!! archerCard(
                     'Followers',
                     number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
-                    '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+                    !empty($data['instagram']['is_live'])
+                        ? 'live, ' . archerFmtDate($data['instagram']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['instagram']['followers_now_date'])
+                        : '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
                     '#2ecc71'
                 ) !!}
             </div>
@@ -54,6 +61,16 @@
                 {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
             </div>
         </div>
+
+        @if(!empty($data['instagram']['is_live']) && !empty($data['instagram']['daily']))
+            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
+                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Instagram</div>
+                <canvas id="archerIgChart" height="70"
+                    data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
+                    data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
+                ></canvas>
+            </div>
+        @endif
 
         {{-- ═══════════ TIKTOK ═══════════ --}}
         <h4 style="margin-top:24px;">TikTok</h4>
@@ -179,6 +196,32 @@
                     data: JSON.parse(ttCanvas.dataset.followers),
                     borderColor: '#2ecc71',
                     backgroundColor: 'rgba(46,204,113,0.1)',
+                    fill: true,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Instagram daily-followers chart — only present once the Instagram
+    // integration is actually connected and returning real data.
+    var igCanvas = document.getElementById('archerIgChart');
+    if (igCanvas && typeof Chart !== 'undefined') {
+        new Chart(igCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: JSON.parse(igCanvas.dataset.labels),
+                datasets: [{
+                    label: 'Instagram followers',
+                    data: JSON.parse(igCanvas.dataset.followers),
+                    borderColor: '#e1306c',
+                    backgroundColor: 'rgba(225,48,108,0.1)',
                     fill: true,
                     tension: 0.2
                 }]

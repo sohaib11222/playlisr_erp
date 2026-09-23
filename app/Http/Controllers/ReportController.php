@@ -8432,6 +8432,7 @@ class ReportController extends Controller
                 'reach_last_28_days' => 103000,
                 'reach_change_pct' => -59,
                 'confirmed_collab_videos' => 22,
+                'is_live' => false,
             ],
             'facebook' => [
                 // Meta Business Suite doesn't expose a clean followers-on-a-
@@ -8465,6 +8466,20 @@ class ReportController extends Controller
                 ],
             ],
         ];
+
+        // Swap in real Instagram data for the selected range if the
+        // Instagram integration is connected (see fetchLiveInstagramFollowers
+        // above) — falls straight through to the static snapshot above,
+        // unchanged, if it isn't set up yet or the call fails.
+        $liveInstagram = $this->fetchLiveInstagramFollowers($start_date, $end_date);
+        if ($liveInstagram) {
+            $data['instagram']['is_live'] = true;
+            $data['instagram']['followers_start'] = $liveInstagram['followers_start'];
+            $data['instagram']['followers_start_date'] = $liveInstagram['followers_start_date'];
+            $data['instagram']['followers_now'] = $liveInstagram['followers_now'];
+            $data['instagram']['followers_now_date'] = $liveInstagram['followers_now_date'];
+            $data['instagram']['daily'] = $liveInstagram['daily'];
+        }
 
         return [
             'data' => $data,
@@ -9737,6 +9752,104 @@ class ReportController extends Controller
     /**
      * GET JSON from the nivessa website API and return transport + parse
      * metadata for diagnostics (HTTP status, cURL error, decoded JSON,
+     * Real, live Instagram follower history for a date range — used by the
+     * Archer report so its Instagram numbers can actually move with the
+     * date filter instead of being a hand-typed snapshot. Returns null
+     * (never throws) whenever the Instagram integration isn't connected
+     * yet or the call fails for any reason, so callers can fall back to
+     * the static snapshot with zero behavior change until it's wired up.
+     *
+     * Requires a Page Access Token with instagram_manage_insights, pasted
+     * at /communications/instagram-settings (same token store the DM
+     * webhook uses — no separate setup needed once that's done).
+     *
+     * NOT YET VERIFIED against a real token/account — the Graph API's
+     * exact response shape for the follower_count insights metric should
+     * be spot-checked the first time a token is actually configured.
+     */
+    protected function fetchLiveInstagramFollowers(string $start_date, string $end_date): ?array
+    {
+        $token = \App\Http\Controllers\InstagramWebhookController::storedPageAccessToken();
+        if ($token === '') {
+            return null;
+        }
+
+        try {
+            $graphVersion = 'v19.0';
+            $meUrl = "https://graph.facebook.com/{$graphVersion}/me?fields=instagram_business_account&access_token=" . urlencode($token);
+            $meDet = $this->httpGetJsonPlain($meUrl, 10);
+            $igUserId = $meDet['decoded']['instagram_business_account']['id'] ?? null;
+            if (!$igUserId) {
+                return null;
+            }
+
+            $since = \Carbon::parse($start_date)->startOfDay()->timestamp;
+            // Meta's follower_count insights metric only retains a limited
+            // rolling window (documented as ~30 days of daily granularity) —
+            // requesting further back than that will just come back with
+            // fewer points than asked for, not an error.
+            $until = \Carbon::parse($end_date)->endOfDay()->timestamp;
+            $insightsUrl = "https://graph.facebook.com/{$graphVersion}/{$igUserId}/insights"
+                . "?metric=follower_count&period=day&since={$since}&until={$until}&access_token=" . urlencode($token);
+            $insightsDet = $this->httpGetJsonPlain($insightsUrl, 10);
+            $values = $insightsDet['decoded']['data'][0]['values'] ?? null;
+            if (!is_array($values) || empty($values)) {
+                return null;
+            }
+
+            $daily = [];
+            foreach ($values as $point) {
+                if (!isset($point['end_time']) || !isset($point['value'])) {
+                    continue;
+                }
+                $daily[] = [
+                    'date' => \Carbon::parse($point['end_time'])->format('Y-m-d'),
+                    'followers' => (int) $point['value'],
+                ];
+            }
+            if (empty($daily)) {
+                return null;
+            }
+            usort($daily, fn($a, $b) => strcmp($a['date'], $b['date']));
+
+            return [
+                'daily' => $daily,
+                'followers_start' => $daily[0]['followers'],
+                'followers_start_date' => $daily[0]['date'],
+                'followers_now' => end($daily)['followers'],
+                'followers_now_date' => end($daily)['date'],
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('fetchLiveInstagramFollowers failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** Plain HTTPS GET + JSON decode, no custom auth header — for calling third-party APIs (e.g. Meta Graph API) that take their own auth via query param. */
+    protected function httpGetJsonPlain(string $url, int $timeoutSeconds = 8): array
+    {
+        $det = ['http_code' => 0, 'curl_error' => '', 'body' => '', 'decoded' => null];
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, min(5, $timeoutSeconds));
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
+            $body = curl_exec($ch);
+            $det['http_code'] = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $det['curl_error'] = (string) curl_error($ch);
+            curl_close($ch);
+            $det['body'] = is_string($body) ? $body : '';
+            if ($det['curl_error'] === '' && $det['body'] !== '') {
+                $det['decoded'] = json_decode($det['body'], true);
+            }
+        } catch (\Throwable $e) {
+            $det['curl_error'] = $e->getMessage();
+        }
+        return $det;
+    }
+
+    /**
      * parse errors, raw body for short preview).
      *
      * @return array{http_code:int,curl_error:string,body:string,decoded:?array,json_error:?string}

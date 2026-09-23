@@ -56,6 +56,24 @@ class InstagramWebhookController extends Controller
         return trim((string) ($this->settings_data()['verify_token'] ?? ''));
     }
 
+    /**
+     * Public accessor so other controllers (e.g. ReportController, for
+     * pulling real Instagram Insights) can read the same stored token
+     * without duplicating the storage-file logic above.
+     */
+    public static function storedPageAccessToken(): string
+    {
+        $file = storage_path('app/instagram-webhook.json');
+        try {
+            if (is_file($file)) {
+                $data = json_decode((string) file_get_contents($file), true) ?: [];
+                return trim((string) ($data['page_access_token'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
+
     private function pageAccessToken(): string
     {
         return trim((string) ($this->settings_data()['page_access_token'] ?? ''));
