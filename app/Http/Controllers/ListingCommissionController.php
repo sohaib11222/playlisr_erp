@@ -681,57 +681,72 @@ class ListingCommissionController extends Controller
             $edate = (string) ($it['date'] ?? '');
             if ($edate === '' || $edate < $pStart || $edate > $pEnd) { continue; }
             if (in_array($edate, $paidDates, true)) { continue; }
+
+            // A party can run at more than one store at once (Sarah 2026-09-23:
+            // Beabadoobee had staff working it at both HW and Pico) — resolve
+            // EVERY location key on the event, not just the first, so a
+            // multi-store party gets one estimate row per store instead of
+            // silently only covering one of them.
             $locArr = (array) ($it['location'] ?? []);
-            $locKey = strtolower(trim((string) ($locArr[0] ?? '')));
-            $locId = null;
-            foreach ($locations as $lid => $lname) {
-                if ($locKey !== '' && strpos(strtolower($lname), $locKey) !== false) { $locId = $lid; break; }
-            }
-            // Auto-estimate the split so this list is useful without another
-            // click: the event's own time (falling back to the usual 6-8 PM
-            // slot) against Sarah's usual 4% rate, split among whoever's Sling
-            // floor shift actually overlapped that window at that store — the
-            // same "who was there" signal the picker below highlights in
-            // green. Clearly labeled as an estimate; nothing pays until she
-            // opens Calculate and confirms staff + amounts herself.
-            $estimate = null;
-            if ($locId) {
-                $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
-                $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
-                $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
-                $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
-                if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
-
-                $sales = $this->windowSales($businessId, $locId, $sC, $eC);
-                $shiftsHere = $this->partyDayShiftTimes($businessId, $edate, $locId, $locations[$locId], $sC->format('H:i'), $eC->format('H:i'));
-                $overlapUids = array_keys(array_filter($shiftsHere, function ($s) { return $s['overlaps']; }));
-
-                $pool = round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
-                $n = max(1, count($overlapUids));
-                $each = round($pool / $n, 2);
-                $estStaff = [];
-                foreach ($overlapUids as $uid) {
-                    $u = DB::table('users')->where('id', $uid)->first(['first_name', 'last_name', 'surname']);
-                    $estStaff[] = ['uid' => $uid, 'name' => $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $uid))) : ('User #' . $uid), 'amount' => $each];
+            $locIds = [];
+            foreach ($locArr as $lk) {
+                $lk = strtolower(trim((string) $lk));
+                if ($lk === '') { continue; }
+                foreach ($locations as $lid => $lname) {
+                    if (strpos(strtolower($lname), $lk) !== false) { $locIds[$lid] = $lk; break; }
                 }
-                $estimate = [
-                    'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
-                    'percent' => self::PARTY_DEFAULT_PERCENT,
-                    'sales' => $sales,
-                    'pool' => $pool,
-                    'staff' => $estStaff,
-                    'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
-                    'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
+            }
+            if (empty($locIds)) { $locIds = [null => strtolower(trim((string) ($locArr[0] ?? '')))]; }
+
+            foreach ($locIds as $locId => $locKey) {
+                // Auto-estimate the split so this list is useful without
+                // another click: the event's own time (falling back to the
+                // usual 6-8 PM slot) against Sarah's usual 4% rate, split
+                // among whoever actually RANG a sale at that store during the
+                // window. Deliberately NOT the Sling schedule — Sarah found
+                // it credits no-shows (Abby was scheduled for Miley's party
+                // but never showed) and misses real fill-ins, same failure
+                // mode that got the old auto-split killed in August. Ringing
+                // a sale is direct proof of being on the floor. Clearly
+                // labeled as an estimate; nothing pays until she opens
+                // Calculate and confirms staff + amounts herself.
+                $estimate = null;
+                if ($locId) {
+                    $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
+                    $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
+                    $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
+                    $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
+                    if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
+
+                    $sales = $this->windowSales($businessId, $locId, $sC, $eC);
+                    $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
+
+                    $pool = round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
+                    $n = max(1, count($ringers));
+                    $each = round($pool / $n, 2);
+                    $estStaff = [];
+                    foreach ($ringers as $uid => $name) {
+                        $estStaff[] = ['uid' => $uid, 'name' => $name, 'amount' => $each];
+                    }
+                    $estimate = [
+                        'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
+                        'percent' => self::PARTY_DEFAULT_PERCENT,
+                        'sales' => $sales,
+                        'pool' => $pool,
+                        'staff' => $estStaff,
+                        'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
+                        'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
+                    ];
+                }
+
+                $unpaidParties[] = [
+                    'date' => $edate,
+                    'name' => (string) ($it['name'] ?: 'Listening Party'),
+                    'location_id' => $locId,
+                    'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
+                    'estimate' => $estimate,
                 ];
             }
-
-            $unpaidParties[] = [
-                'date' => $edate,
-                'name' => (string) ($it['name'] ?: 'Listening Party'),
-                'location_id' => $locId,
-                'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
-                'estimate' => $estimate,
-            ];
         }
         usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
 
@@ -852,6 +867,33 @@ class ListingCommissionController extends Controller
             ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
             ->sum(DB::raw(self::PARTY_NET_PRETAX));
         return round((float) $sales, 2);
+    }
+
+    // Who actually rang a sale at this store during the window — real proof of
+    // being on the floor, unlike a Sling schedule which still lists a no-show.
+    // Keyed by user_id => name, in first-rung order.
+    private function partyDayRingers($businessId, $locationId, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
+    {
+        $rows = DB::table('transactions as t')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $businessId)
+            ->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereBetween('t.transaction_date', [$startC->toDateTimeString(), $endC->toDateTimeString()])
+            ->whereNotNull('t.created_by')
+            ->groupBy('t.created_by', 'u.first_name', 'u.last_name', 'u.surname')
+            ->orderByRaw('MIN(t.transaction_date)')
+            ->selectRaw('t.created_by as uid, u.first_name, u.last_name, u.surname')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $uid = (int) $r->uid;
+            if ($uid <= 0) { continue; }
+            $out[$uid] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: (($r->surname ?: '') ?: ('User #' . $uid));
+        }
+        return $out;
     }
 
     // Real Sling shift times for everyone scheduled at this store on this date —

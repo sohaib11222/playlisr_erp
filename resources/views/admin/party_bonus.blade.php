@@ -82,7 +82,7 @@
     @if (count($unpaid_parties) > 0)
         <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
             <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
-            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Auto-estimated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever had a floor shift then. Nothing is paid until you confirm on Calculate.</p>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Auto-estimated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever actually rang a sale then (not the Sling schedule, so a no-show isn't credited). Nothing is paid until you confirm on Calculate.</p>
             <table class="pb-table">
                 <thead><tr><th>Date</th><th>Party</th><th>Store</th><th>Estimated split</th><th></th></tr></thead>
                 <tbody>
@@ -106,7 +106,7 @@
                                 @if (!$est)
                                     <span class="text-muted">Pick a store to estimate</span>
                                 @elseif (count($est['staff']) === 0)
-                                    <span class="text-muted">${{ number_format($est['sales'], 2) }} rung {{ $est['window'] }}, but nobody's Sling shift overlaps it - nothing to estimate</span>
+                                    <span class="text-muted">${{ number_format($est['sales'], 2) }} rung {{ $est['window'] }}, but no sale is tied to a specific cashier - nothing to estimate</span>
                                 @else
                                     <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales &middot; ${{ number_format($est['pool'], 2) }} pool</div>
                                     @foreach ($est['staff'] as $s)
