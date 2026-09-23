@@ -617,12 +617,34 @@ class ContactController extends Controller
             ->addColumn('visit_count', function ($row) {
                 return (int) ($row->visit_count ?? 0);
             })
-            // preorders_count is still an aggregate from a joined subquery
-            // (pending_preorders_count) — spell out how to sort by it rather
-            // than relying on Yajra's default name-based ordering to find
-            // that alias on its own.
+            // Sarah 2026-09-23 (found live testing "make all columns
+            // sortable"): whenever a JS column's `name` is IDENTICAL to an
+            // `addColumn()` key below, Yajra's default order resolution
+            // silently breaks — it showed one legitimate outlier row then
+            // unsorted zeros for everything else, on real columns that read
+            // back correctly (lifetime_purchases, loyalty_points,
+            // visit_count all reproduced this; store_credit didn't, because
+            // its `name` ('balance') differs from its addColumn key
+            // ('store_credit') so there's no collision). Spelling out the
+            // real underlying column for every column whose name matches an
+            // addColumn key sidesteps it entirely, same fix as preorders_count.
             ->orderColumn('preorders_count', function ($query, $order) {
                 $query->orderByRaw("pending_preorders_count $order");
+            })
+            ->orderColumn('lifetime_purchases', function ($query, $order) {
+                $query->orderByRaw("contacts.lifetime_purchases $order");
+            })
+            ->orderColumn('loyalty_points', function ($query, $order) {
+                $query->orderByRaw("contacts.loyalty_points $order");
+            })
+            ->orderColumn('loyalty_tier', function ($query, $order) {
+                $query->orderByRaw("contacts.loyalty_tier $order");
+            })
+            ->orderColumn('shop_locations', function ($query, $order) {
+                $query->orderByRaw("contacts.shop_locations $order");
+            })
+            ->orderColumn('visit_count', function ($query, $order) {
+                $query->orderByRaw("contacts.visit_count $order");
             })
             ->addColumn('loyalty_points', function ($row) {
                 $points = $row->loyalty_points ?? 0;
