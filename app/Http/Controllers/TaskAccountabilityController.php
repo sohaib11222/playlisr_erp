@@ -51,7 +51,11 @@ class TaskAccountabilityController extends Controller
         $yesterday = $today->copy()->subDay();
 
         $tasks = WeeklyTask::with('assignees')->where('business_id', $business_id)->get();
-        $onShift = $this->onShiftByDateAndStore($windowStart, $today);
+        // Overdue tasks can predate the scorecard window, so pull Sling back
+        // far enough to name who was on shift the day each one was due.
+        $oldestOpenDue = $tasks->where('status', '!=', 'complete')->pluck('end_date')->filter()->min();
+        $shiftFrom = $oldestOpenDue && $oldestOpenDue->lt($windowStart) ? $oldestOpenDue->copy() : $windowStart;
+        $onShift = $this->onShiftByDateAndStore($shiftFrom, $today);
         $names = [];
 
         // Tasks with no assignee, but Sling can still name who was on shift.
