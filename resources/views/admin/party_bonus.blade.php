@@ -107,6 +107,8 @@
                                     <span class="text-muted">Pick a store to estimate</span>
                                 @elseif (count($est['staff']) === 0)
                                     <span class="text-muted">${{ number_format($est['sales'], 2) }} rung {{ $est['window'] }}, but no sale is tied to a specific cashier - nothing to estimate</span>
+                                @elseif ($est['solo'])
+                                    <span class="text-muted">Only {{ $est['staff'][0]['name'] }} rang a sale {{ $est['window'] }} - no pool, they're already covered by their normal sales commission</span>
                                 @else
                                     <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales &middot; ${{ number_format($est['pool'], 2) }} pool</div>
                                     @foreach ($est['staff'] as $s)
@@ -183,7 +185,11 @@
     <div class="pb-card pb-result">
         <div>Sales rung at <strong>{{ $result['location_name'] }}</strong> on <strong>{{ $date }}</strong>, {{ $result['window'] }}@if($event_name) - <strong>{{ $event_name }}</strong>@endif:</div>
         <div class="big">${{ number_format($result['sales'], 2) }}</div>
-        <div style="margin-top:6px;">Bonus pool = <strong>{{ rtrim(rtrim(number_format($result['percent'], 2), '0'), '.') }}%</strong> of that = <strong>${{ number_format($result['pool'], 2) }}</strong>@if(count($result['people']) > 0), split {{ count($result['people']) }} ways = <strong>${{ number_format($result['per'], 2) }}</strong> each @endif.</div>
+        @if ($result['solo'])
+            <div style="margin-top:6px;" class="text-muted">Only one person checked - no pool. They're already covered by their normal sales commission; a party bonus is for splitting the extra with whoever else shared the floor.</div>
+        @else
+            <div style="margin-top:6px;">Bonus pool = <strong>{{ rtrim(rtrim(number_format($result['percent'], 2), '0'), '.') }}%</strong> of that = <strong>${{ number_format($result['pool'], 2) }}</strong>@if(count($result['people']) > 0), split {{ count($result['people']) }} ways = <strong>${{ number_format($result['per'], 2) }}</strong> each @endif.</div>
+        @endif
 
         @if (count($result['people']) > 0)
         <form method="POST" action="{{ url('/admin/party-bonus/pay') }}"

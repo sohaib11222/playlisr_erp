@@ -721,7 +721,13 @@ class ListingCommissionController extends Controller
                     $sales = $this->windowSales($businessId, $locId, $sC, $eC);
                     $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
 
-                    $pool = round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
+                    // A party bonus is for SPLITTING the extra with whoever
+                    // shared the floor — one person working it solo already
+                    // gets their normal sales commission, so there's nothing
+                    // to split (Sarah 2026-09-23: "no pool if one person
+                    // worked the party"). Only pool up when 2+ actually rang.
+                    $solo = count($ringers) <= 1;
+                    $pool = $solo ? 0.0 : round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
                     $n = max(1, count($ringers));
                     $each = round($pool / $n, 2);
                     $estStaff = [];
@@ -734,6 +740,7 @@ class ListingCommissionController extends Controller
                         'sales' => $sales,
                         'pool' => $pool,
                         'staff' => $estStaff,
+                        'solo' => $solo,
                         'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
                         'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
                     ];
@@ -798,7 +805,12 @@ class ListingCommissionController extends Controller
                     ->selectRaw('t.invoice_no, t.transaction_date, u.first_name, u.last_name, COALESCE(SUM(' . $net_pretax . '), 0) as net')
                     ->get();
 
-                $pool = round($sales * ($percent / 100), 2);
+                // No pool to split when only one person is checked — they're
+                // already covered by their normal sales commission, and a
+                // party bonus only exists to split the extra with whoever
+                // else shared the floor (Sarah 2026-09-23).
+                $solo = count($selected) <= 1;
+                $pool = $solo ? 0.0 : round($sales * ($percent / 100), 2);
                 $n = max(1, count($selected));
                 $per = round($pool / $n, 2);
 
@@ -825,6 +837,7 @@ class ListingCommissionController extends Controller
                     'pool'          => $pool,
                     'per'           => $per,
                     'people'        => $people,
+                    'solo'          => $solo,
                     'location_name' => $locations[$locationId] ?? ('Store #' . $locationId),
                     'window'        => $startC->format('g:i A') . ' - ' . $endC->format('g:i A'),
                 ];
