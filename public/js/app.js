@@ -401,7 +401,7 @@ $(document).ready(function() {
                 { data: 'visit_count', name: 'visit_count', searchable: false, defaultContent: '0' },
                 { data: 'loyalty_points', name: 'loyalty_points', defaultContent: '0' },
                 { data: 'loyalty_tier', name: 'loyalty_tier', defaultContent: 'Bronze' },
-                { data: 'preorders_count', name: 'pending_preorders_count', defaultContent: '0' },
+                { data: 'preorders_count', name: 'preorders_count', defaultContent: '0' },
                 { data: 'delete_action', name: 'delete_action', orderable: false, searchable: false, defaultContent: '' },
         ];
         }

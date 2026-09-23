@@ -104,6 +104,12 @@
                    placeholder="e.g. Sarah Hedvat · 510-809-6346 · sarah@example.com · CO0068"
                    autocomplete="off">
         </div>
+        {{-- Clear "the page is loading" signal — Sarah 2026-09-23: the
+             default DataTables processing box is easy to miss. Shown/hidden
+             by the processing.dt event in the script below. --}}
+        <div id="contact_table_loading" style="display:none; margin-bottom:10px; color:#6b7280; font-size:14px;">
+            <i class="fa fa-hourglass-half fa-spin"></i> Loading...
+        </div>
         <div id="import_rsvp_contacts_status" style="margin-bottom: 10px;"></div>
         <div id="import_rsvp_contacts_preview"></div>
     @endif
@@ -320,6 +326,9 @@ $(function () {
         if (json && typeof json.recordsTotal !== 'undefined') {
             $('#customer_total_count').text(Number(json.recordsTotal).toLocaleString() + ' total');
         }
+    });
+    $('#contact_table').on('processing.dt', function (e, settings, processing) {
+        $('#contact_table_loading').toggle(!!processing);
     });
 
     // Text via Quo — clicking the comment-bubble icon next to a mobile

@@ -616,6 +616,19 @@ class ContactController extends Controller
             ->addColumn('visit_count', function ($row) {
                 return (int) ($row->visit_count ?? 0);
             })
+            // shop_locations/visit_count are aggregates from a joined
+            // subquery, not a plain contacts column — spell out how to sort
+            // by them explicitly rather than relying on Yajra's default
+            // name-based ordering to find the alias on its own.
+            ->orderColumn('shop_locations', function ($query, $order) {
+                $query->orderByRaw("shop_locations $order");
+            })
+            ->orderColumn('visit_count', function ($query, $order) {
+                $query->orderByRaw("visit_count $order");
+            })
+            ->orderColumn('preorders_count', function ($query, $order) {
+                $query->orderByRaw("pending_preorders_count $order");
+            })
             ->addColumn('loyalty_points', function ($row) {
                 $points = $row->loyalty_points ?? 0;
                 // If loyalty_points column doesn't exist, try total_rp
