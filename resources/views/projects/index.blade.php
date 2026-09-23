@@ -2,127 +2,174 @@
 @section('title', 'Projects')
 
 @section('content')
-<section class="content-header">
-    <h1>Tasks &amp; Projects <small>projects</small>
-        <a href="{{ action('ProjectController@create') }}" class="btn btn-primary pull-right"><i class="fa fa-plus"></i> Add Project</a>
-    </h1>
-</section>
+@include('tasks.partials.asana_styles')
+<style>
+.as-proj .as-cols, .as-proj .as-row { grid-template-columns: minmax(0, 1fr) 132px 96px 104px 110px 170px 64px; }
+@media (max-width: 767px) { .as-proj .as-row { grid-template-columns: minmax(0, 1fr) auto; } }
+</style>
 
 <section class="content">
+<div class="as-wrap">
+
+    <div class="as-head">
+        <div>
+            <h1 class="as-title">Projects</h1>
+            <div class="as-sub">Longer-running work. Join a project to get credit for helping.</div>
+        </div>
+    </div>
+
+    @include('tasks.partials.asana_nav')
 
     @if(session('status'))
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">{{ session('status.msg') }}</div>
     @endif
 
-    @include('tasks.partials.tabs')
-
-    <div class="box box-solid">
-        <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
-            @include('tasks.partials.store_toggle', ['indexAction' => action('ProjectController@index'), 'store' => $store, 'storeLabels' => $storeLabels, 'canToggleStore' => $canToggleStore])
-            <form method="GET" action="{{ action('ProjectController@index') }}" class="form-inline">
+    <div class="as-toolbar">
+        <a href="{{ action('ProjectController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add project</a>
+        <div class="as-tools">
+            @if($canToggleStore)
+                @php
+                    $baseQuery = request()->except(['store', 'page']);
+                @endphp
+                <div class="as-seg">
+                    <a href="{{ action('ProjectController@index') }}?{{ http_build_query($baseQuery) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
+                    @foreach($storeLabels as $key => $label)
+                        <a href="{{ action('ProjectController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
+                    @endforeach
+                </div>
+            @elseif($store)
+                <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
+            @endif
+            <form method="GET" action="{{ action('ProjectController@index') }}" class="as-tools">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <label style="margin-right:5px;">Status</label>
-                <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="" @if(!$status) selected @endif>All</option>
-                    <option value="not_started" @if($status==='not_started') selected @endif>Not started</option>
-                    <option value="in_progress" @if($status==='in_progress') selected @endif>In progress</option>
-                    <option value="complete" @if($status==='complete') selected @endif>Complete</option>
+                <select name="status" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$status) selected @endif>Any status</option>
+                    <option value="not_started" @if($status === 'not_started') selected @endif>Not started</option>
+                    <option value="in_progress" @if($status === 'in_progress') selected @endif>In progress</option>
+                    <option value="complete" @if($status === 'complete') selected @endif>Complete</option>
                 </select>
-                <label style="margin-right:5px;">Priority</label>
-                <select name="priority" class="form-control" onchange="this.form.submit()">
-                    <option value="" @if(!$priority) selected @endif>All</option>
+                <select name="priority" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$priority) selected @endif>Any priority</option>
                     @foreach($priorityLabels as $key => $label)
-                        <option value="{{ $key }}" @if($priority===$key) selected @endif>{{ $label }}</option>
+                        <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }}</option>
                     @endforeach
                 </select>
             </form>
         </div>
-        <div class="box-body">
-            @forelse($projects as $p)
-            <div class="box box-default">
-                <div class="box-header with-border">
-                    <h3 class="box-title">
-                        {{ $p->title }}
-                        <span class="label label-default">{{ $p->store ? ($storeLabels[$p->store] ?? $p->store) : 'Both stores' }}</span>
-                        <span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$p->priority] ?? 'default' }}">{{ $priorityLabels[$p->priority] ?? ucfirst($p->priority) }}</span>
-                    </h3>
-                    <div class="box-tools">
-                        @include('tasks.partials.status_dropdown', ['action' => action('ProjectController@updateStatus', $p->id), 'status' => $p->status])
-                        <a href="{{ action('ProjectController@edit', $p->id) }}" class="btn btn-xs btn-default"><i class="fa fa-edit"></i></a>
-                        <form action="{{ action('ProjectController@destroy', $p->id) }}" method="POST" style="display:inline-block;" onsubmit="return confirm('Delete this project?');">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="btn btn-xs btn-danger"><i class="fa fa-trash"></i></button>
-                        </form>
-                    </div>
-                </div>
-                <div class="box-body">
-                    @if($p->description)<p>{{ $p->description }}</p>@endif
+    </div>
 
-                    <div class="row">
-                        <div class="col-md-4">
-                            <strong>Created by</strong><br>
-                            <span class="text-muted">{{ $p->creator->user_full_name ?? '' }}</span>
-                        </div>
-                        <div class="col-md-4">
-                            <strong>Started by</strong><br>
-                            <span class="text-muted">
-                                {{ $p->startedBy->user_full_name ?? '—' }}
-                                @if($p->started_at)<br><small>{{ $p->started_at->format('M j, Y') }}</small>@endif
-                            </span>
-                        </div>
-                        <div class="col-md-4">
-                            <strong>Completed by</strong><br>
-                            <span class="text-muted">
-                                {{ $p->completedBy->user_full_name ?? '—' }}
-                                @if($p->completed_at)<br><small>{{ $p->completed_at->format('M j, Y') }}</small>@endif
-                            </span>
-                        </div>
-                    </div>
+    @php
+        $groups = [
+            'in_progress' => 'In progress',
+            'not_started' => 'Not started',
+            'complete' => 'Completed',
+        ];
+        $byStatus = $projects->getCollection()->groupBy('status');
+    @endphp
 
-                    <hr>
+    <div class="as-table as-proj">
+        <div class="as-cols">
+            <div>Project name</div><div>Status</div><div>Priority</div><div>Store</div><div>Owner</div><div>Members</div><div></div>
+        </div>
 
-                    <strong>Assigned to</strong>
-                    <div style="margin-bottom:10px;">
-                        @forelse($p->assignees as $a)
-                            <span class="label label-default" style="margin-right:4px;">{{ $a->user_full_name }}</span>
-                        @empty
-                            <span class="text-muted">Unassigned</span>
-                        @endforelse
-                    </div>
-
-                    <strong>Contributors</strong>
-                    <div>
-                        @forelse($p->contributors as $c)
-                            <span class="label label-info" style="margin-right:4px;">
-                                {{ $c->user_full_name }}
-                                @if((int)$c->id === (int)auth()->id())
-                                <form action="{{ action('ProjectController@removeContributor', [$p->id, $c->id]) }}" method="POST" style="display:inline;">
+        @foreach($groups as $key => $title)
+            @php
+                $rows = $byStatus->get($key, collect());
+            @endphp
+            @if($rows->count() || $key !== 'complete')
+            <div class="as-section {{ $key === 'complete' ? 'collapsed' : '' }}">
+                <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> {{ $title }} <span class="as-count">{{ $rows->count() }}</span></div>
+                <div class="as-rows">
+                    @forelse($rows as $p)
+                        @php
+                            $color = \App\Http\Controllers\TeamProgressController::AVATAR_COLORS[$p->id % count(\App\Http\Controllers\TeamProgressController::AVATAR_COLORS)];
+                            $isMember = $p->contributors->contains('id', auth()->id());
+                            if ($p->completed_at) {
+                                $sub = 'Completed ' . $p->completed_at->format('M j') . ($p->completedBy ? ' by ' . $p->completedBy->first_name : '');
+                            } elseif ($p->started_at) {
+                                $sub = 'Started ' . $p->started_at->format('M j') . ($p->startedBy ? ' by ' . $p->startedBy->first_name : '');
+                            } else {
+                                $sub = 'Created ' . $p->created_at->format('M j') . ($p->creator ? ' by ' . $p->creator->first_name : '');
+                            }
+                        @endphp
+                        <div class="as-row {{ $p->status === 'complete' ? 'done' : '' }}">
+                            <div>
+                                <span class="as-tile" style="background:{{ $color }}"><i class="fa fa-list-ul"></i></span>
+                                <div class="as-pname">
+                                    <a class="as-name" href="{{ action('ProjectController@edit', $p->id) }}" title="{{ $p->description }}">{{ $p->title }}</a>
+                                    <span class="as-meta">{{ $p->description ? \Illuminate\Support\Str::limit($p->description, 90) : $sub }}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <form action="{{ action('ProjectController@updateStatus', $p->id) }}" method="POST" style="margin:0;">
+                                    @csrf
+                                    <select name="status" class="as-status as-st-{{ $p->status }}" onchange="this.form.submit()">
+                                        <option value="not_started" @if($p->status === 'not_started') selected @endif>Not started</option>
+                                        <option value="in_progress" @if($p->status === 'in_progress') selected @endif>In progress</option>
+                                        <option value="complete" @if($p->status === 'complete') selected @endif>Complete</option>
+                                    </select>
+                                </form>
+                            </div>
+                            <div class="as-hide-sm"><span class="as-pill as-p-{{ $p->priority }}">{{ $priorityLabels[$p->priority] ?? ucfirst($p->priority) }}</span></div>
+                            <div class="as-hide-sm"><span class="as-pill as-tag">{{ $p->store ? ($storeLabels[$p->store] ?? ucfirst($p->store)) : 'Both' }}</span></div>
+                            <div class="as-hide-sm">
+                                @if($p->assignees->count())
+                                    <span class="as-avatars">
+                                        @foreach($p->assignees->take(3) as $a)
+                                            {!! \App\Http\Controllers\TeamProgressController::avatar($a->id, trim($a->first_name . ' ' . $a->last_name), 'sm') !!}
+                                        @endforeach
+                                    </span>
+                                    @if($p->assignees->count() > 3)
+                                        <span class="as-meta" style="margin-left:4px;">+{{ $p->assignees->count() - 3 }}</span>
+                                    @endif
+                                @else
+                                    <span class="as-meta">Unassigned</span>
+                                @endif
+                            </div>
+                            <div class="as-hide-sm">
+                                <span class="as-avatars">
+                                    @foreach($p->contributors->take(4) as $c)
+                                        {!! \App\Http\Controllers\TeamProgressController::avatar($c->id, trim($c->first_name . ' ' . $c->last_name), 'sm') !!}
+                                    @endforeach
+                                </span>
+                                @if($p->contributors->count() > 4)
+                                    <span class="as-meta" style="margin-left:4px;">+{{ $p->contributors->count() - 4 }}</span>
+                                @endif
+                                @if($isMember)
+                                    <form action="{{ action('ProjectController@removeContributor', [$p->id, auth()->id()]) }}" method="POST" style="display:inline;margin:0;">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="as-leave" title="Leave this project">Leave</button>
+                                    </form>
+                                @else
+                                    <form action="{{ action('ProjectController@join', $p->id) }}" method="POST" style="display:inline;margin:0;">
+                                        @csrf
+                                        <button type="submit" class="as-join"><i class="fa fa-plus"></i> Join</button>
+                                    </form>
+                                @endif
+                            </div>
+                            <div class="as-acts">
+                                <a href="{{ action('ProjectController@edit', $p->id) }}" class="as-icon-btn" title="Edit"><i class="fa fa-pencil"></i></a>
+                                <form action="{{ action('ProjectController@destroy', $p->id) }}" method="POST" style="display:inline;margin:0;" onsubmit="return confirm('Delete this project?');">
                                     @csrf
                                     @method('DELETE')
-                                    <button type="submit" class="btn btn-link btn-xs" style="color:#fff;padding:0 0 0 4px;" title="Leave this project">&times;</button>
+                                    <button type="submit" class="as-icon-btn del" title="Delete"><i class="fa fa-trash"></i></button>
                                 </form>
-                                @endif
-                            </span>
-                        @empty
-                            <span class="text-muted">No one has joined yet.</span>
-                        @endforelse
-                    </div>
-
-                    @if(!$p->contributors->contains('id', auth()->id()))
-                    <form action="{{ action('ProjectController@join', $p->id) }}" method="POST" style="margin-top:10px;">
-                        @csrf
-                        <button type="submit" class="btn btn-xs btn-success"><i class="fa fa-plus"></i> Join this project</button>
-                    </form>
-                    @endif
+                            </div>
+                        </div>
+                    @empty
+                        <div class="as-empty">No projects here.</div>
+                    @endforelse
                 </div>
             </div>
-            @empty
-            <p class="text-center text-muted">No projects yet. Click "Add Project" to create one.</p>
-            @endforelse
-
-            <div class="text-center">{{ $projects->links() }}</div>
-        </div>
+            @endif
+        @endforeach
     </div>
+
+    <div class="text-center">{{ $projects->links() }}</div>
+
+</div>
 </section>
+
+@include('tasks.partials.asana_script')
 @stop

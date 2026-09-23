@@ -2,149 +2,232 @@
 @section('title', 'Tasks')
 
 @section('content')
-<section class="content-header">
-    <h1>Tasks &amp; Projects <small>daily + weekly tasks</small>
-        <a href="{{ action('TaskController@create') }}" class="btn btn-primary pull-right"><i class="fa fa-plus"></i> Add Task</a>
-    </h1>
-</section>
+@include('tasks.partials.asana_styles')
+<style>
+.as-all .as-cols, .as-all .as-row { grid-template-columns: minmax(0, 1fr) 132px 150px 96px 104px 120px 64px; }
+.as-all .as-row { cursor: default; }
+.as-tname { display: flex; flex-direction: column; min-width: 0; }
+.as-tname .as-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.as-tname .as-desc { color: #6d6e6f; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.as-note-btn { border: 0; background: none; color: #9ca6af; font-size: 12px; padding: 0 4px; cursor: pointer; white-space: nowrap; }
+.as-note-btn:hover { color: #1e1f21; }
+.as-detail { display: none; border-top: 1px solid #edeae9; background: #fafafa; padding: 12px 16px 14px 46px; font-size: 13px; }
+.as-detail.open { display: block; }
+.as-detail .as-who { color: #6d6e6f; font-size: 12px; margin-bottom: 8px; }
+.as-detail .as-n { margin-bottom: 6px; display: flex; gap: 8px; align-items: flex-start; }
+.as-detail .as-n .as-avatar { margin-top: 1px; }
+.as-detail form { display: flex; gap: 6px; margin-top: 8px; max-width: 520px; }
+.as-detail input[type=text] { flex: 1; border: 1px solid #edeae9; border-radius: 6px; padding: 5px 10px; font-size: 13px; }
+.as-detail button[type=submit] { border: 0; background: #4573d2; color: #fff; border-radius: 6px; padding: 5px 12px; font-size: 13px; }
+.as-check-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #1e1f21; margin: 0; font-weight: 400; cursor: pointer; }
+@media (max-width: 767px) { .as-all .as-row { grid-template-columns: minmax(0, 1fr) auto; } .as-detail { padding-left: 16px; } }
+</style>
 
 <section class="content">
+<div class="as-wrap">
+
+    <div class="as-head">
+        <div>
+            <h1 class="as-title">All Tasks</h1>
+            <div class="as-sub">Everything on the team's list today and this week.</div>
+        </div>
+    </div>
+
+    @include('tasks.partials.asana_nav')
 
     @if(session('status'))
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">{{ session('status.msg') }}</div>
     @endif
 
-    @include('tasks.partials.tabs')
-
-    <div class="box box-solid">
-        <div class="box-header with-border" style="display:flex;align-items:center;flex-wrap:wrap;">
-            @include('tasks.partials.store_toggle', ['indexAction' => action('TaskController@index'), 'store' => $store, 'storeLabels' => $storeLabels, 'canToggleStore' => $canToggleStore])
-            <form method="GET" action="{{ action('TaskController@index') }}" class="form-inline">
+    <div class="as-toolbar">
+        <a href="{{ action('TaskController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add task</a>
+        <div class="as-tools">
+            @if($canToggleStore)
+                @php
+                    $baseQuery = request()->except(['store', 'page']);
+                @endphp
+                <div class="as-seg">
+                    <a href="{{ action('TaskController@index') }}?{{ http_build_query($baseQuery) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
+                    @foreach($storeLabels as $key => $label)
+                        <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
+                    @endforeach
+                </div>
+                <a href="{{ url('/admin/task-store-assignments') }}" class="as-meta" style="text-decoration:none;">Store assignments</a>
+            @elseif($store)
+                <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
+            @endif
+            <form method="GET" action="{{ action('TaskController@index') }}" class="as-tools">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <label style="margin-right:5px;">Type</label>
-                <select name="type" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="" @if(!$type) selected @endif>Today + This Week</option>
-                    <option value="daily" @if($type==='daily') selected @endif>Today</option>
-                    <option value="weekly" @if($type==='weekly') selected @endif>This Week</option>
+                <select name="type" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$type) selected @endif>Today + This week</option>
+                    <option value="daily" @if($type === 'daily') selected @endif>Today</option>
+                    <option value="weekly" @if($type === 'weekly') selected @endif>This week</option>
                 </select>
-                <label style="margin-right:5px;">Status</label>
-                <select name="status" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="" @if(!$status) selected @endif>All</option>
-                    <option value="not_started" @if($status==='not_started') selected @endif>Not started</option>
-                    <option value="in_progress" @if($status==='in_progress') selected @endif>In progress</option>
-                    <option value="complete" @if($status==='complete') selected @endif>Complete</option>
+                <select name="status" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$status) selected @endif>Any status</option>
+                    <option value="not_started" @if($status === 'not_started') selected @endif>Not started</option>
+                    <option value="in_progress" @if($status === 'in_progress') selected @endif>In progress</option>
+                    <option value="complete" @if($status === 'complete') selected @endif>Complete</option>
                 </select>
-                <label style="margin-right:5px;">Priority</label>
-                <select name="priority" class="form-control" onchange="this.form.submit()" style="margin-right:15px;">
-                    <option value="" @if(!$priority) selected @endif>All</option>
+                <select name="priority" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$priority) selected @endif>Any priority</option>
                     @foreach($priorityLabels as $key => $label)
-                        <option value="{{ $key }}" @if($priority===$key) selected @endif>{{ $label }}</option>
+                        <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }}</option>
                     @endforeach
                 </select>
-                <label style="margin-right:5px;">
+                <label class="as-check-lbl">
                     <input type="checkbox" name="assigned_to_me" value="1" onchange="this.form.submit()" @if($assignedToMe) checked @endif>
                     Assigned to me
                 </label>
             </form>
         </div>
-        <div class="box-body table-responsive">
-            <table class="table table-bordered table-striped">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Type</th>
-                        <th>Store</th>
-                        <th>Priority</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Assigned to</th>
-                        <th>Created by</th>
-                        <th>Started by</th>
-                        <th>Completed by</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($tasks as $t)
-                    <tr>
-                        <td style="min-width:220px;">
-                            <strong>{{ $t->title }}</strong>
-                            @if($t->repeat_daily || $t->repeat_weekly || $t->repeat_of)
-                                <i class="fa fa-repeat text-muted" title="Repeats {{ $t->task_type }}"></i>
-                            @endif
-                            @if($t->requires_photo)
-                                @if($t->photo_confirmed_at)
-                                    <i class="fa fa-camera text-success" title="Requires photo — confirmed"></i>
+    </div>
+
+    @php
+        $groups = [
+            'daily' => 'Today',
+            'weekly' => 'This week',
+        ];
+        $byType = $tasks->getCollection()->groupBy('task_type');
+    @endphp
+
+    <div class="as-table as-all">
+        <div class="as-cols">
+            <div>Task name</div><div>Status</div><div>Due date</div><div>Priority</div><div>Store</div><div>Assignees</div><div></div>
+        </div>
+
+        @foreach($groups as $key => $title)
+            @php
+                $rows = $byType->get($key, collect());
+            @endphp
+            @if(!$type || $type === $key)
+            <div class="as-section">
+                <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> {{ $title }} <span class="as-count">{{ $rows->where('status', '!=', 'complete')->count() }} open{{ $rows->where('status', 'complete')->count() ? ', ' . $rows->where('status', 'complete')->count() . ' done' : '' }}</span></div>
+                <div class="as-rows">
+                    @forelse($rows as $t)
+                        @php
+                            $due = \App\Http\Controllers\TeamProgressController::dueAt($t);
+                            $isDone = $t->status === 'complete';
+                        @endphp
+                        <div class="as-row {{ $isDone ? 'done' : '' }}">
+                            <div>
+                                @if($isDone)
+                                    <span class="as-check done" title="Completed{{ $t->completedBy ? ' by ' . $t->completedBy->user_full_name : '' }}">{!! \App\Http\Controllers\TeamProgressController::CHECK_SVG !!}</span>
                                 @else
-                                    <i class="fa fa-camera text-danger" title="Requires photo — not yet confirmed"></i>
+                                    <button type="button" class="as-check" title="Mark complete" data-url="{{ action('TaskController@updateStatus', $t->id) }}" data-edit="{{ action('TaskController@edit', $t->id) }}">{!! \App\Http\Controllers\TeamProgressController::CHECK_SVG !!}</button>
                                 @endif
-                            @endif
-                            @if($t->description)
-                                <div class="text-muted"><small>{{ $t->description }}</small></div>
-                            @endif
-                            <div style="margin-top:6px;">
-                                @foreach($t->notes as $note)
-                                    <div style="font-size:12px;color:#555;margin-bottom:2px;">
-                                        <strong>{{ $note->author ? trim($note->author->first_name . ' ' . $note->author->last_name) : 'Someone' }}:</strong>
-                                        {{ $note->note }}
-                                        <span class="text-muted">({{ $note->created_at->diffForHumans() }})</span>
+                                <div class="as-tname">
+                                    <div class="as-line">
+                                        <a class="as-name" href="{{ action('TaskController@edit', $t->id) }}">{{ $t->title }}</a>
+                                        @if($t->repeat_daily || $t->repeat_weekly || $t->repeat_of)
+                                            <span class="as-meta" title="Repeats"><i class="fa fa-repeat"></i></span>
+                                        @endif
+                                        @if($t->requires_photo)
+                                            <span class="as-meta" title="{{ $t->photo_confirmed_at ? 'Photo confirmed' : 'Needs a photo in #taskphotos' }}"><i class="fa fa-camera" style="color:{{ $t->photo_confirmed_at ? '#58a182' : '#c92f54' }}"></i></span>
+                                        @endif
+                                        <button type="button" class="as-note-btn" data-toggle-detail="d{{ $t->id }}" title="Notes and details"><i class="fa fa-comment-o"></i>@if($t->notes->count()) {{ $t->notes->count() }}@endif</button>
                                     </div>
-                                @endforeach
-                                <form action="{{ action('TaskController@addNote', $t->id) }}" method="POST" style="display:flex;gap:4px;margin-top:4px;">
+                                    @if($t->description)
+                                        <div class="as-desc" title="{{ $t->description }}">{{ $t->description }}</div>
+                                    @endif
+                                </div>
+                            </div>
+                            <div>
+                                <form action="{{ action('TaskController@updateStatus', $t->id) }}" method="POST" style="margin:0;">
                                     @csrf
-                                    <input type="text" name="note" class="form-control input-sm" placeholder="Add a note..." maxlength="2000" required style="max-width:220px;">
-                                    <button type="submit" class="btn btn-xs btn-default">Add</button>
+                                    <select name="status" class="as-status as-st-{{ $t->status }}" onchange="this.form.submit()">
+                                        <option value="not_started" @if($t->status === 'not_started') selected @endif>Not started</option>
+                                        <option value="in_progress" @if($t->status === 'in_progress') selected @endif>In progress</option>
+                                        <option value="complete" @if($t->status === 'complete') selected @endif>Complete</option>
+                                    </select>
                                 </form>
                             </div>
-                        </td>
-                        <td><span class="label label-{{ $t->task_type === 'daily' ? 'info' : 'primary' }}">{{ $t->task_type === 'daily' ? 'Daily' : 'Weekly' }}</span></td>
-                        <td>{{ $t->store ? ($storeLabels[$t->store] ?? $t->store) : 'Both' }}</td>
-                        <td><span class="label label-{{ ['high'=>'danger','medium'=>'warning','low'=>'default'][$t->priority] ?? 'default' }}">{{ $priorityLabels[$t->priority] ?? ucfirst($t->priority) }}</span></td>
-                        <td>
-                            @if($t->task_type === 'daily')
-                                {{ $t->start_date->format('M j, Y') }}
-                            @else
-                                {{ $t->start_date->format('M j, Y') }} &ndash; {{ $t->end_date->format('M j, Y') }}
-                            @endif
-                            @if($t->due_time)
-                                <br><small class="text-muted">by {{ \Carbon\Carbon::parse($t->due_time)->format('g:i A') }}</small>
-                            @endif
-                        </td>
-                        <td>
-                            @include('tasks.partials.status_dropdown', ['action' => action('TaskController@updateStatus', $t->id), 'status' => $t->status])
-                        </td>
-                        <td>
-                            @forelse($t->assignees as $assignee)
-                                <span class="label label-default">{{ $assignee->user_full_name }}</span>
-                            @empty
-                                <span class="text-muted">Unassigned</span>
-                            @endforelse
-                        </td>
-                        <td class="text-muted">{{ $t->creator->user_full_name ?? '' }}</td>
-                        <td class="text-muted">
-                            {{ $t->startedBy->user_full_name ?? '—' }}
-                            @if($t->started_at)<div><small>{{ $t->started_at->format('M j, Y') }}</small></div>@endif
-                        </td>
-                        <td class="text-muted">
-                            {{ $t->completedBy->user_full_name ?? '—' }}
-                            @if($t->completed_at)<div><small>{{ $t->completed_at->format('M j, Y') }}</small></div>@endif
-                        </td>
-                        <td class="text-right" style="white-space:nowrap;">
-                            <a href="{{ action('TaskController@edit', $t->id) }}" class="btn btn-xs btn-default"><i class="fa fa-edit"></i></a>
-                            <form action="{{ action('TaskController@destroy', $t->id) }}" method="POST" style="display:inline-block;" onsubmit="return confirm('Delete this task?');">
+                            <div class="as-hide-sm">
+                                @if($due)
+                                    <span class="{{ !$isDone && $due->lt(now()) ? 'as-due-late' : ($due->isToday() ? 'as-due-today' : '') }}">
+                                        @if($t->task_type === 'weekly')
+                                            {{ $t->start_date->format('M j') }} - {{ $t->end_date->format('M j') }}
+                                        @else
+                                            {{ $due->isToday() ? 'Today' : ($due->isYesterday() ? 'Yesterday' : ($due->isTomorrow() ? 'Tomorrow' : $due->format('M j'))) }}
+                                        @endif
+                                        @if($t->due_time)
+                                            {{ $due->format('g:i A') }}
+                                        @endif
+                                    </span>
+                                @endif
+                            </div>
+                            <div class="as-hide-sm"><span class="as-pill as-p-{{ $t->priority }}">{{ $priorityLabels[$t->priority] ?? ucfirst($t->priority) }}</span></div>
+                            <div class="as-hide-sm"><span class="as-pill as-tag">{{ $t->store ? ($storeLabels[$t->store] ?? ucfirst($t->store)) : 'Both' }}</span></div>
+                            <div class="as-hide-sm">
+                                @if($t->assignees->count())
+                                    <span class="as-avatars">
+                                        @foreach($t->assignees->take(3) as $a)
+                                            {!! \App\Http\Controllers\TeamProgressController::avatar($a->id, trim($a->first_name . ' ' . $a->last_name), 'sm') !!}
+                                        @endforeach
+                                    </span>
+                                    @if($t->assignees->count() > 3)
+                                        <span class="as-meta" style="margin-left:4px;">+{{ $t->assignees->count() - 3 }}</span>
+                                    @endif
+                                @else
+                                    <span class="as-meta">Unassigned</span>
+                                @endif
+                            </div>
+                            <div class="as-acts">
+                                <a href="{{ action('TaskController@edit', $t->id) }}" class="as-icon-btn" title="Edit"><i class="fa fa-pencil"></i></a>
+                                <form action="{{ action('TaskController@destroy', $t->id) }}" method="POST" style="display:inline;margin:0;" onsubmit="return confirm('Delete this task?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="as-icon-btn del" title="Delete"><i class="fa fa-trash"></i></button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="as-detail" id="d{{ $t->id }}">
+                            <div class="as-who">
+                                Created by {{ $t->creator->user_full_name ?? 'someone' }}
+                                @if($t->startedBy)
+                                    &middot; Started by {{ $t->startedBy->user_full_name }}{{ $t->started_at ? ', ' . $t->started_at->format('M j g:i A') : '' }}
+                                @endif
+                                @if($t->completedBy)
+                                    &middot; Completed by {{ $t->completedBy->user_full_name }}{{ $t->completed_at ? ', ' . $t->completed_at->format('M j g:i A') : '' }}
+                                @endif
+                            </div>
+                            @foreach($t->notes as $note)
+                                <div class="as-n">
+                                    {!! \App\Http\Controllers\TeamProgressController::avatar($note->user_id, $note->author ? trim($note->author->first_name . ' ' . $note->author->last_name) : 'Someone', 'sm') !!}
+                                    <div>
+                                        <strong>{{ $note->author ? trim($note->author->first_name . ' ' . $note->author->last_name) : 'Someone' }}</strong>
+                                        <span class="as-meta">{{ $note->created_at->diffForHumans() }}</span>
+                                        <div>{{ $note->note }}</div>
+                                    </div>
+                                </div>
+                            @endforeach
+                            <form action="{{ action('TaskController@addNote', $t->id) }}" method="POST">
                                 @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-xs btn-danger"><i class="fa fa-trash"></i></button>
+                                <input type="text" name="note" placeholder="Add a note..." maxlength="2000" required>
+                                <button type="submit">Add</button>
                             </form>
-                        </td>
-                    </tr>
+                        </div>
                     @empty
-                    <tr><td colspan="11" class="text-center text-muted">No tasks yet. Click "Add Task" to create one.</td></tr>
+                        <div class="as-empty">No tasks here. Click "Add task" to create one.</div>
                     @endforelse
-                </tbody>
-            </table>
-            <div class="text-center">{{ $tasks->links() }}</div>
-        </div>
+                </div>
+            </div>
+            @endif
+        @endforeach
     </div>
+
+    <div class="text-center">{{ $tasks->links() }}</div>
+
+</div>
 </section>
+
+@include('tasks.partials.asana_script')
+<script>
+document.querySelectorAll('[data-toggle-detail]').forEach(function (b) {
+    b.addEventListener('click', function () {
+        var d = document.getElementById(b.getAttribute('data-toggle-detail'));
+        if (d) { d.classList.toggle('open'); }
+    });
+});
+</script>
 @stop
