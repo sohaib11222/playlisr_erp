@@ -800,6 +800,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // with contributor credit. See TaskController/ProjectController.
     Route::get('/tasks', 'TaskController@index')->name('tasks.index');
     Route::get('/tasks/end-shift', 'TaskController@endShift')->name('tasks.end-shift');
+    // Read-only owner/overdue/scorecard view on top of Tasks (admins only).
+    Route::get('/tasks/accountability', 'TaskAccountabilityController@index')->name('tasks.accountability');
     Route::get('/tasks/start-shift', 'TaskController@startShift')->name('tasks.start-shift');
     Route::get('/tasks/create', 'TaskController@create')->name('tasks.create');
     Route::post('/tasks', 'TaskController@store')->name('tasks.store');
