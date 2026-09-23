@@ -472,28 +472,13 @@ class ContactController extends Controller
             $query->addSelect(DB::raw('0 as pending_preorders_count'));
         }
 
-        // Which store(s) this customer has actually bought from, and how many
-        // separate visits (finalized sells) that adds up to. Pre-aggregated in
-        // its own subquery (one row per contact) rather than joining
-        // business_locations directly into the main query, since that's
-        // already grouped by contacts.id for the SUM() columns above — a
-        // MAX() over the pre-aggregated row is safe and cheap here, same
-        // pattern as the preorder_counts join just above.
-        $query->leftJoin(
-            DB::raw("(SELECT t2.contact_id,
-                        GROUP_CONCAT(DISTINCT bl.name ORDER BY bl.name SEPARATOR ', ') as shop_locations,
-                        COUNT(DISTINCT t2.id) as visit_count
-                      FROM transactions t2
-                      LEFT JOIN business_locations bl ON bl.id = t2.location_id
-                      WHERE t2.type = 'sell' AND t2.status = 'final'
-                      GROUP BY t2.contact_id) as shop_stats"),
-            'shop_stats.contact_id',
-            '=',
-            'contacts.id'
-        )->addSelect([
-            DB::raw('MAX(shop_stats.shop_locations) as shop_locations'),
-            DB::raw('COALESCE(MAX(shop_stats.visit_count), 0) as visit_count'),
-        ]);
+        // Which store(s) this customer has bought from, and how many separate
+        // visits that adds up to. Sarah 2026-09-23: this used to be a live
+        // JOIN+GROUP_CONCAT over the whole transactions table on every page
+        // load (5-7+ seconds). Now reads contacts.shop_locations/visit_count
+        // directly — stored columns kept in sync per-sale by
+        // SellPosController@updateCustomerLoyalty, same pattern as
+        // lifetime_purchases. (One-time backfill: contacts:backfill-shop-visits.)
 
         $contacts = Datatables::of($query)
             ->addColumn('address', '{{implode(", ", array_filter([$address_line_1, $address_line_2, $city, $state, $country, $zip_code]))}}')
@@ -616,16 +601,10 @@ class ContactController extends Controller
             ->addColumn('visit_count', function ($row) {
                 return (int) ($row->visit_count ?? 0);
             })
-            // shop_locations/visit_count are aggregates from a joined
-            // subquery, not a plain contacts column — spell out how to sort
-            // by them explicitly rather than relying on Yajra's default
-            // name-based ordering to find the alias on its own.
-            ->orderColumn('shop_locations', function ($query, $order) {
-                $query->orderByRaw("shop_locations $order");
-            })
-            ->orderColumn('visit_count', function ($query, $order) {
-                $query->orderByRaw("visit_count $order");
-            })
+            // preorders_count is still an aggregate from a joined subquery
+            // (pending_preorders_count) — spell out how to sort by it rather
+            // than relying on Yajra's default name-based ordering to find
+            // that alias on its own.
             ->orderColumn('preorders_count', function ($query, $order) {
                 $query->orderByRaw("pending_preorders_count $order");
             })

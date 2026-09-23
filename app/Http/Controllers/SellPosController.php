@@ -8989,6 +8989,22 @@ class SellPosController extends Controller
                 $contact->last_purchase_date = $last_purchase->transaction_date;
             }
 
+            // Store(s) shopped + visit count — stored here (not computed live
+            // via a JOIN on the Customers page) for the same reason
+            // lifetime_purchases is stored: recalculating this per-sale for
+            // one contact's own history is cheap; recomputing it for every
+            // contact on every page load was not (5-7s per Customers load).
+            $shopStats = DB::table('transactions')
+                ->leftJoin('business_locations', 'business_locations.id', '=', 'transactions.location_id')
+                ->where('transactions.business_id', $business_id)
+                ->where('transactions.contact_id', $contact_id)
+                ->where('transactions.type', 'sell')
+                ->where('transactions.status', 'final')
+                ->selectRaw("GROUP_CONCAT(DISTINCT business_locations.name ORDER BY business_locations.name SEPARATOR ', ') as shop_locations, COUNT(DISTINCT transactions.id) as visit_count")
+                ->first();
+            $contact->shop_locations = $shopStats->shop_locations ?? null;
+            $contact->visit_count = (int) ($shopStats->visit_count ?? 0);
+
             // Determine loyalty tier based on lifetime purchases
             $tier = LoyaltyTier::getTierForPurchaseAmount($business_id, $lifetime_purchases);
             $old_tier = $contact->loyalty_tier;
