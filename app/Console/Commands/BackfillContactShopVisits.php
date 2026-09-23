@@ -38,16 +38,26 @@ class BackfillContactShopVisits extends Command
 
         $this->info("Aggregating sell history for business {$businessId}...");
 
+        // Exclude default/walk-in contacts — same guard as the live per-sale
+        // hook (SellPosController::updateCustomerLoyalty). Without it, every
+        // anonymous walk-in sale piles onto one contact row: caught this in
+        // testing as a customer showing "115,473 visits".
         $rows = DB::select(
             "SELECT t2.contact_id,
                     GROUP_CONCAT(DISTINCT bl.name ORDER BY bl.name SEPARATOR ', ') as shop_locations,
                     COUNT(DISTINCT t2.id) as visit_count
              FROM transactions t2
+             INNER JOIN contacts c ON c.id = t2.contact_id AND c.is_default = 0
              LEFT JOIN business_locations bl ON bl.id = t2.location_id
              WHERE t2.business_id = ? AND t2.type = 'sell' AND t2.status = 'final'
              GROUP BY t2.contact_id",
             [$businessId]
         );
+
+        // Clear any default/walk-in contact that a previous (buggy) run of
+        // this command already wrote an inflated value onto.
+        DB::table('contacts')->where('business_id', $businessId)->where('is_default', 1)
+            ->update(['shop_locations' => null, 'visit_count' => 0]);
 
         $this->info(count($rows) . ' contacts have sell history. Writing...');
 
