@@ -180,6 +180,18 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/contacts/campaigns', 'ContactCampaignController@index');
     Route::post('/contacts/campaigns/send', 'ContactCampaignController@send');
     Route::post('/contacts/import-rsvp-contacts', 'ContactController@importRsvpContacts')->name('contacts.import-rsvp-contacts');
+    // Clean URLs for the two contact types — ContactController@index is
+    // shared and keys off ?type=, so these just inject it and hand off.
+    // The page's own AJAX/search calls still hit /contacts under the hood;
+    // only the address bar changes.
+    Route::get('/customers', function () {
+        request()->merge(['type' => 'customer']);
+        return app(\App\Http\Controllers\ContactController::class)->index();
+    })->name('customers.index');
+    Route::get('/suppliers', function () {
+        request()->merge(['type' => 'supplier']);
+        return app(\App\Http\Controllers\ContactController::class)->index();
+    })->name('suppliers.index');
     Route::resource('contacts', 'ContactController');
     
     // Gift Cards
