@@ -314,13 +314,81 @@ class EventsController extends Controller
         $bridge = $this->bridgeData($event['name'] ?? '', $event['id'] ?? null);
 
         return view('events.edit', [
-            'event'      => $event,
-            'eventTypes' => self::eventTypes(),
-            'genres'     => self::genres(),
-            'prepItems'  => self::prepItemsForEvent($event),
-            'bridge'     => $bridge,
-            'storeScope' => $storeScope,
+            'event'        => $event,
+            'eventTypes'   => self::eventTypes(),
+            'genres'       => self::genres(),
+            'prepItems'    => self::prepItemsForEvent($event),
+            'bridge'       => $bridge,
+            'storeScope'   => $storeScope,
+            'webPreByTitle' => $this->webOrderPreordersByVersion((array) ($event['preorderProducts'] ?? [])),
         ]);
+    }
+
+    /**
+     * Units bought as nivessa.com shop orders for each of this event's
+     * versions, keyed by version title. Signing/release events (e.g.
+     * Imminence) sell their preorders as regular shop checkouts, not the
+     * listening-party preorder form, so the bridge preorder list alone
+     * showed 0 "Preordered" while 20 had been sold.
+     *
+     * Match: exact product name = version title; otherwise same title with
+     * the "(...)" suffix dropped AND same price, when exactly one version
+     * fits (the shop lists the 2LP and CD both as plain "Axis Mundi").
+     * Cancelled / unpaid orders don't count. Empty when the bridge is down.
+     */
+    protected function webOrderPreordersByVersion(array $versions): array
+    {
+        $versions = array_values(array_filter($versions, fn($v) => trim((string) ($v['title'] ?? '')) !== ''));
+        if (empty($versions)) {
+            return [];
+        }
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=500&includeArchived=1&payment_status=completed');
+        $orders = $resp['data'] ?? null;
+        if (!is_array($orders)) {
+            return [];
+        }
+
+        $norm = fn($s) => strtolower(preg_replace('/\s+/', ' ', trim((string) $s)));
+        $base = fn($s) => trim(preg_replace('/\s*\([^)]*\)\s*$/', '', $norm($s)));
+        $byExact = [];
+        foreach ($versions as $v) {
+            $byExact[$norm($v['title'])] = trim((string) $v['title']);
+        }
+
+        // Collect matching line items first so a version whose exact title
+        // is a real shop product isn't also offered to the price fallback.
+        $items = [];
+        foreach ($orders as $o) {
+            if (strtolower((string) ($o['order_status'] ?? '')) === 'cancelled') {
+                continue;
+            }
+            foreach ((array) ($o['items'] ?? []) as $it) {
+                $name = $it['product_id']['name'] ?? ($it['name'] ?? '');
+                if ($name === '') { continue; }
+                $items[] = ['name' => $name, 'price' => (float) ($it['price'] ?? 0), 'qty' => max(1, (int) ($it['quantity'] ?? 1))];
+            }
+        }
+        $exactHit = [];
+        foreach ($items as $it) {
+            if (isset($byExact[$norm($it['name'])])) { $exactHit[$norm($it['name'])] = true; }
+        }
+
+        $out = [];
+        foreach ($items as $it) {
+            $n = $norm($it['name']);
+            $title = $byExact[$n] ?? null;
+            if ($title === null) {
+                $cands = array_values(array_filter($versions, function ($v) use ($norm, $base, $n, $it, $exactHit) {
+                    return !isset($exactHit[$norm($v['title'])])
+                        && $base($v['title']) === $base($n)
+                        && abs((float) ($v['price'] ?? -1) - $it['price']) < 0.01;
+                }));
+                if (count($cands) !== 1) { continue; }
+                $title = trim((string) $cands[0]['title']);
+            }
+            $out[$title] = ($out[$title] ?? 0) + $it['qty'];
+        }
+        return $out;
     }
 
     /**

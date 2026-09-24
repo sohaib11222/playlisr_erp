@@ -170,6 +170,10 @@
         $t = trim((string) ($p['preorderTitle'] ?? ''));
         if ($t !== '') { $preByTitle[$t] = ($preByTitle[$t] ?? 0) + 1; }
       }
+      // Plus preorders bought as nivessa.com shop orders (signing/release events).
+      foreach ((array) ($webPreByTitle ?? []) as $t => $n) {
+        $preByTitle[$t] = ($preByTitle[$t] ?? 0) + (int) $n;
+      }
     @endphp
     @php
       // Sort versions by price, highest to lowest.
