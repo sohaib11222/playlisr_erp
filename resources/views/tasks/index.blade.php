@@ -39,53 +39,52 @@
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">{{ session('status.msg') }}</div>
     @endif
 
+    @php
+        $vq = request()->except(['status', 'page']);
+        $viewUrls = [
+            'incomplete' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
+            'completed' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
+            'all' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'all'])),
+        ];
+        $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
+    @endphp
     <div class="as-toolbar">
-        <a href="{{ action('TaskController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add task</a>
         <div class="as-tools">
-            @if($canToggleStore)
-                @php
-                    $baseQuery = request()->except(['store', 'page']);
-                @endphp
-                <div class="as-seg">
-                    <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['status' => $status ?: 'all'])) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
-                    @foreach($storeLabels as $key => $label)
-                        <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key, 'status' => $status ?: 'all'])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
-                    @endforeach
-                </div>
-                <a href="{{ url('/admin/task-store-assignments') }}" class="as-meta" style="text-decoration:none;">Store assignments</a>
-            @elseif($store)
-                <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
-            @endif
-            @php
-                    $vq = request()->except(['status', 'page']);
-                    $viewUrls = [
-                        'incomplete' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
-                        'completed' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
-                        'all' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'all'])),
-                    ];
-                    $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
-                @endphp
-                @include('tasks.partials.asana_view_toggle')
-            <form method="GET" action="{{ action('TaskController@index') }}" class="as-tools">
-                @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <select name="type" class="as-filter" onchange="this.form.submit()">
-                    <option value="" @if(!$type) selected @endif>Today + This week</option>
-                    <option value="daily" @if($type === 'daily') selected @endif>Today</option>
-                    <option value="weekly" @if($type === 'weekly') selected @endif>This week</option>
-                </select>
-                <input type="hidden" name="status" value="{{ $status ?: 'all' }}">
-                <select name="priority" class="as-filter" onchange="this.form.submit()">
-                    <option value="" @if(!$priority) selected @endif>Any priority</option>
-                    @foreach($priorityLabels as $key => $label)
-                        <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }}</option>
-                    @endforeach
-                </select>
-                <label class="as-check-lbl">
-                    <input type="checkbox" name="assigned_to_me" value="1" onchange="this.form.submit()" @if($assignedToMe) checked @endif>
-                    Assigned to me
-                </label>
-            </form>
+            <a href="{{ action('TaskController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add task</a>
+            @include('tasks.partials.asana_view_toggle')
         </div>
+        <form method="GET" action="{{ action('TaskController@index') }}" class="as-tools">
+            <input type="hidden" name="status" value="{{ $status ?: 'all' }}">
+            @if($canToggleStore)
+                <select name="store" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$store) selected @endif>All stores</option>
+                    @foreach($storeLabels as $key => $label)
+                        <option value="{{ $key }}" @if($store === $key) selected @endif>{{ $label }}</option>
+                    @endforeach
+                </select>
+            @elseif($store)
+                <input type="hidden" name="store" value="{{ $store }}">
+                <span class="as-chip">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
+            @endif
+            <select name="type" class="as-filter" onchange="this.form.submit()">
+                <option value="" @if(!$type) selected @endif>Today + this week</option>
+                <option value="daily" @if($type === 'daily') selected @endif>Today</option>
+                <option value="weekly" @if($type === 'weekly') selected @endif>This week</option>
+            </select>
+            <select name="priority" class="as-filter" onchange="this.form.submit()">
+                <option value="" @if(!$priority) selected @endif>Any priority</option>
+                @foreach($priorityLabels as $key => $label)
+                    <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }} priority</option>
+                @endforeach
+            </select>
+            <label class="as-chip {{ $assignedToMe ? 'on' : '' }}">
+                <input type="checkbox" name="assigned_to_me" value="1" onchange="this.form.submit()" @if($assignedToMe) checked @endif style="display:none;">
+                <i class="fa fa-user"></i> Just mine
+            </label>
+            @if($canToggleStore)
+                <a href="{{ url('/admin/task-store-assignments') }}" class="as-icon-btn" title="Store assignments"><i class="fa fa-cog"></i></a>
+            @endif
+        </form>
     </div>
 
     @php

@@ -27,11 +27,13 @@
     @include('tasks.partials.asana_nav')
 
     <div class="as-toolbar">
+        <div class="as-tools">
         <a href="{{ action('TaskController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add task</a>
         @include('tasks.partials.asana_view_toggle', [
             'viewUrls' => ['incomplete' => route('tasks.my'), 'completed' => route('tasks.my', ['show' => 'completed']), 'all' => route('tasks.my', ['show' => 'all'])],
             'viewCurrent' => $show,
         ])
+        </div>
     </div>
 
     <div class="as-table">

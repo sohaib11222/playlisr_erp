@@ -24,43 +24,40 @@
         <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">{{ session('status.msg') }}</div>
     @endif
 
+    @php
+        $vq = request()->except(['status', 'page']);
+        $viewUrls = [
+            'incomplete' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
+            'completed' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
+            'all' => action('ProjectController@index') . '?' . http_build_query($vq),
+        ];
+        $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
+    @endphp
     <div class="as-toolbar">
-        <a href="{{ action('ProjectController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add project</a>
         <div class="as-tools">
+            <a href="{{ action('ProjectController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add project</a>
+            @include('tasks.partials.asana_view_toggle')
+        </div>
+        <form method="GET" action="{{ action('ProjectController@index') }}" class="as-tools">
+            @if($status)<input type="hidden" name="status" value="{{ $status }}">@endif
             @if($canToggleStore)
-                @php
-                    $baseQuery = request()->except(['store', 'page']);
-                @endphp
-                <div class="as-seg">
-                    <a href="{{ action('ProjectController@index') }}?{{ http_build_query($baseQuery) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
+                <select name="store" class="as-filter" onchange="this.form.submit()">
+                    <option value="" @if(!$store) selected @endif>All stores</option>
                     @foreach($storeLabels as $key => $label)
-                        <a href="{{ action('ProjectController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
-                    @endforeach
-                </div>
-            @elseif($store)
-                <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
-            @endif
-            @php
-                    $vq = request()->except(['status', 'page']);
-                    $viewUrls = [
-                        'incomplete' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
-                        'completed' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
-                        'all' => action('ProjectController@index') . '?' . http_build_query($vq),
-                    ];
-                    $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
-                @endphp
-                @include('tasks.partials.asana_view_toggle')
-            <form method="GET" action="{{ action('ProjectController@index') }}" class="as-tools">
-                @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                @if($status)<input type="hidden" name="status" value="{{ $status }}">@endif
-                <select name="priority" class="as-filter" onchange="this.form.submit()">
-                    <option value="" @if(!$priority) selected @endif>Any priority</option>
-                    @foreach($priorityLabels as $key => $label)
-                        <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }}</option>
+                        <option value="{{ $key }}" @if($store === $key) selected @endif>{{ $label }}</option>
                     @endforeach
                 </select>
-            </form>
-        </div>
+            @elseif($store)
+                <input type="hidden" name="store" value="{{ $store }}">
+                <span class="as-chip">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
+            @endif
+            <select name="priority" class="as-filter" onchange="this.form.submit()">
+                <option value="" @if(!$priority) selected @endif>Any priority</option>
+                @foreach($priorityLabels as $key => $label)
+                    <option value="{{ $key }}" @if($priority === $key) selected @endif>{{ $label }} priority</option>
+                @endforeach
+            </select>
+        </form>
     </div>
 
     @php
