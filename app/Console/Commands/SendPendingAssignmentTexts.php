@@ -2,94 +2,143 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\MyTasksController;
 use App\PendingAssignmentText;
 use App\Services\OpenPhoneService;
 use App\SlingShift;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Sends queued task/project-assignment texts (see
- * TaskController::textAssignees / ProjectController::textAssignees) a few
- * minutes before the assignee's next scheduled Sling shift, instead of the
- * moment the task/project was created — so someone assigned something at
- * 9pm isn't woken up by a text, they get it right before they actually
- * clock in.
+ * Start-of-shift task text. Never texts anyone off work hours:
  *
- * Reads sling_shifts (synced daily by sling:sync-shifts) rather than
- * calling Sling's API live — no HTTP call in this command at all.
+ *   - Only fires for someone whose Sling shift starts today, from
+ *     LEAD_MINUTES before the start until LATE_MINUTES after it.
+ *   - Only if they have tasks due today (or past due) on their My Tasks
+ *     list: assigned to them, or unassigned at the store they're working.
+ *   - At most one text per person per day.
  *
- * Per pending row, each run:
- *   - looks up that user's next upcoming shift (dtstart >= now)
- *   - sends once that shift is within LEAD_MINUTES
- *   - if no shift is found (not on Sling, or not synced yet) OR sends keep
- *     failing, gives up waiting and just sends once the row is older than
- *     MAX_WAIT_HOURS — so an assignee never goes silently un-notified
- *     forever just because shift data isn't available for them.
+ * Assignment rows queued by TaskController / ProjectController
+ * (pending_assignment_texts) are no longer sent one by one. They're folded
+ * into this text as "N new" and marked sent when it goes out. No shift, no
+ * text; there is no off-hours fallback anymore.
+ *
+ * The daily text itself is logged as a pending_assignment_texts row with no
+ * task/project, which is what stops a second text the same day.
  */
 class SendPendingAssignmentTexts extends Command
 {
-    protected $signature = 'notify:pending-assignment-texts';
+    protected $signature = 'notify:pending-assignment-texts {--dry : Print what would be sent, send nothing} {--at= : Pretend it is this time today, e.g. 09:25 (with --dry)}';
 
-    protected $description = 'Text assignees whose next Sling shift is starting soon (queued at task/project creation).';
+    protected $description = 'Text people at the start of their Sling shift if they have tasks due today.';
 
-    /** Send once the assignee's next shift is this close (minutes). Run every 5 min, so actual lead time lands between (this - 5) and this minutes. */
+    /** Earliest send: this many minutes before the shift starts. Runs every 5 min. */
     const LEAD_MINUTES = 10;
 
-    /** Safety net: send anyway after waiting this long, even with no shift found / repeated send failures. */
-    const MAX_WAIT_HOURS = 24;
+    /** Still send if we're this many minutes past the shift start (missed runs, deploys). */
+    const LATE_MINUTES = 60;
 
     public function handle()
     {
-        $now = now();
-        $pending = PendingAssignmentText::with('user')->whereNull('sent_at')->get();
+        $dry = (bool) $this->option('dry');
+        $now = ($dry && $this->option('at')) ? Carbon::today()->setTimeFromTimeString($this->option('at')) : now();
+        $today = Carbon::today();
 
-        if ($pending->isEmpty()) {
+        $shifts = SlingShift::with('user')
+            ->where('event_type', SlingShift::TYPE_SHIFT)
+            ->where('published', true)
+            ->whereNotNull('erp_user_id')
+            ->whereDate('dtstart', $today->toDateString())
+            ->where('dtstart', '<=', $now->copy()->addMinutes(self::LEAD_MINUTES))
+            ->where('dtstart', '>=', $now->copy()->subMinutes(self::LATE_MINUTES))
+            ->orderBy('dtstart')
+            ->get()
+            ->unique('erp_user_id');
+
+        if ($shifts->isEmpty()) {
             return;
         }
 
         $sms = app(OpenPhoneService::class);
         $sentCount = 0;
 
-        foreach ($pending as $p) {
-            $shift = SlingShift::where('erp_user_id', $p->user_id)
-                ->where('event_type', SlingShift::TYPE_SHIFT)
-                ->where('published', true)
-                ->where('dtstart', '>=', $now)
-                ->orderBy('dtstart')
-                ->first();
-
-            $shiftIsClose = $shift && (($shift->dtstart->getTimestamp() - $now->getTimestamp()) / 60) <= self::LEAD_MINUTES;
-            $giveUpWaiting = $p->created_at->diffInHours($now) >= self::MAX_WAIT_HOURS;
-
-            if (!$shiftIsClose && !$giveUpWaiting) {
-                continue; // keep waiting for the shift to get close (or the fallback deadline)
-            }
-
-            $phone = trim((string) ($p->user->contact_number ?? ''));
-            if ($phone === '') {
-                Log::info("SendPendingAssignmentTexts: user {$p->user_id} has no phone on file, giving up on pending text #{$p->id}");
-                $p->sent_at = $now;
-                $p->save();
+        foreach ($shifts as $shift) {
+            $user = $shift->user;
+            if (!$user || $user->status !== 'active') {
                 continue;
             }
 
-            $result = $sms->send($phone, $p->message);
-            if ($result['success']) {
-                $p->sent_at = $now;
-                $p->save();
-                $sentCount++;
-            } elseif ($giveUpWaiting) {
-                Log::warning("SendPendingAssignmentTexts: giving up on pending text #{$p->id} after " . self::MAX_WAIT_HOURS . "h, last error: " . $result['msg']);
-                $p->sent_at = $now;
-                $p->save();
-            } else {
-                Log::info("SendPendingAssignmentTexts: send failed for pending text #{$p->id}, will retry: " . $result['msg']);
+            $alreadyToday = PendingAssignmentText::where('user_id', $user->id)
+                ->whereNull('weekly_task_id')
+                ->whereNull('project_id')
+                ->whereDate('created_at', $today->toDateString())
+                ->exists();
+            if ($alreadyToday) {
+                continue;
             }
+
+            $sections = MyTasksController::sectionsFor($user->business_id, $user->id, MyTasksController::shiftStoresToday($user->id));
+            $dueToday = count($sections['past_due']) + count($sections['today']);
+            if ($dueToday === 0) {
+                continue;
+            }
+
+            $queued = PendingAssignmentText::where('user_id', $user->id)
+                ->whereNull('sent_at')
+                ->where(function ($q) {
+                    $q->whereNotNull('weekly_task_id')->orWhereNotNull('project_id');
+                })
+                ->get();
+
+            $first = trim((string) $user->first_name) ?: 'there';
+            $message = "Hi {$first}, you have {$dueToday} " . ($dueToday === 1 ? 'task' : 'tasks') . ' due today'
+                . ($queued->count() ? " ({$queued->count()} new)" : '')
+                . '. Check them in the ERP: ' . self::myTasksUrl();
+
+            $phone = trim((string) ($user->contact_number ?? ''));
+            if ($dry) {
+                $this->line("[dry] {$user->first_name} (#{$user->id}) shift {$shift->dtstart->format('g:ia')} {$shift->location_name} phone=" . ($phone !== '' ? 'yes' : 'NONE') . " -> {$message}");
+                continue;
+            }
+            if ($phone === '') {
+                Log::info("SendPendingAssignmentTexts: user {$user->id} has no phone on file, skipping today's task text");
+                $this->logDaily($user->id, $message, $now);
+                continue;
+            }
+
+            $result = $sms->send($phone, $message);
+            if (!$result['success']) {
+                // Not logged, so the next run (every 5 min) retries until LATE_MINUTES.
+                Log::info("SendPendingAssignmentTexts: send failed for user {$user->id}, will retry: " . $result['msg']);
+                continue;
+            }
+
+            $this->logDaily($user->id, $message, $now);
+            PendingAssignmentText::whereIn('id', $queued->pluck('id'))->update(['sent_at' => $now]);
+            $sentCount++;
         }
 
         if ($sentCount > 0) {
-            $this->info("Sent {$sentCount} assignment text(s).");
+            $this->info("Sent {$sentCount} start-of-shift task text(s).");
         }
+    }
+
+    private static function myTasksUrl()
+    {
+        $base = rtrim((string) config('app.url'), '/');
+        if ($base === '' || stripos($base, 'localhost') !== false) {
+            $base = 'https://playlist.nivessa.com';
+        }
+        return $base . '/tasks/my';
+    }
+
+    private function logDaily($userId, $message, $now)
+    {
+        PendingAssignmentText::create([
+            'user_id' => $userId,
+            'message' => $message,
+            'sent_at' => $now,
+        ]);
     }
 }

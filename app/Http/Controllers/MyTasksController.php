@@ -23,6 +23,60 @@ class MyTasksController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $userId = auth()->id();
+        $today = Carbon::today();
+
+        $shiftStores = self::shiftStoresToday($userId);
+        $sections = self::sectionsFor($business_id, $userId, $shiftStores);
+
+        $show = in_array($request->input('show'), ['incomplete', 'completed', 'all'], true) ? $request->input('show') : 'incomplete';
+
+        $since = $today->copy()->subDays($show === 'incomplete' ? 7 : 30);
+        $completed = WeeklyTask::where('business_id', $business_id)
+            ->where('completed_by', $userId)
+            ->where('status', 'complete')
+            ->where('completed_at', '>=', $since)
+            ->get();
+
+        // Daily repeats reset every morning, so earlier days' completions only
+        // live in task_completion_logs. Show them too, dated by the day done.
+        $logRows = \DB::table('task_completion_logs')
+            ->where('business_id', $business_id)
+            ->where('completed_by', $userId)
+            ->where('status', 'complete')
+            ->whereDate('log_date', '>=', $since->toDateString())
+            ->get();
+        foreach ($logRows as $l) {
+            $t = new WeeklyTask();
+            $t->forceFill([
+                'id' => $l->weekly_task_id,
+                'title' => $l->title,
+                'store' => $l->store,
+                'priority' => $l->priority ?: 'medium',
+                'status' => 'complete',
+                'completed_at' => Carbon::parse($l->log_date)->endOfDay(),
+            ]);
+            $t->setAttribute('from_log', true);
+            $completed->push($t);
+        }
+        $completed = $completed->sortByDesc(function ($t) { return $t->completed_at; })->values();
+
+        $weekAgo = $today->copy()->subDays(7);
+        $completedCount = $completed->filter(function ($t) use ($weekAgo) { return $t->completed_at && $t->completed_at->gte($weekAgo); })->count();
+
+        $storeLabels = TaskController::STORE_LABELS;
+        $firstName = auth()->user()->first_name;
+
+        return view('tasks.my_tasks', compact('sections', 'completed', 'completedCount', 'storeLabels', 'shiftStores', 'firstName', 'show'));
+    }
+
+    /**
+     * Past due / Today / Upcoming / Later for one person: tasks assigned to
+     * them, plus unassigned (non-project) tasks at the stores in
+     * $shiftStores. Shared by the My Tasks page and the start-of-shift text
+     * (SendPendingAssignmentTexts).
+     */
+    public static function sectionsFor($business_id, $userId, array $shiftStores)
+    {
         $now = now();
         $today = Carbon::today();
 
@@ -30,7 +84,6 @@ class MyTasksController extends Controller
         $assigned = TaskController::myOpenAssignedTasks($business_id, $userId);
         $assigned->load('assignees');
 
-        $shiftStores = $this->myShiftStoresToday($userId);
         $onShift = collect();
         if ($shiftStores) {
             $onShift = WeeklyTask::with('assignees')
@@ -79,49 +132,11 @@ class MyTasksController extends Controller
         }
         unset($rows);
 
-        $show = in_array($request->input('show'), ['incomplete', 'completed', 'all'], true) ? $request->input('show') : 'incomplete';
-
-        $since = $today->copy()->subDays($show === 'incomplete' ? 7 : 30);
-        $completed = WeeklyTask::where('business_id', $business_id)
-            ->where('completed_by', $userId)
-            ->where('status', 'complete')
-            ->where('completed_at', '>=', $since)
-            ->get();
-
-        // Daily repeats reset every morning, so earlier days' completions only
-        // live in task_completion_logs. Show them too, dated by the day done.
-        $logRows = \DB::table('task_completion_logs')
-            ->where('business_id', $business_id)
-            ->where('completed_by', $userId)
-            ->where('status', 'complete')
-            ->whereDate('log_date', '>=', $since->toDateString())
-            ->get();
-        foreach ($logRows as $l) {
-            $t = new WeeklyTask();
-            $t->forceFill([
-                'id' => $l->weekly_task_id,
-                'title' => $l->title,
-                'store' => $l->store,
-                'priority' => $l->priority ?: 'medium',
-                'status' => 'complete',
-                'completed_at' => Carbon::parse($l->log_date)->endOfDay(),
-            ]);
-            $t->setAttribute('from_log', true);
-            $completed->push($t);
-        }
-        $completed = $completed->sortByDesc(function ($t) { return $t->completed_at; })->values();
-
-        $weekAgo = $today->copy()->subDays(7);
-        $completedCount = $completed->filter(function ($t) use ($weekAgo) { return $t->completed_at && $t->completed_at->gte($weekAgo); })->count();
-
-        $storeLabels = TaskController::STORE_LABELS;
-        $firstName = auth()->user()->first_name;
-
-        return view('tasks.my_tasks', compact('sections', 'completed', 'completedCount', 'storeLabels', 'shiftStores', 'firstName', 'show'));
+        return $sections;
     }
 
     /** [store key => label] for stores Sling has this person working today. */
-    private function myShiftStoresToday($userId)
+    public static function shiftStoresToday($userId)
     {
         $out = [];
         $shifts = SlingShift::where('event_type', SlingShift::TYPE_SHIFT)
