@@ -90,7 +90,14 @@
 .as-filter { border: 1px solid #e0dcdb !important; border-radius: 6px !important; background: #fff !important; font-size: 13px !important; height: 32px !important; padding: 0 8px !important; color: #1e1f21; width: auto !important; box-shadow: none !important; }
 .as-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid #e0dcdb; border-radius: 6px; background: #fff; font-size: 13px !important; font-weight: 400 !important; color: #6d6e6f; margin: 0 !important; cursor: pointer; white-space: nowrap; }
 .as-chip.on { background: #e8eefb; border-color: #4573d2; color: #2d5bb8; }
+.as-row-win { grid-template-columns: minmax(0, 1fr) 110px 200px 120px; }
+.as-row-miss { grid-template-columns: minmax(0, 1fr) 130px 100px 190px; }
 @media (max-width: 767px) {
+    .as-cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .as-card { padding: 12px 14px; }
+    .as-card .n { font-size: 24px; }
+    .as-row .as-acts { display: none !important; }
+    .as-row-win, .as-row-miss { grid-template-columns: minmax(0, 1fr) auto; }
     .as-row .as-acts { opacity: 1; }
     .as-cols { display: none; }
     .as-row { grid-template-columns: minmax(0, 1fr) auto; }

@@ -28,7 +28,7 @@
             <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> Team wins <span class="as-count">{{ count($score) }}</span></div>
             <div class="as-rows">
                 @forelse($score as $uid => $s)
-                    <div class="as-row" style="grid-template-columns:minmax(0,1fr) 110px 200px 120px;">
+                    <div class="as-row as-row-win">
                         <div>
                             {!! \App\Http\Controllers\TeamProgressController::avatar($uid, $s['name']) !!}
                             <span class="as-name">{{ $s['name'] }}</span>
@@ -124,7 +124,7 @@
             <div class="as-rows">
                 @forelse($missedRows as $row)
                     @php $t = $row['task']; @endphp
-                    <div class="as-row" style="grid-template-columns:minmax(0,1fr) 130px 100px 190px;">
+                    <div class="as-row as-row-miss">
                         <div><span class="as-name">{{ $t->title }}</span>
                             @if($t->repeat_daily)
                                 <span class="as-meta"><i class="fa fa-repeat"></i></span>
