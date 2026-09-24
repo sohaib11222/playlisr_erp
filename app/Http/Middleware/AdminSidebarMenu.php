@@ -118,7 +118,7 @@ class AdminSidebarMenu
                         'End Shift',
                         ['icon' => 'fa fas fa-door-open', 'active' => request()->segment(1) == 'tasks' && request()->segment(2) == 'end-shift']
                     );
-                    if (auth()->user()->hasRole('Admin#' . session('business.id'))) {
+                    if (\App\Http\Controllers\TeamProgressController::canView()) {
                         $sub->url(
                             route('tasks.team-progress'),
                             'Team Progress',

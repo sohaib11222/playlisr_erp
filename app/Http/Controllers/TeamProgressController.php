@@ -41,7 +41,7 @@ class TeamProgressController extends Controller
 
     public function index(Request $request)
     {
-        if (!$this->businessUtil->is_admin(auth()->user())) {
+        if (!self::canView()) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -185,6 +185,21 @@ class TeamProgressController extends Controller
         return view('tasks.team_progress', compact(
             'openToday', 'overdue', 'score', 'missedRows', 'names', 'noOwnerCount', 'storeLabels', 'days', 'windowStart', 'today'
         ));
+    }
+
+    // Owners who may not hold the Admin role on every login.
+    const OWNER_EMAILS = ['jonhedvat@gmail.com', 'sarah@nivessa.com'];
+
+    /** Admins, the owners (Jon, Sarah) and the store managers (Zakary, Luis). */
+    public static function canView()
+    {
+        $u = auth()->user();
+        if (!$u) {
+            return false;
+        }
+        return $u->hasRole('Admin#' . $u->business_id)
+            || in_array(strtolower(trim((string) $u->email)), self::OWNER_EMAILS, true)
+            || ManagerChecklistController::currentManagerKey() !== null;
     }
 
     /** When a task is due: its end date at due_time, or end of that day if no time is set. */
