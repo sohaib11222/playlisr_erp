@@ -94,6 +94,13 @@ class ProductNameNormalizer
         return self::titleCase(trim(preg_replace('/\s+/', ' ', (string) $s)));
     }
 
+    /** Tokens titleCase keeps fully upper-case (formats, common abbreviations). */
+    protected static $keepUpper = [
+        'cd', 'cds', 'lp', 'lps', '2lp', '3lp', '4lp', 'ep', 'eps', 'dvd', 'ost', 'mp3',
+        'ii', 'iii', 'iv', 'vii', 'viii', 'ix', 'xi', 'xii',
+        'usa', 'uk', 'nyc', 'dj', 'mc', 'tv', 'mtv', 'bbc', 'rsd',
+    ];
+
     protected static function titleCase($s)
     {
         static $minor = ['a', 'an', 'and', 'the', 'of', 'to', 'in', 'on', 'at', 'for', 'but', 'or', 'nor', 'as', 'by', 'from', 'with', 'vs', 'via', 'feat', 'x'];
@@ -104,6 +111,12 @@ class ProductNameNormalizer
             $lw = mb_strtolower($w);
             if ($i !== 0 && $i !== $n - 1 && in_array($lw, $minor, true)) {
                 $words[$i] = $lw;
+                continue;
+            }
+            // Format/abbreviation tokens stay all caps ("(CD)" not "(Cd)").
+            $core = preg_replace('/[^\p{L}\p{N}]/u', '', $lw);
+            if ($core !== '' && in_array($core, self::$keepUpper, true)) {
+                $words[$i] = mb_strtoupper($w);
                 continue;
             }
             // Capitalize the first letter, and any letter after - / ( . or ,
