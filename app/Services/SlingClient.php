@@ -54,6 +54,28 @@ class SlingClient
     }
 
     /**
+     * sling_user_id => phone (E.164) for everyone with a phone on their
+     * Sling profile. The plain /users list omits phone; the concise
+     * endpoint with user-fields=full includes it. Cached 6h.
+     */
+    public function userPhones(): array
+    {
+        if (!$this->isConfigured()) return [];
+        return \Cache::remember('sling_user_phones_v1', 360, function () {
+            $body = $this->get($this->base . '/users/concise?user-fields=full');
+            $out = [];
+            foreach ((array) ($body['users'] ?? []) as $u) {
+                $digits = preg_replace('/\D/', '', (string) ($u['phone'] ?? ''));
+                if (strlen($digits) < 10) continue;
+                $cc = preg_replace('/\D/', '', (string) ($u['countryCode'] ?? '1')) ?: '1';
+                if (strlen($digits) === 10) $digits = $cc . $digits;
+                $out[(string) $u['id']] = '+' . $digits;
+            }
+            return $out;
+        });
+    }
+
+    /**
      * Fetch the org's "groups" — Sling models locations AND positions as
      * groups, each with {id, type: 'location'|'position'|..., name}. Calendar
      * shifts only reference these by id ("location": {"id": 19993180}), so we

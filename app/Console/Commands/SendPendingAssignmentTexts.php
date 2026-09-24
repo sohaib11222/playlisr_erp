@@ -62,6 +62,12 @@ class SendPendingAssignmentTexts extends Command
 
         $sms = app(OpenPhoneService::class);
         $sentCount = 0;
+        try {
+            $slingPhones = (new \App\Services\SlingClient())->userPhones();
+        } catch (\Throwable $e) {
+            $slingPhones = [];
+            Log::info('SendPendingAssignmentTexts: could not load Sling phones: ' . $e->getMessage());
+        }
 
         foreach ($shifts as $shift) {
             $user = $shift->user;
@@ -96,7 +102,11 @@ class SendPendingAssignmentTexts extends Command
                 . ($queued->count() ? " ({$queued->count()} new)" : '')
                 . '. Check them in the ERP: ' . self::myTasksUrl();
 
+            // ERP number first; otherwise the phone on their Sling profile.
             $phone = trim((string) ($user->contact_number ?? ''));
+            if ($phone === '' && !empty($shift->sling_user_id)) {
+                $phone = $slingPhones[(string) $shift->sling_user_id] ?? '';
+            }
             if ($dry) {
                 $this->line("[dry] {$user->first_name} (#{$user->id}) shift {$shift->dtstart->format('g:ia')} {$shift->location_name} phone=" . ($phone !== '' ? 'yes' : 'NONE') . " -> {$message}");
                 continue;

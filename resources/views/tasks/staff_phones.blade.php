@@ -10,7 +10,7 @@
     <div class="as-head">
         <div>
             <h1 class="as-title">Staff phones</h1>
-            <div class="as-sub">Cell numbers for the start-of-shift text: "you have tasks due today". Only sent when their Sling shift starts.</div>
+            <div class="as-sub">Cell numbers for the start-of-shift text. Numbers come from Sling automatically. Only type one here to override Sling.</div>
         </div>
     </div>
 
@@ -33,7 +33,7 @@
                         @endif
                     </div>
                     <div>
-                        <input type="tel" name="phones[{{ $u->id }}]" value="{{ old('phones.' . $u->id, $u->contact_number) }}" placeholder="(213) 555-0123" class="as-filter" style="width:100% !important;">
+                        <input type="tel" name="phones[{{ $u->id }}]" value="{{ old('phones.' . $u->id, $u->contact_number) }}" placeholder="{{ isset($slingPhoneByUser[$u->id]) ? 'From Sling: ' . $slingPhoneByUser[$u->id] : 'Not in Sling - add here' }}" class="as-filter" style="width:100% !important;">
                     </div>
                 </div>
             @endforeach

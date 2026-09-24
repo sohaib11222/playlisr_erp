@@ -38,7 +38,19 @@ class StaffPhonesController extends Controller
         $onSling = \App\SlingShift::whereNotNull('erp_user_id')
             ->where('dtstart', '>=', now()->subDays(14))
             ->distinct()->pluck('erp_user_id')->map(function ($id) { return (int) $id; })->all();
-        return view('tasks.staff_phones', compact('staff', 'onSling'));
+        $slingPhoneByUser = [];
+        try {
+            $phones = (new \App\Services\SlingClient())->userPhones();
+            $slingIds = \App\SlingShift::whereNotNull('erp_user_id')->whereNotNull('sling_user_id')
+                ->orderByDesc('dtstart')->get(['erp_user_id', 'sling_user_id'])->unique('erp_user_id');
+            foreach ($slingIds as $row) {
+                if (isset($phones[(string) $row->sling_user_id])) {
+                    $slingPhoneByUser[(int) $row->erp_user_id] = $phones[(string) $row->sling_user_id];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+        return view('tasks.staff_phones', compact('staff', 'onSling', 'slingPhoneByUser'));
     }
 
     public function save(Request $request)
