@@ -37,6 +37,10 @@ class MyTasksController extends Controller
                 ->where('business_id', $business_id)
                 ->where('status', '!=', 'complete')
                 ->whereDoesntHave('assignees')
+                ->when(\Schema::hasColumn('weekly_tasks', 'project_id'), function ($q) {
+                    // Unassigned project tasks stay on the project, not on cashiers' lists.
+                    $q->whereNull('project_id');
+                })
                 ->whereDate('start_date', '<=', $today->toDateString())
                 ->where(function ($q) use ($shiftStores) {
                     $q->whereIn('store', array_keys($shiftStores))->orWhereNull('store');

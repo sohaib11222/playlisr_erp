@@ -30,6 +30,8 @@
                 return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
             }).then(function (res) {
                 if (res.ok && res.j.success) {
+                    var sel = row.querySelector('select.as-status');
+                    if (sel) { sel.value = 'complete'; sel.className = 'as-status as-st-complete'; }
                     say('Nice work. Task completed.');
                     return;
                 }

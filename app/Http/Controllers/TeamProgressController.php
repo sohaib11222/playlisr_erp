@@ -67,7 +67,9 @@ class TeamProgressController extends Controller
                 return ['ids' => $t->assignees->pluck('id')->all(), 'via' => 'assigned'];
             }
             $ids = [];
-            if ($t->store) {
+            // Unassigned project tasks are project work, not floor duties:
+            // never hand them to whoever happens to be on shift.
+            if ($t->store && empty($t->project_id)) {
                 foreach ($onShift[$date->toDateString()][$t->store] ?? [] as $uid => $name) {
                     $ids[] = $uid;
                     $names[$uid] = $names[$uid] ?? $name;
