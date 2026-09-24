@@ -286,7 +286,11 @@ class TeamProgressController extends Controller
         $out = [];
         foreach ($everyone as $date => $stores) {
             foreach ($stores as $store => $people) {
-                $list = $cashiers[$date][$store] ?? $people;
+                // Front desk only: no Cashier shift at that store that day = nobody owns its unassigned tasks.
+                if (empty($cashiers[$date][$store])) {
+                    continue;
+                }
+                $list = $cashiers[$date][$store];
                 $e = $ends[$date][$store];
                 uksort($list, function ($a, $b) use ($e) { return ($e[$b] ?? 0) <=> ($e[$a] ?? 0); });
                 $out[$date][$store] = $list;

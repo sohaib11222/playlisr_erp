@@ -18,7 +18,7 @@
                     Your tasks, sorted by when they're due.
                 @endif
                 @if($shiftStores)
-                    On shift at {{ implode(' and ', $shiftStores) }} today.
+                    On the front desk at {{ implode(' and ', $shiftStores) }} today.
                 @endif
             </div>
         </div>
@@ -90,7 +90,7 @@
         @endif
     </div>
 
-    <p class="as-note">Shows tasks assigned to you, plus unassigned tasks at the store you're on shift at today.</p>
+    <p class="as-note">Shows tasks assigned to you, plus unassigned store tasks when you're on the front desk today.</p>
 
 </div>
 </section>

@@ -135,7 +135,11 @@ class MyTasksController extends Controller
         return $sections;
     }
 
-    /** [store key => label] for stores Sling has this person working today. */
+    /**
+     * [store key => label] for stores Sling has this person on the front
+     * desk (a Cashier shift) today. Unassigned store tasks are front-desk
+     * work: inventory, pricing, shipping etc. shifts don't pick them up.
+     */
     public static function shiftStoresToday($userId)
     {
         $out = [];
@@ -143,6 +147,7 @@ class MyTasksController extends Controller
             ->where('published', 1)
             ->where('erp_user_id', $userId)
             ->whereDate('dtstart', Carbon::today()->toDateString())
+            ->where('position_name', 'like', '%cashier%')
             ->get();
         foreach ($shifts as $s) {
             $store = TeamProgressController::SLING_LOCATIONS[strtolower(trim((string) $s->location_name))] ?? null;
