@@ -58,6 +58,16 @@
                         @endif
                     </div>
 
+                    <div class="k">Project</div>
+                    <div class="v">
+                        <select name="project_id" class="form-control">
+                            <option value="">No project</option>
+                            @foreach($projectOptions ?? [] as $pid => $ptitle)
+                                <option value="{{ $pid }}" @if((int) old('project_id', $task->project_id) === (int) $pid) selected @endif>{{ $ptitle }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
                     <div class="k">Due date</div>
                     <div class="v">
                         <select id="task_type" name="task_type" class="form-control">

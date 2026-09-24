@@ -35,6 +35,60 @@
             </div>
         </form>
 
+        @php
+            $projectTasks = \Schema::hasColumn('weekly_tasks', 'project_id')
+                ? $project->tasks()->with('assignees')->orderByRaw("status = 'complete'")->orderByRaw("FIELD(priority, 'high', 'medium', 'low')")->orderBy('end_date')->get()
+                : collect();
+            $doneCount = $projectTasks->where('status', 'complete')->count();
+            $pct = $projectTasks->count() ? round(100 * $doneCount / $projectTasks->count()) : 0;
+        @endphp
+        <div style="border-top:1px solid #edeae9;padding:16px 24px 8px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+                <h4 style="font-size:14px;font-weight:600;margin:0;">Tasks <span class="as-count">{{ $doneCount }} of {{ $projectTasks->count() }} done</span></h4>
+                <div class="as-bar" style="max-width:220px;"><span style="width:{{ $pct }}%"></span></div>
+                <div class="as-seg" id="asProjView" style="margin-left:auto;">
+                    <a href="#" data-show="incomplete" class="on"><i class="fa fa-circle-o"></i> Incomplete</a>
+                    <a href="#" data-show="completed"><i class="fa fa-check-circle-o"></i> Completed</a>
+                    <a href="#" data-show="all">All</a>
+                </div>
+            </div>
+            <div class="as-table" id="asProjTasks" style="margin-bottom:10px;">
+                <div class="as-empty" id="asProjNone" style="border-top:0;padding-left:16px;display:none;">Nothing to show here.</div>
+                @forelse($projectTasks as $t)
+                    @if($t->status === 'complete')
+                        <div class="as-row done">
+                            <div>
+                                <span class="as-check done">{!! \App\Http\Controllers\TeamProgressController::CHECK_SVG !!}</span>
+                                <a class="as-name" href="{{ action('TaskController@edit', $t->id) }}">{{ $t->title }}</a>
+                            </div>
+                            <div class="as-hide-sm"><span class="as-meta">{{ $t->completed_at ? 'Done ' . $t->completed_at->format('M j') : '' }}</span></div>
+                            <div><span class="as-pill as-p-{{ $t->priority }}">{{ ucfirst($t->priority) }}</span></div>
+                            <div class="as-hide-sm"><span class="as-pill as-tag">{{ $storeLabels[$t->store] ?? 'Both' }}</span></div>
+                            <div class="as-hide-sm"></div>
+                        </div>
+                    @else
+                        @include('tasks.partials.asana_row', ['t' => $t, 'due' => \App\Http\Controllers\TeamProgressController::dueAt($t), 'viaShift' => false, 'storeLabels' => $storeLabels])
+                    @endif
+                @empty
+                    <div class="as-empty" style="border-top:0;padding-left:16px;">No tasks yet. Break this project into steps below.</div>
+                @endforelse
+            </div>
+            <form method="POST" action="{{ action('TaskController@store') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                @csrf
+                <input type="hidden" name="project_id" value="{{ $project->id }}">
+                <input type="hidden" name="return_to" value="project">
+                <input type="hidden" name="task_type" value="weekly">
+                <input type="hidden" name="start_date" value="{{ now()->toDateString() }}">
+                <input type="hidden" name="priority" value="{{ $project->priority ?: 'medium' }}">
+                @if($project->store)
+                    <input type="hidden" name="store" value="{{ $project->store }}">
+                @endif
+                <input type="text" name="title" required maxlength="200" placeholder="Add a task to this project..." style="flex:1;min-width:200px;border:1px solid #edeae9;border-radius:6px;padding:6px 10px;font-size:14px;">
+                <button type="submit" class="as-btn" style="border:0;"><i class="fa fa-plus"></i> Add task</button>
+                <a href="{{ action('TaskController@create', ['project_id' => $project->id]) }}" class="as-meta" style="text-decoration:none;">More options</a>
+            </form>
+        </div>
+
         <div class="as-activity">
             <h4>Members <span class="as-count">{{ $project->contributors->count() }}</span></h4>
             <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
@@ -98,6 +152,30 @@
             form.submit();
         });
     }
+})();
+</script>
+@include('tasks.partials.asana_script')
+<script>
+(function () {
+    var seg = document.getElementById('asProjView');
+    var box = document.getElementById('asProjTasks');
+    var none = document.getElementById('asProjNone');
+    if (!seg || !box) { return; }
+    function apply(mode) {
+        var shown = 0;
+        box.querySelectorAll('.as-row').forEach(function (r) {
+            var done = r.classList.contains('done');
+            var vis = mode === 'all' || (mode === 'completed' ? done : !done);
+            r.style.display = vis ? '' : 'none';
+            if (vis) { shown++; }
+        });
+        if (none) { none.style.display = (shown === 0 && box.querySelectorAll('.as-row').length) ? '' : 'none'; }
+        seg.querySelectorAll('a').forEach(function (a) { a.classList.toggle('on', a.dataset.show === mode); });
+    }
+    seg.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function (e) { e.preventDefault(); apply(a.dataset.show); });
+    });
+    apply('incomplete');
 })();
 </script>
 @stop

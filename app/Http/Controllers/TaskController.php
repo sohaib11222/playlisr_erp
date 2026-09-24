@@ -49,6 +49,29 @@ class TaskController extends Controller
         return $data;
     }
 
+    /** Keep project_id only once its column exists, and only for a project in this business. */
+    private static function withProject(array $data, $business_id)
+    {
+        if (!\Schema::hasColumn('weekly_tasks', 'project_id')) {
+            unset($data['project_id']);
+            return $data;
+        }
+        $data['project_id'] = (!empty($data['project_id']) && \App\Project::where('business_id', $business_id)->where('id', $data['project_id'])->exists())
+            ? (int) $data['project_id']
+            : null;
+        return $data;
+    }
+
+    /** Open projects for the task form's Project picker: id => title. */
+    private function projectOptions($business_id)
+    {
+        return \App\Project::where('business_id', $business_id)
+            ->where('status', '!=', 'complete')
+            ->orderBy('title')
+            ->pluck('title', 'id')
+            ->all();
+    }
+
     private function isAdmin()
     {
         return $this->businessUtil->is_admin(auth()->user());
@@ -229,7 +252,8 @@ class TaskController extends Controller
                     'store' => $root->store,
                     'priority' => $root->priority,
                     'requires_photo' => $root->requires_photo,
-                ] + (array_key_exists('due_time', $root->getAttributes()) ? ['due_time' => $root->due_time] : []) + [
+                ] + (array_key_exists('due_time', $root->getAttributes()) ? ['due_time' => $root->due_time] : [])
+                  + (array_key_exists('project_id', $root->getAttributes()) ? ['project_id' => $root->project_id] : []) + [
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
                     'repeat_daily' => false,
@@ -354,7 +378,9 @@ class TaskController extends Controller
         if (!empty($type)) {
             $query->where('task_type', $type);
         }
-        if (!empty($status)) {
+        if ($status === 'incomplete') {
+            $query->where('status', '!=', 'complete');
+        } elseif (!empty($status)) {
             $query->where('status', $status);
         }
         if (!empty($priority)) {
@@ -447,7 +473,9 @@ class TaskController extends Controller
         if (!in_array($type, ['daily', 'weekly'])) {
             $type = 'weekly';
         }
-        return view('tasks.create', compact('storeLabels', 'priorityLabels', 'assignableUsers', 'type'));
+        $projectOptions = $this->projectOptions($business_id);
+        $projectId = (int) $request->input('project_id') ?: null;
+        return view('tasks.create', compact('storeLabels', 'priorityLabels', 'assignableUsers', 'type', 'projectOptions', 'projectId'));
     }
 
     public function store(Request $request)
@@ -465,11 +493,13 @@ class TaskController extends Controller
             'priority' => 'required|in:' . implode(',', array_keys(self::PRIORITY_LABELS)),
             'requires_photo' => 'nullable|boolean',
             'due_time' => 'nullable|date_format:H:i',
+            'project_id' => 'nullable|integer',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
         $data = self::withDueTime($data);
+        $data = self::withProject($data, $business_id);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
@@ -505,6 +535,11 @@ class TaskController extends Controller
         $task = WeeklyTask::create($data);
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
         $this->textAssignees($task);
+
+        if ($request->input('return_to') === 'project' && !empty($task->project_id)) {
+            return redirect(action('ProjectController@edit', $task->project_id))
+                ->with('status', ['success' => true, 'msg' => 'Task added.']);
+        }
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task added.']);
@@ -548,7 +583,11 @@ class TaskController extends Controller
         $storeLabels = $this->availableStores();
         $priorityLabels = self::PRIORITY_LABELS;
         $assignableUsers = $this->assignableUsers($business_id);
-        return view('tasks.edit', compact('task', 'storeLabels', 'priorityLabels', 'assignableUsers'));
+        $projectOptions = $this->projectOptions($business_id);
+        if ($task->project_id && $task->project && !isset($projectOptions[$task->project_id])) {
+            $projectOptions[$task->project_id] = $task->project->title;
+        }
+        return view('tasks.edit', compact('task', 'storeLabels', 'priorityLabels', 'assignableUsers', 'projectOptions'));
     }
 
     public function update($id, Request $request)
@@ -569,11 +608,13 @@ class TaskController extends Controller
             'requires_photo' => 'nullable|boolean',
             'photo_confirmed' => 'nullable|boolean',
             'due_time' => 'nullable|date_format:H:i',
+            'project_id' => 'nullable|integer',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
         $data = self::withDueTime($data);
+        $data = self::withProject($data, $business_id);
         $photoConfirmed = !empty($data['photo_confirmed']);
         unset($data['photo_confirmed']);
         $assignees = $data['assignees'] ?? [];

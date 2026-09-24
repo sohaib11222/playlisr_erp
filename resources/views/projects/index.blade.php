@@ -40,14 +40,19 @@
             @elseif($store)
                 <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
             @endif
+            @php
+                    $vq = request()->except(['status', 'page']);
+                    $viewUrls = [
+                        'incomplete' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
+                        'completed' => action('ProjectController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
+                        'all' => action('ProjectController@index') . '?' . http_build_query($vq),
+                    ];
+                    $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
+                @endphp
+                @include('tasks.partials.asana_view_toggle')
             <form method="GET" action="{{ action('ProjectController@index') }}" class="as-tools">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
-                <select name="status" class="as-filter" onchange="this.form.submit()">
-                    <option value="" @if(!$status) selected @endif>Any status</option>
-                    <option value="not_started" @if($status === 'not_started') selected @endif>Not started</option>
-                    <option value="in_progress" @if($status === 'in_progress') selected @endif>In progress</option>
-                    <option value="complete" @if($status === 'complete') selected @endif>Complete</option>
-                </select>
+                @if($status)<input type="hidden" name="status" value="{{ $status }}">@endif
                 <select name="priority" class="as-filter" onchange="this.form.submit()">
                     <option value="" @if(!$priority) selected @endif>Any priority</option>
                     @foreach($priorityLabels as $key => $label)
@@ -65,6 +70,11 @@
             'complete' => 'Completed',
         ];
         $byStatus = $projects->getCollection()->groupBy('status');
+        $taskCounts = \Schema::hasColumn('weekly_tasks', 'project_id')
+            ? \App\WeeklyTask::whereIn('project_id', $projects->getCollection()->pluck('id'))
+                ->selectRaw("project_id, count(*) as total, sum(status = 'complete') as done")
+                ->groupBy('project_id')->get()->keyBy('project_id')
+            : collect();
     @endphp
 
     <div class="as-table as-proj">
@@ -76,8 +86,8 @@
             @php
                 $rows = $byStatus->get($key, collect());
             @endphp
-            @if($rows->count() || $key !== 'complete')
-            <div class="as-section {{ $key === 'complete' ? 'collapsed' : '' }}">
+            @if($rows->count() || (!$status && $key !== 'complete'))
+            <div class="as-section {{ $key === 'complete' && $status !== 'complete' ? 'collapsed' : '' }}">
                 <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> {{ $title }} <span class="as-count">{{ $rows->count() }}</span></div>
                 <div class="as-rows">
                     @forelse($rows as $p)
@@ -97,7 +107,7 @@
                                 <span class="as-tile" style="background:{{ $color }}"><i class="fa fa-list-ul"></i></span>
                                 <div class="as-pname">
                                     <a class="as-name" href="{{ action('ProjectController@edit', $p->id) }}" title="{{ $p->description }}">{{ $p->title }}</a>
-                                    <span class="as-meta">{{ $p->description ? \Illuminate\Support\Str::limit($p->description, 90) : $sub }}</span>
+                                    <span class="as-meta">@if($taskCounts->has($p->id)){{ (int) $taskCounts[$p->id]->done }} of {{ (int) $taskCounts[$p->id]->total }} tasks done &middot; @endif{{ $p->description ? \Illuminate\Support\Str::limit($p->description, 80) : $sub }}</span>
                                 </div>
                             </div>
                             <div>

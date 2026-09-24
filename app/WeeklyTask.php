@@ -54,6 +54,12 @@ class WeeklyTask extends Model
         return $this->belongsTo(\App\WeeklyTask::class, 'repeat_of');
     }
 
+    /** The project this task belongs to, if any. */
+    public function project()
+    {
+        return $this->belongsTo(\App\Project::class, 'project_id');
+    }
+
     /** Progress notes the assignee(s) posted while working this task, newest first. */
     public function notes()
     {

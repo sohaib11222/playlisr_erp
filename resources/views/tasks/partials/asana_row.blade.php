@@ -9,6 +9,9 @@
         @if($t->requires_photo)
             <span class="as-meta" title="Needs a photo in #taskphotos"><i class="fa fa-camera"></i></span>
         @endif
+        @if($t->project_id && $t->project && !request()->is('tasks/projects/*'))
+            <a href="{{ action('ProjectController@edit', $t->project_id) }}" class="as-pill as-tag as-hide-sm" style="text-decoration:none;" title="Project"><i class="fa fa-list-ul"></i> {{ \Illuminate\Support\Str::limit($t->project->title, 24) }}</a>
+        @endif
         @if($t->status === 'in_progress')
             <span class="as-pill as-tag as-hide-sm">In progress</span>
         @endif

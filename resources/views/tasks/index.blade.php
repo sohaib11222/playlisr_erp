@@ -56,6 +56,16 @@
             @elseif($store)
                 <span class="as-pill as-tag">{{ $storeLabels[$store] ?? ucfirst($store) }}</span>
             @endif
+            @php
+                    $vq = request()->except(['status', 'page']);
+                    $viewUrls = [
+                        'incomplete' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
+                        'completed' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
+                        'all' => action('TaskController@index') . '?' . http_build_query($vq),
+                    ];
+                    $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
+                @endphp
+                @include('tasks.partials.asana_view_toggle')
             <form method="GET" action="{{ action('TaskController@index') }}" class="as-tools">
                 @if($store)<input type="hidden" name="store" value="{{ $store }}">@endif
                 <select name="type" class="as-filter" onchange="this.form.submit()">
@@ -63,12 +73,7 @@
                     <option value="daily" @if($type === 'daily') selected @endif>Today</option>
                     <option value="weekly" @if($type === 'weekly') selected @endif>This week</option>
                 </select>
-                <select name="status" class="as-filter" onchange="this.form.submit()">
-                    <option value="" @if(!$status) selected @endif>Any status</option>
-                    <option value="not_started" @if($status === 'not_started') selected @endif>Not started</option>
-                    <option value="in_progress" @if($status === 'in_progress') selected @endif>In progress</option>
-                    <option value="complete" @if($status === 'complete') selected @endif>Complete</option>
-                </select>
+                @if($status)<input type="hidden" name="status" value="{{ $status }}">@endif
                 <select name="priority" class="as-filter" onchange="this.form.submit()">
                     <option value="" @if(!$priority) selected @endif>Any priority</option>
                     @foreach($priorityLabels as $key => $label)
@@ -124,6 +129,9 @@
                                         @endif
                                         @if($t->requires_photo)
                                             <span class="as-meta" title="{{ $t->photo_confirmed_at ? 'Photo confirmed' : 'Needs a photo in #taskphotos' }}"><i class="fa fa-camera" style="color:{{ $t->photo_confirmed_at ? '#58a182' : '#c92f54' }}"></i></span>
+                                        @endif
+                                        @if($t->project_id && $t->project)
+                                            <a href="{{ action('ProjectController@edit', $t->project_id) }}" class="as-pill as-tag as-hide-sm" style="text-decoration:none;" title="Project"><i class="fa fa-list-ul"></i> {{ \Illuminate\Support\Str::limit($t->project->title, 24) }}</a>
                                         @endif
                                         <button type="button" class="as-note-btn" data-toggle-detail="d{{ $t->id }}" title="Notes and details"><i class="fa fa-comment-o"></i>@if($t->notes->count()) {{ $t->notes->count() }}@endif</button>
                                     </div>

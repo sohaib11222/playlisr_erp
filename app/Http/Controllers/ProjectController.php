@@ -94,7 +94,9 @@ class ProjectController extends Controller
         $query = Project::with(['creator', 'startedBy', 'completedBy', 'contributors', 'assignees'])
             ->where('business_id', $business_id);
 
-        if (!empty($status)) {
+        if ($status === 'incomplete') {
+            $query->where('status', '!=', 'complete');
+        } elseif (!empty($status)) {
             $query->where('status', $status);
         }
         if (!empty($priority)) {

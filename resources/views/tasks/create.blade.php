@@ -24,6 +24,9 @@
     <div class="as-task-card">
         <form method="POST" action="{{ action('TaskController@store') }}" id="asTaskForm">
             @csrf
+            @if(!empty($projectId))
+                <input type="hidden" name="return_to" value="project">
+            @endif
 
             <div class="as-task-top">
                 <strong style="font-size:14px;">New task</strong>
@@ -37,6 +40,16 @@
                     <div class="k">Assignees</div>
                     <div class="v" style="display:block;">
                         {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}
+                    </div>
+
+                    <div class="k">Project</div>
+                    <div class="v">
+                        <select name="project_id" class="form-control">
+                            <option value="">No project</option>
+                            @foreach($projectOptions ?? [] as $pid => $ptitle)
+                                <option value="{{ $pid }}" @if((int) old('project_id', $projectId ?? null) === (int) $pid) selected @endif>{{ $ptitle }}</option>
+                            @endforeach
+                        </select>
                     </div>
 
                     <div class="k">Due date</div>

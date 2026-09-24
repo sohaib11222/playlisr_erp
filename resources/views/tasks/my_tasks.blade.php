@@ -28,6 +28,10 @@
 
     <div class="as-toolbar">
         <a href="{{ action('TaskController@create') }}" class="as-btn"><i class="fa fa-plus"></i> Add task</a>
+        @include('tasks.partials.asana_view_toggle', [
+            'viewUrls' => ['incomplete' => route('tasks.my'), 'completed' => route('tasks.my', ['show' => 'completed']), 'all' => route('tasks.my', ['show' => 'all'])],
+            'viewCurrent' => $show,
+        ])
     </div>
 
     <div class="as-table">
@@ -40,6 +44,7 @@
             $emptyText = ['past_due' => 'Nothing past due. Nice.', 'today' => 'Nothing else due today.', 'upcoming' => 'Nothing coming up this week.', 'later' => 'Nothing scheduled further out.'];
         @endphp
 
+        @if($show !== 'completed')
         @foreach($sectionTitles as $key => $title)
             @if($key !== 'past_due' || count($sections[$key]))
             <div class="as-section {{ $key === 'later' && count($sections[$key]) ? 'collapsed' : '' }}">
@@ -54,9 +59,11 @@
             </div>
             @endif
         @endforeach
+        @endif
 
-        <div class="as-section collapsed">
-            <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> Recently completed <span class="as-count">{{ $completed->count() }}</span></div>
+        @if($show !== 'incomplete')
+        <div class="as-section">
+            <div class="as-section-h"><span class="as-caret"><i class="fa fa-caret-down"></i></span> Completed{{ ' ' }}<span class="as-meta" style="font-weight:400;">last 30 days</span> <span class="as-count">{{ $completed->count() }}</span></div>
             <div class="as-rows">
                 @forelse($completed as $t)
                     <div class="as-row done">
@@ -74,6 +81,7 @@
                 @endforelse
             </div>
         </div>
+        @endif
     </div>
 
     <p class="as-note">Shows tasks assigned to you, plus unassigned tasks at the store you're on shift at today.</p>

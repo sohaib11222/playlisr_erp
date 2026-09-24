@@ -73,10 +73,12 @@ class MyTasksController extends Controller
         }
         unset($rows);
 
+        $show = in_array($request->input('show'), ['incomplete', 'completed', 'all'], true) ? $request->input('show') : 'incomplete';
+
         $completed = WeeklyTask::where('business_id', $business_id)
             ->where('completed_by', $userId)
             ->where('status', 'complete')
-            ->where('completed_at', '>=', $today->copy()->subDays(7))
+            ->where('completed_at', '>=', $today->copy()->subDays($show === 'incomplete' ? 7 : 30))
             ->orderByDesc('completed_at')
             ->get();
         $completedCount = $completed->count() + \DB::table('task_completion_logs')
@@ -89,7 +91,7 @@ class MyTasksController extends Controller
         $storeLabels = TaskController::STORE_LABELS;
         $firstName = auth()->user()->first_name;
 
-        return view('tasks.my_tasks', compact('sections', 'completed', 'completedCount', 'storeLabels', 'shiftStores', 'firstName'));
+        return view('tasks.my_tasks', compact('sections', 'completed', 'completedCount', 'storeLabels', 'shiftStores', 'firstName', 'show'));
     }
 
     /** [store key => label] for stores Sling has this person working today. */

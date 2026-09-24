@@ -36,6 +36,12 @@ class Project extends Model
             ->withTimestamps();
     }
 
+    /** Tasks that belong to this project (empty until weekly_tasks.project_id exists). */
+    public function tasks()
+    {
+        return $this->hasMany(\App\WeeklyTask::class, 'project_id');
+    }
+
     /** Who this project is assigned to (set by whoever creates/edits it) — see project_assignees. */
     public function assignees()
     {
