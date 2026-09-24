@@ -750,6 +750,9 @@ class TaskController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $task = WeeklyTask::where('business_id', $business_id)->findOrFail($id);
+        if (!TeamProgressController::canDelete($task)) {
+            return redirect()->back()->with('status', ['success' => false, 'msg' => 'Only the person who created this task (or an admin) can delete it.']);
+        }
 
         // Delete only ever removes the one row clicked — it never takes
         // other days/instances with it. If this is a repeating root with

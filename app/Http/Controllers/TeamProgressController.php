@@ -202,6 +202,18 @@ class TeamProgressController extends Controller
             || ManagerChecklistController::currentManagerKey() !== null;
     }
 
+    /** Only whoever created a task/project, an admin, or an owner can delete it. */
+    public static function canDelete($item)
+    {
+        $u = auth()->user();
+        if (!$u || !$item) {
+            return false;
+        }
+        return (int) $item->created_by === (int) $u->id
+            || $u->hasRole('Admin#' . $u->business_id)
+            || in_array(strtolower(trim((string) $u->email)), self::OWNER_EMAILS, true);
+    }
+
     /** When a task is due: its end date at due_time, or end of that day if no time is set. */
     public static function dueAt(WeeklyTask $t)
     {

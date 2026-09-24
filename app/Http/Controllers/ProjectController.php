@@ -242,6 +242,9 @@ class ProjectController extends Controller
     {
         $business_id = $request->session()->get('user.business_id');
         $project = Project::where('business_id', $business_id)->findOrFail($id);
+        if (!TeamProgressController::canDelete($project)) {
+            return redirect()->back()->with('status', ['success' => false, 'msg' => 'Only the person who created this project (or an admin) can delete it.']);
+        }
         $project->delete();
 
         return redirect(action('ProjectController@index'))

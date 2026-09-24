@@ -182,11 +182,13 @@
                             </div>
                             <div class="as-acts">
                                 <a href="{{ action('TaskController@edit', $t->id) }}" class="as-icon-btn" title="Edit"><i class="fa fa-pencil"></i></a>
+                                @if(\App\Http\Controllers\TeamProgressController::canDelete($t))
                                 <form action="{{ action('TaskController@destroy', $t->id) }}" method="POST" style="display:inline;margin:0;" onsubmit="return confirm('Delete this task?');">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="as-icon-btn del" title="Delete"><i class="fa fa-trash"></i></button>
                                 </form>
+                                @endif
                             </div>
                         </div>
                         <div class="as-detail" id="d{{ $t->id }}">
