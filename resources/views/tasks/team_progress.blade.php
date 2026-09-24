@@ -11,6 +11,10 @@
         <div>
             <h1 class="as-title">Team Progress</h1>
             <div class="as-sub">What's getting done and who's on it, {{ $windowStart->format('M j') }} to {{ $today->format('M j') }}.</div>
+            @php
+                $missingPhones = \App\Http\Controllers\StaffPhonesController::staff(session('user.business_id'))->filter(function ($u) { return trim((string) $u->contact_number) === ''; })->count();
+            @endphp
+            <div class="as-sub" style="margin-top:4px;"><a href="{{ route('staff-phones.index') }}" style="color:#4573d2 !important;">Staff phones</a>@if($missingPhones) <span class="as-meta">({{ $missingPhones }} missing, they won't get shift texts)</span>@endif</div>
         </div>
     </div>
 

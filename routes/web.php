@@ -804,6 +804,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/tasks/my', 'MyTasksController@index')->name('tasks.my');
     // Team Progress: read-only owner/past-due/wins view on top of Tasks (admins only).
     Route::get('/tasks/team-progress', 'TeamProgressController@index')->name('tasks.team-progress');
+    Route::get('/tasks/staff-phones', 'StaffPhonesController@index')->name('staff-phones.index');
+    Route::post('/tasks/staff-phones', 'StaffPhonesController@save')->name('staff-phones.save');
     Route::get('/tasks/start-shift', 'TaskController@startShift')->name('tasks.start-shift');
     Route::get('/tasks/create', 'TaskController@create')->name('tasks.create');
     Route::post('/tasks', 'TaskController@store')->name('tasks.store');

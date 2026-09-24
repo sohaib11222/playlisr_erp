@@ -107,7 +107,9 @@ class SendPendingAssignmentTexts extends Command
                 continue;
             }
 
-            $result = $sms->send($phone, $message);
+            // Same Quo lines the customer texts use: the store they're working at.
+            $line = array_search(stripos((string) $shift->location_name, 'pico') !== false ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
+            $result = $sms->sendFrom((string) $line, $phone, $message);
             if (!$result['success']) {
                 // Not logged, so the next run (every 5 min) retries until LATE_MINUTES.
                 Log::info("SendPendingAssignmentTexts: send failed for user {$user->id}, will retry: " . $result['msg']);
