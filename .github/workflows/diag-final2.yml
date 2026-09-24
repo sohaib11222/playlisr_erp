@@ -1,0 +1,99 @@
+# Final check: renders all task pages; exercises actions inside a transaction that is rolled back.
+
+# dispatching this doesn't touch main and trigger a production deploy
+# while stores are open.
+
+name: Diag final2
+
+on:
+  push:
+    branches: [diag-final2]
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+      - name: Check
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          script: |
+            cd /www/playlist.nivessa.com/app
+            git log -1 --oneline | sed 's/^/RES head /'
+            for f in tasks/edit tasks/create projects/edit projects/create tasks/index projects/index tasks/my_tasks tasks/team_progress tasks/staff_phones; do mkdir -p /tmp/tp/$(dirname $f); grep -v -E "^@extends|^@section\('title'|^@section\('content'\)|^@endsection|^@stop" resources/views/$f.blade.php > /tmp/tp/$f.blade.php; done
+            cat > /tmp/tp/check.php <<'EOF'
+            <?php
+            view()->share('errors', new Illuminate\Support\ViewErrorBag);
+            $sess = app('session')->driver(); $sess->put('user.business_id',1); $sess->put('business.id',1);
+            $mk = function($path,$method='GET',$data=[],$ajax=false) use ($sess) { $r = Illuminate\Http\Request::create($path,$method,$data); $r->setLaravelSession($sess); if ($ajax) { $r->headers->set('X-Requested-With','XMLHttpRequest'); $r->headers->set('Accept','application/json'); } app()->instance('request',$r); return $r; };
+            $say = function($k,$v){ echo "RES ".str_pad($k,40)." ".$v."\n"; };
+            $ok=0; $bad=0;
+            $render = function($name,$c,$m,$args,$file) use (&$ok,&$bad,$say) { try { $d = app("App\\Http\\Controllers\\$c")->$m(...$args); if (!method_exists($d,'getData')) { $say($name,'NOT A VIEW'); $bad++; return; } view()->file("/tmp/tp/$file.blade.php",$d->getData())->render(); $ok++; } catch (\Throwable $e) { $bad++; $say($name,'ERR '.$e->getMessage().' @ '.basename($e->getFile()).':'.$e->getLine()); } };
+            foreach ([1=>'Jon',18=>'Zak',64=>'Andy'] as $uid=>$nm) {
+              Auth::setUser(App\User::find($uid));
+              foreach ([[],['status'=>'all'],['status'=>'complete']] as $q) { $render("$nm tasks ".json_encode($q),'TaskController','index',[$mk('/tasks','GET',$q)],'tasks/index'); $render("$nm projects ".json_encode($q),'ProjectController','index',[$mk('/tasks/projects','GET',$q)],'projects/index'); }
+              foreach (['incomplete','completed','all'] as $sh) $render("$nm my $sh",'MyTasksController','index',[$mk('/tasks/my','GET',['show'=>$sh])],'tasks/my_tasks');
+              if (App\Http\Controllers\TeamProgressController::canView()) { $render("$nm team",'TeamProgressController','index',[$mk('/tasks/team-progress')],'tasks/team_progress'); $render("$nm phones",'StaffPhonesController','index',[$mk('/tasks/staff-phones')],'tasks/staff_phones'); }
+              $render("$nm task create",'TaskController','create',[$mk('/tasks/create')],'tasks/create');
+              $render("$nm project create",'ProjectController','create',[$mk('/tasks/projects/create')],'projects/create');
+              foreach (App\Project::where('business_id',1)->pluck('id') as $id) $render("$nm project#$id",'ProjectController','edit',[$id,$mk("/tasks/projects/$id/edit")],'projects/edit');
+              foreach (App\WeeklyTask::where('business_id',1)->pluck('id') as $id) $render("$nm task#$id",'TaskController','edit',[$id,$mk("/tasks/$id/edit")],'tasks/edit');
+            }
+            $say('PAGES rendered', "ok=$ok bad=$bad");
+            foreach ([1=>'Jon',8=>'Sarah',18=>'Zak',26=>'Luis',22=>'Manolo',64=>'Andy'] as $uid=>$nm) { Auth::setUser(App\User::find($uid)); $say("Team Progress access $nm", App\Http\Controllers\TeamProgressController::canView()?'yes':'no'); }
+            $admin = App\User::find(1); Auth::setUser($admin);
+            $tc = app('App\Http\Controllers\TaskController'); $pc = app('App\Http\Controllers\ProjectController');
+            $pt0 = App\PendingAssignmentText::count(); $maxId = App\WeeklyTask::max('id');
+            DB::beginTransaction();
+            try {
+              $tc->store($mk('/tasks','POST',['title'=>'ZZ TEST task','task_type'=>'daily','start_date'=>today()->toDateString(),'priority'=>'high','store'=>'pico','due_time'=>'14:00']));
+              $t = App\WeeklyTask::where('title','ZZ TEST task')->first(); $say('Add task', $t ? "ok due {$t->due_time}" : 'FAILED');
+              $proj = App\Project::where('business_id',1)->first();
+              $r = $tc->store($mk('/tasks','POST',['title'=>'ZZ TEST step','task_type'=>'weekly','start_date'=>today()->toDateString(),'priority'=>'medium','project_id'=>$proj->id,'return_to'=>'project','no_due_date'=>1]));
+              $p = App\WeeklyTask::where('title','ZZ TEST step')->first(); $say('Add task inside project', $p ? "ok no_due={$p->no_due_date} back_to_project=".(strpos($r->getTargetUrl(),'/projects/')!==false?'yes':'no') : 'FAILED');
+              $j = $tc->updateStatus($t->id, $mk("/tasks/{$t->id}/status",'POST',['status'=>'complete'],true)); $say('Check off', $j->getContent());
+              $tc->addNote($t->id, $mk("/tasks/{$t->id}/notes",'POST',['note'=>'ZZ note'])); $say('Add note', $t->notes()->count().' note');
+              $b = App\PendingAssignmentText::count(); $tc->update($p->id, $mk("/tasks/{$p->id}",'PUT',['title'=>'ZZ TEST step','task_type'=>'weekly','start_date'=>today()->toDateString(),'status'=>'not_started','priority'=>'medium','project_id'=>$proj->id,'no_due_date'=>1,'assignees'=>[18]])); $say('Add person later queues a note for their shift text', (App\PendingAssignmentText::count()-$b).' queued');
+              $pc->join($proj->id, $mk("/tasks/projects/{$proj->id}/join",'POST')); $in = $proj->contributors()->where('users.id',1)->exists(); $pc->removeContributor($proj->id,1,$mk("/tasks/projects/{$proj->id}/contributors/1",'DELETE')); $say('Join/Leave project', ($in?'joined':'no').' / '.($proj->contributors()->where('users.id',1)->exists()?'still in':'left'));
+              Auth::setUser(App\User::find(64)); $tc->destroy($t->id, $mk("/tasks/{$t->id}",'DELETE')); $say('Andy delete someone elses task', App\WeeklyTask::find($t->id)?'blocked':'DELETED'); Auth::setUser($admin);
+              $tc->destroy($p->id, $mk("/tasks/{$p->id}",'DELETE')); $say('Admin delete', App\WeeklyTask::find($p->id)?'failed':'deleted');
+            } catch (\Throwable $e) { $say('ACTION ERR', $e->getMessage().' @ '.basename($e->getFile()).':'.$e->getLine()); }
+            DB::rollBack();
+            $say('Rolled back: test tasks left', App\WeeklyTask::where('title','like','ZZ TEST%')->count().' (max id '.App\WeeklyTask::max('id').' was '.$maxId.'), texts delta '.(App\PendingAssignmentText::count()-$pt0));
+            $r = app('router')->getRoutes()->match(Illuminate\Http\Request::create('/employee-tasks','GET')); $say('/employee-tasks', 'redirect route ok');
+            $say('Sling phones loaded', count((new App\Services\SlingClient())->userPhones()));
+            $say('Shift texts logged today', App\PendingAssignmentText::whereNull('weekly_task_id')->whereNull('project_id')->whereDate('created_at',today())->get()->map(function($x){ return optional($x->user)->first_name.'@'.$x->created_at->format('H:i'); })->implode(', '));
+            $say('Scheduler has shift text job', collect(app(Illuminate\Console\Scheduling\Schedule::class)->events())->filter(function($e){ return strpos($e->command,'pending-assignment-texts')!==false; })->count() ? 'yes' : 'NO');
+            EOF
+            php artisan tinker --no-ansi /tmp/tp/check.php 2>/dev/null | grep RES
+            grep -h "SendPendingAssignmentTexts" storage/logs/laravel*.log 2>/dev/null | tail -5 | sed -E 's/\+?1?[0-9]{10}/N/g; s/^/RES log /'
+            rm -rf /tmp/tp
