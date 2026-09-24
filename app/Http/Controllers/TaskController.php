@@ -62,6 +62,17 @@ class TaskController extends Controller
         return $data;
     }
 
+    /** Keep no_due_date only once its column exists. */
+    private static function withNoDueDate(array $data)
+    {
+        if (!\Schema::hasColumn('weekly_tasks', 'no_due_date')) {
+            unset($data['no_due_date']);
+        } else {
+            $data['no_due_date'] = !empty($data['no_due_date']);
+        }
+        return $data;
+    }
+
     /** Open projects for the task form's Project picker: id => title. */
     private function projectOptions($business_id)
     {
@@ -253,7 +264,8 @@ class TaskController extends Controller
                     'priority' => $root->priority,
                     'requires_photo' => $root->requires_photo,
                 ] + (array_key_exists('due_time', $root->getAttributes()) ? ['due_time' => $root->due_time] : [])
-                  + (array_key_exists('project_id', $root->getAttributes()) ? ['project_id' => $root->project_id] : []) + [
+                  + (array_key_exists('project_id', $root->getAttributes()) ? ['project_id' => $root->project_id] : [])
+                  + (array_key_exists('no_due_date', $root->getAttributes()) ? ['no_due_date' => $root->no_due_date] : []) + [
                     'status' => 'not_started',
                     'created_by' => $root->created_by,
                     'repeat_daily' => false,
@@ -366,7 +378,11 @@ class TaskController extends Controller
         // happen anymore — and hiding completed work was actively unwanted
         // ("keeping it up would be better, that way we can all see what we
         // did today"). Back to showing everything by default.
-        $status = $request->input('status');
+        // Asana-style default: open tasks only. ?status=all shows everything.
+        $status = $request->input('status', 'incomplete');
+        if ($status === 'all') {
+            $status = null;
+        }
         $priority = $request->input('priority');
         $assignedToMe = !empty($request->input('assigned_to_me'));
         $storeLabels = $this->availableStores();
@@ -494,12 +510,14 @@ class TaskController extends Controller
             'requires_photo' => 'nullable|boolean',
             'due_time' => 'nullable|date_format:H:i',
             'project_id' => 'nullable|integer',
+            'no_due_date' => 'nullable|boolean',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
         $data = self::withDueTime($data);
         $data = self::withProject($data, $business_id);
+        $data = self::withNoDueDate($data);
         $assignees = $data['assignees'] ?? [];
         unset($data['assignees']);
 
@@ -609,12 +627,14 @@ class TaskController extends Controller
             'photo_confirmed' => 'nullable|boolean',
             'due_time' => 'nullable|date_format:H:i',
             'project_id' => 'nullable|integer',
+            'no_due_date' => 'nullable|boolean',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
         $data['requires_photo'] = !empty($data['requires_photo']);
         $data = self::withDueTime($data);
         $data = self::withProject($data, $business_id);
+        $data = self::withNoDueDate($data);
         $photoConfirmed = !empty($data['photo_confirmed']);
         unset($data['photo_confirmed']);
         $assignees = $data['assignees'] ?? [];

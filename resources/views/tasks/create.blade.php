@@ -66,6 +66,7 @@
                         </span>
                         <span class="text-muted">by</span>
                         <input type="time" class="form-control" name="due_time" value="{{ old('due_time') }}" title="Optional. Blank means end of day.">
+                        <label style="font-weight:400;font-size:13px;margin:0 0 0 6px;"><input type="hidden" name="no_due_date" value="0"><input type="checkbox" name="no_due_date" value="1" @if(old('no_due_date')) checked @endif> No due date</label>
                     </div>
 
                     <div class="k">Repeat</div>

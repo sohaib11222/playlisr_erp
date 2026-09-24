@@ -78,6 +78,7 @@
                 <input type="hidden" name="project_id" value="{{ $project->id }}">
                 <input type="hidden" name="return_to" value="project">
                 <input type="hidden" name="task_type" value="weekly">
+                <input type="hidden" name="no_due_date" value="1">
                 <input type="hidden" name="start_date" value="{{ now()->toDateString() }}">
                 <input type="hidden" name="priority" value="{{ $project->priority ?: 'medium' }}">
                 @if($project->store)

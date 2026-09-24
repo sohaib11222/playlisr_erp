@@ -57,7 +57,9 @@ class MyTasksController extends Controller
                 }
                 $seen[$t->id] = true;
                 $due = TeamProgressController::dueAt($t);
-                if ($due && $due->lt($now)) {
+                if (!empty($t->no_due_date)) {
+                    $key = 'later';
+                } elseif ($due && $due->lt($now)) {
                     $key = 'past_due';
                 } elseif ($t->start_date->gt($today)) {
                     $key = $t->start_date->lte($today->copy()->addDays(7)) ? 'upcoming' : 'later';

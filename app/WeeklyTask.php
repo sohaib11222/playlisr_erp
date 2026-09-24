@@ -17,6 +17,7 @@ class WeeklyTask extends Model
         'repeat_daily' => 'boolean',
         'repeat_weekly' => 'boolean',
         'requires_photo' => 'boolean',
+        'no_due_date' => 'boolean',
         'last_reset_date' => 'date',
         'photo_confirmed_at' => 'datetime',
     ];

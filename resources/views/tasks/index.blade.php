@@ -47,9 +47,9 @@
                     $baseQuery = request()->except(['store', 'page']);
                 @endphp
                 <div class="as-seg">
-                    <a href="{{ action('TaskController@index') }}?{{ http_build_query($baseQuery) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
+                    <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['status' => $status ?: 'all'])) }}" class="{{ !$store ? 'on' : '' }}">All stores</a>
                     @foreach($storeLabels as $key => $label)
-                        <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
+                        <a href="{{ action('TaskController@index') }}?{{ http_build_query(array_merge($baseQuery, ['store' => $key, 'status' => $status ?: 'all'])) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
                     @endforeach
                 </div>
                 <a href="{{ url('/admin/task-store-assignments') }}" class="as-meta" style="text-decoration:none;">Store assignments</a>
@@ -61,7 +61,7 @@
                     $viewUrls = [
                         'incomplete' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'incomplete'])),
                         'completed' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'complete'])),
-                        'all' => action('TaskController@index') . '?' . http_build_query($vq),
+                        'all' => action('TaskController@index') . '?' . http_build_query(array_merge($vq, ['status' => 'all'])),
                     ];
                     $viewCurrent = $status === 'incomplete' ? 'incomplete' : ($status === 'complete' ? 'completed' : 'all');
                 @endphp
@@ -73,7 +73,7 @@
                     <option value="daily" @if($type === 'daily') selected @endif>Today</option>
                     <option value="weekly" @if($type === 'weekly') selected @endif>This week</option>
                 </select>
-                @if($status)<input type="hidden" name="status" value="{{ $status }}">@endif
+                <input type="hidden" name="status" value="{{ $status ?: 'all' }}">
                 <select name="priority" class="as-filter" onchange="this.form.submit()">
                     <option value="" @if(!$priority) selected @endif>Any priority</option>
                     @foreach($priorityLabels as $key => $label)
@@ -151,6 +151,9 @@
                                 </form>
                             </div>
                             <div class="as-hide-sm">
+                                @if($t->no_due_date)
+                                    <span class="as-meta">No due date</span>
+                                @endif
                                 @if($due)
                                     <span class="{{ !$isDone && $due->lt(now()) ? 'as-due-late' : ($due->isToday() ? 'as-due-today' : '') }}">
                                         @if($t->task_type === 'weekly')

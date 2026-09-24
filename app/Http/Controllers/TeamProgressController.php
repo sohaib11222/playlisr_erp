@@ -152,7 +152,7 @@ class TeamProgressController extends Controller
                         $recordMiss($t, $d->copy());
                     }
                 }
-            } elseif ($t->status !== 'complete' && $t->end_date
+            } elseif ($t->status !== 'complete' && $t->end_date && empty($t->no_due_date)
                 && $t->end_date->gte($windowStart) && $t->end_date->lte($yesterday)) {
                 $recordMiss($t, $t->end_date->copy());
             }
@@ -217,7 +217,7 @@ class TeamProgressController extends Controller
     /** When a task is due: its end date at due_time, or end of that day if no time is set. */
     public static function dueAt(WeeklyTask $t)
     {
-        if (!$t->end_date) {
+        if (!$t->end_date || !empty($t->no_due_date)) {
             return null;
         }
         $due = $t->end_date->copy();
