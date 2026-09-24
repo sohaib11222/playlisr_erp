@@ -137,6 +137,12 @@ class TeamProgressController extends Controller
         $missedRows = [];
         $recordMiss = function (WeeklyTask $t, Carbon $date) use ($ownersFor, $bump, &$missedRows) {
             $owner = $ownersFor($t, $date);
+            // An unassigned task that didn't get done is on the closer: the
+            // cashier whose shift at that store ended last that day.
+            if ($owner['via'] === 'sling') {
+                $owner['ids'] = array_slice($owner['ids'], 0, 1);
+                $owner['via'] = 'closer';
+            }
             foreach ($owner['ids'] as $uid) {
                 $bump($uid, $owner['via'] === 'sling' ? 'missed_shift' : 'missed');
             }
@@ -260,6 +266,7 @@ class TeamProgressController extends Controller
 
         $cashiers = [];
         $everyone = [];
+        $ends = [];
         foreach ($shifts as $s) {
             $store = self::SLING_LOCATIONS[strtolower(trim((string) $s->location_name))] ?? null;
             if (!$store) {
@@ -267,16 +274,22 @@ class TeamProgressController extends Controller
             }
             $date = $s->dtstart->toDateString();
             $name = $s->user_name ?: ('User #' . $s->erp_user_id);
+            $end = $s->dtend ? $s->dtend->getTimestamp() : $s->dtstart->getTimestamp();
             $everyone[$date][$store][$s->erp_user_id] = $name;
+            $ends[$date][$store][$s->erp_user_id] = max($ends[$date][$store][$s->erp_user_id] ?? 0, $end);
             if (stripos((string) $s->position_name, 'cashier') !== false) {
                 $cashiers[$date][$store][$s->erp_user_id] = $name;
             }
         }
 
+        // Latest shift end first, so the first person listed is the closer.
         $out = [];
         foreach ($everyone as $date => $stores) {
             foreach ($stores as $store => $people) {
-                $out[$date][$store] = $cashiers[$date][$store] ?? $people;
+                $list = $cashiers[$date][$store] ?? $people;
+                $e = $ends[$date][$store];
+                uksort($list, function ($a, $b) use ($e) { return ($e[$b] ?? 0) <=> ($e[$a] ?? 0); });
+                $out[$date][$store] = $list;
             }
         }
         return $out;

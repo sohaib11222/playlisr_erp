@@ -577,15 +577,21 @@ class TaskController extends Controller
      * to a plain send if no shift shows up in time). See that command for
      * the actual send logic/timing.
      */
-    private function textAssignees(WeeklyTask $task): void
+    private function textAssignees(WeeklyTask $task, array $onlyUserIds = null): void
     {
         $taskUrl = action('TaskController@edit', $task->id);
         $when = $task->task_type === 'daily'
             ? $task->start_date->format('M j')
             : $task->start_date->format('M j') . '–' . $task->end_date->format('M j');
-        $message = "New task assigned to you: \"{$task->title}\" (due {$when}). {$taskUrl}";
+        $message = !empty($task->no_due_date)
+            ? "New task assigned to you: \"{$task->title}\". {$taskUrl}"
+            : "New task assigned to you: \"{$task->title}\" (due {$when}). {$taskUrl}";
 
         foreach ($task->assignees as $assignee) {
+            // On edit, only the people who were just added get a text.
+            if ($onlyUserIds !== null && !in_array((int) $assignee->id, $onlyUserIds, true)) {
+                continue;
+            }
             \App\PendingAssignmentText::create([
                 'weekly_task_id' => $task->id,
                 'user_id' => $assignee->id,
@@ -681,7 +687,13 @@ class TaskController extends Controller
         $this->applyStatusTransition($task, $data['status'], $photoConfirmed);
         unset($data['status']);
         $task->fill($data)->save();
+        $assigneesBefore = $task->assignees()->pluck('users.id')->map(function ($id) { return (int) $id; })->all();
         $this->syncAssignees($task, $assignees, $this->assignableUsers($business_id));
+        $task->load('assignees');
+        $newlyAdded = array_values(array_diff($task->assignees->pluck('id')->map(function ($id) { return (int) $id; })->all(), $assigneesBefore));
+        if ($newlyAdded && $task->status !== 'complete') {
+            $this->textAssignees($task, $newlyAdded);
+        }
 
         return redirect(action('TaskController@index'))
             ->with('status', ['success' => true, 'msg' => 'Task updated.']);

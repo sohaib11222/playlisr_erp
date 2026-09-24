@@ -71,9 +71,13 @@
                     <div class="as-row done">
                         <div>
                             <span class="as-check done">{!! \App\Http\Controllers\TeamProgressController::CHECK_SVG !!}</span>
-                            <a class="as-name" href="{{ action('TaskController@edit', $t->id) }}">{{ $t->title }}</a>
+                            @if($t->id)
+                                <a class="as-name" href="{{ action('TaskController@edit', $t->id) }}">{{ $t->title }}</a>
+                            @else
+                                <span class="as-name">{{ $t->title }}</span>
+                            @endif
                         </div>
-                        <div class="as-hide-sm"><span class="as-meta">{{ $t->completed_at->format('M j, g:i A') }}</span></div>
+                        <div class="as-hide-sm"><span class="as-meta">{{ $t->from_log ? $t->completed_at->format('M j') : $t->completed_at->format('M j, g:i A') }}</span></div>
                         <div><span class="as-pill as-p-{{ $t->priority }}">{{ ucfirst($t->priority) }}</span></div>
                         <div class="as-hide-sm"><span class="as-pill as-tag">{{ $storeLabels[$t->store] ?? 'Both' }}</span></div>
                         <div class="as-hide-sm"></div>

@@ -81,18 +81,38 @@ class MyTasksController extends Controller
 
         $show = in_array($request->input('show'), ['incomplete', 'completed', 'all'], true) ? $request->input('show') : 'incomplete';
 
+        $since = $today->copy()->subDays($show === 'incomplete' ? 7 : 30);
         $completed = WeeklyTask::where('business_id', $business_id)
             ->where('completed_by', $userId)
             ->where('status', 'complete')
-            ->where('completed_at', '>=', $today->copy()->subDays($show === 'incomplete' ? 7 : 30))
-            ->orderByDesc('completed_at')
+            ->where('completed_at', '>=', $since)
             ->get();
-        $completedCount = $completed->count() + \DB::table('task_completion_logs')
+
+        // Daily repeats reset every morning, so earlier days' completions only
+        // live in task_completion_logs. Show them too, dated by the day done.
+        $logRows = \DB::table('task_completion_logs')
             ->where('business_id', $business_id)
             ->where('completed_by', $userId)
             ->where('status', 'complete')
-            ->whereDate('log_date', '>=', $today->copy()->subDays(7)->toDateString())
-            ->count();
+            ->whereDate('log_date', '>=', $since->toDateString())
+            ->get();
+        foreach ($logRows as $l) {
+            $t = new WeeklyTask();
+            $t->forceFill([
+                'id' => $l->weekly_task_id,
+                'title' => $l->title,
+                'store' => $l->store,
+                'priority' => $l->priority ?: 'medium',
+                'status' => 'complete',
+                'completed_at' => Carbon::parse($l->log_date)->endOfDay(),
+            ]);
+            $t->setAttribute('from_log', true);
+            $completed->push($t);
+        }
+        $completed = $completed->sortByDesc(function ($t) { return $t->completed_at; })->values();
+
+        $weekAgo = $today->copy()->subDays(7);
+        $completedCount = $completed->filter(function ($t) use ($weekAgo) { return $t->completed_at && $t->completed_at->gte($weekAgo); })->count();
 
         $storeLabels = TaskController::STORE_LABELS;
         $firstName = auth()->user()->first_name;

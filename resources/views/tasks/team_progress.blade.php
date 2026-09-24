@@ -40,7 +40,7 @@
                         </div>
                         <div class="as-hide-sm">
                             @if($s['missed'] + $s['missed_shift'] > 0)
-                                <span class="as-meta" title="Assigned: {{ $s['missed'] }}, on shift: {{ $s['missed_shift'] }}">{{ $s['missed'] + $s['missed_shift'] }} not done</span>
+                                <span class="as-meta" title="Assigned to them: {{ $s['missed'] }}, closed the store: {{ $s['missed_shift'] }}">{{ $s['missed'] + $s['missed_shift'] }} not done</span>
                             @elseif($s['late'] > 0)
                                 <span class="as-meta">{{ $s['late'] }} finished late</span>
                             @else
@@ -65,6 +65,9 @@
                 $html .= \App\Http\Controllers\TeamProgressController::avatar($id, $names[$id] ?? ('User #' . $id), 'sm');
             }
             $html .= '</span>';
+            if ($owner['via'] === 'closer') {
+                $html .= '<span class="as-meta" style="margin-left:6px;" title="Nobody assigned. The cashier who closed that store that day.">closer</span>';
+            }
             if ($owner['via'] === 'sling') {
                 $html .= '<span class="as-meta" style="margin-left:6px;" title="Nobody assigned. Whoever Sling had on shift at this store.">on shift</span>';
             }
@@ -138,7 +141,7 @@
         </div>
     </div>
 
-    <p class="as-note">Tasks with nobody assigned go to whoever Sling had on a Cashier shift at that store that day. This page only reads tasks. Checking one off here marks it complete, same as on the Tasks list.</p>
+    <p class="as-note">Tasks with nobody assigned show everyone Sling had on a Cashier shift at that store. If one doesn't get done, it counts only against the closer, the cashier whose shift ended last. Checking one off here marks it complete, same as on the Tasks list.</p>
 
 </div>
 </section>
