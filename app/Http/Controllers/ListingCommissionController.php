@@ -679,15 +679,25 @@ class ListingCommissionController extends Controller
         foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
             if (($it['eventType'] ?? '') !== 'listening_party') { continue; }
             $edate = (string) ($it['date'] ?? '');
-            if ($edate === '' || $edate < $pStart || $edate > $pEnd) { continue; }
+            if ($edate === '' || $edate > $pEnd) { continue; }
+            // Party bonuses only started 2026-07-10 (Sarah 2026-09-25: "we only
+            // started listening party splits recently") — never flag anything
+            // older as unpaid, even if the date range above is widened past it.
+            if ($edate < max($pStart, self::PARTY_SPLIT_FROM)) { continue; }
             if (in_array($edate, $paidDates, true)) { continue; }
+
+            // "Basement events" (Sarah 2026-09-25) — private studio bookings
+            // under one person's name, not a staffed floor party — never carry
+            // a store location, unlike every real listening party. Skip them
+            // entirely rather than listing them as something owed.
+            $locArr = (array) ($it['location'] ?? []);
+            if (empty($locArr)) { continue; }
 
             // A party can run at more than one store at once (Sarah 2026-09-23:
             // Beabadoobee had staff working it at both HW and Pico) — resolve
             // EVERY location key on the event, not just the first, so a
             // multi-store party gets one estimate row per store instead of
             // silently only covering one of them.
-            $locArr = (array) ($it['location'] ?? []);
             $locIds = [];
             foreach ($locArr as $lk) {
                 $lk = strtolower(trim((string) $lk));
@@ -696,7 +706,7 @@ class ListingCommissionController extends Controller
                     if (strpos(strtolower($lname), $lk) !== false) { $locIds[$lid] = $lk; break; }
                 }
             }
-            if (empty($locIds)) { $locIds = [null => strtolower(trim((string) ($locArr[0] ?? '')))]; }
+            if (empty($locIds)) { continue; } // location tag present but didn't resolve to a known store
 
             foreach ($locIds as $locId => $locKey) {
                 // Auto-estimate the split so this list is useful without
