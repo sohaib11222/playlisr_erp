@@ -921,7 +921,17 @@ class ListingCommissionController extends Controller
             }
         }
 
-        $shifts = \Cache::remember('sling_shifts_live_' . $date, 600, function () use ($client, $date) { return $client->shifts($date, $date); });
+        // A COLD pull is genuinely slow - Sling has no bulk shifts endpoint,
+        // SlingClient::shifts() makes one API call per staff member, timed at
+        // ~9s/date (45s for a page with 5 pending dates). A date already in
+        // the past can't change anymore in practice, so it's safe to cache
+        // for a full day instead of 10 minutes - only TODAY's date (which
+        // could still be edited in Sling right now) stays short-lived. This
+        // turns "cold on every 10-min-stale page load" into "cold once per
+        // day, per date" (Sarah 2026-09-25, "so many iterations" - this is
+        // the perf pass after the correctness passes).
+        $ttlMinutes = $date < \Carbon::today()->toDateString() ? 1440 : 10;
+        $shifts = \Cache::remember('sling_shifts_live_' . $date, $ttlMinutes, function () use ($client, $date) { return $client->shifts($date, $date); });
 
         $floorPos = ['cashier', 'event lead', 'floor sales'];
         $out = [];
