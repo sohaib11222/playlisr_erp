@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Log;
  * Start-of-shift task text. Never texts anyone off work hours:
  *
  *   - Only fires for someone whose Sling shift starts today, from
- *     LEAD_MINUTES before the start until LATE_MINUTES after it.
+ *     LEAD_MINUTES before the start until LATE_MINUTES after it. Shifts
+ *     that start before the store opens wait until opening time.
  *   - Only if they have tasks due today (or past due) on their My Tasks
  *     list: assigned to them, or unassigned at the store they're working.
  *   - At most one text per person per day.
@@ -47,6 +48,9 @@ class SendPendingAssignmentTexts extends Command
     /** Still send if we're this many minutes past the shift start (missed runs, deploys). */
     const LATE_MINUTES = 60;
 
+    /** Store open times. Early/prep shifts wait until the store opens. */
+    const STORE_OPEN = ['pico' => '10:00', 'default' => '09:30'];
+
     public function handle()
     {
         $dry = (bool) $this->option('dry');
@@ -59,10 +63,18 @@ class SendPendingAssignmentTexts extends Command
             ->whereNotNull('erp_user_id')
             ->whereDate('dtstart', $today->toDateString())
             ->where('dtstart', '<=', $now->copy()->addMinutes(self::LEAD_MINUTES))
-            ->where('dtstart', '>=', $now->copy()->subMinutes(self::LATE_MINUTES))
             ->orderBy('dtstart')
             ->get()
-            ->unique('erp_user_id');
+            ->unique('erp_user_id')
+            // Send window starts at the shift start or store open, whichever
+            // is later, so nobody gets texted before the store is open.
+            ->filter(function ($shift) use ($now, $today) {
+                $key = stripos((string) $shift->location_name, 'pico') !== false ? 'pico' : 'default';
+                $open = $today->copy()->setTimeFromTimeString(self::STORE_OPEN[$key]);
+                $anchor = $shift->dtstart->greaterThan($open) ? $shift->dtstart->copy() : $open;
+                return $now->greaterThanOrEqualTo($anchor->copy()->subMinutes(self::LEAD_MINUTES))
+                    && $now->lessThanOrEqualTo($anchor->copy()->addMinutes(self::LATE_MINUTES));
+            });
 
         if ($shifts->isEmpty()) {
             return;
@@ -122,7 +134,14 @@ class SendPendingAssignmentTexts extends Command
             $totalAssigned = $assignedTasksTotal + $assignedProjectsTotal;
 
             $first = trim((string) $user->first_name) ?: 'there';
+            // Split "yours" from shared store tasks (unassigned front-desk
+            // work picked up by being on a cashier shift), so the count
+            // isn't read as all assigned to them personally.
+            $dueRows = array_merge($sections['past_due'], $sections['today']);
+            $storeDue = count(array_filter($dueRows, function ($r) { return $r['via_shift']; }));
+            $mineDue = $dueToday - $storeDue;
             $message = "Hi {$first}, you have {$dueToday} " . ($dueToday === 1 ? 'task' : 'tasks') . ' due today'
+                . ($storeDue ? " ({$mineDue} yours, {$storeDue} shared store " . ($storeDue === 1 ? 'task' : 'tasks') . ')' : '')
                 . ($queued->count() ? " ({$queued->count()} new)" : '')
                 . ", and {$totalAssigned} tasks/projects assigned in total"
                 . '. Check them in the ERP: ' . self::myTasksUrl();
