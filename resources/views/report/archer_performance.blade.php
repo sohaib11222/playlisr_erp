@@ -31,115 +31,10 @@
     @if(empty($data))
         <div class="alert alert-warning">No snapshot data found.</div>
     @else
-        <div style="background:#f5f5f5; border-radius:6px; padding:8px 14px; margin-bottom:20px; font-size:12px; color:#888;">
-            Instagram / TikTok / Facebook below are a manual snapshot, not a live connection &mdash; they don't move with
-            the date filter. Everything from "Website orders" down is live and filters with the dates further down.
-        </div>
-
-        {{-- ═══════════ INSTAGRAM ═══════════ --}}
-        <h4 style="margin-top:0;">
-            Instagram
-            @if(!empty($data['instagram']['is_live']))
-                <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
-            @endif
-        </h4>
-        <div class="row">
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'Followers',
-                    number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
-                    !empty($data['instagram']['is_live'])
-                        ? 'live, ' . archerFmtDate($data['instagram']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['instagram']['followers_now_date'])
-                        : '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
-                    '#2ecc71'
-                ) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Reach, last 28 days', number_format($data['instagram']['reach_last_28_days']), $data['instagram']['reach_change_pct'] . '%', '#d9534f') !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
-            </div>
-        </div>
-
-        @if(!empty($data['instagram']['is_live']) && !empty($data['instagram']['daily']))
-            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Instagram</div>
-                <div style="position:relative; height:200px;">
-                    <canvas id="archerIgChart"
-                        data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
-                        data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
-                    ></canvas>
-                </div>
-            </div>
-        @endif
-
-        {{-- ═══════════ TIKTOK ═══════════ --}}
-        <h4 style="margin-top:24px;">TikTok</h4>
-        <div class="row">
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'Followers',
-                    number_format($data['tiktok']['followers_start']) . ' &rarr; ' . number_format($data['tiktok']['followers_now']),
-                    '+' . number_format($data['tiktok']['followers_now'] - $data['tiktok']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
-                    '#2ecc71'
-                ) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Total likes', number_format($data['tiktok']['total_likes'])) !!}
-            </div>
-        </div>
-
-        @if(!empty($data['tiktok']['weekly_followers']))
-            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week (real, exact)</div>
-                <div style="position:relative; height:200px;">
-                    <canvas id="archerTiktokChart"
-                        data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_followers'])) }}"
-                        data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_followers'])) }}"
-                    ></canvas>
-                </div>
-            </div>
-        @endif
-
-        {{-- ═══════════ FACEBOOK ═══════════ --}}
-        <h4 style="margin-top:24px;">Facebook</h4>
-        <div class="row">
-            <div class="col-sm-4">
-                {!! archerCard(
-                    'Followers',
-                    number_format($data['facebook']['followers_start']) . ' &rarr; ' . number_format($data['facebook']['followers_now']),
-                    '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_asof']),
-                    '#2ecc71'
-                ) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Reach, last 28 days', number_format($data['facebook']['reach_last_28_days']), $data['facebook']['reach_change_pct'] . '%', '#d9534f') !!}
-            </div>
-        </div>
-        <div class="row" style="margin-top:16px;">
-            <div class="col-sm-4">
-                {!! archerCard('Engaged followers, last 28 days', number_format($data['facebook']['engaged_followers'])) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Messaging contacts, last 28 days', number_format($data['facebook']['messaging_contacts'])) !!}
-            </div>
-            <div class="col-sm-4">
-                {!! archerCard('Unfollows, last 28 days', number_format($data['facebook']['unfollows_last_28_days'])) !!}
-            </div>
-        </div>
-        <p class="text-muted" style="margin-top:10px; font-size:12px;">
-            Pulled by hand from Meta Business Suite / TikTok Studio on {{ archerFmtDate($data['last_updated']) }}.
-            Facebook's start figure is back-calculated from {{ archerFmtDate($data['facebook']['followers_start_asof']) }}
-            (closest available date); TikTok's is exact, read off its chart.
-        </p>
-
-        <hr style="margin:32px 0;">
-
-        {{-- ═══════════ LIVE, FILTERABLE SECTION ═══════════ --}}
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-bottom:16px;">
+        {{-- ═══════════ ONE FILTER, EVERYTHING BELOW MOVES WITH IT ═══════════ --}}
+        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px;">Filter website orders + ROI + discount code usage below</div>
+                <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px;">Filter this whole report</div>
                 <div id="archerFilterStatus" style="font-size:12px; color:#2ecc71;"></div>
             </div>
             <form id="archerFilterForm" method="GET" style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-top:8px;">
@@ -154,6 +49,12 @@
                 <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Apply</button>
                 <a href="{{ action('ReportController@archerPerformance') }}" id="archerResetLink" class="btn btn-default">Reset to campaign start &rarr; today</a>
             </form>
+            <p class="text-muted" style="margin:8px 0 0; font-size:12px;">
+                Instagram/Facebook go live automatically once their API token is connected (see
+                <a href="{{ url('/communications/instagram-settings') }}">Instagram DM Settings</a>) &mdash; until then they
+                show the last manual snapshot pulled on {{ archerFmtDate($data['last_updated']) }}, filtered to the closest
+                real data available. TikTok shows real weekly checkpoints filtered to this range.
+            </p>
         </div>
 
         <div id="archer-filtered-section" style="position:relative;">
@@ -188,61 +89,10 @@
 
 <script>
 (function() {
-    // TikTok weekly-followers chart (static content, drawn once).
-    var ttCanvas = document.getElementById('archerTiktokChart');
-    if (ttCanvas && typeof Chart !== 'undefined') {
-        new Chart(ttCanvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: JSON.parse(ttCanvas.dataset.labels),
-                datasets: [{
-                    label: 'TikTok followers',
-                    data: JSON.parse(ttCanvas.dataset.followers),
-                    borderColor: '#2ecc71',
-                    backgroundColor: 'rgba(46,204,113,0.1)',
-                    fill: true,
-                    tension: 0.2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-
-    // Instagram daily-followers chart — only present once the Instagram
-    // integration is actually connected and returning real data.
-    var igCanvas = document.getElementById('archerIgChart');
-    if (igCanvas && typeof Chart !== 'undefined') {
-        new Chart(igCanvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: JSON.parse(igCanvas.dataset.labels),
-                datasets: [{
-                    label: 'Instagram followers',
-                    data: JSON.parse(igCanvas.dataset.followers),
-                    borderColor: '#e1306c',
-                    backgroundColor: 'rgba(225,48,108,0.1)',
-                    fill: true,
-                    tension: 0.2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-
     // Live AJAX filtering: change either date, or hit Apply, and the
-    // Website orders / ROI / Discount code usage section refreshes in
-    // place — no full page reload. URL still updates (pushState) so the
-    // filtered view stays linkable/bookmarkable.
+    // entire report (social snapshots + website orders + ROI + discount
+    // code usage) refreshes in place — no full page reload. URL still
+    // updates (pushState) so the filtered view stays linkable/bookmarkable.
     var form = document.getElementById('archerFilterForm');
     var section = document.getElementById('archer-filtered-section');
     var status = document.getElementById('archerFilterStatus');
@@ -260,10 +110,19 @@
         })
             .then(function(r) { if (!r.ok) throw new Error('bad response'); return r.text(); })
             .then(function(html) {
+                // Destroy any Chart.js instances still attached to canvases
+                // in the section before replacing it — otherwise each old
+                // chart stays alive in Chart.js's internal registry with no
+                // way to reach it once its canvas is detached (a slow leak
+                // across repeated filter changes in one long session).
+                section.querySelectorAll('canvas').forEach(function(c) {
+                    var existing = typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(c) : null;
+                    if (existing) existing.destroy();
+                });
                 section.innerHTML = html;
                 // <script> tags set via innerHTML don't execute — re-create
-                // them so the orders-chart drawing code actually re-runs
-                // after each AJAX refresh, not just on first page load.
+                // them so the chart-drawing code actually re-runs after
+                // each AJAX refresh, not just on first page load.
                 section.querySelectorAll('script').forEach(function(oldScript) {
                     var newScript = document.createElement('script');
                     newScript.textContent = oldScript.textContent;

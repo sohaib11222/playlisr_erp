@@ -8493,6 +8493,7 @@ class ReportController extends Controller
                 'engaged_followers' => 0,
                 'messaging_contacts' => 2,
                 'unfollows_last_28_days' => 3,
+                'is_live' => false,
             ],
             'tiktok' => [
                 // Exact figures read off TikTok Studio's Followers trend
@@ -8524,6 +8525,31 @@ class ReportController extends Controller
             $data['instagram']['followers_now'] = $liveInstagram['followers_now'];
             $data['instagram']['followers_now_date'] = $liveInstagram['followers_now_date'];
             $data['instagram']['daily'] = $liveInstagram['daily'];
+        }
+
+        // Same swap for Facebook — same token, same fallback behavior.
+        $liveFacebook = $this->fetchLiveFacebookFollowers($start_date, $end_date);
+        if ($liveFacebook) {
+            $data['facebook']['is_live'] = true;
+            $data['facebook']['followers_start'] = $liveFacebook['followers_start'];
+            $data['facebook']['followers_start_date'] = $liveFacebook['followers_start_date'];
+            $data['facebook']['followers_now'] = $liveFacebook['followers_now'];
+            $data['facebook']['followers_now_date'] = $liveFacebook['followers_now_date'];
+            $data['facebook']['daily'] = $liveFacebook['daily'];
+        }
+
+        // TikTok has no live API — but it does have real, exact weekly
+        // checkpoints (hand-collected, see the array above), so this filters
+        // those down to just the ones inside the selected range, instead of
+        // always showing the same fixed campaign-wide start/now regardless
+        // of the filter.
+        $weeklyInRange = array_values(array_filter($data['tiktok']['weekly_followers'], function ($w) use ($start_date, $end_date) {
+            return $w['date'] >= $start_date && $w['date'] <= $end_date;
+        }));
+        $data['tiktok']['weekly_in_range'] = $weeklyInRange;
+        if (!empty($weeklyInRange)) {
+            $data['tiktok']['followers_start'] = $weeklyInRange[0]['followers'];
+            $data['tiktok']['followers_now'] = end($weeklyInRange)['followers'];
         }
 
         return [
@@ -9866,6 +9892,70 @@ class ReportController extends Controller
             ];
         } catch (\Throwable $e) {
             \Log::warning('fetchLiveInstagramFollowers failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Same idea as fetchLiveInstagramFollowers() above, but for the
+     * Facebook Page itself (page_fans metric) — uses the exact same stored
+     * Page Access Token, so both go live together the moment that token
+     * has the right permissions (instagram_manage_insights covers this
+     * page_fans read too, since it's the same underlying Page token).
+     *
+     * NOT YET VERIFIED against a real token — same caveat as the Instagram
+     * version above.
+     */
+    protected function fetchLiveFacebookFollowers(string $start_date, string $end_date): ?array
+    {
+        $token = \App\Http\Controllers\InstagramWebhookController::storedPageAccessToken();
+        if ($token === '') {
+            return null;
+        }
+
+        try {
+            $graphVersion = 'v19.0';
+            $meUrl = "https://graph.facebook.com/{$graphVersion}/me?fields=id&access_token=" . urlencode($token);
+            $meDet = $this->httpGetJsonPlain($meUrl, 10);
+            $pageId = $meDet['decoded']['id'] ?? null;
+            if (!$pageId) {
+                return null;
+            }
+
+            $since = \Carbon::parse($start_date)->startOfDay()->timestamp;
+            $until = \Carbon::parse($end_date)->endOfDay()->timestamp;
+            $insightsUrl = "https://graph.facebook.com/{$graphVersion}/{$pageId}/insights"
+                . "?metric=page_fans&period=day&since={$since}&until={$until}&access_token=" . urlencode($token);
+            $insightsDet = $this->httpGetJsonPlain($insightsUrl, 10);
+            $values = $insightsDet['decoded']['data'][0]['values'] ?? null;
+            if (!is_array($values) || empty($values)) {
+                return null;
+            }
+
+            $daily = [];
+            foreach ($values as $point) {
+                if (!isset($point['end_time']) || !isset($point['value'])) {
+                    continue;
+                }
+                $daily[] = [
+                    'date' => \Carbon::parse($point['end_time'])->format('Y-m-d'),
+                    'followers' => (int) $point['value'],
+                ];
+            }
+            if (empty($daily)) {
+                return null;
+            }
+            usort($daily, fn($a, $b) => strcmp($a['date'], $b['date']));
+
+            return [
+                'daily' => $daily,
+                'followers_start' => $daily[0]['followers'],
+                'followers_start_date' => $daily[0]['date'],
+                'followers_now' => end($daily)['followers'],
+                'followers_now_date' => end($daily)['date'],
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('fetchLiveFacebookFollowers failed: ' . $e->getMessage());
             return null;
         }
     }

@@ -20,6 +20,121 @@
     }
 @endphp
 
+{{-- ═══════════ INSTAGRAM ═══════════ --}}
+<h4 style="margin-top:0;">
+    Instagram
+    @if(!empty($data['instagram']['is_live']))
+        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
+    @else
+        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
+    @endif
+</h4>
+<div class="row">
+    <div class="col-sm-4">
+        {!! archerCard(
+            'Followers',
+            number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
+            !empty($data['instagram']['is_live'])
+                ? 'live, ' . archerFmtDate($data['instagram']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['instagram']['followers_now_date'])
+                : '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+            '#2ecc71'
+        ) !!}
+    </div>
+    <div class="col-sm-4">
+        {!! archerCard('Reach, last 28 days', number_format($data['instagram']['reach_last_28_days']), $data['instagram']['reach_change_pct'] . '%', '#d9534f') !!}
+    </div>
+    <div class="col-sm-4">
+        {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
+    </div>
+</div>
+
+@if(!empty($data['instagram']['is_live']) && !empty($data['instagram']['daily']))
+    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
+        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Instagram, this date range</div>
+        <div style="position:relative; height:200px;">
+            <canvas id="archerIgChart"
+                data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
+                data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
+            ></canvas>
+        </div>
+    </div>
+@endif
+
+{{-- ═══════════ TIKTOK ═══════════ --}}
+<h4 style="margin-top:24px;">
+    TikTok
+    <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Real, filtered to this range</span>
+</h4>
+@if(empty($data['tiktok']['weekly_in_range']))
+    <div class="alert alert-warning">No TikTok checkpoint falls inside {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}. Real checkpoints exist weekly from {{ archerFmtDate($data['tiktok']['weekly_followers'][0]['date']) }} on &mdash; widen the range to see them.</div>
+@else
+    <div class="row">
+        <div class="col-sm-4">
+            {!! archerCard(
+                'Followers',
+                number_format($data['tiktok']['followers_start']) . ' &rarr; ' . number_format($data['tiktok']['followers_now']),
+                archerFmtDate($data['tiktok']['weekly_in_range'][0]['date']) . ' &ndash; ' . archerFmtDate(end($data['tiktok']['weekly_in_range'])['date']),
+                '#2ecc71'
+            ) !!}
+        </div>
+        <div class="col-sm-4">
+            {!! archerCard('Total likes (all-time)', number_format($data['tiktok']['total_likes'])) !!}
+        </div>
+    </div>
+
+    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
+        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week, this date range</div>
+        <div style="position:relative; height:200px;">
+            <canvas id="archerTiktokChart"
+                data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_in_range'])) }}"
+                data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_in_range'])) }}"
+            ></canvas>
+        </div>
+    </div>
+@endif
+
+{{-- ═══════════ FACEBOOK ═══════════ --}}
+<h4 style="margin-top:24px;">
+    Facebook
+    @if(!empty($data['facebook']['is_live']))
+        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
+    @else
+        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
+    @endif
+</h4>
+<div class="row">
+    <div class="col-sm-4">
+        {!! archerCard(
+            'Followers',
+            number_format($data['facebook']['followers_start']) . ' &rarr; ' . number_format($data['facebook']['followers_now']),
+            !empty($data['facebook']['is_live'])
+                ? 'live, ' . archerFmtDate($data['facebook']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['facebook']['followers_now_date'])
+                : '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_asof']) . ' (closest available)',
+            '#2ecc71'
+        ) !!}
+    </div>
+    <div class="col-sm-4">
+        {!! archerCard('Reach, last 28 days', number_format($data['facebook']['reach_last_28_days']), $data['facebook']['reach_change_pct'] . '%', '#d9534f') !!}
+    </div>
+    <div class="col-sm-4">
+        {!! archerCard('Engaged followers, last 28 days', number_format($data['facebook']['engaged_followers'])) !!}
+    </div>
+</div>
+
+@if(!empty($data['facebook']['is_live']) && !empty($data['facebook']['daily']))
+    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
+        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Facebook, this date range</div>
+        <div style="position:relative; height:200px;">
+            <canvas id="archerFbChart"
+                data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['facebook']['daily'])) }}"
+                data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['facebook']['daily'])) }}"
+            ></canvas>
+        </div>
+    </div>
+@endif
+
+<hr style="margin:32px 0;">
+
 <h4 style="margin-top:0;">All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
 <p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Discount code usage" below for what's actually attributable to him.</p>
 
@@ -238,24 +353,56 @@
 
 <script>
 (function() {
+    // Old Chart.js instances in this section are destroyed centrally by the
+    // fetch handler in archer_performance.blade.php right before it swaps
+    // this HTML in, so each of these just draws fresh — no destroy needed
+    // here.
+    function lineChart(canvasId, label, color, bg) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return;
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: JSON.parse(canvas.dataset.labels),
+                datasets: [{
+                    label: label,
+                    data: JSON.parse(canvas.dataset.followers),
+                    borderColor: color,
+                    backgroundColor: bg,
+                    fill: true,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+    lineChart('archerIgChart', 'Instagram followers', '#e1306c', 'rgba(225,48,108,0.1)');
+    lineChart('archerTiktokChart', 'TikTok followers', '#2ecc71', 'rgba(46,204,113,0.1)');
+    lineChart('archerFbChart', 'Facebook followers', '#1877f2', 'rgba(24,119,242,0.1)');
+
     var canvas = document.getElementById('archerOrdersChart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    if (canvas.__chart) { canvas.__chart.destroy(); }
-    canvas.__chart = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: JSON.parse(canvas.dataset.labels),
-            datasets: [
-                { label: 'Placed', data: JSON.parse(canvas.dataset.placed), backgroundColor: '#2ecc71' },
-                { label: 'Cancelled', data: JSON.parse(canvas.dataset.cancelled), backgroundColor: '#d9534f' }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } },
-            plugins: { legend: { position: 'bottom' } }
-        }
-    });
+    if (canvas && typeof Chart !== 'undefined') {
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: JSON.parse(canvas.dataset.labels),
+                datasets: [
+                    { label: 'Placed', data: JSON.parse(canvas.dataset.placed), backgroundColor: '#2ecc71' },
+                    { label: 'Cancelled', data: JSON.parse(canvas.dataset.cancelled), backgroundColor: '#d9534f' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
 })();
 </script>
