@@ -1,0 +1,61 @@
+# READ-ONLY diagnostic: check whether the ERP's own events file has real
+# time/endTime values for recent listening parties, or whether that data only
+# lives on the nivessa.com website side and isn't synced in. One-off; delete
+# after use.
+name: Diag event times
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check event time/endTime fields (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $items = \App\Http\Controllers\EventsController::load($businessId)['items'] ?? [];
+            $items = collect($items)->filter(function ($it) {
+                return ($it['eventType'] ?? '') === 'listening_party';
+            })->sortByDesc('date')->take(10);
+            foreach ($items as $it) {
+                echo ($it['date'] ?? '?') . " | " . ($it['name'] ?? '?') . " | time=" . var_export($it['time'] ?? null, true) . " endTime=" . var_export($it['endTime'] ?? null, true) . " source=" . ($it['source'] ?? '?') . "\n";
+            }
+            PHP
+            echo "=== done ==="
