@@ -1,0 +1,62 @@
+# READ-ONLY diagnostic: recheck Beabadoobee/Hollywood's current live RSVP
+# count and window classification, and confirm Beck's 2 floor staff. One-off;
+# delete after use.
+name: Diag recheck window
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Recheck current window classification (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $items = \App\Http\Controllers\EventsController::load($businessId)['items'] ?? [];
+            $bea = collect($items)->first(function ($it) { return ($it['date'] ?? '') === '2026-09-12' && ($it['eventType'] ?? '') === 'listening_party'; });
+            $ec = app(\App\Http\Controllers\EventsController::class);
+            $counts = $ec->liveEventCounts((string) ($bea['name'] ?? ''), $bea['id'] ?? null);
+            echo "Beabadoobee live RSVP counts right now:\n";
+            echo "  total: " . ($counts['attending'] ?? 'null') . "\n";
+            echo "  hollywood: " . ($counts['store']['hollywood']['attending'] ?? 'null') . "\n";
+            echo "  pico: " . ($counts['store']['pico']['attending'] ?? 'null') . "\n";
+            echo "  -> HW window would be: " . (($counts['store']['hollywood']['attending'] ?? 0) >= 50 ? '2h' : '1.5h') . "\n";
+            PHP
+            echo "=== done ==="
