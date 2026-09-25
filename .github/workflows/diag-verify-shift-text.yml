@@ -53,11 +53,12 @@ jobs:
             php artisan notify:pending-assignment-texts --dry
             echo "=== --dry run forced to a time most shifts would start (9am) ==="
             php artisan notify:pending-assignment-texts --dry --at=09:05
-            echo "=== direct exercise of the new counting logic against a real user ==="
+            echo "=== render the actual message text for whoever has tasks due today (bypassing the shift-window gate) ==="
             php artisan tinker --no-ansi <<'PHP'
-            $u = App\User::find(22);
-            echo "user: " . ($u ? "{$u->first_name} {$u->last_name}" : 'NOT FOUND') . "\n";
-            try { $assignedTasksTotal = App\Http\Controllers\TaskController::myOpenAssignedTasks($u->business_id, $u->id)->count(); echo "assignedTasksTotal={$assignedTasksTotal}\n"; } catch (\Throwable $e) { echo "TASKS COUNT THREW: " . $e->getMessage() . "\n"; }
-            try { $assignedProjectsTotal = App\Project::where('business_id',$u->business_id)->where('status','!=','complete')->whereHas('assignees', function($q) use ($u) { $q->where('users.id',$u->id); })->count(); echo "assignedProjectsTotal={$assignedProjectsTotal}\n"; } catch (\Throwable $e) { echo "PROJECTS COUNT THREW: " . get_class($e) . ": " . $e->getMessage() . "\n"; }
+            $biz = 1;
+            $users = App\User::where('business_id',$biz)->where('allow_login',1)->where('status','active')->get();
+            $shown = 0;
+            foreach ($users as $u) { if ($shown >= 3) { break; } $sections = App\Http\Controllers\MyTasksController::sectionsFor($u->business_id, $u->id, App\Http\Controllers\MyTasksController::shiftStoresToday($u->id)); $dueToday = count($sections['past_due']) + count($sections['today']); if ($dueToday === 0) { continue; } $assignedTasksTotal = App\Http\Controllers\TaskController::myOpenAssignedTasks($u->business_id, $u->id)->count(); $assignedProjectsTotal = App\Project::where('business_id',$u->business_id)->where('status','!=','complete')->whereHas('assignees', function($q) use ($u) { $q->where('users.id',$u->id); })->count(); $totalAssigned = $assignedTasksTotal + $assignedProjectsTotal; $first = trim((string) $u->first_name) ?: 'there'; $message = "Hi {$first}, you have {$dueToday} " . ($dueToday === 1 ? 'task' : 'tasks') . ' due today' . ", and {$totalAssigned} tasks/projects assigned in total" . '. Check them in the ERP: https://playlist.nivessa.com/tasks/my'; echo "[{$u->first_name}] {$message}\n"; $shown++; }
+            if ($shown === 0) { echo "(no active user currently has anything due today)\n"; }
             PHP
             echo "=== done ==="
