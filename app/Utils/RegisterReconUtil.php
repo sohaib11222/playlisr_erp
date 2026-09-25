@@ -92,13 +92,14 @@ class RegisterReconUtil
         $locations    = $d['business_locations'] ?? [];
 
         $stores = [];
-        $storeKey = function ($locId) use (&$stores, $locations) {
+        $storeKey = function ($locId) use (&$stores, $locations, $date) {
             $k = (int) ($locId ?? 0);
             if (!isset($stores[$k])) {
                 $name = $k && isset($locations[$k]) ? $locations[$k] : 'No store set';
                 $stores[$k] = [
                     'name' => self::storeName($name), 'erp' => 0.0, 'erp_count' => 0,
                     'clover' => 0.0, 'clover_count' => 0, 'diff' => 0.0, 'items' => [],
+                    'url' => self::ERP_URL . '/pos/recent-feed?' . http_build_query(array_filter(['date' => $date, 'location_id' => $k ?: null, 'discrepancy' => 'any'])),
                 ];
             }
             return $k;
@@ -124,6 +125,9 @@ class RegisterReconUtil
             $parts = explode(' ', $full);
             return ucfirst(strtolower($parts[0]));
         };
+        $feed = function (array $q) use ($date) {
+            return self::ERP_URL . '/pos/recent-feed?' . http_build_query(array_filter(array_merge(['date' => $date], $q)));
+        };
         $noteFor = function ($key) use ($explanations) {
             $n = $explanations[$key] ?? null;
             return $n ? trim((string) ($n->reason ?? '')) : null;
@@ -145,6 +149,7 @@ class RegisterReconUtil
                     'text'   => $time($sale->transaction_date) . ' ' . $money($exp / 100) . $inv
                         . ' rung in ERP but not on Clover',
                     'ask'    => $who,
+                    'url'    => $feed(['location_id' => $sale->location_id, 'created_by' => $sale->created_by, 'discrepancy' => 'no_clover']),
                     'note'   => $noteFor('no_clover:' . $sale->id . ':0'),
                     'amount' => $exp / 100,
                 ];
@@ -159,6 +164,7 @@ class RegisterReconUtil
                     'text'   => $time($sale->transaction_date) . $inv . ' ERP ' . $money($exp / 100)
                         . ' vs Clover ' . $money($gross / 100) . ' (off by ' . $money($gap / 100) . ')',
                     'ask'    => $who,
+                    'url'    => $feed(['location_id' => $sale->location_id, 'created_by' => $sale->created_by, 'discrepancy' => 'mismatch']),
                     'note'   => $noteFor('mismatch:' . $sale->id . ':0'),
                     'amount' => $gap / 100,
                 ];
@@ -195,6 +201,7 @@ class RegisterReconUtil
                 'kind'   => 'no_erp',
                 'text'   => $text,
                 'ask'    => $who,
+                'url'    => $feed(['location_id' => $cp->location_id, 'discrepancy' => 'no_erp']),
                 'note'   => $noteFor('no_erp:0:' . $cp->id),
                 'amount' => abs($amt),
             ];
@@ -293,24 +300,29 @@ class RegisterReconUtil
     public static function formatSlack(array $r): string
     {
         $money = function ($x) { return '$' . number_format((float) $x, 2); };
+        $link = function ($url, $label) { return '<' . $url . '|' . $label . '>'; };
         $lines = [];
+        $erp = array_sum(array_column($r['stores'], 'erp'));
+        $clv = array_sum(array_column($r['stores'], 'clover'));
         $lines[] = '*Register reconciliation - ' . $r['label'] . '*';
-        if ($r['issue_count'] === 0) {
-            $lines[] = 'Everything matches. Nothing to fix.';
-        }
+        $lines[] = 'Sales in ERP ' . $money($erp) . '  |  Sales in Clover ' . $money($clv)
+            . '  |  ' . ($r['issue_count'] === 0 ? 'nothing to fix' : $r['issue_count'] . ' to fix/ask')
+            . '  |  ' . $link($r['feed_url'], 'full day in ERP');
         foreach ($r['stores'] as $s) {
             $lines[] = '';
             $diff = $s['diff'];
             $diffTxt = abs($diff) < 1 ? 'matches' : (($diff > 0 ? 'Clover higher by ' : 'ERP higher by ') . $money(abs($diff)));
-            $lines[] = '*' . $s['name'] . '*  ERP ' . $money($s['erp']) . ' (' . $s['erp_count'] . ')'
-                . '  |  Clover ' . $money($s['clover']) . ' (' . $s['clover_count'] . ')  |  ' . $diffTxt;
+            $lines[] = '*' . $s['name'] . '*  ERP ' . $money($s['erp']) . ' (' . $s['erp_count'] . ' sales)'
+                . '  |  Clover ' . $money($s['clover']) . ' (' . $s['clover_count'] . ')  |  ' . $diffTxt
+                . '  |  ' . $link($s['url'], 'discrepancies');
             if (empty($s['items'])) {
                 $lines[] = 'Nothing to fix.';
                 continue;
             }
             foreach ($s['items'] as $it) {
                 $line = '- ' . $it['text'];
-                $line .= $it['ask'] !== '' ? ' - ask ' . $it['ask'] : ' - cashier unknown';
+                $line .= $it['ask'] !== '' ? ' - *ask ' . $it['ask'] . '*' : ' - cashier unknown';
+                $line .= ' ' . $link($it['url'] ?? $s['url'], 'open');
                 if (!empty($it['note'])) {
                     $line .= "\n    already explained: _" . str_replace(["\n", '_'], [' ', ' '], $it['note']) . '_';
                 }
@@ -318,7 +330,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'How to fix: open ' . $r['feed_url'] . ' , find each row, and either fix it (ring the missing sale, correct the amount) or add a note with what the cashier said. Anything still open after that, ask the cashier listed.';
+        $lines[] = 'How to fix: click open on each line, then fix it (ring the missing sale, correct the amount) or add a note with what the cashier said.';
         return implode("\n", $lines);
     }
 

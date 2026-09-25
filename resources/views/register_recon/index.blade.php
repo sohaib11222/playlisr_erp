@@ -48,7 +48,7 @@
 			@endif
 			@foreach($report['stores'] as $s)
 				<div class="rr-store">
-					<h3>{{ $s['name'] }}</h3>
+					<h3>{{ $s['name'] }} <a href="{{ $s['url'] }}" style="font-size:12px;font-weight:600;margin-left:6px;">discrepancies</a></h3>
 					<div class="rr-totals">
 						ERP ${{ number_format($s['erp'], 2) }} ({{ $s['erp_count'] }})
 						&middot; Clover ${{ number_format($s['clover'], 2) }} ({{ $s['clover_count'] }})
@@ -58,6 +58,7 @@
 						<div class="rr-item">
 							{{ $it['text'] }} -
 							@if($it['ask'] !== '') <span class="rr-ask">ask {{ $it['ask'] }}</span>@else <span class="rr-ask">cashier unknown</span>@endif
+							<a href="{{ $it['url'] ?? $s['url'] }}" style="margin-left:6px;">open</a>
 							@if(!empty($it['note'])) <div class="rr-note">Already explained: {{ $it['note'] }}</div>@endif
 						</div>
 					@empty
