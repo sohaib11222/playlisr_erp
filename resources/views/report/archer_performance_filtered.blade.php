@@ -20,6 +20,21 @@
     }
 @endphp
 
+{{-- ═══════════ ROI — FIRST THING ON THE PAGE, IMPOSSIBLE TO MISS ═══════════ --}}
+@if($order_stats)
+    @php $roiRatio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
+    <div style="background:{{ $roiRatio >= 1 ? '#eafaf1' : '#fdf2f2' }}; border:2px solid {{ $roiRatio >= 1 ? '#2ecc71' : '#d9534f' }}; border-radius:8px; padding:24px 28px; margin-bottom:24px; text-align:center;">
+        <div style="font-size:13px; color:#666; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">ROI, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</div>
+        <div style="font-size:56px; font-weight:800; line-height:1; color:{{ $roiRatio >= 1 ? '#27ae60' : '#c0392b' }};">
+            ${{ number_format($roiRatio, 2) }} <span style="font-size:22px; font-weight:600; color:#666;">back per $1 spent</span>
+        </div>
+        <div style="font-size:16px; color:#444; margin-top:10px;">
+            Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong> &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
+        </div>
+        <div style="font-size:12px; color:#888; margin-top:8px;">Website revenue only, net of cancellations &mdash; a floor, not the whole picture.</div>
+    </div>
+@endif
+
 {{-- ═══════════ INSTAGRAM ═══════════ --}}
 <h4 style="margin-top:0;">
     Instagram
@@ -254,23 +269,6 @@
         </div>
     @endif
 @endif
-
-<h4>ROI</h4>
-<div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:24px; margin-bottom:24px;">
-    @if($order_stats)
-        @php $ratio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
-        <div style="font-size:20px; text-align:center; margin-bottom:8px;">
-            Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong>
-            &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
-        </div>
-        <div style="font-size:36px; font-weight:700; text-align:center; color:{{ $ratio >= 1 ? '#2ecc71' : '#d9534f' }};">
-            ${{ number_format($ratio, 2) }} back per $1 spent
-        </div>
-    @endif
-    <p class="text-muted" style="margin-top:16px; margin-bottom:0; font-size:13px;">
-        Website revenue only, net of cancellations &mdash; a floor, not the whole picture.
-    </p>
-</div>
 
 <h4>Discount code usage, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
 <p class="text-muted" style="margin-top:-8px; font-size:12px;">Same date range as "Website orders" above &mdash; moves with the filter.</p>
