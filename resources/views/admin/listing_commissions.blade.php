@@ -118,6 +118,13 @@
     </div>
 @endif
 
+@if (count($unpaid_parties) > 0)
+    <div class="alert alert-warning" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div><strong>{{ count($unpaid_parties) }}</strong> listening {{ count($unpaid_parties) === 1 ? 'party has' : 'parties have' }} nothing paid out yet (last 45 days) - not included in the totals below.</div>
+        <a href="{{ url('/admin/party-bonus') }}" style="white-space:nowrap; font-weight:700;">Review &amp; pay &rarr;</a>
+    </div>
+@endif
+
 <div class="row">
     <div class="col-md-12">
         <div class="box box-solid">

@@ -82,7 +82,7 @@
     @if (count($unpaid_parties) > 0)
         <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
             <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
-            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Auto-estimated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever actually rang a sale then (not the Sling schedule, so a no-show isn't credited). Nothing is paid until you confirm on Calculate.</p>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Auto-estimated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever actually rang a sale then - real Clover activity, not the Sling schedule (a no-show isn't credited) and not just an open register (someone can stay clocked in all day without being at the party). Hit Pay to record it as shown, or Adjust to change staff/amounts first.</p>
             <table class="pb-table">
                 <thead><tr><th>Date</th><th>Party</th><th>Store</th><th>Estimated split</th><th></th></tr></thead>
                 <tbody>
@@ -116,7 +116,23 @@
                                     @endforeach
                                 @endif
                             </td>
-                            <td style="vertical-align:top;"><a class="pb-btn" style="padding:4px 12px; font-size:12px;" href="{{ url('/admin/party-bonus') }}?{{ http_build_query($qs) }}">Calculate</a></td>
+                            <td style="vertical-align:top; white-space:nowrap;">
+                                @if ($est && !$est['solo'] && count($est['staff']) > 0)
+                                    <form method="POST" action="{{ url('/admin/party-bonus/pay') }}" style="display:inline;"
+                                          onsubmit="return confirm('Pay {{ count($est['staff']) }} {{ count($est['staff']) === 1 ? 'person' : 'people' }} ${{ number_format($est['pool'], 2) }} total for the {{ $u['name'] }}?');">
+                                        @csrf
+                                        <input type="hidden" name="date" value="{{ $u['date'] }}">
+                                        <input type="hidden" name="location_name" value="{{ $u['location_name'] }}">
+                                        <input type="hidden" name="event_name" value="{{ $u['name'] }}">
+                                        @foreach ($est['staff'] as $s)
+                                            <input type="hidden" name="user_id[]" value="{{ $s['uid'] }}">
+                                            <input type="hidden" name="amount[]" value="{{ number_format($s['amount'], 2, '.', '') }}">
+                                        @endforeach
+                                        <button type="submit" class="pb-btn" style="padding:4px 12px; font-size:12px;">Pay ${{ number_format($est['pool'], 2) }}</button>
+                                    </form>
+                                @endif
+                                <a class="pb-btn" style="padding:4px 12px; font-size:12px; background:#fff;" href="{{ url('/admin/party-bonus') }}?{{ http_build_query($qs) }}">Adjust</a>
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>

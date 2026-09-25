@@ -317,6 +317,18 @@ class ListingCommissionController extends Controller
         }
         $dayRows = $dayRows->sortByDesc('bonus')->values();
 
+        // Heads-up banner: listening parties with nothing paid out yet, so
+        // Sarah sees this here too, not only on /admin/party-bonus (Sarah
+        // 2026-09-25). Wider window than that page's own 14-day default since
+        // this is a periodic review page, not the working tool.
+        $partyLocations = DB::table('business_locations')
+            ->where('business_id', $businessId)->where('is_active', 1)
+            ->orderBy('name')->pluck('name', 'id');
+        $unpaidParties = $this->unpaidListeningParties(
+            $businessId, $partyLocations,
+            \Carbon::now()->subDays(45)->toDateString(), \Carbon::now()->toDateString()
+        );
+
         // Never let a proxy/browser serve a stale copy of this page — the owed
         // numbers must always reflect the latest payouts, or a just-paid person
         // can appear to still owe money.
@@ -343,6 +355,7 @@ class ListingCommissionController extends Controller
             'sales_bonus_from'   => self::SALES_BONUS_FROM,
             'freeze'             => $this->loadFreeze(),
             'paid_groups'        => $this->groupPaidHistory($history, $salesHistory),
+            'unpaid_parties'     => $unpaidParties,
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
@@ -668,104 +681,9 @@ class ListingCommissionController extends Controller
         arsort($recentPartyByPerson);
 
         // Parties on the calendar in this window with NO payout logged at all yet
-        // — i.e. nobody's run this page for that date. There's no separate
-        // "earned" figure to show for these: the old auto-computed floor-split
-        // owed amount was killed (Sarah 2026-08-06, partyDates() above) because
-        // it credited people who never worked the party. The only trustworthy
-        // "earned" number comes from deliberately picking the date/window/staff
-        // below, so this list is the worklist of what still needs that pass.
-        $paidDates = array_unique(array_column($recentParty, 'date'));
-        $unpaidParties = [];
-        foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
-            if (($it['eventType'] ?? '') !== 'listening_party') { continue; }
-            $edate = (string) ($it['date'] ?? '');
-            if ($edate === '' || $edate > $pEnd) { continue; }
-            // Party bonuses only started 2026-07-10 (Sarah 2026-09-25: "we only
-            // started listening party splits recently") — never flag anything
-            // older as unpaid, even if the date range above is widened past it.
-            if ($edate < max($pStart, self::PARTY_SPLIT_FROM)) { continue; }
-            if (in_array($edate, $paidDates, true)) { continue; }
-
-            // "Basement events" (Sarah 2026-09-25) — private studio bookings
-            // under one person's name, not a staffed floor party — never carry
-            // a store location, unlike every real listening party. Skip them
-            // entirely rather than listing them as something owed.
-            $locArr = (array) ($it['location'] ?? []);
-            if (empty($locArr)) { continue; }
-
-            // A party can run at more than one store at once (Sarah 2026-09-23:
-            // Beabadoobee had staff working it at both HW and Pico) — resolve
-            // EVERY location key on the event, not just the first, so a
-            // multi-store party gets one estimate row per store instead of
-            // silently only covering one of them.
-            $locIds = [];
-            foreach ($locArr as $lk) {
-                $lk = strtolower(trim((string) $lk));
-                if ($lk === '') { continue; }
-                foreach ($locations as $lid => $lname) {
-                    if (strpos(strtolower($lname), $lk) !== false) { $locIds[$lid] = $lk; break; }
-                }
-            }
-            if (empty($locIds)) { continue; } // location tag present but didn't resolve to a known store
-
-            foreach ($locIds as $locId => $locKey) {
-                // Auto-estimate the split so this list is useful without
-                // another click: the event's own time (falling back to the
-                // usual 6-8 PM slot) against Sarah's usual 4% rate, split
-                // among whoever actually RANG a sale at that store during the
-                // window. Deliberately NOT the Sling schedule — Sarah found
-                // it credits no-shows (Abby was scheduled for Miley's party
-                // but never showed) and misses real fill-ins, same failure
-                // mode that got the old auto-split killed in August. Ringing
-                // a sale is direct proof of being on the floor. Clearly
-                // labeled as an estimate; nothing pays until she opens
-                // Calculate and confirms staff + amounts herself.
-                $estimate = null;
-                if ($locId) {
-                    $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
-                    $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
-                    $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
-                    $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
-                    if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
-
-                    $sales = $this->windowSales($businessId, $locId, $sC, $eC);
-                    $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
-
-                    // A party bonus is for SPLITTING the extra with whoever
-                    // shared the floor — one person working it solo already
-                    // gets their normal sales commission, so there's nothing
-                    // to split (Sarah 2026-09-23: "no pool if one person
-                    // worked the party"). Only pool up when 2+ actually rang.
-                    $solo = count($ringers) <= 1;
-                    $pool = $solo ? 0.0 : round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
-                    $n = max(1, count($ringers));
-                    $each = round($pool / $n, 2);
-                    $estStaff = [];
-                    foreach ($ringers as $uid => $name) {
-                        $estStaff[] = ['uid' => $uid, 'name' => $name, 'amount' => $each];
-                    }
-                    $estimate = [
-                        'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
-                        'percent' => self::PARTY_DEFAULT_PERCENT,
-                        'sales' => $sales,
-                        'pool' => $pool,
-                        'staff' => $estStaff,
-                        'solo' => $solo,
-                        'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
-                        'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
-                    ];
-                }
-
-                $unpaidParties[] = [
-                    'date' => $edate,
-                    'name' => (string) ($it['name'] ?: 'Listening Party'),
-                    'location_id' => $locId,
-                    'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
-                    'estimate' => $estimate,
-                ];
-            }
-        }
-        usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        // — the worklist of what still needs a deliberate pass. Shared with the
+        // Commissions page (index()) so it shows up there too.
+        $unpaidParties = $this->unpaidListeningParties($businessId, $locations, $pStart, $pEnd);
 
         // Each staff member's actual Sling shift that day at this store, so Sarah
         // can see WHEN they came in before picking who gets a cut — not just a
@@ -917,6 +835,113 @@ class ListingCommissionController extends Controller
             $out[$uid] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: (($r->surname ?: '') ?: ('User #' . $uid));
         }
         return $out;
+    }
+
+    // Listening-party events in [$pStart, $pEnd] with no "Listening party"
+    // payout logged yet, each with an auto-estimated split. Shared by the
+    // party-bonus tool and the Commissions page notice — same criteria, one
+    // place, so the two pages can't disagree about what's still unpaid.
+    private function unpaidListeningParties($businessId, $locations, $pStart, $pEnd)
+    {
+        $paidDates = [];
+        foreach ($this->loadSalesPayouts() as $row) {
+            $note = (string) ($row['note'] ?? '');
+            if (stripos($note, 'Listening party') !== 0) { continue; }
+            $pdate = substr((string) ($row['from_date'] ?? $row['marked_at'] ?? ''), 0, 10);
+            if ($pdate !== '') { $paidDates[$pdate] = true; }
+        }
+
+        $unpaidParties = [];
+        foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
+            if (($it['eventType'] ?? '') !== 'listening_party') { continue; }
+            $edate = (string) ($it['date'] ?? '');
+            if ($edate === '' || $edate > $pEnd) { continue; }
+            // Party bonuses only started 2026-07-10 (Sarah 2026-09-25: "we only
+            // started listening party splits recently") — never flag anything
+            // older as unpaid, even if the date range above is widened past it.
+            if ($edate < max($pStart, self::PARTY_SPLIT_FROM)) { continue; }
+            if (isset($paidDates[$edate])) { continue; }
+
+            // "Basement events" (Sarah 2026-09-25) — private studio bookings
+            // under one person's name, not a staffed floor party — never carry
+            // a store location, unlike every real listening party. Skip them
+            // entirely rather than listing them as something owed.
+            $locArr = (array) ($it['location'] ?? []);
+            if (empty($locArr)) { continue; }
+
+            // A party can run at more than one store at once (Sarah 2026-09-23:
+            // Beabadoobee had staff working it at both HW and Pico) — resolve
+            // EVERY location key on the event, not just the first, so a
+            // multi-store party gets one estimate row per store instead of
+            // silently only covering one of them.
+            $locIds = [];
+            foreach ($locArr as $lk) {
+                $lk = strtolower(trim((string) $lk));
+                if ($lk === '') { continue; }
+                foreach ($locations as $lid => $lname) {
+                    if (strpos(strtolower($lname), $lk) !== false) { $locIds[$lid] = $lk; break; }
+                }
+            }
+            if (empty($locIds)) { continue; } // location tag present but didn't resolve to a known store
+
+            foreach ($locIds as $locId => $locKey) {
+                // Auto-estimate the split so this list is useful without
+                // another click: the event's own time (falling back to the
+                // usual 6-8 PM slot) against Sarah's usual 4% rate, split
+                // among whoever actually RANG a sale at that store during the
+                // window — real Clover activity, not the Sling schedule
+                // (Sarah found it credits no-shows: Abby was scheduled for
+                // Miley's party but never showed) and not just "on shift"
+                // (a register can stay open all day without the person being
+                // at the party). Ringing a sale is direct proof of working
+                // the floor right then. Clearly labeled as an estimate.
+                $estimate = null;
+                if ($locId) {
+                    $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
+                    $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
+                    $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
+                    $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
+                    if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
+
+                    $sales = $this->windowSales($businessId, $locId, $sC, $eC);
+                    $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
+
+                    // A party bonus is for SPLITTING the extra with whoever
+                    // shared the floor — one person working it solo already
+                    // gets their normal sales commission, so there's nothing
+                    // to split (Sarah 2026-09-23: "no pool if one person
+                    // worked the party"). Only pool up when 2+ actually rang.
+                    $solo = count($ringers) <= 1;
+                    $pool = $solo ? 0.0 : round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
+                    $n = max(1, count($ringers));
+                    $each = round($pool / $n, 2);
+                    $estStaff = [];
+                    foreach ($ringers as $uid => $name) {
+                        $estStaff[] = ['uid' => $uid, 'name' => $name, 'amount' => $each];
+                    }
+                    $estimate = [
+                        'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
+                        'percent' => self::PARTY_DEFAULT_PERCENT,
+                        'sales' => $sales,
+                        'pool' => $pool,
+                        'staff' => $estStaff,
+                        'solo' => $solo,
+                        'from_h' => (int) $sC->format('g'), 'from_m' => $sC->format('i'), 'from_ap' => $sC->format('A'),
+                        'to_h'   => (int) $eC->format('g'), 'to_m'   => $eC->format('i'), 'to_ap'   => $eC->format('A'),
+                    ];
+                }
+
+                $unpaidParties[] = [
+                    'date' => $edate,
+                    'name' => (string) ($it['name'] ?: 'Listening Party'),
+                    'location_id' => $locId,
+                    'location_name' => $locId ? $locations[$locId] : ucfirst($locKey),
+                    'estimate' => $estimate,
+                ];
+            }
+        }
+        usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        return $unpaidParties;
     }
 
     // Real Sling shift times for everyone scheduled at this store on this date —
