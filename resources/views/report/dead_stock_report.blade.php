@@ -113,7 +113,7 @@ body.ds-v2 .ds-pager .pagination > .active > span {
 <section class="content">
     <div class="ds-card">
         <h1 class="ds-h1">Dead Stock</h1>
-        <p class="ds-sub">Items that have been in stock longer than <strong>{{ $days }} days</strong> and haven't sold in that time. Biggest dollar value first. Click a column name to sort.</p>
+        <p class="ds-sub">Items that have been in stock longer than <strong>{{ $days }} days</strong> and haven't sold in that time. Oldest first. Click a column name to sort.</p>
     </div>
 
     <div class="ds-stats">

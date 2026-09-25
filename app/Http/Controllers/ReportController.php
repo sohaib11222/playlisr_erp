@@ -7646,7 +7646,8 @@ class ReportController extends Controller
         );
 
         // Column sort: whitelist columns to prevent SQL injection
-        $sort = $request->input('sort', 'tied_up_value');
+        // Default: longest in stock first (earliest date) - Sarah 2026-09-25
+        $sort = $request->input('sort', 'days_on_hand');
         $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
         $sort_map = [
             'artist'          => 'p.artist',
@@ -7663,7 +7664,7 @@ class ReportController extends Controller
             'tied_up_value'   => 'tied_up_value',
         ];
         if (!isset($sort_map[$sort])) {
-            $sort = 'tied_up_value';
+            $sort = 'days_on_hand';
         }
         $sort_dir = in_array($sort, ['days_since', 'days_on_hand']) ? ($dir === 'asc' ? 'desc' : 'asc') : $dir;
         $query->orderByRaw($sort_map[$sort] . ' ' . $sort_dir)->orderBy('v.id');
