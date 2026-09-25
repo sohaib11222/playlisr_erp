@@ -279,7 +279,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -565,6 +565,36 @@ class AdminActionHistoryController extends Controller
         // register's original owner. Undo restores user_id, but only if the
         // register is still owned by the user we moved it to (otherwise it's
         // been reassigned again since; leave it alone).
+        // adjust-register-opening: rows hold {register_id, transaction_id,
+        // old_amount, new_amount, created?}. Undo puts the old amount back
+        // (or removes the initial row we created), only if it still holds
+        // the amount we set.
+        if ($action === 'adjust-register-opening') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $txId = $row['transaction_id'] ?? null;
+                if (!$txId) { continue; }
+                $current = DB::table('cash_register_transactions')->where('id', $txId)->first();
+                if (!$current || round((float) $current->amount, 2) !== round((float) $row['new_amount'], 2)) {
+                    $skipped++;
+                    continue;
+                }
+                if (!empty($row['created'])) {
+                    DB::table('cash_register_transactions')->where('id', $txId)->delete();
+                } else {
+                    DB::table('cash_register_transactions')
+                        ->where('id', $txId)
+                        ->update(['amount' => $row['old_amount'], 'updated_at' => now()]);
+                }
+                $restored++;
+            }
+            $msg = "Restored {$restored} register opening amount(s) from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed again since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
         if ($action === 'reassign-register-user') {
             $toUserId = $data['to_user_id'] ?? null;
             $restored = 0;

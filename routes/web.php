@@ -1470,6 +1470,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // e.g. Mica rang up on Manolo's account). Snapshots user_id first;
     // undoable via admin-action-history (action 'reassign-register-user').
     Route::post('/admin/force-close-registers/reassign-one', 'ForceCloseRegisterController@reassignOne');
+    // Correct a register's opening count (cashier missed bills at open).
+    // Snapshots the old initial amount; undo via admin-action-history
+    // (action 'adjust-register-opening').
+    Route::post('/admin/force-close-registers/adjust-opening', 'ForceCloseRegisterController@adjustOpening');
 
     // Companion to /admin/cost-price-rules: lists every category that still
     // has $0-cost products, lets Sarah enter a cost per category inline,

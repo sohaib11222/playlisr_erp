@@ -214,6 +214,70 @@ class ForceCloseRegisterController extends Controller
             ]);
     }
 
+    /** Correct a register's opening (initial) cash amount, e.g. the cashier
+     *  missed the big bills when counting in. Snapshots the old amount so
+     *  it's undoable via /admin/admin-action-history. */
+    public function adjustOpening(Request $request)
+    {
+        $id          = (int) $request->input('register_id');
+        $newAmount   = round((float) $request->input('new_amount'), 2);
+        $business_id = (int) $request->session()->get('user.business_id');
+
+        $reg = DB::table('cash_registers')
+            ->where('id', $id)
+            ->where('business_id', $business_id)
+            ->first();
+        if (!$reg) {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => "Register #{$id} not found."]);
+        }
+        if ($newAmount < 0 || $request->input('new_amount') === null || $request->input('new_amount') === '') {
+            return redirect('/admin/force-close-registers')
+                ->with('status', ['success' => 0, 'msg' => 'Enter the correct opening amount.']);
+        }
+
+        $initial = DB::table('cash_register_transactions')
+            ->where('cash_register_id', $id)
+            ->where('transaction_type', 'initial')
+            ->orderBy('id')
+            ->first();
+        $oldAmount = $initial ? (float) $initial->amount : 0.0;
+
+        $key = 'adjust_register_opening_' . date('Ymd_His') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $payload = [
+            'action'    => 'adjust-register-opening',
+            'timestamp' => now()->toIso8601String(),
+            'causer_id' => auth()->check() ? auth()->id() : null,
+            'rows'      => [[
+                'register_id'    => $id,
+                'transaction_id' => $initial ? $initial->id : null,
+                'old_amount'     => $oldAmount,
+                'new_amount'     => $newAmount,
+            ]],
+        ];
+
+        if ($initial) {
+            DB::table('cash_register_transactions')
+                ->where('id', $initial->id)
+                ->update(['amount' => $newAmount, 'updated_at' => now()]);
+        } else {
+            $payload['rows'][0]['transaction_id'] = DB::table('cash_register_transactions')->insertGetId([
+                'cash_register_id' => $id,
+                'amount'           => $newAmount,
+                'pay_method'       => 'cash',
+                'type'             => 'credit',
+                'transaction_type' => 'initial',
+                'created_at'       => $reg->created_at,
+                'updated_at'       => now(),
+            ]);
+            $payload['rows'][0]['created'] = true;
+        }
+        Storage::disk('local')->put("admin-snapshots/{$key}.json", json_encode($payload));
+
+        return redirect('/admin/force-close-registers')
+            ->with('status', ['success' => 1, 'msg' => "Register #{$id} opening changed from $" . number_format($oldAmount, 2) . " to $" . number_format($newAmount, 2) . ". Undo at /admin/admin-action-history (snapshot {$key})."]);
+    }
+
     /** Close ONE register by id. Snapshot + close. */
     public function closeOne(Request $request)
     {

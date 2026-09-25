@@ -104,6 +104,15 @@
                                     Delete
                                 </button>
                             </form>
+                            <form method="POST" action="{{ url('/admin/force-close-registers/adjust-opening') }}" style="display:inline-block; margin-top:4px; white-space:nowrap;">
+                                {!! csrf_field() !!}
+                                <input type="hidden" name="register_id" value="{{ $r->id }}">
+                                <input type="number" step="0.01" min="0" name="new_amount" class="form-control input-sm" placeholder="Opening $" style="display:inline-block; width:90px;">
+                                <button type="submit" class="btn btn-xs btn-default"
+                                    onclick="if(this.form.new_amount.value===''){alert('Enter the correct opening amount.');return false;} return confirm('Change register #{{ $r->id }} opening from ${{ number_format($r->initial_amount, 2) }} to $' + this.form.new_amount.value + '? Snapshot saved for undo.');">
+                                    Fix opening
+                                </button>
+                            </form>
                             <form method="POST" action="{{ url('/admin/force-close-registers/reassign-one') }}" style="display:inline-block; margin-top:4px; white-space:nowrap;">
                                 {!! csrf_field() !!}
                                 <input type="hidden" name="register_id" value="{{ $r->id }}">
