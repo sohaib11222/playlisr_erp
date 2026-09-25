@@ -7721,45 +7721,79 @@ class ReportController extends Controller
         $sort_dir = in_array($sort, ['days_since', 'days_on_hand']) ? ($dir === 'asc' ? 'desc' : 'asc') : $dir;
         $query->orderByRaw($sort_map[$sort] . ' ' . $sort_dir)->orderBy('v.id');
 
+        // Fill last_sold / date_acquired / units_sold for a set of rows
+        $fill = function ($items) use ($business_id) {
+            $ids = $items->pluck('variation_id')->unique()->values()->all();
+
+            $lastSold = [];
+            $acquired = [];
+            if (!empty($ids)) {
+                $lastSold = DB::table('transaction_sell_lines as tsl')
+                    ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                    ->where('t.business_id', $business_id)
+                    ->where('t.type', 'sell')
+                    ->where('t.status', 'final')
+                    ->whereIn('tsl.variation_id', $ids)
+                    ->groupBy('tsl.variation_id')
+                    ->selectRaw('tsl.variation_id as vid, MAX(t.transaction_date) as d, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as units')
+                    ->get()
+                    ->keyBy('vid')
+                    ->all();
+                $acquired = DB::table('purchase_lines as pl')
+                    ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                    ->where('t.business_id', $business_id)
+                    ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                    ->whereIn('pl.variation_id', $ids)
+                    ->groupBy('pl.variation_id')
+                    ->selectRaw('pl.variation_id as vid, MIN(t.transaction_date) as d')
+                    ->pluck('d', 'vid')
+                    ->all();
+            }
+            $now = \Carbon::now();
+            foreach ($items as $r) {
+                $r->last_sold = isset($lastSold[$r->variation_id]) ? $lastSold[$r->variation_id]->d : null;
+                $r->units_sold = isset($lastSold[$r->variation_id]) ? (float) $lastSold[$r->variation_id]->units : 0;
+                $r->date_acquired = $acquired[$r->variation_id] ?? null;
+                $r->days_since_sold = $r->last_sold ? \Carbon::parse($r->last_sold)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
+                $onHandFrom = $r->date_acquired ?: $r->product_created_at;
+                $r->days_on_hand = $onHandFrom ? \Carbon::parse($onHandFrom)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
+            }
+        };
+
+        if ($request->input('export') === 'csv') {
+            @set_time_limit(300);
+            $all = $query->get();
+            foreach ($all->chunk(2000) as $chunk) {
+                $fill($chunk);
+            }
+            $locNames = $business_locations;
+            $filename = 'dead-stock-' . $days . 'd-' . date('Y-m-d') . '.csv';
+            return response()->streamDownload(function () use ($all, $locNames) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, ['Title', 'Artist', 'SKU', 'Format', 'Store', 'Qty', 'Price', 'In stock since', 'Days in stock', 'Last sold', 'Days since sold', 'Units sold (all time)', 'Value']);
+                foreach ($all as $r) {
+                    $acq = $r->date_acquired ?: $r->product_created_at;
+                    fputcsv($out, [
+                        $r->name, $r->artist, $r->sub_sku, $r->format,
+                        $locNames[$r->location_id] ?? '',
+                        (float) $r->qty_available,
+                        round((float) $r->selling_price, 2),
+                        $acq ? \Carbon::parse($acq)->format('Y-m-d') : '',
+                        $r->days_on_hand,
+                        $r->last_sold ? \Carbon::parse($r->last_sold)->format('Y-m-d') : 'Never sold',
+                        $r->days_since_sold,
+                        $r->units_sold,
+                        round((float) $r->tied_up_value, 2),
+                    ]);
+                }
+                fclose($out);
+            }, $filename, ['Content-Type' => 'text/csv']);
+        }
+
         $page = max(1, (int) $request->input('page', 1));
         $per_page = 50;
         $items = $query->forPage($page, $per_page)->get();
-
-        // Fill last_sold / date_acquired for just this page's rows
-        $ids = $items->pluck('variation_id')->unique()->values()->all();
-        $lastSold = [];
-        $acquired = [];
-        if (!empty($ids)) {
-            $lastSold = DB::table('transaction_sell_lines as tsl')
-                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'sell')
-                ->where('t.status', 'final')
-                ->whereIn('tsl.variation_id', $ids)
-                ->groupBy('tsl.variation_id')
-                ->selectRaw('tsl.variation_id as vid, MAX(t.transaction_date) as d, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as units')
-                ->get()
-                ->keyBy('vid')
-                ->all();
-            $acquired = DB::table('purchase_lines as pl')
-                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
-                ->where('t.business_id', $business_id)
-                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
-                ->whereIn('pl.variation_id', $ids)
-                ->groupBy('pl.variation_id')
-                ->selectRaw('pl.variation_id as vid, MIN(t.transaction_date) as d')
-                ->pluck('d', 'vid')
-                ->all();
-        }
-        $now = \Carbon::now();
-        foreach ($items as $r) {
-            $r->last_sold = isset($lastSold[$r->variation_id]) ? $lastSold[$r->variation_id]->d : null;
-            $r->units_sold = isset($lastSold[$r->variation_id]) ? (float) $lastSold[$r->variation_id]->units : 0;
-            $r->date_acquired = $acquired[$r->variation_id] ?? null;
-            $r->days_since_sold = $r->last_sold ? \Carbon::parse($r->last_sold)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
-            $onHandFrom = $r->date_acquired ?: $r->product_created_at;
-            $r->days_on_hand = $onHandFrom ? \Carbon::parse($onHandFrom)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
-        }
+        $fill($items);
 
         $rows = new \Illuminate\Pagination\LengthAwarePaginator(
             $items, (int) ($totals->total_variations ?? 0), $per_page, $page,

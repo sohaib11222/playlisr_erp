@@ -170,6 +170,7 @@ body.ds-v2 .ds-pager .pagination > .active > span {
             <div>
                 <button type="submit" class="ds-btn">Apply</button>
                 <a href="{{ action('ReportController@deadStockReport') }}" class="ds-btn ghost">Reset</a>
+                <a href="{{ action('ReportController@deadStockReport') . '?' . http_build_query(array_merge(request()->except(['page', 'export']), ['export' => 'csv'])) }}" class="ds-btn ghost">Export CSV</a>
             </div>
         </form>
     </div>
