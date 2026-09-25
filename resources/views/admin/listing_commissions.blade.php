@@ -189,7 +189,14 @@
                                 @php $salesQb = $p->sales_disp ?? round($p->sales_net, 2); $listQb = $p->listing_disp ?? round($p->listing_net, 2); @endphp
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if(abs($salesQb) < 0.005)<span class="text-muted">—</span>@elseif($salesQb > 0)${{ number_format($salesQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($salesQb), 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if(abs($listQb) < 0.005)<span class="text-muted">—</span>@elseif($listQb > 0)${{ number_format($listQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($listQb), 2) }}</span>@endif</td>
-                                <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;">@if(($p->party_est_owed ?? 0) >= 0.005)<a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;">${{ number_format($p->party_est_owed, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
+                                <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;">
+                                    @if(($p->party_est_owed ?? 0) >= 0.005)
+                                        <a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;">${{ number_format($p->party_est_owed, 2) }}</a>
+                                        <div class="text-muted" style="font-size:11px; font-weight:400;">{{ $p->party_est_note }}</div>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                                 <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">

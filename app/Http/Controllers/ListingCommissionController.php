@@ -326,18 +326,20 @@ class ListingCommissionController extends Controller
         // actually recorded until paid on /admin/party-bonus), so it's kept
         // out of Pay now / Mark paid rather than silently folded into money
         // this page can already send.
-        $partyEstByUser = []; // uid => ['amount' => total, 'name' => ...]
+        $partyEstByUser = []; // uid => ['amount' => total, 'name' => ..., 'parties' => ['Beck Listening Party (Sep 18)', ...]]
         foreach ($unpaidParties as $u) {
             foreach (($u['estimate']['staff'] ?? []) as $s) {
                 $uid = (int) $s['uid'];
-                if (!isset($partyEstByUser[$uid])) { $partyEstByUser[$uid] = ['amount' => 0.0, 'name' => $s['name']]; }
+                if (!isset($partyEstByUser[$uid])) { $partyEstByUser[$uid] = ['amount' => 0.0, 'name' => $s['name'], 'parties' => []]; }
                 $partyEstByUser[$uid]['amount'] += (float) $s['amount'];
+                $partyEstByUser[$uid]['parties'][] = $u['name'] . ' (' . \Carbon::parse($u['date'])->format('M j') . ')';
             }
         }
         $peopleById = $people->keyBy('user_id');
         foreach ($partyEstByUser as $uid => $v) {
             if ($peopleById->has($uid)) {
                 $peopleById[$uid]->party_est_owed = round($v['amount'], 2);
+                $peopleById[$uid]->party_est_note = implode(', ', $v['parties']);
             } else {
                 // Someone who only shows up via a party estimate (no other
                 // listing/sales activity in this window) still needs a row.
@@ -349,11 +351,13 @@ class ListingCommissionController extends Controller
                     'sales_disp' => 0.0, 'listing_disp' => 0.0,
                     'total_owed_now' => 0.0, 'payroll_memo' => '',
                     'party_est_owed' => round($v['amount'], 2),
+                    'party_est_note' => implode(', ', $v['parties']),
                 ]);
             }
         }
         foreach ($people as $p) {
             if (!isset($p->party_est_owed)) { $p->party_est_owed = 0.0; }
+            if (!isset($p->party_est_note)) { $p->party_est_note = ''; }
         }
 
         // Never let a proxy/browser serve a stale copy of this page — the owed
