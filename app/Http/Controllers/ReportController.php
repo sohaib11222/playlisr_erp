@@ -7647,8 +7647,8 @@ class ReportController extends Controller
 
         // Column sort: whitelist columns to prevent SQL injection
         // Default: longest in stock first (earliest date) - Sarah 2026-09-25
-        $sort = $request->input('sort', 'days_on_hand');
-        $dir  = strtolower($request->input('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sort = $request->input('sort', 'date_acquired');
+        $dir  = strtolower($request->input('dir', $request->has('sort') ? 'desc' : 'asc')) === 'asc' ? 'asc' : 'desc';
         $sort_map = [
             'artist'          => 'p.artist',
             'title'           => 'p.name',
@@ -7669,7 +7669,8 @@ class ReportController extends Controller
                   AND t4.type = 'sell' AND t4.status = 'final')",
         ];
         if (!isset($sort_map[$sort])) {
-            $sort = 'days_on_hand';
+            $sort = 'date_acquired';
+            $dir = 'asc';
         }
         $sort_dir = in_array($sort, ['days_since', 'days_on_hand']) ? ($dir === 'asc' ? 'desc' : 'asc') : $dir;
         $query->orderByRaw($sort_map[$sort] . ' ' . $sort_dir)->orderBy('v.id');

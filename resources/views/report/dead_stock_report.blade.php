@@ -167,7 +167,7 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                         {!! $colHead('store', 'Store') !!}
                         {!! $colHead('qty', 'Qty', 'num') !!}
                         {!! $colHead('price', 'Price', 'num') !!}
-                        {!! $colHead('days_on_hand', 'In stock since') !!}
+                        {!! $colHead('date_acquired', 'In stock since') !!}
                         {!! $colHead('last_sold', 'Last sold') !!}
                         {!! $colHead('units_sold', 'Units sold (all time)', 'num') !!}
                         {!! $colHead('tied_up_value', 'Value', 'num') !!}
