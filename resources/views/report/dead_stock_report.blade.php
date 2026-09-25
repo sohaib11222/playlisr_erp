@@ -150,6 +150,14 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                     @endforeach
                 </select>
             </div>
+            <div class="ds-field">
+                <label for="ds_condition">New / Used</label>
+                <select name="condition" id="ds_condition" class="form-control">
+                    <option value="">New and used</option>
+                    <option value="new" @if($condition === 'new') selected @endif>New</option>
+                    <option value="used" @if($condition === 'used') selected @endif>Used</option>
+                </select>
+            </div>
             <div>
                 <button type="submit" class="ds-btn">Apply</button>
                 <a href="{{ action('ReportController@deadStockReport') }}" class="ds-btn ghost">Reset</a>

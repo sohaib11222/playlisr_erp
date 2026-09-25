@@ -7621,6 +7621,29 @@ class ReportController extends Controller
             $query->where('vld.location_id', $location_id);
         }
 
+        // New vs Used: used = category (or sub-category) name contains
+        // "used" - same convention as InventoryCheckService::usedCategoryIds.
+        $condition = in_array($request->input('condition'), ['new', 'used'], true) ? $request->input('condition') : '';
+        if ($condition !== '') {
+            $usedCatIds = DB::table('categories')
+                ->where('business_id', $business_id)
+                ->where('category_type', 'product')
+                ->where('name', 'like', '%used%')
+                ->pluck('id')->all();
+            if ($condition === 'used') {
+                $query->where(function ($q) use ($usedCatIds) {
+                    $q->whereIn('p.category_id', $usedCatIds ?: [0])
+                      ->orWhereIn('p.sub_category_id', $usedCatIds ?: [0]);
+                });
+            } else {
+                $query->where(function ($q) use ($usedCatIds) {
+                    $q->whereNull('p.category_id')->orWhereNotIn('p.category_id', $usedCatIds ?: [0]);
+                })->where(function ($q) use ($usedCatIds) {
+                    $q->whereNull('p.sub_category_id')->orWhereNotIn('p.sub_category_id', $usedCatIds ?: [0]);
+                });
+            }
+        }
+
         // Must have been in stock for the whole window - an item added
         // yesterday isn't "not sold in 180 days" (Sarah 2026-09-25).
         $query->whereRaw("COALESCE($acquiredSql, p.created_at) < ?", [$cutoff]);
@@ -7721,7 +7744,7 @@ class ReportController extends Controller
         );
 
         return view('report.dead_stock_report')->with(compact(
-            'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir'
+            'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir', 'condition'
         ));
     }
 
