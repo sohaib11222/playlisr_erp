@@ -518,7 +518,9 @@ class TaskController extends Controller
         $data = self::withDueTime($data);
         $data = self::withProject($data, $business_id);
         $data = self::withNoDueDate($data);
-        $assignees = $data['assignees'] ?? [];
+        // Every task needs an owner (manager decision 2026-09-25): no owner
+        // picked means it's yours. Shared/unassigned tasks don't get done.
+        $assignees = array_filter($data['assignees'] ?? []) ?: [auth()->id()];
         unset($data['assignees']);
 
         // Repeat cadence is a real choice for a "Today" (daily-window)
@@ -643,7 +645,9 @@ class TaskController extends Controller
         $data = self::withNoDueDate($data);
         $photoConfirmed = !empty($data['photo_confirmed']);
         unset($data['photo_confirmed']);
-        $assignees = $data['assignees'] ?? [];
+        // Every task needs an owner (manager decision 2026-09-25): no owner
+        // picked means it's yours. Shared/unassigned tasks don't get done.
+        $assignees = array_filter($data['assignees'] ?? []) ?: [auth()->id()];
         unset($data['assignees']);
 
         // A task flagged "requires a photo of the work done" can't be

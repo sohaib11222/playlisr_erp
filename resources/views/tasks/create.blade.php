@@ -39,7 +39,7 @@
                 <div class="as-fields">
                     <div class="k">Assignees</div>
                     <div class="v" style="display:block;">
-                        {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}
+                        {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Me (if left empty)']) !!}
                     </div>
 
                     <div class="k">Project</div>

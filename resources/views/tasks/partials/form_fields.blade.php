@@ -171,7 +171,7 @@
 <div class="form-group">
     <label>Assigned to</label>
     @php($selectedAssignees = old('assignees', isset($task) ? $task->assignees->pluck('id')->all() : []))
-    {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Unassigned']) !!}
+    {!! Form::select('assignees[]', $assignableUsers, $selectedAssignees, ['id' => 'task_assignees', 'class' => 'form-control select2', 'multiple', 'style' => 'width: 100%;', 'data-placeholder' => 'Me (if left empty)']) !!}
 </div>
 
 {{-- Plain inline script, not @push('scripts') — this layout has no

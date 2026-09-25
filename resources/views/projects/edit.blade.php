@@ -85,6 +85,12 @@
                     <input type="hidden" name="store" value="{{ $project->store }}">
                 @endif
                 <input type="text" name="title" required maxlength="200" placeholder="Add a task to this project..." style="flex:1;min-width:200px;border:1px solid #edeae9;border-radius:6px;padding:6px 10px;font-size:14px;">
+                <select name="assignees[]" style="border:1px solid #edeae9;border-radius:6px;padding:6px 10px;font-size:14px;">
+                    <option value="">Owner: me</option>
+                    @foreach($assignableUsers as $uid => $uname)
+                        <option value="{{ $uid }}">{{ $uname }}</option>
+                    @endforeach
+                </select>
                 <button type="submit" class="as-btn" style="border:0;"><i class="fa fa-plus"></i> Add task</button>
                 <a href="{{ action('TaskController@create', ['project_id' => $project->id]) }}" class="as-meta" style="text-decoration:none;">More options</a>
             </form>
