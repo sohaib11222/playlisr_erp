@@ -1,0 +1,62 @@
+# READ-ONLY diagnostic: check what cache driver the ERP actually uses, and
+# whether a Cache::remember() value written in one process is readable in a
+# separate process. One-off; delete after use.
+name: Diag cache driver
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Check cache driver + cross-process persistence (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "CACHE_DRIVER in .env:"
+            grep -i "^CACHE_DRIVER" .env 2>/dev/null || echo "(not set in .env)"
+            echo "config('cache.default'):"
+            php artisan tinker --no-ansi <<'PHP'
+            echo config('cache.default') . "\n";
+            \Cache::put('diag_cross_process_test', 'hello', 300);
+            echo "wrote test key\n";
+            PHP
+            echo "--- second process, reading it back ---"
+            php artisan tinker --no-ansi <<'PHP'
+            echo "read back: " . var_export(\Cache::get('diag_cross_process_test'), true) . "\n";
+            PHP
+            echo "=== done ==="
