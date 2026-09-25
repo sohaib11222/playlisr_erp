@@ -7582,47 +7582,49 @@ class ReportController extends Controller
 
         $cutoff = \Carbon::now()->subDays($days)->toDateTimeString();
 
-        // Last-sold subquery: MAX(transaction_date) per variation across finalized sells
-        $lastSaleSub = DB::table('transaction_sell_lines as tsl')
-            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
-            ->where('t.business_id', $business_id)
-            ->where('t.type', 'sell')
-            ->where('t.status', 'final')
-            ->select('tsl.variation_id', DB::raw('MAX(t.transaction_date) as last_sold'))
-            ->groupBy('tsl.variation_id');
-
-        // Date-acquired subquery: MIN(transaction_date) per variation across purchases
-        // (purchase, opening_stock, purchase_transfer). Falls back to product created_at
-        // later in the view when no purchase record exists.
-        $acquiredSub = DB::table('purchase_lines as pl')
-            ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
-            ->where('t.business_id', $business_id)
-            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
-            ->select('pl.variation_id', DB::raw('MIN(t.transaction_date) as first_acquired'))
-            ->groupBy('pl.variation_id');
+        // Perf (2026-09-25): the old version LEFT JOINed two GROUP BY
+        // subqueries over every sell line + purchase line ever, and ran it
+        // three times (totals, paginate count, page) - timed out on the full
+        // history. Now: "dead" = on hand AND NOT EXISTS a sale since the
+        // cutoff (index lookup per variation), and last_sold / date_acquired
+        // are only computed for the 50 rows on the page (or in ORDER BY when
+        // the user sorts by them).
+        $lastSoldSql = "(SELECT MAX(t2.transaction_date) FROM transaction_sell_lines tsl2
+            JOIN transactions t2 ON t2.id = tsl2.transaction_id
+            WHERE tsl2.variation_id = v.id AND t2.business_id = " . (int) $business_id . "
+              AND t2.type = 'sell' AND t2.status = 'final')";
+        $acquiredSql = "(SELECT MIN(t3.transaction_date) FROM purchase_lines pl3
+            JOIN transactions t3 ON t3.id = pl3.transaction_id
+            WHERE pl3.variation_id = v.id AND t3.business_id = " . (int) $business_id . "
+              AND t3.type IN ('purchase','opening_stock','purchase_transfer'))";
 
         $query = DB::table('variations as v')
             ->join('products as p', 'v.product_id', '=', 'p.id')
             ->join('variation_location_details as vld', 'v.id', '=', 'vld.variation_id')
             ->leftJoin('units as u', 'p.unit_id', '=', 'u.id')
-            ->leftJoinSub($lastSaleSub, 'ls', function ($join) {
-                $join->on('v.id', '=', 'ls.variation_id');
-            })
-            ->leftJoinSub($acquiredSub, 'ac', function ($join) {
-                $join->on('v.id', '=', 'ac.variation_id');
-            })
             ->where('p.business_id', $business_id)
             ->where('p.type', '!=', 'modifier')
             ->where('vld.qty_available', '>', 0)
             ->whereNull('v.deleted_at')
-            ->where(function ($q) use ($cutoff) {
-                $q->whereNull('ls.last_sold')
-                  ->orWhere('ls.last_sold', '<', $cutoff);
+            ->whereNotExists(function ($q) use ($business_id, $cutoff) {
+                $q->select(DB::raw(1))
+                  ->from('transaction_sell_lines as tsl')
+                  ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                  ->whereColumn('tsl.variation_id', 'v.id')
+                  ->where('t.business_id', $business_id)
+                  ->where('t.type', 'sell')
+                  ->where('t.status', 'final')
+                  ->where('t.transaction_date', '>=', $cutoff);
             });
 
         if (!empty($location_id)) {
             $query->where('vld.location_id', $location_id);
         }
+
+        // Totals across the full filtered set (before pagination + sort)
+        $totals = (clone $query)
+            ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(vld.qty_available), 0) as total_qty, COALESCE(SUM(vld.qty_available * v.sell_price_inc_tax), 0) as total_value')
+            ->first();
 
         $query->select(
             'v.id as variation_id',
@@ -7635,20 +7637,9 @@ class ReportController extends Controller
             'vld.qty_available',
             'vld.location_id',
             'v.sell_price_inc_tax as selling_price',
-            'ls.last_sold',
-            'ac.first_acquired as date_acquired',
-            DB::raw('DATEDIFF(NOW(), ls.last_sold) as days_since_sold'),
-            DB::raw('DATEDIFF(NOW(), COALESCE(ac.first_acquired, p.created_at)) as days_on_hand'),
             DB::raw('(vld.qty_available * v.sell_price_inc_tax) as tied_up_value'),
             'u.short_name as unit'
         );
-
-        // Totals across the full filtered set (before pagination + sort)
-        $totals_base = (clone $query);
-        $totals = DB::query()
-            ->fromSub($totals_base, 'x')
-            ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(qty_available), 0) as total_qty, COALESCE(SUM(tied_up_value), 0) as total_value')
-            ->first();
 
         // Column sort: whitelist columns to prevent SQL injection
         $sort = $request->input('sort', 'tied_up_value');
@@ -7660,20 +7651,61 @@ class ReportController extends Controller
             'sku'             => 'v.sub_sku',
             'qty'             => 'vld.qty_available',
             'price'           => 'v.sell_price_inc_tax',
-            'last_sold'       => 'ls.last_sold',
-            'days_since'      => 'days_since_sold',
-            'date_acquired'   => 'ac.first_acquired',
-            'days_on_hand'    => 'days_on_hand',
+            'last_sold'       => $lastSoldSql,
+            // Sorting by days-since is the reverse of sorting by last-sold date
+            'days_since'      => $lastSoldSql,
+            'date_acquired'   => "COALESCE($acquiredSql, p.created_at)",
+            'days_on_hand'    => "COALESCE($acquiredSql, p.created_at)",
             'tied_up_value'   => 'tied_up_value',
         ];
-        $sort_col = $sort_map[$sort] ?? 'tied_up_value';
-        if (in_array($sort_col, ['days_since_sold', 'days_on_hand', 'tied_up_value'])) {
-            $query->orderByRaw($sort_col . ' ' . $dir);
-        } else {
-            $query->orderBy($sort_col, $dir);
+        if (!isset($sort_map[$sort])) {
+            $sort = 'tied_up_value';
+        }
+        $sort_dir = in_array($sort, ['days_since', 'days_on_hand']) ? ($dir === 'asc' ? 'desc' : 'asc') : $dir;
+        $query->orderByRaw($sort_map[$sort] . ' ' . $sort_dir)->orderBy('v.id');
+
+        $page = max(1, (int) $request->input('page', 1));
+        $per_page = 50;
+        $items = $query->forPage($page, $per_page)->get();
+
+        // Fill last_sold / date_acquired for just this page's rows
+        $ids = $items->pluck('variation_id')->unique()->values()->all();
+        $lastSold = [];
+        $acquired = [];
+        if (!empty($ids)) {
+            $lastSold = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereIn('tsl.variation_id', $ids)
+                ->groupBy('tsl.variation_id')
+                ->selectRaw('tsl.variation_id as vid, MAX(t.transaction_date) as d')
+                ->pluck('d', 'vid')
+                ->all();
+            $acquired = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->whereIn('pl.variation_id', $ids)
+                ->groupBy('pl.variation_id')
+                ->selectRaw('pl.variation_id as vid, MIN(t.transaction_date) as d')
+                ->pluck('d', 'vid')
+                ->all();
+        }
+        $now = \Carbon::now();
+        foreach ($items as $r) {
+            $r->last_sold = $lastSold[$r->variation_id] ?? null;
+            $r->date_acquired = $acquired[$r->variation_id] ?? null;
+            $r->days_since_sold = $r->last_sold ? \Carbon::parse($r->last_sold)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
+            $onHandFrom = $r->date_acquired ?: $r->product_created_at;
+            $r->days_on_hand = $onHandFrom ? \Carbon::parse($onHandFrom)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
         }
 
-        $rows = $query->paginate(50)->appends($request->except('page'));
+        $rows = new \Illuminate\Pagination\LengthAwarePaginator(
+            $items, (int) ($totals->total_variations ?? 0), $per_page, $page,
+            ['path' => $request->url(), 'query' => $request->except('page')]
+        );
 
         return view('report.dead_stock_report')->with(compact(
             'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir'
