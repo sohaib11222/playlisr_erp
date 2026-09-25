@@ -102,6 +102,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // "What's hot right now" — recompute one [store x dim x range] combo
     // for a non-default time range picked in the dashboard dropdown.
     Route::get('/home/top-sellers-range', 'HomeController@getTopSellersRange')->name('home.topSellersRange');
+    Route::get('/home/fastest-sellers', 'HomeController@fastestSellersDetail')->name('home.fastestSellers');
     // Live trading-day KPIs (revenue vs target, LFL, tx count, ATV) consumed by
     // the Daily Store Dashboard (leaderboard) strip. The standalone page was
     // retired; only the JSON endpoint remains.
