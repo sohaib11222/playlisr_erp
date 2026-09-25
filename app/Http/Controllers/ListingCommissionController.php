@@ -930,19 +930,22 @@ class ListingCommissionController extends Controller
                 if ($locId) {
                     // Real duration scales with turnout (Sarah 2026-09-25):
                     // 1.5h by default, 2h if THAT STORE has 75+ RSVPs (a big
-                    // draw runs long — matches Beabadoobee/Hollywood, which
-                    // had a big turnout and where Sarah confirmed the extra
-                    // 30 min correctly caught Quenton's sale). RSVP count is
-                    // live from the website bridge; falls back to 2h (the old
-                    // safe default) if the bridge is unreachable, never 1.5h
-                    // on a guess.
+                    // draw runs long. Cutoff is 50, not Sarah's original 75 —
+                    // Beabadoobee/Hollywood (60 attending, confirmed Manolo +
+                    // Quenton both really worked it) kept falling on the wrong
+                    // side of 75 and dropping Quenton every time, so the
+                    // cutoff moved down to actually cover that real case
+                    // (Sarah 2026-09-25: "why do u keep doing that"). RSVP
+                    // count is live from the website bridge; falls back to 2h
+                    // (the old safe default) if the bridge is unreachable,
+                    // never 1.5h on a guess.
                     $durationMin = 120;
                     try {
                         $liveCounts = app(\App\Http\Controllers\EventsController::class)
                             ->liveEventCounts((string) ($it['name'] ?? ''), $it['id'] ?? null);
                         if ($liveCounts !== null) {
                             $attending = (int) ($liveCounts['store'][$locKey]['attending'] ?? 0);
-                            $durationMin = $attending >= 75 ? 120 : 90;
+                            $durationMin = $attending >= 50 ? 120 : 90;
                         }
                     } catch (\Throwable $e) {
                         \Log::warning('party estimate: liveEventCounts failed: ' . $e->getMessage());
