@@ -18,8 +18,9 @@ use Illuminate\Support\Facades\Log;
  *   - Only fires for someone whose Sling shift starts today, from
  *     LEAD_MINUTES before the start until LATE_MINUTES after it. Shifts
  *     that start before the store opens wait until opening time.
- *   - Only if they have tasks due today (or past due) on their My Tasks
- *     list: assigned to them, or unassigned at the store they're working.
+ *   - Only if they have tasks due today (or past due) assigned to them
+ *     at the store they're working today (or "Both"). Unassigned store
+ *     tasks never trigger a text.
  *   - At most one text per person per day.
  *
  * Assignment rows queued by TaskController / ProjectController
@@ -104,8 +105,16 @@ class SendPendingAssignmentTexts extends Command
                 continue;
             }
 
-            $sections = MyTasksController::sectionsFor($user->business_id, $user->id, MyTasksController::shiftStoresToday($user->id));
-            $dueToday = count($sections['past_due']) + count($sections['today']);
+            // Only tasks with them as an owner (shared/unassigned store tasks
+            // never trigger a text), and only for the store they're working
+            // at today, plus "Both" tasks (store = null).
+            $shiftStore = \App\Http\Controllers\TeamProgressController::SLING_LOCATIONS[strtolower(trim((string) $shift->location_name))] ?? null;
+            $sections = MyTasksController::sectionsFor($user->business_id, $user->id, []);
+            $dueRows = array_filter(array_merge($sections['past_due'], $sections['today']), function ($r) use ($shiftStore) {
+                $store = $r['task']->store;
+                return !$r['via_shift'] && ($store === null || $store === '' || $store === $shiftStore);
+            });
+            $dueToday = count($dueRows);
             if ($dueToday === 0) {
                 continue;
             }
@@ -134,14 +143,8 @@ class SendPendingAssignmentTexts extends Command
             $totalAssigned = $assignedTasksTotal + $assignedProjectsTotal;
 
             $first = trim((string) $user->first_name) ?: 'there';
-            // Split "yours" from shared store tasks (unassigned front-desk
-            // work picked up by being on a cashier shift), so the count
-            // isn't read as all assigned to them personally.
-            $dueRows = array_merge($sections['past_due'], $sections['today']);
-            $storeDue = count(array_filter($dueRows, function ($r) { return $r['via_shift']; }));
-            $mineDue = $dueToday - $storeDue;
             $message = "Hi {$first}, you have {$dueToday} " . ($dueToday === 1 ? 'task' : 'tasks') . ' due today'
-                . ($storeDue ? " ({$mineDue} yours, {$storeDue} shared store " . ($storeDue === 1 ? 'task' : 'tasks') . ')' : '')
+                . ($shiftStore ? ' at ' . (TaskController::STORE_LABELS[$shiftStore] ?? ucfirst($shiftStore)) : '')
                 . ($queued->count() ? " ({$queued->count()} new)" : '')
                 . ", and {$totalAssigned} tasks/projects assigned in total"
                 . '. Check them in the ERP: ' . self::myTasksUrl();
