@@ -21,17 +21,29 @@
 @endphp
 
 {{-- ═══════════ ROI — FIRST THING ON THE PAGE, IMPOSSIBLE TO MISS ═══════════ --}}
-@if($order_stats)
-    @php $roiRatio = $order_stats['net_revenue'] / $data['contract']['pay_total']; @endphp
+{{-- Must be revenue actually attributable to Archer (his discount code),
+     not site-wide website revenue — using the site-wide number here would
+     credit him with traffic he had nothing to do with. --}}
+@php
+    $archerCancelledCount = $archer_coupon ? count(array_filter($coupon_zipcodes, fn($r) => ($r['order_status'] ?? null) === 'cancelled')) : 0;
+    $archerCancelledTotal = $archer_coupon ? array_sum(array_map(fn($r) => ($r['order_status'] ?? null) === 'cancelled' ? (float) ($r['total'] ?? 0) : 0, $coupon_zipcodes)) : 0;
+    $archerAttributedNet = $archer_coupon ? ((float) $coupon_zipcodes_total - $archerCancelledTotal) : null;
+@endphp
+@if(!is_null($archerAttributedNet))
+    @php $roiRatio = $archerAttributedNet / $data['contract']['pay_total']; @endphp
     <div style="background:{{ $roiRatio >= 1 ? '#eafaf1' : '#fdf2f2' }}; border:2px solid {{ $roiRatio >= 1 ? '#2ecc71' : '#d9534f' }}; border-radius:8px; padding:24px 28px; margin-bottom:24px; text-align:center;">
         <div style="font-size:13px; color:#666; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">ROI, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</div>
         <div style="font-size:56px; font-weight:800; line-height:1; color:{{ $roiRatio >= 1 ? '#27ae60' : '#c0392b' }};">
             ${{ number_format($roiRatio, 2) }} <span style="font-size:22px; font-weight:600; color:#666;">back per $1 spent</span>
         </div>
         <div style="font-size:16px; color:#444; margin-top:10px;">
-            Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong> &rarr; got back <strong>${{ number_format($order_stats['net_revenue']) }}</strong> in trackable website revenue
+            Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong> &rarr; got back <strong>${{ number_format($archerAttributedNet, 2) }}</strong> from orders using his code {{ $archer_coupon->code }}, net of refunds
         </div>
-        <div style="font-size:12px; color:#888; margin-top:8px;">Website revenue only, net of cancellations &mdash; a floor, not the whole picture.</div>
+        <div style="font-size:12px; color:#888; margin-top:8px;">Only his discount-code orders count here &mdash; a floor, not the whole picture (some buyers skip the code). Site-wide website revenue is shown separately below and is NOT part of this ROI.</div>
+    </div>
+@elseif($order_stats)
+    <div style="background:#fdf2f2; border:2px solid #d9534f; border-radius:8px; padding:24px 28px; margin-bottom:24px; text-align:center;">
+        <div style="font-size:16px; color:#444;">No Archer discount-code orders found for this range &mdash; can't compute an attributed ROI.</div>
     </div>
 @endif
 
@@ -39,7 +51,7 @@
 <h4 style="margin-top:0;">
     Instagram
     @if(!empty($data['instagram']['is_live']))
-        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
+        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
     @else
         <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
     @endif
@@ -49,9 +61,8 @@
         {!! archerCard(
             'Followers',
             number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
-            !empty($data['instagram']['is_live'])
-                ? 'live, ' . archerFmtDate($data['instagram']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['instagram']['followers_now_date'])
-                : '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['contract']['start_date']),
+            (!empty($data['instagram']['is_live']) ? 'now live &middot; ' : '')
+                . '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['instagram']['followers_start_date'] ?? $data['contract']['start_date']),
             '#2ecc71'
         ) !!}
     </div>
@@ -62,18 +73,6 @@
         {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
     </div>
 </div>
-
-@if(!empty($data['instagram']['is_live']) && !empty($data['instagram']['daily']))
-    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Instagram, this date range</div>
-        <div style="position:relative; height:200px;">
-            <canvas id="archerIgChart"
-                data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['instagram']['daily'])) }}"
-                data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['instagram']['daily'])) }}"
-            ></canvas>
-        </div>
-    </div>
-@endif
 
 {{-- ═══════════ TIKTOK ═══════════ --}}
 <h4 style="margin-top:24px;">
@@ -168,7 +167,7 @@
             {!! archerCard(
                 'Cancelled',
                 number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)',
-                number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' other inventory issue',
+                number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' cancelled, no reason logged',
                 '#d9534f'
             ) !!}
         </div>
@@ -199,7 +198,7 @@
                 <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</td>
             </tr>
             <tr>
-                <th>Lost &mdash; other inventory issue</th>
+                <th>Lost &mdash; cancelled, no reason logged</th>
                 <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</td>
             </tr>
             <tr style="border-top:2px solid #eee;">
@@ -279,10 +278,7 @@
             Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time, real attributed conversions.
         </div>
 
-        @php
-            $archerCancelledCount = count(array_filter($coupon_zipcodes, fn($r) => ($r['order_status'] ?? null) === 'cancelled'));
-            $archerCancelledTotal = array_sum(array_map(fn($r) => ($r['order_status'] ?? null) === 'cancelled' ? (float) ($r['total'] ?? 0) : 0, $coupon_zipcodes));
-        @endphp
+        {{-- $archerCancelledCount / $archerCancelledTotal computed once, up top, for the ROI banner --}}
         <div style="background:{{ $archerCancelledCount > 0 ? '#fdf2f2' : '#f2fdf5' }}; border-radius:4px; padding:10px 14px; margin-bottom:16px; font-size:13px;">
             Of these {{ count($coupon_zipcodes) }} Archer-code orders,
             <strong>{{ $archerCancelledCount }} {{ $archerCancelledCount === 1 ? 'was' : 'were' }} refunded/cancelled</strong>
@@ -296,7 +292,7 @@
 
         @if($order_stats)
             <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
-                <div>Site-wide refunded (other inventory issue): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
+                <div>Site-wide refunded (cancelled, no reason logged): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</strong></div>
                 <div>Site-wide refunded (sold on Discogs, unrelated): <strong style="color:#d9534f;">${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</strong></div>
                 <div>Site-wide net revenue: <strong style="color:#2ecc71;">${{ number_format($order_stats['net_revenue'], 2) }}</strong></div>
             </div>
@@ -379,7 +375,6 @@
             }
         });
     }
-    lineChart('archerIgChart', 'Instagram followers', '#e1306c', 'rgba(225,48,108,0.1)');
     lineChart('archerTiktokChart', 'TikTok followers', '#2ecc71', 'rgba(46,204,113,0.1)');
     lineChart('archerFbChart', 'Facebook followers', '#1877f2', 'rgba(24,119,242,0.1)');
 
