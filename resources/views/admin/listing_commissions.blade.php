@@ -166,8 +166,7 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="A listening-party split still unpaid. Blank means nothing outstanding — already paid or never owed. Not part of Pay now; pay it separately via Record a payment below.">Listening party owed</th>
-                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Does NOT include Listening party — that money is already sent (see that column), never owed.">Pay now</th>
+                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Does NOT include Listening party — that money is already sent, never owed. See the unpaid-parties banner above for what's still outstanding on parties.">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
                         </tr>
@@ -189,13 +188,6 @@
                                 @php $salesQb = $p->sales_disp ?? round($p->sales_net, 2); $listQb = $p->listing_disp ?? round($p->listing_net, 2); @endphp
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if(abs($salesQb) < 0.005)<span class="text-muted">—</span>@elseif($salesQb > 0)${{ number_format($salesQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($salesQb), 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if(abs($listQb) < 0.005)<span class="text-muted">—</span>@elseif($listQb > 0)${{ number_format($listQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($listQb), 2) }}</span>@endif</td>
-                                <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc; font-size:12px;">
-                                    @if(abs($p->party_owed ?? 0) >= 0.005)
-                                        <span style="color:#b3402e;">${{ number_format($p->party_owed, 2) }}</span>
-                                    @else
-                                        <span class="text-muted">—</span>
-                                    @endif
-                                </td>
                                 <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">

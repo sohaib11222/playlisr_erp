@@ -168,13 +168,6 @@ class ListingCommissionController extends Controller
         }
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
-        // Kept separate from the manual/paid amounts below — merging them into one
-        // number made the column claim a party was BOTH owed and paid at once
-        // (Sarah 2026-08-28: found Manolo's row showing "Owed: $19.07 / Paid:
-        // $19.07 ✓" simultaneously, which is never a true state). One is the
-        // un-paid auto-split (currently always empty, partyDates() is disabled);
-        // the other is real hand-paid entries from /admin/party-bonus.
-        $partyOwed = $this->partyEarnedByUser();
         $partyPaidManual = $this->manualPartyEarnedByUser();
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
@@ -199,10 +192,6 @@ class ListingCommissionController extends Controller
             // total payout is unchanged — it just moves each party's bonus onto
             // the floor helper who earned it.
             $p->party_split = round($partyAdj[(int) $uid] ?? 0, 2);
-            // Owed = un-paid auto-split still outstanding. Paid = real hand-paid
-            // entries this period. Shown as two independent amounts — never claim
-            // the same dollar is both owed and already paid.
-            $p->party_owed = round($partyOwed[(int) $uid] ?? 0, 2);
             $p->party_paid = round($partyPaidManual[(int) $uid] ?? 0, 2);
             $p->sales_earned = round($p->sales_earned + $p->party_split, 2);
             $p->sales_paid     = $s ? (float) $s->paid     : 0.0;
@@ -1414,21 +1403,6 @@ class ListingCommissionController extends Controller
         return $out;
     }
 
-    // What each person EARNED for the party (their equal 50/50 share) — shown as
-    // the "Listening party" column so both the cashier and the helper read the
-    // same amount, separate from the +/- movement in the pay adjustment above.
-    private function partyEarnedByUser()
-    {
-        $partyDates = $this->partyDates();
-        $out = [];
-        foreach ($this->loadPartySplits() as $entry) {
-            if (!in_array($entry['date'] ?? '', $partyDates, true)) { continue; }
-            foreach (($entry['party'] ?? []) as $uid => $amt) {
-                $out[(int) $uid] = ($out[(int) $uid] ?? 0) + (float) $amt;
-            }
-        }
-        return $out;
-    }
 
     // Listening-party bonuses paid by hand via /admin/party-bonus are written to the
     // SALES payout ledger with a note starting "Listening party ...". Sum them per
