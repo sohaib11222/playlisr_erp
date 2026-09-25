@@ -29,6 +29,7 @@ class RegisterReconUtil
     const MISMATCH_TOLERANCE_CENTS = 15;
     // Drawer count off by less than this is treated as counting noise.
     const DRAWER_TOLERANCE = 5.00;
+    const FLAG_DRAWER_VARIANCE = false;
 
     public static function settings(): array
     {
@@ -277,6 +278,11 @@ class RegisterReconUtil
                 ];
                 continue;
             }
+            // Drawer short/over is NOT flagged yet: on 9/24 every closed
+            // drawer at both stores came out $70-$550 "short" against
+            // opening + cash net, so the expected-cash math doesn't match
+            // how cashiers count/drop. Re-enable once that's reconciled.
+            if (!self::FLAG_DRAWER_VARIANCE) continue;
             if (!$row || (int) $row->activity === 0) continue;
             $expected = (float) $row->opening_cash + (float) $row->cash_net;
             $variance = round((float) $r->closing_amount - $expected, 2);
