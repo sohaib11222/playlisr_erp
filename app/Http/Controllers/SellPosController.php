@@ -3141,6 +3141,155 @@ class SellPosController extends Controller
         return $isFatteen || $isJon || $isSarah;
     }
 
+    /**
+     * Record a card sale that was partly paid with store credit (cashier
+     * deducted the credit on Clover but rang the full total as card in the
+     * ERP). Moves $credit off the card line onto an `advance` (store credit)
+     * line so the feed expects final_total - credit on Clover. Does NOT touch
+     * any customer balance (the sale may be on Walk-In). Snapshot + undo via
+     * /admin/admin-action-history (action 'store-credit-split').
+     */
+    public function splitStoreCredit(Request $request)
+    {
+        if (!self::canFixPaymentMethod()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $txId = (int) $request->input('transaction_id', 0);
+        $credit = round((float) $request->input('store_credit', 0), 2);
+        $reason = trim((string) $request->input('reason', ''));
+
+        $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->where('type', 'sell')->first();
+        if (!$tx) {
+            return redirect($back)->with('error', 'ERP transaction not found.');
+        }
+        if ($credit <= 0 || $credit >= (float) $tx->final_total) {
+            return redirect($back)->with('error', 'Store credit must be more than $0 and less than the sale total.');
+        }
+        $payments = \App\TransactionPayment::where('transaction_id', $txId)->get();
+        if ($payments->contains(fn($p) => $p->method === 'advance')) {
+            return redirect($back)->with('error', '#' . $tx->invoice_no . ' already has a store credit line.');
+        }
+        $cardMethods = ['card', 'clover', 'credit_card', 'custom_pay_1', 'custom_pay_2', 'custom_pay_3', 'custom_pay_4', 'custom_pay_5', 'custom_pay_6', 'custom_pay_7'];
+        $cardLine = $payments->first(fn($p) => in_array(strtolower((string) $p->method), $cardMethods, true));
+        if (!$cardLine || (float) $cardLine->amount <= $credit) {
+            return redirect($back)->with('error', 'Need one card payment line larger than the store credit amount.');
+        }
+
+        $now = \Carbon\Carbon::now();
+        $oldAmount = (float) $cardLine->amount;
+        $newAmount = round($oldAmount - $credit, 2);
+
+        $advance = $cardLine->replicate();
+        $advance->method = 'advance';
+        $advance->amount = $credit;
+        $advance->card_transaction_number = null;
+        $advance->card_number = null;
+        $advance->card_type = null;
+        $advance->account_id = null;
+        $advance->payment_ref_no = null;
+        $advance->note = 'Store credit (split from card by admin)' . ($reason !== '' ? ': ' . $reason : '');
+        $advance->created_by = auth()->id() ?: $cardLine->created_by;
+        $advance->save();
+
+        \App\TransactionPayment::where('id', $cardLine->id)->update(['amount' => $newAmount, 'updated_at' => $now]);
+
+        $snapshotKey = 'store-credit-split-' . $now->format('Y-m-d_His') . '-tx' . $txId;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'store-credit-split',
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'invoice_no' => $tx->invoice_no,
+                'reason' => $reason !== '' ? $reason : null,
+                'explained_by' => (int) auth()->id() ?: null,
+                'rows' => [[
+                    'card_payment_id' => $cardLine->id,
+                    'old_amount' => $oldAmount,
+                    'new_amount' => $newAmount,
+                    'advance_payment_id' => $advance->id,
+                    'credit' => $credit,
+                ]],
+            ], JSON_PRETTY_PRINT)
+        );
+
+        return redirect($back)->with('status', '✓ #' . $tx->invoice_no . ': $' . number_format($credit, 2) . ' store credit + $' . number_format($newAmount, 2) . ' card. Snapshot saved, undo at /admin/admin-action-history.');
+    }
+
+    /**
+     * Void a duplicate ring without deleting it: status -> draft (drops out
+     * of sales/reports) and puts the stock back. Only for sales with no
+     * payments recorded. Snapshot + undo via /admin/admin-action-history
+     * (action 'void-duplicate-sale').
+     */
+    public function voidDuplicateSale(Request $request)
+    {
+        if (!self::canFixPaymentMethod()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $txId = (int) $request->input('transaction_id', 0);
+        $reason = trim((string) $request->input('reason', ''));
+
+        $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->where('type', 'sell')->first();
+        if (!$tx || $tx->status !== 'final') {
+            return redirect($back)->with('error', 'Sale not found or not final.');
+        }
+        $paid = (float) \App\TransactionPayment::where('transaction_id', $txId)->sum('amount');
+        if ($paid > 0) {
+            return redirect($back)->with('error', '#' . $tx->invoice_no . ' has payments recorded. Only unpaid duplicates can be voided here.');
+        }
+
+        $lines = \App\TransactionSellLine::where('transaction_id', $txId)->get(['id', 'product_id', 'variation_id', 'quantity']);
+        $now = \Carbon\Carbon::now();
+        $snapshotKey = 'void-duplicate-sale-' . $now->format('Y-m-d_His') . '-tx' . $txId;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'void-duplicate-sale',
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'invoice_no' => $tx->invoice_no,
+                'location_id' => $tx->location_id,
+                'reason' => $reason !== '' ? $reason : null,
+                'explained_by' => (int) auth()->id() ?: null,
+                'rows' => [[
+                    'transaction_id' => $txId,
+                    'old_status' => $tx->status,
+                    'old_payment_status' => $tx->payment_status,
+                    'lines' => $lines->map(fn($l) => ['product_id' => $l->product_id, 'variation_id' => $l->variation_id, 'quantity' => (float) $l->quantity])->all(),
+                ]],
+            ], JSON_PRETTY_PRINT)
+        );
+
+        DB::beginTransaction();
+        try {
+            Transaction::where('id', $txId)->update([
+                'status' => 'draft',
+                'additional_notes' => trim(($tx->additional_notes ?? '') . "\nVoided as duplicate by admin " . $now->toDateString() . ($reason !== '' ? ': ' . $reason : '')),
+            ]);
+            foreach ($lines as $l) {
+                if (!empty($l->product_id) && !empty($l->variation_id) && (float) $l->quantity > 0) {
+                    $this->productUtil->updateProductQuantity($tx->location_id, $l->product_id, $l->variation_id, (float) $l->quantity, 0, null, false);
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::error('voidDuplicateSale failed: ' . $e->getMessage());
+            return redirect($back)->with('error', 'Void failed: ' . $e->getMessage());
+        }
+
+        return redirect($back)->with('status', '✓ #' . $tx->invoice_no . ' voided as duplicate (set to draft, stock restored). Snapshot saved, undo at /admin/admin-action-history.');
+    }
+
     public function overridePaymentMethod(Request $request)
     {
         if (!self::canFixPaymentMethod()) {

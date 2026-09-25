@@ -1653,6 +1653,23 @@
                                     style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
                                 <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Set method</button>
                             </form>
+                            <form method="POST" action="{{ route('pos.splitStoreCredit') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Move this store credit amount off the card on #{{ $sale->invoice_no }}? Snapshot saved for undo.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <label style="font-size:11px; color:#6b7280; font-weight:600; margin:0;">Store credit $</label>
+                                <input type="number" step="0.01" min="0.01" name="store_credit" required
+                                    style="width:90px; font-size:12px; padding:4px 6px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <input type="text" name="reason" placeholder="reason (optional)"
+                                    style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Split card</button>
+                            </form>
+                            <form method="POST" action="{{ route('pos.voidDuplicateSale') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Void #{{ $sale->invoice_no }} as a duplicate? It is kept as a draft and its stock goes back. Snapshot saved for undo.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <input type="text" name="reason" placeholder="duplicate of #..."
+                                    style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <button type="submit" style="padding:5px 10px; background:#8A2A1F; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Void duplicate (unpaid only)</button>
+                            </form>
                             @else
                                 <div style="font-size:11px; color:#8A7C6A;">Payment method (cash↔card) can only be changed by Sarah, Jon, or Fatteen.</div>
                             @endif
