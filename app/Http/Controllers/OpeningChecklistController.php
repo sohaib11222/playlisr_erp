@@ -29,46 +29,21 @@ class OpeningChecklistController extends Controller
     const STORES = [
         'hollywood' => [
             '1. Turn the store on' => [
-                'lights'   => 'Turn on all the lights in the main room.',
-                'music'    => 'Put on upbeat shopping music and turn it up loud enough to hear outside.',
-                'computer' => 'Turn on the computer. PIN: 7421.',
-                'scent'    => 'Turn on the store scent purifier.',
+                'lights'   => 'Turn on the lights, the computer (PIN: 7421), and upbeat music loud enough to hear outside.',
+                'signs'    => 'Plug in the three neon signs (Digger\'s Paradise, Have you heard it on vinyl, Disco es la cultura) and turn on the scent purifier.',
+                'entrance' => 'Clear the front entrance and windows so nothing blocks the way in or the view inside.',
             ],
-            '2. Windows & entrance' => [
-                'entrance'        => 'Keep the front entrance totally clear, with no boxes, trash, or obstacles in sight, so it feels welcoming to customers.',
-                'windows_clean'   => 'Wipe down all the windows with glass cleaner until they are clean.',
-                'windows_clear'   => 'Clear the windows of any random signs so nothing blocks the view inside.',
-                'window_displays' => 'Update both window displays with A products.',
+            '2. Records' => [
+                'walls_full' => 'Fill any blank wall space and any bin that looks thin.',
+                'endcaps'    => 'Fill the end caps with A products and new releases.',
+                'stray'      => 'Put stray records back where they belong and clear the tops of the bins and tables.',
             ],
-            '3. Neon signs' => [
-                'sign_diggers' => 'Plug in the "Welcome to Digger\'s Paradise" sign behind the listening station.',
-                'sign_vinyl'   => 'Plug in the "Have you heard it on vinyl" sign at the outlet behind the rock bins.',
-                'sign_disco'   => 'Plug in the "Disco es la cultura" sign on the stage.',
+            '3. Fridge, desk & bathroom' => [
+                'drink_fridge' => 'Make sure the drink fridge and snack rack are full. Send a supply request if either is low.',
+                'front_desk'   => 'Tidy the front desk and the bathroom.',
             ],
-            '4. Records: walls & bins' => [
-                'walls_full'    => 'Fill the walls with records so there is no blank space showing.',
-                'bins_full'     => 'Fill in any bin that looks thin so none of them look empty.',
-                'bins_neat'     => 'Straighten the bins so everything is neat and nothing is out of place.',
-                'trading_cards' => 'Organize the trading card bin.',
-                'endcaps'       => 'Fill the end caps with A products and new releases, leaving no blank space.',
-            ],
-            '5. Tidy the floor' => [
-                'stray'          => 'Put any stray records or products back where they belong.',
-                'surfaces_clear' => 'Clear the tops of the bins and tables so no cassettes, DVDs, or drinks are left out.',
-                'clothes_hung'   => 'Hang up all clothing by the clothing rack so there is nothing on the floor.',
-                'stage_neat'     => 'Tidy the stage so it has no trash or stray items and looks like a cozy living room.',
-            ],
-            '6. Fridge & snacks' => [
-                'drink_fridge' => 'Make sure the drink fridge is full, and send a supply request if it is running low.',
-                'snack_rack'   => 'Make sure the snack rack is full, and send a supply request if it is running low.',
-            ],
-            '7. Front desk & bathroom' => [
-                'front_desk' => 'Clear the front desk so it is tidy and free of any trash or boxes.',
-                'bathroom'   => 'Make sure the bathroom is tidy and clean.',
-            ],
-            '8. Last: floor & trash' => [
-                'floor'     => 'Sweep and mop the floor.',
-                'trash_all' => 'Empty all the trash bins and take the trash out to the back dumpster.',
+            '4. Last: floor & trash' => [
+                'floor' => 'Sweep the floor and take the trash out to the back dumpster.',
             ],
         ],
         'pico' => [
