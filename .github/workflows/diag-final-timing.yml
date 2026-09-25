@@ -1,0 +1,72 @@
+# READ-ONLY diagnostic: cold vs warm timing for the REAL unpaidListeningParties()
+# call, both in the same script run so no deploy happens in between (deploy.sh
+# likely clears cache, which is why an earlier separate "warm" check still
+# looked cold). One-off; delete after use.
+name: Diag final timing
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Cold then warm, same run (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $locations = \DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1)->orderBy('name')->pluck('name', 'id');
+            $lcc = app(\App\Http\Controllers\ListingCommissionController::class);
+            $ref = new \ReflectionMethod($lcc, 'unpaidListeningParties');
+            $ref->setAccessible(true);
+
+            foreach (['2026-09-12','2026-09-13','2026-09-15','2026-09-18'] as $d) {
+                \Cache::forget('sling_shifts_live_' . $d);
+            }
+
+            $t0 = microtime(true);
+            $rows1 = $ref->invoke($lcc, $businessId, $locations, '2026-08-26', '2026-09-25');
+            $t1 = microtime(true);
+            echo "run 1 (cold): " . round($t1 - $t0, 2) . "s, " . count($rows1) . " rows\n";
+
+            $t0 = microtime(true);
+            $rows2 = $ref->invoke($lcc, $businessId, $locations, '2026-08-26', '2026-09-25');
+            $t1 = microtime(true);
+            echo "run 2 (should be warm): " . round($t1 - $t0, 2) . "s, " . count($rows2) . " rows\n";
+            PHP
+            echo "=== done ==="
