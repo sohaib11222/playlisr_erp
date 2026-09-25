@@ -318,6 +318,44 @@ class ListingCommissionController extends Controller
             \Carbon::now()->subDays(45)->toDateString(), \Carbon::now()->toDateString()
         );
 
+        // Fold the same unpaid-party estimate into the main "what to pay"
+        // table as its own column, right next to Sales/Listing owed (Sarah
+        // 2026-09-25: "why is it separate!!!!") instead of only a banner
+        // pointing elsewhere. Per-person total across every unpaid party in
+        // the window; still an ESTIMATE (real Clover ring data, but nothing's
+        // actually recorded until paid on /admin/party-bonus), so it's kept
+        // out of Pay now / Mark paid rather than silently folded into money
+        // this page can already send.
+        $partyEstByUser = []; // uid => ['amount' => total, 'name' => ...]
+        foreach ($unpaidParties as $u) {
+            foreach (($u['estimate']['staff'] ?? []) as $s) {
+                $uid = (int) $s['uid'];
+                if (!isset($partyEstByUser[$uid])) { $partyEstByUser[$uid] = ['amount' => 0.0, 'name' => $s['name']]; }
+                $partyEstByUser[$uid]['amount'] += (float) $s['amount'];
+            }
+        }
+        $peopleById = $people->keyBy('user_id');
+        foreach ($partyEstByUser as $uid => $v) {
+            if ($peopleById->has($uid)) {
+                $peopleById[$uid]->party_est_owed = round($v['amount'], 2);
+            } else {
+                // Someone who only shows up via a party estimate (no other
+                // listing/sales activity in this window) still needs a row.
+                $people->push((object) [
+                    'user_id' => $uid, 'name' => $v['name'], 'store' => '',
+                    'total_comm' => 0.0, 'total_paid_all' => 0.0,
+                    'listed_count' => 0, 'earned' => 0.0, 'paid' => 0.0,
+                    'sales_achieved' => 0.0, 'sales_goal' => 0.0, 'sales_earned' => 0.0, 'sales_paid' => 0.0,
+                    'sales_disp' => 0.0, 'listing_disp' => 0.0,
+                    'total_owed_now' => 0.0, 'payroll_memo' => '',
+                    'party_est_owed' => round($v['amount'], 2),
+                ]);
+            }
+        }
+        foreach ($people as $p) {
+            if (!isset($p->party_est_owed)) { $p->party_est_owed = 0.0; }
+        }
+
         // Never let a proxy/browser serve a stale copy of this page — the owed
         // numbers must always reflect the latest payouts, or a just-paid person
         // can appear to still owe money.

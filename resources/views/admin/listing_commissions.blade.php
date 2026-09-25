@@ -139,7 +139,7 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
             @php
-                $owedPeople = $people->filter(function ($p) { return abs($p->total_owed_now) >= 0.005; })->values();
+                $owedPeople = $people->filter(function ($p) { return abs($p->total_owed_now) >= 0.005 || ($p->party_est_owed ?? 0) >= 0.005; })->values();
                 $paidUpCount = $people->count() - $owedPeople->count();
             @endphp
             <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#23303d;">
@@ -166,7 +166,8 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Does NOT include Listening party — that money is already sent, never owed. See the unpaid-parties banner above for what's still outstanding on parties.">Pay now</th>
+                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Estimated share of any listening party with nothing paid out yet (last 45 days), from real Clover ring data. NOT included in Pay now - go confirm and pay it on the party-bonus page.">Party owed (est.)</th>
+                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Does NOT include the party estimate - that needs a separate confirm-and-pay pass.">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
                         </tr>
@@ -188,6 +189,7 @@
                                 @php $salesQb = $p->sales_disp ?? round($p->sales_net, 2); $listQb = $p->listing_disp ?? round($p->listing_net, 2); @endphp
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if(abs($salesQb) < 0.005)<span class="text-muted">—</span>@elseif($salesQb > 0)${{ number_format($salesQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($salesQb), 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if(abs($listQb) < 0.005)<span class="text-muted">—</span>@elseif($listQb > 0)${{ number_format($listQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($listQb), 2) }}</span>@endif</td>
+                                <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;">@if(($p->party_est_owed ?? 0) >= 0.005)<a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;">${{ number_format($p->party_est_owed, 2) }}</a>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
