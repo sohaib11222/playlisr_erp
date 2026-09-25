@@ -572,7 +572,14 @@
         .fsg-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .fsg-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#3b6d11; }
         .fsg-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
-        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
+        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 72px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; color:inherit; text-decoration:none; }
+        a.fsg-row:hover { background:#eef6e8 !important; color:inherit; text-decoration:none; }
+        .fsg-row-head { font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:0.03em; background:none !important; border-bottom:1px solid #e5e7eb; }
+        .fsg-stock { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
+        .fsg-stock.low { color:#b45309; }
+        .fsg-stock.out { color:#991b1b; }
+        .fsg-stock-unit { font-size:11px; font-weight:400; color:#6b7280; margin-left:2px; }
+        .fsg-all-link { font-size:12px; color:#3b6d11; margin-left:10px; }
         .fsg-row:nth-child(odd) { background:#f8fafc; }
         .fsg-row > div { min-width:0; }
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
@@ -596,7 +603,7 @@
             <div class="fsg-title">Fastest selling genres</div>
             <div class="fsg-sub" style="margin-bottom:0;" data-fsg-range-label>Last {{ $fsg_ranges[array_search($fsg_default_range, array_column($fsg_ranges, 'key'))]['label'] }}</div>
         </div>
-        <div class="fsg-sub">Avg days from intake to sale — lower is faster (genres with ≥5 sales)</div>
+        <div class="fsg-sub">Avg days from intake to sale — lower is faster (genres with ≥5 sales). Click a genre to see every item sold and how long each took. <a href="{{ action('HomeController@fastestSellersDetail') }}" class="fsg-all-link" data-fsg-all-link>See all items sold →</a></div>
 
         <div class="fsg-tab-row" id="fsg-store-tabs">
             {{-- Store tabs — Both / Hollywood / Pico (mirrors MTD/YTD scope keys). --}}
@@ -617,8 +624,16 @@
             @foreach($fsg_scope_keys as $i => $scope_key)
                 @php $rows = $fsg_scope[$range['key']][$scope_key]['rows']; @endphp
                 <div class="fsg-body" data-range="{{ $range['key'] }}" data-scope="{{ $scope_key }}" style="display: {{ ($range['key'] === $fsg_default_range && $i === 0) ? 'block' : 'none' }};">
+                    @if($rows->isNotEmpty())
+                        <div class="fsg-row fsg-row-head">
+                            <div></div><div>Genre</div><div></div>
+                            <div style="text-align:right;">Avg sell</div>
+                            <div style="text-align:right;">Left</div>
+                            <div></div>
+                        </div>
+                    @endif
                     @forelse($rows as $idx => $r)
-                        <div class="fsg-row">
+                        <a class="fsg-row" href="{{ $r->detail_url }}" title="See every {{ $r->genre }} item sold and how long each took">
                             <div class="fsg-rank">{{ $idx + 1 }}</div>
                             <div>
                                 <p class="fsg-label">{{ $r->genre }}@if($r->category)<span class="fsg-cat">{{ $r->category }}</span>@endif<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
@@ -627,8 +642,11 @@
                             <div class="fsg-days">
                                 <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
                             </div>
+                            <div class="fsg-stock {{ $r->in_stock <= 0 ? 'out' : ($r->in_stock < $r->units / 4 ? 'low' : '') }}" title="Units on hand right now">
+                                {{ number_format($r->in_stock) }}<span class="fsg-stock-unit">left</span>
+                            </div>
                             <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
-                        </div>
+                        </a>
                     @empty
                         <div class="fsg-empty">No genres with ≥5 sales in this window.</div>
                     @endforelse
@@ -1558,6 +1576,8 @@
                 $fsgModule.find('.fsg-body').hide();
                 $fsgModule.find('.fsg-body[data-range="' + fsgCurrentRange + '"][data-scope="' + fsgCurrentScope + '"]').show();
                 $fsgModule.find('[data-fsg-range-label]').text('Last ' + $fsgModule.find('.fsg-range-select option:selected').text());
+                var $all = $fsgModule.find('[data-fsg-all-link]');
+                $all.attr('href', $all.attr('href').split('?')[0] + '?scope=' + encodeURIComponent(fsgCurrentScope) + '&range=' + encodeURIComponent(fsgCurrentRange));
             }
             $fsgModule.on('click', '.fsg-tab', function () {
                 fsgCurrentScope = $(this).data('scope');
@@ -1569,6 +1589,7 @@
                 fsgCurrentRange = $(this).val();
                 fsgRefresh();
             });
+            fsgRefresh();
         }
 
         // All-Stores MTD/YTD scope toggle. Swap the visible .sales-scope-body

@@ -693,10 +693,12 @@ class HomeController extends Controller
             // at very different speeds.
             $rows = $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
                     NULLIF(c.name, '') as category,
+                    p.category_id as category_id,
+                    p.sub_category_id as sub_category_id,
                     SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
                     SUM(tslp.quantity) as units,
                     SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
-                ->groupBy('sc.name', 'c.name')
+                ->groupBy('p.category_id', 'p.sub_category_id', 'sc.name', 'c.name')
                 ->havingRaw('SUM(tslp.quantity) >= 5')
                 ->orderBy('avg_sell_days', 'asc')
                 ->limit(200)
@@ -720,12 +722,32 @@ class HomeController extends Controller
             });
         };
 
+        // Units still on the shelf per [category × genre], per scope —
+        // range-independent, so one query per scope rather than per combo.
+        $fsg_stock = [];
+        foreach ($sales_scope_defs as $def) {
+            $fsg_stock[$def['key']] = $this->fsgStockByGenre($business_id, $def['loc_id']);
+        }
+
         $fsg_scope = [];
         foreach ($fsg_ranges as $range) {
             foreach ($sales_scope_defs as $def) {
+                $stock = $fsg_stock[$def['key']];
+                $rows = $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end)
+                    ->map(function ($r) use ($stock, $def, $range) {
+                        $r = clone $r;
+                        $r->in_stock = (int) ($stock[($r->category_id ?? 0) . ':' . ($r->sub_category_id ?? 0)] ?? 0);
+                        $r->detail_url = action('HomeController@fastestSellersDetail', [
+                            'scope'        => $def['key'],
+                            'range'        => $range['key'],
+                            'category_id'  => $r->category_id ?? 0,
+                            'sub_category_id' => $r->sub_category_id ?? 0,
+                        ]);
+                        return $r;
+                    });
                 $fsg_scope[$range['key']][$def['key']] = [
                     'label' => $def['label'],
-                    'rows'  => $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end),
+                    'rows'  => $rows,
                 ];
             }
         }
@@ -1120,6 +1142,219 @@ class HomeController extends Controller
             'ts_stores', 'ts_data', 'ts_insight', 'ts_ranges', 'ts_default_range',
             // Fastest selling genres module
             'fsg_scope', 'fsg_scope_keys', 'fsg_ranges', 'fsg_default_range'
+        ));
+    }
+
+    /**
+     * Units on hand per [category × sub_category] for the fastest-selling
+     * genres module, keyed "category_id:sub_category_id" (0 = none).
+     * Null $location_id = every location.
+     */
+    private function fsgStockByGenre($business_id, $location_id)
+    {
+        $q = \DB::table('variation_location_details as vld')
+            ->join('products as p', 'p.id', '=', 'vld.product_id')
+            ->where('p.business_id', $business_id)
+            ->where('p.enable_stock', 1)
+            ->where('vld.qty_available', '>', 0);
+        if (!is_null($location_id)) {
+            $q->where('vld.location_id', $location_id);
+        }
+        return $q->selectRaw('COALESCE(p.category_id, 0) as cid, COALESCE(p.sub_category_id, 0) as scid, SUM(vld.qty_available) as qty')
+            ->groupBy('p.category_id', 'p.sub_category_id')
+            ->get()
+            ->mapWithKeys(function ($r) { return [$r->cid . ':' . $r->scid => (float) $r->qty]; })
+            ->all();
+    }
+
+    /**
+     * Drill-down behind the home "Fastest selling genres" module: every
+     * item sold in the window with how long it sat between intake and
+     * sale, filterable by days-to-sell, genre, store and date range.
+     * Same intake→sale pairing as the home rollup
+     * (transaction_sell_lines_purchase_lines).
+     */
+    public function fastestSellersDetail(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+
+        $locs = \DB::table('business_locations')->where('business_id', $business_id)->get();
+        $findLoc = function ($needle) use ($locs) {
+            foreach ($locs as $l) {
+                if (stripos($l->name, $needle) !== false) return $l;
+            }
+            return null;
+        };
+        $scopes = ['all' => ['label' => 'All stores', 'loc_id' => null]];
+        foreach (['hollywood', 'pico'] as $needle) {
+            if ($l = $findLoc($needle)) {
+                $scopes[$needle] = ['label' => $l->name, 'loc_id' => $l->id];
+            }
+        }
+        $scope = $request->input('scope', 'all');
+        if (!isset($scopes[$scope])) {
+            $scope = 'all';
+        }
+        $location_id = $scopes[$scope]['loc_id'];
+
+        // Date window: explicit start/end win over the preset range.
+        $ranges = collect($this->dashboardRangeDefs())->keyBy('key');
+        $range = $request->input('range', '3mo');
+        if (!$ranges->has($range) && $range !== 'custom') {
+            $range = '3mo';
+        }
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        try {
+            if ($range === 'custom' && $start_date && $end_date) {
+                $start = \Carbon::parse($start_date)->startOfDay();
+                $end = \Carbon::parse($end_date)->endOfDay();
+            } else {
+                throw new \Exception('preset');
+            }
+        } catch (\Exception $e) {
+            if ($range === 'custom') {
+                $range = '3mo';
+            }
+            $start = $ranges->get($range)['start'];
+            $end = \Carbon::now()->endOfDay();
+        }
+        $start_date = $start->format('Y-m-d');
+        $end_date = $end->format('Y-m-d');
+
+        // Genre filter. category_id / sub_category_id of 0 = "none";
+        // absent (empty string) = any.
+        $category_id = $request->input('category_id', '');
+        $sub_category_id = $request->input('sub_category_id', '');
+        $category_id = $category_id === '' || $category_id === null ? '' : (int) $category_id;
+        $sub_category_id = $sub_category_id === '' || $sub_category_id === null ? '' : (int) $sub_category_id;
+
+        // Days-to-sell filter: presets or free min/max.
+        $speed_presets = [
+            ''        => ['label' => 'Any time',        'min' => null, 'max' => null],
+            'same'    => ['label' => 'Same day',        'min' => 0,    'max' => 0],
+            'week'    => ['label' => '1 week or less',  'min' => 0,    'max' => 7],
+            '8-21'    => ['label' => '8–21 days',       'min' => 8,    'max' => 21],
+            '22-45'   => ['label' => '22–45 days',      'min' => 22,   'max' => 45],
+            '46-90'   => ['label' => '46–90 days',      'min' => 46,   'max' => 90],
+            '91-180'  => ['label' => '91–180 days',     'min' => 91,   'max' => 180],
+            '181+'    => ['label' => 'Over 180 days',   'min' => 181,  'max' => null],
+        ];
+        $speed = (string) $request->input('speed', '');
+        if (!isset($speed_presets[$speed])) {
+            $speed = '';
+        }
+        $min_days = $request->input('min_days');
+        $max_days = $request->input('max_days');
+        $min_days = is_numeric($min_days) ? max(0, (int) $min_days) : $speed_presets[$speed]['min'];
+        $max_days = is_numeric($max_days) ? max(0, (int) $max_days) : $speed_presets[$speed]['max'];
+
+        $sort_options = [
+            'fastest' => 'Fastest first',
+            'slowest' => 'Slowest first',
+            'recent'  => 'Most recent sale',
+            'price'   => 'Highest price',
+        ];
+        $sort = $request->input('sort', 'fastest');
+        if (!isset($sort_options[$sort])) {
+            $sort = 'fastest';
+        }
+
+        $days_expr = 'DATEDIFF(sale.transaction_date, purchase.transaction_date)';
+        $base = \DB::table('transaction_sell_lines_purchase_lines as tslp')
+            ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+            ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+            ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+            ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 'sale.location_id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->whereNull('sale.import_source')
+            ->whereBetween('sale.transaction_date', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->whereNotNull('purchase.transaction_date')
+            ->whereRaw("$days_expr >= 0");
+        if (!is_null($location_id)) {
+            $base->where('sale.location_id', $location_id);
+        }
+        if ($category_id !== '') {
+            $category_id === 0 ? $base->whereNull('p.category_id') : $base->where('p.category_id', $category_id);
+        }
+        if ($sub_category_id !== '') {
+            $sub_category_id === 0 ? $base->whereNull('p.sub_category_id') : $base->where('p.sub_category_id', $sub_category_id);
+        }
+        if (!is_null($min_days)) {
+            $base->whereRaw("$days_expr >= ?", [$min_days]);
+        }
+        if (!is_null($max_days)) {
+            $base->whereRaw("$days_expr <= ?", [$max_days]);
+        }
+
+        $summary = (clone $base)->selectRaw("SUM(tslp.quantity) as units,
+                SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue,
+                SUM($days_expr * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_days,
+                MIN($days_expr) as min_days,
+                MAX($days_expr) as max_days")
+            ->first();
+
+        // Units still on hand for each product sold (same location scope).
+        $stock_sub = \DB::table('variation_location_details')
+            ->selectRaw('variation_id, SUM(qty_available) as qty')
+            ->when(!is_null($location_id), function ($q) use ($location_id) {
+                $q->where('location_id', $location_id);
+            })
+            ->groupBy('variation_id');
+
+        $q = (clone $base)
+            ->leftJoinSub($stock_sub, 'stk', 'stk.variation_id', '=', 'tsl.variation_id')
+            ->selectRaw("p.id as product_id, p.name as product_name, p.artist, v.sub_sku as sku,
+                COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre, NULLIF(c.name, '') as category,
+                bl.name as location_name,
+                purchase.transaction_date as intake_date, sale.transaction_date as sale_date,
+                sale.id as sale_id, sale.invoice_no,
+                $days_expr as days_to_sell,
+                tslp.quantity as qty, tsl.unit_price_inc_tax as price,
+                COALESCE(stk.qty, 0) as in_stock");
+        if ($sort === 'slowest') {
+            $q->orderByRaw("$days_expr DESC")->orderByDesc('sale.transaction_date');
+        } elseif ($sort === 'recent') {
+            $q->orderByDesc('sale.transaction_date');
+        } elseif ($sort === 'price') {
+            $q->orderByDesc('tsl.unit_price_inc_tax');
+        } else {
+            $q->orderByRaw("$days_expr ASC")->orderByDesc('sale.transaction_date');
+        }
+        $items = $q->paginate(100)->appends($request->query());
+
+        // Genre dropdown: every [category × sub_category] pair that has products.
+        $genre_options = \DB::table('products as p')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)
+            ->selectRaw("COALESCE(p.category_id, 0) as cid, COALESCE(p.sub_category_id, 0) as scid,
+                COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre, NULLIF(c.name, '') as category")
+            ->groupBy('p.category_id', 'p.sub_category_id', 'sc.name', 'c.name')
+            ->orderBy('c.name')->orderBy('sc.name')
+            ->get();
+
+        $genre_label = null;
+        if ($category_id !== '' || $sub_category_id !== '') {
+            $match = $genre_options->first(function ($g) use ($category_id, $sub_category_id) {
+                return ($category_id === '' || (int) $g->cid === $category_id)
+                    && ($sub_category_id === '' || (int) $g->scid === $sub_category_id);
+            });
+            $genre_label = $match ? trim($match->genre . ($match->category ? ' · ' . $match->category : '')) : null;
+        }
+
+        return view('report.fastest_sellers_detail', compact(
+            'scopes', 'scope', 'ranges', 'range', 'start_date', 'end_date',
+            'category_id', 'sub_category_id', 'genre_options', 'genre_label',
+            'speed_presets', 'speed', 'min_days', 'max_days',
+            'sort_options', 'sort', 'summary', 'items'
         ));
     }
 
