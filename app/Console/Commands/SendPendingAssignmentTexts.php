@@ -147,8 +147,8 @@ class SendPendingAssignmentTexts extends Command
                 . ($shiftStore ? ' at ' . (TaskController::STORE_LABELS[$shiftStore] ?? ucfirst($shiftStore)) : '')
                 . ($queued->count() ? " ({$queued->count()} new)" : '')
                 . ", and {$totalAssigned} tasks/projects assigned in total"
-                . '. Check them in the ERP: ' . self::myTasksUrl()
-                . ($shiftStore === 'pico' ? '. Not sure what to do? Contact Zak.' : '. Not sure what to do? Contact Luis.');
+                . ($shiftStore === 'pico' ? '. Not sure what to do? Contact Zak' : '. Not sure what to do? Contact Luis')
+                . '. Check them in the ERP: ' . self::myTasksUrl();
 
             // ERP number first; otherwise the phone on their Sling profile.
             $phone = trim((string) ($user->contact_number ?? ''));
