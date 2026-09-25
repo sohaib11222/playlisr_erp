@@ -9831,13 +9831,25 @@ class ReportController extends Controller
      * yet or the call fails for any reason, so callers can fall back to
      * the static snapshot with zero behavior change until it's wired up.
      *
-     * Requires a Page Access Token with instagram_manage_insights, pasted
-     * at /communications/instagram-settings (same token store the DM
-     * webhook uses — no separate setup needed once that's done).
+     * Requires a Page Access Token pasted at /communications/instagram-settings
+     * (same token store the DM webhook uses — no separate setup needed once
+     * that's done).
      *
-     * NOT YET VERIFIED against a real token/account — the Graph API's
-     * exact response shape for the follower_count insights metric should
-     * be spot-checked the first time a token is actually configured.
+     * Verified 2026-09-25 against the real connected account. Two things the
+     * original version got wrong, now fixed:
+     *   1. This token comes from the "API setup with Instagram login" flow
+     *      (an IGAA-prefixed Instagram User token), not a Facebook Page
+     *      token — it only works against graph.instagram.com, not
+     *      graph.facebook.com. /me?fields=instagram_business_account 404s
+     *      on this token type; the account's own numeric id comes back as
+     *      /me?fields=user_id instead.
+     *   2. The follower_count insights metric is NOT a running total — Meta
+     *      returns each day's *net change* in followers, confirmed by a live
+     *      call returning values like 0,0,3,5,5,6,7 for a brand-new-ish
+     *      account. The only real running total the API exposes is the
+     *      live "now" count via {ig-user-id}?fields=followers_count, so the
+     *      historical series here is reconstructed by walking the daily
+     *      deltas backward from that live number.
      */
     protected function fetchLiveInstagramFollowers(string $start_date, string $end_date): ?array
     {
@@ -9846,14 +9858,30 @@ class ReportController extends Controller
             return null;
         }
 
+        // The live followers_count below is a snapshot as of right now, so
+        // it can only anchor the series correctly when the range runs
+        // through today — otherwise walking deltas backward from "now"
+        // would bake in growth that happened after the requested end date.
+        if (\Carbon::parse($end_date)->lt(\Carbon::today())) {
+            return null;
+        }
+
         try {
-            $graphVersion = 'v19.0';
-            $meUrl = "https://graph.facebook.com/{$graphVersion}/me?fields=instagram_business_account&access_token=" . urlencode($token);
+            $graphVersion = 'v21.0';
+            $meUrl = "https://graph.instagram.com/{$graphVersion}/me?fields=user_id&access_token=" . urlencode($token);
             $meDet = $this->httpGetJsonPlain($meUrl, 10);
-            $igUserId = $meDet['decoded']['instagram_business_account']['id'] ?? null;
+            $igUserId = $meDet['decoded']['user_id'] ?? null;
             if (!$igUserId) {
                 return null;
             }
+
+            $profileUrl = "https://graph.instagram.com/{$graphVersion}/{$igUserId}?fields=followers_count&access_token=" . urlencode($token);
+            $profileDet = $this->httpGetJsonPlain($profileUrl, 10);
+            $followersNow = $profileDet['decoded']['followers_count'] ?? null;
+            if (!is_int($followersNow) && !is_numeric($followersNow)) {
+                return null;
+            }
+            $followersNow = (int) $followersNow;
 
             $since = \Carbon::parse($start_date)->startOfDay()->timestamp;
             // Meta's follower_count insights metric only retains a limited
@@ -9861,35 +9889,46 @@ class ReportController extends Controller
             // requesting further back than that will just come back with
             // fewer points than asked for, not an error.
             $until = \Carbon::parse($end_date)->endOfDay()->timestamp;
-            $insightsUrl = "https://graph.facebook.com/{$graphVersion}/{$igUserId}/insights"
+            $insightsUrl = "https://graph.instagram.com/{$graphVersion}/{$igUserId}/insights"
                 . "?metric=follower_count&period=day&since={$since}&until={$until}&access_token=" . urlencode($token);
             $insightsDet = $this->httpGetJsonPlain($insightsUrl, 10);
             $values = $insightsDet['decoded']['data'][0]['values'] ?? null;
-            if (!is_array($values) || empty($values)) {
+            if (!is_array($values)) {
                 return null;
             }
 
-            $daily = [];
+            $deltas = [];
             foreach ($values as $point) {
                 if (!isset($point['end_time']) || !isset($point['value'])) {
                     continue;
                 }
-                $daily[] = [
+                $deltas[] = [
                     'date' => \Carbon::parse($point['end_time'])->format('Y-m-d'),
-                    'followers' => (int) $point['value'],
+                    'change' => (int) $point['value'],
                 ];
             }
-            if (empty($daily)) {
-                return null;
+            usort($deltas, fn($a, $b) => strcmp($a['date'], $b['date']));
+
+            // Walk backward from the live "now" total through each day's net
+            // change to reconstruct a running total per day.
+            $running = $followersNow;
+            $daily = [];
+            for ($i = count($deltas) - 1; $i >= 0; $i--) {
+                $daily[$i] = ['date' => $deltas[$i]['date'], 'followers' => $running];
+                $running -= $deltas[$i]['change'];
             }
-            usort($daily, fn($a, $b) => strcmp($a['date'], $b['date']));
+            ksort($daily);
+            $daily = array_values($daily);
+
+            $followersStart = empty($deltas) ? $followersNow : $running;
+            $followersStartDate = empty($deltas) ? $end_date : $start_date;
 
             return [
                 'daily' => $daily,
-                'followers_start' => $daily[0]['followers'],
-                'followers_start_date' => $daily[0]['date'],
-                'followers_now' => end($daily)['followers'],
-                'followers_now_date' => end($daily)['date'],
+                'followers_start' => $followersStart,
+                'followers_start_date' => $followersStartDate,
+                'followers_now' => $followersNow,
+                'followers_now_date' => $end_date,
             ];
         } catch (\Throwable $e) {
             \Log::warning('fetchLiveInstagramFollowers failed: ' . $e->getMessage());
