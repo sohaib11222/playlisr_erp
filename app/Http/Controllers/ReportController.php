@@ -14780,10 +14780,27 @@ class ReportController extends Controller
 
     /**
      * Persist the locked-target map back to disk.
+     *
+     * MUST merge onto whatever's on disk right now, not blindly overwrite with
+     * the in-memory map — that map was loaded at the START of this request, so
+     * on a live multi-user ERP a concurrent request (another page also calling
+     * salesBonusByUser) can lock a NEW day in between our load and our save.
+     * Overwriting wholesale would silently erase that day's lock; next render
+     * it recomputes fresh against a LATER (usually higher) store average,
+     * quietly shrinking an already-paid day's bonus all over again — exactly
+     * the "commission keeps sliding" Sarah kept seeing (2026-09-25). Disk wins
+     * on any key both sides have (it may be newer than our load), our map only
+     * contributes keys disk doesn't have yet. Atomic tmp+rename so a save
+     * can't be read half-written either.
      */
     protected function saveDailyTargetSnapshots($business_id, array $snapshots)
     {
-        file_put_contents($this->dailyTargetSnapshotPath($business_id), json_encode($snapshots));
+        $path = $this->dailyTargetSnapshotPath($business_id);
+        $current = is_file($path) ? (json_decode(file_get_contents($path), true) ?: []) : [];
+        $merged = array_merge($snapshots, $current);
+        $tmp = $path . '.tmp';
+        file_put_contents($tmp, json_encode($merged));
+        @rename($tmp, $path);
     }
 
     /**
