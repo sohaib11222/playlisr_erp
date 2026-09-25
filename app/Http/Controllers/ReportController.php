@@ -8620,11 +8620,11 @@ class ReportController extends Controller
             $data['facebook']['daily'] = $liveFacebook['daily'];
         }
 
-        // TikTok has no live API — but it does have real, exact weekly
-        // checkpoints (hand-collected, see the array above), so this filters
-        // those down to just the ones inside the selected range, instead of
-        // always showing the same fixed campaign-wide start/now regardless
-        // of the filter.
+        // TikTok's weekly checkpoints are real, exact numbers (hand-
+        // collected, see the array above), so this filters those down to
+        // just the ones inside the selected range, instead of always
+        // showing the same fixed campaign-wide start/now regardless of the
+        // filter.
         $weeklyInRange = array_values(array_filter($data['tiktok']['weekly_followers'], function ($w) use ($start_date, $end_date) {
             return $w['date'] >= $start_date && $w['date'] <= $end_date;
         }));
@@ -8632,6 +8632,19 @@ class ReportController extends Controller
         if (!empty($weeklyInRange)) {
             $data['tiktok']['followers_start'] = $weeklyInRange[0]['followers'];
             $data['tiktok']['followers_now'] = end($weeklyInRange)['followers'];
+        }
+
+        // Swap in the real live "now" totals if the TikTok integration is
+        // connected — same pattern as Instagram: only "now" is live (a
+        // snapshot as of right now), "start of range" stays the real
+        // weekly checkpoint since TikTok's API has no historical endpoint.
+        if (\Carbon::parse($end_date)->gte(\Carbon::today())) {
+            $liveTiktok = $this->fetchLiveTikTokStats();
+            if ($liveTiktok) {
+                $data['tiktok']['is_live'] = true;
+                $data['tiktok']['followers_now'] = $liveTiktok['followers_now'];
+                $data['tiktok']['total_likes'] = $liveTiktok['total_likes'];
+            }
         }
 
         return [
@@ -10040,6 +10053,67 @@ class ReportController extends Controller
             \Log::warning('fetchLiveFacebookFollowers failed: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Real, live TikTok stats (followers, all-time likes, video count) for
+     * the Archer report — pulled from the TikTok user/info endpoint using
+     * the OAuth token pasted at /communications/tiktok-settings. Returns
+     * null (never throws) whenever the integration isn't connected or the
+     * call fails, so callers fall back to the static weekly checkpoints
+     * with zero behavior change.
+     *
+     * Verified 2026-09-25 against the real connected account.
+     */
+    protected function fetchLiveTikTokStats(): ?array
+    {
+        $token = \App\Http\Controllers\TiktokAuthController::validAccessToken();
+        if (!$token) {
+            return null;
+        }
+
+        try {
+            $url = 'https://open.tiktokapis.com/v2/user/info/?fields=follower_count,likes_count,video_count';
+            $det = $this->httpGetJsonBearer($url, $token, 10);
+            $user = $det['decoded']['data']['user'] ?? null;
+            if (!is_array($user) || !isset($user['follower_count'])) {
+                return null;
+            }
+
+            return [
+                'followers_now' => (int) $user['follower_count'],
+                'total_likes' => (int) ($user['likes_count'] ?? 0),
+                'video_count' => (int) ($user['video_count'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('fetchLiveTikTokStats failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** GET + JSON decode with a Bearer auth header — for APIs (e.g. TikTok) that take auth via header rather than query param. */
+    protected function httpGetJsonBearer(string $url, string $token, int $timeoutSeconds = 8): array
+    {
+        $det = ['http_code' => 0, 'curl_error' => '', 'body' => '', 'decoded' => null];
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, min(5, $timeoutSeconds));
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $token]);
+            $body = curl_exec($ch);
+            $det['http_code'] = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $det['curl_error'] = (string) curl_error($ch);
+            curl_close($ch);
+            $det['body'] = is_string($body) ? $body : '';
+            if ($det['curl_error'] === '' && $det['body'] !== '') {
+                $det['decoded'] = json_decode($det['body'], true);
+            }
+        } catch (\Throwable $e) {
+            $det['curl_error'] = $e->getMessage();
+        }
+        return $det;
     }
 
     /** Plain HTTPS GET + JSON decode, no custom auth header — for calling third-party APIs (e.g. Meta Graph API) that take their own auth via query param. */

@@ -77,7 +77,11 @@
 {{-- ═══════════ TIKTOK ═══════════ --}}
 <h4 style="margin-top:24px;">
     TikTok
-    <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Real, filtered to this range</span>
+    @if(!empty($data['tiktok']['is_live']))
+        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
+    @else
+        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Real, filtered to this range</span>
+    @endif
 </h4>
 @if(empty($data['tiktok']['weekly_in_range']))
     <div class="alert alert-warning">No TikTok checkpoint falls inside {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}. Real checkpoints exist weekly from {{ archerFmtDate($data['tiktok']['weekly_followers'][0]['date']) }} on &mdash; widen the range to see them.</div>
@@ -87,7 +91,8 @@
             {!! archerCard(
                 'Followers',
                 number_format($data['tiktok']['followers_start']) . ' &rarr; ' . number_format($data['tiktok']['followers_now']),
-                archerFmtDate($data['tiktok']['weekly_in_range'][0]['date']) . ' &ndash; ' . archerFmtDate(end($data['tiktok']['weekly_in_range'])['date']),
+                (!empty($data['tiktok']['is_live']) ? 'now live &middot; ' : '')
+                    . archerFmtDate($data['tiktok']['weekly_in_range'][0]['date']) . ' &ndash; ' . archerFmtDate(end($data['tiktok']['weekly_in_range'])['date']),
                 '#2ecc71'
             ) !!}
         </div>

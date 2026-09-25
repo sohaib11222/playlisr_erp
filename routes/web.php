@@ -260,6 +260,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/communications/instagram-settings', 'InstagramWebhookController@settings')->name('instagram.settings');
     Route::post('/communications/instagram-settings', 'InstagramWebhookController@saveSettings')->name('instagram.settings.save');
 
+    // Admin-only: paste the TikTok Login Kit client key/secret + OAuth
+    // tokens — powers live follower/likes/video counts on the Archer report.
+    Route::get('/communications/tiktok-settings', 'TiktokAuthController@settings')->name('tiktok.settings');
+    Route::post('/communications/tiktok-settings', 'TiktokAuthController@saveSettings')->name('tiktok.settings.save');
+
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
     Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
