@@ -720,12 +720,47 @@ class HomeController extends Controller
             });
         };
 
+        // Units currently on hand per genre × category (Clarissa 2026-09-25:
+        // "how many are remaining in this genre"). Keyed the same way as the
+        // rollup rows, computed once per store scope and reused across ranges.
+        $fsgStock = function ($location_id) use ($business_id) {
+            $q = \DB::table('variation_location_details as vld')
+                ->join('products as p', 'p.id', '=', 'vld.product_id')
+                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->where('p.business_id', $business_id)
+                ->where('vld.qty_available', '>', 0);
+            if (!is_null($location_id)) {
+                $q->where('vld.location_id', $location_id);
+            }
+            return $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
+                    COALESCE(NULLIF(c.name, ''), '') as category,
+                    SUM(vld.qty_available) as qty")
+                ->groupBy('sc.name', 'c.name')
+                ->get()
+                ->reduce(function ($map, $r) {
+                    $k = $r->genre . '|' . $r->category;
+                    $map[$k] = ($map[$k] ?? 0) + (int) $r->qty;
+                    return $map;
+                }, []);
+        };
+        $fsg_stock = [];
+        foreach ($sales_scope_defs as $def) {
+            $fsg_stock[$def['key']] = $fsgStock($def['loc_id']);
+        }
+
         $fsg_scope = [];
         foreach ($fsg_ranges as $range) {
             foreach ($sales_scope_defs as $def) {
+                $stock = $fsg_stock[$def['key']];
+                $rows = $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end)
+                    ->map(function ($r) use ($stock) {
+                        $r->in_stock = (int) ($stock[$r->genre . '|' . ($r->category ?? '')] ?? 0);
+                        return $r;
+                    });
                 $fsg_scope[$range['key']][$def['key']] = [
                     'label' => $def['label'],
-                    'rows'  => $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end),
+                    'rows'  => $rows,
                 ];
             }
         }

@@ -572,7 +572,7 @@
         .fsg-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .fsg-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#3b6d11; }
         .fsg-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
-        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
+        .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 80px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
         .fsg-row:nth-child(odd) { background:#f8fafc; }
         .fsg-row > div { min-width:0; }
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
@@ -585,6 +585,9 @@
         .fsg-days-num { font-size:14px; }
         .fsg-days-unit { font-size:11px; color:#6b7280; margin-left:2px; }
         .fsg-tag { font-size:11px; color:#6b7280; }
+        .fsg-stock { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
+        .fsg-stock.zero { color:#991b1b; }
+        .fsg-head { background:none !important; border-bottom:1px solid #e5e7eb; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.03em; }
         .fsg-tag.blazing { color:#9a3412; font-weight:600; }
         .fsg-tag.fast { color:#065f46; font-weight:600; }
         .fsg-tag.slow { color:#991b1b; }
@@ -617,6 +620,9 @@
             @foreach($fsg_scope_keys as $i => $scope_key)
                 @php $rows = $fsg_scope[$range['key']][$scope_key]['rows']; @endphp
                 <div class="fsg-body" data-range="{{ $range['key'] }}" data-scope="{{ $scope_key }}" style="display: {{ ($range['key'] === $fsg_default_range && $i === 0) ? 'block' : 'none' }};">
+                    @if(count($rows))
+                        <div class="fsg-row fsg-head"><div></div><div>Genre</div><div></div><div style="text-align:right;">Days</div><div style="text-align:right;">In stock</div><div></div></div>
+                    @endif
                     @forelse($rows as $idx => $r)
                         <div class="fsg-row">
                             <div class="fsg-rank">{{ $idx + 1 }}</div>
@@ -627,6 +633,7 @@
                             <div class="fsg-days">
                                 <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
                             </div>
+                            <div class="fsg-stock {{ $r->in_stock > 0 ? '' : 'zero' }}">{{ number_format($r->in_stock) }}</div>
                             <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
                         </div>
                     @empty
