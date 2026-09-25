@@ -660,8 +660,12 @@ class EventsController extends Controller
      * one fetched by the stable eventId, so it's the one that's always right.
      * Returns null when the bridge is unreachable (caller should keep
      * whatever it already had rather than zero it out).
+     *
+     * Public: ListingCommissionController's party-bonus estimate uses the
+     * per-store 'attending' count to size the RSVP-scaled sales window
+     * (Sarah 2026-09-25).
      */
-    protected function liveEventCounts(string $eventName, ?string $eventId): ?array
+    public function liveEventCounts(string $eventName, ?string $eventId): ?array
     {
         $bridge = $this->bridgeData($eventName, $eventId);
         if (!($bridge['ready'] ?? false)) {

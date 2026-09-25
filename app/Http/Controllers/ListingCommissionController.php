@@ -32,7 +32,6 @@ class ListingCommissionController extends Controller
     const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
     const PARTY_DEFAULT_PERCENT = 4.0; // matches the % field's own "e.g. 4" placeholder — Sarah's usual rate when nothing else is picked
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
-    const PARTY_DEFAULT_TO = '20:00';   // 8 PM
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
     // owed numbers match the leaderboard exactly.
@@ -929,17 +928,29 @@ class ListingCommissionController extends Controller
                 // the floor right then. Clearly labeled as an estimate.
                 $estimate = null;
                 if ($locId) {
-                    // Use the event's full posted window (nivessa.com/events
-                    // is accurate on this). A 90-minute-from-start cut was
-                    // tried (Sarah 2026-09-25) and dropped Quenton from the
-                    // Beabadoobee/Hollywood split, which Sarah confirmed was
-                    // wrong — his sale landed in the back half of the posted
-                    // block. Reverted; use the whole posted slot.
+                    // Real duration scales with turnout (Sarah 2026-09-25):
+                    // 1.5h by default, 2h if THAT STORE has 75+ RSVPs (a big
+                    // draw runs long — matches Beabadoobee/Hollywood, which
+                    // had a big turnout and where Sarah confirmed the extra
+                    // 30 min correctly caught Quenton's sale). RSVP count is
+                    // live from the website bridge; falls back to 2h (the old
+                    // safe default) if the bridge is unreachable, never 1.5h
+                    // on a guess.
+                    $durationMin = 120;
+                    try {
+                        $liveCounts = app(\App\Http\Controllers\EventsController::class)
+                            ->liveEventCounts((string) ($it['name'] ?? ''), $it['id'] ?? null);
+                        if ($liveCounts !== null) {
+                            $attending = (int) ($liveCounts['store'][$locKey]['attending'] ?? 0);
+                            $durationMin = $attending >= 75 ? 120 : 90;
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::warning('party estimate: liveEventCounts failed: ' . $e->getMessage());
+                    }
+
                     $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
-                    $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
                     $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
-                    $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
-                    if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
+                    $eC = $sC->copy()->addMinutes($durationMin);
 
                     $sales = $this->windowSales($businessId, $locId, $sC, $eC);
                     $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
