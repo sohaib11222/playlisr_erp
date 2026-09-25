@@ -126,6 +126,7 @@
         <div>
             <h1>Manager Checklists</h1>
             <p>Zakary (Pico) and Luis (Hollywood) - full task list, soonest due date first. Overdue items are flagged red.</p>
+            <p><a href="{{ url('/manager-checkins') }}">See Manager Check-ins</a> - what they reported on each employee.</p>
         </div>
         @include('partials.pin_button', ['pinUrl' => url('/admin/manager-checklists'), 'pinLabel' => 'Manager Checklists'])
     </div>

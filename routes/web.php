@@ -1177,6 +1177,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Owner/admin summary — both managers side by side, current period + last 7 days.
     Route::get('/admin/manager-checklists', 'ManagerChecklistController@adminSummary')->name('manager-checklist.admin');
 
+    // Manager Check-ins: short report the managers fill out after each weekly
+    // 1:1 (highlight, lowlight, ERP asks, ideas) so Jon sees every employee.
+    // JSON sidecar storage/app/manager_checkins.json, no migration.
+    Route::get('/manager-checkins', 'ManagerCheckinController@index')->name('manager-checkins.index');
+    Route::post('/manager-checkins', 'ManagerCheckinController@store')->name('manager-checkins.store');
+
     // The old Employee Tasks board was retired 2026-09-23 (never used: 0
     // completions). Its employee_tasks tables are left in place. Old links
     // and pinned favorites land on Tasks instead.
