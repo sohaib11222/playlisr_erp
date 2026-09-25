@@ -7621,6 +7621,10 @@ class ReportController extends Controller
             $query->where('vld.location_id', $location_id);
         }
 
+        // Must have been in stock for the whole window - an item added
+        // yesterday isn't "not sold in 180 days" (Sarah 2026-09-25).
+        $query->whereRaw("COALESCE($acquiredSql, p.created_at) < ?", [$cutoff]);
+
         // Totals across the full filtered set (before pagination + sort)
         $totals = (clone $query)
             ->selectRaw('COUNT(*) as total_variations, COALESCE(SUM(vld.qty_available), 0) as total_qty, COALESCE(SUM(vld.qty_available * v.sell_price_inc_tax), 0) as total_value')

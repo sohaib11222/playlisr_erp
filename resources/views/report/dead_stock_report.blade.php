@@ -113,7 +113,7 @@ body.ds-v2 .ds-pager .pagination > .active > span {
 <section class="content">
     <div class="ds-card">
         <h1 class="ds-h1">Dead Stock</h1>
-        <p class="ds-sub">Items in stock that haven't sold in the last <strong>{{ $days }} days</strong>, or have never sold. Biggest dollar value first. Click a column name to sort.</p>
+        <p class="ds-sub">Items that have been in stock longer than <strong>{{ $days }} days</strong> and haven't sold in that time. Biggest dollar value first. Click a column name to sort.</p>
     </div>
 
     <div class="ds-stats">
@@ -195,13 +195,13 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                         <td>
                             @if($acq)
                                 {{ \Carbon\Carbon::parse($acq)->format('M j, Y') }} @if(!$r->date_acquired)<span class="small-muted" title="No purchase record found - showing when the product was added">*</span>@endif
-                                <div class="small-muted">{{ number_format($r->days_on_hand) }} days</div>
+                                <div class="small-muted">{{ number_format($r->days_on_hand) }} {{ $r->days_on_hand == 1 ? 'day' : 'days' }}</div>
                             @endif
                         </td>
                         <td>
                             @if($r->last_sold)
                                 {{ \Carbon\Carbon::parse($r->last_sold)->format('M j, Y') }}
-                                <div class="small-muted">{{ number_format($r->days_since_sold) }} days ago</div>
+                                <div class="small-muted">{{ number_format($r->days_since_sold) }} {{ $r->days_since_sold == 1 ? 'day' : 'days' }} ago</div>
                             @else
                                 <span class="pill pill-never">Never sold</span>
                             @endif
