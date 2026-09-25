@@ -33,6 +33,7 @@ class ListingCommissionController extends Controller
     const PARTY_DEFAULT_PERCENT = 4.0; // matches the % field's own "e.g. 4" placeholder — Sarah's usual rate when nothing else is picked
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
     const PARTY_DEFAULT_TO = '20:00';   // 8 PM
+    const PARTY_ACTUAL_DURATION_MINUTES = 90; // real party activity is 1-1.5h even though the posted slot is 2h (Sarah 2026-09-25)
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
     // owed numbers match the leaderboard exactly.
@@ -928,11 +929,16 @@ class ListingCommissionController extends Controller
                 // the floor right then. Clearly labeled as an estimate.
                 $estimate = null;
                 if ($locId) {
+                    // Use the event's real posted start time (nivessa.com/events
+                    // is accurate on this, Sarah 2026-09-25) but cap the window
+                    // at PARTY_ACTUAL_DURATION_MINUTES from there rather than
+                    // trusting a stated end time — the posted slot is a 2-hour
+                    // "doors open" block, but the actual party runs 1-1.5h, well
+                    // short of it. Using the full posted block would scoop up
+                    // unrelated sales/staff from after the party wound down.
                     $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
-                    $winTo   = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['endTime'] ?? '')) ? $it['endTime'] : self::PARTY_DEFAULT_TO;
                     $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
-                    $eC = \Carbon::parse($edate . ' ' . $winTo . ':59');
-                    if ($eC->lte($sC)) { $sC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_FROM . ':00'); $eC = \Carbon::parse($edate . ' ' . self::PARTY_DEFAULT_TO . ':59'); }
+                    $eC = $sC->copy()->addMinutes(self::PARTY_ACTUAL_DURATION_MINUTES);
 
                     $sales = $this->windowSales($businessId, $locId, $sC, $eC);
                     $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
