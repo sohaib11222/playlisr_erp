@@ -169,6 +169,7 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                         {!! $colHead('price', 'Price', 'num') !!}
                         {!! $colHead('days_on_hand', 'In stock since') !!}
                         {!! $colHead('last_sold', 'Last sold') !!}
+                        <th class="num">Units sold (all time)</th>
                         {!! $colHead('tied_up_value', 'Value', 'num') !!}
                     </tr>
                 </thead>
@@ -206,10 +207,11 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                                 <span class="pill pill-never">Never sold</span>
                             @endif
                         </td>
+                        <td class="num">{{ rtrim(rtrim(number_format($r->units_sold, 2), '0'), '.') }}</td>
                         <td class="num value">${{ number_format($r->tied_up_value, 2) }}</td>
                     </tr>
                     @empty
-                    <tr><td colspan="8" style="text-align:center;" class="small-muted">No dead stock in this window. Everything on hand has sold recently.</td></tr>
+                    <tr><td colspan="9" style="text-align:center;" class="small-muted">No dead stock in this window. Everything on hand has sold recently.</td></tr>
                     @endforelse
                 </tbody>
             </table>

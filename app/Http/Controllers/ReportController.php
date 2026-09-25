@@ -7685,8 +7685,9 @@ class ReportController extends Controller
                 ->where('t.status', 'final')
                 ->whereIn('tsl.variation_id', $ids)
                 ->groupBy('tsl.variation_id')
-                ->selectRaw('tsl.variation_id as vid, MAX(t.transaction_date) as d')
-                ->pluck('d', 'vid')
+                ->selectRaw('tsl.variation_id as vid, MAX(t.transaction_date) as d, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as units')
+                ->get()
+                ->keyBy('vid')
                 ->all();
             $acquired = DB::table('purchase_lines as pl')
                 ->join('transactions as t', 'pl.transaction_id', '=', 't.id')
@@ -7700,7 +7701,8 @@ class ReportController extends Controller
         }
         $now = \Carbon::now();
         foreach ($items as $r) {
-            $r->last_sold = $lastSold[$r->variation_id] ?? null;
+            $r->last_sold = isset($lastSold[$r->variation_id]) ? $lastSold[$r->variation_id]->d : null;
+            $r->units_sold = isset($lastSold[$r->variation_id]) ? (float) $lastSold[$r->variation_id]->units : 0;
             $r->date_acquired = $acquired[$r->variation_id] ?? null;
             $r->days_since_sold = $r->last_sold ? \Carbon::parse($r->last_sold)->startOfDay()->diffInDays($now->copy()->startOfDay()) : null;
             $onHandFrom = $r->date_acquired ?: $r->product_created_at;
