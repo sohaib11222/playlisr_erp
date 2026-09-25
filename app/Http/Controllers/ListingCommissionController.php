@@ -868,6 +868,90 @@ class ListingCommissionController extends Controller
         return $out;
     }
 
+    // Who was on a floor shift (Cashier / Event Lead / Floor Sales) at a store
+    // during the window, from LIVE Sling — not the synced sling_shifts table,
+    // which showed a shift (Abby, Miley's party) that live Sling never had
+    // (Sarah 2026-09-25: "why don't u see that"). Validated against every
+    // confirmed party this session (Beabadoobee HW/Pico, Orville, Miley, Beck)
+    // and matched all 5 exactly, including two cases ring-data-only missed
+    // (Michael on Beck, who never rang a sale; Abby correctly absent on Miley,
+    // where the stale sync wrongly had her scheduled). Returns null if Sling
+    // isn't configured, so the caller can fall back rather than show nothing.
+    // Each date's shifts/groups/users are cached 10 minutes — one live pull is
+    // several seconds (Sling has no bulk endpoint, SlingClient::shifts() makes
+    // one call per staff member) and several parties can share a page load.
+    private function livePartyFloorStaff($locationKey, $date, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
+    {
+        $client = app(\App\Services\SlingClient::class);
+        if (!$client->isConfigured()) { return null; }
+
+        $groups = \Cache::remember('sling_groups_v1', 3600, function () use ($client) { return $client->groups(); });
+        $locationNameById = []; $positionNameById = [];
+        foreach ($groups as $g) {
+            $gid = (string) ($g['id'] ?? '');
+            if ($gid === '') { continue; }
+            $gname = trim((string) ($g['name'] ?? ''));
+            if ($gname === '') { continue; }
+            $gtype = strtolower(trim((string) ($g['type'] ?? '')));
+            if ($gtype === 'location') { $locationNameById[$gid] = $gname; }
+            elseif ($gtype === 'position') { $positionNameById[$gid] = $gname; }
+        }
+
+        $slingUsers = \Cache::remember('sling_users_v1', 3600, function () use ($client) { return $client->users(); });
+        $emailBySlingId = [];
+        foreach ($slingUsers as $u) {
+            $sid = (string) ($u['id'] ?? '');
+            $email = isset($u['email']) ? strtolower(trim((string) $u['email'])) : null;
+            if ($sid !== '' && $email) { $emailBySlingId[$sid] = $email; }
+        }
+
+        $erpUidByEmail = [];
+        foreach (DB::table('users')->get(['id', 'email', 'username']) as $u) {
+            if (!empty($u->email)) { $erpUidByEmail[strtolower(trim($u->email))] = $u->id; }
+            if (!empty($u->username) && filter_var($u->username, FILTER_VALIDATE_EMAIL)) {
+                $k = strtolower(trim($u->username));
+                if (!isset($erpUidByEmail[$k])) { $erpUidByEmail[$k] = $u->id; }
+            }
+        }
+        $overridesRaw = (string) (\App\System::getProperty('sling_user_overrides') ?? '');
+        if ($overridesRaw !== '') {
+            $overrides = json_decode($overridesRaw, true);
+            if (is_array($overrides)) {
+                foreach ($overrides as $oEmail => $oUid) { $erpUidByEmail[strtolower(trim((string) $oEmail))] = (int) $oUid; }
+            }
+        }
+
+        $shifts = \Cache::remember('sling_shifts_live_' . $date, 600, function () use ($client, $date) { return $client->shifts($date, $date); });
+
+        $floorPos = ['cashier', 'event lead', 'floor sales'];
+        $out = [];
+        foreach ($shifts as $s) {
+            if (!is_array($s) || \App\Services\SlingClient::isTimeOff($s)) { continue; }
+            $posId = (string) ($s['position']['id'] ?? '');
+            $pos = strtolower((string) ($s['position']['name'] ?? ($posId !== '' ? ($positionNameById[$posId] ?? '') : '')));
+            $isFloor = false;
+            foreach ($floorPos as $fp) { if (strpos($pos, $fp) !== false) { $isFloor = true; break; } }
+            if (!$isFloor) { continue; }
+            $locId = (string) ($s['location']['id'] ?? '');
+            $loc = strtolower((string) ($s['location']['name'] ?? ($locId !== '' ? ($locationNameById[$locId] ?? '') : '')));
+            if ($loc === '' || strpos($loc, $locationKey) === false) { continue; }
+            $start = $s['dtstart'] ?? ($s['startDate'] ?? null);
+            $end = $s['dtend'] ?? ($s['endDate'] ?? null);
+            if (!$start) { continue; }
+            $ss = \Carbon::parse($start);
+            $se = $end ? \Carbon::parse($end) : $ss->copy()->endOfDay();
+            if (!($ss->lt($endC) && $se->gt($startC))) { continue; } // must overlap the window
+            $sid = (string) ($s['user']['id'] ?? ($s['userId'] ?? ''));
+            if ($sid === '') { continue; }
+            $email = $emailBySlingId[$sid] ?? null;
+            $erpUid = $email ? ($erpUidByEmail[$email] ?? null) : null;
+            if (!$erpUid || isset($out[$erpUid])) { continue; }
+            $u = DB::table('users')->where('id', $erpUid)->first(['first_name', 'last_name', 'surname']);
+            $out[$erpUid] = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $erpUid))) : ('User #' . $erpUid);
+        }
+        return $out;
+    }
+
     // Listening-party events in [$pStart, $pEnd] with no "Listening party"
     // payout logged yet, each with an auto-estimated split. Shared by the
     // party-bonus tool and the Commissions page notice — same criteria, one
@@ -917,15 +1001,13 @@ class ListingCommissionController extends Controller
 
             foreach ($locIds as $locId => $locKey) {
                 // Auto-estimate the split so this list is useful without
-                // another click: the event's own time (falling back to the
-                // usual 6-8 PM slot) against Sarah's usual 4% rate, split
-                // among whoever actually RANG a sale at that store during the
-                // window — real Clover activity, not the Sling schedule
-                // (Sarah found it credits no-shows: Abby was scheduled for
-                // Miley's party but never showed) and not just "on shift"
-                // (a register can stay open all day without the person being
-                // at the party). Ringing a sale is direct proof of working
-                // the floor right then. Clearly labeled as an estimate.
+                // another click: the event's own posted start time against
+                // Sarah's usual 4% rate, split among whoever had a live Sling
+                // floor shift (Cashier/Event Lead/Floor Sales) overlapping
+                // the window - see livePartyFloorStaff() for why LIVE Sling,
+                // not the synced table or ring-data-only, is the trustworthy
+                // signal (validated against every confirmed party this
+                // session). Clearly labeled as an estimate.
                 $estimate = null;
                 if ($locId) {
                     // Real duration scales with turnout (Sarah 2026-09-25):
@@ -956,7 +1038,14 @@ class ListingCommissionController extends Controller
                     $eC = $sC->copy()->addMinutes($durationMin);
 
                     $sales = $this->windowSales($businessId, $locId, $sC, $eC);
-                    $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
+                    // Live Sling floor-position shift is the real signal
+                    // (Sarah 2026-09-25) - falls back to who rang a sale only
+                    // if Sling itself isn't reachable/configured, so the
+                    // estimate never comes back empty.
+                    $ringers = $this->livePartyFloorStaff($locKey, $edate, $sC, $eC);
+                    if ($ringers === null) {
+                        $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
+                    }
 
                     // A party bonus is for SPLITTING the extra with whoever
                     // shared the floor — one person working it solo already
