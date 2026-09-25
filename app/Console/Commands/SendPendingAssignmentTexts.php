@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\MyTasksController;
+use App\Http\Controllers\TaskController;
 use App\PendingAssignmentText;
+use App\Project;
 use App\Services\OpenPhoneService;
 use App\SlingShift;
 use Carbon\Carbon;
@@ -26,6 +28,12 @@ use Illuminate\Support\Facades\Log;
  *
  * The daily text itself is logged as a pending_assignment_texts row with no
  * task/project, which is what stops a second text the same day.
+ *
+ * The message reports two different numbers, on purpose (manager ask
+ * 2026-09-24 — the due-today count alone read as "how much do I have
+ * overall"): tasks due today (the trigger for sending at all), and a
+ * separate "assigned in total" count across both tasks and projects with
+ * no date filter, so the message can't be misread as a full workload count.
  */
 class SendPendingAssignmentTexts extends Command
 {
@@ -97,9 +105,26 @@ class SendPendingAssignmentTexts extends Command
                 })
                 ->get();
 
+            // Due-today count above is tasks only (projects have no due date
+            // in this schema, so "due today" can't mean anything for them).
+            // "Assigned in total" is the broader, no-date-filter number
+            // people asked for: every open task assigned to them, plus every
+            // open project they're assigned to (project_assignees, not
+            // project_contributors — "assigned" means put on it, not "opted
+            // in to").
+            $assignedTasksTotal = TaskController::myOpenAssignedTasks($user->business_id, $user->id)->count();
+            $assignedProjectsTotal = Project::where('business_id', $user->business_id)
+                ->where('status', '!=', 'complete')
+                ->whereHas('assignees', function ($q) use ($user) {
+                    $q->where('users.id', $user->id);
+                })
+                ->count();
+            $totalAssigned = $assignedTasksTotal + $assignedProjectsTotal;
+
             $first = trim((string) $user->first_name) ?: 'there';
             $message = "Hi {$first}, you have {$dueToday} " . ($dueToday === 1 ? 'task' : 'tasks') . ' due today'
                 . ($queued->count() ? " ({$queued->count()} new)" : '')
+                . ", and {$totalAssigned} tasks/projects assigned in total"
                 . '. Check them in the ERP: ' . self::myTasksUrl();
 
             // ERP number first; otherwise the phone on their Sling profile.
