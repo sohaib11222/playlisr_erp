@@ -164,12 +164,12 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                     <tr>
                         {!! $colHead('title', 'Item') !!}
                         {!! $colHead('format', 'Format') !!}
-                        <th>Store</th>
+                        {!! $colHead('store', 'Store') !!}
                         {!! $colHead('qty', 'Qty', 'num') !!}
                         {!! $colHead('price', 'Price', 'num') !!}
                         {!! $colHead('days_on_hand', 'In stock since') !!}
                         {!! $colHead('last_sold', 'Last sold') !!}
-                        <th class="num">Units sold (all time)</th>
+                        {!! $colHead('units_sold', 'Units sold (all time)', 'num') !!}
                         {!! $colHead('tied_up_value', 'Value', 'num') !!}
                     </tr>
                 </thead>

@@ -7662,6 +7662,11 @@ class ReportController extends Controller
             'date_acquired'   => "COALESCE($acquiredSql, p.created_at)",
             'days_on_hand'    => "COALESCE($acquiredSql, p.created_at)",
             'tied_up_value'   => 'tied_up_value',
+            'store'           => '(SELECT bl.name FROM business_locations bl WHERE bl.id = vld.location_id)',
+            'units_sold'      => "(SELECT COALESCE(SUM(tsl4.quantity - COALESCE(tsl4.quantity_returned, 0)), 0)
+                FROM transaction_sell_lines tsl4 JOIN transactions t4 ON t4.id = tsl4.transaction_id
+                WHERE tsl4.variation_id = v.id AND t4.business_id = " . (int) $business_id . "
+                  AND t4.type = 'sell' AND t4.status = 'final')",
         ];
         if (!isset($sort_map[$sort])) {
             $sort = 'days_on_hand';
