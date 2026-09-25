@@ -1,0 +1,63 @@
+# READ-ONLY: verify the updated shift-text message (adds "assigned in
+# total" alongside due-today) renders without error before the next real
+# 5-minute cron tick sends anything. Runs the command's own --dry mode
+# (no sends, no writes) plus a direct tinker exercise of the new counting
+# logic against a real user, for extra certainty.
+name: Diag verify shift text
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dry-run the command + directly exercise the new counts (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== --dry run (no sends, no writes), current time ==="
+            php artisan notify:pending-assignment-texts --dry
+            echo "=== --dry run forced to a time most shifts would start (9am) ==="
+            php artisan notify:pending-assignment-texts --dry --at=09:05
+            echo "=== direct exercise of the new counting logic against a real user ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $u = App\User::find(22);
+            echo "user: " . ($u ? "{$u->first_name} {$u->last_name}" : 'NOT FOUND') . "\n";
+            try { $assignedTasksTotal = App\Http\Controllers\TaskController::myOpenAssignedTasks($u->business_id, $u->id)->count(); echo "assignedTasksTotal={$assignedTasksTotal}\n"; } catch (\Throwable $e) { echo "TASKS COUNT THREW: " . $e->getMessage() . "\n"; }
+            try { $assignedProjectsTotal = App\Project::where('business_id',$u->business_id)->where('status','!=','complete')->whereHas('assignees', function($q) use ($u) { $q->where('users.id',$u->id); })->count(); echo "assignedProjectsTotal={$assignedProjectsTotal}\n"; } catch (\Throwable $e) { echo "PROJECTS COUNT THREW: " . get_class($e) . ": " . $e->getMessage() . "\n"; }
+            PHP
+            echo "=== done ==="
