@@ -151,6 +151,15 @@ body.ds-v2 .ds-pager .pagination > .active > span {
                 </select>
             </div>
             <div class="ds-field">
+                <label for="ds_category">Category</label>
+                <select name="category_id" id="ds_category" class="form-control">
+                    <option value="">All categories</option>
+                    @foreach($category_options as $cid => $cname)
+                        <option value="{{ $cid }}" @if((int)$category_id === (int)$cid) selected @endif>{{ $cname }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="ds-field">
                 <label for="ds_condition">New / Used</label>
                 <select name="condition" id="ds_condition" class="form-control">
                     <option value="">New and used</option>

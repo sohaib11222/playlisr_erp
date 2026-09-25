@@ -7644,6 +7644,29 @@ class ReportController extends Controller
             }
         }
 
+        // Category filter (Vinyl, CD, Cassette, ...). Picking a parent
+        // includes its sub-categories; matches category_id or sub_category_id.
+        $allCats = DB::table('categories')
+            ->where('business_id', $business_id)
+            ->where('category_type', 'product')
+            ->whereNull('deleted_at')
+            ->orderBy('name')
+            ->get(['id', 'name', 'parent_id']);
+        $category_options = [];
+        foreach ($allCats->where('parent_id', 0) as $parent) {
+            $category_options[$parent->id] = $parent->name;
+            foreach ($allCats->where('parent_id', $parent->id) as $child) {
+                $category_options[$child->id] = '- ' . $child->name;
+            }
+        }
+        $category_id = (int) $request->input('category_id') ?: null;
+        if ($category_id) {
+            $catIds = array_merge([$category_id], $allCats->where('parent_id', $category_id)->pluck('id')->all());
+            $query->where(function ($q) use ($catIds) {
+                $q->whereIn('p.category_id', $catIds)->orWhereIn('p.sub_category_id', $catIds);
+            });
+        }
+
         // Must have been in stock for the whole window - an item added
         // yesterday isn't "not sold in 180 days" (Sarah 2026-09-25).
         $query->whereRaw("COALESCE($acquiredSql, p.created_at) < ?", [$cutoff]);
@@ -7744,7 +7767,7 @@ class ReportController extends Controller
         );
 
         return view('report.dead_stock_report')->with(compact(
-            'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir', 'condition'
+            'rows', 'business_locations', 'days', 'location_id', 'totals', 'sort', 'dir', 'condition', 'category_options', 'category_id'
         ));
     }
 
