@@ -8461,7 +8461,7 @@ class ReportController extends Controller
         $coupon_uses_all_time = count($coupon_zipcodes_all_time);
 
         $data = [
-            'last_updated' => '2026-09-16',
+            'last_updated' => '2026-09-25',
             'contract' => [
                 'start_date' => '2026-08-18',
                 'end_date' => '2026-09-18',
@@ -8473,7 +8473,7 @@ class ReportController extends Controller
             ],
             'instagram' => [
                 'followers_start' => 11100,
-                'followers_now' => 15400,
+                'followers_now' => 15957,
                 'reach_last_28_days' => 103000,
                 'reach_change_pct' => -59,
                 'confirmed_collab_videos' => 22,
@@ -8486,7 +8486,7 @@ class ReportController extends Controller
                 // available window (Aug 20-Sep 16) from the Trends tab.
                 'followers_start' => 510,
                 'followers_start_asof' => '2026-08-20',
-                'followers_now' => 661,
+                'followers_now' => 667,
                 'reach_last_28_days' => 1300,
                 'reach_change_pct' => -72,
                 // Real, from the same Trends tab, last 28 days (Aug 20-Sep 16).
@@ -8499,7 +8499,7 @@ class ReportController extends Controller
                 // Exact figures read off TikTok Studio's Followers trend
                 // chart, hovering the data point for each date.
                 'followers_start' => 895,
-                'followers_now' => 1813,
+                'followers_now' => 1872,
                 'total_likes' => 16300,
                 // Weekly checkpoints, same source/method as above — real
                 // points read off the chart, not interpolated.
@@ -8509,6 +8509,7 @@ class ReportController extends Controller
                     ['date' => '2026-09-01', 'followers' => 1512],
                     ['date' => '2026-09-08', 'followers' => 1728],
                     ['date' => '2026-09-15', 'followers' => 1813],
+                    ['date' => '2026-09-22', 'followers' => 1863],
                 ],
             ],
         ];
