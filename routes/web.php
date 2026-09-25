@@ -906,6 +906,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Admin-only preview of the auto shift summary — never touches the POS
     // close modal, so it's safe to view without risking the close flow.
     Route::get('/shift-notes/preview', 'CashRegisterController@shiftNotesPreview');
+    // Admin-only: daily register reconciliation flags -> Slack. Preview any
+    // day, set the #register-reconciliation webhook, post on demand.
+    Route::get('/register-recon', 'RegisterReconController@index');
+    Route::post('/register-recon/settings', 'RegisterReconController@saveSettings');
+    Route::post('/register-recon/post', 'RegisterReconController@postNow');
     // Staff-facing "End Shift" for non-cashier roles (pricing/listing like
     // Zella, fulfillment like Nick) who don't close a register. Standalone
     // page — never touches the POS close flow.

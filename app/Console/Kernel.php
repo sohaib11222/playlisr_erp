@@ -257,6 +257,15 @@ class Kernel extends ConsoleKernel
             ->dailyAt('16:00')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(50);
+
+        // Yesterday's register reconciliation flags -> #register-reconciliation
+        // Slack (Clover vs ERP gaps, drawer short/over, uncounted registers,
+        // each with the cashier to ask). 8am PST, after the 02:30 Clover
+        // re-sync. No-op until the webhook is set at /register-recon.
+        $schedule->command('register-recon:post')
+            ->dailyAt('08:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
     }
 
     /**
