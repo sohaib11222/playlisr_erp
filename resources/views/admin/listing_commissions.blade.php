@@ -192,7 +192,9 @@
                                 <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;">
                                     @if(($p->party_est_owed ?? 0) >= 0.005)
                                         <a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;">${{ number_format($p->party_est_owed, 2) }}</a>
-                                        <div class="text-muted" style="font-size:11px; font-weight:400;">{{ $p->party_est_note }}</div>
+                                        @foreach ($p->party_est_note as $note)
+                                            <div class="text-muted" style="font-size:11px; font-weight:400;">{{ $note }}</div>
+                                        @endforeach
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
