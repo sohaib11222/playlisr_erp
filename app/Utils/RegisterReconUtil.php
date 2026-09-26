@@ -175,6 +175,7 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
+                    'mini'   => '#' . $sale->invoice_no,
                     'short'  => '#' . $sale->invoice_no . ' ' . $money($sale->final_total) . ' = Clover ' . $money($c['amount']) . ' at ' . $cpWhen,
                     'text'   => '#' . $sale->invoice_no . ' (' . $money($sale->final_total) . ' in ERP) is probably the '
                         . $money($c['amount']) . ' Clover charge at ' . $cpWhen . '.',
@@ -197,6 +198,7 @@ class RegisterReconUtil
                 if ($exp <= 0) continue; // fully covered by store credit
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
+                    'mini'   => '#' . $sale->invoice_no . ' ' . $money($exp / 100),
                     'short'  => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'text'   => $inv . ' ' . $money($exp / 100) . ' rung in ERP at ' . $time($sale->transaction_date)
                         . ' but never charged on Clover.',
@@ -214,6 +216,7 @@ class RegisterReconUtil
             if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
+                    'mini'   => '#' . $sale->invoice_no . ' off ' . $money(abs($gross - $exp) / 100),
                     'short'  => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ', Clover ' . $money($gross / 100),
                     'text'   => $inv . ' rung ' . $money($exp / 100) . ' in ERP but charged '
                         . $money($gross / 100) . ' on Clover (' . $time($sale->transaction_date) . ').',
@@ -266,6 +269,7 @@ class RegisterReconUtil
             }
             $stores[$k]['items'][] = [
                 'kind'   => 'no_erp',
+                'mini'   => $money(abs($amt)),
                 'short'  => $money(abs($amt)) . ($amt < 0 ? ' refund' : '') . ' at ' . $when
                     . (!empty($items) ? ' (' . implode(', ', $items) . ')' : ''),
                 'text'   => $text,
@@ -372,114 +376,51 @@ class RegisterReconUtil
         return $flags;
     }
 
-    /** Slack mrkdwn for one day's digest - grouped by what to do. */
+    /**
+     * Slack message - kept very short (Sarah 9/25): per store, one line
+     * per person with what they need to do; amounts link to the feed.
+     */
     public static function formatSlack(array $r): string
     {
-        $money = function ($x) { return '$' . number_format((float) $x, 2); };
-        $link = function ($url, $label) { return '<' . $url . '|' . $label . '>'; };
-        $groups = [
-            'no_erp'    => 'Paid, not in ERP - inventory is off. Ring it in.',
-            'no_clover' => 'In ERP, never paid - we may have lost money. Ask why.',
-            'mismatch'  => 'Wrong amount charged. Ask why.',
-            'match'     => 'Same sale - Fatteen, match it.',
-            'uncounted' => 'Register never counted.',
-            'drawer'    => 'Drawer off.',
+        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
+        $verbs = [
+            'no_erp'    => 'ring in',
+            'no_clover' => 'not charged',
+            'mismatch'  => 'wrong amount',
+            'match'     => 'match',
+            'uncounted' => 'register not counted',
+            'drawer'    => 'drawer off',
         ];
-        $lines = [];
-        $lines[] = '*Register check - ' . $r['label'] . '*';
+        $lines = ['*Register check - ' . $r['label'] . '*'
+            . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            $lines[] = '*' . $link($s['url'], strtoupper($s['name'])) . '*   ERP ' . $money($s['erp']) . '  |  Clover ' . $money($s['clover']);
+            $lines[] = '*<' . $s['url'] . '|' . $s['name'] . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover']);
             if (empty($s['items'])) {
-                $lines[] = 'All good.';
+                $lines[] = 'All good';
                 continue;
             }
-            foreach ($groups as $kind => $title) {
-                $its = array_values(array_filter($s['items'], fn($i) => $i['kind'] === $kind));
-                if (empty($its)) continue;
-                $lines[] = '_' . $title . '_';
-                foreach ($its as $it) {
-                    $line = '     ' . $link($it['url'] ?? $s['url'], $it['short'] ?? $it['text']);
-                    if (($it['ask'] ?? '') !== '' && $kind !== 'match') $line .= '  -  ' . $it['ask'];
-                    if (!empty($it['note'])) $line .= '  (said: ' . str_replace("\n", ' ', $it['note']) . ')';
-                    $lines[] = $line;
+            $byPerson = [];
+            foreach ($s['items'] as $it) {
+                $who = $it['kind'] === 'match' ? 'Fatteen' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
+                $label = $it['mini'] ?? ($it['short'] ?? $it['text']);
+                $byPerson[$who][$it['kind']][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
+            }
+            foreach ($byPerson as $who => $kinds) {
+                $parts = [];
+                foreach ($verbs as $kind => $verb) {
+                    if (!empty($kinds[$kind])) $parts[] = $verb . ' ' . implode(', ', $kinds[$kind]);
                 }
+                $lines[] = '• *' . $who . '*: ' . implode('; ', $parts);
             }
         }
-        $lines[] = '';
-        $lines[] = 'Fatteen: ask each person, reply in thread with what they said.';
         return implode("\n", $lines);
     }
 
-    /**
-     * Block Kit version of the digest (what Slack actually shows; the
-     * mrkdwn text is the notification/fallback). Header, then per store:
-     * name + ERP/Clover side by side, one section per kind of problem.
-     */
+    /** Block Kit layout was tried 9/25 and dropped as too long; plain text only. */
     public static function slackBlocks(array $r): array
     {
-        $money = function ($x) { return '$' . number_format((float) $x, 2); };
-        $esc = function ($t) { return str_replace(['&', '<', '>'], ['&amp;', '&lt;', '&gt;'], (string) $t); };
-        $groups = [
-            'no_erp'    => ['Paid, not in ERP', 'Inventory is off. Ring it in.'],
-            'no_clover' => ['In ERP, never paid', 'We may have lost money. Ask why.'],
-            'mismatch'  => ['Wrong amount charged', 'Ask why.'],
-            'match'     => ['Same sale', 'Fatteen, match it on the feed.'],
-            'uncounted' => ['Register never counted', 'Ask why it was not closed.'],
-            'drawer'    => ['Drawer off', 'Ask about the count.'],
-        ];
-        $perStore = [];
-        foreach ($r['stores'] as $s) {
-            $perStore[] = $s['name'] . ' ' . count($s['items']);
-        }
-        $blocks = [];
-        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => 'Register check - ' . $r['label']]];
-        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => $r['issue_count'] === 0
-            ? 'Everything matches.'
-            : '*' . $r['issue_count'] . ' to fix*  ·  ' . implode('  ·  ', $perStore) . '  ·  <' . $r['feed_url'] . '|Recent feed>']]];
-        foreach ($r['stores'] as $s) {
-            $blocks[] = ['type' => 'divider'];
-            $diff = $s['clover'] - $s['erp'];
-            $blocks[] = [
-                'type' => 'section',
-                'text' => ['type' => 'mrkdwn', 'text' => '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*'],
-                'fields' => [
-                    ['type' => 'mrkdwn', 'text' => "*ERP*\n" . $money($s['erp'])],
-                    ['type' => 'mrkdwn', 'text' => "*Clover*\n" . $money($s['clover'])
-                        . (abs($diff) >= 1 ? '  (' . ($diff > 0 ? '+' : '-') . $money(abs($diff)) . ')' : '')],
-                ],
-            ];
-            if (empty($s['items'])) {
-                $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => 'All good.']]];
-                continue;
-            }
-            foreach ($groups as $kind => [$title, $why]) {
-                $its = array_values(array_filter($s['items'], fn($i) => $i['kind'] === $kind));
-                if (empty($its)) continue;
-                $rows = [];
-                foreach ($its as $it) {
-                    $row = '•  <' . ($it['url'] ?? $s['url']) . '|' . $esc($it['short'] ?? $it['text']) . '>';
-                    if (($it['ask'] ?? '') !== '' && $kind !== 'match') $row .= '   *' . $esc($it['ask']) . '*';
-                    if (!empty($it['note'])) $row .= "\n      _said: " . $esc(str_replace("\n", ' ', $it['note'])) . '_';
-                    $rows[] = $row;
-                }
-                // Slack caps a section at 3000 chars - split long lists.
-                $chunk = '*' . $title . '*  ' . $why;
-                foreach ($rows as $row) {
-                    if (strlen($chunk) + strlen($row) > 2800) {
-                        $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $chunk]];
-                        $chunk = '';
-                    }
-                    $chunk .= ($chunk === '' ? '' : "\n") . $row;
-                }
-                $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $chunk]];
-            }
-        }
-        $blocks[] = ['type' => 'divider'];
-        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
-            'text' => 'Fatteen: ask each person, reply in thread with what they said.']]];
-        // Slack allows 50 blocks per message; past that, fall back to text.
-        return count($blocks) <= 50 ? $blocks : [];
+        return [];
     }
 
     public static function postToSlack(string $text, array $blocks = []): bool
