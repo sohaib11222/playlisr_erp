@@ -332,7 +332,8 @@ class ListingCommissionController extends Controller
                 if (!isset($partyEstByUser[$uid])) { $partyEstByUser[$uid] = ['amount' => 0.0, 'name' => $s['name'], 'parties' => []]; }
                 $partyEstByUser[$uid]['amount'] += (float) $s['amount'];
                 $partyEstByUser[$uid]['parties'][] = $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
-                    . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '');
+                    . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
+                    . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales';
             }
         }
         $peopleById = $people->keyBy('user_id');
