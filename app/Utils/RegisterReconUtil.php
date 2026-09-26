@@ -91,6 +91,7 @@ class RegisterReconUtil
         $dupOf        = $d['orphan_duplicate_of'] ?? [];
         $byStore      = $d['today_by_store'] ?? [];
         $locations    = $d['business_locations'] ?? [];
+        $pairCands    = $d['erp_only_pair_candidates'] ?? [];
 
         $stores = [];
         $storeKey = function ($locId) use (&$stores, $locations, $date) {
@@ -134,9 +135,56 @@ class RegisterReconUtil
             return $n ? trim((string) ($n->reason ?? '')) : null;
         };
 
+        // 0) Probable pairs: an ERP-only sale and a Clover-only charge at the
+        //    same store, close in time/amount (the feed's "Probable Clover
+        //    match"). These are one sale that just needs matching on the
+        //    feed, so they become one MATCH line for Fatteen instead of two
+        //    separate problems. Closest amount wins; each charge used once.
+        $orphanByCpId = [];
+        foreach ($orphans as $cp) {
+            $orphanByCpId[(string) $cp->clover_payment_id] = $cp;
+        }
+        $pairFor = [];   // sale id => candidate
+        $pairedCp = [];  // clover_payment_id => true
+        $flat = [];
+        foreach ($pairCands as $saleId => $cands) {
+            foreach ($cands as $c) {
+                $flat[] = ['sale' => (int) $saleId] + $c;
+            }
+        }
+        usort($flat, fn($a, $b) => ($a['amt_delta'] <=> $b['amt_delta']) ?: ($a['time_delta'] <=> $b['time_delta']));
+        $saleById = collect($sales)->keyBy('id');
+        foreach ($flat as $c) {
+            $sale = $saleById->get($c['sale']);
+            $cpKey = (string) $c['cp_id'];
+            if (!$sale || isset($pairFor[$c['sale']]) || isset($pairedCp[$cpKey]) || !isset($orphanByCpId[$cpKey])) continue;
+            if ($c['loc_id'] !== null && (int) $c['loc_id'] !== (int) $sale->location_id) continue; // other store
+            if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            $pairFor[$c['sale']] = $c;
+            $pairedCp[$cpKey] = true;
+        }
+
         // 1) ERP sales: rung in ERP but no Clover swipe, or amounts differ.
         foreach ($sales as $sale) {
             if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            if (isset($pairFor[$sale->id])) {
+                $c    = $pairFor[$sale->id];
+                $who  = $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username);
+                $cpWhen = \Carbon\Carbon::createFromTimestamp($c['ts'], $tz)->format('g:ia');
+                $off  = $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS
+                    ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
+                $stores[$storeKey($sale->location_id)]['items'][] = [
+                    'kind'   => 'match',
+                    'text'   => 'Same sale, needs matching: ERP #' . $sale->invoice_no . ' ' . $money($sale->final_total)
+                        . ' (' . $time($sale->transaction_date) . ') = Clover ' . $money($c['amount']) . ' (' . $cpWhen . ')' . $off,
+                    'ask'    => $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS ? $who : '',
+                    'fatteen'=> true,
+                    'url'    => $feed(['location_id' => $sale->location_id, 'discrepancy' => 'any']),
+                    'note'   => $noteFor('no_clover:' . $sale->id . ':0'),
+                    'amount' => $c['amt_delta'] / 100,
+                ];
+                continue;
+            }
             $info = $cloverByTx[$sale->id] ?? null;
             $exp  = $expected[$sale->id] ?? $cents($sale->final_total);
             $who  = $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username);
@@ -175,6 +223,7 @@ class RegisterReconUtil
         // 2) Clover charges with no ERP ring (the customer paid, nothing
         //    was rung up / inventory not taken out).
         foreach ($orphans as $cp) {
+            if (isset($pairedCp[(string) $cp->clover_payment_id])) continue;
             $res = (string) ($cp->result ?? '');
             if ($res !== '' && $res !== 'SUCCESS' && $res !== 'APPROVED') continue; // voids / test charges
             $amt = (float) ($cp->amount ?? 0);
@@ -326,8 +375,13 @@ class RegisterReconUtil
                 continue;
             }
             foreach ($s['items'] as $it) {
-                $line = '- ' . $it['text'];
-                $line .= $it['ask'] !== '' ? ' - *ask ' . $it['ask'] . '*' : ' - cashier unknown';
+                if (!empty($it['fatteen'])) {
+                    $line = '- *MATCH (Fatteen):* ' . $it['text'];
+                    if ($it['ask'] !== '') $line .= ' - ask ' . $it['ask'] . ' why the amount is off';
+                } else {
+                    $line = '- ' . $it['text'];
+                    $line .= $it['ask'] !== '' ? ' - *ask ' . $it['ask'] . '*' : ' - cashier unknown';
+                }
                 $line .= ' ' . $link($it['url'] ?? $s['url'], 'open');
                 if (!empty($it['note'])) {
                     $line .= "\n    already explained: _" . str_replace(["\n", '_'], [' ', ' '], $it['note']) . '_';
@@ -336,7 +390,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'How to fix: click open on each line, then fix it (ring the missing sale, correct the amount) or add a note with what the cashier said.';
+        $lines[] = 'How to fix: MATCH lines - open the feed and click Match to pair them. Everything else - ask the cashier, then fix it (ring the missing sale, correct the amount) or add a note with what they said.';
         return implode("\n", $lines);
     }
 

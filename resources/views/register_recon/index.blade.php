@@ -56,8 +56,12 @@
 					</div>
 					@forelse($s['items'] as $it)
 						<div class="rr-item">
-							{{ $it['text'] }} -
-							@if($it['ask'] !== '') <span class="rr-ask">ask {{ $it['ask'] }}</span>@else <span class="rr-ask">cashier unknown</span>@endif
+							@if(!empty($it['fatteen'])) <strong>MATCH (Fatteen):</strong> {{ $it['text'] }}
+								@if($it['ask'] !== '') - <span class="rr-ask">ask {{ $it['ask'] }} why the amount is off</span>@endif
+							@else
+								{{ $it['text'] }} -
+								@if($it['ask'] !== '') <span class="rr-ask">ask {{ $it['ask'] }}</span>@else <span class="rr-ask">cashier unknown</span>@endif
+							@endif
 							<a href="{{ $it['url'] ?? $s['url'] }}" style="margin-left:6px;">open</a>
 							@if(!empty($it['note'])) <div class="rr-note">Already explained: {{ $it['note'] }}</div>@endif
 						</div>
