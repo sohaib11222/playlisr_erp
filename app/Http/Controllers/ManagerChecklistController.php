@@ -74,7 +74,7 @@ class ManagerChecklistController extends Controller
     const FIRST_MONTH = '2026-09';
 
     /** Shared "how to run it" script for every 1:1 item — same text, personalized label per row. */
-    const ONE_ON_ONE_SCRIPT = "10-15 min, one-on-one. Ask: How's the week going? Anything getting in your way - schedule, team, customers? One thing that's going well, one thing you want to get better at. Anything you're seeing on the floor I should know about (sales, product, theft). Anything you need from me? Then fill out <a href=\"/manager-checkins\" target=\"_blank\" rel=\"noopener\">Manager Check-ins</a> for Jon.";
+    const ONE_ON_ONE_SCRIPT = "10-15 min, one-on-one. This is their time, not a review: listen more than you talk. Ask: What projects are you working on and how are they going? What was a win this week? Any ideas for the store? Anything in the ERP or POS that would make your job easier? Anything getting in your way? Anything you need from me? Then fill out <a href=\"/manager-checkins\" target=\"_blank\" rel=\"noopener\">Manager Check-ins</a> so Jon sees their contributions.";
 
     /**
      * Daily duties. Each item is

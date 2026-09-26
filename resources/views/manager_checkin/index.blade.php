@@ -97,7 +97,7 @@
     <div class="open-header">
         <div>
             <h1>Manager Check-ins</h1>
-            <p>Fill this out after each weekly check-in with an employee. It goes straight to Jon. Takes about 2 minutes.</p>
+            <p>This is their time, not a review. Ask what they are working on, listen to their ideas, and find out what would make their job easier. Write it down here so Jon sees what each person is contributing. Takes about 2 minutes.</p>
         </div>
         @include('partials.pin_button', ['pinUrl' => url('/manager-checkins'), 'pinLabel' => 'Manager Check-ins'])
     </div>
@@ -131,7 +131,7 @@
             </div>
         </div>
 
-        <label class="q">How are they doing?</label>
+        <label class="q">How is their week going?</label>
         <div class="pills">
             @foreach($ratings as $key => $label)
                 <input type="radio" name="rating" id="ci-r-{{ $key }}" value="{{ $key }}" {{ $old('rating') === $key ? 'checked' : '' }} required>

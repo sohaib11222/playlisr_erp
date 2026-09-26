@@ -38,14 +38,18 @@ class ManagerCheckinController extends Controller
     // covering a shift at the other one.
     const HOME_STORE = ['luis' => 'hw', 'zakary' => 'pico'];
 
-    const RATINGS = ['great' => 'Great', 'good' => 'Good', 'needs_work' => 'Needs work'];
+    // About their week, not a grade on the person. Key 'needs_work' kept so
+    // older entries still read.
+    const RATINGS = ['great' => 'Great', 'good' => 'Good', 'needs_work' => 'Rough week'];
 
-    // Text questions, in form order. Key => [label, hint].
+    // Text questions, in form order. Key => [label, hint]. Framed around what
+    // the employee is contributing and what they need, not a performance review.
     const QUESTIONS = [
-        'highlight' => ['Highlight', 'Best thing they did or what went well this week'],
-        'lowlight'  => ['Lowlight', 'What did not go well, or what they are struggling with'],
-        'erp'       => ['ERP updates they asked for', 'Anything in the ERP or POS they want fixed or added'],
-        'ideas'     => ['Good ideas we should implement', 'Ideas from them worth trying'],
+        'projects'  => ['Important projects they are working on', 'What they are working on and a quick summary of progress'],
+        'highlight' => ['Highlights', 'Wins from their week, big or small'],
+        'ideas'     => ['Good ideas we should implement', 'Anything they would change or try in the store'],
+        'erp'       => ['ERP updates they asked for', 'What would make their job easier in the ERP or POS'],
+        'lowlight'  => ['Lowlights', 'Anything getting in their way or frustrating them'],
         'notes'     => ['Anything else for Jon', 'Optional'],
     ];
 
