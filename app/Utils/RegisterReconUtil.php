@@ -175,9 +175,8 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
-                    'text'   => '#' . $sale->invoice_no . ' rung ' . $money($sale->final_total) . ' in ERP, charged '
-                        . $money($c['amount']) . ' on Clover' . ($off !== '' ? ' (' . trim($off, ', ') . ')' : '')
-                        . ' - ' . $time($sale->transaction_date),
+                    'text'   => $time($sale->transaction_date) . ' #' . $sale->invoice_no . ' rung ' . $money($sale->final_total)
+                        . ' in ERP, charged ' . $money($c['amount']) . ' on Clover' . ($off !== '' ? ' (' . trim($off, ', ') . ')' : ''),
                     'ask'    => $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS ? $who : '',
                     'fatteen'=> true,
                     'url'    => $feed(['location_id' => $sale->location_id, 'discrepancy' => 'any']),
@@ -211,8 +210,9 @@ class RegisterReconUtil
             if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
-                    'text'   => $time($sale->transaction_date) . $inv . ' ERP ' . $money($exp / 100)
-                        . ' vs Clover ' . $money($gross / 100) . ' (off by ' . $money($gap / 100) . ')',
+                    'text'   => $time($sale->transaction_date) . $inv . ' rung ' . $money($exp / 100)
+                        . ' in ERP, charged ' . $money($gross / 100) . ' on Clover ('
+                        . $money(abs($gross - $exp) / 100) . ' off)',
                     'ask'    => $who,
                     'url'    => $feed(['location_id' => $sale->location_id, 'created_by' => $sale->created_by, 'discrepancy' => 'mismatch']),
                     'note'   => $noteFor('mismatch:' . $sale->id . ':0'),
@@ -379,7 +379,7 @@ class RegisterReconUtil
                 $who = $it['ask'] !== '' ? self::mention($it['ask']) : '';
                 if (!empty($it['fatteen'])) {
                     $line = '- ' . $it['text'] . '.';
-                    if ($who !== '') $line .= ' ' . $who . ' why the difference?';
+                    if ($who !== '') $line .= ' ' . $who . ' why?';
                     $line .= ' Fatteen: match these.';
                 } else {
                     $line = '- ' . $it['text'] . ($who !== '' ? ' - ' . $who : ' - cashier unknown');
