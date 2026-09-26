@@ -363,14 +363,14 @@ class RegisterReconUtil
         $lines[] = '*Register reconciliation - ' . $r['label'] . '*';
         $lines[] = 'Sales in ERP ' . $money($erp) . '  |  Sales in Clover ' . $money($clv)
             . '  |  ' . ($r['issue_count'] === 0 ? 'nothing to fix' : $r['issue_count'] . ' to fix/ask')
-            . '  |  ' . $link($r['feed_url'], 'full day in ERP');
+            . '  |  ' . $link($r['feed_url'], 'Recent feed');
         foreach ($r['stores'] as $s) {
             $lines[] = '';
             $diff = $s['diff'];
             $diffTxt = abs($diff) < 1 ? 'matches' : (($diff > 0 ? 'Clover higher by ' : 'ERP higher by ') . $money(abs($diff)));
             $lines[] = '*' . $s['name'] . '*  ERP ' . $money($s['erp']) . ' (' . $s['erp_count'] . ' sales)'
                 . '  |  Clover ' . $money($s['clover']) . ' (' . $s['clover_count'] . ')  |  ' . $diffTxt
-                . '  |  ' . $link($s['url'], 'discrepancies');
+                . '  |  ' . $link($s['url'], $s['name'] . ' recent feed');
             if (empty($s['items'])) {
                 $lines[] = 'Nothing to fix.';
                 continue;
@@ -384,7 +384,7 @@ class RegisterReconUtil
                 } else {
                     $line = '- ' . $it['text'] . ($who !== '' ? ' - ' . $who : ' - cashier unknown');
                 }
-                $line .= ' ' . $link($it['url'] ?? $s['url'], 'open');
+                $line .= ' ' . $link($it['url'] ?? $s['url'], 'recent feed');
                 if (!empty($it['note'])) {
                     $line .= "\n    already explained: _" . str_replace(["\n", '_'], [' ', ' '], $it['note']) . '_';
                 }
