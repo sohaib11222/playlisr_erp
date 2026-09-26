@@ -333,7 +333,7 @@ class ListingCommissionController extends Controller
                 $partyEstByUser[$uid]['amount'] += (float) $s['amount'];
                 $partyEstByUser[$uid]['parties'][] = $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
                     . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
-                    . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales';
+                    . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales (goal $' . number_format($u['estimate']['sales_goal'] ?? 0, 2) . ')';
             }
         }
         $peopleById = $people->keyBy('user_id');
@@ -842,6 +842,29 @@ class ListingCommissionController extends Controller
         return round((float) $sales, 2);
     }
 
+    // The store's normal EXPECTED take for this exact window - the same
+    // trailing-12-week (weekday x hour) rate ReportController's sales-bonus
+    // goal already uses, prorated for whatever fraction of each hour the
+    // window covers. Shown next to actual sales so Sarah can see whether the
+    // party genuinely beat a normal night, not just how much rang up
+    // (Sarah 2026-09-26).
+    private function windowSalesGoal($businessId, $locationId, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
+    {
+        $profile = app(\App\Http\Controllers\ReportController::class)->storeHourlyProfile($businessId, $locationId, 12);
+        $rate = $profile['rate'] ?? [];
+        $total = 0.0;
+        $cursor = $startC->copy();
+        while ($cursor->lt($endC)) {
+            $slotEnd = $cursor->copy()->startOfHour()->addHour();
+            $chunkEnd = $slotEnd->lt($endC) ? $slotEnd : $endC;
+            $frac = $cursor->diffInSeconds($chunkEnd) / 3600.0;
+            $key = ($cursor->dayOfWeek + 1) . '-' . $cursor->hour; // MySQL DAYOFWEEK convention, matches storeHourlyProfile
+            $total += ($rate[$key] ?? 0) * $frac;
+            $cursor = $chunkEnd;
+        }
+        return round($total, 2);
+    }
+
     // Who actually rang a sale at this store during the window — real proof of
     // being on the floor, unlike a Sling schedule which still lists a no-show.
     // Keyed by user_id => name, in first-rung order.
@@ -1049,6 +1072,7 @@ class ListingCommissionController extends Controller
                     $eC = $sC->copy()->addMinutes($durationMin);
 
                     $sales = $this->windowSales($businessId, $locId, $sC, $eC);
+                    $salesGoal = $this->windowSalesGoal($businessId, $locId, $sC, $eC);
                     // Live Sling floor-position shift is the real signal
                     // (Sarah 2026-09-25) - falls back to who rang a sale only
                     // if Sling itself isn't reachable/configured, so the
@@ -1075,6 +1099,7 @@ class ListingCommissionController extends Controller
                         'window' => $sC->format('g:i A') . ' - ' . $eC->format('g:i A'),
                         'percent' => self::PARTY_DEFAULT_PERCENT,
                         'sales' => $sales,
+                        'sales_goal' => $salesGoal,
                         'pool' => $pool,
                         'staff' => $estStaff,
                         'solo' => $solo,

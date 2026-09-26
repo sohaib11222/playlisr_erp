@@ -110,7 +110,7 @@
                                 @elseif ($est['solo'])
                                     <span class="text-muted">Only {{ $est['staff'][0]['name'] }} was on the floor {{ $est['window'] }} - no pool, they're already covered by their normal sales commission</span>
                                 @else
-                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales &middot; ${{ number_format($est['pool'], 2) }} pool</div>
+                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales (goal ${{ number_format($est['sales_goal'] ?? 0, 2) }}) &middot; ${{ number_format($est['pool'], 2) }} pool</div>
                                     @foreach ($est['staff'] as $s)
                                         {{ $s['name'] }}: ${{ number_format($s['amount'], 2) }}@if(!$loop->last), @endif
                                     @endforeach

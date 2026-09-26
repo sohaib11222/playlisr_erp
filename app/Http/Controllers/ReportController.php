@@ -15002,8 +15002,12 @@ class ReportController extends Controller
      * Returns ['rate' => ['{dow}-{hr}' => $/slot], 'median' => x,
      *          'peak' => ['{dow}-{hr}' => true]] where dow is MySQL DAYOFWEEK
      * (Sun=1..Sat=7) so it lines up with Carbon's dayOfWeek+1.
+     *
+     * Public: ListingCommissionController's party-bonus estimate uses this to
+     * show a "goal" (the store's normal expected take for that window) next
+     * to actual sales (Sarah 2026-09-26).
      */
-    private function storeHourlyProfile($business_id, $location_id, $weeks = 12)
+    public function storeHourlyProfile($business_id, $location_id, $weeks = 12)
     {
         $start = \Carbon::now()->subWeeks($weeks)->startOfDay()->toDateTimeString();
         $end   = \Carbon::now()->subDay()->endOfDay()->toDateTimeString();
