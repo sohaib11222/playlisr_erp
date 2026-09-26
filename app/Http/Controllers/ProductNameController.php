@@ -833,6 +833,125 @@ class ProductNameController extends Controller
         ]);
     }
 
+    // ===================== CSV QUOTE CLEANUP =====================
+    // Old spreadsheet imports left CSV escaping in names/artists, e.g.
+    // '"Arthur ""Big Boy"" Crudup - Title"'. Strips it back to the real text.
+    // Preview-first, guarded against concurrent edits, undoable via the
+    // product-quote-cleanup snapshot, and pushed to nivessa.com so the website
+    // copy is fixed too (the nightly sync only re-reads the newest products).
+
+    /** Products whose name or artist carries CSV quoting, as id/old/new rows. */
+    protected function quoteChanges($business_id, $limit = null)
+    {
+        $rows = [];
+        $total = 0;
+        \DB::table('products')
+            ->where('business_id', $business_id)
+            ->where(function ($q) {
+                $q->where('name', 'like', '%""%')->orWhere('name', 'like', '"%')
+                  ->orWhere('artist', 'like', '%""%')->orWhere('artist', 'like', '"%');
+            })
+            ->select('id', 'name', 'artist')
+            ->orderBy('id')
+            ->chunk(2000, function ($chunk) use (&$rows, &$total, $limit) {
+                foreach ($chunk as $r) {
+                    $newName = ProductNameNormalizer::csvUnquote($r->name);
+                    $newArtist = ProductNameNormalizer::csvUnquote($r->artist);
+                    if ($newName === null && $newArtist === null) { continue; }
+                    $total++;
+                    if ($limit === null || count($rows) < $limit) {
+                        $rows[] = [
+                            'id' => (int) $r->id,
+                            'old_name' => $r->name,
+                            'new_name' => $newName === null ? $r->name : $newName,
+                            'old_artist' => $r->artist,
+                            'new_artist' => $newArtist === null ? $r->artist : $newArtist,
+                        ];
+                    }
+                }
+            });
+        return ['rows' => $rows, 'total' => $total];
+    }
+
+    public function quoteScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        try {
+            $data = $this->quoteChanges($business_id, 300);
+        } catch (\Throwable $e) {
+            \Log::error('product-quote-cleanup scan failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Scan failed: ' . $e->getMessage()]);
+        }
+        return response()->json(['success' => true, 'to_fix' => $data['total'], 'preview' => $data['rows']]);
+    }
+
+    /** Fix one batch (up to 500), snapshot it, push the ids to the website. */
+    public function quoteApply(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $batch = $this->quoteChanges($business_id, 500)['rows'];
+        if (empty($batch)) {
+            return response()->json(['success' => true, 'fixed' => 0, 'remaining' => 0, 'msg' => 'Nothing left to fix.']);
+        }
+
+        $timestamp = now()->format('Y-m-d_His_u');
+        $file = "admin-snapshots/product-quote-cleanup-{$timestamp}.json";
+        $done = [];
+
+        \DB::beginTransaction();
+        try {
+            foreach ($batch as $b) {
+                // Only touch the row if name + artist are still what we read.
+                $q = \DB::table('products')->where('id', $b['id'])->where('name', $b['old_name']);
+                $b['old_artist'] === null ? $q->whereNull('artist') : $q->where('artist', $b['old_artist']);
+                if ($q->update(['name' => $b['new_name'], 'artist' => $b['new_artist']])) {
+                    $done[] = $b;
+                }
+            }
+            \Storage::disk('local')->put($file, json_encode([
+                'timestamp' => $timestamp,
+                'action' => 'product-quote-cleanup',
+                'user_id' => auth()->id(),
+                'business_id' => $business_id,
+                'source_name' => count($done) . ' product(s) with CSV quote marks',
+                'target_name' => 'cleaned name/artist',
+                // old/new mirror the name so the history detail page shows it.
+                'rows' => array_map(function ($d) { return $d + ['old' => $d['old_name'], 'new' => $d['new_name']]; }, $done),
+            ], JSON_PRETTY_PRINT));
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            if (\Storage::disk('local')->exists($file)) { \Storage::disk('local')->delete($file); }
+            \Log::emergency('product-quote-cleanup failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Fix failed - nothing was changed.']);
+        }
+
+        // Push to nivessa.com. Never let a website hiccup fail the fix.
+        try {
+            $notifier = new \App\Services\NivessaStockNotifier();
+            foreach (array_chunk(array_column($done, 'id'), 100) as $ids) {
+                $notifier->pushProductChanged($ids);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('product-quote-cleanup website push failed: ' . $e->getMessage());
+        }
+
+        $remaining = $this->quoteChanges($business_id, 0)['total'];
+        $fixed = count($done);
+        // If a whole batch was skipped (edited mid-run), stop the UI loop.
+        if ($fixed === 0) { $remaining = 0; }
+        return response()->json(['success' => true, 'fixed' => $fixed, 'remaining' => $remaining,
+            'msg' => "Fixed {$fixed}. {$remaining} remaining."]);
+    }
+
     // ===================== DISCOGS-SOURCED REBUILD =====================
     // The artist column is unreliable (often holds the title), so the accurate
     // fix is to rebuild "ARTIST - TITLE" from the Discogs release itself, using

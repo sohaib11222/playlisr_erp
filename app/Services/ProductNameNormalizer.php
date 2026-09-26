@@ -675,4 +675,39 @@ class ProductNameNormalizer
 
         return implode(' - ', $titleParts);
     }
+
+    /**
+     * Undo CSV-export quoting left in a name/artist by old spreadsheet imports,
+     * e.g. '"Arthur ""Big Boy"" Crudup - Title"' -> 'Arthur "Big Boy" Crudup - Title'
+     * and '"Gary Puckett' -> 'Gary Puckett'. Returns the cleaned string, or null
+     * when the value doesn't look CSV-mangled (legit quotes like
+     * 'David Bowie - "Heroes"' are left alone).
+     */
+    public static function csvUnquote($s)
+    {
+        $s = (string) $s;
+        $hasDoubled = strpos($s, '""') !== false;
+        $strayLead = substr($s, 0, 1) === '"' && substr_count($s, '"') % 2 === 1;
+        if (!$hasDoubled && !$strayLead) {
+            return null;
+        }
+
+        $t = $s;
+        if (substr($t, 0, 1) === '"') {
+            $t = substr($t, 1);
+            if (substr($t, -1) === '"' && substr_count($t, '"') % 2 === 1) {
+                $t = substr($t, 0, -1);
+            }
+        }
+        for ($i = 0; $i < 3 && strpos($t, '""') !== false; $i++) {
+            $t = str_replace('""', '"', $t);
+        }
+        // A title cut off mid-quote ('Featuring "Young Girl') gets its closing quote back.
+        if (substr_count($t, '"') % 2 === 1 && preg_match('/(^|\s)"[^"]+$/u', $t)) {
+            $t .= '"';
+        }
+        $t = trim(preg_replace('/\s{2,}/u', ' ', $t));
+
+        return ($t === '' || $t === $s) ? null : $t;
+    }
 }

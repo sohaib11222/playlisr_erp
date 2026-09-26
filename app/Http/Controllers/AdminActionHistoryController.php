@@ -40,7 +40,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -197,6 +197,11 @@ class AdminActionHistoryController extends Controller
             return $this->undoProductNameCleanup($data, $key);
         }
 
+        // product-quote-cleanup: restore each product's previous name + artist.
+        if ($action === 'product-quote-cleanup') {
+            return $this->undoProductQuoteCleanup($data, $key);
+        }
+
         // backfill-artist-from-name: restore each product's previous artist value.
         if ($action === 'backfill-artist-from-name') {
             return $this->undoBackfillArtist($data, $key);
@@ -279,7 +284,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -1069,6 +1074,53 @@ class AdminActionHistoryController extends Controller
         }
 
         $msg = "Restored {$restored} product name(s)";
+        $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
+        return redirect('/admin/admin-action-history')
+            ->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Restore name + artist from a product-quote-cleanup batch, only where both
+    // still hold what the cleanup wrote (a later manual edit isn't clobbered).
+    protected function undoProductQuoteCleanup(array $data, $key)
+    {
+        $rows = $data['rows'] ?? [];
+        if (empty($rows)) {
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Snapshot has no products to restore.']);
+        }
+
+        $restored = 0;
+        $skipped = 0;
+        $ids = [];
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $id = (int) ($r['id'] ?? 0);
+                if (!$id || !array_key_exists('old_name', $r) || !array_key_exists('new_name', $r)) { continue; }
+                $q = DB::table('products')->where('id', $id)->where('name', $r['new_name']);
+                ($r['new_artist'] ?? null) === null ? $q->whereNull('artist') : $q->where('artist', $r['new_artist']);
+                if ($q->update(['name' => $r['old_name'], 'artist' => $r['old_artist'] ?? null])) {
+                    $restored++;
+                    $ids[] = $id;
+                } else {
+                    $skipped++;
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
+        }
+
+        try {
+            $notifier = new \App\Services\NivessaStockNotifier();
+            foreach (array_chunk($ids, 100) as $chunk) { $notifier->pushProductChanged($chunk); }
+        } catch (\Throwable $e) {
+            \Log::warning('product-quote-cleanup undo push failed: ' . $e->getMessage());
+        }
+
+        $msg = "Restored {$restored} product(s)";
         $msg .= $skipped > 0 ? ", left {$skipped} that were edited since." : '.';
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => $msg]);

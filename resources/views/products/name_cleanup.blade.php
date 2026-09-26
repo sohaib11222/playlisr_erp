@@ -52,6 +52,28 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     <div id="mgnMsg" class="mgn-msg"></div>
 
     <div class="mgn-card">
+        <h2>Fix stray quote marks</h2>
+        <p class="sub">Old spreadsheet imports left extra quote marks in some names and artists, like <span class="mgn-old">"Arthur ""Big Boy"" Crudup - That's Alright Mama"</span>. This strips them back to the real text and updates the website too. Real quotes (e.g. David Bowie - "Heroes") are left alone. Scanning changes nothing.</p>
+        <div class="mgn-actions">
+            <button class="mgn-btn mgn-btn-ghost" id="qtScanBtn" type="button">Scan for quote marks</button>
+        </div>
+        <div id="qtResult" style="display:none;margin-top:18px;">
+            <div class="mgn-note mgn-summary" id="qtSummary" style="margin-top:0;color:#1F1B16;"></div>
+            <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #F0E9DA;border-radius:10px;">
+                <table class="mgn-table">
+                    <thead><tr><th>Current</th><th>Fixed</th></tr></thead>
+                    <tbody id="qtRows"></tbody>
+                </table>
+            </div>
+            <div class="mgn-actions" style="margin-top:16px;">
+                <button class="mgn-btn mgn-btn-primary" id="qtApplyBtn" type="button">Fix all</button>
+                <span class="mgn-note" id="qtProgress" style="margin-top:0"></span>
+            </div>
+            <p class="mgn-note">Runs in batches of 500. Each batch is undoable from Admin Action History.</p>
+        </div>
+    </div>
+
+    <div class="mgn-card">
         <h2>Standard: <span style="color:#8E8273">ARTIST - TITLE</span></h2>
         <p class="sub"><b style="color:#B71C1C">Heads up:</b> this uses the Artist field, which is unreliable on a lot of products (it sometimes holds the title), so it can flip good names. Prefer "Rebuild from Discogs" below. Scanning changes nothing either way.</p>
         <p class="sub" style="margin-top:-8px;">Optional — scope to one creator and/or date range. Leave blank to run against everything.</p>
@@ -312,6 +334,55 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         clearMsg(); applyBtn.disabled = true;
         document.getElementById('mgnProgress').textContent = 'Starting…';
         runBatch(0);
+    });
+
+    // ---- CSV quote cleanup ----
+    var qtScanBtn = document.getElementById('qtScanBtn');
+    var qtApplyBtn = document.getElementById('qtApplyBtn');
+    var qtResult = document.getElementById('qtResult');
+    var qtArmed = false;
+    function qtCell(name, artist, otherArtist) {
+        var h = esc(name);
+        if (artist !== otherArtist) { h += '<div style="font-size:12px;opacity:.8">Artist: ' + esc(artist) + '</div>'; }
+        return h;
+    }
+    qtScanBtn.addEventListener('click', function () {
+        clearMsg(); qtResult.style.display = 'none'; qtArmed = false; qtApplyBtn.textContent = 'Fix all';
+        qtScanBtn.disabled = true; qtScanBtn.textContent = 'Scanning...';
+        post('{{ route('products.quote.scan') }}', {}).then(function (d) {
+            qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan for quote marks';
+            if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
+            document.getElementById('qtSummary').innerHTML = '<b>' + d.to_fix + '</b> product(s) with stray quote marks.';
+            var rows = d.preview.map(function (f) {
+                return '<tr><td class="mgn-old">' + qtCell(f.old_name, f.old_artist, f.new_artist) + '</td><td class="mgn-new">' + qtCell(f.new_name, f.new_artist, f.old_artist) + '</td></tr>';
+            }).join('');
+            if (d.to_fix > d.preview.length) {
+                rows += '<tr><td colspan="2" style="color:#8E8273">... and ' + (d.to_fix - d.preview.length) + ' more. All will be fixed.</td></tr>';
+            }
+            document.getElementById('qtRows').innerHTML = rows || '<tr><td colspan="2">Nothing to fix.</td></tr>';
+            qtApplyBtn.style.display = d.to_fix > 0 ? '' : 'none';
+            qtResult.style.display = 'block';
+        }).catch(function () { qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan for quote marks'; showMsg('Scan failed - try again.', false); });
+    });
+    function qtBatch(total, lastRemaining) {
+        post('{{ route('products.quote.apply') }}', {}).then(function (d) {
+            if (!d.success) { qtApplyBtn.disabled = false; showMsg(d.msg || 'Fix failed.', false); return; }
+            total += d.fixed;
+            document.getElementById('qtProgress').textContent = 'Fixed ' + total + ' - ' + d.remaining + ' remaining...';
+            if (d.remaining > 0 && d.fixed > 0 && d.remaining < lastRemaining) { qtBatch(total, d.remaining); }
+            else {
+                qtApplyBtn.disabled = false; qtResult.style.display = 'none';
+                showMsg('Done - fixed ' + total + ' product(s)' + (d.remaining > 0 ? ', ' + d.remaining + ' left for manual review' : '') + '. Undo any batch at Admin Action History.', true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }).catch(function () { qtApplyBtn.disabled = false; showMsg('Fix failed mid-run - re-scan to see what remains.', false); });
+    }
+    qtApplyBtn.addEventListener('click', function () {
+        if (!qtArmed) { qtArmed = true; qtApplyBtn.textContent = 'Click again to confirm'; return; }
+        qtArmed = false; qtApplyBtn.textContent = 'Fix all';
+        clearMsg(); qtApplyBtn.disabled = true;
+        document.getElementById('qtProgress').textContent = 'Starting...';
+        qtBatch(0, Infinity);
     });
 
     // ---- Discogs rebuild ----
