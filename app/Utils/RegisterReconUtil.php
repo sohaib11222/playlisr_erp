@@ -411,7 +411,78 @@ class RegisterReconUtil
         return implode("\n", $lines);
     }
 
-    public static function postToSlack(string $text): bool
+    /**
+     * Block Kit version of the digest (what Slack actually shows; the
+     * mrkdwn text is the notification/fallback). Header, then per store:
+     * name + ERP/Clover side by side, one section per kind of problem.
+     */
+    public static function slackBlocks(array $r): array
+    {
+        $money = function ($x) { return '$' . number_format((float) $x, 2); };
+        $esc = function ($t) { return str_replace(['&', '<', '>'], ['&amp;', '&lt;', '&gt;'], (string) $t); };
+        $groups = [
+            'no_erp'    => ['Paid, not in ERP', 'Inventory is off. Ring it in.'],
+            'no_clover' => ['In ERP, never paid', 'We may have lost money. Ask why.'],
+            'mismatch'  => ['Wrong amount charged', 'Ask why.'],
+            'match'     => ['Same sale', 'Fatteen, match it on the feed.'],
+            'uncounted' => ['Register never counted', 'Ask why it was not closed.'],
+            'drawer'    => ['Drawer off', 'Ask about the count.'],
+        ];
+        $perStore = [];
+        foreach ($r['stores'] as $s) {
+            $perStore[] = $s['name'] . ' ' . count($s['items']);
+        }
+        $blocks = [];
+        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => 'Register check - ' . $r['label']]];
+        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => $r['issue_count'] === 0
+            ? 'Everything matches.'
+            : '*' . $r['issue_count'] . ' to fix*  ·  ' . implode('  ·  ', $perStore) . '  ·  <' . $r['feed_url'] . '|Recent feed>']]];
+        foreach ($r['stores'] as $s) {
+            $blocks[] = ['type' => 'divider'];
+            $diff = $s['clover'] - $s['erp'];
+            $blocks[] = [
+                'type' => 'section',
+                'text' => ['type' => 'mrkdwn', 'text' => '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*'],
+                'fields' => [
+                    ['type' => 'mrkdwn', 'text' => "*ERP*\n" . $money($s['erp'])],
+                    ['type' => 'mrkdwn', 'text' => "*Clover*\n" . $money($s['clover'])
+                        . (abs($diff) >= 1 ? '  (' . ($diff > 0 ? '+' : '-') . $money(abs($diff)) . ')' : '')],
+                ],
+            ];
+            if (empty($s['items'])) {
+                $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => 'All good.']]];
+                continue;
+            }
+            foreach ($groups as $kind => [$title, $why]) {
+                $its = array_values(array_filter($s['items'], fn($i) => $i['kind'] === $kind));
+                if (empty($its)) continue;
+                $rows = [];
+                foreach ($its as $it) {
+                    $row = '•  <' . ($it['url'] ?? $s['url']) . '|' . $esc($it['short'] ?? $it['text']) . '>';
+                    if (($it['ask'] ?? '') !== '' && $kind !== 'match') $row .= '   *' . $esc($it['ask']) . '*';
+                    if (!empty($it['note'])) $row .= "\n      _said: " . $esc(str_replace("\n", ' ', $it['note'])) . '_';
+                    $rows[] = $row;
+                }
+                // Slack caps a section at 3000 chars - split long lists.
+                $chunk = '*' . $title . '*  ' . $why;
+                foreach ($rows as $row) {
+                    if (strlen($chunk) + strlen($row) > 2800) {
+                        $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $chunk]];
+                        $chunk = '';
+                    }
+                    $chunk .= ($chunk === '' ? '' : "\n") . $row;
+                }
+                $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $chunk]];
+            }
+        }
+        $blocks[] = ['type' => 'divider'];
+        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
+            'text' => 'Fatteen: ask each person, reply in thread with what they said.']]];
+        // Slack allows 50 blocks per message; past that, fall back to text.
+        return count($blocks) <= 50 ? $blocks : [];
+    }
+
+    public static function postToSlack(string $text, array $blocks = []): bool
     {
         $webhook = self::webhook();
         if ($webhook === '') return false;
@@ -421,7 +492,7 @@ class RegisterReconUtil
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
+                CURLOPT_POSTFIELDS => json_encode(!empty($blocks) ? ['text' => $text, 'blocks' => $blocks] : ['text' => $text]),
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_CONNECTTIMEOUT => 5,
             ]);

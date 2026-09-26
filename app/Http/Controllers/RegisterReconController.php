@@ -93,7 +93,7 @@ class RegisterReconController extends Controller
         }
         try {
             $report = RegisterReconUtil::build($business_id, $date, $request->session());
-            $ok = RegisterReconUtil::postToSlack(RegisterReconUtil::formatSlack($report));
+            $ok = RegisterReconUtil::postToSlack(RegisterReconUtil::formatSlack($report), RegisterReconUtil::slackBlocks($report));
         } catch (\Throwable $e) {
             \Log::warning('register recon post failed: ' . $e->getMessage());
             $ok = false;

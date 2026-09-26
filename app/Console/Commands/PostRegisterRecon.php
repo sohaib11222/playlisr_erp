@@ -63,7 +63,7 @@ class PostRegisterRecon extends Command
             $this->line($text);
             return 0;
         }
-        if (!RegisterReconUtil::postToSlack($text)) {
+        if (!RegisterReconUtil::postToSlack($text, RegisterReconUtil::slackBlocks($report))) {
             $this->error('Slack post failed.');
             return 1;
         }
