@@ -475,7 +475,9 @@ class RegisterReconUtil
             foreach (self::grouped($s) as [$title, $hint, $byPerson]) {
                 $rows = [];
                 foreach ($byPerson as $who => $links) {
-                    $rows[] = '>' . ($who !== '' ? '*' . $who . '*    ' : '') . implode('   ', $links);
+                    foreach ($links as $l) {
+                        $rows[] = '•  ' . ($who !== '' ? '*' . $who . '*   ' : '') . $l;
+                    }
                 }
                 $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
                     'text' => '*' . $title . '*' . ($hint !== '' ? '   _' . $hint . '_' : '') . "\n" . implode("\n", $rows)]];
