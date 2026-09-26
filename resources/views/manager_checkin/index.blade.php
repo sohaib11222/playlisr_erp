@@ -166,7 +166,11 @@
         </div>
 
         @foreach($questions as $key => $q)
-            <label class="q" for="ci-{{ $key }}">{{ $q[0] }} <span class="hint">{{ $q[1] }}</span></label>
+            <label class="q" for="ci-{{ $key }}">{{ $q[0] }} <span class="hint">{{ $q[1] }}</span>
+                @if(in_array($key, $taskable, true))
+                    <a href="#" class="mk-task js-mk-task" data-key="{{ $key }}" data-label="{{ $q[0] }}">Make a task</a>
+                @endif
+            </label>
             <textarea name="{{ $key }}" id="ci-{{ $key }}" maxlength="2000">{{ $old($key) }}</textarea>
         @endforeach
 
@@ -228,6 +232,28 @@
     }
     sel.addEventListener('change', render);
     render();
+
+    // "Make a task" on the form: open a new task pre-filled from what's typed.
+    var erpOwner = @json($erpOwnerId);
+    var store = @json($store === 'pico' ? 'pico' : 'hollywood');
+    var me = @json(trim(auth()->user()->first_name . ' ' . auth()->user()->last_name));
+    document.querySelectorAll('.js-mk-task').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            var key = a.getAttribute('data-key');
+            var text = (document.getElementById('ci-' + key).value || '').trim();
+            if (!text) { alert('Type something in this box first.'); return; }
+            var who = sel.value ? sel.options[sel.selectedIndex].text : '';
+            var owner = (key === 'erp' && erpOwner) ? erpOwner : sel.value;
+            var p = new URLSearchParams();
+            p.set('prefill', '1');
+            p.set('title', text.split('\n')[0].slice(0, 150));
+            p.set('description', text + '\n\nFrom ' + me + "'s check-in" + (who ? ' with ' + who : '') + ' on ' + document.getElementById('ci-date').value + ' (' + a.getAttribute('data-label') + ').');
+            p.set('store', store);
+            if (owner) { p.append('assignees[]', owner); }
+            window.open(@json(url('/tasks/create')) + '?' + p.toString(), '_blank');
+        });
+    });
 })();
 </script>
 @endsection
