@@ -71,15 +71,25 @@ jobs:
                 }
             }
 
-            echo "--- Listening party ledger entries ---\n";
+            echo "--- ALL sales payout ledger entries ---\n";
             $payouts = json_decode(\Storage::disk('local')->get('sales-commission-payouts.json'), true) ?: [];
             foreach ($users as $u) {
                 echo $u->first_name . ":\n";
                 foreach ($payouts as $p) {
                     if ((int) ($p['user_id'] ?? 0) !== $u->id) { continue; }
-                    $note = (string) ($p['note'] ?? '');
-                    if (stripos($note, 'Listening party') !== 0) { continue; }
-                    echo "  $" . ($p['amount'] ?? 0) . " on " . ($p['from_date'] ?? $p['marked_at'] ?? '?') . " - " . $note . "\n";
+                    echo "  $" . ($p['amount'] ?? 0) . " on " . ($p['from_date'] ?? $p['marked_at'] ?? '?') . " - " . ($p['note'] ?? '(no note)') . "\n";
+                }
+            }
+
+            echo "--- party-split-adjustments.json entries mentioning these users ---\n";
+            $splits = json_decode(\Storage::disk('local')->get('party-split-adjustments.json'), true) ?: [];
+            foreach ($users as $u) {
+                echo $u->first_name . " (uid " . $u->id . "):\n";
+                foreach ($splits as $key => $entry) {
+                    $adj = $entry['adj'][$u->id] ?? null;
+                    $party = $entry['party'][$u->id] ?? null;
+                    if ($adj === null && $party === null) { continue; }
+                    echo "  " . $key . ": adj=" . ($adj ?? 'n/a') . " party=" . ($party ?? 'n/a') . " (removed=" . (!empty($entry['removed']) ? 'y' : 'n') . ")\n";
                 }
             }
             PHP
