@@ -387,8 +387,8 @@ class RegisterReconUtil
         // Sarah 9/25: two buckets that matter - money we didn't collect and
         // stock the ERP still thinks we have. Everything else is minor.
         $cats = [
-            'cash'  => ['Missing cash', 'rung in ERP, not charged - ask why'],
-            'inv'   => ['Missing inventory update', 'charged on Clover, not rung in ERP - ring the items in'],
+            'cash'  => ['Did we capture the transaction?', 'rung in ERP, no charge on Clover - ask why'],
+            'inv'   => ['Needs inventory update', 'charged on Clover, not rung in ERP - ring the items in'],
             'wrong' => ['Wrong amount', 'charged more than rung - ask why'],
             'match' => ['To match', 'same sale, Fatteen match on the feed'],
             'count' => ['Register not counted', 'ask why they did not close out'],
