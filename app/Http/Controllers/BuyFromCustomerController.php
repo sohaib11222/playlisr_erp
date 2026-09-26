@@ -436,7 +436,7 @@ class BuyFromCustomerController extends Controller
             'show_all' => $showAll,
         ];
 
-        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase', 'location']);
+        $query = BuyCustomerOffer::with(['contact', 'createdBy', 'acceptedPurchase', 'location', 'lines']);
         if (!$showAll) {
             $query->where('business_id', $business_id);
         }

@@ -101,5 +101,24 @@ class BuyCustomerOffer extends Model
     {
         return $this->belongsTo(\App\Transaction::class, 'accepted_purchase_id');
     }
+
+    /**
+     * The offer lines the cashier actually filled in. The create form seeds
+     * several blank default rows (qty 1, no title/price) that shouldn't show
+     * in the "what we bought" breakdown, so filter those out. Uses the loaded
+     * relation when present to avoid an extra query.
+     */
+    public function getMeaningfulLinesAttribute()
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        return $lines->filter(function ($l) {
+            return !empty($l->title)
+                || (float) $l->line_cash_total > 0
+                || (float) $l->line_credit_total > 0
+                || (float) $l->discogs_median_price > 0
+                || (float) $l->quantity > 1;
+        })->values();
+    }
 }
 
