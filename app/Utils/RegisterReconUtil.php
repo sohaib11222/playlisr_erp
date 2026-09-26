@@ -160,6 +160,11 @@ class RegisterReconUtil
             if (!$sale || isset($pairFor[$c['sale']]) || isset($pairedCp[$cpKey]) || !isset($orphanByCpId[$cpKey])) continue;
             if ($c['loc_id'] !== null && (int) $c['loc_id'] !== (int) $sale->location_id) continue; // other store
             if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            // Only a real pair if a card charge was actually due (not paid
+            // in store credit) and the amounts are within 20% - #30980
+            // ($4.39 store credit vs a $1.65 charge) was a bad suggestion.
+            $due = $expected[$sale->id] ?? $cents($sale->final_total);
+            if ($due <= 0 || $c['amt_delta'] > 0.2 * $due) continue;
             $pairFor[$c['sale']] = $c;
             $pairedCp[$cpKey] = true;
         }
