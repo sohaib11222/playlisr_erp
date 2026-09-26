@@ -175,7 +175,7 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
-                    'mini'   => '#' . $sale->invoice_no,
+                    'mini'   => '#' . $sale->invoice_no . ' ' . $money($sale->final_total) . ' = Clover ' . $money($c['amount']),
                     'short'  => '#' . $sale->invoice_no . ' ' . $money($sale->final_total) . ' = Clover ' . $money($c['amount']) . ' at ' . $cpWhen,
                     'text'   => '#' . $sale->invoice_no . ' (' . $money($sale->final_total) . ' in ERP) is probably the '
                         . $money($c['amount']) . ' Clover charge at ' . $cpWhen . '.',
@@ -198,7 +198,7 @@ class RegisterReconUtil
                 if ($exp <= 0) continue; // fully covered by store credit
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
-                    'mini'   => '#' . $sale->invoice_no . ' ' . $money($exp / 100),
+                    'mini'   => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'short'  => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'text'   => $inv . ' ' . $money($exp / 100) . ' rung in ERP at ' . $time($sale->transaction_date)
                         . ' but never charged on Clover.',
@@ -216,7 +216,7 @@ class RegisterReconUtil
             if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
-                    'mini'   => '#' . $sale->invoice_no . ' off ' . $money(abs($gross - $exp) / 100),
+                    'mini'   => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ' vs Clover ' . $money($gross / 100),
                     'short'  => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ', Clover ' . $money($gross / 100),
                     'text'   => $inv . ' rung ' . $money($exp / 100) . ' in ERP but charged '
                         . $money($gross / 100) . ' on Clover (' . $time($sale->transaction_date) . ').',
@@ -269,7 +269,7 @@ class RegisterReconUtil
             }
             $stores[$k]['items'][] = [
                 'kind'   => 'no_erp',
-                'mini'   => $money(abs($amt)),
+                'mini'   => $money(abs($amt)) . ' at ' . $when,
                 'short'  => $money(abs($amt)) . ($amt < 0 ? ' refund' : '') . ' at ' . $when
                     . (!empty($items) ? ' (' . implode(', ', $items) . ')' : ''),
                 'text'   => $text,
@@ -384,12 +384,12 @@ class RegisterReconUtil
     {
         $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
         $verbs = [
-            'no_erp'    => 'ring in',
-            'no_clover' => 'not charged',
-            'mismatch'  => 'wrong amount',
-            'match'     => 'match',
-            'uncounted' => 'register not counted',
-            'drawer'    => 'drawer off',
+            'no_erp'    => 'charged on Clover, never rung in ERP (ring it in):',
+            'no_clover' => 'rung in ERP, never charged (why?):',
+            'mismatch'  => 'charged the wrong amount (why?):',
+            'match'     => 'same sale, match on the feed:',
+            'uncounted' => 'register never counted:',
+            'drawer'    => 'drawer off:',
         ];
         $lines = ['*Register check - ' . $r['label'] . '*'
             . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
@@ -418,8 +418,14 @@ class RegisterReconUtil
                 $lines[] = '• *' . $who . '*: ' . implode('; ', $parts);
             }
         }
+        if ($r['issue_count'] > 0) {
+            $lines[] = '';
+            $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up with these people to fix these errors, then reply in thread when done.';
+        }
         return implode("\n", $lines);
     }
+
+    const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
 
     /** Block Kit layout was tried 9/25 and dropped as too long; plain text only. */
     public static function slackBlocks(array $r): array
