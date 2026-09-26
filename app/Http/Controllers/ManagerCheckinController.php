@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Utils\BusinessUtil;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -24,6 +25,8 @@ use Illuminate\Support\Facades\Storage;
 class ManagerCheckinController extends Controller
 {
     const STORE_PATH = 'manager_checkins.json';
+
+    const STORES = ['hw' => 'Hollywood', 'pico' => 'Pico'];
 
     const RATINGS = ['great' => 'Great', 'good' => 'Good', 'needs_work' => 'Needs work'];
 
@@ -63,10 +66,42 @@ class ManagerCheckinController extends Controller
         Storage::put(self::STORE_PATH, json_encode(array_values($items), JSON_PRETTY_PRINT));
     }
 
-    /** Active staff logins for the employee dropdown. */
-    private function employees($businessId)
+    /** Store picked by the toggle; defaults to the manager's own store (Zakary = Pico, everyone else = Hollywood). */
+    private function currentStore(Request $request)
     {
+        $store = (string) $request->input('store');
+        if (isset(self::STORES[$store])) {
+            return $store;
+        }
+        return ManagerChecklistController::currentManagerKey() === 'zakary' ? 'pico' : 'hw';
+    }
+
+    /**
+     * Active staff logins for the employee dropdown, limited to people with a
+     * Sling shift at that store in the last 30 days or the synced weeks ahead
+     * (sling_shifts.location_name). Falls back to everyone if Sling isn't synced.
+     */
+    private function employees($businessId, $store = null)
+    {
+        $ids = null;
+        if ($store && Schema::hasTable('sling_shifts')) {
+            $ids = DB::table('sling_shifts')
+                ->where('event_type', 'shift')
+                ->whereNotNull('erp_user_id')
+                ->where('location_name', 'like', $store === 'pico' ? '%pico%' : '%hollywood%')
+                ->whereDate('dtstart', '>=', date('Y-m-d', strtotime('-30 days')))
+                ->distinct()
+                ->pluck('erp_user_id')
+                ->all();
+            if (empty($ids)) {
+                $ids = null;
+            }
+        }
+
         return DB::table('users')
+            ->when($ids !== null, function ($q) use ($ids) {
+                return $q->whereIn('id', $ids);
+            })
             ->where('business_id', $businessId)
             ->where('status', 'active')
             ->where('allow_login', 1)
@@ -92,6 +127,11 @@ class ManagerCheckinController extends Controller
             return $isAdmin || (int) ($r['manager_id'] ?? 0) === (int) auth()->id();
         });
 
+        $store = $this->currentStore($request);
+        $rows  = array_filter($rows, function ($r) use ($store) {
+            return ($r['store'] ?? $store) === $store;
+        });
+
         $filterEmployee = (int) $request->input('employee_id');
         if ($filterEmployee) {
             $rows = array_filter($rows, function ($r) use ($filterEmployee) {
@@ -100,9 +140,11 @@ class ManagerCheckinController extends Controller
         }
 
         return view('manager_checkin.index', [
-            'employees'      => $this->employees($businessId),
+            'employees'      => $this->employees($businessId, $store),
             'rows'           => array_values($rows),
             'isAdmin'        => $isAdmin,
+            'store'          => $store,
+            'stores'         => self::STORES,
             'filterEmployee' => $filterEmployee,
             'ratings'        => self::RATINGS,
             'questions'      => self::QUESTIONS,
@@ -114,15 +156,16 @@ class ManagerCheckinController extends Controller
         $this->guard();
 
         $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
+        $store      = $this->currentStore($request);
         $employeeId = (int) $request->input('employee_id');
-        $employee   = $this->employees($businessId)->first(function ($u) use ($employeeId) {
+        $employee   = $this->employees($businessId, $store)->first(function ($u) use ($employeeId) {
             return (int) $u->id === $employeeId;
         });
         $rating     = (string) $request->input('rating');
         $date       = (string) $request->input('date');
 
         if (!$employee || !isset(self::RATINGS[$rating]) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            return redirect()->action('ManagerCheckinController@index')
+            return redirect()->action('ManagerCheckinController@index', ['store' => $store])
                 ->withInput()
                 ->with('status', ['success' => 0, 'msg' => 'Pick the employee, date and how they are doing.']);
         }
@@ -131,6 +174,7 @@ class ManagerCheckinController extends Controller
         $entry = [
             'id'            => uniqid('ci_'),
             'business_id'   => (int) $businessId,
+            'store'         => $store,
             'date'          => $date,
             'employee_id'   => $employeeId,
             'employee_name' => trim($employee->first_name . ' ' . $employee->last_name),
@@ -147,7 +191,7 @@ class ManagerCheckinController extends Controller
         array_unshift($items, $entry);
         self::save($items);
 
-        return redirect()->action('ManagerCheckinController@index')
+        return redirect()->action('ManagerCheckinController@index', ['store' => $store])
             ->with('status', ['success' => 1, 'msg' => 'Saved check-in for ' . $entry['employee_name'] . '.']);
     }
 }

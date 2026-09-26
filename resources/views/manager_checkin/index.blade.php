@@ -84,6 +84,12 @@
 .open-shell .rating.needs_work { background: #FBEAE8; color: var(--d-bad); }
 .open-shell .ans { margin-top: 10px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .open-shell .ans b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--d-ink-2); }
+.open-shell .store-toggle { display: inline-flex; background: var(--d-surface-2); border: 1px solid var(--d-line-2); border-radius: 999px; padding: 4px; margin-bottom: 16px; }
+.open-shell .store-toggle a {
+    padding: 8px 22px; border-radius: 999px; font-weight: 800; font-size: 15px;
+    color: var(--d-ink-2); text-decoration: none;
+}
+.open-shell .store-toggle a.on { background: var(--d-accent); color: var(--d-accent-text); box-shadow: 0 1px 2px rgba(31,27,22,.12); }
 .open-shell .empty { color: var(--d-ink-3); font-size: 14px; }
 </style>
 
@@ -100,8 +106,15 @@
         <div class="flash {{ (session('status')['success'] ?? 1) ? 'ok' : 'warn' }}">{{ session('status')['msg'] }}</div>
     @endif
 
+    <div class="store-toggle">
+        @foreach($stores as $key => $label)
+            <a href="{{ url('/manager-checkins') . '?store=' . $key }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
+        @endforeach
+    </div>
+
     <form method="POST" action="{{ url('/manager-checkins') }}" class="card">
         {{ csrf_field() }}
+        <input type="hidden" name="store" value="{{ $store }}">
         <div class="row2">
             <div>
                 <label class="q" for="ci-employee">Employee</label>
@@ -135,8 +148,9 @@
     </form>
 
     <div class="list-head">
-        <h3>{{ $isAdmin ? 'All check-ins' : 'Your check-ins' }} ({{ count($rows) }})</h3>
+        <h3>{{ $stores[$store] }} - {{ $isAdmin ? 'all check-ins' : 'your check-ins' }} ({{ count($rows) }})</h3>
         <form method="GET" action="{{ url('/manager-checkins') }}">
+            <input type="hidden" name="store" value="{{ $store }}">
             <select name="employee_id" onchange="this.form.submit()">
                 <option value="">Everyone</option>
                 @foreach($employees as $e)
