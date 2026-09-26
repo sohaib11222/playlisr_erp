@@ -28,6 +28,12 @@ class ManagerCheckinController extends Controller
 
     const STORES = ['hw' => 'Hollywood', 'pico' => 'Pico'];
 
+    // Not floor staff, never in the employee dropdown (Sarah 2026-09-25): gone
+    // (Abby, Clark), freelancers/contractors (Chris, Fahrul, Insha, Viper,
+    // "Freelancer"), HR (Fatteen = "Nerdy Solutions"), owners (Sarah, Jon).
+    // Matched against lowercase first name or any word of the full name.
+    const EXCLUDE = ['abby', 'chris', 'clark', 'fahrul', 'fatteen', 'insha', 'nerdy', 'viper', 'freelancer', 'sarah', 'jon', 'jonathan'];
+
     const RATINGS = ['great' => 'Great', 'good' => 'Good', 'needs_work' => 'Needs work'];
 
     // Text questions, in form order. Key => [label, hint].
@@ -110,7 +116,12 @@ class ManagerCheckinController extends Controller
             })
             ->orderBy('first_name')
             ->select('id', 'first_name', 'last_name')
-            ->get();
+            ->get()
+            ->filter(function ($u) {
+                $words = preg_split('/[^a-z]+/', strtolower(trim($u->first_name . ' ' . $u->last_name)));
+                return !array_intersect($words, self::EXCLUDE);
+            })
+            ->values();
     }
 
     public function index(Request $request)
