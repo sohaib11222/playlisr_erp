@@ -1,0 +1,80 @@
+# READ-ONLY diagnostic: show the actual per-hour store rate (from
+# storeHourlyProfile) behind each party's goal figure, to explain why Beck's
+# goal is high and the others are lower. One-off; delete after use.
+name: Diag goal breakdown
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Dump per-hour store rates (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $locations = \DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1)->orderBy('name')->pluck('name', 'id');
+            $hwId = null; $picoId = null;
+            foreach ($locations as $lid => $lname) {
+                if (stripos($lname, 'hollywood') !== false) { $hwId = $lid; }
+                if (stripos($lname, 'pico') !== false) { $picoId = $lid; }
+            }
+            $rc = app(\App\Http\Controllers\ReportController::class);
+            $hwProfile = $rc->storeHourlyProfile($businessId, $hwId, 12);
+            $picoProfile = $rc->storeHourlyProfile($businessId, $picoId, 12);
+
+            $cases = [
+                ['Beck', '2026-09-18', $hwProfile, [18, 19]],
+                ['Miley', '2026-09-15', $hwProfile, [18, 19]],
+                ['Orville', '2026-09-13', $hwProfile, [18, 19]],
+                ['Beabadoobee HW', '2026-09-12', $hwProfile, [18, 19]],
+                ['Beabadoobee Pico', '2026-09-12', $picoProfile, [18]],
+            ];
+            foreach ($cases as [$label, $date, $profile, $hours]) {
+                $c = \Carbon::parse($date);
+                echo $label . " (" . $c->format('l, M j') . "):\n";
+                foreach ($hours as $h) {
+                    $key = ($c->dayOfWeek + 1) . '-' . $h;
+                    echo "  " . $h . ":00-" . ($h + 1) . ":00 slot ($key) rate: $" . round($profile['rate'][$key] ?? 0, 2) . "\n";
+                }
+            }
+            echo "HW median: $" . round($hwProfile['median'], 2) . "\n";
+            echo "Pico median: $" . round($picoProfile['median'], 2) . "\n";
+            PHP
+            echo "=== done ==="
