@@ -4,6 +4,20 @@
 @section('content')
 @php
     $old = function ($k, $d = '') { return old($k, $d); };
+    // Answers that can turn into a task, and the "Make a task" link for them.
+    $taskable = ['projects', 'ideas', 'erp', 'lowlight'];
+    $taskLink = function ($r, $key, $label) use ($erpOwnerId) {
+        $text  = trim((string) ($r[$key] ?? ''));
+        $first = trim(strtok($text, "\n"));
+        $owner = ($key === 'erp' && $erpOwnerId) ? $erpOwnerId : $r['employee_id'];
+        return url('/tasks/create') . '?' . http_build_query([
+            'prefill'     => 1,
+            'title'       => mb_substr($first, 0, 150),
+            'description' => $text . "\n\nFrom " . $r['manager_name'] . "'s check-in with " . $r['employee_name'] . ' on ' . $r['date'] . ' (' . $label . ').',
+            'store'       => ($r['store'] ?? 'hw') === 'pico' ? 'pico' : 'hollywood',
+            'assignees'   => [$owner],
+        ]);
+    };
 @endphp
 {{-- Cream / pastel-yellow look to match /pos/create and /manager-checklist. --}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -90,6 +104,16 @@
     color: var(--d-ink-2); text-decoration: none;
 }
 .open-shell .store-toggle a.on { background: var(--d-accent); color: var(--d-accent-text); box-shadow: 0 1px 2px rgba(31,27,22,.12); }
+.open-shell .work { display: none; margin-top: 14px; background: var(--d-surface-2); border: 1px solid var(--d-line); border-radius: var(--d-radius-sm); padding: 12px 14px; font-size: 14px; }
+.open-shell .work.show { display: block; }
+.open-shell .work h4 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--d-ink-2); margin: 8px 0 4px; }
+.open-shell .work h4:first-child { margin-top: 0; }
+.open-shell .work ul { margin: 0; padding-left: 18px; }
+.open-shell .work li { margin: 2px 0; }
+.open-shell .work a { color: var(--d-ink); }
+.open-shell .work .st { font-size: 12px; color: var(--d-ink-3); font-weight: 600; }
+.open-shell .work .none { color: var(--d-ink-3); }
+.open-shell .mk-task { font-size: 12.5px; font-weight: 700; color: var(--d-accent-text); background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep); border-radius: 999px; padding: 2px 10px; text-decoration: none; margin-left: 6px; white-space: nowrap; }
 .open-shell .empty { color: var(--d-ink-3); font-size: 14px; }
 </style>
 
@@ -131,6 +155,8 @@
             </div>
         </div>
 
+        <div class="work" id="ci-work"></div>
+
         <label class="q">How is their week going?</label>
         <div class="pills">
             @foreach($ratings as $key => $label)
@@ -171,7 +197,7 @@
             </div>
             @foreach($questions as $key => $q)
                 @if(!empty($r[$key]))
-                    <div class="ans"><b>{{ $q[0] }}</b>{{ $r[$key] }}</div>
+                    <div class="ans"><b>{{ $q[0] }} @if(in_array($key, $taskable, true))<a class="mk-task" href="{{ $taskLink($r, $key, $q[0]) }}" target="_blank" rel="noopener">Make a task</a>@endif</b>{{ $r[$key] }}</div>
                 @endif
             @endforeach
         </div>
@@ -179,4 +205,29 @@
         <p class="empty">No check-ins yet.</p>
     @endforelse
 </div>
+<script>
+(function () {
+    var work = @json($work);
+    var sel = document.getElementById('ci-employee');
+    var box = document.getElementById('ci-work');
+    var labels = { not_started: 'not started', in_progress: 'in progress', complete: 'done' };
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function list(items) {
+        if (!items.length) { return '<div class="none">None</div>'; }
+        return '<ul>' + items.map(function (i) {
+            return '<li><a href="' + i.url + '" target="_blank" rel="noopener">' + esc(i.title) + '</a> <span class="st">' + (i.project ? 'project, ' : '') + (labels[i.status] || i.status) + '</span></li>';
+        }).join('') + '</ul>';
+    }
+    function render() {
+        var w = work[sel.value];
+        if (!w) { box.className = 'work'; box.innerHTML = ''; return; }
+        box.innerHTML = '<h4>Their projects</h4>' + list(w.projects)
+            + '<h4>Open tasks</h4>' + list(w.tasks)
+            + '<h4>Done in the last 2 weeks</h4>' + list(w.done);
+        box.className = 'work show';
+    }
+    sel.addEventListener('change', render);
+    render();
+})();
+</script>
 @endsection

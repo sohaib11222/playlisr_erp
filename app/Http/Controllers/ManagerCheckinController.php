@@ -136,6 +136,79 @@ class ManagerCheckinController extends Controller
             ->values();
     }
 
+    /**
+     * Open one-off tasks, projects, and things finished in the last 14 days
+     * for each employee, keyed by user id, so the form can show them when the
+     * manager picks someone. Repeating chores (daily/weekly repeats) are left
+     * out: this is about their projects, not routine duties.
+     */
+    private function workFor($businessId, array $userIds)
+    {
+        $out = [];
+        foreach ($userIds as $id) {
+            $out[$id] = ['tasks' => [], 'projects' => [], 'done' => []];
+        }
+        if (empty($userIds)) {
+            return $out;
+        }
+        $since = date('Y-m-d H:i:s', strtotime('-14 days'));
+
+        if (Schema::hasTable('weekly_tasks') && Schema::hasTable('task_assignees')) {
+            $rows = DB::table('weekly_tasks as t')
+                ->join('task_assignees as a', 'a.task_id', '=', 't.id')
+                ->where('t.business_id', $businessId)
+                ->whereIn('a.user_id', $userIds)
+                ->where('t.repeat_daily', 0)
+                ->where('t.repeat_weekly', 0)
+                ->whereNull('t.repeat_of')
+                ->where(function ($q) use ($since) {
+                    $q->where('t.status', '!=', 'complete')->orWhere('t.completed_at', '>=', $since);
+                })
+                ->orderBy('t.created_at', 'desc')
+                ->select('a.user_id', 't.id', 't.title', 't.status')
+                ->get();
+            foreach ($rows as $r) {
+                $item = ['title' => $r->title, 'status' => $r->status, 'url' => url('/tasks/' . $r->id . '/edit')];
+                $out[$r->user_id][$r->status === 'complete' ? 'done' : 'tasks'][] = $item;
+            }
+        }
+
+        if (Schema::hasTable('projects')) {
+            foreach (['project_assignees', 'project_contributors'] as $pivot) {
+                if (!Schema::hasTable($pivot)) {
+                    continue;
+                }
+                $rows = DB::table('projects as p')
+                    ->join($pivot . ' as a', 'a.project_id', '=', 'p.id')
+                    ->where('p.business_id', $businessId)
+                    ->whereIn('a.user_id', $userIds)
+                    ->where(function ($q) use ($since) {
+                        $q->where('p.status', '!=', 'complete')->orWhere('p.completed_at', '>=', $since);
+                    })
+                    ->select('a.user_id', 'p.id', 'p.title', 'p.status')
+                    ->get();
+                foreach ($rows as $r) {
+                    $item = ['title' => $r->title, 'status' => $r->status, 'url' => url('/tasks/projects/' . $r->id . '/edit'), 'project' => true];
+                    $bucket = $r->status === 'complete' ? 'done' : 'projects';
+                    if (!in_array($item, $out[$r->user_id][$bucket], true)) {
+                        $out[$r->user_id][$bucket][] = $item;
+                    }
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** ERP asks go to Sarah (she builds all ERP fixes); falls back to the employee. */
+    private function erpOwnerId($businessId)
+    {
+        return DB::table('users')
+            ->where('business_id', $businessId)
+            ->whereRaw('LOWER(TRIM(first_name)) = ?', ['sarah'])
+            ->where('status', 'active')
+            ->value('id');
+    }
+
     public function index(Request $request)
     {
         $this->guard();
@@ -162,8 +235,12 @@ class ManagerCheckinController extends Controller
             });
         }
 
+        $employees = $this->employees($businessId, $store);
+
         return view('manager_checkin.index', [
-            'employees'      => $this->employees($businessId, $store),
+            'employees'      => $employees,
+            'work'           => $this->workFor($businessId, $employees->pluck('id')->all()),
+            'erpOwnerId'     => $this->erpOwnerId($businessId),
             'rows'           => array_values($rows),
             'isAdmin'        => $isAdmin,
             'store'          => $store,

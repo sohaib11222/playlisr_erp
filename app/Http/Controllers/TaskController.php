@@ -491,6 +491,12 @@ class TaskController extends Controller
         }
         $projectOptions = $this->projectOptions($business_id);
         $projectId = (int) $request->input('project_id') ?: null;
+        // "Make a task" links (e.g. from Manager Check-ins) pass ?prefill=1 with
+        // title/description/store/assignees; seed them as old input so the
+        // form's old() calls pick them up. Real old input (a failed submit) wins.
+        if ($request->input('prefill') && !$request->session()->hasOldInput()) {
+            $request->session()->flashInput($request->only(['title', 'description', 'store', 'assignees']));
+        }
         return view('tasks.create', compact('storeLabels', 'priorityLabels', 'assignableUsers', 'type', 'projectOptions', 'projectId'));
     }
 
