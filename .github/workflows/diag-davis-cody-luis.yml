@@ -72,13 +72,19 @@ jobs:
             }
 
             echo "--- ALL sales payout ledger entries ---\n";
-            $payouts = json_decode(\Storage::disk('local')->get('sales-commission-payouts.json'), true) ?: [];
+            $payoutsRaw = \Storage::disk('local')->get('sales-commission-payouts.json');
+            $payouts = json_decode($payoutsRaw, true) ?: [];
             foreach ($users as $u) {
-                echo $u->first_name . ":\n";
+                $targetId = (int) $u->id;
+                echo $u->first_name . " (matching against id " . $targetId . "):\n";
+                $found = 0;
                 foreach ($payouts as $p) {
-                    if ((int) ($p['user_id'] ?? 0) !== $u->id) { continue; }
+                    $rowId = (int) ($p['user_id'] ?? 0);
+                    if ($rowId !== $targetId) { continue; }
+                    $found++;
                     echo "  $" . ($p['amount'] ?? 0) . " on " . ($p['from_date'] ?? $p['marked_at'] ?? '?') . " - " . ($p['note'] ?? '(no note)') . "\n";
                 }
+                echo "  (" . $found . " matched)\n";
             }
 
             echo "--- party-split-adjustments.json entries mentioning these users ---\n";
