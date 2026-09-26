@@ -395,7 +395,7 @@ class RegisterReconUtil
                 if (!empty($it['fatteen'])) {
                     $line .= ' ' . ($it['q'] ?? '');
                 } elseif (!empty($it['q'])) {
-                    $line .= ' ' . ($who !== '' ? $who . ' ' : '(cashier unknown) ') . $it['q'];
+                    $line .= ' ' . ($who !== '' ? $who . ' ' : '*Cashier unknown:* ') . $it['q'];
                 } else {
                     $line .= $who !== '' ? ' ' . $who : '';
                 }
@@ -407,7 +407,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'Reply in thread once it is done.';
+        $lines[] = 'Fatteen: ask each cashier, then reply in thread with what they said.';
         return implode("\n", $lines);
     }
 
@@ -437,15 +437,14 @@ class RegisterReconUtil
 
     // Slack user IDs for cashiers in #register-reconciliation, so their line
     // pings them. Anyone not listed shows as a plain name.
-    const SLACK_IDS = [
-        'zak' => 'U07L3J8D6FP', 'zakary' => 'U07L3J8D6FP',
-        'luis' => 'U08FQKLKKHS',
-    ];
+    // Empty since 9/25: the channel is Sarah/Jon/Fatteen only, and Fatteen
+    // asks the cashiers. Add first-name => Slack user id to ping someone.
+    const SLACK_IDS = [];
 
     private static function mention(string $first): string
     {
         $id = self::SLACK_IDS[strtolower($first)] ?? null;
-        return $id ? '<@' . $id . '>' : '*' . $first . ',*';
+        return $id ? '<@' . $id . '>' : '*Ask ' . $first . ':*';
     }
 
     private static function storeName(string $name): string
