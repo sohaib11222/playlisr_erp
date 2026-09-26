@@ -175,8 +175,9 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
-                    'text'   => 'Same sale, needs matching: ERP #' . $sale->invoice_no . ' ' . $money($sale->final_total)
-                        . ' (' . $time($sale->transaction_date) . ') = Clover ' . $money($c['amount']) . ' (' . $cpWhen . ')' . $off,
+                    'text'   => '#' . $sale->invoice_no . ' rung ' . $money($sale->final_total) . ' in ERP, charged '
+                        . $money($c['amount']) . ' on Clover' . ($off !== '' ? ' (' . trim($off, ', ') . ')' : '')
+                        . ' - ' . $time($sale->transaction_date),
                     'ask'    => $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS ? $who : '',
                     'fatteen'=> true,
                     'url'    => $feed(['location_id' => $sale->location_id, 'discrepancy' => 'any']),
@@ -375,12 +376,13 @@ class RegisterReconUtil
                 continue;
             }
             foreach ($s['items'] as $it) {
+                $who = $it['ask'] !== '' ? self::mention($it['ask']) : '';
                 if (!empty($it['fatteen'])) {
-                    $line = '- *MATCH (Fatteen):* ' . $it['text'];
-                    if ($it['ask'] !== '') $line .= ' - ask ' . $it['ask'] . ' why the amount is off';
+                    $line = '- ' . $it['text'] . '.';
+                    if ($who !== '') $line .= ' ' . $who . ' why the difference?';
+                    $line .= ' Fatteen: match these.';
                 } else {
-                    $line = '- ' . $it['text'];
-                    $line .= $it['ask'] !== '' ? ' - *ask ' . $it['ask'] . '*' : ' - cashier unknown';
+                    $line = '- ' . $it['text'] . ($who !== '' ? ' - ' . $who : ' - cashier unknown');
                 }
                 $line .= ' ' . $link($it['url'] ?? $s['url'], 'open');
                 if (!empty($it['note'])) {
@@ -390,7 +392,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'How to fix: MATCH lines - open the feed and click Match to pair them. Everything else - ask the cashier, then fix it (ring the missing sale, correct the amount) or add a note with what they said.';
+        $lines[] = 'Fatteen: match the pairs on the feed. Everyone tagged: reply in thread with what happened.';
         return implode("\n", $lines);
     }
 
@@ -416,6 +418,19 @@ class RegisterReconUtil
             \Log::warning('register recon slack post failed: ' . $e->getMessage());
             return false;
         }
+    }
+
+    // Slack user IDs for cashiers in #register-reconciliation, so their line
+    // pings them. Anyone not listed shows as a plain name.
+    const SLACK_IDS = [
+        'zak' => 'U07L3J8D6FP', 'zakary' => 'U07L3J8D6FP',
+        'luis' => 'U08FQKLKKHS',
+    ];
+
+    private static function mention(string $first): string
+    {
+        $id = self::SLACK_IDS[strtolower($first)] ?? null;
+        return $id ? '<@' . $id . '>' : '*ask ' . $first . '*';
     }
 
     private static function storeName(string $name): string

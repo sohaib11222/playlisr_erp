@@ -56,8 +56,9 @@
 					</div>
 					@forelse($s['items'] as $it)
 						<div class="rr-item">
-							@if(!empty($it['fatteen'])) <strong>MATCH (Fatteen):</strong> {{ $it['text'] }}
-								@if($it['ask'] !== '') - <span class="rr-ask">ask {{ $it['ask'] }} why the amount is off</span>@endif
+							@if(!empty($it['fatteen'])) {{ $it['text'] }}.
+								@if($it['ask'] !== '') <span class="rr-ask">Ask {{ $it['ask'] }} why the difference?</span>@endif
+								<strong>Fatteen: match these.</strong>
 							@else
 								{{ $it['text'] }} -
 								@if($it['ask'] !== '') <span class="rr-ask">ask {{ $it['ask'] }}</span>@else <span class="rr-ask">cashier unknown</span>@endif
