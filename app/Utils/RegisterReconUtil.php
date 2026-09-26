@@ -378,19 +378,18 @@ class RegisterReconUtil
         $money = function ($x) { return '$' . number_format((float) $x, 2); };
         $link = function ($url, $label) { return '<' . $url . '|' . $label . '>'; };
         $groups = [
-            'no_erp'    => 'Charged on Clover, not rung in ERP - ring the items in ERP',
-            'no_clover' => 'Rung in ERP, never charged - ask why',
-            'mismatch'  => 'Different amounts - ask why',
-            'match'     => 'Same sale - Fatteen, match on the feed',
-            'uncounted' => 'Register never counted',
-            'drawer'    => 'Drawer off',
+            'no_erp'    => 'Paid, not in ERP - inventory is off. Ring it in.',
+            'no_clover' => 'In ERP, never paid - we may have lost money. Ask why.',
+            'mismatch'  => 'Wrong amount charged. Ask why.',
+            'match'     => 'Same sale - Fatteen, match it.',
+            'uncounted' => 'Register never counted.',
+            'drawer'    => 'Drawer off.',
         ];
         $lines = [];
-        $lines[] = '*Register check - ' . $r['label'] . '*   ' . $link($r['feed_url'], 'recent feed');
+        $lines[] = '*Register check - ' . $r['label'] . '*';
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            $lines[] = '*' . strtoupper($s['name']) . '*   ERP ' . $money($s['erp']) . '  |  Clover ' . $money($s['clover'])
-                . '   ' . $link($s['url'], 'recent feed');
+            $lines[] = '*' . $link($s['url'], strtoupper($s['name'])) . '*   ERP ' . $money($s['erp']) . '  |  Clover ' . $money($s['clover']);
             if (empty($s['items'])) {
                 $lines[] = 'All good.';
                 continue;
@@ -408,7 +407,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'Fatteen: ask each person, then reply in thread with what they said.';
+        $lines[] = 'Fatteen: ask each person, reply in thread with what they said.';
         return implode("\n", $lines);
     }
 
