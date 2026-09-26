@@ -1,0 +1,86 @@
+# READ-ONLY diagnostic: investigate the "party paid-not-earned" open item for
+# Davis, Cody, Luis - current commission status + their historical
+# "Listening party" ledger entries. One-off; delete after use.
+name: Diag davis cody luis
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Check Davis/Cody/Luis current status + ledger (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $names = ['davis', 'cody', 'luis'];
+            $users = \DB::table('users')->where('business_id', $businessId)->get(['id', 'first_name', 'last_name', 'status', 'allow_login']);
+            $users = $users->filter(function ($u) use ($names) {
+                return in_array(strtolower(trim((string) $u->first_name)), $names, true);
+            })->values();
+            foreach ($users as $u) {
+                echo "=== " . $u->first_name . " " . $u->last_name . " (id " . $u->id . ", status=" . $u->status . ", allow_login=" . $u->allow_login . ") ===\n";
+            }
+
+            $lcc = app(\App\Http\Controllers\ListingCommissionController::class);
+            $summaryRef = new \ReflectionMethod($lcc, 'salesSummaryByUser');
+            $summaryRef->setAccessible(true);
+            $summary = $summaryRef->invoke($lcc, $businessId);
+            foreach ($users as $u) {
+                $s = $summary->get($u->id);
+                if ($s) {
+                    echo $u->first_name . ": earned=" . $s->earned . " paid=" . $s->paid . " owed=" . $s->owed . "\n";
+                } else {
+                    echo $u->first_name . ": not in salesSummaryByUser\n";
+                }
+            }
+
+            echo "--- Listening party ledger entries ---\n";
+            $payouts = json_decode(\Storage::disk('local')->get('sales-commission-payouts.json'), true) ?: [];
+            foreach ($users as $u) {
+                echo $u->first_name . ":\n";
+                foreach ($payouts as $p) {
+                    if ((int) ($p['user_id'] ?? 0) !== $u->id) { continue; }
+                    $note = (string) ($p['note'] ?? '');
+                    if (stripos($note, 'Listening party') !== 0) { continue; }
+                    echo "  $" . ($p['amount'] ?? 0) . " on " . ($p['from_date'] ?? $p['marked_at'] ?? '?') . " - " . $note . "\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
