@@ -1,0 +1,75 @@
+# READ-ONLY diagnostic: actual Clover register open/close times (cash_registers)
+# for the staff on the 4 confirmed party dates, as a third cross-check
+# alongside Sling schedule and ring data. One-off; delete after use.
+name: Diag clover clockins
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump cash_registers open/close for party dates (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $businessId = \DB::table('business')->value('id');
+            $locations = \DB::table('business_locations')->where('business_id', $businessId)->pluck('name', 'id');
+            $dates = ['2026-09-12', '2026-09-13', '2026-09-15', '2026-09-18'];
+            foreach ($dates as $d) {
+                echo "=== " . $d . " ===\n";
+                $start = $d . ' 00:00:00';
+                $end = $d . ' 23:59:59';
+                $rows = \DB::table('cash_registers as cr')
+                    ->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+                    ->where('cr.business_id', $businessId)
+                    ->where(function ($q) use ($start, $end) {
+                        $q->where('cr.created_at', '<=', $end)
+                          ->where(function ($q2) use ($start) { $q2->where('cr.closed_at', '>=', $start)->orWhereNull('cr.closed_at'); });
+                    })
+                    ->orderBy('cr.created_at')
+                    ->select('u.first_name', 'u.last_name', 'cr.location_id', 'cr.status', 'cr.created_at', 'cr.closed_at')
+                    ->get();
+                foreach ($rows as $r) {
+                    $name = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? ''));
+                    $loc = $locations[$r->location_id] ?? ('loc#' . $r->location_id);
+                    echo "  " . $name . " | " . $loc . " | " . $r->created_at . " to " . ($r->closed_at ?? 'STILL OPEN') . " (" . $r->status . ")\n";
+                }
+            }
+            PHP
+            echo "=== done ==="
