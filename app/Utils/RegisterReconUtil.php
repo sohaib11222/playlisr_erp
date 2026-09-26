@@ -175,6 +175,7 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
+                    'short'  => '#' . $sale->invoice_no . ' ' . $money($sale->final_total) . ' = Clover ' . $money($c['amount']) . ' at ' . $cpWhen,
                     'text'   => '#' . $sale->invoice_no . ' (' . $money($sale->final_total) . ' in ERP) is probably the '
                         . $money($c['amount']) . ' Clover charge at ' . $cpWhen . '.',
                     'q'      => 'Fatteen: match them.',
@@ -196,6 +197,7 @@ class RegisterReconUtil
                 if ($exp <= 0) continue; // fully covered by store credit
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
+                    'short'  => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'text'   => $inv . ' ' . $money($exp / 100) . ' rung in ERP at ' . $time($sale->transaction_date)
                         . ' but never charged on Clover.',
                     'q'      => 'why wasn\'t it charged?',
@@ -212,6 +214,7 @@ class RegisterReconUtil
             if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
+                    'short'  => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ', Clover ' . $money($gross / 100),
                     'text'   => $inv . ' rung ' . $money($exp / 100) . ' in ERP but charged '
                         . $money($gross / 100) . ' on Clover (' . $time($sale->transaction_date) . ').',
                     'q'      => 'why the difference?',
@@ -263,6 +266,8 @@ class RegisterReconUtil
             }
             $stores[$k]['items'][] = [
                 'kind'   => 'no_erp',
+                'short'  => $money(abs($amt)) . ($amt < 0 ? ' refund' : '') . ' at ' . $when
+                    . (!empty($items) ? ' (' . implode(', ', $items) . ')' : ''),
                 'text'   => $text,
                 'q'      => $q,
                 'ask'    => $who,
@@ -334,6 +339,7 @@ class RegisterReconUtil
                 $flags[] = [
                     'location_id' => $r->location_id,
                     'kind'   => 'uncounted',
+                    'short'  => 'Opened ' . \Carbon\Carbon::parse($r->created_at)->format('g:ia') . ', never closed',
                     'text'   => 'Register opened ' . \Carbon\Carbon::parse($r->created_at)->format('g:ia')
                         . ' was never closed/counted (system closed it)',
                     'ask'    => $who,
@@ -366,48 +372,43 @@ class RegisterReconUtil
         return $flags;
     }
 
-    /** Slack mrkdwn for one day's digest. */
+    /** Slack mrkdwn for one day's digest - grouped by what to do. */
     public static function formatSlack(array $r): string
     {
         $money = function ($x) { return '$' . number_format((float) $x, 2); };
         $link = function ($url, $label) { return '<' . $url . '|' . $label . '>'; };
+        $groups = [
+            'no_erp'    => 'Charged on Clover, not rung in ERP - ring the items in ERP',
+            'no_clover' => 'Rung in ERP, never charged - ask why',
+            'mismatch'  => 'Different amounts - ask why',
+            'match'     => 'Same sale - Fatteen, match on the feed',
+            'uncounted' => 'Register never counted',
+            'drawer'    => 'Drawer off',
+        ];
         $lines = [];
-        $erp = array_sum(array_column($r['stores'], 'erp'));
-        $clv = array_sum(array_column($r['stores'], 'clover'));
-        $lines[] = '*Register reconciliation - ' . $r['label'] . '*';
-        $lines[] = 'Sales in ERP ' . $money($erp) . '  |  Sales in Clover ' . $money($clv)
-            . '  |  ' . ($r['issue_count'] === 0 ? 'nothing to fix' : $r['issue_count'] . ' to fix/ask')
-            . '  |  ' . $link($r['feed_url'], 'Recent feed');
+        $lines[] = '*Register check - ' . $r['label'] . '*   ' . $link($r['feed_url'], 'recent feed');
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            $diff = $s['diff'];
-            $diffTxt = abs($diff) < 1 ? 'matches' : (($diff > 0 ? 'Clover higher by ' : 'ERP higher by ') . $money(abs($diff)));
-            $lines[] = '*' . $s['name'] . '*  ERP ' . $money($s['erp']) . ' (' . $s['erp_count'] . ' sales)'
-                . '  |  Clover ' . $money($s['clover']) . ' (' . $s['clover_count'] . ')  |  ' . $diffTxt
-                . '  |  ' . $link($s['url'], $s['name'] . ' recent feed');
+            $lines[] = '*' . strtoupper($s['name']) . '*   ERP ' . $money($s['erp']) . '  |  Clover ' . $money($s['clover'])
+                . '   ' . $link($s['url'], 'recent feed');
             if (empty($s['items'])) {
-                $lines[] = 'Nothing to fix.';
+                $lines[] = 'All good.';
                 continue;
             }
-            foreach ($s['items'] as $it) {
-                $who = $it['ask'] !== '' ? self::mention($it['ask']) : '';
-                $line = '- ' . trim($it['text']);
-                if (!empty($it['fatteen'])) {
-                    $line .= ' ' . ($it['q'] ?? '');
-                } elseif (!empty($it['q'])) {
-                    $line .= ' ' . ($who !== '' ? $who . ' ' : '*Cashier unknown:* ') . $it['q'];
-                } else {
-                    $line .= $who !== '' ? ' ' . $who : '';
+            foreach ($groups as $kind => $title) {
+                $its = array_values(array_filter($s['items'], fn($i) => $i['kind'] === $kind));
+                if (empty($its)) continue;
+                $lines[] = '_' . $title . '_';
+                foreach ($its as $it) {
+                    $line = '     ' . $link($it['url'] ?? $s['url'], $it['short'] ?? $it['text']);
+                    if (($it['ask'] ?? '') !== '' && $kind !== 'match') $line .= '  -  ' . $it['ask'];
+                    if (!empty($it['note'])) $line .= '  (said: ' . str_replace("\n", ' ', $it['note']) . ')';
+                    $lines[] = $line;
                 }
-                $line .= ' ' . $link($it['url'] ?? $s['url'], 'recent feed');
-                if (!empty($it['note'])) {
-                    $line .= "\n    already explained: _" . str_replace(["\n", '_'], [' ', ' '], $it['note']) . '_';
-                }
-                $lines[] = $line;
             }
         }
         $lines[] = '';
-        $lines[] = 'Fatteen: ask each cashier, then reply in thread with what they said.';
+        $lines[] = 'Fatteen: ask each person, then reply in thread with what they said.';
         return implode("\n", $lines);
     }
 
