@@ -248,6 +248,8 @@ class RegisterReconUtil
                 $rec = \App\Services\CloverLineItemStore::load($business_id, (string) $cp->clover_order_id);
                 foreach (($rec['items'] ?? []) as $li) {
                     if (!empty($li['refunded']) || trim((string) ($li['name'] ?? '')) === '') continue;
+                    // Keyed-in amounts ("Sale", "Custom Amount") aren't items.
+                    if (preg_match('/^(sale|custom( amount)?|manual|misc|item)$/i', trim($li['name']))) continue;
                     $items[] = trim($li['name']) . ' ' . $money(((int) ($li['price_cents'] ?? 0)) / 100);
                 }
             }
@@ -257,7 +259,7 @@ class RegisterReconUtil
             } else {
                 $text = $money($amt) . ' charged on Clover at ' . $when . ' but not rung in ERP'
                     . (!empty($items) ? ' (' . implode(', ', $items) . ').' : '.');
-                $q = 'please ring ' . (!empty($items) ? 'these items' : 'the items') . ' in ERP so inventory updates.';
+                $q = 'please ring ' . (!empty($items) ? 'these items' : 'what they bought') . ' in ERP so inventory updates.';
             }
             $stores[$k]['items'][] = [
                 'kind'   => 'no_erp',
