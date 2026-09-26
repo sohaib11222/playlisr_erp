@@ -34,6 +34,10 @@ class ManagerCheckinController extends Controller
     // Matched against lowercase first name or any word of the full name.
     const EXCLUDE = ['abby', 'chris', 'clark', 'fahrul', 'fatteen', 'insha', 'nerdy', 'viper', 'freelancer', 'sarah', 'jon', 'jonathan'];
 
+    // Managers only ever show under their own store, even if Sling has them
+    // covering a shift at the other one.
+    const HOME_STORE = ['luis' => 'hw', 'zakary' => 'pico'];
+
     const RATINGS = ['great' => 'Great', 'good' => 'Good', 'needs_work' => 'Needs work'];
 
     // Text questions, in form order. Key => [label, hint].
@@ -117,7 +121,11 @@ class ManagerCheckinController extends Controller
             ->orderBy('first_name')
             ->select('id', 'first_name', 'last_name')
             ->get()
-            ->filter(function ($u) {
+            ->filter(function ($u) use ($store) {
+                $home = self::HOME_STORE[strtolower(trim((string) $u->first_name))] ?? null;
+                if ($store && $home && $home !== $store) {
+                    return false;
+                }
                 $words = preg_split('/[^a-z]+/', strtolower(trim($u->first_name . ' ' . $u->last_name)));
                 return !array_intersect($words, self::EXCLUDE);
             })
