@@ -217,6 +217,7 @@ class RegisterReconUtil
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
                     'mini'   => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ' vs Clover ' . $money($gross / 100),
+                    'under'  => $gross < $exp, // charged less than rung = missing cash
                     'short'  => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ', Clover ' . $money($gross / 100),
                     'text'   => $inv . ' rung ' . $money($exp / 100) . ' in ERP but charged '
                         . $money($gross / 100) . ' on Clover (' . $time($sale->transaction_date) . ').',
@@ -383,14 +384,26 @@ class RegisterReconUtil
     public static function formatSlack(array $r): string
     {
         $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
-        $verbs = [
-            'no_erp'    => 'charged on Clover, never rung in ERP (ring it in):',
-            'no_clover' => 'rung in ERP, never charged (why?):',
-            'mismatch'  => 'charged the wrong amount (why?):',
-            'match'     => 'same sale, match on the feed:',
-            'uncounted' => 'register never counted:',
-            'drawer'    => 'drawer off:',
+        // Sarah 9/25: two buckets that matter - money we didn't collect and
+        // stock the ERP still thinks we have. Everything else is minor.
+        $cats = [
+            'cash'  => ['Missing cash', 'rung in ERP, not charged - ask why'],
+            'inv'   => ['Missing inventory update', 'charged on Clover, not rung in ERP - ring the items in'],
+            'wrong' => ['Wrong amount', 'charged more than rung - ask why'],
+            'match' => ['To match', 'same sale, Fatteen match on the feed'],
+            'count' => ['Register not counted', 'ask why they did not close out'],
+            'other' => ['Other', ''],
         ];
+        $catOf = function ($it) {
+            switch ($it['kind']) {
+                case 'no_clover': return 'cash';
+                case 'no_erp':    return 'inv';
+                case 'mismatch':  return !empty($it['under']) ? 'cash' : 'wrong';
+                case 'match':     return 'match';
+                case 'uncounted': return 'count';
+                default:          return 'other';
+            }
+        };
         $lines = ['*Register check - ' . $r['label'] . '*'
             . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
         foreach ($r['stores'] as $s) {
@@ -398,30 +411,24 @@ class RegisterReconUtil
             // Slack has no text colors; inline code renders red, so the
             // ERP/Clover difference goes in backticks.
             $diff = $s['clover'] - $s['erp'];
-            $lines[] = '*<' . $s['url'] . '|' . $s['name'] . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover'])
+            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover'])
                 . (abs($diff) >= 1 ? '  `' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`' : '');
             if (empty($s['items'])) {
                 $lines[] = 'All good';
                 continue;
             }
-            $byPerson = [];
-            foreach ($s['items'] as $it) {
-                $who = $it['kind'] === 'match' ? 'Fatteen' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
-                $label = $it['mini'] ?? ($it['short'] ?? $it['text']);
-                $byPerson[$who][$it['kind']][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
-            }
-            foreach ($byPerson as $who => $kinds) {
-                $parts = [];
-                foreach ($verbs as $kind => $verb) {
-                    if (!empty($kinds[$kind])) $parts[] = $verb . ' ' . implode(', ', $kinds[$kind]);
+            foreach ($cats as $cat => [$title, $hint]) {
+                $byPerson = [];
+                foreach ($s['items'] as $it) {
+                    if ($catOf($it) !== $cat) continue;
+                    $who = $cat === 'match' ? '' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
+                    $label = $it['mini'] ?? ($it['short'] ?? $it['text']);
+                    $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
                 }
-                if (count($parts) === 1) {
-                    $lines[] = '• *' . $who . '*: ' . $parts[0];
-                } else {
-                    $lines[] = '• *' . $who . '*';
-                    foreach ($parts as $part) {
-                        $lines[] = '      ◦ ' . $part;
-                    }
+                if (empty($byPerson)) continue;
+                $lines[] = '*' . $title . '*' . ($hint !== '' ? '  _' . $hint . '_' : '');
+                foreach ($byPerson as $who => $links) {
+                    $lines[] = '• ' . ($who !== '' ? '*' . $who . '*: ' : '') . implode(', ', $links);
                 }
             }
         }
