@@ -378,20 +378,18 @@ class RegisterReconUtil
     }
 
     /**
-     * Slack message - kept very short (Sarah 9/25): per store, one line
-     * per person with what they need to do; amounts link to the feed.
+     * Sarah 9/25: two buckets that matter - money we didn't collect and
+     * stock the ERP still thinks we have. Everything else is minor.
+     * Returns per store: [cat => ['title','hint', [who => [link, ...]]]].
      */
-    public static function formatSlack(array $r): string
+    private static function grouped(array $s): array
     {
-        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
-        // Sarah 9/25: two buckets that matter - money we didn't collect and
-        // stock the ERP still thinks we have. Everything else is minor.
         $cats = [
-            'cash'  => ['Did we capture the transaction?', 'rung in ERP, no charge on Clover - ask why'],
-            'inv'   => ['Needs inventory update', 'charged on Clover, not rung in ERP - ring the items in'],
-            'wrong' => ['Wrong amount', 'charged more than rung - ask why'],
-            'match' => ['To match', 'same sale, Fatteen match on the feed'],
-            'count' => ['Register not counted', 'ask why they did not close out'],
+            'cash'  => ['Did we capture the transaction?', 'Rung in ERP, no Clover charge. Ask why.'],
+            'inv'   => ['Needs inventory update', 'Ring the items in or our stock will be incorrect.'],
+            'wrong' => ['Wrong amount', 'Charged more than rung. Ask why.'],
+            'match' => ['To match', 'Same sale. Fatteen, match it on the feed.'],
+            'count' => ['Register not counted', 'Ask why they did not close out.'],
             'other' => ['Other', ''],
         ];
         $catOf = function ($it) {
@@ -404,28 +402,42 @@ class RegisterReconUtil
                 default:          return 'other';
             }
         };
+        $out = [];
+        foreach ($cats as $cat => [$title, $hint]) {
+            $byPerson = [];
+            foreach ($s['items'] as $it) {
+                if ($catOf($it) !== $cat) continue;
+                $who = $cat === 'match' ? '' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
+                $label = str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) ($it['mini'] ?? ($it['short'] ?? $it['text'])));
+                $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
+            }
+            if (!empty($byPerson)) $out[$cat] = [$title, $hint, $byPerson];
+        }
+        return $out;
+    }
+
+    private static function diffTag(array $s): string
+    {
+        // Slack has no text colors; inline code renders red.
+        $diff = $s['clover'] - $s['erp'];
+        return abs($diff) >= 1 ? '`' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`' : '';
+    }
+
+    /** Plain-text version - Slack notification preview + fallback. */
+    public static function formatSlack(array $r): string
+    {
+        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
         $lines = ['*Register check - ' . $r['label'] . '*'
             . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            // Slack has no text colors; inline code renders red, so the
-            // ERP/Clover difference goes in backticks.
-            $diff = $s['clover'] - $s['erp'];
-            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover'])
-                . (abs($diff) >= 1 ? '  `' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`' : '');
+            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ERP ' . $dollars($s['erp'])
+                . ' / Clover ' . $dollars($s['clover']) . '  ' . self::diffTag($s);
             if (empty($s['items'])) {
                 $lines[] = 'All good';
                 continue;
             }
-            foreach ($cats as $cat => [$title, $hint]) {
-                $byPerson = [];
-                foreach ($s['items'] as $it) {
-                    if ($catOf($it) !== $cat) continue;
-                    $who = $cat === 'match' ? '' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
-                    $label = $it['mini'] ?? ($it['short'] ?? $it['text']);
-                    $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
-                }
-                if (empty($byPerson)) continue;
+            foreach (self::grouped($s) as [$title, $hint, $byPerson]) {
                 $lines[] = '*' . $title . '*' . ($hint !== '' ? '  _' . $hint . '_' : '');
                 foreach ($byPerson as $who => $links) {
                     $lines[] = '• ' . ($who !== '' ? '*' . $who . '*: ' : '') . implode(', ', $links);
@@ -439,13 +451,45 @@ class RegisterReconUtil
         return implode("\n", $lines);
     }
 
-    const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
-
-    /** Block Kit layout was tried 9/25 and dropped as too long; plain text only. */
+    /**
+     * What Slack shows: compact Block Kit - title, per store a bold line
+     * with totals, then each group as a bold heading + grey hint + one
+     * indented line per person. Dividers between stores.
+     */
     public static function slackBlocks(array $r): array
     {
-        return [];
+        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
+        $blocks = [];
+        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => 'Register check  ·  ' . $r['label']]];
+        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
+            'text' => ($r['issue_count'] === 0 ? 'All good' : '*' . $r['issue_count'] . ' to fix*') . '   ·   <' . $r['feed_url'] . '|Open recent feed>']]];
+        foreach ($r['stores'] as $s) {
+            $blocks[] = ['type' => 'divider'];
+            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
+                'text' => '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*      ERP ' . $dollars($s['erp'])
+                    . '   ·   Clover ' . $dollars($s['clover']) . '   ' . self::diffTag($s)]];
+            if (empty($s['items'])) {
+                $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => 'All good']]];
+                continue;
+            }
+            foreach (self::grouped($s) as [$title, $hint, $byPerson]) {
+                $rows = [];
+                foreach ($byPerson as $who => $links) {
+                    $rows[] = '>' . ($who !== '' ? '*' . $who . '*    ' : '') . implode('   ', $links);
+                }
+                $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
+                    'text' => '*' . $title . '*' . ($hint !== '' ? '   _' . $hint . '_' : '') . "\n" . implode("\n", $rows)]];
+            }
+        }
+        if ($r['issue_count'] > 0) {
+            $blocks[] = ['type' => 'divider'];
+            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
+                'text' => '<@' . self::FATTEEN_SLACK_ID . '> please follow up with these people to fix these errors, then reply in thread when done.']];
+        }
+        return count($blocks) <= 50 ? $blocks : [];
     }
+
+    const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
 
     public static function postToSlack(string $text, array $blocks = []): bool
     {
