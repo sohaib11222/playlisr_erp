@@ -415,7 +415,14 @@ class RegisterReconUtil
                 foreach ($verbs as $kind => $verb) {
                     if (!empty($kinds[$kind])) $parts[] = $verb . ' ' . implode(', ', $kinds[$kind]);
                 }
-                $lines[] = '• *' . $who . '*: ' . implode('; ', $parts);
+                if (count($parts) === 1) {
+                    $lines[] = '• *' . $who . '*: ' . $parts[0];
+                } else {
+                    $lines[] = '• *' . $who . '*';
+                    foreach ($parts as $part) {
+                        $lines[] = '      ◦ ' . $part;
+                    }
+                }
             }
         }
         if ($r['issue_count'] > 0) {
