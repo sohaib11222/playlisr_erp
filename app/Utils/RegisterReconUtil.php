@@ -175,9 +175,10 @@ class RegisterReconUtil
                     ? ', ' . $money($c['amt_delta'] / 100) . ' off' : '';
                 $stores[$storeKey($sale->location_id)]['items'][] = [
                     'kind'   => 'match',
-                    'text'   => $time($sale->transaction_date) . ' #' . $sale->invoice_no . ' rung ' . $money($sale->final_total)
-                        . ' in ERP, charged ' . $money($c['amount']) . ' on Clover' . ($off !== '' ? ' (' . trim($off, ', ') . ')' : ''),
-                    'ask'    => $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS ? $who : '',
+                    'text'   => '#' . $sale->invoice_no . ' (' . $money($sale->final_total) . ' in ERP) is probably the '
+                        . $money($c['amount']) . ' Clover charge at ' . $cpWhen . '.',
+                    'q'      => 'Fatteen: match them.',
+                    'ask'    => '',
                     'fatteen'=> true,
                     'url'    => $feed(['location_id' => $sale->location_id, 'discrepancy' => 'any']),
                     'note'   => $noteFor('no_clover:' . $sale->id . ':0'),
@@ -195,8 +196,9 @@ class RegisterReconUtil
                 if ($exp <= 0) continue; // fully covered by store credit
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
-                    'text'   => $time($sale->transaction_date) . ' ' . $money($exp / 100) . $inv
-                        . ' rung in ERP but not on Clover',
+                    'text'   => $inv . ' ' . $money($exp / 100) . ' rung in ERP at ' . $time($sale->transaction_date)
+                        . ' but never charged on Clover.',
+                    'q'      => 'why wasn\'t it charged?',
                     'ask'    => $who,
                     'url'    => $feed(['location_id' => $sale->location_id, 'created_by' => $sale->created_by, 'discrepancy' => 'no_clover']),
                     'note'   => $noteFor('no_clover:' . $sale->id . ':0'),
@@ -210,9 +212,9 @@ class RegisterReconUtil
             if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
-                    'text'   => $time($sale->transaction_date) . $inv . ' rung ' . $money($exp / 100)
-                        . ' in ERP, charged ' . $money($gross / 100) . ' on Clover ('
-                        . $money(abs($gross - $exp) / 100) . ' off)',
+                    'text'   => $inv . ' rung ' . $money($exp / 100) . ' in ERP but charged '
+                        . $money($gross / 100) . ' on Clover (' . $time($sale->transaction_date) . ').',
+                    'q'      => 'why the difference?',
                     'ask'    => $who,
                     'url'    => $feed(['location_id' => $sale->location_id, 'created_by' => $sale->created_by, 'discrepancy' => 'mismatch']),
                     'note'   => $noteFor('mismatch:' . $sale->id . ':0'),
@@ -225,6 +227,9 @@ class RegisterReconUtil
         //    was rung up / inventory not taken out).
         foreach ($orphans as $cp) {
             if (isset($pairedCp[(string) $cp->clover_payment_id])) continue;
+            // Same Clover order as an already-paired sale = sync-side
+            // duplicate payment record, not a missed ring-up (per the feed).
+            if (isset($dupOf[$cp->id])) continue;
             $res = (string) ($cp->result ?? '');
             if ($res !== '' && $res !== 'SUCCESS' && $res !== 'APPROVED') continue; // voids / test charges
             $amt = (float) ($cp->amount ?? 0);
@@ -238,19 +243,26 @@ class RegisterReconUtil
             if ($who === '' && isset($cashierFor[$cp->id])) {
                 $who = $first($cashierName[$cashierFor[$cp->id]] ?? '');
             }
-            $card = trim(strtoupper((string) ($cp->card_type ?? '')) . ($cp->card_last4 ? ' ending ' . $cp->card_last4 : ''));
+            $items = [];
+            if (!empty($cp->clover_order_id)) {
+                $rec = \App\Services\CloverLineItemStore::load($business_id, (string) $cp->clover_order_id);
+                foreach (($rec['items'] ?? []) as $li) {
+                    if (!empty($li['refunded']) || trim((string) ($li['name'] ?? '')) === '') continue;
+                    $items[] = trim($li['name']) . ' ' . $money(((int) ($li['price_cents'] ?? 0)) / 100);
+                }
+            }
             if ($amt < 0) {
-                $text = $when . ' ' . $money(abs($amt)) . ' refund on Clover with no return in ERP';
-            } elseif (isset($dupOf[$cp->id])) {
-                $text = $when . ' ' . $money($amt) . ' on Clover looks like a second charge on a sale that was already paid'
-                    . ($card ? ' (' . $card . ')' : '');
+                $text = $money(abs($amt)) . ' refunded on Clover at ' . $when . ' with no return in ERP.';
+                $q = 'please do the return in ERP so inventory updates.';
             } else {
-                $text = $when . ' ' . $money($amt) . ' charged on Clover but never rung in ERP'
-                    . ($card ? ' (' . $card . ')' : '');
+                $text = $money($amt) . ' charged on Clover at ' . $when . ' but not rung in ERP'
+                    . (!empty($items) ? ' (' . implode(', ', $items) . ').' : '.');
+                $q = 'please ring ' . (!empty($items) ? 'these items' : 'the items') . ' in ERP so inventory updates.';
             }
             $stores[$k]['items'][] = [
                 'kind'   => 'no_erp',
                 'text'   => $text,
+                'q'      => $q,
                 'ask'    => $who,
                 'url'    => $feed(['location_id' => $cp->location_id, 'discrepancy' => 'no_erp']),
                 'note'   => $noteFor('no_erp:0:' . $cp->id),
@@ -377,12 +389,13 @@ class RegisterReconUtil
             }
             foreach ($s['items'] as $it) {
                 $who = $it['ask'] !== '' ? self::mention($it['ask']) : '';
+                $line = '- ' . trim($it['text']);
                 if (!empty($it['fatteen'])) {
-                    $line = '- ' . $it['text'] . '.';
-                    if ($who !== '') $line .= ' ' . $who . ' why?';
-                    $line .= ' Fatteen: match these.';
+                    $line .= ' ' . ($it['q'] ?? '');
+                } elseif (!empty($it['q'])) {
+                    $line .= ' ' . ($who !== '' ? $who . ' ' : '(cashier unknown) ') . $it['q'];
                 } else {
-                    $line = '- ' . $it['text'] . ($who !== '' ? ' - ' . $who : ' - cashier unknown');
+                    $line .= $who !== '' ? ' ' . $who : '';
                 }
                 $line .= ' ' . $link($it['url'] ?? $s['url'], 'recent feed');
                 if (!empty($it['note'])) {
@@ -392,7 +405,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = 'Fatteen: match the pairs on the feed. Everyone tagged: reply in thread with what happened.';
+        $lines[] = 'Reply in thread once it is done.';
         return implode("\n", $lines);
     }
 
@@ -430,7 +443,7 @@ class RegisterReconUtil
     private static function mention(string $first): string
     {
         $id = self::SLACK_IDS[strtolower($first)] ?? null;
-        return $id ? '<@' . $id . '>' : '*ask ' . $first . '*';
+        return $id ? '<@' . $id . '>' : '*' . $first . ',*';
     }
 
     private static function storeName(string $name): string

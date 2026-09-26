@@ -56,12 +56,9 @@
 					</div>
 					@forelse($s['items'] as $it)
 						<div class="rr-item">
-							@if(!empty($it['fatteen'])) {{ $it['text'] }}.
-								@if($it['ask'] !== '') <span class="rr-ask">Ask {{ $it['ask'] }} why the difference?</span>@endif
-								<strong>Fatteen: match these.</strong>
-							@else
-								{{ $it['text'] }} -
-								@if($it['ask'] !== '') <span class="rr-ask">ask {{ $it['ask'] }}</span>@else <span class="rr-ask">cashier unknown</span>@endif
+							{{ $it['text'] }}
+							@if(!empty($it['fatteen'])) <strong>{{ $it['q'] ?? '' }}</strong>
+							@else <span class="rr-ask">{{ $it['ask'] !== '' ? $it['ask'] : 'Cashier unknown' }}, {{ $it['q'] ?? '' }}</span>
 							@endif
 							<a href="{{ $it['url'] ?? $s['url'] }}" style="margin-left:6px;">open</a>
 							@if(!empty($it['note'])) <div class="rr-note">Already explained: {{ $it['note'] }}</div>@endif
