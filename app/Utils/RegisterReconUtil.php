@@ -395,7 +395,11 @@ class RegisterReconUtil
             . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            $lines[] = '*<' . $s['url'] . '|' . $s['name'] . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover']);
+            // Slack has no text colors; inline code renders red, so the
+            // ERP/Clover difference goes in backticks.
+            $diff = $s['clover'] - $s['erp'];
+            $lines[] = '*<' . $s['url'] . '|' . $s['name'] . '>*  ERP ' . $dollars($s['erp']) . ' / Clover ' . $dollars($s['clover'])
+                . (abs($diff) >= 1 ? '  `' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`' : '');
             if (empty($s['items'])) {
                 $lines[] = 'All good';
                 continue;
