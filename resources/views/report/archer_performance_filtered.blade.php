@@ -8,12 +8,23 @@
     }
     if (!function_exists('archerCard')) {
         function archerCard($label, $value, $sub = null, $subColor = '#999') {
-            $html = '<div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; text-align:center;">';
-            $html .= '<div style="color:#999; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">' . e($label) . '</div>';
-            $html .= '<div style="font-size:32px; font-weight:700; color:#333;">' . $value . '</div>';
+            $html = '<div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:12px 14px; text-align:center;">';
+            $html .= '<div style="color:#999; font-size:10.5px; text-transform:uppercase; letter-spacing:0.75px; margin-bottom:3px;">' . e($label) . '</div>';
+            $html .= '<div style="font-size:22px; font-weight:700; color:#333; line-height:1.15;">' . $value . '</div>';
             if ($sub) {
-                $html .= '<div style="color:' . $subColor . '; font-size:13px; font-weight:600; margin-top:6px;">' . $sub . '</div>';
+                $html .= '<div style="color:' . $subColor . '; font-size:11px; font-weight:600; margin-top:2px;">' . $sub . '</div>';
             }
+            $html .= '</div>';
+            return $html;
+        }
+    }
+    if (!function_exists('archerMini')) {
+        // Denser than archerCard, for the "at a glance" strip -- label and
+        // value stacked tight, meant to sit many-to-a-row.
+        function archerMini($label, $value, $accent = '#333') {
+            $html = '<div style="flex:1; min-width:110px; background:#fff; border:1px solid #eee; border-left:3px solid ' . $accent . '; border-radius:4px; padding:8px 10px;">';
+            $html .= '<div style="color:#999; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">' . e($label) . '</div>';
+            $html .= '<div style="font-size:17px; font-weight:700; color:#333; line-height:1.3;">' . $value . '</div>';
             $html .= '</div>';
             return $html;
         }
@@ -28,24 +39,88 @@
     $archerCancelledCount = $archer_coupon ? count(array_filter($coupon_zipcodes, fn($r) => ($r['order_status'] ?? null) === 'cancelled')) : 0;
     $archerCancelledTotal = $archer_coupon ? array_sum(array_map(fn($r) => ($r['order_status'] ?? null) === 'cancelled' ? (float) ($r['total'] ?? 0) : 0, $coupon_zipcodes)) : 0;
     $archerAttributedNet = $archer_coupon ? ((float) $coupon_zipcodes_total - $archerCancelledTotal) : null;
+
+    // Derived cross-platform totals for the "at a glance" strip -- nothing
+    // here is a new data source, just arithmetic on the same numbers each
+    // platform section below already shows.
+    $totalFollowerGrowth = ($data['instagram']['followers_now'] - $data['instagram']['followers_start'])
+        + ($data['tiktok']['followers_now'] - $data['tiktok']['followers_start'])
+        + ($data['facebook']['followers_now'] - $data['facebook']['followers_start']);
+    $videoCount = $data['instagram']['confirmed_collab_videos'];
+    $costPerVideo = $videoCount > 0 ? $data['contract']['pay_total'] / $videoCount : null;
+    $costPerFollower = $totalFollowerGrowth > 0 ? $data['contract']['pay_total'] / $totalFollowerGrowth : null;
+    $contractDaysTotal = \Carbon::parse($data['contract']['start_date'])->diffInDays(\Carbon::parse($data['contract']['end_date'])) ?: 1;
+    $contractDaysElapsed = min($contractDaysTotal, max(0, \Carbon::parse($data['contract']['start_date'])->diffInDays(now())));
+    $contractPct = round(($contractDaysElapsed / $contractDaysTotal) * 100);
 @endphp
 @if(!is_null($archerAttributedNet))
     @php $roiRatio = $archerAttributedNet / $data['contract']['pay_total']; @endphp
-    <div style="background:{{ $roiRatio >= 1 ? '#eafaf1' : '#fdf2f2' }}; border:2px solid {{ $roiRatio >= 1 ? '#2ecc71' : '#d9534f' }}; border-radius:8px; padding:24px 28px; margin-bottom:24px; text-align:center;">
-        <div style="font-size:13px; color:#666; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">ROI, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</div>
-        <div style="font-size:56px; font-weight:800; line-height:1; color:{{ $roiRatio >= 1 ? '#27ae60' : '#c0392b' }};">
-            ${{ number_format($roiRatio, 2) }} <span style="font-size:22px; font-weight:600; color:#666;">back per $1 spent</span>
+    <div style="background:{{ $roiRatio >= 1 ? '#eafaf1' : '#fdf2f2' }}; border:2px solid {{ $roiRatio >= 1 ? '#2ecc71' : '#d9534f' }}; border-radius:8px; padding:14px 18px; margin-bottom:10px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <div>
+                <span style="font-size:11px; color:#666; text-transform:uppercase; letter-spacing:1px;">ROI, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</span><br>
+                <span style="font-size:34px; font-weight:800; line-height:1.2; color:{{ $roiRatio >= 1 ? '#27ae60' : '#c0392b' }};">${{ number_format($roiRatio, 2) }}</span>
+                <span style="font-size:14px; font-weight:600; color:#666;">back per $1 spent</span>
+            </div>
+            <div style="font-size:13px; color:#444; text-align:right;">
+                Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong> &rarr; got back <strong>${{ number_format($archerAttributedNet, 2) }}</strong><br>
+                <span style="font-size:11px; color:#888;">from code {{ $archer_coupon->code }}, net of refunds &mdash; a floor, not the whole picture</span>
+            </div>
         </div>
-        <div style="font-size:16px; color:#444; margin-top:10px;">
-            Paid <strong>${{ number_format($data['contract']['pay_total']) }}</strong> &rarr; got back <strong>${{ number_format($archerAttributedNet, 2) }}</strong> from orders using his code {{ $archer_coupon->code }}, net of refunds
-        </div>
-        <div style="font-size:12px; color:#888; margin-top:8px;">Only his discount-code orders count here &mdash; a floor, not the whole picture (some buyers skip the code). Site-wide website revenue is shown separately below and is NOT part of this ROI.</div>
     </div>
 @elseif($order_stats)
-    <div style="background:#fdf2f2; border:2px solid #d9534f; border-radius:8px; padding:24px 28px; margin-bottom:24px; text-align:center;">
-        <div style="font-size:16px; color:#444;">No Archer discount-code orders found for this range &mdash; can't compute an attributed ROI.</div>
+    <div style="background:#fdf2f2; border:2px solid #d9534f; border-radius:8px; padding:14px 18px; margin-bottom:10px;">
+        <div style="font-size:14px; color:#444;">No Archer discount-code orders found for this range &mdash; can't compute an attributed ROI.</div>
     </div>
 @endif
+
+{{-- ═══════════ AT A GLANCE — dense derived-stat strip ═══════════ --}}
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+    {!! archerMini('Contract', $contractPct >= 100 ? 'Ended' : $contractPct . '% elapsed', $contractPct >= 100 ? '#999' : '#2ecc71') !!}
+    {!! archerMini('Confirmed videos', number_format($videoCount), '#333') !!}
+    {!! archerMini('Cost / video', $costPerVideo !== null ? '$' . number_format($costPerVideo) : '&mdash;', '#333') !!}
+    {!! archerMini('Cross-platform follower growth', '+' . number_format($totalFollowerGrowth), '#2ecc71') !!}
+    {!! archerMini('Cost / follower gained', $costPerFollower !== null ? '$' . number_format($costPerFollower, 2) : '&mdash;', '#333') !!}
+    {!! archerMini('Discount-code orders', number_format(count($coupon_zipcodes ?? [])) . ' this range', '#333') !!}
+    {!! archerMini('Site-wide net revenue', $order_stats ? '$' . number_format($order_stats['net_revenue']) : '&mdash;', '#999') !!}
+</div>
+
+{{-- ═══════════ PLATFORM COMPARISON — one row per platform, side by side ═══════════ --}}
+<div style="background:#fff; border:1px solid #eee; border-radius:6px; overflow-x:auto; margin-bottom:20px;">
+    <table class="table table-condensed" style="margin-bottom:0; font-size:12.5px;">
+        <thead>
+            <tr style="color:#999; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">
+                <th>Platform</th><th>Status</th><th>Followers</th><th>Growth</th><th>Reach, 28d</th><th>Extra</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Instagram</strong></td>
+                <td>{{ !empty($data['instagram']['is_live']) ? 'Now live' : 'Manual snapshot' }}</td>
+                <td>{{ number_format($data['instagram']['followers_start'] / 1000, 1) }}K &rarr; {{ number_format($data['instagram']['followers_now'] / 1000, 1) }}K</td>
+                <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) }}</td>
+                <td>{{ number_format($data['instagram']['reach_last_28_days']) }} ({{ $data['instagram']['reach_change_pct'] }}%)</td>
+                <td>{{ $videoCount }} confirmed videos</td>
+            </tr>
+            <tr>
+                <td><strong>TikTok</strong></td>
+                <td>{{ !empty($data['tiktok']['is_live']) ? 'Now live' : 'Real, filtered to range' }}</td>
+                <td>{{ number_format($data['tiktok']['followers_start']) }} &rarr; {{ number_format($data['tiktok']['followers_now']) }}</td>
+                <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['tiktok']['followers_now'] - $data['tiktok']['followers_start']) }}</td>
+                <td>&mdash;</td>
+                <td>{{ number_format($data['tiktok']['total_likes']) }} total likes</td>
+            </tr>
+            <tr>
+                <td><strong>Facebook</strong></td>
+                <td>{{ !empty($data['facebook']['is_live']) ? 'Now live' : 'Manual snapshot' }}</td>
+                <td>{{ number_format($data['facebook']['followers_start']) }} &rarr; {{ number_format($data['facebook']['followers_now']) }}</td>
+                <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) }}</td>
+                <td>{{ number_format($data['facebook']['reach_last_28_days']) }} ({{ $data['facebook']['reach_change_pct'] }}%)</td>
+                <td>{{ number_format($data['facebook']['engaged_followers']) }} engaged followers</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
 
 {{-- ═══════════ INSTAGRAM ═══════════ --}}
 <h4 style="margin-top:0;">
@@ -75,7 +150,7 @@
 </div>
 
 {{-- ═══════════ TIKTOK ═══════════ --}}
-<h4 style="margin-top:24px;">
+<h4 style="margin-top:14px;">
     TikTok
     @if(!empty($data['tiktok']['is_live']))
         <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
@@ -113,7 +188,7 @@
 @endif
 
 {{-- ═══════════ FACEBOOK ═══════════ --}}
-<h4 style="margin-top:24px;">
+<h4 style="margin-top:14px;">
     Facebook
     @if(!empty($data['facebook']['is_live']))
         <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
@@ -139,7 +214,7 @@
     </div>
 </div>
 
-<hr style="margin:32px 0;">
+<hr style="margin:18px 0;">
 
 <h4 style="margin-top:0;">All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
 <p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Discount code usage" below for what's actually attributable to him.</p>
@@ -205,7 +280,7 @@
             $cancelledOrders = array_values(array_filter($order_stats['orders'], fn($o) => $o['status'] === 'cancelled'));
         @endphp
 
-        <h5 style="margin-top:24px;">Exactly what got refunded ({{ count($cancelledOrders) }} orders)</h5>
+        <h5 style="margin-top:14px;">Exactly what got refunded ({{ count($cancelledOrders) }} orders)</h5>
         @if(count($cancelledOrders) > 0)
             <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:16px; max-height:400px; overflow-y:auto;">
                 <table class="table table-bordered" style="margin-bottom:0;">
@@ -237,7 +312,7 @@
             </div>
         @endif
 
-        <h5 style="margin-top:24px;">
+        <h5 style="margin-top:14px;">
             All {{ count($order_stats['orders']) }} orders in this window
             <button type="button" class="btn btn-default btn-xs" onclick="var t=document.getElementById('archerAllOrdersTable'); t.style.display = t.style.display === 'none' ? '' : 'none';">Show / hide</button>
         </h5>
