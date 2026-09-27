@@ -383,10 +383,13 @@ class RegisterReconUtil
             }
             $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys;
             $variance = round((float) $r->closing_amount - $expected, 2);
-            if (abs($variance) < self::DRAWER_TOLERANCE) continue;
+            // Only shorts matter (Sarah 9/27); a negative expected means the
+            // buy was paid from outside the drawer - not a drawer problem.
+            if ($variance > -self::DRAWER_TOLERANCE || $expected < 0) continue;
             $flags[] = [
                 'location_id' => $r->location_id,
                 'kind'   => 'drawer',
+                'tiny'   => 'drawer short $' . number_format(abs($variance), 2),
                 'mini'   => ($variance < 0 ? 'short ' : 'over ') . '$' . number_format(abs($variance), 2)
                     . ' (counted $' . number_format((float) $r->closing_amount, 2) . ', expected $' . number_format($expected, 2)
                     . ($cashBuys > 0 ? ', after $' . number_format($cashBuys, 2) . ' cash buys' : '')
@@ -403,48 +406,52 @@ class RegisterReconUtil
         return $flags;
     }
 
+    const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
+
     /**
-     * Sarah 9/25: two buckets that matter - money we didn't collect and
-     * stock the ERP still thinks we have. Everything else is minor.
-     * Returns per store: [cat => ['title','hint', [who => [link, ...]]]].
+     * One short line per issue (Sarah 9/27: "way too many words").
+     * Returns per store a list of "Name  <link|what's wrong>" strings;
+     * all suggested matches collapse into a single Fatteen line.
      */
-    private static function grouped(array $s): array
+    private static function shortLines(array $s): array
     {
-        $cats = [
-            'cash'  => ['Did we capture the transaction?', 'Rung in ERP, no Clover charge. Ask why.'],
-            'inv'   => ['Needs inventory update', 'Ring the items in or our stock will be incorrect.'],
-            'wrong' => ['Wrong amount', 'Charged more than rung. Ask why.'],
-            'match' => ['To match', 'Same sale. Fatteen, match it on the feed.'],
-            // Sarah 9/26: "did you do a cash buy?" invites a yes - only a buy
-            // actually logged at /buy-from-customer clears a short.
-            'drawer'=> ['Drawer short', 'Cash buys logged at /buy-from-customer are already counted. Anything else is missing cash.'],
-            'count' => ['Register not counted', 'Ask why they did not close out.'],
-            'other' => ['Other', ''],
-        ];
-        $catOf = function ($it) {
+        $money = function ($x) { return '$' . number_format((float) $x, 2); };
+        $esc = function ($t) { return str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) $t); };
+        $lines = [];
+        $matches = [];
+        foreach ($s['items'] as $it) {
+            $url = $it['url'] ?? $s['url'];
             switch ($it['kind']) {
-                case 'no_clover': return 'cash';
-                case 'no_erp':    return 'inv';
-                case 'mismatch':  return !empty($it['under']) ? 'cash' : 'wrong';
-                case 'match':     return 'match';
-                case 'uncounted': return 'count';
-                case 'drawer':    return 'drawer';
-                default:          return 'other';
+                case 'no_clover':
+                    $what = trim((string) ($it['mini'] ?? ''));
+                    $what = preg_replace('/ at .*$/', '', $what) . ' not on Clover' . (!empty($it['is_cash']) ? ' (cash)' : '');
+                    break;
+                case 'no_erp':
+                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not in ERP';
+                    break;
+                case 'mismatch':
+                    $what = preg_replace('/ ERP .*$/', '', (string) ($it['mini'] ?? '')) . ' wrong amount';
+                    break;
+                case 'match':
+                    $matches[] = '<' . $url . '|' . $esc(preg_replace('/ .*$/', '', (string) ($it['mini'] ?? ''))) . '>';
+                    continue 2;
+                case 'drawer':
+                    $what = $it['tiny'] ?? 'drawer short';
+                    break;
+                case 'uncounted':
+                    $what = 'register not counted';
+                    break;
+                default:
+                    $what = $it['short'] ?? $it['text'];
             }
-        };
-        $out = [];
-        foreach ($cats as $cat => [$title, $hint]) {
-            $byPerson = [];
-            foreach ($s['items'] as $it) {
-                if ($catOf($it) !== $cat) continue;
-                $who = $cat === 'match' ? '' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
-                $label = str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) ($it['mini'] ?? ($it['short'] ?? $it['text'])));
-                $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>'
-                    . (!empty($it['is_cash']) ? '  _cash sale - all cash sales must be rung on Clover too_' : '');
-            }
-            if (!empty($byPerson)) $out[$cat] = [$title, $hint, $byPerson];
+            $who = ($it['ask'] ?? '') !== '' ? $it['ask'] : '?';
+            $lines[] = '*' . $esc($who) . '*  <' . $url . '|' . $esc($what) . '>';
         }
-        return $out;
+        sort($lines);
+        if (!empty($matches)) {
+            $lines[] = '*Fatteen*  match ' . implode(', ', $matches);
+        }
+        return $lines;
     }
 
     private static function diffTag(array $s): string
@@ -457,72 +464,39 @@ class RegisterReconUtil
     /** Plain-text version - Slack notification preview + fallback. */
     public static function formatSlack(array $r): string
     {
-        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
-        $lines = ['*Register check - ' . $r['label'] . '*'
-            . ($r['issue_count'] === 0 ? '  All good.' : '  ' . $r['issue_count'] . ' to fix')];
+        $lines = ['*Register check - ' . $r['label'] . '*  ' . ($r['issue_count'] === 0 ? 'all good' : $r['issue_count'] . ' to fix')];
         foreach ($r['stores'] as $s) {
             $lines[] = '';
-            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ERP ' . $dollars($s['erp'])
-                . ' / Clover ' . $dollars($s['clover']) . '  ' . self::diffTag($s);
-            if (empty($s['items'])) {
-                $lines[] = 'All good';
-                continue;
-            }
-            foreach (self::grouped($s) as [$title, $hint, $byPerson]) {
-                $lines[] = '*' . $title . '*' . ($hint !== '' ? '  _' . $hint . '_' : '');
-                foreach ($byPerson as $who => $links) {
-                    $lines[] = '• ' . ($who !== '' ? '*' . $who . '*: ' : '') . implode(', ', $links);
-                }
+            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ' . self::diffTag($s);
+            $short = self::shortLines($s);
+            foreach ($short ?: ['all good'] as $l) {
+                $lines[] = '• ' . $l;
             }
         }
         if ($r['issue_count'] > 0) {
             $lines[] = '';
-            $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up with these people to fix these errors, then reply in thread when done.';
+            $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up.';
         }
         return implode("\n", $lines);
     }
 
-    /**
-     * What Slack shows: compact Block Kit - title, per store a bold line
-     * with totals, then each group as a bold heading + grey hint + one
-     * indented line per person. Dividers between stores.
-     */
     public static function slackBlocks(array $r): array
     {
-        $dollars = function ($x) { return '$' . number_format((float) $x, 0); };
         $blocks = [];
-        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => 'Register check  ·  ' . $r['label']]];
-        $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
-            'text' => ($r['issue_count'] === 0 ? 'All good' : '*' . $r['issue_count'] . ' to fix*') . '   ·   <' . $r['feed_url'] . '|Open recent feed>']]];
+        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text',
+            'text' => 'Register check  ·  ' . $r['label'] . '  ·  ' . ($r['issue_count'] === 0 ? 'all good' : $r['issue_count'] . ' to fix')]];
         foreach ($r['stores'] as $s) {
-            $blocks[] = ['type' => 'divider'];
-            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
-                'text' => '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*      ERP ' . $dollars($s['erp'])
-                    . '   ·   Clover ' . $dollars($s['clover']) . '   ' . self::diffTag($s)]];
-            if (empty($s['items'])) {
-                $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn', 'text' => 'All good']]];
-                continue;
-            }
-            foreach (self::grouped($s) as [$title, $hint, $byPerson]) {
-                $rows = [];
-                foreach ($byPerson as $who => $links) {
-                    foreach ($links as $l) {
-                        $rows[] = '•  ' . ($who !== '' ? '*' . $who . '*   ' : '') . $l;
-                    }
-                }
-                $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
-                    'text' => '*' . $title . '*' . ($hint !== '' ? '   _' . $hint . '_' : '') . "\n" . implode("\n", $rows)]];
-            }
+            $short = self::shortLines($s);
+            $text = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*   ' . self::diffTag($s) . "\n"
+                . implode("\n", array_map(fn($l) => '•  ' . $l, $short ?: ['all good']));
+            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => mb_substr($text, 0, 2900)]];
         }
         if ($r['issue_count'] > 0) {
-            $blocks[] = ['type' => 'divider'];
-            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn',
-                'text' => '<@' . self::FATTEEN_SLACK_ID . '> please follow up with these people to fix these errors, then reply in thread when done.']];
+            $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
+                'text' => '<@' . self::FATTEEN_SLACK_ID . '> please follow up.']]];
         }
-        return count($blocks) <= 50 ? $blocks : [];
+        return $blocks;
     }
-
-    const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
 
     public static function postToSlack(string $text, array $blocks = []): bool
     {
