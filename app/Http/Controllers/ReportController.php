@@ -8558,9 +8558,12 @@ class ReportController extends Controller
                 'reach_change_pct' => 41,
                 // Recounted 2026-09-25 by manually checking all 48 reels on
                 // @archerxvalentine's account (his full video history) for
-                // an actual @nivessarecords tag in the caption. 20 confirmed
-                // -- close to the old 22, but not "way more" as suspected.
-                'confirmed_collab_videos' => 20,
+                // an actual @nivessarecords tag in the caption: 20 confirmed.
+                // +1 on 2026-09-26: he posted a new one 2026-09-26 ("Back at
+                // @nivessarecords w the king @jakobnowell", tagging
+                // nivessarecords) -- reel DdwnDu4p8Ek. This number needs a
+                // manual bump each time he posts; there's no live count.
+                'confirmed_collab_videos' => 21,
                 'is_live' => false,
             ],
             'facebook' => [
