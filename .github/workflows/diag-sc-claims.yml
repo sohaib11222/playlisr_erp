@@ -1,0 +1,46 @@
+# READ-ONLY diagnostic: payment lines for invoices cashiers say were store
+# credit (#31175, #31222, #31197). One-off; delete after use.
+name: Diag store credit claims
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Payment lines (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            foreach (['31175','31222','31197'] as $inv) { $t = \DB::table('transactions')->where('invoice_no',$inv)->where('type','sell')->first(['id','invoice_no','final_total','contact_id','transaction_date','staff_note','additional_notes']); if (!$t) { echo "INV $inv not found\n"; continue; } $c = \DB::table('contacts')->where('id',$t->contact_id)->value('name'); echo "INV {$t->invoice_no} total={$t->final_total} contact={$c} at={$t->transaction_date} note=" . substr((string)($t->staff_note ?: $t->additional_notes),0,80) . "\n"; foreach (\DB::table('transaction_payments')->where('transaction_id',$t->id)->get(['method','amount','note']) as $p) { echo "   PAY {$p->method} {$p->amount} " . substr((string)$p->note,0,60) . "\n"; } }
+            PHP
