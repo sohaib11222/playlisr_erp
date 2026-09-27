@@ -86,33 +86,35 @@
 </div>
 
 {{-- ═══════════ PLATFORM COMPARISON — one row per platform, side by side ═══════════ --}}
-<div style="background:#fff; border:1px solid #eee; border-radius:6px; overflow-x:auto; margin-bottom:20px;">
+@php
+    function archerLiveDot($isLive) {
+        return '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:' . ($isLive ? '#2ecc71' : '#ccc') . '; margin-right:5px;" title="' . ($isLive ? 'Now live' : 'Manual snapshot') . '"></span>';
+    }
+@endphp
+<div style="background:#fff; border:1px solid #eee; border-radius:6px; overflow-x:auto; margin-bottom:6px;">
     <table class="table table-condensed" style="margin-bottom:0; font-size:12.5px;">
         <thead>
             <tr style="color:#999; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">
-                <th>Platform</th><th>Status</th><th>Followers</th><th>Growth</th><th>Reach, 28d</th><th>Extra</th>
+                <th>Platform</th><th>Followers</th><th>Growth</th><th>Reach, 28d</th><th>Extra</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td><strong>Instagram</strong></td>
-                <td>{{ !empty($data['instagram']['is_live']) ? 'Now live' : 'Manual snapshot' }}</td>
+                <td>{!! archerLiveDot(!empty($data['instagram']['is_live'])) !!}<strong>Instagram</strong></td>
                 <td>{{ number_format($data['instagram']['followers_start'] / 1000, 1) }}K &rarr; {{ number_format($data['instagram']['followers_now'] / 1000, 1) }}K</td>
                 <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) }}</td>
                 <td>{{ number_format($data['instagram']['reach_last_28_days']) }} ({{ $data['instagram']['reach_change_pct'] }}%)</td>
                 <td>{{ $videoCount }} confirmed videos</td>
             </tr>
             <tr>
-                <td><strong>TikTok</strong></td>
-                <td>{{ !empty($data['tiktok']['is_live']) ? 'Now live' : 'Real, filtered to range' }}</td>
+                <td>{!! archerLiveDot(!empty($data['tiktok']['is_live'])) !!}<strong>TikTok</strong></td>
                 <td>{{ number_format($data['tiktok']['followers_start']) }} &rarr; {{ number_format($data['tiktok']['followers_now']) }}</td>
                 <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['tiktok']['followers_now'] - $data['tiktok']['followers_start']) }}</td>
                 <td>&mdash;</td>
                 <td>{{ number_format($data['tiktok']['total_likes']) }} total likes</td>
             </tr>
             <tr>
-                <td><strong>Facebook</strong></td>
-                <td>{{ !empty($data['facebook']['is_live']) ? 'Now live' : 'Manual snapshot' }}</td>
+                <td>{!! archerLiveDot(!empty($data['facebook']['is_live'])) !!}<strong>Facebook</strong></td>
                 <td>{{ number_format($data['facebook']['followers_start']) }} &rarr; {{ number_format($data['facebook']['followers_now']) }}</td>
                 <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) }}</td>
                 <td>{{ number_format($data['facebook']['reach_last_28_days']) }} ({{ $data['facebook']['reach_change_pct'] }}%)</td>
@@ -121,98 +123,7 @@
         </tbody>
     </table>
 </div>
-
-{{-- ═══════════ INSTAGRAM ═══════════ --}}
-<h4 style="margin-top:0;">
-    Instagram
-    @if(!empty($data['instagram']['is_live']))
-        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
-    @else
-        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
-    @endif
-</h4>
-<div class="row">
-    <div class="col-sm-4">
-        {!! archerCard(
-            'Followers',
-            number_format($data['instagram']['followers_start'] / 1000, 1) . 'K &rarr; ' . number_format($data['instagram']['followers_now'] / 1000, 1) . 'K',
-            (!empty($data['instagram']['is_live']) ? 'now live &middot; ' : '')
-                . '+' . number_format($data['instagram']['followers_now'] - $data['instagram']['followers_start']) . ' since ' . archerFmtDate($data['instagram']['followers_start_date'] ?? $data['contract']['start_date']),
-            '#2ecc71'
-        ) !!}
-    </div>
-    <div class="col-sm-4">
-        {!! archerCard('Reach, last 28 days', number_format($data['instagram']['reach_last_28_days']), $data['instagram']['reach_change_pct'] . '%', '#d9534f') !!}
-    </div>
-    <div class="col-sm-4">
-        {!! archerCard('Confirmed campaign videos', $data['instagram']['confirmed_collab_videos'], 'verified, posted by @archerxvalentine tagging @nivessarecords') !!}
-    </div>
-</div>
-
-{{-- ═══════════ TIKTOK ═══════════ --}}
-<h4 style="margin-top:14px;">
-    TikTok
-    @if(!empty($data['tiktok']['is_live']))
-        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
-    @else
-        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Real, filtered to this range</span>
-    @endif
-</h4>
-@if(empty($data['tiktok']['weekly_in_range']))
-    <div class="alert alert-warning">No TikTok checkpoint falls inside {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}. Real checkpoints exist weekly from {{ archerFmtDate($data['tiktok']['weekly_followers'][0]['date']) }} on &mdash; widen the range to see them.</div>
-@else
-    <div class="row">
-        <div class="col-sm-4">
-            {!! archerCard(
-                'Followers',
-                number_format($data['tiktok']['followers_start']) . ' &rarr; ' . number_format($data['tiktok']['followers_now']),
-                (!empty($data['tiktok']['is_live']) ? 'now live &middot; ' : '')
-                    . archerFmtDate($data['tiktok']['weekly_in_range'][0]['date']) . ' &ndash; ' . archerFmtDate(end($data['tiktok']['weekly_in_range'])['date']),
-                '#2ecc71'
-            ) !!}
-        </div>
-        <div class="col-sm-4">
-            {!! archerCard('Total likes (all-time)', number_format($data['tiktok']['total_likes'])) !!}
-        </div>
-    </div>
-
-    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Week over week, this date range</div>
-        <div style="position:relative; height:200px;">
-            <canvas id="archerTiktokChart"
-                data-labels="{{ json_encode(array_map(fn($w) => archerFmtDate($w['date']), $data['tiktok']['weekly_in_range'])) }}"
-                data-followers="{{ json_encode(array_map(fn($w) => $w['followers'], $data['tiktok']['weekly_in_range'])) }}"
-            ></canvas>
-        </div>
-    </div>
-@endif
-
-{{-- ═══════════ FACEBOOK ═══════════ --}}
-<h4 style="margin-top:14px;">
-    Facebook
-    @if(!empty($data['facebook']['is_live']))
-        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
-    @else
-        <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
-    @endif
-</h4>
-<div class="row">
-    <div class="col-sm-4">
-        {!! archerCard(
-            'Followers',
-            number_format($data['facebook']['followers_start']) . ' &rarr; ' . number_format($data['facebook']['followers_now']),
-            (!empty($data['facebook']['is_live']) ? 'now live &middot; ' : '')
-                . '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_date'] ?? $data['facebook']['followers_start_asof'] ?? $data['contract']['start_date']),
-            '#2ecc71'
-        ) !!}
-    </div>
-    <div class="col-sm-4">
-        {!! archerCard('Reach, last 28 days', number_format($data['facebook']['reach_last_28_days']), $data['facebook']['reach_change_pct'] . '%', '#d9534f') !!}
-    </div>
-    <div class="col-sm-4">
-        {!! archerCard('Engaged followers, last 28 days', number_format($data['facebook']['engaged_followers'])) !!}
-    </div>
-</div>
+<p class="text-muted" style="font-size:11px; margin-bottom:18px;">Confirmed videos: verified, posted by @archerxvalentine tagging @nivessarecords. Dot = now live vs. manual snapshot.</p>
 
 <hr style="margin:18px 0;">
 
@@ -239,40 +150,6 @@
             ) !!}
         </div>
         <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
-    </div>
-
-    @if(!empty($order_stats['daily']))
-        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:16px;">
-            <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Orders placed vs. cancelled, by day</div>
-            <div style="position:relative; height:220px;">
-                <canvas id="archerOrdersChart"
-                    data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $order_stats['daily'])) }}"
-                    data-placed="{{ json_encode(array_map(fn($d) => $d['placed'], $order_stats['daily'])) }}"
-                    data-cancelled="{{ json_encode(array_map(fn($d) => $d['cancelled'], $order_stats['daily'])) }}"
-                ></canvas>
-            </div>
-        </div>
-    @endif
-
-    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-top:16px;">
-        <table class="table" style="margin-bottom:0;">
-            <tr>
-                <th style="width:260px;">Potential revenue (if nothing cancelled)</th>
-                <td>${{ number_format($order_stats['gross_revenue'], 2) }}</td>
-            </tr>
-            <tr>
-                <th>Lost &mdash; sold on Discogs (unrelated to Archer)</th>
-                <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_discogs_revenue'], 2) }}</td>
-            </tr>
-            <tr>
-                <th>Lost &mdash; cancelled, no reason logged</th>
-                <td style="color:#d9534f;">&minus;${{ number_format($order_stats['cancelled_other_revenue'], 2) }}</td>
-            </tr>
-            <tr style="border-top:2px solid #eee;">
-                <th>Actual revenue realized</th>
-                <td><strong>${{ number_format($order_stats['net_revenue'], 2) }}</strong></td>
-            </tr>
-        </table>
     </div>
 
     @if(!empty($order_stats['orders']))
@@ -411,57 +288,3 @@
         </div>
     @endif
 </div>
-
-<script>
-(function() {
-    // Old Chart.js instances in this section are destroyed centrally by the
-    // fetch handler in archer_performance.blade.php right before it swaps
-    // this HTML in, so each of these just draws fresh — no destroy needed
-    // here.
-    function lineChart(canvasId, label, color, bg) {
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return;
-        new Chart(canvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: JSON.parse(canvas.dataset.labels),
-                datasets: [{
-                    label: label,
-                    data: JSON.parse(canvas.dataset.followers),
-                    borderColor: color,
-                    backgroundColor: bg,
-                    fill: true,
-                    tension: 0.2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { y: { beginAtZero: false, ticks: { precision: 0 } } },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-    lineChart('archerTiktokChart', 'TikTok followers', '#2ecc71', 'rgba(46,204,113,0.1)');
-
-    var canvas = document.getElementById('archerOrdersChart');
-    if (canvas && typeof Chart !== 'undefined') {
-        new Chart(canvas.getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: JSON.parse(canvas.dataset.labels),
-                datasets: [
-                    { label: 'Placed', data: JSON.parse(canvas.dataset.placed), backgroundColor: '#2ecc71' },
-                    { label: 'Cancelled', data: JSON.parse(canvas.dataset.cancelled), backgroundColor: '#d9534f' }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } },
-                plugins: { legend: { position: 'bottom' } }
-            }
-        });
-    }
-})();
-</script>

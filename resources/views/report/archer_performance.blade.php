@@ -20,13 +20,14 @@
 @endphp
 
 @section('content')
+<style>.archer-wrap { max-width: 1180px; }</style>
 <section class="content-header">
     <h1>Archer x Nivessa Performance</h1>
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 
-<section class="content">
+<section class="content archer-wrap">
 
     @if(empty($data))
         <div class="alert alert-warning">No snapshot data found.</div>
