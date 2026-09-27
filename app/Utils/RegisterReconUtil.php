@@ -28,7 +28,10 @@ class RegisterReconUtil
     // tax rounding drift a few cents).
     const MISMATCH_TOLERANCE_CENTS = 15;
     // Drawer count off by less than this is treated as counting noise.
-    const DRAWER_TOLERANCE = 5.00;
+    // Sarah 9/27: "i dont want to bug them daily for no reason" - small
+    // stuff stays off the list.
+    const DRAWER_TOLERANCE = 20.00;
+    const MIN_ITEM_DOLLARS = 5.00;
     const FLAG_DRAWER_VARIANCE = true;
 
     public static function settings(): array
@@ -253,6 +256,7 @@ class RegisterReconUtil
 
             if ($info === null) {
                 if ($exp <= 0) continue; // fully covered by store credit
+                if ($exp < self::MIN_ITEM_DOLLARS * 100) continue; // too small to chase
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
                     // Cash sales still go on Clover (Sarah's rule) - call it out.
@@ -272,7 +276,7 @@ class RegisterReconUtil
             $gross = (int) ($info['amount_cents'] ?? 0);
             $net   = $gross - (int) ($info['tax_cents'] ?? 0);
             $gap   = min(abs($gross - $exp), abs($net - $exp));
-            if ($gap > self::MISMATCH_TOLERANCE_CENTS) {
+            if ($gap > self::MISMATCH_TOLERANCE_CENTS && $gap >= self::MIN_ITEM_DOLLARS * 100) {
                 $stores[$k]['items'][] = [
                     'kind'   => 'mismatch',
                     'mini'   => '#' . $sale->invoice_no . ' ERP ' . $money($exp / 100) . ' vs Clover ' . $money($gross / 100),
@@ -299,6 +303,7 @@ class RegisterReconUtil
             $res = (string) ($cp->result ?? '');
             if ($res !== '' && $res !== 'SUCCESS' && $res !== 'APPROVED') continue; // voids / test charges
             $amt = (float) ($cp->amount ?? 0);
+            if (abs($amt) < self::MIN_ITEM_DOLLARS) continue; // too small to chase
             $k   = $storeKey($cp->location_id);
             try {
                 $when = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->format('g:ia');
