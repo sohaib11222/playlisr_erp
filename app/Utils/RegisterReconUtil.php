@@ -203,6 +203,8 @@ class RegisterReconUtil
                 if ($exp <= 0) continue; // fully covered by store credit
                 $stores[$k]['items'][] = [
                     'kind'   => 'no_clover',
+                    // Cash sales still go on Clover (Sarah's rule) - call it out.
+                    'is_cash'=> $sale->payment_lines->pluck('method')->filter()->unique()->values()->all() === ['cash'],
                     'mini'   => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'short'  => '#' . $sale->invoice_no . ' ' . $money($exp / 100) . ' at ' . $time($sale->transaction_date),
                     'text'   => $inv . ' ' . $money($exp / 100) . ' rung in ERP at ' . $time($sale->transaction_date)
@@ -414,7 +416,8 @@ class RegisterReconUtil
                 if ($catOf($it) !== $cat) continue;
                 $who = $cat === 'match' ? '' : (($it['ask'] ?? '') !== '' ? $it['ask'] : 'Unknown');
                 $label = str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) ($it['mini'] ?? ($it['short'] ?? $it['text'])));
-                $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>';
+                $byPerson[$who][] = '<' . ($it['url'] ?? $s['url']) . '|' . $label . '>'
+                    . (!empty($it['is_cash']) ? '  _cash sale - all cash sales must be rung on Clover too_' : '');
             }
             if (!empty($byPerson)) $out[$cat] = [$title, $hint, $byPerson];
         }
