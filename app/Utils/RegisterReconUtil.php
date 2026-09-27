@@ -413,18 +413,16 @@ class RegisterReconUtil
      * Returns per store a list of "Name  <link|what's wrong>" strings;
      * all suggested matches collapse into a single Fatteen line.
      */
-    private static function shortLines(array $s): array
+    /** Rows [who, what, url] - one per issue; matches collapse to Fatteen. */
+    public static function shortRows(array $s): array
     {
-        $money = function ($x) { return '$' . number_format((float) $x, 2); };
-        $esc = function ($t) { return str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) $t); };
-        $lines = [];
+        $rows = [];
         $matches = [];
         foreach ($s['items'] as $it) {
             $url = $it['url'] ?? $s['url'];
             switch ($it['kind']) {
                 case 'no_clover':
-                    $what = trim((string) ($it['mini'] ?? ''));
-                    $what = preg_replace('/ at .*$/', '', $what) . ' not on Clover' . (!empty($it['is_cash']) ? ' (cash)' : '');
+                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not on Clover' . (!empty($it['is_cash']) ? ' (cash)' : '');
                     break;
                 case 'no_erp':
                     $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not in ERP';
@@ -433,7 +431,7 @@ class RegisterReconUtil
                     $what = preg_replace('/ ERP .*$/', '', (string) ($it['mini'] ?? '')) . ' wrong amount';
                     break;
                 case 'match':
-                    $matches[] = '<' . $url . '|' . $esc(preg_replace('/ .*$/', '', (string) ($it['mini'] ?? ''))) . '>';
+                    $matches[] = [preg_replace('/ .*$/', '', (string) ($it['mini'] ?? '')), $url];
                     continue 2;
                 case 'drawer':
                     $what = $it['tiny'] ?? 'drawer short';
@@ -444,14 +442,19 @@ class RegisterReconUtil
                 default:
                     $what = $it['short'] ?? $it['text'];
             }
-            $who = ($it['ask'] ?? '') !== '' ? $it['ask'] : '?';
-            $lines[] = '*' . $esc($who) . '*  <' . $url . '|' . $esc($what) . '>';
+            $rows[] = [($it['ask'] ?? '') !== '' ? $it['ask'] : '?', $what, $url];
         }
-        sort($lines);
-        if (!empty($matches)) {
-            $lines[] = '*Fatteen*  match ' . implode(', ', $matches);
+        usort($rows, fn($x, $y) => strcmp($x[0] . $x[1], $y[0] . $y[1]));
+        foreach ($matches as [$inv, $url]) {
+            $rows[] = ['Fatteen', 'match ' . $inv, $url];
         }
-        return $lines;
+        return $rows;
+    }
+
+    private static function shortLines(array $s): array
+    {
+        $esc = function ($t) { return str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) $t); };
+        return array_map(fn($r) => '*' . $esc($r[0]) . '*  <' . $r[2] . '|' . $esc($r[1]) . '>', self::shortRows($s));
     }
 
     private static function diffTag(array $s): string

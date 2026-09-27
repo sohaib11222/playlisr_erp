@@ -54,17 +54,10 @@
 						&middot; Clover ${{ number_format($s['clover'], 2) }} ({{ $s['clover_count'] }})
 						&middot; @if(abs($s['diff']) < 1) matches @else {{ $s['diff'] > 0 ? 'Clover' : 'ERP' }} higher by ${{ number_format(abs($s['diff']), 2) }} @endif
 					</div>
-					@forelse($s['items'] as $it)
-						<div class="rr-item">
-							{{ $it['text'] }}
-							@if(!empty($it['fatteen'])) <strong>{{ $it['q'] ?? '' }}</strong>
-							@else <span class="rr-ask">{{ $it['ask'] !== '' ? $it['ask'] : 'Cashier unknown' }}, {{ $it['q'] ?? '' }}</span>
-							@endif
-							<a href="{{ $it['url'] ?? $s['url'] }}" style="margin-left:6px;">open</a>
-							@if(!empty($it['note'])) <div class="rr-note">Already explained: {{ $it['note'] }}</div>@endif
-						</div>
+					@forelse(\App\Utils\RegisterReconUtil::shortRows($s) as $row)
+						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ $row[1] }}</a></div>
 					@empty
-						<div class="rr-ok">Nothing to fix.</div>
+						<div class="rr-ok">All good</div>
 					@endforelse
 				</div>
 			@endforeach
