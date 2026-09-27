@@ -8613,15 +8613,13 @@ class ReportController extends Controller
             $data['instagram']['followers_now_date'] = $liveInstagram['followers_now_date'];
         }
 
-        // Same swap for Facebook — same token, same fallback behavior.
-        $liveFacebook = $this->fetchLiveFacebookFollowers($start_date, $end_date);
+        // Same swap for Facebook, its own token — see fetchLiveFacebookFollowers.
+        $liveFacebook = $this->fetchLiveFacebookFollowers();
         if ($liveFacebook) {
             $data['facebook']['is_live'] = true;
-            $data['facebook']['followers_start'] = $liveFacebook['followers_start'];
-            $data['facebook']['followers_start_date'] = $liveFacebook['followers_start_date'];
+            $data['facebook']['followers_start_date'] = $data['contract']['start_date'];
             $data['facebook']['followers_now'] = $liveFacebook['followers_now'];
             $data['facebook']['followers_now_date'] = $liveFacebook['followers_now_date'];
-            $data['facebook']['daily'] = $liveFacebook['daily'];
         }
 
         // TikTok's weekly checkpoints are real, exact numbers (hand-
@@ -9996,62 +9994,40 @@ class ReportController extends Controller
     }
 
     /**
-     * Same idea as fetchLiveInstagramFollowers() above, but for the
-     * Facebook Page itself (page_fans metric) — uses the exact same stored
-     * Page Access Token, so both go live together the moment that token
-     * has the right permissions (instagram_manage_insights covers this
-     * page_fans read too, since it's the same underlying Page token).
+     * Real, live "now" follower count for the Facebook Page, for the
+     * Archer performance report — uses its own stored Page access token
+     * (FacebookAuthController), NOT the Instagram token: Instagram's is an
+     * Instagram-Login (IGAA-prefixed) token, which graph.facebook.com
+     * rejects outright, since it's a structurally different OAuth flow.
      *
-     * NOT YET VERIFIED against a real token — same caveat as the Instagram
-     * version above.
+     * Reads the Page's fan_count field directly rather than the page_fans
+     * Insights metric — verified live 2026-09-26 that page_fans is no
+     * longer a valid Insights metric on this API version ("must be a
+     * valid insights metric"), and per the same lesson learned building
+     * the Instagram version, a day-by-day Insights series can't be
+     * trusted anyway. So: current total only, no historical chart.
      */
-    protected function fetchLiveFacebookFollowers(string $start_date, string $end_date): ?array
+    protected function fetchLiveFacebookFollowers(): ?array
     {
-        $token = \App\Http\Controllers\InstagramWebhookController::storedPageAccessToken();
-        if ($token === '') {
+        $token = \App\Http\Controllers\FacebookAuthController::storedPageAccessToken();
+        $pageId = \App\Http\Controllers\FacebookAuthController::storedPageId();
+        if ($token === '' || $pageId === '') {
             return null;
         }
 
         try {
-            $graphVersion = 'v19.0';
-            $meUrl = "https://graph.facebook.com/{$graphVersion}/me?fields=id&access_token=" . urlencode($token);
-            $meDet = $this->httpGetJsonPlain($meUrl, 10);
-            $pageId = $meDet['decoded']['id'] ?? null;
-            if (!$pageId) {
+            $graphVersion = 'v21.0';
+            $url = "https://graph.facebook.com/{$graphVersion}/{$pageId}"
+                . "?fields=fan_count&access_token=" . urlencode($token);
+            $det = $this->httpGetJsonPlain($url, 10);
+            $fanCount = $det['decoded']['fan_count'] ?? null;
+            if ($fanCount === null) {
                 return null;
             }
-
-            $since = \Carbon::parse($start_date)->startOfDay()->timestamp;
-            $until = \Carbon::parse($end_date)->endOfDay()->timestamp;
-            $insightsUrl = "https://graph.facebook.com/{$graphVersion}/{$pageId}/insights"
-                . "?metric=page_fans&period=day&since={$since}&until={$until}&access_token=" . urlencode($token);
-            $insightsDet = $this->httpGetJsonPlain($insightsUrl, 10);
-            $values = $insightsDet['decoded']['data'][0]['values'] ?? null;
-            if (!is_array($values) || empty($values)) {
-                return null;
-            }
-
-            $daily = [];
-            foreach ($values as $point) {
-                if (!isset($point['end_time']) || !isset($point['value'])) {
-                    continue;
-                }
-                $daily[] = [
-                    'date' => \Carbon::parse($point['end_time'])->format('Y-m-d'),
-                    'followers' => (int) $point['value'],
-                ];
-            }
-            if (empty($daily)) {
-                return null;
-            }
-            usort($daily, fn($a, $b) => strcmp($a['date'], $b['date']));
 
             return [
-                'daily' => $daily,
-                'followers_start' => $daily[0]['followers'],
-                'followers_start_date' => $daily[0]['date'],
-                'followers_now' => end($daily)['followers'],
-                'followers_now_date' => end($daily)['date'],
+                'followers_now' => (int) $fanCount,
+                'followers_now_date' => now()->format('Y-m-d'),
             ];
         } catch (\Throwable $e) {
             \Log::warning('fetchLiveFacebookFollowers failed: ' . $e->getMessage());

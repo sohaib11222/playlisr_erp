@@ -116,7 +116,7 @@
 <h4 style="margin-top:24px;">
     Facebook
     @if(!empty($data['facebook']['is_live']))
-        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Live</span>
+        <span style="background:#2ecc71; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Now live</span>
     @else
         <span style="background:#eee; color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:10px; vertical-align:middle;">Manual snapshot</span>
     @endif
@@ -126,9 +126,8 @@
         {!! archerCard(
             'Followers',
             number_format($data['facebook']['followers_start']) . ' &rarr; ' . number_format($data['facebook']['followers_now']),
-            !empty($data['facebook']['is_live'])
-                ? 'live, ' . archerFmtDate($data['facebook']['followers_start_date']) . ' &ndash; ' . archerFmtDate($data['facebook']['followers_now_date'])
-                : '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_asof']) . ' (closest available)',
+            (!empty($data['facebook']['is_live']) ? 'now live &middot; ' : '')
+                . '+' . number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) . ' since ' . archerFmtDate($data['facebook']['followers_start_date'] ?? $data['facebook']['followers_start_asof'] ?? $data['contract']['start_date']),
             '#2ecc71'
         ) !!}
     </div>
@@ -139,18 +138,6 @@
         {!! archerCard('Engaged followers, last 28 days', number_format($data['facebook']['engaged_followers'])) !!}
     </div>
 </div>
-
-@if(!empty($data['facebook']['is_live']) && !empty($data['facebook']['daily']))
-    <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:16px 20px; margin-top:12px;">
-        <div style="font-size:12px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Followers by day, live from Facebook, this date range</div>
-        <div style="position:relative; height:200px;">
-            <canvas id="archerFbChart"
-                data-labels="{{ json_encode(array_map(fn($d) => archerFmtDate($d['date']), $data['facebook']['daily'])) }}"
-                data-followers="{{ json_encode(array_map(fn($d) => $d['followers'], $data['facebook']['daily'])) }}"
-            ></canvas>
-        </div>
-    </div>
-@endif
 
 <hr style="margin:32px 0;">
 
@@ -381,7 +368,6 @@
         });
     }
     lineChart('archerTiktokChart', 'TikTok followers', '#2ecc71', 'rgba(46,204,113,0.1)');
-    lineChart('archerFbChart', 'Facebook followers', '#1877f2', 'rgba(24,119,242,0.1)');
 
     var canvas = document.getElementById('archerOrdersChart');
     if (canvas && typeof Chart !== 'undefined') {

@@ -267,6 +267,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/communications/tiktok-settings', 'TiktokAuthController@settings')->name('tiktok.settings');
     Route::post('/communications/tiktok-settings', 'TiktokAuthController@saveSettings')->name('tiktok.settings.save');
 
+    // Admin-only: paste the Facebook Page ID + Page access token — powers
+    // the live follower count on the Archer report.
+    Route::get('/communications/facebook-settings', 'FacebookAuthController@settings')->name('facebook.settings');
+    Route::post('/communications/facebook-settings', 'FacebookAuthController@saveSettings')->name('facebook.settings.save');
+
     // Receiving — log incoming packages (mail/box/bag/retail delivery/listening
     // event), their contents, and price/shelve them.
     Route::get('/receiving/in-progress', 'ReceivingPackageController@inProgressQueue')->name('receiving.in-progress');
