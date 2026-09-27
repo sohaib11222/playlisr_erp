@@ -8556,14 +8556,14 @@ class ReportController extends Controller
                 'followers_now' => 15957,
                 'reach_last_28_days' => 70000,
                 'reach_change_pct' => 41,
-                // Recounted 2026-09-25 by manually checking all 48 reels on
-                // @archerxvalentine's account (his full video history) for
-                // an actual @nivessarecords tag in the caption: 20 confirmed.
-                // +1 on 2026-09-26: he posted a new one 2026-09-26 ("Back at
-                // @nivessarecords w the king @jakobnowell", tagging
-                // nivessarecords) -- reel DdwnDu4p8Ek. This number needs a
-                // manual bump each time he posts; there's no live count.
-                'confirmed_collab_videos' => 21,
+                // 33, per Sarah (2026-09-26) -- her real count of videos he's
+                // actually shot at Nivessa. A caption/tag text scrape
+                // undercounts: a lot of his videos are filmed in-store
+                // without ever tagging or @-mentioning nivessarecords in the
+                // caption, so that signal alone misses real store content.
+                // This number needs a manual bump each time he posts; there's
+                // no live count.
+                'confirmed_collab_videos' => 33,
                 'is_live' => false,
             ],
             'facebook' => [
