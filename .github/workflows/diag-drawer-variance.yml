@@ -1,0 +1,74 @@
+# READ-ONLY diagnostic: why does every closed drawer look "short" vs
+# opening + cash net? Dumps registers closed 9/24-9/25 with their cash
+# movements, safe drops and deposits. One-off; delete after use.
+name: Diag drawer variance
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Dump registers + cash movements (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $regs = \DB::table('cash_registers as cr')->leftJoin('users as u','u.id','=','cr.user_id')
+              ->whereDate('cr.closed_at','>=','2026-09-24')->whereDate('cr.closed_at','<=','2026-09-25')
+              ->orderBy('cr.id')->get(['cr.*','u.first_name']);
+            foreach ($regs as $r) {
+              echo "=== reg {$r->id} {$r->first_name} loc={$r->location_id} open={$r->created_at} close={$r->closed_at} closing_amount={$r->closing_amount} safe_drop=" . ($r->safe_drop_amount ?? 'n/a') . "\n";
+              echo "   note: " . substr(str_replace("\n",' | ',(string)$r->closing_note),0,200) . "\n";
+              $rows = \DB::table('cash_register_transactions')->where('cash_register_id',$r->id)
+                ->selectRaw('transaction_type, pay_method, type, COUNT(*) n, SUM(amount) amt')
+                ->groupBy('transaction_type','pay_method','type')->get();
+              foreach ($rows as $x) { echo "   crt {$x->transaction_type}/{$x->pay_method}/{$x->type}: n={$x->n} sum={$x->amt}\n"; }
+              if (\Schema::hasTable('cash_deposits')) {
+                $d = \DB::table('cash_deposits')->where('cash_register_id',$r->id)->get(['phase','amount','deposit_seq']);
+                foreach ($d as $x) { echo "   deposit {$x->phase} #{$x->deposit_seq} {$x->amount}\n"; }
+              }
+              // ERP cash-tender payments by this cashier during the shift
+              $erpCash = \DB::table('transaction_payments as tp')->join('transactions as t','t.id','=','tp.transaction_id')
+                ->where('t.created_by',$r->user_id)->where('t.type','sell')->where('t.status','final')
+                ->whereBetween('t.transaction_date',[$r->created_at,$r->closed_at])
+                ->selectRaw('tp.method, COUNT(*) n, SUM(tp.amount) amt')->groupBy('tp.method')->get();
+              foreach ($erpCash as $x) { echo "   erp_payments {$x->method}: n={$x->n} sum={$x->amt}\n"; }
+              $den = $r->denominations ? json_decode($r->denominations, true) : null;
+              if ($den) echo "   denominations: " . json_encode($den) . "\n";
+            }
+            PHP
