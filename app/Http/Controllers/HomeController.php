@@ -654,117 +654,24 @@ class HomeController extends Controller
         }
 
         // ==========================================================
-        // Fastest Selling Genres — turnover speed per genre.
-        // Avg days from purchase/intake (purchase_lines.transaction)
-        // to sale (sell_lines.transaction), grouped by sub_category.
-        // ≥5 sales required so a single quick flip doesn't put a thin
-        // genre at the top. Computed per [range × scope] so the view
-        // can toggle either axis without a roundtrip — scope reuses
-        // $sales_scope_defs which was resolved earlier for the MTD/YTD
-        // cards.
+        // Fastest Selling Genres — turnover speed per genre × category.
+        // Only the default view (3 months, both stores, all categories)
+        // is rendered here; every other range / custom dates / store /
+        // category combo is fetched via getFastestSellingGenres (AJAX).
+        // Scope reuses $sales_scope_defs from the MTD/YTD cards.
         // ==========================================================
-        // Same range set as the "What's hot right now" module above —
-        // shared via dashboardRangeDefs() so both stay in sync.
-        $fsg_ranges = $this->dashboardRangeDefs();
-        $fsg_end = \Carbon::now()->endOfDay()->toDateTimeString();
+        $fsg_ranges = $this->fsgRangeDefs();
         $fsg_default_range = '3mo';
-
-        $fsgRollup = function ($location_id, $start, $end) use ($business_id) {
-            $q = \DB::table('transaction_sell_lines_purchase_lines as tslp')
-                ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
-                ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
-                ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
-                ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
-                ->join('products as p', 'p.id', '=', 'tsl.product_id')
-                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
-                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
-                ->where('sale.business_id', $business_id)
-                ->where('sale.type', 'sell')
-                ->where('sale.status', 'final')
-                ->whereNull('sale.import_source')
-                ->whereBetween('sale.transaction_date', [$start, $end])
-                ->whereNotNull('purchase.transaction_date')
-                ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
-            if (!is_null($location_id)) {
-                $q->where('sale.location_id', $location_id);
-            }
-            // Split by parent category (Sealed Vinyl, Used Vinyl, CD…) too,
-            // same as "What's hot" — Rock Sealed and Rock Used turn over
-            // at very different speeds.
-            $rows = $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
-                    NULLIF(c.name, '') as category,
-                    SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
-                    SUM(tslp.quantity) as units,
-                    SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
-                ->groupBy('sc.name', 'c.name')
-                ->havingRaw('SUM(tslp.quantity) >= 5')
-                ->orderBy('avg_sell_days', 'asc')
-                ->limit(200)
-                ->get();
-
-            // Bar pct = fastest / this, so fastest = 100% and a genre that
-            // takes 2x as long shows a bar half as full. Floor avg_days at
-            // 0.5 to keep the ratio finite for same-day flips.
-            $min_days = (float) max(0.5, (float) ($rows->min('avg_sell_days') ?? 1));
-            return $rows->map(function ($r) use ($min_days) {
-                $days = max(0.5, (float) $r->avg_sell_days);
-                $r->avg_sell_days = (float) $r->avg_sell_days;
-                $r->units = (int) $r->units;
-                $r->revenue = (float) $r->revenue;
-                $r->bar_pct = max(6, min(100, ($min_days / $days) * 100));
-                if ($r->avg_sell_days <= 7)       { $r->tag = 'blazing';  $r->tag_emoji = '🔥'; }
-                elseif ($r->avg_sell_days <= 21)  { $r->tag = 'fast';     $r->tag_emoji = '⚡'; }
-                elseif ($r->avg_sell_days <= 45)  { $r->tag = 'moderate'; $r->tag_emoji = ''; }
-                else                              { $r->tag = 'slow';     $r->tag_emoji = ''; }
-                return $r;
-            });
-        };
-
-        // Units currently on hand per genre × category (Clarissa 2026-09-25:
-        // "how many are remaining in this genre"). Keyed the same way as the
-        // rollup rows, computed once per store scope and reused across ranges.
-        $fsgStock = function ($location_id) use ($business_id) {
-            $q = \DB::table('variation_location_details as vld')
-                ->join('products as p', 'p.id', '=', 'vld.product_id')
-                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
-                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
-                ->where('p.business_id', $business_id)
-                ->where('vld.qty_available', '>', 0);
-            if (!is_null($location_id)) {
-                $q->where('vld.location_id', $location_id);
-            }
-            return $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
-                    COALESCE(NULLIF(c.name, ''), '') as category,
-                    SUM(vld.qty_available) as qty")
-                ->groupBy('sc.name', 'c.name')
-                ->get()
-                ->reduce(function ($map, $r) {
-                    $k = $r->genre . '|' . $r->category;
-                    $map[$k] = ($map[$k] ?? 0) + (int) $r->qty;
-                    return $map;
-                }, []);
-        };
-        $fsg_stock = [];
-        foreach ($sales_scope_defs as $def) {
-            $fsg_stock[$def['key']] = $fsgStock($def['loc_id']);
-        }
-
-        $fsg_scope = [];
-        foreach ($fsg_ranges as $range) {
-            foreach ($sales_scope_defs as $def) {
-                $stock = $fsg_stock[$def['key']];
-                $rows = $fsgRollup($def['loc_id'], $range['start']->toDateTimeString(), $fsg_end)
-                    ->map(function ($r) use ($stock) {
-                        $r->in_stock = (int) ($stock[$r->genre . '|' . ($r->category ?? '')] ?? 0);
-                        return $r;
-                    });
-                $fsg_scope[$range['key']][$def['key']] = [
-                    'label' => $def['label'],
-                    'rows'  => $rows,
-                ];
-            }
-        }
-        $fsg_scope_keys = array_column($sales_scope_defs, 'key');
+        $fsg_scope_defs = array_map(function ($d) {
+            return ['key' => $d['key'], 'label' => $d['label']];
+        }, $sales_scope_defs);
+        $fsg_categories = \App\Category::forDropdown($business_id, 'product');
+        $fsg_rows = $this->fsgBuildRows(
+            $business_id,
+            null,
+            $fsg_ranges[$fsg_default_range]['start']->toDateTimeString(),
+            \Carbon::now()->endOfDay()->toDateTimeString()
+        );
 
         // ==========================================================
         // Nick-style personal progress dashboard
@@ -1154,7 +1061,7 @@ class HomeController extends Controller
             // Top sellers by store module
             'ts_stores', 'ts_data', 'ts_insight', 'ts_ranges', 'ts_default_range',
             // Fastest selling genres module
-            'fsg_scope', 'fsg_scope_keys', 'fsg_ranges', 'fsg_default_range'
+            'fsg_rows', 'fsg_scope_defs', 'fsg_categories', 'fsg_ranges', 'fsg_default_range'
         ));
     }
 
@@ -1344,6 +1251,206 @@ class HomeController extends Controller
         return response()->json([
             'html' => view('home.partials._ts-rows', ['rows' => $rows, 'store' => $store])->render(),
         ]);
+    }
+
+    /**
+     * "Fastest selling genres" — recompute rows for one store scope, date
+     * window (preset range key or custom start/end) and optional parent
+     * category, picked in the dashboard controls.
+     */
+    public function getFastestSellingGenres()
+    {
+        if (!request()->ajax()) {
+            abort(404);
+        }
+        $business_id = request()->session()->get('user.business_id');
+
+        $scopes = collect($this->salesScopeDefs($business_id))->keyBy('key');
+        $scope_key = (string) request()->input('scope', 'all');
+        if (!$scopes->has($scope_key)) {
+            abort(422, 'Invalid scope');
+        }
+
+        $range_key = (string) request()->input('range');
+        if ($range_key === 'custom') {
+            try {
+                $start = \Carbon::createFromFormat('Y-m-d', (string) request()->input('start'))->startOfDay();
+                $end   = \Carbon::createFromFormat('Y-m-d', (string) request()->input('end'))->endOfDay();
+            } catch (\Exception $e) {
+                abort(422, 'Invalid dates');
+            }
+            if ($start->gt($end)) {
+                abort(422, 'Start date is after end date');
+            }
+        } else {
+            $ranges = $this->fsgRangeDefs();
+            if (!isset($ranges[$range_key])) {
+                abort(422, 'Invalid range');
+            }
+            $start = $ranges[$range_key]['start'];
+            $end   = \Carbon::now()->endOfDay();
+        }
+
+        $category_id = request()->input('category_id');
+        if (!empty($category_id)) {
+            $valid = \App\Category::where('business_id', $business_id)
+                ->where('category_type', 'product')
+                ->where('id', $category_id)
+                ->exists();
+            if (!$valid) {
+                abort(422, 'Invalid category');
+            }
+        } else {
+            $category_id = null;
+        }
+
+        $rows = $this->fsgBuildRows(
+            $business_id,
+            $scopes->get($scope_key)['loc_id'],
+            $start->toDateTimeString(),
+            $end->toDateTimeString(),
+            $category_id
+        );
+
+        return response()->json([
+            'html' => view('home.partials._fsg-rows', ['rows' => $rows])->render(),
+        ]);
+    }
+
+    /**
+     * Store scopes for the fastest-selling-genres endpoint. Mirrors the
+     * $sales_scope_defs built inline in index() (combined / Hollywood / Pico).
+     */
+    private function salesScopeDefs($business_id)
+    {
+        $locs = \DB::table('business_locations')->where('business_id', $business_id)->get();
+        $findLoc = function ($needle) use ($locs) {
+            foreach ($locs as $l) {
+                if (stripos($l->name, $needle) !== false) return $l;
+            }
+            return null;
+        };
+        $defs = [['key' => 'all', 'label' => 'Hollywood + Pico', 'loc_id' => null]];
+        if ($loc = $findLoc('hollywood')) {
+            $defs[] = ['key' => 'hollywood', 'label' => $loc->name, 'loc_id' => $loc->id];
+        }
+        if ($loc = $findLoc('pico')) {
+            $defs[] = ['key' => 'pico', 'label' => $loc->name, 'loc_id' => $loc->id];
+        }
+        return $defs;
+    }
+
+    /**
+     * Preset ranges for the fastest-selling-genres dropdown, keyed by key.
+     * Kept separate from dashboardRangeDefs() so "What's hot" keeps its
+     * own menu.
+     */
+    private function fsgRangeDefs()
+    {
+        $now = \Carbon::now();
+        $defs = [
+            ['key' => '1d',  'label' => '1 day',    'start' => $now->copy()->startOfDay()],
+            ['key' => '1w',  'label' => '1 week',   'start' => $now->copy()->subWeek()->startOfDay()],
+            ['key' => '2w',  'label' => '2 weeks',  'start' => $now->copy()->subWeeks(2)->startOfDay()],
+            ['key' => '1mo', 'label' => '1 month',  'start' => $now->copy()->subMonth()->startOfDay()],
+            ['key' => '3mo', 'label' => '3 months', 'start' => $now->copy()->subMonths(3)->startOfDay()],
+            ['key' => '6mo', 'label' => '6 months', 'start' => $now->copy()->subMonths(6)->startOfDay()],
+            ['key' => '1y',  'label' => '1 year',   'start' => $now->copy()->subYear()->startOfDay()],
+            ['key' => '2y',  'label' => '2 years',  'start' => $now->copy()->subYears(2)->startOfDay()],
+        ];
+        return array_column($defs, null, 'key');
+    }
+
+    /**
+     * Turnover speed per genre (sub_category) × parent category (Sealed
+     * Vinyl, Used Vinyl, CD…): avg days from purchase/intake to sale.
+     * ≥5 units sold required so a single quick flip doesn't put a thin
+     * genre at the top.
+     */
+    private function fsgBuildRows($business_id, $location_id, $start, $end, $category_id = null)
+    {
+        $q = \DB::table('transaction_sell_lines_purchase_lines as tslp')
+            ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+            ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+            ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+            ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('sale.business_id', $business_id)
+            ->where('sale.type', 'sell')
+            ->where('sale.status', 'final')
+            ->whereNull('sale.import_source')
+            ->whereBetween('sale.transaction_date', [$start, $end])
+            ->whereNotNull('purchase.transaction_date')
+            ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
+        if (!is_null($location_id)) {
+            $q->where('sale.location_id', $location_id);
+        }
+        if (!is_null($category_id)) {
+            $q->where('p.category_id', $category_id);
+        }
+        $rows = $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
+                NULLIF(c.name, '') as category,
+                SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
+                SUM(tslp.quantity) as units,
+                SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
+            ->groupBy('sc.name', 'c.name')
+            ->havingRaw('SUM(tslp.quantity) >= 5')
+            ->orderBy('avg_sell_days', 'asc')
+            ->limit(200)
+            ->get();
+
+        // Units currently on hand per genre × category (Clarissa 2026-09-25:
+        // "how many are remaining in this genre"), same store scope.
+        $stock = $this->fsgStockMap($business_id, $location_id, $category_id);
+
+        // Bar pct = fastest / this, so fastest = 100% and a genre that
+        // takes 2x as long shows a bar half as full. Floor avg_days at
+        // 0.5 to keep the ratio finite for same-day flips.
+        $min_days = (float) max(0.5, (float) ($rows->min('avg_sell_days') ?? 1));
+        return $rows->map(function ($r) use ($min_days, $stock) {
+            $r->in_stock = (int) ($stock[$r->genre . '|' . ($r->category ?? '')] ?? 0);
+            $days = max(0.5, (float) $r->avg_sell_days);
+            $r->avg_sell_days = (float) $r->avg_sell_days;
+            $r->units = (int) $r->units;
+            $r->revenue = (float) $r->revenue;
+            $r->bar_pct = max(6, min(100, ($min_days / $days) * 100));
+            if ($r->avg_sell_days <= 7)       { $r->tag = 'blazing';  $r->tag_emoji = '🔥'; }
+            elseif ($r->avg_sell_days <= 21)  { $r->tag = 'fast';     $r->tag_emoji = '⚡'; }
+            elseif ($r->avg_sell_days <= 45)  { $r->tag = 'moderate'; $r->tag_emoji = ''; }
+            else                              { $r->tag = 'slow';     $r->tag_emoji = ''; }
+            return $r;
+        });
+    }
+
+    /**
+     * Units on hand keyed "genre|category", matching fsgBuildRows() rows.
+     */
+    private function fsgStockMap($business_id, $location_id, $category_id = null)
+    {
+        $q = \DB::table('variation_location_details as vld')
+            ->join('products as p', 'p.id', '=', 'vld.product_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)
+            ->where('vld.qty_available', '>', 0);
+        if (!is_null($location_id)) {
+            $q->where('vld.location_id', $location_id);
+        }
+        if (!is_null($category_id)) {
+            $q->where('p.category_id', $category_id);
+        }
+        return $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
+                COALESCE(NULLIF(c.name, ''), '') as category,
+                SUM(vld.qty_available) as qty")
+            ->groupBy('sc.name', 'c.name')
+            ->get()
+            ->reduce(function ($map, $r) {
+                $k = $r->genre . '|' . $r->category;
+                $map[$k] = ($map[$k] ?? 0) + (int) $r->qty;
+                return $map;
+            }, []);
     }
 
     public function getShiftProgress()

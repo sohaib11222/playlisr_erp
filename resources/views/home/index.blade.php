@@ -562,16 +562,19 @@
          Store tabs reuse the same scope keys as the MTD/YTD cards
          (all / hollywood / pico) so behavior stays consistent.
          ========================================================== --}}
-    @if(!empty($fsg_scope))
+    @if(isset($fsg_rows))
     <style>
         .fsg-module { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 24px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.03); }
         .fsg-title { font-size:16px; font-weight:600; margin:0; }
         .fsg-sub { font-size:12px; color:#6b7280; margin:0 0 14px 0; }
-        .fsg-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; align-items:center; justify-content:space-between; }
+        .fsg-tab-row { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid #e5e7eb; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; }
         .fsg-tab-group { display:flex; gap:4px; }
         .fsg-tab { padding:8px 14px; font-size:13px; color:#6b7280; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
         .fsg-tab.active { font-weight:600; color:#0f172a; border-bottom-color:#3b6d11; }
-        .fsg-range-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; margin-bottom:6px; }
+        .fsg-controls { display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; margin-bottom:6px; }
+        .fsg-custom { display:inline-flex; gap:6px; align-items:center; }
+        .fsg-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; height:30px; }
+        .fsg-body.loading { opacity:0.5; }
         .fsg-row { display:grid; grid-template-columns:24px 1fr 140px 64px 80px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
         .fsg-row:nth-child(odd) { background:#f8fafc; }
         .fsg-row > div { min-width:0; }
@@ -597,51 +600,42 @@
     <div class="fsg-module">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
             <div class="fsg-title">Fastest selling genres</div>
-            <div class="fsg-sub" style="margin-bottom:0;" data-fsg-range-label>Last {{ $fsg_ranges[array_search($fsg_default_range, array_column($fsg_ranges, 'key'))]['label'] }}</div>
+            <div class="fsg-sub" style="margin-bottom:0;" data-fsg-range-label>Last {{ $fsg_ranges[$fsg_default_range]['label'] }}</div>
         </div>
         <div class="fsg-sub">Avg days from intake to sale — lower is faster (genres with ≥5 sales)</div>
 
         <div class="fsg-tab-row" id="fsg-store-tabs">
             {{-- Store tabs — Both / Hollywood / Pico (mirrors MTD/YTD scope keys). --}}
             <div class="fsg-tab-group">
-                @foreach($fsg_scope_keys as $i => $scope_key)
-                    <div class="fsg-tab {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $scope_key }}">{{ $fsg_scope[$fsg_default_range][$scope_key]['label'] }}</div>
+                @foreach($fsg_scope_defs as $i => $def)
+                    <div class="fsg-tab {{ $i === 0 ? 'active' : '' }}" data-scope="{{ $def['key'] }}">{{ $def['label'] }}</div>
                 @endforeach
             </div>
-            {{-- Time range — how far back the turnover average looks. --}}
-            <select class="fsg-range-select">
-                @foreach($fsg_ranges as $range)
-                    <option value="{{ $range['key'] }}" {{ $range['key'] === $fsg_default_range ? 'selected' : '' }}>{{ $range['label'] }}</option>
-                @endforeach
-            </select>
+            <div class="fsg-controls">
+                <select class="fsg-select fsg-category-select">
+                    <option value="">All categories</option>
+                    @foreach($fsg_categories as $cat_id => $cat_name)
+                        <option value="{{ $cat_id }}">{{ $cat_name }}</option>
+                    @endforeach
+                </select>
+                {{-- Time range — how far back the turnover average looks. --}}
+                <select class="fsg-select fsg-range-select">
+                    @foreach($fsg_ranges as $range)
+                        <option value="{{ $range['key'] }}" {{ $range['key'] === $fsg_default_range ? 'selected' : '' }}>{{ $range['label'] }}</option>
+                    @endforeach
+                    <option value="custom">Custom dates…</option>
+                </select>
+                <span class="fsg-custom" style="display:none;">
+                    <input type="date" class="fsg-select fsg-start" max="{{ date('Y-m-d') }}">
+                    <span class="fsg-sub-num">to</span>
+                    <input type="date" class="fsg-select fsg-end" max="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}">
+                </span>
+            </div>
         </div>
 
-        @foreach($fsg_ranges as $range)
-            @foreach($fsg_scope_keys as $i => $scope_key)
-                @php $rows = $fsg_scope[$range['key']][$scope_key]['rows']; @endphp
-                <div class="fsg-body" data-range="{{ $range['key'] }}" data-scope="{{ $scope_key }}" style="display: {{ ($range['key'] === $fsg_default_range && $i === 0) ? 'block' : 'none' }};">
-                    @if(count($rows))
-                        <div class="fsg-row fsg-head"><div></div><div>Genre</div><div></div><div style="text-align:right;">Days</div><div style="text-align:right;">In stock</div><div></div></div>
-                    @endif
-                    @forelse($rows as $idx => $r)
-                        <div class="fsg-row">
-                            <div class="fsg-rank">{{ $idx + 1 }}</div>
-                            <div>
-                                <p class="fsg-label">{{ $r->genre }}@if($r->category)<span class="fsg-cat">{{ $r->category }}</span>@endif<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
-                            </div>
-                            <div class="fsg-bar"><div style="width:{{ $r->bar_pct }}%;"></div></div>
-                            <div class="fsg-days">
-                                <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
-                            </div>
-                            <div class="fsg-stock {{ $r->in_stock > 0 ? '' : 'zero' }}">{{ number_format($r->in_stock) }}</div>
-                            <div class="fsg-tag {{ $r->tag }}">{{ $r->tag_emoji ? $r->tag_emoji . ' ' : '' }}{{ $r->tag }}</div>
-                        </div>
-                    @empty
-                        <div class="fsg-empty">No genres with ≥5 sales in this window.</div>
-                    @endforelse
-                </div>
-            @endforeach
-        @endforeach
+        <div class="fsg-body">
+            @include('home.partials._fsg-rows', ['rows' => $fsg_rows])
+        </div>
     </div>
     @endif
 
@@ -1553,29 +1547,84 @@
             });
         }
 
-        // Fastest selling genres: store-scope tabs (Both / Hollywood / Pico)
-        // plus a time-range select. Every [range × scope] combo is
-        // pre-rendered server-side (same pattern as the ts-module above),
-        // so both toggles just swap which block is visible — no roundtrip.
+        // Fastest selling genres: store tabs + category select + range
+        // select (presets or custom dates). Only the default view is
+        // server-rendered; every change fetches that one combo from
+        // /home/fastest-selling-genres and caches it client-side.
         var $fsgModule = $('.fsg-module');
         if ($fsgModule.length) {
-            var fsgCurrentScope = $fsgModule.find('.fsg-tab.active').data('scope');
-            var fsgCurrentRange = $fsgModule.find('.fsg-range-select').val();
+            var $fsgBody = $fsgModule.find('.fsg-body');
+            var $fsgRange = $fsgModule.find('.fsg-range-select');
+            var $fsgCustom = $fsgModule.find('.fsg-custom');
+            var fsgState = {
+                scope: $fsgModule.find('.fsg-tab.active').data('scope'),
+                range: $fsgRange.val(),
+                category_id: ''
+            };
+            var fsgCache = {};
+            var fsgReq = 0;
+            fsgCache[$.param(fsgState)] = $fsgBody.html();
+
+            function fsgFmtDate(ymd) {
+                var p = ymd.split('-');
+                return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            }
             function fsgRefresh() {
-                $fsgModule.find('.fsg-body').hide();
-                $fsgModule.find('.fsg-body[data-range="' + fsgCurrentRange + '"][data-scope="' + fsgCurrentScope + '"]').show();
-                $fsgModule.find('[data-fsg-range-label]').text('Last ' + $fsgModule.find('.fsg-range-select option:selected').text());
+                var params = $.extend({}, fsgState);
+                var label;
+                if (params.range === 'custom') {
+                    params.start = $fsgModule.find('.fsg-start').val();
+                    params.end = $fsgModule.find('.fsg-end').val();
+                    if (!params.start || !params.end) return;
+                    if (params.start > params.end) {
+                        $fsgBody.html('<div class="fsg-empty">Start date is after end date.</div>');
+                        return;
+                    }
+                    label = fsgFmtDate(params.start) + ' – ' + fsgFmtDate(params.end);
+                } else {
+                    label = 'Last ' + $fsgRange.find('option:selected').text();
+                }
+                $fsgModule.find('[data-fsg-range-label]').text(label);
+
+                var key = $.param(params);
+                if (fsgCache[key] !== undefined) {
+                    $fsgBody.removeClass('loading').html(fsgCache[key]);
+                    return;
+                }
+                var reqId = ++fsgReq;
+                $fsgBody.addClass('loading');
+                $.get('{{ url("/home/fastest-selling-genres") }}', params)
+                    .done(function (resp) {
+                        fsgCache[key] = resp.html;
+                        if (reqId === fsgReq) $fsgBody.html(resp.html);
+                    })
+                    .fail(function () {
+                        if (reqId === fsgReq) $fsgBody.html('<div class="fsg-empty">Couldn\'t load this view — try again.</div>');
+                    })
+                    .always(function () {
+                        if (reqId === fsgReq) $fsgBody.removeClass('loading');
+                    });
             }
             $fsgModule.on('click', '.fsg-tab', function () {
-                fsgCurrentScope = $(this).data('scope');
+                fsgState.scope = $(this).data('scope');
                 $fsgModule.find('.fsg-tab').removeClass('active');
                 $(this).addClass('active');
                 fsgRefresh();
             });
-            $fsgModule.on('change', '.fsg-range-select', function () {
-                fsgCurrentRange = $(this).val();
+            $fsgModule.on('change', '.fsg-category-select', function () {
+                fsgState.category_id = $(this).val();
                 fsgRefresh();
             });
+            $fsgRange.on('change', function () {
+                fsgState.range = $(this).val();
+                $fsgCustom.toggle(fsgState.range === 'custom');
+                if (fsgState.range === 'custom' && !$fsgModule.find('.fsg-start').val()) {
+                    $fsgModule.find('.fsg-start').focus();
+                    return;
+                }
+                fsgRefresh();
+            });
+            $fsgModule.on('change', '.fsg-start, .fsg-end', fsgRefresh);
         }
 
         // All-Stores MTD/YTD scope toggle. Swap the visible .sales-scope-body
