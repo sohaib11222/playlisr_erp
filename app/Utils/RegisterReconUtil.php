@@ -415,7 +415,9 @@ class RegisterReconUtil
             'inv'   => ['Needs inventory update', 'Ring the items in or our stock will be incorrect.'],
             'wrong' => ['Wrong amount', 'Charged more than rung. Ask why.'],
             'match' => ['To match', 'Same sale. Fatteen, match it on the feed.'],
-            'drawer'=> ['Drawer count off', 'Counted cash does not match the sales. Ask what happened.'],
+            // Sarah 9/26: "did you do a cash buy?" invites a yes - only a buy
+            // actually logged at /buy-from-customer clears a short.
+            'drawer'=> ['Drawer short', 'Cash buys logged at /buy-from-customer are already counted. Anything else is missing cash.'],
             'count' => ['Register not counted', 'Ask why they did not close out.'],
             'other' => ['Other', ''],
         ];
