@@ -285,11 +285,22 @@
                          value="{{ !empty($prefillDenoms[$face]) ? (int) $prefillDenoms[$face] : '' }}"
                          min="0" step="1" inputmode="numeric"
                          placeholder="0" autocomplete="off"
-                         @if($face === 100) autofocus @endif>
+                         {{ !empty($prefillDenoms) ? 'readonly' : '' }}
+                         @if($face === 100 && empty($prefillDenoms)) autofocus @endif>
                   <span class="ocr-denom-op">=</span>
                   <span class="ocr-denom-sub" data-sub="{{ $face }}">$0.00</span>
                 </div>
               @endforeach
+              {{-- Sarah 2026-09-26: cashiers already counted on the duty
+                   picker; recounting here produced a different number (Andy
+                   9/25: $505 counted, $655 saved). Lock to that count; the
+                   Edit button unlocks for a genuine recount. --}}
+              @if(!empty($prefillDenoms))
+                <div id="ocr-locked-note" style="font-size:13px;color:#5A4410;padding:8px 0;">
+                  This is the count you entered on the last screen.
+                  <button type="button" id="ocr-edit-count" style="margin-left:6px;padding:4px 10px;border:1px solid #DFD2B3;border-radius:8px;background:#fff;font-weight:700;cursor:pointer;">Edit count</button>
+                </div>
+              @endif
               <div class="ocr-denom-total-row">
                 <span class="ocr-denom-total-label">Cash in hand</span>
                 <span class="ocr-denom-total" id="ocr-denom-total">$0.00</span>
@@ -459,6 +470,15 @@
       c.addEventListener('input', recompute);
       c.addEventListener('change', recompute);
     });
+    var editBtn = document.getElementById('ocr-edit-count');
+    if (editBtn) {
+      editBtn.addEventListener('click', function () {
+        counts.forEach(function (c) { c.removeAttribute('readonly'); });
+        var note = document.getElementById('ocr-locked-note');
+        if (note) note.textContent = 'Recount the drawer and enter each bill again.';
+        if (counts[0]) counts[0].focus();
+      });
+    }
     recompute();
   })();
 
