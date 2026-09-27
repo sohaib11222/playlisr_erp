@@ -29,7 +29,7 @@ class RegisterReconUtil
     const MISMATCH_TOLERANCE_CENTS = 15;
     // Drawer count off by less than this is treated as counting noise.
     const DRAWER_TOLERANCE = 5.00;
-    const FLAG_DRAWER_VARIANCE = false;
+    const FLAG_DRAWER_VARIANCE = true;
 
     public static function settings(): array
     {
@@ -336,7 +336,7 @@ class RegisterReconUtil
             ->whereIn('cash_register_id', $regs->pluck('id')->all())
             ->selectRaw("cash_register_id,
                 SUM(CASE WHEN pay_method='cash' AND transaction_type='initial' THEN amount ELSE 0 END) as opening_cash,
-                SUM(CASE WHEN pay_method='cash' THEN CASE WHEN type='credit' THEN amount ELSE -amount END ELSE 0 END) as cash_net,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type <> 'initial' THEN CASE WHEN type='credit' THEN amount ELSE -amount END ELSE 0 END) as cash_net,
                 SUM(CASE WHEN transaction_type IN ('sell','purchase','refund') THEN 1 ELSE 0 END) as activity")
             ->groupBy('cash_register_id')
             ->get()
@@ -360,10 +360,10 @@ class RegisterReconUtil
                 ];
                 continue;
             }
-            // Drawer short/over is NOT flagged yet: on 9/24 every closed
-            // drawer at both stores came out $70-$550 "short" against
-            // opening + cash net, so the expected-cash math doesn't match
-            // how cashiers count/drop. Re-enable once that's reconciled.
+            // Expected = opening cash + cash in/out during the shift. The
+            // 'initial' row IS the opening cash, so cash_net excludes it
+            // (it was double-counted before 9/26, making every drawer look
+            // $70-$550 short). closing_amount is counted before the safe drop.
             if (!self::FLAG_DRAWER_VARIANCE) continue;
             if (!$row || (int) $row->activity === 0) continue;
             $expected = (float) $row->opening_cash + (float) $row->cash_net;
@@ -372,6 +372,9 @@ class RegisterReconUtil
             $flags[] = [
                 'location_id' => $r->location_id,
                 'kind'   => 'drawer',
+                'mini'   => ($variance < 0 ? 'short ' : 'over ') . '$' . number_format(abs($variance), 2)
+                    . ' (counted $' . number_format((float) $r->closing_amount, 2) . ', expected $' . number_format($expected, 2)
+                    . ', closed ' . \Carbon\Carbon::parse($r->closed_at)->format('g:ia') . ')',
                 'text'   => 'Drawer ' . ($variance < 0 ? 'SHORT ' : 'OVER ') . '$' . number_format(abs($variance), 2)
                     . ' at close ' . \Carbon\Carbon::parse($r->closed_at)->format('g:ia')
                     . ' (counted $' . number_format((float) $r->closing_amount, 2)
@@ -396,6 +399,7 @@ class RegisterReconUtil
             'inv'   => ['Needs inventory update', 'Ring the items in or our stock will be incorrect.'],
             'wrong' => ['Wrong amount', 'Charged more than rung. Ask why.'],
             'match' => ['To match', 'Same sale. Fatteen, match it on the feed.'],
+            'drawer'=> ['Drawer count off', 'Counted cash does not match the sales. Ask what happened.'],
             'count' => ['Register not counted', 'Ask why they did not close out.'],
             'other' => ['Other', ''],
         ];
@@ -406,6 +410,7 @@ class RegisterReconUtil
                 case 'mismatch':  return !empty($it['under']) ? 'cash' : 'wrong';
                 case 'match':     return 'match';
                 case 'uncounted': return 'count';
+                case 'drawer':    return 'drawer';
                 default:          return 'other';
             }
         };
