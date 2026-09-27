@@ -365,8 +365,23 @@ class RegisterReconUtil
             // (it was double-counted before 9/26, making every drawer look
             // $70-$550 short). closing_amount is counted before the safe drop.
             if (!self::FLAG_DRAWER_VARIANCE) continue;
-            if (!$row || (int) $row->activity === 0) continue;
-            $expected = (float) $row->opening_cash + (float) $row->cash_net;
+            if (!$row) continue;
+            // Collection buys paid in cash come out of the drawer but never
+            // write a cash_register_transactions row - pull them from
+            // buy_customer_offers for this store during the shift (any
+            // ringer, so admin-rung buys still count against the drawer).
+            $cashBuys = 0.0;
+            if (\Schema::hasTable('buy_customer_offers')) {
+                $cashBuys = (float) \DB::table('transactions as t')
+                    ->join('buy_customer_offers as o', 'o.accepted_purchase_id', '=', 't.id')
+                    ->where('t.business_id', $business_id)
+                    ->where('t.type', 'purchase')
+                    ->where('o.payment_method', 'cash_in_store')
+                    ->where('t.location_id', $r->location_id)
+                    ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
+                    ->sum('t.final_total');
+            }
+            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys;
             $variance = round((float) $r->closing_amount - $expected, 2);
             if (abs($variance) < self::DRAWER_TOLERANCE) continue;
             $flags[] = [
@@ -374,6 +389,7 @@ class RegisterReconUtil
                 'kind'   => 'drawer',
                 'mini'   => ($variance < 0 ? 'short ' : 'over ') . '$' . number_format(abs($variance), 2)
                     . ' (counted $' . number_format((float) $r->closing_amount, 2) . ', expected $' . number_format($expected, 2)
+                    . ($cashBuys > 0 ? ', after $' . number_format($cashBuys, 2) . ' cash buys' : '')
                     . ', closed ' . \Carbon\Carbon::parse($r->closed_at)->format('g:ia') . ')',
                 'text'   => 'Drawer ' . ($variance < 0 ? 'SHORT ' : 'OVER ') . '$' . number_format(abs($variance), 2)
                     . ' at close ' . \Carbon\Carbon::parse($r->closed_at)->format('g:ia')
