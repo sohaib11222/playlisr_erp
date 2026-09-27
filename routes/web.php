@@ -104,6 +104,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/home/top-sellers-range', 'HomeController@getTopSellersRange')->name('home.topSellersRange');
     // "Fastest selling genres" — rows for one [store × range/custom dates × category] combo.
     Route::get('/home/fastest-selling-genres', 'HomeController@getFastestSellingGenres')->name('home.fastestSellingGenres');
+    // Drill-down: items sold (with days to sell) or in stock for one genre × category row.
+    Route::get('/home/fastest-selling-genres/items', 'HomeController@getFastestSellingGenreItems')->name('home.fastestSellingGenreItems');
     // Live trading-day KPIs (revenue vs target, LFL, tx count, ATV) consumed by
     // the Daily Store Dashboard (leaderboard) strip. The standalone page was
     // retired; only the JSON endpoint remains.

@@ -590,6 +590,10 @@
         .fsg-tag { font-size:11px; color:#6b7280; }
         .fsg-stock { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
         .fsg-stock.zero { color:#991b1b; }
+        .fsg-clickable { cursor:pointer; }
+        .fsg-clickable:hover { background:#eef6e8 !important; }
+        .fsg-stock-link { text-decoration:underline dotted; text-underline-offset:3px; }
+        .fsg-stock-link:hover { color:#3b6d11; }
         .fsg-head { background:none !important; border-bottom:1px solid #e5e7eb; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.03em; }
         .fsg-tag.blazing { color:#9a3412; font-weight:600; }
         .fsg-tag.fast { color:#065f46; font-weight:600; }
@@ -1390,6 +1394,20 @@
 <div class="modal fade edit_payment_modal" tabindex="-1" role="dialog" 
     aria-labelledby="gridSystemModalLabel">
 </div>
+@if(isset($fsg_rows))
+{{-- Fastest selling genres drill-down (items sold / in stock for one row). --}}
+<div class="modal fade" id="fsg-detail-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title"></h4>
+            </div>
+            <div class="modal-body"></div>
+        </div>
+    </div>
+</div>
+@endif
 @stop
 @section('javascript')
     <script src="{{ asset('js/home.js?v=' . $asset_v) }}"></script>
@@ -1625,6 +1643,43 @@
                 fsgRefresh();
             });
             $fsgModule.on('change', '.fsg-start, .fsg-end', fsgRefresh);
+
+            // Drill-down: click a row → what sold (days to sell each);
+            // click its in-stock number → what's on hand now.
+            var $fsgModal = $('#fsg-detail-modal');
+            function fsgOpenItems(type, $row) {
+                // attr, not data(): data() would turn a genre like "007" into 7.
+                var genre = $row.attr('data-genre') || '';
+                var category = $row.attr('data-category') || '';
+                var params = $.extend({}, fsgState, { type: type, genre: genre, category: category });
+                if (params.range === 'custom') {
+                    params.start = $fsgModule.find('.fsg-start').val();
+                    params.end = $fsgModule.find('.fsg-end').val();
+                }
+                var where = $fsgModule.find('.fsg-tab.active').text();
+                var title = genre + (category ? ' · ' + category : '') + ' — ' +
+                    (type === 'sold' ? 'sold · ' + $fsgModule.find('[data-fsg-range-label]').text() : 'in stock now') +
+                    ' (' + where + ')';
+                $fsgModal.find('.modal-title').text(title);
+                $fsgModal.find('.modal-body').html('<div class="fsg-empty">Loading…</div>');
+                $fsgModal.modal('show');
+                $.get('{{ url("/home/fastest-selling-genres/items") }}', params)
+                    .done(function (resp) { $fsgModal.find('.modal-body').html(resp.html); })
+                    .fail(function () { $fsgModal.find('.modal-body').html('<div class="fsg-empty">Couldn\'t load items — try again.</div>'); });
+            }
+            $fsgModule.on('click', '.fsg-stock-link', function (e) {
+                e.stopPropagation();
+                fsgOpenItems('stock', $(this).closest('.fsg-row'));
+            });
+            $fsgModule.on('click', '.fsg-clickable', function () {
+                fsgOpenItems('sold', $(this));
+            });
+            $fsgModal.on('input', '.fsg-items-filter', function () {
+                var q = $(this).val().toLowerCase();
+                $fsgModal.find('.fsg-items-table tbody tr').each(function () {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(q) !== -1);
+                });
+            });
         }
 
         // All-Stores MTD/YTD scope toggle. Swap the visible .sales-scope-body

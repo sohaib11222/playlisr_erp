@@ -1264,7 +1264,143 @@ class HomeController extends Controller
             abort(404);
         }
         $business_id = request()->session()->get('user.business_id');
+        [$location_id, $start, $end, $category_id] = $this->fsgRequestFilters($business_id);
 
+        $rows = $this->fsgBuildRows(
+            $business_id,
+            $location_id,
+            $start->toDateTimeString(),
+            $end->toDateTimeString(),
+            $category_id
+        );
+
+        return response()->json([
+            'html' => view('home.partials._fsg-rows', ['rows' => $rows])->render(),
+        ]);
+    }
+
+    /**
+     * "Fastest selling genres" drill-down for one genre × category row:
+     *   type=sold  — every unit sold in the window, with intake date, sale
+     *                date and days to sell (same allocations the row's
+     *                average is built from).
+     *   type=stock — what's on hand now, with days on the shelf since the
+     *                oldest purchase lot that still has units left.
+     * Same store / window / category filters as getFastestSellingGenres.
+     */
+    public function getFastestSellingGenreItems()
+    {
+        if (!request()->ajax()) {
+            abort(404);
+        }
+        $business_id = request()->session()->get('user.business_id');
+        [$location_id, $start, $end, $category_id] = $this->fsgRequestFilters($business_id);
+
+        $type = (string) request()->input('type');
+        if (!in_array($type, ['sold', 'stock'], true)) {
+            abort(422, 'Invalid type');
+        }
+        $genre = (string) request()->input('genre');
+        $category = (string) request()->input('category', '');
+        $limit = 1000;
+
+        // Match rows exactly the way fsgBuildRows / fsgStockMap label them.
+        $matchGroup = function ($q) use ($genre, $category, $category_id) {
+            $q->whereRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') = ?", [$genre])
+              ->whereRaw("COALESCE(NULLIF(c.name, ''), '') = ?", [$category]);
+            if (!is_null($category_id)) {
+                $q->where('p.category_id', $category_id);
+            }
+        };
+
+        if ($type === 'sold') {
+            $q = \DB::table('transaction_sell_lines_purchase_lines as tslp')
+                ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+                ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+                ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+                ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 'sale.location_id')
+                ->where('sale.business_id', $business_id)
+                ->where('sale.type', 'sell')
+                ->where('sale.status', 'final')
+                ->whereNull('sale.import_source')
+                ->whereBetween('sale.transaction_date', [$start->toDateTimeString(), $end->toDateTimeString()])
+                ->whereNotNull('purchase.transaction_date')
+                ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
+            if (!is_null($location_id)) {
+                $q->where('sale.location_id', $location_id);
+            }
+            $matchGroup($q);
+            $total = (clone $q)->count();
+            $items = $q->selectRaw("p.name, p.artist, p.sku,
+                    purchase.transaction_date as intake_date,
+                    sale.transaction_date as sale_date,
+                    DATEDIFF(sale.transaction_date, purchase.transaction_date) as days,
+                    tslp.quantity as qty,
+                    tsl.unit_price_inc_tax as price,
+                    bl.name as location")
+                ->orderBy('days', 'asc')
+                ->orderBy('sale.transaction_date', 'desc')
+                ->limit($limit)
+                ->get();
+        } else {
+            // Oldest purchase lot at this variation/location that still has
+            // units left = how long the copy on the shelf has been sitting.
+            $on_shelf_since = "(SELECT MIN(pt.transaction_date)
+                    FROM purchase_lines as ppl
+                    JOIN transactions as pt ON pt.id = ppl.transaction_id
+                    WHERE ppl.variation_id = vld.variation_id
+                      AND pt.location_id = vld.location_id
+                      AND pt.type IN ('purchase', 'opening_stock', 'purchase_transfer')
+                      AND (ppl.quantity - ppl.quantity_sold - ppl.quantity_adjusted - ppl.quantity_returned) > 0)";
+            $q = \DB::table('variation_location_details as vld')
+                ->join('products as p', 'p.id', '=', 'vld.product_id')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->where('p.business_id', $business_id)
+                ->where('vld.qty_available', '>', 0);
+            if (!is_null($location_id)) {
+                $q->where('vld.location_id', $location_id);
+            }
+            $matchGroup($q);
+            $total = (clone $q)->count();
+            $items = $q->selectRaw("p.name, p.artist, p.sku,
+                    vld.qty_available as qty,
+                    v.sell_price_inc_tax as price,
+                    bl.name as location,
+                    COALESCE({$on_shelf_since}, p.created_at) as intake_date")
+                ->orderBy('intake_date', 'asc')
+                ->limit($limit)
+                ->get();
+            $now = \Carbon::now();
+            foreach ($items as $it) {
+                $it->days = $it->intake_date ? \Carbon::parse($it->intake_date)->diffInDays($now) : null;
+            }
+        }
+
+        return response()->json([
+            'html' => view('home.partials._fsg-items', [
+                'type'     => $type,
+                'items'    => $items,
+                'total'    => $total,
+                'limit'    => $limit,
+            ])->render(),
+        ]);
+    }
+
+    /**
+     * Shared request parsing for the fastest-selling-genres endpoints:
+     * store scope, date window (preset key or custom start/end) and
+     * optional parent category. Returns [location_id|null, start, end,
+     * category_id|null].
+     */
+    private function fsgRequestFilters($business_id)
+    {
         $scopes = collect($this->salesScopeDefs($business_id))->keyBy('key');
         $scope_key = (string) request()->input('scope', 'all');
         if (!$scopes->has($scope_key)) {
@@ -1304,17 +1440,7 @@ class HomeController extends Controller
             $category_id = null;
         }
 
-        $rows = $this->fsgBuildRows(
-            $business_id,
-            $scopes->get($scope_key)['loc_id'],
-            $start->toDateTimeString(),
-            $end->toDateTimeString(),
-            $category_id
-        );
-
-        return response()->json([
-            'html' => view('home.partials._fsg-rows', ['rows' => $rows])->render(),
-        ]);
+        return [$scopes->get($scope_key)['loc_id'], $start, $end, $category_id];
     }
 
     /**
