@@ -1,0 +1,54 @@
+# READ-ONLY diagnostic: compare the duty-picker opening count (activity_log
+# pos_duty) with what the open-register screen saved (cash_registers +
+# initial crt row). Luis reports the 2 screens show different numbers.
+# One-off; delete after use.
+name: Diag open count mismatch
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Compare counts (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            foreach (\DB::table('activity_log')->where('description','pos_duty')->where('created_at','>=','2026-09-20')->orderBy('id')->get(['causer_id','created_at','properties']) as $a) { $p = json_decode($a->properties, true) ?: []; if (($p['duty'] ?? '') !== 'cashier') continue; echo "DUTY user={$a->causer_id} at={$a->created_at} loc=" . ($p['location_id'] ?? '') . " opening_cash=" . ($p['opening_cash'] ?? 'null') . " denoms=" . json_encode($p['opening_cash_denoms'] ?? null) . "\n"; }
+            foreach (\DB::table('cash_registers')->where('created_at','>=','2026-09-20')->orderBy('id')->get(['id','user_id','location_id','created_at','safe_drop_amount']) as $r) { $init = \DB::table('cash_register_transactions')->where('cash_register_id',$r->id)->where('transaction_type','initial')->sum('amount'); $od = \Schema::hasTable('cash_deposits') ? \DB::table('cash_deposits')->where('cash_register_id',$r->id)->where('phase','open')->sum('amount') : 0; echo "REG {$r->id} user={$r->user_id} loc={$r->location_id} opened={$r->created_at} initial={$init} open_drop={$od}\n"; }
+            PHP
