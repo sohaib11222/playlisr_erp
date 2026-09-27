@@ -135,6 +135,23 @@ class RegisterReconUtil
             return $n ? trim((string) ($n->reason ?? '')) : null;
         };
 
+        // Cashiers sometimes apply store credit by ringing the whole sale as
+        // cash with a note "Store credit used: $ 39" (Manolo #31175, Alec
+        // #31222 on 9/26) instead of the store-credit tender. Take that
+        // note off what was due on Clover.
+        foreach ($sales as $sale) {
+            $noteCents = 0;
+            foreach ($sale->payment_lines as $pl) {
+                if (preg_match('/store credit used:\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)/i', (string) $pl->note, $m)) {
+                    $noteCents += $cents($m[1]);
+                }
+            }
+            if ($noteCents > 0) {
+                $base = $expected[$sale->id] ?? $cents($sale->final_total);
+                $expected[$sale->id] = max(0, $base - $noteCents);
+            }
+        }
+
         // 0) Probable pairs: an ERP-only sale and a Clover-only charge at the
         //    same store, close in time/amount (the feed's "Probable Clover
         //    match"). These are one sale that just needs matching on the
@@ -167,6 +184,41 @@ class RegisterReconUtil
             if ($due <= 0 || $c['amt_delta'] > 0.2 * $due) continue;
             $pairFor[$c['sale']] = $c;
             $pairedCp[$cpKey] = true;
+        }
+
+        // 0b) Our own pass: the feed only suggests pairs within $3 of the
+        //     full sale total, so a sale partly paid with store credit
+        //     (#31197: $30.73, card part $25.73 vs a $25.24 charge) never
+        //     pairs. Match what was due on Clover instead: same store,
+        //     within an hour, within 20%.
+        foreach ($sales as $sale) {
+            if (isset($pairFor[$sale->id]) || isset($cloverByTx[$sale->id])) continue;
+            if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            $due = $expected[$sale->id] ?? $cents($sale->final_total);
+            if ($due <= 0) continue;
+            $sTs = strtotime((string) $sale->transaction_date);
+            $best = null;
+            foreach ($orphans as $cp) {
+                $key = (string) $cp->clover_payment_id;
+                if (isset($pairedCp[$key]) || isset($dupOf[$cp->id])) continue;
+                if ($cp->location_id !== null && (int) $cp->location_id !== (int) $sale->location_id) continue;
+                $amt = $cents($cp->amount);
+                if ($amt <= 0) continue;
+                try {
+                    $cTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp();
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                $delta = abs($amt - $due);
+                if (abs($cTs - $sTs) > 3600 || $delta > 0.2 * $due) continue;
+                if ($best === null || $delta < $best['amt_delta']) {
+                    $best = ['cp_id' => $key, 'amount' => round($amt / 100, 2), 'ts' => $cTs, 'amt_delta' => $delta, 'loc_id' => $cp->location_id];
+                }
+            }
+            if ($best !== null) {
+                $pairFor[$sale->id] = $best;
+                $pairedCp[$best['cp_id']] = true;
+            }
         }
 
         // 1) ERP sales: rung in ERP but no Clover swipe, or amounts differ.
