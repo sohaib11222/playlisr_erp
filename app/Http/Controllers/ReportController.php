@@ -8544,7 +8544,7 @@ class ReportController extends Controller
             'last_updated' => '2026-09-25',
             'contract' => [
                 'start_date' => '2026-08-18',
-                'end_date' => '2026-09-18',
+                'end_date' => '2026-10-18',
                 'pay_total' => 2000,
                 'pay_schedule' => '$1,000 on 2026-08-18, $1,000 on 2026-09-01',
                 'follower_goal' => 30000,
