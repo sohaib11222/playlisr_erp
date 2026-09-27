@@ -433,7 +433,22 @@ class RegisterReconUtil
                     ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
                     ->sum('t.final_total');
             }
-            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys;
+            // "Use Store Credit" on the POS books the whole sale as cash with
+            // a "Store credit used: $X" note - that $X never went in the
+            // drawer, so take it back out of expected cash.
+            $scCents = 0;
+            $txIds = \DB::table('cash_register_transactions')->where('cash_register_id', $r->id)
+                ->where('transaction_type', 'sell')->where('pay_method', 'cash')
+                ->whereNotNull('transaction_id')->pluck('transaction_id')->all();
+            if (!empty($txIds)) {
+                foreach (\DB::table('transaction_payments')->whereIn('transaction_id', $txIds)
+                    ->where('method', 'cash')->where('note', 'like', '%Store credit used:%')->pluck('note') as $n) {
+                    if (preg_match('/store credit used:\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)/i', (string) $n, $m)) {
+                        $scCents += (int) round(((float) $m[1]) * 100);
+                    }
+                }
+            }
+            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys - $scCents / 100;
             $variance = round((float) $r->closing_amount - $expected, 2);
             // Only shorts matter (Sarah 9/27); a negative expected means the
             // buy was paid from outside the drawer - not a drawer problem.
