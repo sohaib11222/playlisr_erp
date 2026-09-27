@@ -1115,7 +1115,7 @@ class AdminActionHistoryController extends Controller
 
         try {
             $notifier = new \App\Services\NivessaStockNotifier();
-            foreach (array_chunk($ids, 100) as $chunk) { $notifier->pushProductChanged($chunk); }
+            $notifier->pushProductChanged($ids, ['artist']);
         } catch (\Throwable $e) {
             \Log::warning('product-quote-cleanup undo push failed: ' . $e->getMessage());
         }

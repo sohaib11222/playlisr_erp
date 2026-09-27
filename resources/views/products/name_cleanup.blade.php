@@ -52,10 +52,10 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     <div id="mgnMsg" class="mgn-msg"></div>
 
     <div class="mgn-card">
-        <h2>Fix stray quote marks</h2>
-        <p class="sub">Old spreadsheet imports left extra quote marks in some names and artists, like <span class="mgn-old">"Arthur ""Big Boy"" Crudup - That's Alright Mama"</span>. This strips them back to the real text and updates the website too. Real quotes (e.g. David Bowie - "Heroes") are left alone. Scanning changes nothing.</p>
+        <h2>Fix stray quote marks and *</h2>
+        <p class="sub">Old spreadsheet imports left extra quote marks in some names and artists, like <span class="mgn-old">"Arthur ""Big Boy"" Crudup - That's Alright Mama"</span>, and Discogs imports left a * after some artists, like <span class="mgn-old">Nat "King" Cole* - Love Is The Thing</span>. This strips them back to the real text and updates the website too. Real quotes (David Bowie - "Heroes") and names like M*A*S*H are left alone. Scanning changes nothing.</p>
         <div class="mgn-actions">
-            <button class="mgn-btn mgn-btn-ghost" id="qtScanBtn" type="button">Scan for quote marks</button>
+            <button class="mgn-btn mgn-btn-ghost" id="qtScanBtn" type="button">Scan</button>
         </div>
         <div id="qtResult" style="display:none;margin-top:18px;">
             <div class="mgn-note mgn-summary" id="qtSummary" style="margin-top:0;color:#1F1B16;"></div>
@@ -69,7 +69,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 <button class="mgn-btn mgn-btn-primary" id="qtApplyBtn" type="button">Fix all</button>
                 <span class="mgn-note" id="qtProgress" style="margin-top:0"></span>
             </div>
-            <p class="mgn-note">Runs in batches of 500. Each batch is undoable from Admin Action History.</p>
+            <p class="mgn-note">Runs in batches of 500. The website catches up in the background (about 40 products a minute). Each batch is undoable from Admin Action History.</p>
         </div>
     </div>
 
@@ -350,7 +350,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         clearMsg(); qtResult.style.display = 'none'; qtArmed = false; qtApplyBtn.textContent = 'Fix all';
         qtScanBtn.disabled = true; qtScanBtn.textContent = 'Scanning...';
         post('{{ route('products.quote.scan') }}', {}).then(function (d) {
-            qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan for quote marks';
+            qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
             document.getElementById('qtSummary').innerHTML = '<b>' + d.to_fix + '</b> product(s) with stray quote marks.';
             var rows = d.preview.map(function (f) {
@@ -362,7 +362,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             document.getElementById('qtRows').innerHTML = rows || '<tr><td colspan="2">Nothing to fix.</td></tr>';
             qtApplyBtn.style.display = d.to_fix > 0 ? '' : 'none';
             qtResult.style.display = 'block';
-        }).catch(function () { qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan for quote marks'; showMsg('Scan failed - try again.', false); });
+        }).catch(function () { qtScanBtn.disabled = false; qtScanBtn.textContent = 'Scan'; showMsg('Scan failed - try again.', false); });
     });
     function qtBatch(total, lastRemaining) {
         post('{{ route('products.quote.apply') }}', {}).then(function (d) {

@@ -97,13 +97,15 @@ class NivessaStockNotifier
      * hiccup can never fail the save. The nightly POS upsert sync remains the
      * correctness backstop if a push is ever lost.
      */
-    public function pushProductChanged(array $posProductIds): void
+    public function pushProductChanged(array $posProductIds, array $syncFields = []): void
     {
-        $this->postIds('/erp/pos-product-changed', $posProductIds, 'product push');
+        // $syncFields: extra fields the website should take from the ERP (it
+        // only honours "artist"), used after a deliberate cleanup.
+        $this->postIds('/erp/pos-product-changed', $posProductIds, 'product push', false, $syncFields);
     }
 
     /** Shared POST-ids-to-bridge implementation used by push() and pushProductChanged(). */
-    private function postIds(string $path, array $posProductIds, string $label, bool $force = false): void
+    private function postIds(string $path, array $posProductIds, string $label, bool $force = false, array $syncFields = []): void
     {
         $posProductIds = array_values(array_unique(array_filter(
             array_map('intval', $posProductIds),
@@ -124,6 +126,7 @@ class NivessaStockNotifier
         $payload = json_encode(array_filter([
             'pos_product_ids' => $posProductIds,
             'force'           => $force ?: null,
+            'sync_fields'     => $syncFields ?: null,
         ], static fn ($v) => $v !== null));
 
         try {

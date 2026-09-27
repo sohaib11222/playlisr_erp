@@ -710,4 +710,29 @@ class ProductNameNormalizer
 
         return ($t === '' || $t === $s) ? null : $t;
     }
+
+    /**
+     * Strip the Discogs name-variation marker from artist names, e.g.
+     * 'Nat "King" Cole* - Love Is The Thing' -> 'Nat "King" Cole - Love Is The Thing'.
+     * Only a '*' right after a word and right before the end of the artist or a
+     * joiner (&, ",", /, +, :, a dash, and/feat/with/presents/vs/meets) is removed, so names like M*A*S*H or
+     * *NSYNC are untouched. For a full name only the artist part (before the
+     * first " - " / " – ") is touched. Returns null when nothing changes.
+     */
+    public static function stripDiscogsAsterisk($s, $isArtist = false)
+    {
+        $s = (string) $s;
+        if (strpos($s, '*') === false) {
+            return null;
+        }
+        $re = '/(?<=[\p{L}\p{N}.)\'"!])\*(?=[\s\x{200E}\x{200F}]*(?:$|&|,|\/|\+|:|-|\x{2013}|\band\b|\bfeat|\bft\b|\bwith\b|\bpresents\b|\bvs\b|\bmeets\b))/iu';
+        if ($isArtist) {
+            $t = preg_replace($re, '', $s);
+        } elseif (preg_match('/^(.*?)([\s\x{200E}\x{200F}]+[-\x{2013}]\s)(.*)$/su', $s, $m)) {
+            $t = preg_replace($re, '', $m[1]) . $m[2] . $m[3];
+        } else {
+            return null;
+        }
+        return ($t === null || $t === $s) ? null : $t;
+    }
 }

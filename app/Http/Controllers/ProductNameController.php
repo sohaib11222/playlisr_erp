@@ -840,7 +840,18 @@ class ProductNameController extends Controller
     // product-quote-cleanup snapshot, and pushed to nivessa.com so the website
     // copy is fixed too (the nightly sync only re-reads the newest products).
 
-    /** Products whose name or artist carries CSV quoting, as id/old/new rows. */
+    /** CSV quote fix, then Discogs '*' fix. Null when neither changes it. */
+    protected function cleanStray($s, $isArtist)
+    {
+        if ($s === null) { return null; }
+        $t = ProductNameNormalizer::csvUnquote($s);
+        $t = $t === null ? $s : $t;
+        $u = ProductNameNormalizer::stripDiscogsAsterisk($t, $isArtist);
+        $t = $u === null ? $t : $u;
+        return $t === $s ? null : $t;
+    }
+
+    /** Products whose name or artist carries CSV quoting or a Discogs '*', as id/old/new rows. */
     protected function quoteChanges($business_id, $limit = null)
     {
         $rows = [];
@@ -849,14 +860,15 @@ class ProductNameController extends Controller
             ->where('business_id', $business_id)
             ->where(function ($q) {
                 $q->where('name', 'like', '%""%')->orWhere('name', 'like', '"%')
-                  ->orWhere('artist', 'like', '%""%')->orWhere('artist', 'like', '"%');
+                  ->orWhere('artist', 'like', '%""%')->orWhere('artist', 'like', '"%')
+                  ->orWhere('name', 'like', '%*%')->orWhere('artist', 'like', '%*%');
             })
             ->select('id', 'name', 'artist')
             ->orderBy('id')
             ->chunk(2000, function ($chunk) use (&$rows, &$total, $limit) {
                 foreach ($chunk as $r) {
-                    $newName = ProductNameNormalizer::csvUnquote($r->name);
-                    $newArtist = ProductNameNormalizer::csvUnquote($r->artist);
+                    $newName = $this->cleanStray($r->name, false);
+                    $newArtist = $this->cleanStray($r->artist, true);
                     if ($newName === null && $newArtist === null) { continue; }
                     $total++;
                     if ($limit === null || count($rows) < $limit) {
@@ -921,7 +933,7 @@ class ProductNameController extends Controller
                 'action' => 'product-quote-cleanup',
                 'user_id' => auth()->id(),
                 'business_id' => $business_id,
-                'source_name' => count($done) . ' product(s) with CSV quote marks',
+                'source_name' => count($done) . ' product(s) with stray quote marks / *',
                 'target_name' => 'cleaned name/artist',
                 // old/new mirror the name so the history detail page shows it.
                 'rows' => array_map(function ($d) { return $d + ['old' => $d['old_name'], 'new' => $d['new_name']]; }, $done),
@@ -934,12 +946,11 @@ class ProductNameController extends Controller
             return response()->json(['success' => false, 'msg' => 'Fix failed - nothing was changed.']);
         }
 
-        // Push to nivessa.com. Never let a website hiccup fail the fix.
+        // Push to nivessa.com (it queues + paces the re-fetches itself, so a
+        // big batch is fine). Never let a website hiccup fail the fix.
         try {
             $notifier = new \App\Services\NivessaStockNotifier();
-            foreach (array_chunk(array_column($done, 'id'), 100) as $ids) {
-                $notifier->pushProductChanged($ids);
-            }
+            $notifier->pushProductChanged(array_column($done, 'id'), ['artist']);
         } catch (\Throwable $e) {
             \Log::warning('product-quote-cleanup website push failed: ' . $e->getMessage());
         }
