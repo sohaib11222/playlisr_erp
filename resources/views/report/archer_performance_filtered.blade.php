@@ -81,7 +81,7 @@
     {!! archerMini('Cost / video', $costPerVideo !== null ? '$' . number_format($costPerVideo) : '&mdash;', '#333') !!}
     {!! archerMini('Cross-platform follower growth', '+' . number_format($totalFollowerGrowth), '#2ecc71') !!}
     {!! archerMini('Cost / follower gained', $costPerFollower !== null ? '$' . number_format($costPerFollower, 2) : '&mdash;', '#333') !!}
-    {!! archerMini('Archer-code orders', number_format(count($coupon_zipcodes ?? [])) . ' this range', '#333') !!}
+    {!! archerMini('Archer-code orders', number_format(count($coupon_zipcodes ?? [])), '#333') !!}
     {!! archerMini('Earned from code ARCHER', !is_null($archerAttributedNet) ? '$' . number_format($archerAttributedNet, 2) : '&mdash;', '#2ecc71') !!}
 </div>
 
