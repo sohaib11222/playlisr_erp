@@ -57,7 +57,7 @@
 					@forelse(\App\Utils\RegisterReconUtil::shortRows($s) as $row)
 						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ str_replace('*', '', $row[1]) }}</a></div>
 					@empty
-						<div class="rr-ok">All good</div>
+						<div class="rr-ok">All reconciled</div>
 					@endforelse
 				</div>
 			@endforeach

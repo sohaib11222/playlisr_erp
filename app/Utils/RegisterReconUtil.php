@@ -606,7 +606,7 @@ class RegisterReconUtil
         // Sarah 9/27: don't tell Fatteen which pairs to match (the guess can
         // be wrong) - just that there are sales to match on the feed.
         if ($hasMatches) {
-            $rows[] = ['Fatteen', 'some sales need matching - match everything that pairs on the recent feed', $s['url']];
+            $rows[] = ['Fatteen', 'some sales may need matching, please review', $s['url']];
         }
         return $rows;
     }
@@ -622,17 +622,18 @@ class RegisterReconUtil
     {
         $day = \Carbon\Carbon::parse($r['date'])->format('D n/j');
         if ($r['issue_count'] === 0) {
-            return '*' . $day . ' register check:* all good';
+            return '*' . $day . ' register check:* all reconciled';
         }
         $lines = ['*' . $day . ' register check*'];
         foreach ($r['stores'] as $s) {
             $short = self::shortLines($s);
             $lines[] = '';
+            $totals = '   ERP $' . number_format((float) ($s['erp'] ?? 0), 2) . ' | Clover $' . number_format((float) ($s['clover'] ?? 0), 2);
             if (empty($short)) {
-                $lines[] = '*' . $s['name'] . '*: all good';
+                $lines[] = '*' . $s['name'] . '*' . $totals . ' - all reconciled';
                 continue;
             }
-            $lines[] = '*' . $s['name'] . '*';
+            $lines[] = '*' . $s['name'] . '*' . $totals;
             foreach ($short as $l) {
                 $lines[] = '• ' . $l;
             }
