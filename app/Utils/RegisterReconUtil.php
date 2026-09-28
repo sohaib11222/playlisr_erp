@@ -499,7 +499,24 @@ class RegisterReconUtil
                     }
                 }
             }
-            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys - $scCents / 100;
+            // Cash paid out of the drawer for store expenses (e.g. Luis paying
+            // $300 for bookshelves, 9/25) - counted when logged as an expense
+            // at this store during the shift, paid in cash, and not already
+            // posted to this register by the POS expense button.
+            $cashExpenses = (float) \DB::table('transactions as t')
+                ->join('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'expense')
+                ->where('t.location_id', $r->location_id)
+                ->where('tp.method', 'cash')
+                ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
+                ->whereNotExists(function ($q) use ($r) {
+                    $q->select(\DB::raw(1))->from('cash_register_transactions as c')
+                      ->whereColumn('c.transaction_id', 't.id')
+                      ->where('c.cash_register_id', $r->id);
+                })
+                ->sum('tp.amount');
+            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys - $scCents / 100 - $cashExpenses;
             $variance = round((float) $r->closing_amount - $expected, 2);
             // Only shorts matter (Sarah 9/27); a negative expected means the
             // buy was paid from outside the drawer - not a drawer problem.
