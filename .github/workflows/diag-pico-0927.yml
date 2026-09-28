@@ -1,0 +1,47 @@
+# READ-ONLY diagnostic: Pico 9/27 Clover charges vs ERP sales, to explain a
+# $21.83 total gap. One-off; delete after use.
+name: Diag pico 0927
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Dump (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            foreach (\DB::table('transactions as t')->leftJoin('users as u','u.id','=','t.created_by')->where('t.type','sell')->where('t.status','final')->where('t.location_id',1)->whereDate('t.transaction_date','2026-09-27')->whereNull('t.import_source')->orderBy('t.transaction_date')->get(['t.id','t.invoice_no','t.final_total','t.transaction_date','t.channel','t.is_whatnot','u.first_name']) as $t) { $pm = \DB::table('transaction_payments')->where('transaction_id',$t->id)->get(['method','amount','note'])->map(fn($p)=>$p->method.':'.$p->amount.($p->note?'['.substr($p->note,0,30).']':''))->implode(','); echo "ERP {$t->transaction_date} #{$t->invoice_no} {$t->final_total} ch={$t->channel} wn={$t->is_whatnot} by={$t->first_name} pay={$pm}\n"; }
+            foreach (\DB::table('clover_payments')->where('location_id',1)->where('created_at','>=','2026-09-27 00:00:00')->orderBy('paid_at')->get(['id','clover_payment_id','amount','tax_cents','paid_at','result','employee_name','clover_order_id']) as $c) { echo "CLV {$c->paid_at} {$c->amount} tax={$c->tax_cents} res={$c->result} emp={$c->employee_name} order={$c->clover_order_id}\n"; }
+            PHP
