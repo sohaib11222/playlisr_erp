@@ -585,7 +585,7 @@ class RegisterReconUtil
             if (!empty($kinds['no_erp'])) {
                 $n = count($kinds['no_erp']);
                 $sum = array_sum(array_column($kinds['no_erp'], 'amount'));
-                $parts[] = $plural($n, 'Clover charge', 'Clover charges') . ' not rung in ERP (' . $money($sum) . ') - please ring the items so stock updates';
+                $parts[] = $plural($n, 'Clover charge', 'Clover charges') . ' not rung in ERP (' . $money($sum) . ') - please ring the items so the inventory updates';
             }
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
