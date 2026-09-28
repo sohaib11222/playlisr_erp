@@ -82,7 +82,7 @@
     {!! archerMini('Cross-platform follower growth', '+' . number_format($totalFollowerGrowth), '#2ecc71') !!}
     {!! archerMini('Cost / follower gained', $costPerFollower !== null ? '$' . number_format($costPerFollower, 2) : '&mdash;', '#333') !!}
     {!! archerMini('Discount-code orders', number_format(count($coupon_zipcodes ?? [])) . ' this range', '#333') !!}
-    {!! archerMini('Site-wide net revenue', $order_stats ? '$' . number_format($order_stats['net_revenue']) : '&mdash;', '#999') !!}
+    {!! archerMini('Earned from his code', !is_null($archerAttributedNet) ? '$' . number_format($archerAttributedNet, 2) : '&mdash;', '#2ecc71') !!}
 </div>
 
 {{-- ═══════════ PLATFORM COMPARISON — one row per platform, side by side ═══════════ --}}
@@ -195,72 +195,3 @@
     @endif
 </div>
 
-<h4 style="margin-top:0;">All website orders, {{ archerFmtDate($start_date) }} &ndash; {{ archerFmtDate($end_date) }}</h4>
-<p class="text-muted" style="margin-top:-8px; font-size:12px;">Site-wide totals, for context &mdash; not Archer-specific. See "Orders using code ARCHER" above for what's actually attributable to him.</p>
-
-@if($order_stats_error)
-    <div class="alert alert-warning">Couldn't reach the website API: {{ $order_stats_error }}</div>
-@elseif($order_stats)
-    <div class="row">
-        <div class="col-sm-3">{!! archerCard('Orders placed', number_format($order_stats['orders_placed'])) !!}</div>
-        <div class="col-sm-3">{!! archerCard('Fulfilled', number_format($order_stats['orders_fulfilled']), $order_stats['orders_in_progress'] . ' still in progress') !!}</div>
-        <div class="col-sm-3">
-            @php
-                $cancel_pct = $order_stats['orders_placed'] > 0
-                    ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
-                    : 0;
-            @endphp
-            {!! archerCard('Cancelled', number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)', null, '#d9534f') !!}
-        </div>
-        <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
-    </div>
-
-    @if(!empty($order_stats['orders']))
-        @php
-            $cancelledOrders = array_values(array_filter($order_stats['orders'], fn($o) => $o['status'] === 'cancelled'));
-        @endphp
-
-        <h5 style="margin-top:14px;">Exactly what got refunded ({{ count($cancelledOrders) }} orders)</h5>
-        @if(count($cancelledOrders) > 0)
-            <p class="text-muted" style="margin-top:-6px; font-size:11px;">All logged with no cancel reason (dropped that column here since it never varies).</p>
-            <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:16px; max-height:400px; overflow-y:auto;">
-                <table class="table table-bordered" style="margin-bottom:0;">
-                    <thead>
-                        <tr><th>Order #</th><th>Date</th><th class="text-right">Amount</th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach($cancelledOrders as $o)
-                            <tr>
-                                <td>{{ $o['order_number'] ?? '—' }}</td>
-                                <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
-                                <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        @endif
-
-        <h5 style="margin-top:14px;">
-            All {{ count($order_stats['orders']) }} orders in this window
-            <button type="button" class="btn btn-default btn-xs" onclick="var t=document.getElementById('archerAllOrdersTable'); t.style.display = t.style.display === 'none' ? '' : 'none';">Show / hide</button>
-        </h5>
-        <div id="archerAllOrdersTable" style="display:none; background:#fff; border:1px solid #eee; border-radius:6px; padding:0; margin-bottom:24px; max-height:500px; overflow-y:auto;">
-            <table class="table table-bordered" style="margin-bottom:0;">
-                <thead>
-                    <tr><th>Order #</th><th>Date</th><th>Status</th><th class="text-right">Amount</th></tr>
-                </thead>
-                <tbody>
-                    @foreach($order_stats['orders'] as $o)
-                        <tr @if($o['status'] === 'cancelled') style="color:#d9534f;" @endif>
-                            <td>{{ $o['order_number'] ?? '—' }}</td>
-                            <td>{{ $o['date'] ? archerFmtDate($o['date']) : '—' }}</td>
-                            <td>{{ ucfirst(str_replace('_', ' ', $o['status'])) }}</td>
-                            <td class="text-right">${{ number_format($o['total'] ?? 0, 2) }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    @endif
-@endif
