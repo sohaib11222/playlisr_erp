@@ -379,6 +379,27 @@
 				$('#close_register').trigger('click');
 			}
 		});
+
+		// /pos/create?gift_card=1 (the "Sell a gift card" link): add the Gift
+		// Card item right away, which then asks the cashier for the amount.
+		$(function () {
+			if (!/[?&]gift_card=1\b/.test(window.location.search)) return;
+			setTimeout(function () {
+				try {
+					var locationId = $('#location_id').val();
+					$.getJSON('/products/list', { term: 'GIFTCARD', location_id: locationId }, function (rows) {
+						var gc = (rows || []).find(function (r) { return r.sub_sku === 'GIFTCARD'; });
+						if (gc && gc.variation_id) {
+							pos_product_row(gc.variation_id);
+						} else {
+							toastr.warning('Gift Card item not found. Search "Gift Card" instead.');
+						}
+					});
+				} catch (e) {
+					console.error('Gift card auto-add failed', e);
+				}
+			}, 1000);
+		});
 	</script>
 
 	<!-- Call restaurant module if defined -->
