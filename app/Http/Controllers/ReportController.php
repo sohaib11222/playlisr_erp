@@ -8545,8 +8545,8 @@ class ReportController extends Controller
             'contract' => [
                 'start_date' => '2026-08-18',
                 'end_date' => '2026-10-18',
-                'pay_total' => 2000,
-                'pay_schedule' => '$1,000 on 2026-08-18, $1,000 on 2026-09-01',
+                'pay_total' => 4000,
+                'pay_schedule' => '$2,000/month -- $1,000 on 2026-08-18, $1,000 on 2026-09-01 (month 1); $2,000 for month 2',
                 'follower_goal' => 20000,
                 'follower_goal_date' => '2026-10-18',
                 'bonus_at_goal' => 500,
