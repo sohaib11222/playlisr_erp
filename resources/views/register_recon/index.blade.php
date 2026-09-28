@@ -57,7 +57,7 @@
 					@forelse(\App\Utils\RegisterReconUtil::shortRows($s) as $row)
 						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ str_replace('*', '', $row[1]) }}</a></div>
 					@empty
-						<div class="rr-ok">All reconciled</div>
+						@if(abs($s['diff']) < 5) <div class="rr-ok">All reconciled</div> @else <div class="rr-ok" style="color:#8A3A2E;">Nothing specific flagged, but the totals differ - please review the recent feed.</div> @endif
 					@endforelse
 				</div>
 			@endforeach
