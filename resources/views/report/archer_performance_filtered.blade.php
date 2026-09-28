@@ -142,12 +142,7 @@
                     ? round(($order_stats['orders_cancelled'] / $order_stats['orders_placed']) * 100)
                     : 0;
             @endphp
-            {!! archerCard(
-                'Cancelled',
-                number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)',
-                number_format($order_stats['orders_cancelled_discogs']) . ' sold on Discogs (unrelated)<br>' . number_format($order_stats['orders_cancelled_other']) . ' cancelled, no reason logged',
-                '#d9534f'
-            ) !!}
+            {!! archerCard('Cancelled', number_format($order_stats['orders_cancelled']) . ' (' . $cancel_pct . '%)', null, '#d9534f') !!}
         </div>
         <div class="col-sm-3">{!! archerCard('Net revenue realized', '$' . number_format($order_stats['net_revenue'])) !!}</div>
     </div>
