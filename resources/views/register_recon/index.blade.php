@@ -71,6 +71,26 @@
 	</div>
 
 	<div class="rr-card">
+		<h2>Log a missed safe drop</h2>
+		<div class="rr-sub">A cashier put cash in the safe but entered $0 in the ERP. This records the deposit so their drawer doesn't look short.</div>
+		<form method="post" action="/register-recon/missed-drop" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+			{!! csrf_field() !!}
+			<select name="register_id" class="rr-input" style="max-width:320px;">
+				@foreach(($recent_registers ?? []) as $rg)
+					<option value="{{ $rg->id }}">{{ $rg->first_name }} - {{ $rg->loc }} - opened {{ \Carbon\Carbon::parse($rg->created_at)->format('D g:ia') }} ({{ $rg->status }})</option>
+				@endforeach
+			</select>
+			<select name="phase" class="rr-input" style="max-width:150px;">
+				<option value="open">At open</option>
+				<option value="close">At close</option>
+			</select>
+			<input type="text" name="amount" class="rr-input" placeholder="Amount" style="max-width:110px;">
+			<input type="text" name="deposit_seq" class="rr-input" placeholder="Deposit #" style="max-width:110px;">
+			<button type="submit" class="rr-btn rr-btn-dark">Log drop</button>
+		</form>
+	</div>
+
+	<div class="rr-card">
 		<h2>Slack channel</h2>
 		<form method="post" action="/register-recon/settings" style="margin-top:10px;">
 			{!! csrf_field() !!}

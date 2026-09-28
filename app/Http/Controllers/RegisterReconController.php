@@ -61,8 +61,17 @@ class RegisterReconController extends Controller
         $next_date = \Carbon\Carbon::parse($date)->addDay()->format('Y-m-d');
         $allow_next = $next_date < \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
 
+        // Registers from the last 3 days for the "log a missed safe drop" form.
+        $recent_registers = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 'cr.location_id')
+            ->where('cr.business_id', $business_id)
+            ->where('cr.created_at', '>=', \Carbon\Carbon::now()->subDays(3))
+            ->orderByDesc('cr.created_at')
+            ->get(['cr.id', 'cr.created_at', 'cr.status', 'u.first_name', 'bl.name as loc']);
+
         return view('register_recon.index', compact(
-            'date', 'report', 'slack_text', 'error', 'masked', 'posted', 'prev_date', 'next_date', 'allow_next'
+            'date', 'report', 'slack_text', 'error', 'masked', 'posted', 'prev_date', 'next_date', 'allow_next', 'recent_registers'
         ));
     }
 
@@ -81,6 +90,61 @@ class RegisterReconController extends Controller
             'success' => 1,
             'msg' => $url === '' ? 'Webhook cleared.' : 'Webhook saved. The daily post goes out at 8am.',
         ]);
+    }
+
+    /**
+     * A cashier moved cash to the safe but entered $0 (Manolo 9/28: $100,
+     * deposit #217, at open). Record the deposit and, for an open-time drop,
+     * take it off the opening cash so the drawer check doesn't show it as
+     * missing. Admin-only; before/after values go to the activity log.
+     */
+    public function logMissedDrop(Request $request)
+    {
+        $this->requireAdmin();
+        $business_id = (int) $request->session()->get('user.business_id');
+        $regId  = (int) $request->input('register_id');
+        $amount = round((float) $request->input('amount'), 2);
+        $phase  = $request->input('phase') === 'close' ? 'close' : 'open';
+        $seq    = (int) $request->input('deposit_seq');
+
+        $reg = \DB::table('cash_registers')->where('business_id', $business_id)->where('id', $regId)->first();
+        if (!$reg || $amount <= 0 || $seq <= 0) {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Pick a register and enter the amount and deposit number.']);
+        }
+        if (\DB::table('cash_deposits')->where('business_id', $business_id)->where('location_id', $reg->location_id)->where('deposit_seq', $seq)->exists()) {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => "Deposit #{$seq} is already logged for that store."]);
+        }
+        $initialRow = \DB::table('cash_register_transactions')->where('cash_register_id', $reg->id)->where('transaction_type', 'initial')->first();
+        $before = ['safe_drop_amount' => $reg->safe_drop_amount, 'initial' => $initialRow->amount ?? null];
+
+        \DB::transaction(function () use ($business_id, $reg, $amount, $phase, $seq, $initialRow) {
+            $now = \Carbon\Carbon::now()->format('Y-m-d H:i:s');
+            $user = \App\User::find($reg->user_id);
+            \DB::table('cash_deposits')->insert([
+                'business_id' => $business_id, 'location_id' => $reg->location_id, 'cash_register_id' => $reg->id,
+                'user_id' => $reg->user_id, 'cashier_name' => $user ? trim($user->first_name . ' ' . $user->last_name) : null,
+                'deposit_seq' => $seq, 'amount' => $amount, 'phase' => $phase,
+                'deposited_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+            ]);
+            \DB::table('cash_registers')->where('id', $reg->id)->update([
+                'safe_drop_amount' => \DB::raw('COALESCE(safe_drop_amount, 0) + ' . $amount),
+            ]);
+            // Open-time drop: the cashier's count included this cash, so the
+            // opening balance was recorded too high.
+            if ($phase === 'open' && $initialRow) {
+                \DB::table('cash_register_transactions')->where('id', $initialRow->id)
+                    ->update(['amount' => max(0, (float) $initialRow->amount - $amount)]);
+            }
+        });
+
+        try {
+            activity()->causedBy(auth()->user())->withProperties([
+                'register_id' => $reg->id, 'amount' => $amount, 'phase' => $phase, 'deposit_seq' => $seq, 'before' => $before,
+            ])->log('register_recon_missed_drop');
+        } catch (\Throwable $e) {
+        }
+
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => "Logged \${$amount} safe drop (#{$seq}) on register {$reg->id}."]);
     }
 
     public function postNow(Request $request)
