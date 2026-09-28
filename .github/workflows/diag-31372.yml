@@ -1,0 +1,49 @@
+# READ-ONLY diagnostic: why cash sale #31372 isn't in the 9/27 recon. One-off.
+name: Diag 31372
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Dump (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $t = \DB::table('transactions')->where('invoice_no','31372')->where('type','sell')->first(); echo "TX id={$t->id} total={$t->final_total} status={$t->status} channel={$t->channel} wn={$t->is_whatnot} import={$t->import_source} loc={$t->location_id} date={$t->transaction_date} contact=" . \DB::table('contacts')->where('id',$t->contact_id)->value('name') . " staff_note=" . substr((string)$t->staff_note,0,60) . " add=" . substr((string)$t->additional_notes,0,60) . "\n";
+            foreach (\DB::table('transaction_payments')->where('transaction_id',$t->id)->get(['method','amount','note']) as $p) echo "PAY {$p->method} {$p->amount} " . substr((string)$p->note,0,60) . "\n";
+            $rec = \Storage::disk('local')->exists('clover-reconciled/1.json') ? \Storage::disk('local')->get('clover-reconciled/1.json') : ''; echo "RECONCILED=" . (preg_match('/\b' . $t->id . '\b/', $rec) ? 'yes' : 'no') . "\n";
+            $mm = \Storage::disk('local')->exists('clover-manual-matches/1.json') ? \Storage::disk('local')->get('clover-manual-matches/1.json') : ''; echo "MANUAL=" . (preg_match('/\b' . $t->id . '\b/', $mm) ? 'yes' : 'no') . "\n";
+            $ex = \Storage::disk('local')->exists('clover-explanations/1.json') ? \Storage::disk('local')->get('clover-explanations/1.json') : ''; echo "EXPLAINED=" . (preg_match('/"transaction_id":\s*' . $t->id . '\b/', $ex) ? 'yes' : 'no') . "\n";
+            PHP
