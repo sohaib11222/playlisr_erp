@@ -203,6 +203,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::resource('contacts', 'ContactController');
     
     // Gift Cards
+    Route::get('/gift-cards/next-code', 'GiftCardController@nextCode');
     Route::resource('gift-cards', 'GiftCardController');
 
     // Coupons — discount codes for nivessa.com checkout

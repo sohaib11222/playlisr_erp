@@ -9364,6 +9364,8 @@ class SellPosController extends Controller
             }
             $exists = GiftCard::where('business_id', $transaction->business_id)->where('card_number', $code)->exists();
             if ($exists) {
+                // Taken since the register showed it (two registers, same
+                // second). Keep the sale; the card needs a new code by hand.
                 \Log::warning('pos_gift_card_duplicate_code', ['code' => $code, 'transaction_id' => $transaction->id]);
                 continue;
             }

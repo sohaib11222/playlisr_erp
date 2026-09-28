@@ -10,6 +10,17 @@ use Illuminate\Support\Facades\DB;
 class GiftCardController extends Controller
 {
     /**
+     * A fresh unused gift card code for the register to show the cashier.
+     * The card itself is created (and the code claimed) when the sale is
+     * finalized - see SellPosController::activateSoldGiftCards.
+     */
+    public function nextCode(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        return response()->json(['code' => GiftCard::generateCardNumber($business_id)]);
+    }
+
+    /**
      * Display a listing of gift cards
      *
      * @return \Illuminate\Http\Response

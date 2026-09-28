@@ -3375,15 +3375,17 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                                 gcPriceInput.trigger('change');
                                 // Code from the code sheet: the card activates
                                 // automatically when the sale is finalized.
-                                var gcCode = String(window.prompt('Gift card code from the code sheet?', '') || '').trim().toUpperCase();
+                                var gcCode = '';
+                                $.ajax({ url: '/gift-cards/next-code', async: false, dataType: 'json', success: function (r) { gcCode = String((r && r.code) || '').toUpperCase(); } });
                                 var gcIdx = this_row.attr('data-row_index');
                                 this_row.find('input.pos_gift_card_code').remove();
                                 this_row.find('td').first().append('<input type="hidden" class="pos_gift_card_code" name="products[' + gcIdx + '][gift_card_code]" value="">');
                                 this_row.find('input.pos_gift_card_code').val(gcCode);
                                 if (gcCode) {
-                                    this_row.find('td').first().append('<div class="text-muted small">Card code: ' + $('<div>').text(gcCode).html() + '</div>');
+                                    this_row.find('td').first().append('<div style="margin-top:4px;font-size:15px;font-weight:700;">Write on card: ' + $('<div>').text(gcCode).html() + '</div>');
+                                    window.alert('Gift card code: ' + gcCode + '\n\nWrite it on the card. It will be active once the sale is done.');
                                 } else {
-                                    toastr.warning('No code entered. After the sale, add the card at Gift Cards > Add.');
+                                    toastr.warning('Could not get a gift card code. After the sale, add the card at Gift Cards > Add.');
                                 }
                             } else {
                                 toastr.warning('No amount entered. Remove the gift card line and add it again.');
