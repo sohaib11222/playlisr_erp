@@ -571,10 +571,16 @@ class RegisterReconUtil
         foreach ($byWho as $who => $kinds) {
             $parts = [];
             if (!empty($kinds['no_clover'])) {
-                $n = count($kinds['no_clover']);
-                $sum = array_sum(array_column($kinds['no_clover'], 'amount'));
-                $cash = count(array_filter($kinds['no_clover'], fn($i) => !empty($i['is_cash']))) > 0;
-                $parts[] = $plural($n, 'sale', 'sales') . ' with no Clover charge (' . $money($sum) . ($cash ? ', cash' : '') . ')';
+                $cashIt  = array_values(array_filter($kinds['no_clover'], fn($i) => !empty($i['is_cash'])));
+                $otherIt = array_values(array_filter($kinds['no_clover'], fn($i) => empty($i['is_cash'])));
+                if ($cashIt) {
+                    $parts[] = count($cashIt) . ' *cash* ' . (count($cashIt) === 1 ? 'sale' : 'sales') . ' with no Clover charge ('
+                        . $money(array_sum(array_column($cashIt, 'amount'))) . ') - please record cash sales in Clover too';
+                }
+                if ($otherIt) {
+                    $parts[] = $plural(count($otherIt), 'sale', 'sales') . ' with no Clover charge ('
+                        . $money(array_sum(array_column($otherIt, 'amount'))) . ')';
+                }
             }
             if (!empty($kinds['no_erp'])) {
                 $n = count($kinds['no_erp']);
@@ -628,16 +634,7 @@ class RegisterReconUtil
                 $lines[] = '• ' . $l;
             }
         }
-        $anyCash = false;
-        foreach ($r['stores'] as $s) {
-            foreach ($s['items'] as $it) {
-                if ($it['kind'] === 'no_clover' && !empty($it['is_cash'])) $anyCash = true;
-            }
-        }
         $lines[] = '';
-        if ($anyCash) {
-            $lines[] = 'Reminder: please log cash sales in Clover too.';
-        }
         $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> can you check these with the team? Most are quick fixes.';
         return implode("\n", $lines);
     }
