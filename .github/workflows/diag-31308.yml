@@ -1,0 +1,49 @@
+# READ-ONLY diagnostic: why sale #31308 (no payment) is skipped by the recon.
+# One-off; delete after use.
+name: Diag 31308
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Dump (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $t = \DB::table('transactions')->where('invoice_no','31308')->where('type','sell')->first(); echo "TX id={$t->id} status={$t->status} pay_status={$t->payment_status} channel={$t->channel} contact=" . \DB::table('contacts')->where('id',$t->contact_id)->value('name') . " staff_note=" . substr((string)$t->staff_note,0,80) . " add_notes=" . substr((string)$t->additional_notes,0,80) . " sub_type={$t->sub_type} is_direct_sale={$t->is_direct_sale}\n";
+            $rec = \Storage::disk('local')->exists('clover-reconciled/1.json') ? \Storage::disk('local')->get('clover-reconciled/1.json') : 'none'; echo "RECONCILED_HAS=" . (strpos($rec, (string)$t->id) !== false ? 'yes' : 'no') . "\n";
+            foreach (\Storage::disk('local')->files('clover-manual-matches') as $f) { $c = \Storage::disk('local')->get($f); echo "MANUAL $f has=" . (strpos($c, (string)$t->id) !== false ? 'yes' : 'no') . "\n"; }
+            echo "SELL_LINES=" . \DB::table('transaction_sell_lines')->where('transaction_id',$t->id)->count() . "\n";
+            PHP
