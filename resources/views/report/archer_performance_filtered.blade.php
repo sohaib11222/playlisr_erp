@@ -95,7 +95,7 @@
     <table class="table table-condensed" style="margin-bottom:0; font-size:12.5px;">
         <thead>
             <tr style="color:#999; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">
-                <th>Platform</th><th>Followers</th><th>Growth</th><th>Reach (trailing 28d, fixed)</th><th>Extra</th>
+                <th>Platform</th><th>Followers</th><th>Growth</th><th>Reach/Views (trailing 28d, fixed)</th><th>Extra</th>
             </tr>
         </thead>
         <tbody>
@@ -117,13 +117,13 @@
                 <td>{!! archerLiveDot(!empty($data['facebook']['is_live'])) !!}<strong>Facebook</strong></td>
                 <td>{{ number_format($data['facebook']['followers_start']) }} &rarr; {{ number_format($data['facebook']['followers_now']) }}</td>
                 <td style="color:#2ecc71; font-weight:600;">+{{ number_format($data['facebook']['followers_now'] - $data['facebook']['followers_start']) }}</td>
-                <td>{{ number_format($data['facebook']['reach_last_28_days']) }} ({{ $data['facebook']['reach_change_pct'] }}%)</td>
-                <td>{{ number_format($data['facebook']['engaged_followers']) }} engaged followers</td>
+                <td>{{ number_format($data['facebook']['reach_last_28_days']) }}{{ !empty($data['facebook']['reach_is_views']) ? ' views' : '' }} ({{ $data['facebook']['reach_change_pct'] }}%)</td>
+                <td>{{ number_format($data['facebook']['engaged_followers']) }} content interactions</td>
             </tr>
         </tbody>
     </table>
 </div>
-<p class="text-muted" style="font-size:11px; margin-bottom:18px;">Confirmed videos: verified, posted by @archerxvalentine tagging @nivessarecords. Dot = now live vs. manual snapshot. Reach is always trailing-28-days as of the last pull &mdash; it does NOT move with the date filter above, unlike Followers/Growth.</p>
+<p class="text-muted" style="font-size:11px; margin-bottom:18px;">Confirmed videos: verified, posted by @archerxvalentine tagging @nivessarecords. Dot = now live vs. manual snapshot. Reach/Views is always trailing-28-days as of the last pull &mdash; it does NOT move with the date filter above, unlike Followers/Growth. Facebook shows Views, not Reach: Meta retired Facebook Page reach on this dashboard (Instagram still has it).</p>
 
 <hr style="margin:18px 0;">
 

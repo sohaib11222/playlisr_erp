@@ -8554,8 +8554,10 @@ class ReportController extends Controller
             'instagram' => [
                 'followers_start' => 11100,
                 'followers_now' => 15957,
-                'reach_last_28_days' => 70000,
-                'reach_change_pct' => 41,
+                // Real, from Meta Business Suite > Insights > Instagram >
+                // Reach (last 28 days: Aug 30-Sep 26), pulled 2026-09-27.
+                'reach_last_28_days' => 64400,
+                'reach_change_pct' => 42,
                 // 33, per Sarah (2026-09-26) -- her real count of videos he's
                 // actually shot at Nivessa. A caption/tag text scrape
                 // undercounts: a lot of his videos are filmed in-store
@@ -8574,10 +8576,18 @@ class ReportController extends Controller
                 'followers_start' => 510,
                 'followers_start_asof' => '2026-08-20',
                 'followers_now' => 667,
-                'reach_last_28_days' => 1300,
-                'reach_change_pct' => -72,
-                // Real, from the same Trends tab, last 28 days (Aug 20-Sep 16).
-                'engaged_followers' => 0,
+                // Meta retired the Facebook Page "Reach" metric on Business
+                // Suite's Overview (Instagram still has it) -- it now only
+                // shows "Views". Pulled real, 2026-09-27, last 28 days
+                // (Aug 30-Sep 26). reach_is_views flags this for the blade so
+                // it labels the number correctly instead of calling it Reach.
+                'reach_last_28_days' => 3400,
+                'reach_change_pct' => 50,
+                'reach_is_views' => true,
+                // "Engaged followers" isn't a metric Business Suite exposes
+                // anymore either -- closest real analog is Content
+                // interactions (same Aug30-Sep26 window), pulled 2026-09-27.
+                'engaged_followers' => 45,
                 'messaging_contacts' => 2,
                 'unfollows_last_28_days' => 3,
                 'is_live' => false,
