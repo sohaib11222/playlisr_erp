@@ -462,6 +462,8 @@ class RegisterReconUtil
                 'location_id' => $r->location_id,
                 'kind'   => 'drawer',
                 'tiny'   => 'drawer short $' . number_format(abs($variance), 2),
+                'detail' => '$' . number_format(abs($variance), 2) . ' missing from drawer (counted $'
+                    . number_format((float) $r->closing_amount, 0) . ', should be $' . number_format($expected, 0) . ')',
                 'mini'   => ($variance < 0 ? 'short ' : 'over ') . '$' . number_format(abs($variance), 2)
                     . ' (counted $' . number_format((float) $r->closing_amount, 2) . ', expected $' . number_format($expected, 2)
                     . ($cashBuys > 0 ? ', after $' . number_format($cashBuys, 2) . ' cash buys' : '')
@@ -492,24 +494,25 @@ class RegisterReconUtil
         $matches = [];
         foreach ($s['items'] as $it) {
             $url = $it['url'] ?? $s['url'];
+            $mini = (string) ($it['mini'] ?? '');
             switch ($it['kind']) {
                 case 'no_clover':
-                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not charged';
+                    $what = $mini . ' not charged on Clover' . (!empty($it['is_cash']) ? ' (cash - ring cash on Clover too)' : '');
                     break;
                 case 'no_erp':
-                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' charged, not rung in';
+                    $what = preg_replace('/ at /', ' charged at ', $mini, 1) . ', not rung in - ring the items so stock updates';
                     break;
                 case 'mismatch':
-                    $what = preg_replace('/ ERP .*$/', '', (string) ($it['mini'] ?? '')) . ' charged wrong amount';
+                    $what = preg_replace('/^(#\S+) ERP (\S+) vs Clover (\S+)$/', '$1 rung $2, charged $3', $mini);
                     break;
                 case 'match':
-                    $matches[] = [preg_replace('/ .*$/', '', (string) ($it['mini'] ?? '')), $url];
+                    $matches[] = [preg_replace('/^(#\S+) (\S+) = Clover (\S+)$/', '$1 ($2) to Clover charge $3', $mini), $url];
                     continue 2;
                 case 'drawer':
-                    $what = str_replace('drawer short ', '', $it['tiny'] ?? '') . ' missing from drawer';
+                    $what = $it['detail'] ?? ($it['tiny'] ?? 'drawer short');
                     break;
                 case 'uncounted':
-                    $what = 'register not counted';
+                    $what = 'register never closed/counted';
                     break;
                 default:
                     $what = $it['short'] ?? $it['text'];
