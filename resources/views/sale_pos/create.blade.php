@@ -392,7 +392,9 @@
 						if (gc && gc.variation_id) {
 							pos_product_row(gc.variation_id);
 							// No bag for a gift card sale: drop the automatic bag fee.
-							if ($('#add_plastic_bag').is(':checked')) {
+							if ($('#bag-toggle-checkbox').length) {
+								$('#bag-toggle-checkbox').prop('checked', false).trigger('change');
+							} else if ($('#add_plastic_bag').is(':checked')) {
 								$('#add_plastic_bag').prop('checked', false).trigger('change');
 							}
 						} else {
