@@ -1,0 +1,51 @@
+# READ-ONLY diagnostic: Jacob's 9/27 register (1388) - every cash movement,
+# his cash sales with any Clover charge near them, buys/expenses. One-off.
+name: Diag reg 1388
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: Dump (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $r = \DB::table('cash_registers')->where('id',1388)->first(); echo "REG open={$r->created_at} close={$r->closed_at} closing={$r->closing_amount} drop={$r->safe_drop_amount} note=" . substr(str_replace("\n",' ',(string)$r->closing_note),0,120) . "\n";
+            foreach (\DB::table('cash_deposits')->where('cash_register_id',1388)->get() as $d) { echo "DEP {$d->phase} #{$d->deposit_seq} {$d->amount}\n"; }
+            foreach (\DB::table('cash_register_transactions as c')->leftJoin('transactions as t','t.id','=','c.transaction_id')->where('c.cash_register_id',1388)->orderBy('c.id')->get(['c.transaction_type','c.pay_method','c.type','c.amount','t.invoice_no','t.transaction_date','t.final_total']) as $c) { echo "CRT {$c->transaction_type}/{$c->pay_method}/{$c->type} {$c->amount} inv={$c->invoice_no} at={$c->transaction_date}\n"; }
+            foreach (\DB::table('clover_payments')->where('location_id',2)->whereBetween('created_at',[$r->created_at,$r->closed_at])->orderBy('paid_at')->get(['paid_at','amount','tender_type','card_type']) as $c) { echo "CLV {$c->paid_at} {$c->amount} tender={$c->tender_type} card={$c->card_type}\n"; }
+            foreach (\DB::table('transactions as t')->join('buy_customer_offers as o','o.accepted_purchase_id','=','t.id')->where('t.location_id',2)->whereBetween('t.transaction_date',[$r->created_at,$r->closed_at])->get(['t.transaction_date','t.final_total','o.payment_method']) as $b) { echo "BUY {$b->transaction_date} {$b->final_total} {$b->payment_method}\n"; }
+            foreach (\DB::table('transactions')->where('type','expense')->where('location_id',2)->whereBetween('transaction_date',[$r->created_at,$r->closed_at])->get(['transaction_date','final_total','additional_notes']) as $e) { echo "EXP {$e->transaction_date} {$e->final_total} " . substr((string)$e->additional_notes,0,60) . "\n"; }
+            PHP
