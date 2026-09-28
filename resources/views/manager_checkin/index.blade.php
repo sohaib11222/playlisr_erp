@@ -5,7 +5,7 @@
 @php
     $old = function ($k, $d = '') { return old($k, $d); };
     // Answers that can turn into a task, and the "Make a task" link for them.
-    $taskable = ['projects', 'ideas', 'erp', 'lowlight'];
+    $taskable = ['projects'];
     $taskLink = function ($r, $key, $label) use ($erpOwnerId) {
         $text  = trim((string) ($r[$key] ?? ''));
         $first = trim(strtok($text, "\n"));
