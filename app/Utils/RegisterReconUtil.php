@@ -586,8 +586,10 @@ class RegisterReconUtil
             $rows[] = [($it['ask'] ?? '') !== '' ? $it['ask'] : '?', $what, $url];
         }
         usort($rows, fn($x, $y) => strcmp($x[0] . $x[1], $y[0] . $y[1]));
-        foreach ($matches as [$inv, $url]) {
-            $rows[] = ['Fatteen', 'match ' . $inv, $url];
+        // Sarah 9/27: don't tell Fatteen which pairs to match (the guess can
+        // be wrong) - just that there are sales to match on the feed.
+        if (!empty($matches)) {
+            $rows[] = ['Fatteen', 'some sales need matching - match everything that pairs on the recent feed', $s['url']];
         }
         return $rows;
     }
