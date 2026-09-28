@@ -636,9 +636,9 @@ class RegisterReconUtil
     {
         $day = \Carbon\Carbon::parse($r['date'])->format('D n/j');
         if ($r['issue_count'] === 0) {
-            return '*<' . self::ERP_URL . '/register-recon?date=' . $r['date'] . '|' . $day . ' register check>:* all reconciled';
+            return '*<' . self::ERP_URL . '/pos/recent-feed?date=' . $r['date'] . '|' . $day . ' register check>:* all reconciled';
         }
-        $reconUrl = self::ERP_URL . '/register-recon?date=' . $r['date'];
+        $reconUrl = self::ERP_URL . '/pos/recent-feed?date=' . $r['date'];
         $lines = ['*<' . $reconUrl . '|' . $day . ' register check>*'];
         foreach ($r['stores'] as $s) {
             $short = self::shortLines($s);
