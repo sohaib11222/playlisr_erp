@@ -22,7 +22,7 @@
 	@endif
 @endforeach
 
-<tr class="product_row" data-row_index="{{$row_count}}" @if(!empty($so_line)) data-so_id="{{$so_line->transaction_id}}" @endif @if(isset($is_tax_exempt) && $is_tax_exempt) data-tax-exempt="true" @endif>
+<tr class="product_row" data-row_index="{{$row_count}}" @if(($product->sub_sku ?? '') === 'GIFTCARD') data-gift-card="true" @endif @if(!empty($so_line)) data-so_id="{{$so_line->transaction_id}}" @endif @if(isset($is_tax_exempt) && $is_tax_exempt) data-tax-exempt="true" @endif>
 	<td>
 		@if(!empty($so_line))
 			<input type="hidden" 

@@ -9295,6 +9295,15 @@ class SellPosController extends Controller
             ->whereNull('parent_sell_line_id')
             ->get();
 
+        // Gift cards are sold at whatever amount the customer loads, so a
+        // price different from the $1 catalog price is expected, not an override.
+        $giftCardVariationIds = \DB::table('variations')->where('sub_sku', 'GIFTCARD')->pluck('id')->all();
+        if (!empty($giftCardVariationIds)) {
+            $lines = $lines->reject(function ($line) use ($giftCardVariationIds) {
+                return in_array($line->variation_id, $giftCardVariationIds);
+            })->values();
+        }
+
         if ($lines->isEmpty()) {
             return;
         }

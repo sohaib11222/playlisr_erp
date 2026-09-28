@@ -3361,6 +3361,25 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     var this_row = $('table#pos_table tbody')
                         .find('tr')
                         .last();
+
+                    // Gift card: ask for the card amount and use it as this
+                    // line's price (qty stays 1), instead of the $1 catalog price.
+                    try {
+                        if (this_row.attr('data-gift-card') === 'true') {
+                            var gcAmountRaw = window.prompt('Gift card amount? (example: 50)', '');
+                            var gcAmount = parseFloat(String(gcAmountRaw || '').replace(/[^0-9.]/g, ''));
+                            if (gcAmount > 0) {
+                                var gcPriceInput = this_row.find('input.pos_unit_price_inc_tax');
+                                __write_number(gcPriceInput, gcAmount);
+                                gcPriceInput.attr('data-original-price', gcPriceInput.val());
+                                gcPriceInput.trigger('change');
+                            } else {
+                                toastr.warning('No amount entered. Remove the gift card line and add it again.');
+                            }
+                        }
+                    } catch (gcErr) {
+                        console.error('Gift card amount prompt failed', gcErr);
+                    }
                     
                     // Trigger tax dropdown change if it has a value to ensure it's properly selected and calculated
                     var taxSelect = this_row.find('select.tax_id');
