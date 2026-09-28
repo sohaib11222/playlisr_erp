@@ -50,7 +50,6 @@ class ManagerCheckinController extends Controller
         'ideas'     => ['Good ideas we should implement', 'Anything they would change or try in the store'],
         'erp'       => ['ERP updates they asked for', 'What would make their job easier in the ERP or POS'],
         'lowlight'  => ['Lowlights or blockers', 'Anything getting in their way or frustrating them'],
-        'notes'     => ['Anything else for Jon', 'Optional'],
         'manager_notes' => ['Comments from manager to Jon', 'Your own take for Jon, optional'],
     ];
 

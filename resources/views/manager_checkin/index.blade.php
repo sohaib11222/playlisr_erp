@@ -199,7 +199,8 @@
                 </div>
                 <div class="entry-meta">{{ \Carbon\Carbon::parse($r['date'])->format('D M j, Y') }} - by {{ $r['manager_name'] }}</div>
             </div>
-            @foreach($questions as $key => $q)
+            {{-- 'notes' was dropped from the form 2026-09-28; still shown on older entries. --}}
+            @foreach($questions + ['notes' => ['Anything else for Jon', '']] as $key => $q)
                 @if(!empty($r[$key]))
                     <div class="ans"><b>{{ $q[0] }} @if(in_array($key, $taskable, true))<a class="mk-task" href="{{ $taskLink($r, $key, $q[0]) }}" target="_blank" rel="noopener">Make a task</a>@endif</b>{{ $r[$key] }}</div>
                 @endif
