@@ -55,7 +55,7 @@
 						&middot; @if(abs($s['diff']) < 1) matches @else {{ $s['diff'] > 0 ? 'Clover' : 'ERP' }} higher by ${{ number_format(abs($s['diff']), 2) }} @endif
 					</div>
 					@forelse(\App\Utils\RegisterReconUtil::shortRows($s) as $row)
-						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ $row[1] }}</a></div>
+						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ str_replace('*', '', $row[1]) }}</a></div>
 					@empty
 						<div class="rr-ok">All good</div>
 					@endforelse
