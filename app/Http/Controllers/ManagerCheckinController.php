@@ -51,6 +51,7 @@ class ManagerCheckinController extends Controller
         'erp'       => ['ERP updates they asked for', 'What would make their job easier in the ERP or POS'],
         'lowlight'  => ['Lowlights or blockers', 'Anything getting in their way or frustrating them'],
         'notes'     => ['Anything else for Jon', 'Optional'],
+        'manager_notes' => ['Comments from manager to Jon', 'Your own take for Jon, optional'],
     ];
 
     private function isAdmin()
