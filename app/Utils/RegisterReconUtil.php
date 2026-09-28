@@ -227,6 +227,20 @@ class RegisterReconUtil
         // 1) ERP sales: rung in ERP but no Clover swipe, or amounts differ.
         foreach ($sales as $sale) {
             if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            // Saved with no payment at all (Pico #31308 on 9/27: $20 rung, no
+            // tender, Clover took $21.95). The ERP totals leave unpaid sales
+            // out, so the store gap has no line explaining it - flag it.
+            if ($sale->payment_lines->isEmpty() && (float) $sale->final_total > 0) {
+                $stores[$storeKey($sale->location_id)]['items'][] = [
+                    'kind'   => 'unpaid',
+                    'mini'   => '#' . $sale->invoice_no . ' ' . $money($sale->final_total) . ' at ' . $time($sale->transaction_date),
+                    'ask'    => $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username),
+                    'url'    => $feed(['location_id' => $sale->location_id, 'discrepancy' => 'any']),
+                    'note'   => null,
+                    'amount' => (float) $sale->final_total,
+                ];
+                continue;
+            }
             if (isset($pairFor[$sale->id])) {
                 $c    = $pairFor[$sale->id];
                 $who  = $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username);
@@ -587,6 +601,9 @@ class RegisterReconUtil
                 $sum = array_sum(array_column($kinds['no_erp'], 'amount'));
                 $parts[] = $plural($n, 'Clover charge', 'Clover charges') . ' not rung in ERP (' . $money($sum) . ') - please ring the items so the inventory updates';
             }
+            foreach ($kinds['unpaid'] ?? [] as $it) {
+                $parts[] = $it['mini'] . ' saved with no payment - please add how it was paid';
+            }
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
@@ -628,7 +645,9 @@ class RegisterReconUtil
         foreach ($r['stores'] as $s) {
             $short = self::shortLines($s);
             $lines[] = '';
-            $totals = '   ERP $' . number_format((float) ($s['erp'] ?? 0), 2) . ' | Clover $' . number_format((float) ($s['clover'] ?? 0), 2);
+            $diff = round((float) ($s['clover'] ?? 0) - (float) ($s['erp'] ?? 0), 2);
+            $totals = '   ERP $' . number_format((float) ($s['erp'] ?? 0), 2) . ' | Clover $' . number_format((float) ($s['clover'] ?? 0), 2)
+                . ' | difference ' . (abs($diff) < 0.01 ? '$0.00' : '`' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`');
             if (empty($short)) {
                 $lines[] = '*' . $s['name'] . '*' . $totals . ' - all reconciled';
                 continue;
