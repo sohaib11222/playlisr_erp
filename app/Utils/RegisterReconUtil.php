@@ -588,7 +588,7 @@ class RegisterReconUtil
                 $cashIt  = array_values(array_filter($kinds['no_clover'], fn($i) => !empty($i['is_cash'])));
                 $otherIt = array_values(array_filter($kinds['no_clover'], fn($i) => empty($i['is_cash'])));
                 if ($cashIt) {
-                    $parts[] = count($cashIt) . ' *cash* ' . (count($cashIt) === 1 ? 'sale' : 'sales') . ' with no Clover charge ('
+                    $parts[] = count($cashIt) . ' CASH ' . (count($cashIt) === 1 ? 'sale' : 'sales') . ' with no Clover charge ('
                         . $money(array_sum(array_column($cashIt, 'amount'))) . ') - please record cash sales in Clover too';
                 }
                 if ($otherIt) {
@@ -636,9 +636,10 @@ class RegisterReconUtil
     {
         $day = \Carbon\Carbon::parse($r['date'])->format('D n/j');
         if ($r['issue_count'] === 0) {
-            return '*' . $day . ' register check:* all reconciled';
+            return '*<' . self::ERP_URL . '/register-recon?date=' . $r['date'] . '|' . $day . ' register check>:* all reconciled';
         }
-        $lines = ['*' . $day . ' register check*'];
+        $reconUrl = self::ERP_URL . '/register-recon?date=' . $r['date'];
+        $lines = ['*<' . $reconUrl . '|' . $day . ' register check>*'];
         foreach ($r['stores'] as $s) {
             $short = self::shortLines($s);
             $lines[] = '';
