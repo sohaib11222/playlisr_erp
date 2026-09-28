@@ -132,7 +132,7 @@
 <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
     @if($archer_coupon)
         <div style="font-size:13px; color:#999; margin-bottom:8px;">
-            {{ number_format(count($coupon_zipcodes)) }} uses in this range &middot; Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time
+            {{ number_format(count($coupon_zipcodes)) }} uses &middot; Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time
         </div>
         <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:14px 18px; margin-bottom:16px;">
             <table class="table" style="margin-bottom:0;">
