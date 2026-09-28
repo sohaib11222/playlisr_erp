@@ -543,7 +543,7 @@ class RegisterReconUtil
             $mini = (string) ($it['mini'] ?? '');
             switch ($it['kind']) {
                 case 'no_clover':
-                    $what = $mini . ' - no Clover charge found' . (!empty($it['is_cash']) ? ' (cash sales go on Clover too)' : '');
+                    $what = $mini . ' - no Clover charge found' . (!empty($it['is_cash']) ? ' (cash sale - please log cash sales in Clover too)' : '');
                     break;
                 case 'no_erp':
                     $what = preg_replace('/ at /', ' charged at ', $mini, 1) . ' - no ERP sale found, please ring the items so stock updates';
@@ -598,7 +598,16 @@ class RegisterReconUtil
                 $lines[] = '• ' . $l;
             }
         }
+        $anyCash = false;
+        foreach ($r['stores'] as $s) {
+            foreach ($s['items'] as $it) {
+                if ($it['kind'] === 'no_clover' && !empty($it['is_cash'])) $anyCash = true;
+            }
+        }
         $lines[] = '';
+        if ($anyCash) {
+            $lines[] = 'Reminder: please log cash sales in Clover too.';
+        }
         $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> can you check these with the team? Most are quick fixes.';
         return implode("\n", $lines);
     }
