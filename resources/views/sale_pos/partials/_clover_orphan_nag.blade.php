@@ -24,13 +24,13 @@
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
                 <i class="fa fa-exclamation-triangle"></i>
-                <span id="eon_count">0</span> ERP card sale<span id="eon_plural">s</span> not on Clover
+                <span id="eon_count">0</span> sale<span id="eon_plural">s</span> not on Clover
             </div>
             <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                Sale rung in ERP but no Clover entry yet — every sale (cash OR card) must be entered on Clover. Ring it on the terminal now.
+                Rung in ERP, not on Clover yet. Ring it on the terminal.
             </div>
         </div>
-        <div id="eon_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+        <div id="eon_list" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;"></div>
     </div>
 
     {{-- Sarah 2026-05-15: mismatch banner removed entirely. The vast
@@ -46,13 +46,13 @@
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="font-weight:800; font-size:14px; color:#7c2d12; white-space:nowrap;">
                 <i class="fa fa-credit-card"></i>
-                <span id="con_count">0</span> Clover swipe<span id="con_plural">s</span> need ringing
+                <span id="con_count">0</span> Clover charge<span id="con_plural">s</span> not in ERP
             </div>
             <div style="font-size:12px; color:#9a3412; flex:1; min-width:240px;">
-                Card was charged on Clover but no ERP ring yet — please ring the item in ERP so inventory + reports stay accurate.
+                Charged on Clover, not rung in ERP yet. Ring the item in ERP.
             </div>
         </div>
-        <div id="con_list" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+        <div id="con_list" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;"></div>
     </div>
 </div>
 
@@ -71,18 +71,17 @@
     }
     .con-chip {
         background:#fff; border:1px solid #fdba74; border-radius:6px;
-        padding:6px 10px; min-width:200px; display:flex; flex-direction:column; gap:2px;
+        padding:4px 6px 4px 10px; display:inline-flex; align-items:center; gap:8px;
     }
     .con-chip .con-amt {
-        font-size:18px; font-weight:800; color:#9a3412; font-variant-numeric: tabular-nums;
-        line-height:1.1;
+        font-size:14px; font-weight:800; color:#9a3412; font-variant-numeric: tabular-nums;
     }
-    .con-chip .con-meta { font-size:10px; color:#a16207; line-height:1.3; }
-    .con-chip .con-age  { font-weight:700; color:#9a3412; }
+    .con-chip .con-meta { font-size:11px; color:#a16207; white-space:nowrap; }
     .con-chip .con-btn {
-        margin-top:4px; padding:5px 10px; background:#9a3412; color:#fff; border:none;
-        border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; text-align:center;
+        padding:3px 8px; background:#9a3412; color:#fff; border:none;
+        border-radius:4px; font-size:11px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap;
     }
+    .con-chip a.con-btn:hover { color:#fff; }
 </style>
 
 <script>
@@ -146,13 +145,11 @@
                     for (var i = 0; i < orphans.length; i++) {
                         var o = orphans[i];
                         html += '<div class="con-chip" data-cp-id="' + o.id + '">';
-                        html +=   '<div class="con-amt">$' + o.amount.toFixed(2) + '</div>';
-                        html +=   '<div class="con-meta">';
-                        html +=     '<span class="con-age">' + ageLabel(o.age_seconds) + '</span> · ' + (o.paid_at || '');
-                        if (o.location_name) html += ' · ' + o.location_name;
+                        html +=   '<span class="con-amt">$' + o.amount.toFixed(2) + '</span>';
+                        html +=   '<span class="con-meta" title="' + escapeAttr(ageLabel(o.age_seconds)) + '">' + (o.paid_at || '');
                         if (o.card_label) html += ' · ' + o.card_label;
-                        html +=   '</div>';
-                        html +=   '<button type="button" class="con-btn con-ring" data-amount="' + o.pre_tax + '" data-clover-id="' + escapeAttr(o.clover_payment_id || '') + '">+ Ring this in ERP</button>';
+                        html +=   '</span>';
+                        html +=   '<button type="button" class="con-btn con-ring" data-amount="' + o.pre_tax + '" data-clover-id="' + escapeAttr(o.clover_payment_id || '') + '">Ring in ERP</button>';
                         html += '</div>';
                     }
                     $list.html(html);
@@ -169,13 +166,11 @@
                     for (var j = 0; j < erpOrphans.length; j++) {
                         var e = erpOrphans[j];
                         ehtml += '<div class="con-chip" data-tx-id="' + e.tx_id + '">';
-                        ehtml +=   '<div class="con-amt">$' + e.amount.toFixed(2) + '</div>';
-                        ehtml +=   '<div class="con-meta">';
-                        ehtml +=     '<span class="con-age">' + ageLabel(e.age_seconds) + '</span> · ' + (e.transaction_date || '');
-                        if (e.location_name) ehtml += ' · ' + e.location_name;
+                        ehtml +=   '<span class="con-amt">$' + e.amount.toFixed(2) + '</span>';
+                        ehtml +=   '<span class="con-meta" title="' + escapeAttr(ageLabel(e.age_seconds)) + '">' + (e.transaction_date || '');
                         if (e.invoice_no) ehtml += ' · #' + escapeAttr(e.invoice_no);
-                        ehtml +=   '</div>';
-                        ehtml +=   '<a class="con-btn" style="display:block; text-decoration:none;" href="/pos/' + e.tx_id + '/edit">Open in ERP</a>';
+                        ehtml +=   '</span>';
+                        ehtml +=   '<a class="con-btn" href="/pos/' + e.tx_id + '/edit">Open</a>';
                         ehtml += '</div>';
                     }
                     $eonList.html(ehtml);

@@ -3591,12 +3591,9 @@ class SellPosController extends Controller
                 ->where('amount', '>', 0)      // skip refunds
                 ->orderByDesc('paid_at')
                 ->limit(200);
-            if (!empty($location_id)) {
-                $cpQuery->where(function ($q) use ($location_id) {
-                    $q->where('location_id', (int) $location_id)
-                      ->orWhereNull('location_id');
-                });
-            }
+            // No location filter here: Pass 1b needs the other store's swipes
+            // to catch wrong-store rings. Clover-only orphans are still
+            // scoped to this location below.
             $cps = $cpQuery->get(['id', 'clover_payment_id', 'clover_order_id', 'amount', 'tax_cents', 'paid_at', 'location_id', 'card_type', 'card_last4', 'employee_name']);
 
             // ERP card sells to pair against. Half-day buffer so a Clover
@@ -3610,6 +3607,31 @@ class SellPosController extends Controller
                 ->where('status', 'final')
                 ->whereNull('import_source')
                 ->where(function ($q) { $q->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+                // Sarah 2026-09-28: off-register / paid-online sales (web,
+                // Discogs, eBay, Nick's shipments tendered all 'other') never
+                // touch Clover. The EOD feed already excludes them; the POS
+                // nag didn't, so Nick's shipment rings nagged Pico as "not on
+                // Clover". Same filter as the recent-feed summary.
+                ->whereRaw("LOWER(COALESCE(channel, '')) NOT IN ('web', 'discogs', 'ebay', 'prepaid_pickup')")
+                ->where(function ($q) {
+                    $q->whereNull('additional_notes')
+                      ->orWhere(function ($q2) {
+                          $q2->where('additional_notes', 'not like', 'Website order%')
+                             ->where('additional_notes', 'not like', 'Web order%')
+                             ->where('additional_notes', 'not like', 'Discogs order%')
+                             ->where('additional_notes', 'not like', 'eBay order%');
+                      });
+                })
+                ->where(function ($q) {
+                    $q->whereExists(function ($sub) {
+                        $sub->selectRaw('1')->from('transaction_payments as tp')
+                            ->whereColumn('tp.transaction_id', 'transactions.id')
+                            ->where('tp.method', '!=', 'other');
+                    })->orWhereNotExists(function ($sub) {
+                        $sub->selectRaw('1')->from('transaction_payments as tp2')
+                            ->whereColumn('tp2.transaction_id', 'transactions.id');
+                    });
+                })
                 ->where('transaction_date', '>=', $erpWindowStart)
                 ->when($location_id, fn($q) => $q->where('location_id', (int) $location_id))
                 ->when(!$isAdmin, fn($q) => $q->where('created_by', $userId))
@@ -3691,6 +3713,32 @@ class SellPosController extends Controller
                     $claimedTx[$bestTx->id] = true;
                     $exactPairTxByCp[$cp->id] = $bestTx->id;
                     $exactPairCpByTx[$bestTx->id] = $cp->id;
+                }
+            }
+
+            // Pass 1b — wrong-store exact pairs. Sarah 2026-09-28: sales rung
+            // in ERP under the wrong location (e.g. logged in with Pico as the
+            // default while swiping the Hollywood terminal) matched Clover to
+            // the cent within a minute but nagged as "not on Clover". The
+            // money IS on Clover, so pair them here; the EOD feed still shows
+            // them as "wrong store" for cleanup. Tight 15-min window so an
+            // unrelated same-amount swipe at the other store can't claim it.
+            foreach ($cps as $cp) {
+                if (isset($claimedCp[$cp->id])) continue;
+                $cpCents = (int) round($cp->amount * 100);
+                $cpNetCents = $cpCents - (int) ($cp->tax_cents ?? 0);
+                $bestTx = null;
+                $bestGap = 900;
+                foreach ($erpCardSells as $tx) {
+                    if (isset($claimedTx[$tx->id])) continue;
+                    $txCents = $expectedCardCents($tx);
+                    if (abs($cpCents - $txCents) > $taxSlopCents && abs($cpNetCents - $txCents) > $taxSlopCents) continue;
+                    $gap = abs(($cpTs[$cp->id] ?? 0) - ($txTs[$tx->id] ?? 0));
+                    if ($gap <= $bestGap) { $bestGap = $gap; $bestTx = $tx; }
+                }
+                if ($bestTx) {
+                    $claimedCp[$cp->id] = true;
+                    $claimedTx[$bestTx->id] = true;
                 }
             }
 
@@ -3802,6 +3850,7 @@ class SellPosController extends Controller
             $orphans = [];
             foreach ($cps as $cp) {
                 if (isset($claimedCp[$cp->id])) continue;
+                if (!empty($location_id) && $cp->location_id && (int) $cp->location_id !== (int) $location_id) continue;
                 // Only nag for today's swipes — the 12hr ERP buffer above
                 // can pull in late-night Clover rows we don't want to
                 // surface on the morning shift's POS.
@@ -5297,6 +5346,14 @@ class SellPosController extends Controller
                     $this->logPosPriceOverrides($transaction, $input['products'] ?? []);
                 } catch (\Exception $e) {
                     \Log::warning('pos_price_override_log_failed: ' . $e->getMessage());
+                }
+
+                // Gift card sold at the register: activate the card (code the
+                // cashier typed from the code sheet) for the amount rung up.
+                try {
+                    $this->activateSoldGiftCards($transaction, $input['products'] ?? []);
+                } catch (\Exception $e) {
+                    \Log::warning('pos_gift_card_activate_failed: ' . $e->getMessage());
                 }
 
                 DB::commit();
@@ -9277,6 +9334,55 @@ class SellPosController extends Controller
     // sticker price; write an override row for every line that differs by
     // more than a cent. Manual products (no product_id) skip — there's no
     // baseline to compare against. Quoted at /admin/pos-overrides.
+    // Creates a GiftCard for each Gift Card line (sub_sku GIFTCARD) that
+    // carries the code the cashier entered. Never throws into the sale: a
+    // duplicate or missing code is logged and the card can be added by hand
+    // at /gift-cards.
+    private function activateSoldGiftCards($transaction, array $postedProducts = [])
+    {
+        if ($transaction->status !== 'final' || !Schema::hasTable('gift_cards')) {
+            return;
+        }
+        $giftCardVariationIds = \DB::table('variations')->where('sub_sku', 'GIFTCARD')->pluck('id')->all();
+        if (empty($giftCardVariationIds)) {
+            return;
+        }
+        foreach ($postedProducts as $p) {
+            if (!in_array($p['variation_id'] ?? null, $giftCardVariationIds)) {
+                continue;
+            }
+            $code = strtoupper(trim((string) ($p['gift_card_code'] ?? '')));
+            if ($code === '') {
+                \Log::warning('pos_gift_card_no_code', ['transaction_id' => $transaction->id]);
+                continue;
+            }
+            $price = $this->transactionUtil->num_uf($p['unit_price_inc_tax'] ?? 0);
+            $qty = $this->transactionUtil->num_uf($p['quantity'] ?? 1) ?: 1;
+            $amount = round($price * $qty, 2);
+            if ($amount <= 0) {
+                continue;
+            }
+            $exists = GiftCard::where('business_id', $transaction->business_id)->where('card_number', $code)->exists();
+            if ($exists) {
+                \Log::warning('pos_gift_card_duplicate_code', ['code' => $code, 'transaction_id' => $transaction->id]);
+                continue;
+            }
+            $contactId = $transaction->contact_id;
+            $isWalkIn = \App\Contact::where('id', $contactId)->value('is_default');
+            GiftCard::create([
+                'business_id' => $transaction->business_id,
+                'card_number' => $code,
+                'contact_id' => $isWalkIn ? null : $contactId,
+                'initial_value' => $amount,
+                'balance' => $amount,
+                'expiry_date' => null,
+                'status' => 'active',
+                'notes' => 'Sold at the register, invoice ' . $transaction->invoice_no,
+                'created_by' => auth()->user()->id ?? $transaction->created_by,
+            ]);
+        }
+    }
+
     private function logPosPriceOverrides($transaction, array $postedProducts = [])
     {
         $businessId = $transaction->business_id;
