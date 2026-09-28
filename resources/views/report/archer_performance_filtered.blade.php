@@ -131,20 +131,24 @@
 <p class="text-muted" style="margin-top:-8px; font-size:12px;">What's actually attributable to him &mdash; moves with the date filter above.</p>
 <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:20px; margin-bottom:24px;">
     @if($archer_coupon)
-        <div style="font-size:28px; font-weight:700; color:#333;">{{ number_format(count($coupon_zipcodes)) }} uses in this range &middot; ${{ number_format($coupon_zipcodes_total, 2) }} total</div>
-        <div class="text-muted" style="margin-top:4px; margin-bottom:16px;">
-            Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time, real attributed conversions.
+        <div style="font-size:13px; color:#999; margin-bottom:8px;">
+            {{ number_format(count($coupon_zipcodes)) }} uses in this range &middot; Code <strong>{{ $archer_coupon->code }}</strong> &middot; {{ number_format($coupon_uses_all_time) }} uses all-time
         </div>
-
-        {{-- $archerCancelledCount / $archerCancelledTotal computed once, up top, for the ROI banner --}}
-        <div style="background:{{ $archerCancelledCount > 0 ? '#fdf2f2' : '#f2fdf5' }}; border-radius:4px; padding:10px 14px; margin-bottom:16px; font-size:13px;">
-            Of these {{ count($coupon_zipcodes) }} Archer-code orders,
-            <strong>{{ $archerCancelledCount }} {{ $archerCancelledCount === 1 ? 'was' : 'were' }} refunded/cancelled</strong>
-            @if($archerCancelledCount > 0)
-                (${{ number_format($archerCancelledTotal, 2) }}).
-            @else
-                &mdash; none of his own attributed orders were refunded.
-            @endif
+        <div style="background:#fff; border:1px solid #eee; border-radius:6px; padding:14px 18px; margin-bottom:16px;">
+            <table class="table" style="margin-bottom:0;">
+                <tr>
+                    <th style="width:320px;">Potential (if everything had been in stock)</th>
+                    <td>${{ number_format($coupon_zipcodes_total, 2) }}</td>
+                </tr>
+                <tr>
+                    <th>Lost to refunds/cancellations ({{ $archerCancelledCount }} {{ $archerCancelledCount === 1 ? 'order' : 'orders' }})</th>
+                    <td style="color:#d9534f;">&minus;${{ number_format($archerCancelledTotal, 2) }}</td>
+                </tr>
+                <tr style="border-top:2px solid #eee;">
+                    <th>Actually earned (net of refunds)</th>
+                    <td><strong style="color:#2ecc71;">${{ number_format($archerAttributedNet, 2) }}</strong></td>
+                </tr>
+            </table>
         </div>
 
         @if(!is_null($coupon_unique_customers))
