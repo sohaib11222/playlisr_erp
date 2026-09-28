@@ -347,7 +347,7 @@ class RegisterReconUtil
         }
 
         // 3) Drawer counts + registers that were never counted.
-        foreach (self::drawerFlags($business_id, $date) as $f) {
+        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date)) as $f) {
             $k = $storeKey($f['location_id']);
             $stores[$k]['items'][] = $f;
         }
@@ -376,6 +376,52 @@ class RegisterReconUtil
      * (opening cash + cash in - cash out), and shifts auto-closed by the
      * system with no count at all.
      */
+    /**
+     * Handover gaps (Sarah 9/27: "could have also been the guy before").
+     * Each shift is checked against its own opening count, so a gap between
+     * one cashier leaving the drawer and the next one counting it shows up
+     * here instead - naming both, blaming neither.
+     *   left  = previous closing count - previous close-time safe drop
+     *   found = next opening count (saved opening cash + open-time drop)
+     */
+    public static function handoverFlags(int $business_id, string $date): array
+    {
+        $flags = [];
+        $opened = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+            ->where('cr.business_id', $business_id)->whereDate('cr.created_at', $date)
+            ->orderBy('cr.created_at')->get(['cr.id', 'cr.location_id', 'cr.created_at', 'u.first_name', 'u.username']);
+        $hasDeposits = \Schema::hasTable('cash_deposits');
+        foreach ($opened as $n) {
+            $prev = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+                ->where('cr.business_id', $business_id)->where('cr.location_id', $n->location_id)
+                ->where('cr.status', 'close')->whereNotNull('cr.closing_amount')
+                ->where('cr.closed_at', '<=', $n->created_at)
+                ->where('cr.closed_at', '>=', \Carbon\Carbon::parse($n->created_at)->subHours(24))
+                ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
+                ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
+            if (!$prev) continue;
+            $closeDrop = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $prev->id)->where('phase', 'close')->sum('amount') : 0.0;
+            $openDrop  = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $n->id)->where('phase', 'open')->sum('amount') : 0.0;
+            $initial = (float) \DB::table('cash_register_transactions')->where('cash_register_id', $n->id)->where('transaction_type', 'initial')->sum('amount');
+            $left  = (float) $prev->closing_amount - $closeDrop;
+            $found = $initial + $openDrop;
+            $gap = round($found - $left, 2);
+            if ($gap > -self::DRAWER_TOLERANCE) continue; // only drops matter
+            $pName = ucfirst(strtolower(trim((string) ($prev->first_name ?: $prev->username))));
+            $nName = ucfirst(strtolower(trim((string) ($n->first_name ?: $n->username))));
+            $flags[] = [
+                'location_id' => $n->location_id,
+                'kind'   => 'handover',
+                'detail' => 'drawer went from $' . number_format($left, 0) . ' (' . $pName . ' closed ' . \Carbon\Carbon::parse($prev->closed_at)->format('g:ia')
+                    . ') to $' . number_format($found, 0) . ' (' . $nName . ' opened ' . \Carbon\Carbon::parse($n->created_at)->format('g:ia') . ')',
+                'ask'    => $pName . ' / ' . $nName,
+                'note'   => null,
+                'amount' => abs($gap),
+            ];
+        }
+        return $flags;
+    }
+
     public static function drawerFlags(int $business_id, string $date): array
     {
         $regs = \DB::table('cash_registers as cr')
@@ -510,6 +556,9 @@ class RegisterReconUtil
                     continue 2;
                 case 'drawer':
                     $what = $it['detail'] ?? ($it['tiny'] ?? 'drawer short');
+                    break;
+                case 'handover':
+                    $what = $it['detail'];
                     break;
                 case 'uncounted':
                     $what = 'register never closed/counted';
