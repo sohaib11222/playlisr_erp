@@ -122,19 +122,8 @@ class RegisterReconUtil
         $cents = function ($x) { return (int) round(((float) $x) * 100); };
         $money = function ($x) { return '$' . number_format((float) $x, 2); };
 
-        // Website orders picked up and paid in store on Clover (Pico #31308,
-        // 9/27: $20 web order, $21.95 Clover charge at pickup). The ERP total
-        // leaves web orders out as "paid online", which made Clover look
-        // $21.83 higher. Count what Clover took for them on the ERP side too.
-        foreach ($sales as $sale) {
-            if (!isset($webPaid[$sale->id]) || !isset($cloverByTx[$sale->id])) continue;
-            $k = $storeKey($sale->location_id);
-            $amt = ((int) ($cloverByTx[$sale->id]['amount_cents'] ?? 0)) / 100;
-            $stores[$k]['erp'] = round($stores[$k]['erp'] + $amt, 2);
-            $stores[$k]['erp_count']++;
-            $stores[$k]['diff'] = round($stores[$k]['clover'] - $stores[$k]['erp'], 2);
-            $stores[$k]['web_pickups'] = ($stores[$k]['web_pickups'] ?? 0) + 1;
-        }
+        // (Website pickups paid on Clover are now added to the ERP side by
+        // recentSalesFeed itself, so the totals here already include them.)
         $time  = function ($ts) use ($tz) {
             try { return \Carbon\Carbon::parse((string) $ts, $tz)->format('g:ia'); } catch (\Throwable $e) { return ''; }
         };

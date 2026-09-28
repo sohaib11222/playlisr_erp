@@ -376,7 +376,12 @@ class SellPosController extends Controller
             // 12% noise on HW gross stops polluting the headline.
             $diffGross = $s['clover'] - $s['erp_net'];
             $diffNet   = ($s['clover'] - $s['clover_tax']) - $s['erp_net'];
-            $useNet    = $s['clover_tax'] > 1.00 && abs($diffNet) < abs($diffGross);
+            // Only switch to pre-tax when the gross gap looks like the whole
+            // tax (a store ringing sticker price). A smaller gross gap is a
+            // real sale difference - Pico 9/27 flipped to pre-tax over one
+            // $21.95 website pickup and showed -$17.29 with every sale matched.
+            $useNet    = $s['clover_tax'] > 1.00 && abs($diffNet) < abs($diffGross)
+                && abs($diffGross) >= 0.8 * $s['clover_tax'];
             $s['diff']        = round($useNet ? $diffNet : $diffGross, 2);
             $s['diff_basis']  = $useNet ? 'pre-tax' : 'gross';
             $s['diff_gross']  = round($diffGross, 2);
@@ -1697,6 +1702,17 @@ class SellPosController extends Controller
             }
         }
 
+        // Website orders picked up and paid on Clover, by store - taken
+        // before any discrepancy filter trims $sales (see banner below).
+        $web_pickup_cents_by_loc = [];
+        foreach ($sales as $wSale) {
+            if (!isset($web_paid_ids[$wSale->id]) || !isset($clover_by_transaction[$wSale->id])) continue;
+            $wLoc = (int) ($wSale->location_id ?? 0);
+            $web_pickup_cents_by_loc[$wLoc] = ($web_pickup_cents_by_loc[$wLoc] ?? ['cents' => 0, 'n' => 0]);
+            $web_pickup_cents_by_loc[$wLoc]['cents'] += (int) ($clover_by_transaction[$wSale->id]['amount_cents'] ?? 0);
+            $web_pickup_cents_by_loc[$wLoc]['n']++;
+        }
+
         if ($discrepancy === 'no_erp') {
             // Special case: user wants ONLY orphan Clover charges. Hide all
             // ERP rows; the view will render the unclaimed Clover list.
@@ -1745,6 +1761,24 @@ class SellPosController extends Controller
             $business_locations
         );
         $today_by_store = $totals['by_store'];
+        // Website orders picked up and paid on Clover (Pico #31308, 9/27):
+        // the helper leaves web orders out of ERP as "paid online", but the
+        // Clover charge is in the Clover total - count it on the ERP side too
+        // so a fully matched day shows no difference.
+        foreach ($today_by_store as $wk => &$wS) {
+            $adj = $web_pickup_cents_by_loc[(int) ($wS['location_id'] ?? 0)] ?? null;
+            if (!$adj) continue;
+            $wS['erp_net'] = round($wS['erp_net'] + $adj['cents'] / 100, 2);
+            $wS['erp_count'] += $adj['n'];
+            $dG = $wS['clover'] - $wS['erp_net'];
+            $dN = ($wS['clover'] - ($wS['clover_tax'] ?? 0)) - $wS['erp_net'];
+            $net = ($wS['clover_tax'] ?? 0) > 1.00 && abs($dN) < abs($dG) && abs($dG) >= 0.8 * ($wS['clover_tax'] ?? 0);
+            $wS['diff'] = round($net ? $dN : $dG, 2);
+            $wS['diff_basis'] = $net ? 'pre-tax' : 'gross';
+            $wS['diff_gross'] = round($dG, 2);
+            $wS['diff_pretax'] = round($dN, 2);
+        }
+        unset($wS);
 
         // Backwards-compat aggregates (kept for any old blade refs).
         $erp_today_total      = array_sum(array_column($today_by_store, 'erp_net'));
