@@ -635,7 +635,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> can you check these with the team? Most are quick fixes.';
+        $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> can you check these with the team?';
         return implode("\n", $lines);
     }
 
