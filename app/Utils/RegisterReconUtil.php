@@ -462,8 +462,8 @@ class RegisterReconUtil
                 'location_id' => $r->location_id,
                 'kind'   => 'drawer',
                 'tiny'   => 'drawer short $' . number_format(abs($variance), 2),
-                'detail' => '$' . number_format(abs($variance), 2) . ' missing from drawer (counted $'
-                    . number_format((float) $r->closing_amount, 0) . ', should be $' . number_format($expected, 0) . ')',
+                'detail' => 'drawer count came in $' . number_format(abs($variance), 2) . ' under (counted $'
+                    . number_format((float) $r->closing_amount, 0) . ', expected $' . number_format($expected, 0) . ')',
                 'mini'   => ($variance < 0 ? 'short ' : 'over ') . '$' . number_format(abs($variance), 2)
                     . ' (counted $' . number_format((float) $r->closing_amount, 2) . ', expected $' . number_format($expected, 2)
                     . ($cashBuys > 0 ? ', after $' . number_format($cashBuys, 2) . ' cash buys' : '')
@@ -497,13 +497,13 @@ class RegisterReconUtil
             $mini = (string) ($it['mini'] ?? '');
             switch ($it['kind']) {
                 case 'no_clover':
-                    $what = $mini . ' not charged on Clover' . (!empty($it['is_cash']) ? ' (cash - ring cash on Clover too)' : '');
+                    $what = $mini . ' - no Clover charge found' . (!empty($it['is_cash']) ? ' (cash sales go on Clover too)' : '');
                     break;
                 case 'no_erp':
-                    $what = preg_replace('/ at /', ' charged at ', $mini, 1) . ', not rung in - ring the items so stock updates';
+                    $what = preg_replace('/ at /', ' charged at ', $mini, 1) . ' - no ERP sale found, please ring the items so stock updates';
                     break;
                 case 'mismatch':
-                    $what = preg_replace('/^(#\S+) ERP (\S+) vs Clover (\S+)$/', '$1 rung $2, charged $3', $mini);
+                    $what = preg_replace('/^(#\S+) ERP (\S+) vs Clover (\S+)$/', '$1 rung $2, Clover shows $3', $mini);
                     break;
                 case 'match':
                     $matches[] = [preg_replace('/^(#\S+) (\S+) = Clover (\S+)$/', '$1 ($2) to Clover charge $3', $mini), $url];
@@ -550,7 +550,7 @@ class RegisterReconUtil
             }
         }
         $lines[] = '';
-        $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up';
+        $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> can you check these with the team? Most are quick fixes.';
         return implode("\n", $lines);
     }
 
