@@ -8547,8 +8547,8 @@ class ReportController extends Controller
                 'end_date' => '2026-10-18',
                 'pay_total' => 2000,
                 'pay_schedule' => '$1,000 on 2026-08-18, $1,000 on 2026-09-01',
-                'follower_goal' => 30000,
-                'follower_goal_date' => '2026-09-18',
+                'follower_goal' => 20000,
+                'follower_goal_date' => '2026-10-18',
                 'bonus_at_goal' => 500,
             ],
             'instagram' => [
