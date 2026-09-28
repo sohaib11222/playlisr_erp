@@ -551,44 +551,55 @@ class RegisterReconUtil
      * all suggested matches collapse into a single Fatteen line.
      */
     /** Rows [who, what, url] - one per issue; matches collapse to Fatteen. */
+    /**
+     * One line per person (Sarah 9/27: "i dont want to overwhelm luis") -
+     * same-kind issues are counted and totalled instead of listed.
+     * Returns [who, what, url] rows; url is the store's recent feed.
+     */
     public static function shortRows(array $s): array
     {
-        $rows = [];
-        $matches = [];
+        $money = function ($x) { return '$' . number_format((float) $x, 2); };
+        $plural = function ($n, $one, $many) { return $n . ' ' . ($n === 1 ? $one : $many); };
+        $byWho = [];
+        $hasMatches = false;
         foreach ($s['items'] as $it) {
-            $url = $it['url'] ?? $s['url'];
-            $mini = (string) ($it['mini'] ?? '');
-            switch ($it['kind']) {
-                case 'no_clover':
-                    $what = $mini . ' - no Clover charge found' . (!empty($it['is_cash']) ? ' (cash sale - please log cash sales in Clover too)' : '');
-                    break;
-                case 'no_erp':
-                    $what = preg_replace('/ at /', ' charged at ', $mini, 1) . ' - no ERP sale found, please ring the items so stock updates';
-                    break;
-                case 'mismatch':
-                    $what = preg_replace('/^(#\S+) ERP (\S+) vs Clover (\S+)$/', '$1 rung $2, Clover shows $3', $mini);
-                    break;
-                case 'match':
-                    $matches[] = [preg_replace('/^(#\S+) (\S+) = Clover (\S+)$/', '$1 ($2) to Clover charge $3', $mini), $url];
-                    continue 2;
-                case 'drawer':
-                    $what = $it['detail'] ?? ($it['tiny'] ?? 'drawer short');
-                    break;
-                case 'handover':
-                    $what = $it['detail'];
-                    break;
-                case 'uncounted':
-                    $what = 'register never closed/counted';
-                    break;
-                default:
-                    $what = $it['short'] ?? $it['text'];
-            }
-            $rows[] = [($it['ask'] ?? '') !== '' ? $it['ask'] : '?', $what, $url];
+            if ($it['kind'] === 'match') { $hasMatches = true; continue; }
+            $who = ($it['ask'] ?? '') !== '' ? $it['ask'] : '?';
+            $byWho[$who][$it['kind']][] = $it;
         }
-        usort($rows, fn($x, $y) => strcmp($x[0] . $x[1], $y[0] . $y[1]));
+        $rows = [];
+        foreach ($byWho as $who => $kinds) {
+            $parts = [];
+            if (!empty($kinds['no_clover'])) {
+                $n = count($kinds['no_clover']);
+                $sum = array_sum(array_column($kinds['no_clover'], 'amount'));
+                $cash = count(array_filter($kinds['no_clover'], fn($i) => !empty($i['is_cash']))) > 0;
+                $parts[] = $plural($n, 'sale', 'sales') . ' with no Clover charge (' . $money($sum) . ($cash ? ', cash' : '') . ')';
+            }
+            if (!empty($kinds['no_erp'])) {
+                $n = count($kinds['no_erp']);
+                $sum = array_sum(array_column($kinds['no_erp'], 'amount'));
+                $parts[] = $plural($n, 'Clover charge', 'Clover charges') . ' not rung in (' . $money($sum) . ') - please ring the items so stock updates';
+            }
+            if (!empty($kinds['mismatch'])) {
+                $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
+            }
+            foreach (['drawer', 'handover'] as $k) {
+                foreach ($kinds[$k] ?? [] as $it) {
+                    $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
+                }
+            }
+            if (!empty($kinds['uncounted'])) {
+                $parts[] = 'register never closed/counted';
+            }
+            if (!empty($parts)) {
+                $rows[] = [$who, implode('; ', $parts), $s['url']];
+            }
+        }
+        usort($rows, fn($x, $y) => strcmp($x[0], $y[0]));
         // Sarah 9/27: don't tell Fatteen which pairs to match (the guess can
         // be wrong) - just that there are sales to match on the feed.
-        if (!empty($matches)) {
+        if ($hasMatches) {
             $rows[] = ['Fatteen', 'some sales need matching - match everything that pairs on the recent feed', $s['url']];
         }
         return $rows;
