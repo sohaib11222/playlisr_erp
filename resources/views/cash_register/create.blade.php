@@ -7,8 +7,18 @@
     // who already counted the drawer + picked a store there don't have to
     // do it again here. Falls back to old behavior if the session keys are
     // missing (e.g. arriving via a deep link that skipped the duty picker).
+    // Only carry the duty-picker count over if it was just entered - a count
+    // from earlier in the day (Manolo 9/26: 2:44pm count reused for a 7:33pm
+    // open) must not be locked in.
+    $countFresh = false;
+    try {
+        $countAt = session('pos_duty_opening_cash_at');
+        $countFresh = $countAt && \Carbon\Carbon::parse($countAt)->gt(\Carbon\Carbon::now()->subMinutes(30));
+    } catch (\Throwable $e) {
+        $countFresh = false;
+    }
     $prefillAmount = null;
-    if (session('pos_duty') === 'cashier' && session('pos_duty_opening_cash') !== null) {
+    if ($countFresh && session('pos_duty') === 'cashier' && session('pos_duty_opening_cash') !== null) {
         $prefillAmount = number_format((float) session('pos_duty_opening_cash'), 2, '.', '');
     }
     // Sarah 2026-07-10: this page now counts the drawer by bill denomination
@@ -18,7 +28,7 @@
     // through the picker, prefill each bill count from that session so they
     // don't recount. Keyed by face value; missing = empty (0) count.
     $prefillDenoms = [];
-    if (session('pos_duty') === 'cashier' && is_array(session('pos_duty_opening_cash_denoms'))) {
+    if ($countFresh && session('pos_duty') === 'cashier' && is_array(session('pos_duty_opening_cash_denoms'))) {
         $prefillDenoms = session('pos_duty_opening_cash_denoms');
     }
     $prefillLoc = session('pos_duty_location_id');

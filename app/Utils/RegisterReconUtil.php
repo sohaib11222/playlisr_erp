@@ -389,7 +389,7 @@ class RegisterReconUtil
         $flags = [];
         $opened = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
             ->where('cr.business_id', $business_id)->whereDate('cr.created_at', $date)
-            ->orderBy('cr.created_at')->get(['cr.id', 'cr.location_id', 'cr.created_at', 'u.first_name', 'u.username']);
+            ->orderBy('cr.created_at')->get(['cr.id', 'cr.user_id', 'cr.location_id', 'cr.created_at', 'u.first_name', 'u.username']);
         $hasDeposits = \Schema::hasTable('cash_deposits');
         foreach ($opened as $n) {
             $prev = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
@@ -398,8 +398,8 @@ class RegisterReconUtil
                 ->where('cr.closed_at', '<=', $n->created_at)
                 ->where('cr.closed_at', '>=', \Carbon\Carbon::parse($n->created_at)->subHours(24))
                 ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
-                ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
-            if (!$prev) continue;
+                ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.user_id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
+            if (!$prev || (int) $prev->user_id === (int) $n->user_id) continue; // same person, not a handover
             $closeDrop = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $prev->id)->where('phase', 'close')->sum('amount') : 0.0;
             $openDrop  = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $n->id)->where('phase', 'open')->sum('amount') : 0.0;
             $initial = (float) \DB::table('cash_register_transactions')->where('cash_register_id', $n->id)->where('transaction_type', 'initial')->sum('amount');
