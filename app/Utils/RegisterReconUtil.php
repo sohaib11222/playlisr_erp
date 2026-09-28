@@ -627,8 +627,11 @@ class RegisterReconUtil
         $lines = ['*' . $day . ' register check*'];
         foreach ($r['stores'] as $s) {
             $short = self::shortLines($s);
-            if (empty($short)) continue;
             $lines[] = '';
+            if (empty($short)) {
+                $lines[] = '*' . $s['name'] . '*: all good';
+                continue;
+            }
             $lines[] = '*' . $s['name'] . '*';
             foreach ($short as $l) {
                 $lines[] = '• ' . $l;
