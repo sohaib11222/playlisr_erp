@@ -197,6 +197,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         request()->merge(['type' => 'supplier']);
         return app(\App\Http\Controllers\ContactController::class)->index();
     })->name('suppliers.index');
+    // Customer asked us to delete their account (website + ERP) — see CustomerAccountDeleteController.
+    Route::get('/contacts/{id}/delete-account-preview', 'CustomerAccountDeleteController@preview');
+    Route::post('/contacts/{id}/delete-account', 'CustomerAccountDeleteController@destroy');
     Route::resource('contacts', 'ContactController');
     
     // Gift Cards

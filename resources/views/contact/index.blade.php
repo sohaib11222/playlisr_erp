@@ -764,6 +764,46 @@ $(document).off('click', '.add_store_credit_button').on('click', '.add_store_cre
 //
 // #modal_add_store_credit_btn (customer account modal) is handled by the
 // shared partial included below (reason required, collection routing).
+
+// Delete (customer asked us to delete their account): preview what will be
+// removed on the website + in the ERP, then confirm.
+$(document).off('click', '.delete_customer_account_button').on('click', '.delete_customer_account_button', function(e) {
+    e.preventDefault();
+    var id = $(this).data('id');
+    var $btn = $(this).text('Checking...');
+    $.getJSON('/contacts/' + id + '/delete-account-preview').done(function(p) {
+        $btn.text('Delete');
+        if (!p.success) { toastr.error(p.msg); return; }
+        var box = document.createElement('div');
+        box.style.textAlign = 'left';
+        box.style.fontSize = '14px';
+        var add = function(html) { var d = document.createElement('div'); d.style.margin = '8px 0'; d.innerHTML = html; box.appendChild(d); };
+        var esc = function(s) { return $('<div>').text(s == null ? '' : String(s)).html(); };
+        add('<b>ERP contact ' + esc(p.contact.contact_id) + '</b>: ' + (p.sales > 0
+            ? 'has ' + p.sales + ' sale(s), so the name, phone, email and address are cleared and it becomes "Deleted Customer". Sales history stays.'
+            : 'will be deleted.'));
+        if (p.web_error) {
+            add('<b>Website:</b> could not check (' + esc(p.web_error) + '). Only the ERP contact will be changed.');
+        } else if (!p.website.length) {
+            add('<b>Website:</b> no account found for this email or phone.');
+        } else {
+            p.website.forEach(function(w) {
+                add('<b>Website account</b> will be deleted: ' + esc(w.name) + ' (' + esc(w.email) + '), ' + w.orderCount + ' order(s), ' + w.points + ' points. Orders are kept.');
+            });
+        }
+        swal({ title: 'Delete this customer?', content: box, icon: 'warning', buttons: ['Cancel', 'Delete'], dangerMode: true }).then(function(ok) {
+            if (!ok) return;
+            $.post('/contacts/' + id + '/delete-account', { website_ids: (p.website || []).map(function(w) { return w.id; }) }).done(function(r) {
+                if (r.success) {
+                    toastr.success(r.msg);
+                    if (typeof contact_table !== 'undefined') { contact_table.ajax.reload(null, false); }
+                } else {
+                    toastr.error(r.msg);
+                }
+            }).fail(function(x) { toastr.error('Delete failed (HTTP ' + x.status + ').'); });
+        });
+    }).fail(function(x) { $btn.text('Delete'); toastr.error('Could not load customer (HTTP ' + x.status + ').'); });
+});
 </script>
 
 @include('contact.partials.store_credit_js')

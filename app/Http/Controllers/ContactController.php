@@ -518,6 +518,14 @@ class ContactController extends Controller
                         // View → Credits & Adjustments panel to add or adjust.
                     }
 
+                    // Sarah 2026-09-27: the far-right trash icon was off-screen and
+                    // refused anyone with a sale. This Delete handles account-
+                    // deletion requests (website account + ERP contact) behind a
+                    // preview/confirm dialog, so it's safe next to View/Edit.
+                    if (!$row->is_default && in_array($row->type, ['customer', 'both']) && auth()->user()->can('customer.delete')) {
+                        $html .= '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-danger delete_customer_account_button contact-btn-compact" style="margin-left:8px;">Delete</a>';
+                    }
+
                     $html .= '</div>';
 
                     return $html;
@@ -526,7 +534,8 @@ class ContactController extends Controller
             ->addColumn(
                 'delete_action',
                 function ($row) {
-                    if ($row->is_default || !auth()->user()->can('customer.delete')) {
+                    // Customers use the Delete button next to View/Edit instead.
+                    if ($row->is_default || !auth()->user()->can('customer.delete') || in_array($row->type, ['customer', 'both'])) {
                         return '';
                     }
                     return '<a href="' . action('ContactController@destroy', [$row->id]) . '" class="delete_contact_button contact-btn-delete-small" title="' . __("messages.delete") . '">' .
