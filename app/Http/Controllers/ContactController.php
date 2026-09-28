@@ -522,7 +522,7 @@ class ContactController extends Controller
                     // refused anyone with a sale. This Delete handles account-
                     // deletion requests (website account + ERP contact) behind a
                     // preview/confirm dialog, so it's safe next to View/Edit.
-                    if (!$row->is_default && in_array($row->type, ['customer', 'both']) && auth()->user()->can('customer.delete')) {
+                    if (!$row->is_default && in_array($row->type, ['customer', 'both']) && \App\Http\Controllers\CustomerAccountDeleteController::canDelete()) {
                         $html .= '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-danger delete_customer_account_button contact-btn-compact" style="margin-left:8px;">Delete</a>';
                     }
 
@@ -1195,6 +1195,12 @@ class ContactController extends Controller
         if (request()->ajax()) {
             try {
                 $business_id = request()->user()->business_id;
+
+                // Only Sarah and Jon can delete customers (Sarah 2026-09-27).
+                $type = Contact::where('business_id', $business_id)->where('id', $id)->value('type');
+                if (in_array($type, ['customer', 'both']) && !\App\Http\Controllers\CustomerAccountDeleteController::canDelete()) {
+                    return ['success' => false, 'msg' => 'Only Sarah and Jon can delete customers.'];
+                }
 
                 //Check if any transaction related to this contact exists
                 $count = Transaction::where('business_id', $business_id)

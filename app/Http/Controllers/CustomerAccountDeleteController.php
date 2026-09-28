@@ -36,10 +36,19 @@ class CustomerAccountDeleteController extends WebsiteOrdersController
         'clover_customer_id',
     ];
 
+    /** Only Sarah and Jon can delete customers (Sarah 2026-09-27). */
+    public static function canDelete()
+    {
+        $u = auth()->user();
+        return $u
+            && strtolower(trim((string) $u->last_name)) === 'hedvat'
+            && in_array(strtolower(trim((string) $u->first_name)), ['jonathan', 'sarah'], true);
+    }
+
     protected function findContact($id)
     {
-        if (!auth()->user()->can('customer.delete')) {
-            abort(403, 'Unauthorized action.');
+        if (!self::canDelete()) {
+            abort(403, 'Only Sarah and Jon can delete customers.');
         }
         $business_id = request()->user()->business_id;
         return Contact::where('business_id', $business_id)->findOrFail($id);
