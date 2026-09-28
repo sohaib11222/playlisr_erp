@@ -494,19 +494,19 @@ class RegisterReconUtil
             $url = $it['url'] ?? $s['url'];
             switch ($it['kind']) {
                 case 'no_clover':
-                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not on Clover' . (!empty($it['is_cash']) ? ' (cash)' : '');
+                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not charged';
                     break;
                 case 'no_erp':
-                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' not in ERP';
+                    $what = preg_replace('/ at .*$/', '', (string) ($it['mini'] ?? '')) . ' charged, not rung in';
                     break;
                 case 'mismatch':
-                    $what = preg_replace('/ ERP .*$/', '', (string) ($it['mini'] ?? '')) . ' wrong amount';
+                    $what = preg_replace('/ ERP .*$/', '', (string) ($it['mini'] ?? '')) . ' charged wrong amount';
                     break;
                 case 'match':
                     $matches[] = [preg_replace('/ .*$/', '', (string) ($it['mini'] ?? '')), $url];
                     continue 2;
                 case 'drawer':
-                    $what = $it['tiny'] ?? 'drawer short';
+                    $what = str_replace('drawer short ', '', $it['tiny'] ?? '') . ' missing from drawer';
                     break;
                 case 'uncounted':
                     $what = 'register not counted';
@@ -526,51 +526,35 @@ class RegisterReconUtil
     private static function shortLines(array $s): array
     {
         $esc = function ($t) { return str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) $t); };
-        return array_map(fn($r) => '*' . $esc($r[0]) . '*  <' . $r[2] . '|' . $esc($r[1]) . '>', self::shortRows($s));
+        return array_map(fn($r) => $esc($r[0]) . ': <' . $r[2] . '|' . $esc($r[1]) . '>', self::shortRows($s));
     }
 
-    private static function diffTag(array $s): string
-    {
-        // Slack has no text colors; inline code renders red.
-        $diff = $s['clover'] - $s['erp'];
-        return abs($diff) >= 1 ? '`' . ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) . '`' : '';
-    }
-
-    /** Plain-text version - Slack notification preview + fallback. */
+    /** Very simple plain text (Sarah 9/27: "much simpler"). */
     public static function formatSlack(array $r): string
     {
-        $lines = ['*Register check - ' . $r['label'] . '*  ' . ($r['issue_count'] === 0 ? 'all good' : $r['issue_count'] . ' to fix')];
+        $day = \Carbon\Carbon::parse($r['date'])->format('D n/j');
+        if ($r['issue_count'] === 0) {
+            return '*' . $day . ' register check:* all good';
+        }
+        $lines = ['*' . $day . ' register check*'];
         foreach ($r['stores'] as $s) {
-            $lines[] = '';
-            $lines[] = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*  ' . self::diffTag($s);
             $short = self::shortLines($s);
-            foreach ($short ?: ['all good'] as $l) {
+            if (empty($short)) continue;
+            $lines[] = '';
+            $lines[] = '*' . $s['name'] . '*';
+            foreach ($short as $l) {
                 $lines[] = '• ' . $l;
             }
         }
-        if ($r['issue_count'] > 0) {
-            $lines[] = '';
-            $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up.';
-        }
+        $lines[] = '';
+        $lines[] = '<@' . self::FATTEEN_SLACK_ID . '> please follow up';
         return implode("\n", $lines);
     }
 
+    /** Plain text only - no rich layout. */
     public static function slackBlocks(array $r): array
     {
-        $blocks = [];
-        $blocks[] = ['type' => 'header', 'text' => ['type' => 'plain_text',
-            'text' => 'Register check  ·  ' . $r['label'] . '  ·  ' . ($r['issue_count'] === 0 ? 'all good' : $r['issue_count'] . ' to fix')]];
-        foreach ($r['stores'] as $s) {
-            $short = self::shortLines($s);
-            $text = '*<' . $s['url'] . '|' . strtoupper($s['name']) . '>*   ' . self::diffTag($s) . "\n"
-                . implode("\n", array_map(fn($l) => '•  ' . $l, $short ?: ['all good']));
-            $blocks[] = ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => mb_substr($text, 0, 2900)]];
-        }
-        if ($r['issue_count'] > 0) {
-            $blocks[] = ['type' => 'context', 'elements' => [['type' => 'mrkdwn',
-                'text' => '<@' . self::FATTEEN_SLACK_ID . '> please follow up.']]];
-        }
-        return $blocks;
+        return [];
     }
 
     public static function postToSlack(string $text, array $blocks = []): bool
