@@ -8541,7 +8541,7 @@ class ReportController extends Controller
         $coupon_uses_all_time = count($coupon_zipcodes_all_time);
 
         $data = [
-            'last_updated' => '2026-09-25',
+            'last_updated' => '2026-09-27',
             'contract' => [
                 'start_date' => '2026-08-18',
                 'end_date' => '2026-10-18',
