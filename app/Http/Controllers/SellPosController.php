@@ -3613,6 +3613,11 @@ class SellPosController extends Controller
                 // nag didn't, so Nick's shipment rings nagged Pico as "not on
                 // Clover". Same filter as the recent-feed summary.
                 ->whereRaw("LOWER(COALESCE(channel, '')) NOT IN ('web', 'discogs', 'ebay', 'prepaid_pickup')")
+                ->whereNotExists(function ($sub) {
+                    $sub->selectRaw('1')->from('contacts as oc')
+                        ->whereColumn('oc.id', 'transactions.contact_id')
+                        ->whereRaw("LOWER(TRIM(oc.name)) = 'website customer'");
+                })
                 ->where(function ($q) {
                     $q->whereNull('additional_notes')
                       ->orWhere(function ($q2) {
