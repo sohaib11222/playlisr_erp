@@ -391,6 +391,10 @@
 						var gc = (rows || []).find(function (r) { return r.sub_sku === 'GIFTCARD'; });
 						if (gc && gc.variation_id) {
 							pos_product_row(gc.variation_id);
+							// No bag for a gift card sale: drop the automatic bag fee.
+							if ($('#add_plastic_bag').is(':checked')) {
+								$('#add_plastic_bag').prop('checked', false).trigger('change');
+							}
 						} else {
 							toastr.warning('Gift Card item not found. Search "Gift Card" instead.');
 						}
