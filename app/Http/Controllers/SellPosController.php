@@ -5479,6 +5479,25 @@ class SellPosController extends Controller
                     \Log::warning('pos_gift_card_activate_failed: ' . $e->getMessage());
                 }
 
+                // Store the tax this sale actually charged. The default
+                // order-tax math applies the rate to tax-exempt lines too
+                // (gift cards, bag fee), which inflated the tax report.
+                try {
+                    $discountForTax = 0.0;
+                    if (!empty($transaction->discount_amount)) {
+                        $discountForTax = $transaction->discount_type === 'percentage'
+                            ? round(((float) $transaction->total_before_tax) * ((float) $transaction->discount_amount) / 100, 2)
+                            : (float) $transaction->discount_amount;
+                    }
+                    $taxCharged = $this->receiptTaxCharged($transaction, $discountForTax);
+                    if ((float) $transaction->tax_amount - $taxCharged > 0.005) {
+                        $transaction->tax_amount = $taxCharged;
+                        $transaction->save();
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning('pos_tax_amount_correct_failed: ' . $e->getMessage());
+                }
+
                 // Paid with a gift card: take the amount off the card.
                 try {
                     $this->redeemGiftCardPayments($transaction, $input['payment'] ?? []);
