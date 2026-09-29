@@ -1387,6 +1387,35 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Write a stock change to the activity log (Reports > Activity Log) so
+     * manual counts and automatic resets are traceable per product.
+     */
+    private function logStockChange($product_id, $note)
+    {
+        try {
+            $product = Product::find($product_id);
+            if (!$product) {
+                return;
+            }
+            $log = activity()
+                ->performedOn($product)
+                ->causedBy(auth()->user())
+                ->withProperties(['update_note' => $product->name . ' - ' . $note])
+                ->log('stock changed');
+            $log->business_id = $product->business_id;
+            $log->save();
+        } catch (\Throwable $e) {
+            Log::warning('logStockChange failed for product ' . $product_id . ': ' . $e->getMessage());
+        }
+    }
+
+    private function stockLocationName($location_id)
+    {
+        $location = BusinessLocation::find($location_id);
+        return $location ? $location->name : ('location ' . $location_id);
+    }
+
     public function setCurrentStock(Request $request, $id)
     {
         if (!auth()->user()->can('product.update')) {
@@ -1415,6 +1444,7 @@ class ProductController extends Controller
             return response()->json(['success' => false, 'msg' => 'Invalid request.'], 422);
         }
 
+        $stock_changes = [];
         try {
             DB::beginTransaction();
             $updated_count = 0;
@@ -1456,6 +1486,8 @@ class ProductController extends Controller
                         ->where('location_id', $location_id)
                         ->orderBy('id')
                         ->get();
+                    $stock_changes[] = $this->stockLocationName($location_id) . ': '
+                        . (float) $existing->sum('qty_available') . ' -> ' . (float) $quantity;
                     if ($existing->count() > 1) {
                         $keep = $existing->first();
                         VariationLocationDetails::where('variation_id', $variation_id)
@@ -1488,6 +1520,8 @@ class ProductController extends Controller
             }
 
             DB::commit();
+
+            $this->logStockChange($product->id, 'Set Current Stock: ' . implode(', ', $stock_changes));
 
             // Real-time website push — this quick-stock action bypasses the
             // normal update() save path, so without this the site wouldn't
@@ -1595,6 +1629,8 @@ class ProductController extends Controller
             Log::error('Zero stock failed for product ' . $id . ': ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => __('messages.something_went_wrong')], 500);
         }
+
+        $this->logStockChange($product->id, 'Zero Stock: ' . $rows->sum('qty_available') . ' -> 0');
 
         $snapshotKey = 'zero-single-product-stock-' . now()->format('Y-m-d_His') . '-p' . $product->id;
         Storage::disk('local')->put(
@@ -3592,6 +3628,16 @@ class ProductController extends Controller
 
             //if mismach found update stock in variation location details
             if (isset($stock_history[0]) && (float)$stock_details['current_stock'] != (float)$stock_history[0]['stock']) {
+                // Record it: this silently reset counts set by Zero Stock /
+                // Set Current Stock (which write no ledger entry) with no trace.
+                $healVariation = Variation::find($id);
+                if ($healVariation) {
+                    $this->logStockChange(
+                        $healVariation->product_id,
+                        'Stock History page reset stock at ' . $this->stockLocationName(request()->input('location_id')) . ': '
+                            . (float) $stock_details['current_stock'] . ' -> ' . (float) $stock_history[0]['stock']
+                    );
+                }
                 VariationLocationDetails::where('variation_id', 
                                             $id)
                                     ->where('location_id', request()->input('location_id'))
