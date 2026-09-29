@@ -3823,6 +3823,34 @@ class SellPosController extends Controller
                 }
             }
 
+            // Pass 1c - split payments. Sarah 2026-09-28: Alec ran #31407
+            // ($29.63) as two Clover charges ($9.88 + $19.76). Pair an
+            // unclaimed ERP sale with two unclaimed same-store Clover charges
+            // within 10 min of it whose sum is within the tax slop.
+            foreach ($erpCardSells as $tx) {
+                if (isset($claimedTx[$tx->id])) continue;
+                $txCents = $expectedCardCents($tx);
+                $txT = $txTs[$tx->id] ?? 0;
+                $near = [];
+                foreach ($cps as $cp) {
+                    if (isset($claimedCp[$cp->id]) || !$sameLoc($cp, $tx)) continue;
+                    if (abs(($cpTs[$cp->id] ?? 0) - $txT) > 600) continue;
+                    $near[] = $cp;
+                }
+                $done = false;
+                for ($i = 0; $i < count($near) && !$done; $i++) {
+                    for ($j = $i + 1; $j < count($near) && !$done; $j++) {
+                        $sum = (int) round($near[$i]->amount * 100) + (int) round($near[$j]->amount * 100);
+                        if (abs($sum - $txCents) <= $taxSlopCents) {
+                            $claimedTx[$tx->id] = true;
+                            $claimedCp[$near[$i]->id] = true;
+                            $claimedCp[$near[$j]->id] = true;
+                            $done = true;
+                        }
+                    }
+                }
+            }
+
             // Pass 2 — MISMATCH pairing. For each unclaimed ERP card
             // sell, find the unclaimed Clover same-loc within ±$5 but
             // >1¢, closest in time. 1-to-1 so one Clover row can't
