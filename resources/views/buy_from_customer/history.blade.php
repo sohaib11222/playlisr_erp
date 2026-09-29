@@ -36,6 +36,11 @@
         <div class="box-header with-border">
             <h3 class="box-title">Offer Records @if(!empty($diagnostics['show_all'])) <small>(showing ALL business IDs)</small> @endif</h3>
             <div class="box-tools">
+                @if($is_admin)
+                    <a href="{{ route('buy-from-customer.results') }}" class="btn btn-default btn-sm">
+                        <i class="fa fa-line-chart"></i> Buy Results
+                    </a>
+                @endif
                 <a href="{{ route('buy-from-customer.create') }}" class="btn btn-primary btn-sm">
                     <i class="fa fa-plus"></i> New Offer
                 </a>

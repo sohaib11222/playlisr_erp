@@ -441,6 +441,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
     Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');
     Route::get('/buy-from-customer/history', 'BuyFromCustomerController@history')->name('buy-from-customer.history');
+    Route::get('/buy-from-customer/results', 'BuyFromCustomerController@results')->name('buy-from-customer.results');
     Route::get('/buy-from-customer/storage-locations', 'BuyFromCustomerController@storageLocations')->name('buy-from-customer.storage-locations');
     Route::get('/buy-from-customer/{id}/edit', 'BuyFromCustomerController@edit')->name('buy-from-customer.edit');
     Route::get('/buy-from-customer/{id}/intake-sheet', 'BuyFromCustomerController@intakeSheet')->name('buy-from-customer.intake-sheet');

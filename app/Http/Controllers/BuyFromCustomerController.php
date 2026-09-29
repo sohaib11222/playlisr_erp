@@ -8,6 +8,7 @@ use App\Contact;
 use App\Product;
 use App\PurchaseLine;
 use App\Services\BuyOfferCalculatorService;
+use App\Services\BuyResultsReportService;
 use App\Services\InventoryCheckService;
 use App\Transaction;
 use App\Utils\ProductUtil;
@@ -445,6 +446,30 @@ class BuyFromCustomerController extends Controller
         $is_admin = auth()->user()->hasRole('Admin#' . $business_id);
 
         return view('buy_from_customer.history', compact('offers', 'diagnostics', 'is_admin'));
+    }
+
+    /**
+     * Buy results: what accepted buys cost vs. what they've sold for and how
+     * fast, grouped by item type / median tier / grade / destination / store.
+     * Admin-only since it shows margins. Read-only — see BuyResultsReportService.
+     */
+    public function results(Request $request, BuyResultsReportService $report)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        if (!$this->productUtil->is_admin(auth()->user(), $business_id)) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $start = $request->input('start') ?: now()->subYear()->format('Y-m-d');
+        $end = $request->input('end') ?: now()->format('Y-m-d');
+        $location_id = $request->input('location_id') ?: null;
+        $group_by = $request->input('group_by', 'item_type');
+
+        $data = $report->build($business_id, $start, $end, $location_id, $group_by);
+        $locations = BusinessLocation::forDropdown($business_id)->toArray();
+        $group_options = BuyResultsReportService::GROUPS;
+
+        return view('buy_from_customer.results', compact('data', 'start', 'end', 'location_id', 'locations', 'group_options'));
     }
 
     /**
