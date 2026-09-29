@@ -51,6 +51,7 @@ class SyncDiscogsSales extends Command
         $svc = new DiscogsService($businessId);
         if (!$svc->isConfigured()) {
             $this->error('Discogs API token not configured (Business Settings > Integrations). Aborting.');
+            $this->alertFailure($commit, 'Discogs API token is not configured (Business Settings > Integrations).');
             return 1;
         }
 
@@ -64,11 +65,13 @@ class SyncDiscogsSales extends Command
         $placeholder = $commit ? $this->ensurePlaceholder($businessId, $userId, 'Discogs Sale', 'NIV-DISCOGS-SALE') : [0, 0];
 
         $totals = ['created' => 0, 'dup' => 0, 'skip' => 0, 'revenue_cents' => 0];
+        $fetchError = null;
 
         for ($page = 1; $page <= 500; $page++) {
             $resp = $svc->fetchOrders($createdAfter, null, $page, 100);
             if (!is_array($resp) || isset($resp['error'])) {
-                $this->error('  Discogs fetch failed: ' . ($resp['error'] ?? 'unknown') . (isset($resp['body']) ? ' — ' . substr((string) $resp['body'], 0, 200) : ''));
+                $fetchError = ($resp['error'] ?? 'unknown') . (isset($resp['body']) ? ' — ' . substr((string) $resp['body'], 0, 200) : '');
+                $this->error('  Discogs fetch failed: ' . $fetchError);
                 break;
             }
             $orders = $resp['orders'] ?? [];
@@ -116,7 +119,40 @@ class SyncDiscogsSales extends Command
         $this->info($commit ? '✅ Sync complete.' : '🧪 DRY RUN complete — re-run with --commit to write.');
         $this->line(sprintf('Discogs orders: created=%d dup=%d skipped=%d', $totals['created'], $totals['dup'], $totals['skip']));
         $this->line('Total revenue: $' . number_format($totals['revenue_cents'] / 100, 2));
+
+        // A failed fetch used to `break` and still return 0, so the scheduler
+        // saw a clean run and nobody was told. The Discogs token expired in
+        // August 2026 and the daily 06:00 sync failed silently for five weeks
+        // — 325 orders, $10,840 of sales, never reached the ERP and that stock
+        // was never decremented. Alert and exit non-zero instead. Sarah 2026-09-28.
+        if ($fetchError !== null) {
+            $this->alertFailure($commit, 'Discogs fetch failed: ' . $fetchError);
+            return 1;
+        }
+
         return 0;
+    }
+
+    /**
+     * Post a sync failure to the register-recon Slack webhook. Only fires on
+     * --commit (the scheduled run); dry-runs stay quiet so manual pokes at
+     * /admin/channel-sales-sync don't spam the channel.
+     */
+    private function alertFailure(bool $commit, string $reason): void
+    {
+        if (!$commit) return;
+        // Log unconditionally: the Slack webhook may not be configured,
+        // and a failure that only whispers is the whole problem here.
+        \Log::error('Discogs sales sync FAILED: ' . $reason);
+        try {
+            \App\Utils\RegisterReconUtil::postToSlack(
+                ":rotating_light: *Discogs sales sync failed* — " . $reason
+                . "\nNo Discogs orders are reaching the ERP, so that stock is not being decremented."
+                . "\nFix the token at Business Settings > Integrations, then backfill at /admin/channel-sales-sync."
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('discogs sync failure alert could not be sent: ' . $e->getMessage());
+        }
     }
 
     private function orderLines(array $items, $orderTotal)

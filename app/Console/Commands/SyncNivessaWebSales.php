@@ -71,6 +71,7 @@ class SyncNivessaWebSales extends Command
         $cutoff = now()->subDays($days);
 
         $totals = ['orders' => 0, 'order_dup' => 0, 'order_skip' => 0, 'rentals' => 0, 'rental_dup' => 0, 'rental_skip' => 0, 'revenue_cents' => 0];
+        $fetchErrors = [];
 
         // ---- Web orders ----------------------------------------------------
         $this->line('');
@@ -78,6 +79,7 @@ class SyncNivessaWebSales extends Command
         $orders = $this->httpGetJson($base . '/api/v1/order/all?payment_status=completed', $key);
         if ($orders === null) {
             $this->error('  Could not fetch /api/v1/order/all (see above). Skipping web orders.');
+            $fetchErrors[] = 'web orders (/api/v1/order/all)';
         } else {
             $orders = $this->unwrapList($orders, ['orders', 'data']);
             $this->line('  fetched ' . count($orders) . ' completed order(s)');
@@ -134,6 +136,7 @@ class SyncNivessaWebSales extends Command
         $bookings = $this->fetchAllBookings($base, $key);
         if ($bookings === null) {
             $this->error('  Could not fetch /api/v1/bookings (see above). Skipping space rentals.');
+            $fetchErrors[] = 'space rentals (/api/v1/bookings)';
         } else {
             $this->line('  fetched ' . count($bookings) . ' booking(s)');
             $placeholder = $commit ? $this->ensurePlaceholder($businessId, $userId, 'Space Rental', 'NIV-SPACE-RENTAL') : [0, 0];
@@ -195,7 +198,38 @@ class SyncNivessaWebSales extends Command
         $this->line(sprintf('Web orders:   created=%d dup=%d skipped=%d', $totals['orders'], $totals['order_dup'], $totals['order_skip']));
         $this->line(sprintf('Space rentals: created=%d dup=%d skipped=%d', $totals['rentals'], $totals['rental_dup'], $totals['rental_skip']));
         $this->line('Total revenue: $' . number_format($totals['revenue_cents'] / 100, 2));
+
+        // A failed fetch used to print "Skipping ..." and still return 0, so the
+        // scheduled 06:00 run looked clean and nobody was told. That is exactly
+        // how the Discogs sync failed silently for five weeks. Alert and exit
+        // non-zero instead. Sarah 2026-09-28.
+        if (!empty($fetchErrors)) {
+            $this->alertFailure($commit, 'could not fetch ' . implode(' and ', $fetchErrors));
+            return 1;
+        }
+
         return 0;
+    }
+
+    /**
+     * Post a sync failure to the register-recon Slack webhook. Only fires on
+     * --commit (the scheduled run) so manual dry-runs stay quiet.
+     */
+    private function alertFailure(bool $commit, string $reason): void
+    {
+        if (!$commit) return;
+        // Log unconditionally: the Slack webhook may not be configured,
+        // and a failure that only whispers is the whole problem here.
+        \Log::error('nivessa.com sales sync FAILED: ' . $reason);
+        try {
+            \App\Utils\RegisterReconUtil::postToSlack(
+                ":rotating_light: *nivessa.com sales sync failed* — " . $reason
+                . "\nThose orders are not reaching the ERP, so that stock is not being decremented."
+                . "\nCheck the website API key, then backfill at /admin/channel-sales-sync."
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('web sales failure alert could not be sent: ' . $e->getMessage());
+        }
     }
 
     /* ===================== HTTP ===================== */
