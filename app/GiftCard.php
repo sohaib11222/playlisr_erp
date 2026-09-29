@@ -43,14 +43,24 @@ class GiftCard extends Model
      */
     public static function generateCardNumber($business_id)
     {
-        // "NV" + 10 random characters, no look-alikes (0/O, 1/I), so it's
-        // easy to copy onto a physical card and hard to guess.
-        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        // 6 characters, letters + numbers mixed, no look-alikes (no O/0,
+        // no I/1) so it's easy to write on a card. Always has at least one
+        // number and one letter past F, so it can never match a nivessa.com
+        // online code (those are 8 hex characters).
+        $letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        $pastF = 'GHJKLMNPQRSTUVWXYZ';
+        $digits = '23456789';
+        $all = $letters . $digits;
         do {
-            $card_number = 'NV';
-            for ($i = 0; $i < 10; $i++) {
-                $card_number .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+            $chars = [
+                $pastF[random_int(0, strlen($pastF) - 1)],
+                $digits[random_int(0, strlen($digits) - 1)],
+            ];
+            for ($i = 0; $i < 4; $i++) {
+                $chars[] = $all[random_int(0, strlen($all) - 1)];
             }
+            shuffle($chars);
+            $card_number = implode('', $chars);
         } while (self::where('business_id', $business_id)
             ->where('card_number', $card_number)
             ->exists());
