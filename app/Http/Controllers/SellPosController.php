@@ -3324,6 +3324,82 @@ class SellPosController extends Controller
         return redirect($back)->with('status', '✓ #' . $tx->invoice_no . ' voided as duplicate (set to draft, stock restored). Snapshot saved, undo at /admin/admin-action-history.');
     }
 
+    /**
+     * Admin: move a sale rung under the wrong store to the right one.
+     * Sarah 2026-09-28: Jon rang 4 Hollywood sales with the POS set to Pico.
+     * Stock goes back at the old store and comes out at the new one (stock-
+     * tracked lines only). Snapshot for undo at /admin/admin-action-history.
+     */
+    public function moveSaleLocation(Request $request)
+    {
+        if (!self::canFixPaymentMethod()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $back = $request->headers->get('referer') ?: route('pos.recentFeed');
+
+        $txId = (int) $request->input('transaction_id', 0);
+        $newLoc = (int) $request->input('new_location_id', 0);
+        $reason = trim((string) $request->input('reason', ''));
+
+        $tx = Transaction::where('id', $txId)->where('business_id', $business_id)->where('type', 'sell')->first();
+        if (!$tx) {
+            return redirect($back)->with('error', 'Sale not found.');
+        }
+        $loc = \App\BusinessLocation::where('business_id', $business_id)->where('id', $newLoc)->first();
+        if (!$loc) {
+            return redirect($back)->with('error', 'Store not found.');
+        }
+        $oldLoc = (int) $tx->location_id;
+        if ($oldLoc === $newLoc) {
+            return redirect($back)->with('error', '#' . $tx->invoice_no . ' is already at ' . $loc->name . '.');
+        }
+
+        $lines = \App\TransactionSellLine::where('transaction_id', $txId)->get(['id', 'product_id', 'variation_id', 'quantity']);
+        $moveStock = $tx->status === 'final';
+        $now = \Carbon\Carbon::now();
+        $snapshotKey = 'move-sale-location-' . $now->format('Y-m-d_His') . '-tx' . $txId;
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "admin-snapshots/{$snapshotKey}.json",
+            json_encode([
+                'timestamp' => $now->toDateTimeString(),
+                'action' => 'move-sale-location',
+                'business_id' => $business_id,
+                'transaction_id' => $txId,
+                'invoice_no' => $tx->invoice_no,
+                'reason' => $reason !== '' ? $reason : null,
+                'changed_by' => (int) auth()->id() ?: null,
+                'rows' => [[
+                    'transaction_id' => $txId,
+                    'old_location_id' => $oldLoc,
+                    'new_location_id' => $newLoc,
+                    'moved_stock' => $moveStock,
+                    'lines' => $lines->map(fn($l) => ['product_id' => $l->product_id, 'variation_id' => $l->variation_id, 'quantity' => (float) $l->quantity])->all(),
+                ]],
+            ], JSON_PRETTY_PRINT)
+        );
+
+        DB::beginTransaction();
+        try {
+            Transaction::where('id', $txId)->update(['location_id' => $newLoc]);
+            if ($moveStock) {
+                foreach ($lines as $l) {
+                    if (!empty($l->product_id) && !empty($l->variation_id) && (float) $l->quantity > 0) {
+                        $this->productUtil->updateProductQuantity($oldLoc, $l->product_id, $l->variation_id, (float) $l->quantity, 0, null, false);
+                        $this->productUtil->updateProductQuantity($newLoc, $l->product_id, $l->variation_id, 0, (float) $l->quantity, null, false);
+                    }
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::error('moveSaleLocation failed: ' . $e->getMessage());
+            return redirect($back)->with('error', 'Move failed: ' . $e->getMessage());
+        }
+
+        return redirect($back)->with('status', '#' . $tx->invoice_no . ' moved to ' . $loc->name . '. Snapshot saved, undo at /admin/admin-action-history.');
+    }
+
     public function overridePaymentMethod(Request $request)
     {
         if (!self::canFixPaymentMethod()) {

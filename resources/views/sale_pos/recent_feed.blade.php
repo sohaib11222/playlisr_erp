@@ -1670,6 +1670,20 @@
                                     style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
                                 <button type="submit" style="padding:5px 10px; background:#8A2A1F; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Void duplicate (unpaid only)</button>
                             </form>
+                            <form method="POST" action="{{ route('pos.moveSaleLocation') }}" style="margin:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Move #{{ $sale->invoice_no }} to the selected store? Stock moves with it. Snapshot saved for undo.');">
+                                @csrf
+                                <input type="hidden" name="transaction_id" value="{{ $sale->id }}">
+                                <select name="new_location_id" required style="font-size:12px; padding:4px 6px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                    @foreach($business_locations as $blId => $blName)
+                                        @if((int) $blId !== (int) $sale->location_id)
+                                            <option value="{{ $blId }}">{{ $blName }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                                <input type="text" name="reason" placeholder="reason (optional)"
+                                    style="flex:1; min-width:140px; font-size:12px; padding:4px 8px; border:1px solid #DFD2B3; border-radius:4px; background:#fff;">
+                                <button type="submit" style="padding:5px 10px; background:#1F1B16; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer;">Move to store</button>
+                            </form>
                             @else
                                 <div style="font-size:11px; color:#8A7C6A;">Payment method (cash↔card) can only be changed by Sarah, Jon, or Fatteen.</div>
                             @endif

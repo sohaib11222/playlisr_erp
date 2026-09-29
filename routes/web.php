@@ -523,6 +523,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/pos/sale-backdate', 'SellPosController@backdateSale')->name('pos.backdateSale');
         Route::post('/pos/sale-store-credit-split', 'SellPosController@splitStoreCredit')->name('pos.splitStoreCredit');
         Route::post('/pos/sale-void-duplicate', 'SellPosController@voidDuplicateSale')->name('pos.voidDuplicateSale');
+        Route::post('/pos/sale-move-location', 'SellPosController@moveSaleLocation')->name('pos.moveSaleLocation');
         Route::post('/pos/{transaction_id}/email-receipt', 'SellPosController@emailReceipt')->name('pos.emailReceipt');
         Route::post('/pos/{transaction_id}/text-receipt', 'SellPosController@textReceipt')->name('pos.textReceipt');
 

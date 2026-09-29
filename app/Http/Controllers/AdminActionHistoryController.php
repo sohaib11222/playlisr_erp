@@ -284,7 +284,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'move-sale-location', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -643,6 +643,35 @@ class AdminActionHistoryController extends Controller
             }
             $msg = "Restored {$restored} voided sale(s) from snapshot {$key}";
             $msg .= $skipped > 0 ? "; skipped {$skipped} no longer draft." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
+        // move-sale-location: put the sale back at its old store and reverse
+        // the stock move (only if it's still at the store we moved it to).
+        if ($action === 'move-sale-location') {
+            $restored = 0;
+            $skipped = 0;
+            $productUtil = app(\App\Utils\ProductUtil::class);
+            foreach ($data['rows'] as $row) {
+                $tx = DB::table('transactions')->where('id', $row['transaction_id'] ?? 0)->first();
+                if (!$tx || (int) $tx->location_id !== (int) $row['new_location_id']) {
+                    $skipped++;
+                    continue;
+                }
+                DB::table('transactions')->where('id', $tx->id)->update(['location_id' => $row['old_location_id'], 'updated_at' => now()]);
+                if (!empty($row['moved_stock'])) {
+                    foreach ($row['lines'] ?? [] as $l) {
+                        if (!empty($l['product_id']) && !empty($l['variation_id']) && (float) $l['quantity'] > 0) {
+                            $productUtil->updateProductQuantity($row['new_location_id'], $l['product_id'], $l['variation_id'], (float) $l['quantity'], 0, null, false);
+                            $productUtil->updateProductQuantity($row['old_location_id'], $l['product_id'], $l['variation_id'], 0, (float) $l['quantity'], null, false);
+                        }
+                    }
+                }
+                $restored++;
+            }
+            $msg = "Moved {$restored} sale(s) back from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} moved again since." : '.';
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 1, 'msg' => $msg]);
         }
