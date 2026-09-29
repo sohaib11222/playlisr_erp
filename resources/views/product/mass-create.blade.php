@@ -3298,6 +3298,14 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
     function lotName(l) {
         return l.title ? (l.individual ? l.title : l.type + ' — ' + l.title) : l.type;
     }
+    // Compact label for the narrow row dropdown: drop the "10+ Bulk Vinyl: "
+    // style prefix and add the grade, so same-genre lots at different grades
+    // stay distinguishable ("Rock/Alt/Reggae/Electronic VG+ · $0.86").
+    function lotShortName(l) {
+        var base = (l.individual && l.title) ? l.title : l.type.replace(/^[^:]*:\s*/, '');
+        if (!l.individual && l.title) base += ' — ' + l.title;
+        return base + (l.grade ? ' ' + l.grade : '');
+    }
 
     function setRowCost($row, lot) {
         if (!lot) return;
@@ -3309,10 +3317,10 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
     function decorateRow($row, fresh) {
         if (!buy || !$row.hasClass('product-row') || $row.find('.bfc-lot-select').length) return;
         var idx = $row.attr('data-row-index');
-        var html = '<select name="products[' + esc(idx) + '][buy_offer_line_id]" class="form-control input-sm bfc-lot-select" style="margin-top:4px;" title="Which lot of the buy this item came from">'
+        var html = '<select name="products[' + esc(idx) + '][buy_offer_line_id]" class="form-control input-sm bfc-lot-select" style="margin-top:4px; min-width:170px;" title="Which lot of the buy this item came from">'
             + '<option value="">Not from this buy</option>';
         buy.lots.forEach(function (l) {
-            html += '<option value="' + l.id + '">' + esc(lotName(l)) + ' · ' + money(l.unit_cost) + '</option>';
+            html += '<option value="' + l.id + '">' + esc(lotShortName(l)) + ' · ' + money(l.unit_cost) + '</option>';
         });
         html += '</select>';
         var $sel = $(html);
