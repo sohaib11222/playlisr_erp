@@ -174,7 +174,63 @@ class BuyResultsReportService
             'groups' => array_values($groups),
             'totals' => $this->finish($totals),
             'coverage' => $coverage,
+            'buyers' => $this->buyerSummary($business_id, $start, $end, $location_id),
         ];
+    }
+
+    /**
+     * Who pays what, per employee who wrote the buy. Everything is in cash
+     * terms (final_offer_cash is stored for store-credit buys too; credit is
+     * always 1.5x of it), so buyers who pay in credit aren't penalized.
+     * "Paid % of calculator" only uses offers the calculator priced; the form's
+     * default final offer is 95%, so lower = negotiated down, over 100% = paid
+     * above the sheet. Avg per item depends on what they buy (CD lots vs.
+     * turntables), so the calculator % is the fairer comparison.
+     */
+    public function buyerSummary($business_id, $start, $end, $location_id)
+    {
+        $qty = DB::table('buy_customer_offer_lines')
+            ->groupBy('offer_id')
+            ->selectRaw('offer_id, SUM(quantity) as items');
+
+        $q = DB::table('buy_customer_offers as o')
+            ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
+            ->leftJoinSub($qty, 'lq', 'lq.offer_id', '=', 'o.id')
+            ->where('o.business_id', $business_id)
+            ->where('o.status', 'accepted')
+            ->whereBetween(DB::raw('DATE(COALESCE(o.accepted_at, o.created_at))'), [$start, $end]);
+        if (!empty($location_id)) {
+            $q->where('o.location_id', $location_id);
+        }
+        $rows = $q->groupBy('o.created_by', 'u.first_name', 'u.last_name', 'u.username')
+            ->selectRaw("o.created_by,
+                TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) as name, u.username,
+                COUNT(*) as offers,
+                SUM(COALESCE(lq.items, 0)) as items,
+                SUM(o.final_offer_cash) as paid,
+                SUM(CASE WHEN o.calculated_cash_total > 0 THEN o.final_offer_cash ELSE 0 END) as priced_paid,
+                SUM(CASE WHEN o.calculated_cash_total > 0 THEN o.calculated_cash_total ELSE 0 END) as priced_calc,
+                SUM(CASE WHEN o.calculated_cash_total > 0 THEN 1 ELSE 0 END) as priced_offers,
+                SUM(CASE WHEN o.calculated_cash_total > 0 AND o.final_offer_cash > o.calculated_cash_total * 1.001 THEN 1 ELSE 0 END) as over_calc_offers")
+            ->get();
+
+        return $rows->map(function ($r) {
+            $items = (float) $r->items;
+            $paid = (float) $r->paid;
+            return [
+                'name' => trim($r->name) !== '' ? trim($r->name) : ($r->username ?: 'User #' . $r->created_by),
+                'offers' => (int) $r->offers,
+                'items' => $items,
+                'paid' => $paid,
+                'avg_per_item' => $items > 0 ? $paid / $items : null,
+                'avg_per_offer' => $r->offers > 0 ? $paid / $r->offers : null,
+                'pct_of_calc' => (float) $r->priced_calc > 0 ? (float) $r->priced_paid / (float) $r->priced_calc : null,
+                'priced_offers' => (int) $r->priced_offers,
+                'over_calc_offers' => (int) $r->over_calc_offers,
+            ];
+        })->sortBy(function ($b) {
+            return $b['pct_of_calc'] ?? 99;
+        })->values()->all();
     }
 
     /**

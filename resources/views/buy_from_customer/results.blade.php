@@ -135,5 +135,48 @@
             </p>
         </div>
     </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border">
+            <h3 class="box-title">By buyer</h3>
+            <small class="text-muted" style="margin-left:8px;">Employee who wrote the buy · same dates and store as above · all amounts in cash terms</small>
+        </div>
+        <div class="box-body table-responsive">
+            <table class="table table-bordered table-striped table-condensed">
+                <thead>
+                    <tr>
+                        <th>Buyer</th>
+                        <th class="text-right">Buys</th>
+                        <th class="text-right">Items</th>
+                        <th class="text-right">Paid</th>
+                        <th class="text-right">Avg / buy</th>
+                        <th class="text-right" title="Depends on what they buy — CD lots vs. turntables">Avg / item</th>
+                        <th class="text-right" title="Final paid ÷ calculator value, on buys the calculator priced. The form's default final offer is 95%.">Paid % of calculator</th>
+                        <th class="text-right" title="Buys where the final price was above the calculator value">Buys over calculator</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($data['buyers'] as $b)
+                        <tr>
+                            <td>{{ $b['name'] }}</td>
+                            <td class="text-right">{{ $num($b['offers']) }}</td>
+                            <td class="text-right">{{ $num($b['items']) }}</td>
+                            <td class="text-right">{{ $money($b['paid']) }}</td>
+                            <td class="text-right">{{ $money($b['avg_per_offer']) }}</td>
+                            <td class="text-right">{{ $money($b['avg_per_item']) }}</td>
+                            <td class="text-right">{{ $pct($b['pct_of_calc']) }} <small class="text-muted">({{ $b['priced_offers'] }} buys)</small></td>
+                            <td class="text-right">{{ $b['over_calc_offers'] }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="8" class="text-center text-muted">No accepted buys in this range.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+            <p class="text-muted small">
+                Sorted by paid % of calculator, lowest first. That's the fair comparison: avg per item mostly
+                reflects what a buyer happens to buy, not how they negotiate.
+            </p>
+        </div>
+    </div>
 </section>
 @endsection
