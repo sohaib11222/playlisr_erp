@@ -9478,7 +9478,9 @@ class SellPosController extends Controller
             if ($amount <= 0) {
                 continue;
             }
-            $exists = GiftCard::where('business_id', $transaction->business_id)->where('card_number', $code)->exists();
+            // withTrashed: deleted cards keep their code (unique index), so
+            // a deleted code can't be reused either.
+            $exists = GiftCard::withTrashed()->where('business_id', $transaction->business_id)->where('card_number', $code)->exists();
             if ($exists) {
                 // Taken since the register showed it (two registers, same
                 // second). Keep the sale; the card needs a new code by hand.

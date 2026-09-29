@@ -61,7 +61,7 @@ class GiftCard extends Model
             }
             shuffle($chars);
             $card_number = implode('', $chars);
-        } while (self::where('business_id', $business_id)
+        } while (self::withTrashed()->where('business_id', $business_id)
             ->where('card_number', $card_number)
             ->exists());
 
