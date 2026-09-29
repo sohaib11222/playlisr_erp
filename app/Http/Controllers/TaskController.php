@@ -387,9 +387,25 @@ class TaskController extends Controller
         $assignedToMe = !empty($request->input('assigned_to_me'));
         $storeLabels = $this->availableStores();
         $store = $this->resolveStore($request, $storeLabels);
+        $search = trim((string) $request->input('q', ''));
 
         $query = WeeklyTask::with(['creator', 'startedBy', 'completedBy', 'assignees', 'notes.author'])
             ->where('business_id', $business_id);
+
+        if ($search !== '') {
+            // Matches task name, description, notes, or an assignee's name.
+            $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                    ->orWhere('description', 'like', $like)
+                    ->orWhereHas('notes', function ($n) use ($like) {
+                        $n->where('note', 'like', $like);
+                    })
+                    ->orWhereHas('assignees', function ($a) use ($like) {
+                        $a->whereRaw("CONCAT_WS(' ', users.first_name, users.last_name) LIKE ?", [$like]);
+                    });
+            });
+        }
 
         if (!empty($type)) {
             $query->where('task_type', $type);
@@ -422,7 +438,7 @@ class TaskController extends Controller
         $priorityLabels = self::PRIORITY_LABELS;
         $canToggleStore = $this->isAdmin();
 
-        return view('tasks.index', compact('tasks', 'type', 'status', 'priority', 'assignedToMe', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
+        return view('tasks.index', compact('tasks', 'search', 'type', 'status', 'priority', 'assignedToMe', 'store', 'storeLabels', 'priorityLabels', 'canToggleStore'));
     }
 
     /**

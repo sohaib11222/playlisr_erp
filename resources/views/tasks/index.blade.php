@@ -19,8 +19,9 @@
 .as-detail form { display: flex; gap: 6px; margin-top: 8px; max-width: 520px; }
 .as-detail input[type=text] { flex: 1; border: 1px solid #edeae9; border-radius: 6px; padding: 5px 10px; font-size: 13px; }
 .as-detail button[type=submit] { border: 0; background: #4573d2; color: #fff; border-radius: 6px; padding: 5px 12px; font-size: 13px; }
+.as-search { width: 200px !important; padding: 0 10px !important; }
 .as-check-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #1e1f21; margin: 0; font-weight: 400; cursor: pointer; }
-@media (max-width: 767px) { .as-all .as-row { grid-template-columns: minmax(0, 1fr) auto; } .as-detail { padding-left: 16px; } }
+@media (max-width: 767px) { .as-search { width: 100% !important; } .as-all .as-row { grid-template-columns: minmax(0, 1fr) auto; } .as-detail { padding-left: 16px; } }
 </style>
 
 <section class="content">
@@ -55,6 +56,7 @@
         </div>
         <form method="GET" action="{{ action('TaskController@index') }}" class="as-tools">
             <input type="hidden" name="status" value="{{ $status ?: 'all' }}">
+            <input type="search" name="q" value="{{ $search }}" class="as-filter as-search" placeholder="Search tasks" aria-label="Search tasks">
             @if($canToggleStore)
                 <select name="store" class="as-filter" onchange="this.form.submit()">
                     <option value="" @if(!$store) selected @endif>All stores</option>
