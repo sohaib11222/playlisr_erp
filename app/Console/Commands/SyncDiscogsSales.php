@@ -144,8 +144,10 @@ class SyncDiscogsSales extends Command
         // Log unconditionally: the Slack webhook may not be configured,
         // and a failure that only whispers is the whole problem here.
         \Log::error('Discogs sales sync FAILED: ' . $reason);
+        $url = $this->slackWebhook();
+        if ($url === '') return;
         try {
-            \App\Utils\RegisterReconUtil::postToSlack(
+            $this->postSlack($url,
                 ":rotating_light: *Discogs sales sync failed* — " . $reason
                 . "\nNo Discogs orders are reaching the ERP, so that stock is not being decremented."
                 . "\nFix the token at Business Settings > Integrations, then backfill at /admin/channel-sales-sync."
@@ -153,6 +155,49 @@ class SyncDiscogsSales extends Command
         } catch (\Throwable $e) {
             \Log::warning('discogs sync failure alert could not be sent: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Any configured outbound Slack webhook, in preference order: the
+     * register-recon setting, then the #shift-notes one (.env wins there).
+     * The ERP has several webhooks but only these two post TO Slack — the
+     * Quo/Instagram ones are inbound and the Drive one is not Slack. Falling
+     * back means the alert still lands if only one of them is filled in.
+     */
+    private function slackWebhook(): string
+    {
+        try {
+            $w = \App\Utils\RegisterReconUtil::webhook();
+            if ($w !== '') return $w;
+        } catch (\Throwable $e) {
+        }
+        $env = trim((string) config('nivessa.shift_notes_slack_webhook', ''));
+        if ($env !== '') return $env;
+        try {
+            $file = storage_path('app/shift-notes/settings.json');
+            if (is_file($file)) {
+                $data = json_decode((string) file_get_contents($file), true) ?: [];
+                return trim((string) ($data['slack_webhook'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
+
+    /** POST plain text to a Slack webhook. */
+    private function postSlack(string $url, string $text): void
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
     }
 
     private function orderLines(array $items, $orderTotal)
