@@ -39,6 +39,28 @@
                 <button id="dg-commit" class="btn btn-primary btn-lg" data-source="discogs">Commit</button>
             </div>
         </div>
+
+        <div class="box box-solid">
+            <div class="box-header"><h3 class="box-title">Failure alerts</h3></div>
+            <div class="box-body">
+                <p class="text-muted" style="margin-top:0;">
+                    If a sync can't reach Discogs or nivessa.com it posts here, logs an error and exits non-zero.
+                    Point this at a channel you watch - not #shift-notes.
+                </p>
+                @if (session('status'))
+                    <div class="alert alert-info" style="padding:6px 10px;">{{ session('status') }}</div>
+                @endif
+                <form method="POST" action="/admin/channel-sales-sync/webhook">
+                    @csrf
+                    <div class="form-group">
+                        <label>Slack webhook URL</label>
+                        <input type="text" name="alert_webhook" class="form-control"
+                               placeholder="{{ $masked !== '' ? 'Saved: ' . $masked . ' - paste a new one to replace' : 'https://hooks.slack.com/services/...' }}">
+                    </div>
+                    <button class="btn btn-default">Save</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <div class="col-md-7">

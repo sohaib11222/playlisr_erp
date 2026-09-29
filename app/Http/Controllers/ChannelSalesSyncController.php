@@ -19,7 +19,36 @@ class ChannelSalesSyncController extends Controller
 {
     public function index()
     {
-        return view('admin.channel_sales_sync');
+        $webhook = self::alertWebhook();
+        $masked = $webhook !== '' ? '…' . substr($webhook, -10) : '';
+        return view('admin.channel_sales_sync', compact('masked'));
+    }
+
+    /** Where the sync-failure alerts post. Owned by this page, not by
+     *  register-recon or #shift-notes — a failed sync is not a cashier note. */
+    public static function alertWebhook(): string
+    {
+        try {
+            $file = storage_path('app/channel-sales-sync/settings.json');
+            if (is_file($file)) {
+                $data = json_decode((string) file_get_contents($file), true) ?: [];
+                return trim((string) ($data['alert_webhook'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
+
+    public function saveWebhook(Request $request)
+    {
+        $url = trim((string) $request->input('alert_webhook'));
+        if ($url !== '' && !preg_match('~^https://hooks\.slack\.com/~i', $url)) {
+            return back()->with('status', 'That does not look like a Slack webhook URL.');
+        }
+        $dir = storage_path('app/channel-sales-sync');
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        file_put_contents($dir . '/settings.json', json_encode(['alert_webhook' => $url], JSON_PRETTY_PRINT));
+        return back()->with('status', $url === '' ? 'Alert webhook cleared.' : 'Alert webhook saved.');
     }
 
     public function runWeb(Request $request)

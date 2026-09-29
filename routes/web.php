@@ -1093,6 +1093,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/channel-sales-sync', 'ChannelSalesSyncController@index');
     Route::post('/admin/channel-sales-sync/web', 'ChannelSalesSyncController@runWeb');
     Route::post('/admin/channel-sales-sync/discogs', 'ChannelSalesSyncController@runDiscogs');
+    Route::post('/admin/channel-sales-sync/webhook', 'ChannelSalesSyncController@saveWebhook');
 
     // ABC import — externally-computed sales-based classification overrides
     // the live inventory-value ABC used in ICA + ABC report.

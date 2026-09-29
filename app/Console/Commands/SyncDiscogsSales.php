@@ -158,30 +158,17 @@ class SyncDiscogsSales extends Command
     }
 
     /**
-     * Any configured outbound Slack webhook, in preference order: the
-     * register-recon setting, then the #shift-notes one (.env wins there).
-     * The ERP has several webhooks but only these two post TO Slack — the
-     * Quo/Instagram ones are inbound and the Drive one is not Slack. Falling
-     * back means the alert still lands if only one of them is filled in.
+     * Where sync-failure alerts post. Set on this page's own settings, NOT
+     * register-recon and NOT #shift-notes — a failed sync is not a cashier
+     * note and does not belong in their channel. Sarah 2026-09-28.
      */
     private function slackWebhook(): string
     {
         try {
-            $w = \App\Utils\RegisterReconUtil::webhook();
-            if ($w !== '') return $w;
+            return \App\Http\Controllers\ChannelSalesSyncController::alertWebhook();
         } catch (\Throwable $e) {
+            return '';
         }
-        $env = trim((string) config('nivessa.shift_notes_slack_webhook', ''));
-        if ($env !== '') return $env;
-        try {
-            $file = storage_path('app/shift-notes/settings.json');
-            if (is_file($file)) {
-                $data = json_decode((string) file_get_contents($file), true) ?: [];
-                return trim((string) ($data['slack_webhook'] ?? ''));
-            }
-        } catch (\Throwable $e) {
-        }
-        return '';
     }
 
     /** POST plain text to a Slack webhook. */
