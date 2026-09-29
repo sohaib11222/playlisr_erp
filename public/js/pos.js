@@ -5695,3 +5695,46 @@ $(document).on('change', '#add_plastic_bag', function() {
         }
     }
 });
+
+// Paying with a gift card (payment method custom_pay_2 = "Gift Card"): ask
+// for the card code, check the balance, put the code in the row's
+// Transaction No. box and cap the amount at the balance. The balance is
+// taken off the card when the sale is finalized (SellPosController::
+// redeemGiftCardPayments), so cashiers never edit the card by hand.
+$(document).on('change', '.payment_types_dropdown', function () {
+    try {
+        if ($(this).val() !== 'custom_pay_2') return;
+        var $row = $(this).closest('.payment_row');
+        if (!$row.length) $row = $(this).closest('.row').parent();
+        var idx = $row.find('.payment_row_index').val();
+        var $codeInput = $row.find('input[name="payment[' + idx + '][transaction_no_2]"]');
+        var $amount = $row.find('input.payment-amount');
+        var code = String(window.prompt('Gift card code?', $codeInput.val() || '') || '').trim().toUpperCase();
+        if (!code) return;
+        $.ajax({
+            url: '/sells/pos/lookup-gift-card',
+            data: { card_number: code },
+            dataType: 'json',
+            success: function (r) {
+                if (!r || !r.success) {
+                    toastr.error((r && r.msg) || 'Gift card not found');
+                    $codeInput.val('');
+                    return;
+                }
+                var balance = parseFloat(r.data.balance) || 0;
+                $codeInput.val(code).attr('placeholder', 'Gift card code');
+                var current = __read_number($amount) || 0;
+                if (current > balance || current <= 0) {
+                    __write_number($amount, balance);
+                    $amount.trigger('change');
+                }
+                toastr.success('Gift card ' + code + ': $' + balance.toFixed(2) + ' available');
+            },
+            error: function () {
+                toastr.error('Could not check that gift card. Try again.');
+            }
+        });
+    } catch (e) {
+        console.error('Gift card payment lookup failed', e);
+    }
+});

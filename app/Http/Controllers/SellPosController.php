@@ -5437,6 +5437,13 @@ class SellPosController extends Controller
                     \Log::warning('pos_gift_card_activate_failed: ' . $e->getMessage());
                 }
 
+                // Paid with a gift card: take the amount off the card.
+                try {
+                    $this->redeemGiftCardPayments($transaction, $input['payment'] ?? []);
+                } catch (\Exception $e) {
+                    \Log::warning('pos_gift_card_redeem_failed: ' . $e->getMessage());
+                }
+
                 DB::commit();
 
                 // Nivessa (real-time stock): the sale is committed, so push its
@@ -9463,6 +9470,50 @@ class SellPosController extends Controller
                 'notes' => 'Sold at the register, invoice ' . $transaction->invoice_no,
                 'created_by' => auth()->user()->id ?? $transaction->created_by,
             ]);
+        }
+    }
+
+    // Deducts each "Gift Card" payment (custom_pay_2) from the card whose
+    // code the register put in that payment's Transaction No. box. Row-locks
+    // the card like the website's charge endpoint so a web order and a
+    // register sale can't spend the same balance. Never throws into the sale.
+    private function redeemGiftCardPayments($transaction, array $payments = [])
+    {
+        if ($transaction->status !== 'final' || !Schema::hasTable('gift_cards')) {
+            return;
+        }
+        foreach ($payments as $pay) {
+            if (($pay['method'] ?? '') !== 'custom_pay_2') {
+                continue;
+            }
+            $code = strtoupper(trim((string) ($pay['transaction_no_2'] ?? '')));
+            $amount = round($this->transactionUtil->num_uf($pay['amount'] ?? 0), 2);
+            if ($code === '' || $amount <= 0) {
+                \Log::warning('pos_gift_card_payment_no_code', ['transaction_id' => $transaction->id]);
+                continue;
+            }
+            \DB::transaction(function () use ($transaction, $code, $amount) {
+                $card = GiftCard::where('business_id', $transaction->business_id)
+                    ->where('card_number', $code)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$card) {
+                    \Log::warning('pos_gift_card_payment_not_found', ['code' => $code, 'transaction_id' => $transaction->id]);
+                    return;
+                }
+                $charge = min($amount, (float) $card->balance);
+                if ($charge < $amount) {
+                    \Log::warning('pos_gift_card_payment_short', ['code' => $code, 'wanted' => $amount, 'had' => $card->balance, 'transaction_id' => $transaction->id]);
+                }
+                $card->balance = round((float) $card->balance - $charge, 2);
+                if ($card->balance <= 0) {
+                    $card->balance = 0;
+                    $card->status = 'used';
+                }
+                $stamp = now()->toDateTimeString();
+                $card->notes = trim(($card->notes ?? '') . "\n[{$stamp}] used {$charge} at the register, invoice {$transaction->invoice_no}");
+                $card->save();
+            });
         }
     }
 
