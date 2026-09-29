@@ -337,6 +337,22 @@
 
     {!! Form::open(['url' => action('ProductController@massStore'), 'method' => 'post', 'id' => 'mass_create_form', 'enctype' => 'multipart/form-data' ]) !!}
 
+    {{-- Optional: link these products to the buy-from-customer record they came
+         from, so Buy Results can follow them to their sales. Blank = normal
+         Mass Add (old collections with no buy number). --}}
+    <div class="box box-solid" id="bfc_buy_box" style="margin-bottom: 20px;">
+        <div class="box-body">
+            <div class="form-inline">
+                <label for="bfc_buy_number" style="margin-right:6px;"><i class="fa fa-archive"></i> Buy record # <small class="text-muted">(optional)</small></label>
+                <input type="text" id="bfc_buy_number" class="form-control input-sm" placeholder="e.g. BFC-000123" style="width:160px;">
+                <button type="button" id="bfc_buy_load" class="btn btn-default btn-sm">Load buy</button>
+                <button type="button" id="bfc_buy_clear" class="btn btn-link btn-sm" style="display:none;">Clear</button>
+                <input type="hidden" name="buy_offer_id" id="bfc_buy_offer_id" value="">
+            </div>
+            <div id="bfc_buy_summary" style="display:none; margin-top:8px;"></div>
+        </div>
+    </div>
+
     <!-- Default Cost Prices reference (collapsed by default) -->
     <div class="box box-info collapsed-box" style="margin-bottom: 20px;">
         <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
@@ -3257,6 +3273,177 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         }
     });
 </script>
+
+<script>
+// Buy record # on Mass Add. Loading a buy adds a "From buy lot" dropdown to
+// every row (existing and new — any of the add paths). Picking a lot fills the
+// row's Purchase Price with what we paid per unit for that lot; new rows
+// default to the last lot used, so a box of one genre needs no clicks per row.
+// On save, massStore() tags each new product with the buy + lot.
+(function () {
+    var lookupUrl = "{{ route('product.massCreate.buyLookup') }}";
+    var fetchUrl = "{{ url('product/mass-create/fetch-discogs-release') }}/";
+    var buy = null;
+    var lastLot = '';
+
+    function money(n) { return '$' + Number(n || 0).toFixed(2); }
+    function esc(t) { return $('<div>').text(t == null ? '' : String(t)).html(); }
+    function lotById(id) {
+        if (!buy) return null;
+        for (var i = 0; i < buy.lots.length; i++) {
+            if (String(buy.lots[i].id) === String(id)) return buy.lots[i];
+        }
+        return null;
+    }
+    function lotName(l) {
+        return l.title ? (l.individual ? l.title : l.type + ' — ' + l.title) : l.type;
+    }
+
+    function setRowCost($row, lot) {
+        if (!lot) return;
+        $row.find('input[name*="[single_dpp_inc_tax]"]').first().val(Number(lot.unit_cost).toFixed(4));
+    }
+
+    // fresh = row was just added (its cost is only a category default, safe to
+    // replace); existing rows keep any cost already typed.
+    function decorateRow($row, fresh) {
+        if (!buy || !$row.hasClass('product-row') || $row.find('.bfc-lot-select').length) return;
+        var idx = $row.attr('data-row-index');
+        var html = '<select name="products[' + esc(idx) + '][buy_offer_line_id]" class="form-control input-sm bfc-lot-select" style="margin-top:4px;" title="Which lot of the buy this item came from">'
+            + '<option value="">Not from this buy</option>';
+        buy.lots.forEach(function (l) {
+            html += '<option value="' + l.id + '">' + esc(lotName(l)) + ' · ' + money(l.unit_cost) + '</option>';
+        });
+        html += '</select>';
+        var $sel = $(html);
+        $row.find('td.price-col').first().append($sel);
+        if (lastLot) {
+            $sel.val(lastLot);
+            var $pp = $row.find('input[name*="[single_dpp_inc_tax]"]').first();
+            var cur = parseFloat(($pp.val() || '').toString().replace(/,/g, ''));
+            if (fresh || isNaN(cur) || cur <= 0) setRowCost($row, lotById(lastLot));
+        }
+    }
+
+    $(document).on('change', '#product_rows_container .bfc-lot-select', function () {
+        lastLot = $(this).val();
+        setRowCost($(this).closest('.product-row'), lotById(lastLot));
+    });
+
+    var container = document.getElementById('product_rows_container');
+    if (container && window.MutationObserver) {
+        new MutationObserver(function (muts) {
+            muts.forEach(function (m) {
+                Array.prototype.forEach.call(m.addedNodes, function (n) {
+                    if (n.nodeType === 1) decorateRow($(n), true);
+                });
+            });
+        }).observe(container, { childList: true });
+    }
+
+    function renderSummary() {
+        var o = buy.offer;
+        var html = '<div class="alert alert-info" style="margin:0;">'
+            + '<strong>' + esc(o.number) + '</strong>'
+            + (o.seller ? ' · ' + esc(o.seller) : '')
+            + (o.accepted_at ? ' · bought ' + esc(o.accepted_at) : '')
+            + (o.store ? ' at ' + esc(o.store) : '')
+            + '. New rows are tagged with this buy; pick the lot on each row (it remembers the last one).'
+            + '<table class="table table-condensed" style="margin:8px 0 0; background:transparent;"><thead><tr>'
+            + '<th>Lot</th><th class="text-right">Paid / unit</th><th class="text-right">Listed so far</th></tr></thead><tbody>';
+        var individual = 0;
+        buy.lots.forEach(function (l) {
+            html += '<tr><td>' + esc(lotName(l)) + (l.grade ? ' <small class="text-muted">' + esc(l.grade) + '</small>' : '') + '</td>'
+                + '<td class="text-right">' + money(l.unit_cost) + '</td>'
+                + '<td class="text-right">' + l.listed + ' of ' + Number(l.qty) + '</td></tr>';
+            if (l.individual && (l.title || l.discogs_release_id) && l.listed < l.qty) individual++;
+        });
+        html += '</tbody></table>';
+        if (individual) {
+            html += '<button type="button" id="bfc_add_individual" class="btn btn-primary btn-sm" style="margin-top:6px;">'
+                + '<i class="fa fa-plus"></i> Add the ' + individual + ' individually entered record' + (individual === 1 ? '' : 's') + ' as rows</button>'
+                + ' <span id="bfc_add_status" class="text-muted small"></span>';
+        }
+        html += '</div>';
+        $('#bfc_buy_summary').html(html).show();
+    }
+
+    $('#bfc_buy_load').on('click', function () {
+        var val = $.trim($('#bfc_buy_number').val());
+        if (!val) return;
+        var $btn = $(this).prop('disabled', true);
+        $.getJSON(lookupUrl, { buy: val }).done(function (resp) {
+            if (!resp || !resp.success) {
+                toastr.error((resp && resp.msg) || 'Could not load that buy.');
+                return;
+            }
+            clearBuy();
+            buy = resp;
+            // Default new rows to the first bulk lot (most rows in a big box).
+            var firstBulk = buy.lots.filter(function (l) { return !l.individual; })[0];
+            lastLot = firstBulk ? String(firstBulk.id) : '';
+            $('#bfc_buy_offer_id').val(buy.offer.id);
+            $('#bfc_buy_number').val(buy.offer.number).prop('readonly', true);
+            $('#bfc_buy_clear').show();
+            renderSummary();
+            $('#product_rows_container .product-row').each(function () { decorateRow($(this), false); });
+        }).fail(function () {
+            toastr.error('Could not load that buy.');
+        }).always(function () { $btn.prop('disabled', false); });
+    });
+    $('#bfc_buy_number').on('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); $('#bfc_buy_load').click(); }
+    });
+
+    function clearBuy() {
+        buy = null;
+        lastLot = '';
+        $('#bfc_buy_offer_id').val('');
+        $('#bfc_buy_number').prop('readonly', false);
+        $('#bfc_buy_clear').hide();
+        $('#bfc_buy_summary').hide().empty();
+        $('#product_rows_container .bfc-lot-select').remove();
+    }
+    $('#bfc_buy_clear').on('click', function () { clearBuy(); $('#bfc_buy_number').val('').focus(); });
+
+    // One row per not-yet-listed copy of each individually entered record,
+    // through the same row builder the bulk Discogs add uses. Sequential to
+    // stay under Discogs' rate limit.
+    $(document).on('click', '#bfc_add_individual', function () {
+        var $btn = $(this).prop('disabled', true);
+        var queue = [];
+        buy.lots.forEach(function (l) {
+            if (!l.individual || !(l.title || l.discogs_release_id)) return;
+            for (var i = l.listed; i < l.qty; i++) queue.push(l);
+        });
+        var done = 0;
+        function next() {
+            if (!queue.length) {
+                $('#bfc_add_status').text('Added ' + done + ' row' + (done === 1 ? '' : 's') + '. Check each one and set the selling price.');
+                return;
+            }
+            var l = queue.shift();
+            var idx = nextMassRowIndex();
+            $('#bfc_add_status').text('Adding ' + (done + 1) + '…');
+            var addRow = function (data) {
+                return addRowFromDiscogsData(data, idx, '').then(function () {
+                    var $row = $('#product_rows_container .product-row[data-row-index="' + idx + '"]');
+                    $row.find('.bfc-lot-select').val(String(l.id));
+                    setRowCost($row, l);
+                    done++;
+                    next();
+                });
+            };
+            if (l.discogs_release_id) {
+                $.getJSON(fetchUrl + encodeURIComponent(l.discogs_release_id)).done(function (resp) {
+                    addRow(resp && resp.success ? resp.data : { title: l.title });
+                }).fail(function () { addRow({ title: l.title }); });
+            } else {
+                addRow({ title: l.title });
+            }
+        }
+        next();
+    });
+})();
+</script>
 @endsection
-
-

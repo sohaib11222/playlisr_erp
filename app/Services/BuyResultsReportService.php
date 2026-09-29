@@ -4,17 +4,17 @@ namespace App\Services;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Buy results: for every accepted buy-from-customer line, what we paid vs.
  * what it has actually sold for and how fast. Read-only.
  *
- * The chain is offer line → purchase_line_id (set when the offer is accepted
- * and materialized) → transaction_sell_lines_purchase_lines (the POS's own
- * sale-to-purchase mapping, same one the Fastest Selling Genres widget uses)
- * → the sale. Lines with no title never get a purchase line, and a purchase
- * that is still draft has no stock to sell yet, so the report also shows how
- * much of the buying it can actually see ("coverage").
+ * Bought items are followed to sales two ways (see build()): the placeholder
+ * products the buy form creates on accept, and products listed on Mass Add
+ * with the buy's record # — the path staff actually use. Items that haven't
+ * been listed yet count as bought-but-unsold, so the report also shows how
+ * much of the buying it can see ("coverage").
  *
  * Used to check the calculator's multipliers against reality: "paid % of sale
  * price" per group is the number the standard/grade multipliers are trying
@@ -60,11 +60,16 @@ class BuyResultsReportService
             $groupBy = 'item_type';
         }
 
-        // Sales per purchase line, net of returns. Revenue is after discount
-        // and before tax (unit_price_inc_tax - item_tax, both per unit). Days
-        // are carried as a quantity-weighted sum of TO_DAYS(sale date) so the
-        // outer query can subtract the accept day without a second join.
-        $sales = DB::table('transaction_sell_lines_purchase_lines as tslp')
+        // Two ways a bought item reaches a sale:
+        //  1. the placeholder product the buy form creates on accept (offer
+        //     line → purchase_line_id → the POS's sale-to-purchase mapping);
+        //  2. a product listed on Mass Add with this buy's record # (tagged
+        //     products.buy_offer_line_id) — how boxes actually get processed.
+        // Revenue is after discount and before tax (unit_price_inc_tax −
+        // item_tax, both per unit), net of returns. Days are carried as a
+        // quantity-weighted sum of TO_DAYS(sale date) so the accept day can be
+        // subtracted per line afterwards.
+        $placeholderSales = DB::table('transaction_sell_lines_purchase_lines as tslp')
             ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
             ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
             ->where('sale.type', 'sell')
@@ -78,9 +83,7 @@ class BuyResultsReportService
         $q = DB::table('buy_customer_offer_lines as l')
             ->join('buy_customer_offers as o', 'o.id', '=', 'l.offer_id')
             ->leftJoin('business_locations as bl', 'bl.id', '=', 'o.location_id')
-            ->leftJoin('purchase_lines as pl', 'pl.id', '=', 'l.purchase_line_id')
-            ->leftJoin('transactions as pt', 'pt.id', '=', 'pl.transaction_id')
-            ->leftJoinSub($sales, 's', 's.purchase_line_id', '=', 'l.purchase_line_id')
+            ->leftJoinSub($placeholderSales, 's', 's.purchase_line_id', '=', 'l.purchase_line_id')
             ->where('o.business_id', $business_id)
             ->where('o.status', 'accepted')
             ->whereBetween(DB::raw('DATE(COALESCE(o.accepted_at, o.created_at))'), [$start, $end]);
@@ -88,33 +91,64 @@ class BuyResultsReportService
             $q->where('o.location_id', $location_id);
         }
 
-        $rows = $q->selectRaw('l.item_type, l.condition_grade, l.disposition, l.discogs_median_price,
-                l.quantity as line_qty, l.purchase_line_id,
-                bl.name as store_name, pt.status as purchase_status,
-                pl.quantity as pl_qty, pl.purchase_price,
+        $select = 'l.id as line_id, l.offer_id, l.item_type, l.condition_grade, l.disposition, l.discogs_median_price,
+                l.quantity as line_qty, l.purchase_line_id, l.line_cash_total, l.line_credit_total,
+                o.payout_type, o.calculated_cash_total, o.calculated_credit_total, o.final_offer_cash, o.final_offer_credit,
+                bl.name as store_name,
                 COALESCE(s.sold_qty, 0) as sold_qty,
                 COALESCE(s.revenue, 0) as revenue,
                 COALESCE(s.sale_day_sum, 0) as sale_day_sum,
-                TO_DAYS(COALESCE(o.accepted_at, o.created_at)) as accept_day')
-            ->get();
+                TO_DAYS(COALESCE(o.accepted_at, o.created_at)) as accept_day';
+
+        if (Schema::hasColumn('products', 'buy_offer_line_id')) {
+            $taggedSales = DB::table('transaction_sell_lines as tsl')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+                ->whereNotNull('p.buy_offer_line_id')
+                ->where('sale.type', 'sell')
+                ->where('sale.status', 'final')
+                ->groupBy('p.buy_offer_line_id')
+                ->selectRaw('p.buy_offer_line_id,
+                    SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as sold_qty,
+                    SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (COALESCE(tsl.unit_price_inc_tax, 0) - COALESCE(tsl.item_tax, 0))) as revenue,
+                    SUM((tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * TO_DAYS(sale.transaction_date)) as sale_day_sum');
+            $taggedListed = DB::table('products')
+                ->whereNotNull('buy_offer_line_id')
+                ->groupBy('buy_offer_line_id')
+                ->selectRaw('buy_offer_line_id, COUNT(*) as listed');
+            $q->leftJoinSub($taggedSales, 'ts', 'ts.buy_offer_line_id', '=', 'l.id')
+                ->leftJoinSub($taggedListed, 'tl', 'tl.buy_offer_line_id', '=', 'l.id');
+            $select .= ', COALESCE(ts.sold_qty, 0) as tagged_sold_qty,
+                COALESCE(ts.revenue, 0) as tagged_revenue,
+                COALESCE(ts.sale_day_sum, 0) as tagged_sale_day_sum,
+                COALESCE(tl.listed, 0) as listed';
+        } else {
+            $select .= ', 0 as tagged_sold_qty, 0 as tagged_revenue, 0 as tagged_sale_day_sum, 0 as listed';
+        }
+
+        $rows = $q->selectRaw($select)->get();
 
         $today = (int) DB::selectOne('SELECT TO_DAYS(CURDATE()) as d')->d;
         $labels = $this->itemTypeLabels();
+        $unitCosts = $this->unitCosts($rows);
 
         $groups = [];
-        $coverage = ['units' => 0.0, 'linked_units' => 0.0, 'received_units' => 0.0];
+        $coverage = ['units' => 0.0, 'followed_units' => 0.0, 'listed_units' => 0.0];
         $totals = $this->emptyGroup('All accepted buys');
 
         foreach ($rows as $r) {
             $lineQty = (float) $r->line_qty;
             $coverage['units'] += $lineQty;
-            if (empty($r->purchase_line_id)) {
+            $coverage['listed_units'] += min($lineQty, (float) $r->listed);
+            if (empty($r->purchase_line_id) && (int) $r->listed === 0) {
                 continue;
             }
-            $coverage['linked_units'] += $lineQty;
-            if ($r->purchase_status === 'received') {
-                $coverage['received_units'] += $lineQty;
-            }
+            $coverage['followed_units'] += $lineQty;
+
+            $r->unit_cost = $unitCosts[$r->line_id] ?? 0.0;
+            $r->sold_qty = (float) $r->sold_qty + (float) $r->tagged_sold_qty;
+            $r->revenue = (float) $r->revenue + (float) $r->tagged_revenue;
+            $r->sale_day_sum = (float) $r->sale_day_sum + (float) $r->tagged_sale_day_sum;
 
             $key = $this->groupKey($groupBy, $r, $labels);
             if (!isset($groups[$key])) {
@@ -143,12 +177,46 @@ class BuyResultsReportService
         ];
     }
 
+    /**
+     * Per-unit cost of each line: its share of the negotiated payout, the same
+     * split BuyCustomerOffer::lineUnitCosts() and the accept step use. Offers
+     * the calculator never priced spread the payout evenly over all units.
+     *
+     * @return array<int, float>  keyed by line id
+     */
+    protected function unitCosts($rows)
+    {
+        $offerQty = [];
+        foreach ($rows as $r) {
+            $offerQty[$r->offer_id] = ($offerQty[$r->offer_id] ?? 0) + max(0, (float) $r->line_qty);
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $qty = (float) $r->line_qty;
+            if ($qty <= 0) {
+                $out[$r->line_id] = 0.0;
+                continue;
+            }
+            $isCredit = $r->payout_type === 'store_credit';
+            $calc = (float) ($isCredit ? $r->calculated_credit_total : $r->calculated_cash_total);
+            $final = (float) ($isCredit ? $r->final_offer_credit : $r->final_offer_cash);
+            if ($calc > 0) {
+                $line = (float) ($isCredit ? $r->line_credit_total : $r->line_cash_total);
+                $out[$r->line_id] = $line * ($final / $calc) / $qty;
+            } else {
+                $out[$r->line_id] = $offerQty[$r->offer_id] > 0 ? $final / $offerQty[$r->offer_id] : 0.0;
+            }
+        }
+        return $out;
+    }
+
     protected function emptyGroup($label)
     {
         return [
             'label' => $label,
             'lines' => 0,
             'units' => 0.0,
+            'listed' => 0.0,
             'paid' => 0.0,
             'sold_units' => 0.0,
             'sold_cost' => 0.0,
@@ -160,13 +228,14 @@ class BuyResultsReportService
 
     protected function addRow(array &$g, $r, $today)
     {
-        $units = (float) $r->pl_qty;
-        $unitPaid = (float) $r->purchase_price;
+        $units = (float) $r->line_qty;
+        $unitPaid = (float) $r->unit_cost;
         $sold = min($units, max(0.0, (float) $r->sold_qty));
         $acceptDay = (int) $r->accept_day;
 
         $g['lines']++;
         $g['units'] += $units;
+        $g['listed'] += min($units, (float) $r->listed);
         $g['paid'] += $units * $unitPaid;
         $g['sold_units'] += $sold;
         $g['sold_cost'] += $sold * $unitPaid;

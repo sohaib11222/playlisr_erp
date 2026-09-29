@@ -4075,6 +4075,25 @@ class ProductController extends Controller
         $createdProducts = [];
         $duplicatesSkipped = [];
         $dupService = app(\App\Services\ProductDuplicateService::class);
+
+        // Optional "Buy record #" from the top of Mass Add: new products get
+        // tagged with the accepted buy (and the lot each row came from) so
+        // Buy Results can follow them to their sales. Blank = old behavior.
+        // A row whose lot isn't on that buy is just left untagged.
+        $buyOffer = null;
+        $buyLotCosts = [];
+        $canTagBuy = \Schema::hasColumn('products', 'buy_offer_line_id');
+        $buyOfferId = \App\BuyCustomerOffer::idFromBuyRecordNumber($request->input('buy_offer_id'));
+        if ($canTagBuy && $buyOfferId) {
+            $buyOffer = \App\BuyCustomerOffer::with('lines')
+                ->where('business_id', $businessId)
+                ->where('status', 'accepted')
+                ->find($buyOfferId);
+            if ($buyOffer) {
+                $buyLotCosts = $buyOffer->lineUnitCosts();
+            }
+        }
+
         $currentRow = null;
         $currentName = null;
         try {
@@ -4144,6 +4163,17 @@ class ProductController extends Controller
 
                 // create product if no product id provided
                 if (empty($product)) {
+                    $buyLotId = null;
+                    if ($buyOffer) {
+                        $rowLot = (int) ($productData['buy_offer_line_id'] ?? 0);
+                        if ($rowLot && array_key_exists($rowLot, $buyLotCosts)) {
+                            $buyLotId = $rowLot;
+                            // Blank/zero cost on a lot row = what we paid for that lot.
+                            if ((float) ($productData['single_dpp_inc_tax'] ?? 0) <= 0) {
+                                $productData['single_dpp_inc_tax'] = $buyLotCosts[$rowLot];
+                            }
+                        }
+                    }
                     // Создание нового продукта с учётом новых полей
                     $product = Product::create([
                         'name'                => $productData['name'],
@@ -4177,6 +4207,11 @@ class ProductController extends Controller
                         $product->save();
                     }
 
+                    if ($buyOffer) {
+                        $product->buy_offer_id = $buyOffer->id;
+                        $product->buy_offer_line_id = $buyLotId;
+                        $product->save();
+                    }
                     // Генерация SKU, если поле пустое
                     if (empty(trim($productData['sku']))) {
                         $generatedSku = $this->productUtil->generateProductSku($product->id);
@@ -4617,6 +4652,80 @@ class ProductController extends Controller
         return view('product.partials.mass_product_row')
             ->with(compact('index', 'categories', 'category_combos', 'brands', 'taxes', 'business_locations'))
             ->render();
+    }
+
+    /**
+     * Mass Add "Buy record #" lookup: the accepted buy-from-customer offer and
+     * its lots (offer lines), each with what we paid per unit and how many
+     * products have been listed from it so far. Rows tagged with a lot carry
+     * that cost and link back to the buy (see massStore / Buy Results).
+     */
+    public function massCreateBuyLookup(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $offerId = \App\BuyCustomerOffer::idFromBuyRecordNumber($request->input('buy'));
+        $offer = $offerId ? \App\BuyCustomerOffer::with(['lines', 'contact', 'location'])
+            ->where('business_id', $business_id)
+            ->find($offerId) : null;
+
+        if (empty($offer)) {
+            return response()->json(['success' => 0, 'msg' => 'No buy record found with that number.']);
+        }
+        if ($offer->status !== 'accepted') {
+            return response()->json(['success' => 0, 'msg' => $offer->buy_record_number . ' was never accepted (' . $offer->status . '), so there is nothing to list from it.']);
+        }
+
+        $listed = [];
+        if (\Schema::hasColumn('products', 'buy_offer_line_id')) {
+            $listed = DB::table('products')
+                ->where('business_id', $business_id)
+                ->where('buy_offer_id', $offer->id)
+                ->whereNotNull('buy_offer_line_id')
+                ->groupBy('buy_offer_line_id')
+                ->selectRaw('buy_offer_line_id, COUNT(*) as n')
+                ->pluck('n', 'buy_offer_line_id')
+                ->all();
+        }
+
+        $labels = [];
+        foreach (app(\App\Services\BuyOfferCalculatorService::class)->getRules()['item_types'] as $key => $cfg) {
+            $labels[$key] = $cfg['label'];
+        }
+        $costs = $offer->lineUnitCosts();
+
+        $lots = [];
+        foreach ($offer->lines as $line) {
+            if ((float) $line->quantity <= 0) {
+                continue;
+            }
+            $releaseId = null;
+            if (preg_match('#/release/(\d+)#', (string) $line->discogs_link, $m) || preg_match('#^\s*(\d+)\s*$#', (string) $line->discogs_link, $m)) {
+                $releaseId = (int) $m[1];
+            }
+            $lots[] = [
+                'id' => $line->id,
+                'type' => $labels[$line->item_type] ?? $line->item_type,
+                'title' => $line->title,
+                'individual' => $line->item_type === 'individual_vinyl',
+                'discogs_release_id' => $releaseId,
+                'grade' => $line->condition_grade,
+                'qty' => (float) $line->quantity,
+                'unit_cost' => $costs[$line->id] ?? 0,
+                'listed' => (int) ($listed[$line->id] ?? 0),
+            ];
+        }
+
+        return response()->json([
+            'success' => 1,
+            'offer' => [
+                'id' => $offer->id,
+                'number' => $offer->buy_record_number,
+                'seller' => optional($offer->contact)->name ?: $offer->seller_name,
+                'accepted_at' => optional($offer->accepted_at)->format('M j, Y'),
+                'store' => optional($offer->location)->name,
+            ],
+            'lots' => $lots,
+        ]);
     }
 
 

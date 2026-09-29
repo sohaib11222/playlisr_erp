@@ -6,8 +6,8 @@
     $pct = function ($v) { return is_null($v) ? '—' : round($v * 100) . '%'; };
     $num = function ($v, $d = 0) { return is_null($v) ? '—' : number_format($v, $d); };
     $cov = $data['coverage'];
-    $linkedPct = $cov['units'] > 0 ? $cov['linked_units'] / $cov['units'] : null;
-    $receivedPct = $cov['units'] > 0 ? $cov['received_units'] / $cov['units'] : null;
+    $followedPct = $cov['units'] > 0 ? $cov['followed_units'] / $cov['units'] : null;
+    $listedPct = $cov['units'] > 0 ? $cov['listed_units'] / $cov['units'] : null;
 @endphp
 
 @section('content')
@@ -50,13 +50,13 @@
         </div>
     </div>
 
-    <div class="alert alert-{{ ($linkedPct ?? 0) >= 0.8 ? 'info' : 'warning' }}">
+    <div class="alert alert-{{ ($followedPct ?? 0) >= 0.8 ? 'info' : 'warning' }}">
         <strong>What this can see:</strong>
         {{ $num($cov['units']) }} units bought in accepted offers.
-        {{ $num($cov['linked_units']) }} ({{ $pct($linkedPct) }}) became inventory the report can follow;
-        {{ $num($cov['received_units']) }} ({{ $pct($receivedPct) }}) are in purchases marked received.
-        Lines with no title never become products, and items still in a draft purchase can't show sales yet,
-        so read low-coverage groups with care.
+        {{ $num($cov['listed_units']) }} ({{ $pct($listedPct) }}) have been listed on Mass Add with their buy record #,
+        and {{ $num($cov['followed_units']) }} ({{ $pct($followedPct) }}) are on lots the report can follow.
+        Only lots with something listed (or entered individually on the buy form) show up below;
+        items listed without a buy record # can't be traced back to what we paid.
     </div>
 
     <div class="box box-solid">
@@ -69,6 +69,7 @@
                     <tr>
                         <th>{{ $group_options[$data['group_by']] }}</th>
                         <th class="text-right">Units bought</th>
+                        <th class="text-right" title="Listed on Mass Add with this buy's record #">Listed</th>
                         <th class="text-right">Paid</th>
                         <th class="text-right">Avg paid / unit</th>
                         <th class="text-right">Units sold</th>
@@ -87,6 +88,7 @@
                         <tr>
                             <td>{{ $g['label'] }}</td>
                             <td class="text-right">{{ $num($g['units']) }}</td>
+                            <td class="text-right">{{ $num($g['listed']) }}</td>
                             <td class="text-right">{{ $money($g['paid']) }}</td>
                             <td class="text-right">{{ $money($g['avg_paid']) }}</td>
                             <td class="text-right">{{ $num($g['sold_units']) }}</td>
@@ -100,7 +102,7 @@
                             <td class="text-right">{{ $num($g['unsold_avg_age']) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="13" class="text-center text-muted">No accepted buys with inventory in this range.</td></tr>
+                        <tr><td colspan="14" class="text-center text-muted">No accepted buys with inventory in this range.</td></tr>
                     @endforelse
                 </tbody>
                 @if(!empty($data['groups']))
@@ -109,6 +111,7 @@
                         <tr style="font-weight:bold;">
                             <td>Total</td>
                             <td class="text-right">{{ $num($t['units']) }}</td>
+                            <td class="text-right">{{ $num($t['listed']) }}</td>
                             <td class="text-right">{{ $money($t['paid']) }}</td>
                             <td class="text-right">{{ $money($t['avg_paid']) }}</td>
                             <td class="text-right">{{ $num($t['sold_units']) }}</td>

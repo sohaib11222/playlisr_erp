@@ -50,6 +50,50 @@ class BuyCustomerOffer extends Model
         return $this->hasMany(\App\BuyCustomerOfferLine::class, 'offer_id')->orderBy('line_order');
     }
 
+    /**
+     * Parse what staff type for a buy record ("BFC-000123", "bfc123", "123")
+     * into an offer id, or null.
+     */
+    public static function idFromBuyRecordNumber($input)
+    {
+        $digits = preg_replace('/\D+/', '', (string) $input);
+        return $digits === '' ? null : (int) $digits;
+    }
+
+    /**
+     * What we actually paid per unit on each line: the line's share of the
+     * negotiated final payout, same split createPurchaseFromOffer() uses for
+     * cost basis. When the calculator never priced the lines, the payout is
+     * spread evenly over every unit. Keyed by line id.
+     *
+     * @return array<int, float>
+     */
+    public function lineUnitCosts()
+    {
+        $isCredit = $this->payout_type === 'store_credit';
+        $calculatedTotal = (float) ($isCredit ? $this->calculated_credit_total : $this->calculated_cash_total);
+        $finalTotal = (float) ($isCredit ? $this->final_offer_credit : $this->final_offer_cash);
+        $ratio = $calculatedTotal > 0 ? ($finalTotal / $calculatedTotal) : 1.0;
+
+        $totalQty = 0.0;
+        foreach ($this->lines as $l) {
+            $totalQty += max(0, (float) $l->quantity);
+        }
+        $flat = ($calculatedTotal <= 0 && $totalQty > 0) ? $finalTotal / $totalQty : 0.0;
+
+        $out = [];
+        foreach ($this->lines as $l) {
+            $qty = (float) $l->quantity;
+            if ($qty <= 0) {
+                $out[$l->id] = 0.0;
+                continue;
+            }
+            $lineTotal = (float) ($isCredit ? $l->line_credit_total : $l->line_cash_total);
+            $out[$l->id] = round($calculatedTotal > 0 ? ($lineTotal * $ratio) / $qty : $flat, 4);
+        }
+        return $out;
+    }
+
     public function contact()
     {
         return $this->belongsTo(\App\Contact::class, 'contact_id');
