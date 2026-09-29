@@ -1102,6 +1102,7 @@ return [
     'recurring' => 'Recurring',
     'view_product_stock_value' => 'View product stock value',
     'added' => 'Added',
+    'stock_changed' => 'Stock changed',
     'disable_credit_sale_button' => 'Disable credit sale button',
     'pay' => 'Pay',
     'use_advance_balance' => 'Use advance balance',

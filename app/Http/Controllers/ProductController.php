@@ -1402,7 +1402,7 @@ class ProductController extends Controller
                 ->performedOn($product)
                 ->causedBy(auth()->user())
                 ->withProperties(['update_note' => $product->name . ' - ' . $note])
-                ->log('stock changed');
+                ->log('stock_changed');
             $log->business_id = $product->business_id;
             $log->save();
         } catch (\Throwable $e) {
