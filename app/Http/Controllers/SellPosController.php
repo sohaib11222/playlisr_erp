@@ -2418,9 +2418,23 @@ class SellPosController extends Controller
             'items' => $items,
             'subtotal' => (float) $transaction->total_before_tax,
             'discount' => $discountDollar,
-            'tax' => (float) $transaction->tax_amount,
+            // tax_amount is the order tax rate applied to the whole subtotal,
+            // including tax-exempt lines (gift cards, bag fee), so it can be
+            // higher than what was charged. Show what the total actually
+            // includes instead.
+            'tax' => $this->receiptTaxCharged($transaction, $discountDollar),
             'total' => (float) $transaction->final_total,
         ];
+    }
+
+    private function receiptTaxCharged($transaction, $discountDollar)
+    {
+        $stored = (float) $transaction->tax_amount;
+        $charged = (float) $transaction->final_total
+            - ((float) $transaction->total_before_tax - (float) $discountDollar)
+            - (float) ($transaction->shipping_charges ?? 0)
+            - (float) ($transaction->round_off_amount ?? 0);
+        return round(max(0, min($stored, $charged)), 2);
     }
 
     /**
