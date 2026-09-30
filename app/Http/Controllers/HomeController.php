@@ -1520,7 +1520,10 @@ class HomeController extends Controller
                 NULLIF(c.name, '') as category,
                 SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
                 SUM(tslp.quantity) as units,
-                SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue")
+                SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue,
+                SUM(tslp.quantity * (tsl.unit_price_inc_tax - pl.purchase_price_inc_tax)) as gross_profit,
+                SUM(tslp.quantity * pl.purchase_price_inc_tax) as cost,
+                SUM(tslp.quantity * pl.purchase_price_inc_tax * GREATEST(DATEDIFF(sale.transaction_date, purchase.transaction_date), 1)) as cost_days")
             ->groupBy('sc.name', 'c.name')
             ->havingRaw('SUM(tslp.quantity) >= 5')
             ->orderBy('avg_sell_days', 'asc')
@@ -1541,6 +1544,13 @@ class HomeController extends Controller
             $r->avg_sell_days = (float) $r->avg_sell_days;
             $r->units = (int) $r->units;
             $r->revenue = (float) $r->revenue;
+            // Profit per $1 invested per day = Σ(sale − cost) ÷ Σ(cost × days
+            // held): each purchase dollar is weighted by how long it sat on
+            // the shelf. Same-day flips count as 1 day. Null when there's no
+            // recorded cost (e.g. every unit came in at $0).
+            $r->gross_profit = (float) $r->gross_profit;
+            $r->cost = (float) $r->cost;
+            $r->profit_per_dollar_day = (float) $r->cost_days > 0 ? $r->gross_profit / (float) $r->cost_days : null;
             $r->bar_pct = max(6, min(100, ($min_days / $days) * 100));
             if ($r->avg_sell_days <= 7)       { $r->tag = 'blazing';  $r->tag_emoji = '🔥'; }
             elseif ($r->avg_sell_days <= 21)  { $r->tag = 'fast';     $r->tag_emoji = '⚡'; }
