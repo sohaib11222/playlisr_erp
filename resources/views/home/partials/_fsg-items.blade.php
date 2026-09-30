@@ -20,20 +20,20 @@
         <table class="table table-condensed table-striped fsg-items-table" style="margin:0; font-size:12px;">
             <thead>
                 <tr>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>SKU</th>
-                    <th>{{ $type === 'sold' ? 'Intake' : 'On shelf since' }}</th>
-                    @if($type === 'sold')<th>Sold</th>@endif
-                    <th style="text-align:right;">{{ $type === 'sold' ? 'Days to sell' : 'Days on shelf' }}</th>
-                    <th style="text-align:right;">Qty</th>
-                    <th style="text-align:right;">Price</th>
+                    <th class="fsg-sort">Artist</th>
+                    <th class="fsg-sort">Title</th>
+                    <th class="fsg-sort">SKU</th>
+                    <th class="fsg-sort">{{ $type === 'sold' ? 'Intake' : 'On shelf since' }}</th>
+                    @if($type === 'sold')<th class="fsg-sort">Sold</th>@endif
+                    <th class="fsg-sort" style="text-align:right;">{{ $type === 'sold' ? 'Days to sell' : 'Days on shelf' }}</th>
+                    <th class="fsg-sort" style="text-align:right;">Qty</th>
+                    <th class="fsg-sort" style="text-align:right;">Price</th>
                     @if($type === 'sold')
-                        <th style="text-align:right;">Cost</th>
-                        <th style="text-align:right;">Profit</th>
-                        <th style="text-align:right;" title="(sale − cost) ÷ (cost × days held), in cents">Profit / $1 / day</th>
+                        <th class="fsg-sort" style="text-align:right;">Cost</th>
+                        <th class="fsg-sort" style="text-align:right;">Profit</th>
+                        <th class="fsg-sort" style="text-align:right;" title="(sale − cost) ÷ (cost × days held), in cents">Profit / $1 / day</th>
                     @endif
-                    <th>Store</th>
+                    <th class="fsg-sort">Store</th>
                 </tr>
             </thead>
             <tbody>
@@ -42,8 +42,8 @@
                         <td>{{ $it->artist }}</td>
                         <td>{{ $it->name }}</td>
                         <td>{{ $it->sku }}</td>
-                        <td>{{ $it->intake_date ? \Carbon::parse($it->intake_date)->format('M j, Y') : '—' }}</td>
-                        @if($type === 'sold')<td>{{ \Carbon::parse($it->sale_date)->format('M j, Y') }}</td>@endif
+                        <td data-sort="{{ $it->intake_date ? \Carbon::parse($it->intake_date)->format('Y-m-d') : '' }}">{{ $it->intake_date ? \Carbon::parse($it->intake_date)->format('M j, Y') : '—' }}</td>
+                        @if($type === 'sold')<td data-sort="{{ \Carbon::parse($it->sale_date)->format('Y-m-d') }}">{{ \Carbon::parse($it->sale_date)->format('M j, Y') }}</td>@endif
                         <td style="text-align:right; font-weight:600;">{{ is_null($it->days) ? '—' : number_format($it->days) }}</td>
                         <td style="text-align:right;">{{ number_format((float) $it->qty) }}</td>
                         <td style="text-align:right;">${{ number_format((float) $it->price, 2) }}</td>

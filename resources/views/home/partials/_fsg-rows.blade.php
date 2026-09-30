@@ -3,10 +3,11 @@
      and HomeController@getFastestSellingGenres (AJAX) so both paths always
      render identically. --}}
 @if(count($rows))
-    <div class="fsg-row fsg-head"><div></div><div>Genre</div><div></div><div style="text-align:right;">Days</div><div style="text-align:right;" title="Σ(sale − cost) ÷ Σ(cost × days held), in cents">Profit / $1 / day</div><div style="text-align:right;">In stock</div><div></div></div>
+    {{-- Headers with data-sort re-order the rows client-side (see fsgSortRows in home/index.blade.php). --}}
+    <div class="fsg-row fsg-head"><div></div><div class="fsg-sort" data-sort="genre">Genre</div><div></div><div class="fsg-sort" data-sort="days" style="text-align:right;">Days</div><div class="fsg-sort" data-sort="ppd" style="text-align:right;" title="Σ(sale − cost) ÷ Σ(cost × days held), in cents">Profit / $1 / day</div><div class="fsg-sort" data-sort="stock" style="text-align:right;">In stock</div><div></div></div>
 @endif
 @forelse($rows as $idx => $r)
-    <div class="fsg-row fsg-clickable" data-genre="{{ $r->genre }}" data-category="{{ $r->category ?? '' }}" title="See what sold">
+    <div class="fsg-row fsg-clickable" data-genre="{{ $r->genre }}" data-category="{{ $r->category ?? '' }}" data-days="{{ $r->avg_sell_days }}" data-ppd="{{ $r->profit_per_dollar_day }}" data-stock="{{ $r->in_stock }}" title="See what sold">
         <div class="fsg-rank">{{ $idx + 1 }}</div>
         <div>
             <p class="fsg-label">{{ $r->genre }}@if($r->category)<span class="fsg-cat">{{ $r->category }}</span>@endif<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>

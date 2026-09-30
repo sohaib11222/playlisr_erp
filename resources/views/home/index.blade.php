@@ -598,6 +598,10 @@
         .fsg-stock-link { text-decoration:underline dotted; text-underline-offset:3px; }
         .fsg-stock-link:hover { color:#3b6d11; }
         .fsg-head { background:none !important; border-bottom:1px solid #e5e7eb; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.03em; }
+        .fsg-sort { cursor:pointer; user-select:none; white-space:nowrap; }
+        .fsg-sort:hover { color:#0f172a; }
+        .fsg-sort.asc::after { content:' ▲'; font-size:9px; }
+        .fsg-sort.desc::after { content:' ▼'; font-size:9px; }
         .fsg-tag.blazing { color:#9a3412; font-weight:600; }
         .fsg-tag.fast { color:#065f46; font-weight:600; }
         .fsg-tag.slow { color:#991b1b; }
@@ -1610,6 +1614,7 @@
                 var key = $.param(params);
                 if (fsgCache[key] !== undefined) {
                     $fsgBody.removeClass('loading').html(fsgCache[key]);
+                    fsgSortRows();
                     return;
                 }
                 var reqId = ++fsgReq;
@@ -1617,7 +1622,7 @@
                 $.get('{{ url("/home/fastest-selling-genres") }}', params)
                     .done(function (resp) {
                         fsgCache[key] = resp.html;
-                        if (reqId === fsgReq) $fsgBody.html(resp.html);
+                        if (reqId === fsgReq) { $fsgBody.html(resp.html); fsgSortRows(); }
                     })
                     .fail(function () {
                         if (reqId === fsgReq) $fsgBody.html('<div class="fsg-empty">Couldn\'t load this view — try again.</div>');
@@ -1667,7 +1672,7 @@
                 $fsgModal.find('.modal-body').html('<div class="fsg-empty">Loading…</div>');
                 $fsgModal.modal('show');
                 $.get('{{ url("/home/fastest-selling-genres/items") }}', params)
-                    .done(function (resp) { $fsgModal.find('.modal-body').html(resp.html); })
+                    .done(function (resp) { $fsgModal.find('.modal-body').html(resp.html); fsgItemsSort = null; })
                     .fail(function () { $fsgModal.find('.modal-body').html('<div class="fsg-empty">Couldn\'t load items — try again.</div>'); });
             }
             $fsgModule.on('click', '.fsg-stock-link', function (e) {
@@ -1677,6 +1682,71 @@
             $fsgModule.on('click', '.fsg-clickable', function () {
                 fsgOpenItems('sold', $(this));
             });
+            // Sorting. Main list: click Genre / Days / Profit per $1 / In
+            // stock; the choice sticks across store/range/category changes.
+            // Empty values (no cost → no profit/day) always sort last.
+            var fsgSort = null; // { key, dir }
+            var fsgSortDefaultDir = { genre: 'asc', days: 'asc', ppd: 'desc', stock: 'desc' };
+            function fsgCompare(a, b, dir) {
+                var aEmpty = a === '' || a === null || (typeof a === 'number' && isNaN(a));
+                var bEmpty = b === '' || b === null || (typeof b === 'number' && isNaN(b));
+                if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : (aEmpty ? 1 : -1);
+                var c = (typeof a === 'number' && typeof b === 'number') ? a - b : String(a).localeCompare(String(b));
+                return dir === 'asc' ? c : -c;
+            }
+            function fsgSortRows() {
+                if (!fsgSort) return;
+                var $rows = $fsgBody.find('.fsg-row.fsg-clickable');
+                var key = fsgSort.key, dir = fsgSort.dir;
+                var sorted = $rows.get().sort(function (x, y) {
+                    var a = x.getAttribute('data-' + key), b = y.getAttribute('data-' + key);
+                    if (key === 'genre') {
+                        a = (a + ' ' + (x.getAttribute('data-category') || '')).toLowerCase();
+                        b = (b + ' ' + (y.getAttribute('data-category') || '')).toLowerCase();
+                    } else {
+                        a = a === '' ? '' : parseFloat(a);
+                        b = b === '' ? '' : parseFloat(b);
+                    }
+                    return fsgCompare(a, b, dir);
+                });
+                $fsgBody.append(sorted);
+                $(sorted).each(function (i) { $(this).find('.fsg-rank').text(i + 1); });
+                $fsgBody.find('.fsg-head .fsg-sort').removeClass('asc desc')
+                    .filter('[data-sort="' + key + '"]').addClass(dir);
+            }
+            $fsgModule.on('click', '.fsg-head .fsg-sort', function () {
+                var key = $(this).data('sort');
+                fsgSort = {
+                    key: key,
+                    dir: fsgSort && fsgSort.key === key ? (fsgSort.dir === 'asc' ? 'desc' : 'asc') : fsgSortDefaultDir[key]
+                };
+                fsgSortRows();
+            });
+
+            // Popup table: click any header. Numbers ($, ¢, commas stripped)
+            // sort numerically, dates by their data-sort ISO value, text A–Z.
+            var fsgItemsSort = null;
+            $fsgModal.on('click', '.fsg-items-table th.fsg-sort', function () {
+                var $th = $(this), idx = $th.index();
+                var dir = fsgItemsSort && fsgItemsSort.idx === idx ? (fsgItemsSort.dir === 'asc' ? 'desc' : 'asc')
+                    : ($th.css('text-align') === 'right' ? 'desc' : 'asc');
+                fsgItemsSort = { idx: idx, dir: dir };
+                var $tbody = $th.closest('table').find('tbody');
+                var cellVal = function (tr) {
+                    var td = tr.children[idx];
+                    var v = td.hasAttribute('data-sort') ? td.getAttribute('data-sort') : $.trim($(td).text());
+                    if (v === '—') return '';
+                    var n = v.replace(/[$¢,]/g, '');
+                    return n !== '' && !isNaN(n) ? parseFloat(n) : v.toLowerCase();
+                };
+                var sorted = $tbody.children('tr').get().sort(function (x, y) {
+                    return fsgCompare(cellVal(x), cellVal(y), dir);
+                });
+                $tbody.append(sorted);
+                $th.siblings().removeClass('asc desc');
+                $th.removeClass('asc desc').addClass(dir);
+            });
+
             $fsgModal.on('input', '.fsg-items-filter', function () {
                 var q = $(this).val().toLowerCase();
                 $fsgModal.find('.fsg-items-table tbody tr').each(function () {
