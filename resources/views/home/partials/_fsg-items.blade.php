@@ -28,6 +28,11 @@
                     <th style="text-align:right;">{{ $type === 'sold' ? 'Days to sell' : 'Days on shelf' }}</th>
                     <th style="text-align:right;">Qty</th>
                     <th style="text-align:right;">Price</th>
+                    @if($type === 'sold')
+                        <th style="text-align:right;">Cost</th>
+                        <th style="text-align:right;">Profit</th>
+                        <th style="text-align:right;" title="(sale − cost) ÷ (cost × days held), in cents">Profit / $1 / day</th>
+                    @endif
                     <th>Store</th>
                 </tr>
             </thead>
@@ -42,6 +47,11 @@
                         <td style="text-align:right; font-weight:600;">{{ is_null($it->days) ? '—' : number_format($it->days) }}</td>
                         <td style="text-align:right;">{{ number_format((float) $it->qty) }}</td>
                         <td style="text-align:right;">${{ number_format((float) $it->price, 2) }}</td>
+                        @if($type === 'sold')
+                            <td style="text-align:right;">${{ number_format((float) $it->cost, 2) }}</td>
+                            <td style="text-align:right; {{ $it->profit < 0 ? 'color:#991b1b;' : '' }}">${{ number_format($it->profit, 2) }}</td>
+                            <td style="text-align:right; font-weight:600; {{ is_null($it->profit_per_dollar_day) ? 'color:#9ca3af;' : ($it->profit_per_dollar_day < 0 ? 'color:#991b1b;' : 'color:#065f46;') }}">{{ is_null($it->profit_per_dollar_day) ? '—' : number_format($it->profit_per_dollar_day * 100, 2) . '¢' }}</td>
+                        @endif
                         <td>{{ $it->location }}</td>
                     </tr>
                 @endforeach

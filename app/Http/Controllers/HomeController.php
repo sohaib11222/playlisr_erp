@@ -1341,11 +1341,19 @@ class HomeController extends Controller
                     DATEDIFF(sale.transaction_date, purchase.transaction_date) as days,
                     tslp.quantity as qty,
                     tsl.unit_price_inc_tax as price,
+                    pl.purchase_price_inc_tax as cost,
                     bl.name as location")
                 ->orderBy('days', 'asc')
                 ->orderBy('sale.transaction_date', 'desc')
                 ->limit($limit)
                 ->get();
+            // Per-item version of the row's "Profit / $1 / day": (sale − cost)
+            // ÷ (cost × days held), same-day flips counted as 1 day.
+            foreach ($items as $it) {
+                $it->profit = ((float) $it->price - (float) $it->cost) * (float) $it->qty;
+                $cost_days = (float) $it->cost * (float) $it->qty * max(1, (int) $it->days);
+                $it->profit_per_dollar_day = $cost_days > 0 ? $it->profit / $cost_days : null;
+            }
         } else {
             // Oldest purchase lot at this variation/location that still has
             // units left = how long the copy on the shelf has been sitting.
