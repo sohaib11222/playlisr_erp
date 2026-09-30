@@ -280,6 +280,8 @@
             <label class="ocr-hero-label">
               Count the drawer — how many of each bill? <span style="color:#b91c1c;">*</span>
             </label>
+            {{-- Zak 9/28: $100 under the tray was left out of the count. --}}
+            <div style="font-size:13px;font-weight:700;color:#5A4410;margin-bottom:6px;">Include the cash under the tray too.</div>
             {{-- Bill-count grid (Sarah 2026-07-10). The cashier enters the
                  number of each bill; JS sums it live into the hidden
                  #cash_in_hand_amount below, which the backend and the

@@ -371,7 +371,7 @@
 			<div class="cr-hero">
 				<div class="cr-hero-label">Closing balance — count the drawer</div>
 				<div class="cr-hero-hint">
-					Enter how many of each bill; we add it up for you. This is what gets reconciled against ERP cash sales.
+					Enter how many of each bill; we add it up for you. This is what gets reconciled against ERP cash sales. <strong>Include the cash under the tray too.</strong>
 				</div>
 				<div class="cr-denom-grid">
 					@foreach([100, 50, 20, 10, 5, 1] as $face)

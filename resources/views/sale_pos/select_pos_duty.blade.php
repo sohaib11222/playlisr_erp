@@ -435,7 +435,7 @@
                     Count the drawer — how many of each bill?
                 </label>
                 <p class="hint">
-                    Enter the number of each bill; we add it up for you. The closing count at end of shift gets checked against this.
+                    Enter the number of each bill; we add it up for you. The closing count at end of shift gets checked against this. <strong>Include the cash under the tray too.</strong>
                 </p>
                 <div class="denoms">
                     @foreach([100, 50, 20, 10, 5, 1] as $face)
