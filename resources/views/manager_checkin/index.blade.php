@@ -122,7 +122,7 @@
         <div>
             <h1>Manager Check-ins</h1>
             <p>This is their time, not a review. Ask what they are working on, listen to their ideas, and find out what would make their job easier. Write it down here so Jon sees what each person is contributing. Takes about 2 minutes.</p>
-            <p>You can approve shift swaps and change or hand out tasks yourself, no need to check with Jon.</p>
+            <p>You can approve shift swaps and change or assign tasks yourself, no need to check with Jon.</p>
         </div>
         @include('partials.pin_button', ['pinUrl' => url('/manager-checkins'), 'pinLabel' => 'Manager Check-ins'])
     </div>
