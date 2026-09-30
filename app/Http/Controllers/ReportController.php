@@ -13800,8 +13800,10 @@ class ReportController extends Controller
      */
     public function employeeLeaderboard(Request $request)
     {
-        // $/hour comparison across staff — admin-only (Sarah 2026-04-28).
-        $this->ensureAdminOnlyReportAccess();
+        // $/hour comparison across staff. Admins see both stores; store
+        // managers see only their own store, without the paid/owed columns
+        // (Sarah 2026-09-30).
+        $managerStore = $this->leaderboardManagerStore();
         $business_id = $request->session()->get('user.business_id');
         $period = $request->input('period', 'this_month');
 
@@ -13887,6 +13889,12 @@ class ReportController extends Controller
             ->where('is_active', 1)
             ->orderBy('id')
             ->pluck('name', 'id');
+        if ($managerStore) {
+            $locations = $locations->filter(function ($name) use ($managerStore) {
+                return stripos($name, $managerStore) !== false;
+            });
+        }
+        $showPay = !$managerStore;
 
         // Live trading-day KPIs per store, embedded above each ranking so the
         // leaderboard doubles as the leadership screen — today's pace and last
@@ -13943,8 +13951,24 @@ class ReportController extends Controller
         }
 
         return view('report.employee_leaderboard')->with(compact(
-            'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url', 'salesSummary'
+            'stores', 'period', 'start', 'end', 'live_data_url', 'listed_items_url', 'salesSummary', 'showPay'
         ));
+    }
+
+    /**
+     * Leaderboard access: admins get null (every store); Luis/Zakary get their
+     * own store name ("Hollywood" / "Pico"); anyone else is refused.
+     */
+    private function leaderboardManagerStore()
+    {
+        if ($this->businessUtil->is_admin(auth()->user())) {
+            return null;
+        }
+        $key = ManagerChecklistController::currentManagerKey();
+        if (!$key) {
+            abort(403, 'This report is for managers and admins only.');
+        }
+        return ManagerChecklistController::MANAGER_KEYS[$key]['store'];
     }
 
     /**
@@ -14670,11 +14694,19 @@ class ReportController extends Controller
      */
     public function employeeLeaderboardListedItems(Request $request)
     {
-        $this->ensureAdminOnlyReportAccess();
+        $managerStore = $this->leaderboardManagerStore();
         $business_id = $request->session()->get('user.business_id');
 
         $user_id     = (int) $request->input('user_id');
         $location_id = (int) $request->input('location_id', 0);
+        if ($managerStore) {
+            // Managers can only drill into their own store.
+            $location_id = (int) \DB::table('business_locations')
+                ->where('business_id', $business_id)
+                ->where('is_active', 1)
+                ->where('name', 'like', '%' . $managerStore . '%')
+                ->value('id');
+        }
 
         // Window resolved on the board and passed through as explicit dates.
         try {

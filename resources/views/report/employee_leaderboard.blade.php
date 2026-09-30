@@ -159,6 +159,7 @@
         .lb-bar-pace { position:absolute; top:-2px; width:2px; height:13px; background:rgba(0,0,0,.55); }
         /* Performance view: hide the payroll/commission columns until asked for. */
         .lb-hide-comm .g-list, .lb-hide-comm .g-sales, .lb-hide-comm .g-total, .lb-hide-comm .g-pay { display:none; }
+        .lb-no-pay .g-pay { display:none; }
     </style>
 
     <div style="text-align:right; margin-bottom:12px;">
@@ -174,7 +175,7 @@
         }
     </script>
 
-    <div class="row lb-hide-comm" id="lb-stores">
+    <div class="row lb-hide-comm {{ $showPay ? '' : 'lb-no-pay' }}" id="lb-stores">
         @forelse($stores as $store)
             <div class="col-md-12" style="float:none;width:100%;clear:both;display:block;">
                 <div class="box box-solid">
