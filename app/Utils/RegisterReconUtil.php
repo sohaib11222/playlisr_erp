@@ -56,6 +56,27 @@ class RegisterReconUtil
         file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
     }
 
+    /**
+     * Drawer / handover flags someone already answered (Zak 9/28: the
+     * missing $100 was in the bottom of the drawer). Keyed
+     * "date|store|kind|ask"; answered flags drop off the Slack post and
+     * show under "Explained" on /register-recon. Saved ones live in the
+     * settings file; seeded ones are here.
+     */
+    const SEED_DRAWER_NOTES = [
+        '2026-09-28|Pico|handover|Alec / Zakary' => 'Zak found the other $100 in the bottom of the drawer - it was left out of his opening count',
+    ];
+
+    public static function drawerNoteKey(string $date, string $store, string $kind, string $ask): string
+    {
+        return $date . '|' . $store . '|' . $kind . '|' . $ask;
+    }
+
+    public static function drawerNotes(): array
+    {
+        return array_merge(self::SEED_DRAWER_NOTES, (array) (self::settings()['drawer_notes'] ?? []));
+    }
+
     public static function webhook(): string
     {
         return trim((string) (self::settings()['slack_webhook'] ?? ''));
@@ -350,8 +371,11 @@ class RegisterReconUtil
         }
 
         // 3) Drawer counts + registers that were never counted.
+        $drawerNotes = self::drawerNotes();
         foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date)) as $f) {
             $k = $storeKey($f['location_id']);
+            $f['note_key'] = self::drawerNoteKey($date, $stores[$k]['name'], $f['kind'], (string) ($f['ask'] ?? ''));
+            $f['note'] = $drawerNotes[$f['note_key']] ?? null;
             $stores[$k]['items'][] = $f;
         }
 
@@ -360,7 +384,7 @@ class RegisterReconUtil
         $issues = 0;
         foreach ($stores as $k => $s) {
             if ($k === 0 && empty($s['items']) && $s['erp_count'] === 0 && $s['clover_count'] === 0) continue;
-            $issues += count($s['items']);
+            $issues += count(array_filter($s['items'], fn($i) => !self::isExplained($i)));
             $out[] = $s;
         }
         usort($out, fn($a, $b) => strcmp($a['name'], $b['name']));
@@ -559,6 +583,12 @@ class RegisterReconUtil
      * same-kind issues are counted and totalled instead of listed.
      * Returns [who, what, url] rows; url is the store's recent feed.
      */
+    /** A drawer/handover flag someone already answered. */
+    public static function isExplained(array $it): bool
+    {
+        return in_array($it['kind'] ?? '', ['drawer', 'handover'], true) && !empty($it['note']);
+    }
+
     public static function shortRows(array $s): array
     {
         $money = function ($x) { return '$' . number_format((float) $x, 2); };
@@ -567,6 +597,7 @@ class RegisterReconUtil
         $hasMatches = false;
         foreach ($s['items'] as $it) {
             if ($it['kind'] === 'match') { $hasMatches = true; continue; }
+            if (self::isExplained($it)) continue;
             $who = ($it['ask'] ?? '') !== '' ? $it['ask'] : '?';
             $byWho[$who][$it['kind']][] = $it;
         }

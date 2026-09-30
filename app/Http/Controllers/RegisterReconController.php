@@ -172,4 +172,23 @@ class RegisterReconController extends Controller
             'msg' => $ok ? 'Posted to Slack.' : 'Slack post failed - check the webhook.',
         ]);
     }
+
+    /** Mark a drawer/handover flag answered, or clear the note (blank reason). */
+    public function explainDrawer(Request $request)
+    {
+        $this->requireAdmin();
+        $key = (string) $request->input('note_key');
+        if (substr_count($key, '|') !== 3) {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Pick a drawer flag.']);
+        }
+        $reason = trim((string) $request->input('reason'));
+        $notes = (array) (RegisterReconUtil::settings()['drawer_notes'] ?? []);
+        if ($reason === '') {
+            unset($notes[$key]);
+        } else {
+            $notes[$key] = $reason;
+        }
+        RegisterReconUtil::saveSettings(['drawer_notes' => $notes]);
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => $reason === '' ? 'Note cleared.' : 'Marked explained.']);
+    }
 }

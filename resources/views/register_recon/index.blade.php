@@ -59,8 +59,34 @@
 					@empty
 						@if(abs($s['diff']) < 5) <div class="rr-ok">All reconciled</div> @else <div class="rr-ok" style="color:#8A3A2E;">Nothing specific flagged, but the totals differ - please review the recent feed.</div> @endif
 					@endforelse
+					@foreach($s['items'] as $it)
+						@if(\App\Utils\RegisterReconUtil::isExplained($it))
+							<div class="rr-item" style="opacity:.8;"><strong>{{ $it['ask'] }}</strong> &nbsp; {{ $it['detail'] ?? '' }}<div class="rr-note">Explained: {{ $it['note'] }}</div></div>
+						@endif
+					@endforeach
 				</div>
 			@endforeach
+
+			@php
+				$drawerItems = [];
+				foreach ($report['stores'] as $s) {
+					foreach ($s['items'] as $it) {
+						if (in_array($it['kind'], ['drawer', 'handover'], true) && !empty($it['note_key'])) $drawerItems[] = [$s['name'], $it];
+					}
+				}
+			@endphp
+			@if(!empty($drawerItems))
+				<form method="post" action="/register-recon/explain-drawer" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;">
+					{!! csrf_field() !!}
+					<select name="note_key" class="rr-input" style="max-width:420px;">
+						@foreach($drawerItems as $d)
+							<option value="{{ $d[1]['note_key'] }}">{{ $d[0] }} - {{ $d[1]['ask'] }}: {{ $d[1]['detail'] ?? '' }}</option>
+						@endforeach
+					</select>
+					<input type="text" name="reason" class="rr-input" placeholder="What happened (blank clears it)" style="max-width:300px;">
+					<button type="submit" class="rr-btn">Mark explained</button>
+				</form>
+			@endif
 
 			<form method="post" action="/register-recon/post" style="margin-top:18px;">
 				{!! csrf_field() !!}
