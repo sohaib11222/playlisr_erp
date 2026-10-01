@@ -138,6 +138,37 @@ class SlingClient
     }
 
     /**
+     * Every assigned shift in the org for a date range in ONE request.
+     * The saved token is Sarah's admin session, and her own calendar
+     * (GET /calendar/{org}/users/{her id}) returns the whole org's shifts,
+     * not just hers. shifts() above makes one call per staff member
+     * (~50/date), which Sling rate-limits (429) when a page asks for
+     * several dates - those failed calls came back empty and the party
+     * page showed "nobody had a floor shift". Returns null (not []) when
+     * the request itself failed, so callers can tell "no shifts" from
+     * "couldn't ask" and avoid caching a failure.
+     */
+    public function orgShifts(string $startDate, string $endDate)
+    {
+        if (!$this->isConfigured()) return null;
+        $adminId = (string) (System::getProperty('sling_admin_user_id') ?? '') ?: '19993148';
+        $url = 'https://api.getsling.com/v1/calendar/' . $this->orgId . '/users/' . $adminId
+            . '?dates=' . rawurlencode($startDate . 'T00:00:00-07:00/' . $endDate . 'T23:59:59-07:00');
+        $body = $this->get($url);
+        if (!is_array($body)) return null;
+        $entries = isset($body[0]) || $body === [] ? $body : ($body['shifts'] ?? ($body['data'] ?? null));
+        if (!is_array($entries)) return null;
+        $out = [];
+        foreach ($entries as $e) {
+            if (!is_array($e)) continue;
+            if (isset($e['type']) && $e['type'] !== 'shift') continue;
+            if (empty($e['user']['id']) && empty($e['userId'])) continue; // open shift, nobody assigned
+            $out[] = $e;
+        }
+        return $out;
+    }
+
+    /**
      * Sum hours per ERP user_id for the date range, matching Sling users
      * to ERP users by lowercased email. Returns [user_id => hours].
      *
@@ -263,6 +294,12 @@ class SlingClient
     private function get(string $url)
     {
         $det = $this->getDetailed($url);
+        // Sling rate-limits bursts (429). Back off and retry twice instead of
+        // silently returning nothing.
+        for ($try = 0; $try < 2 && $det['http_code'] === 429; $try++) {
+            sleep(2 + 2 * $try);
+            $det = $this->getDetailed($url);
+        }
         if ($det['http_code'] < 200 || $det['http_code'] >= 300) return null;
         return is_string($det['body']) ? json_decode($det['body'], true) : null;
     }

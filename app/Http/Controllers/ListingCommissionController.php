@@ -955,7 +955,17 @@ class ListingCommissionController extends Controller
         // day, per date" (Sarah 2026-09-25, "so many iterations" - this is
         // the perf pass after the correctness passes).
         $ttlMinutes = $date < \Carbon::today()->toDateString() ? 1440 : 10;
-        $shifts = \Cache::remember('sling_shifts_live_' . $date, $ttlMinutes, function () use ($client, $date) { return $client->shifts($date, $date); });
+        // One org-wide calendar call per date (the per-user pull got rate-
+        // limited into empty results). Only cache a successful, non-empty
+        // pull - an empty/failed one used to be cached for a whole day and
+        // showed "nobody had a floor shift" for every party that day.
+        $cacheKey = 'sling_shifts_live_v2_' . $date;
+        $shifts = \Cache::get($cacheKey);
+        if (!is_array($shifts) || empty($shifts)) {
+            $shifts = $client->orgShifts($date, $date);
+            if ($shifts === null) { $shifts = $client->shifts($date, $date); }
+            if (!empty($shifts)) { \Cache::put($cacheKey, $shifts, $ttlMinutes); }
+        }
 
         $floorPos = ['cashier', 'event lead', 'floor sales'];
         $out = [];
