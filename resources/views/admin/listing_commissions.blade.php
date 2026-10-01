@@ -166,8 +166,8 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
                             <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Estimated share of any listening party with nothing paid out yet (last 45 days), from real Clover ring data. NOT included in Pay now - go confirm and pay it on the party-bonus page.">Party owed (est.)</th>
-                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Does NOT include the party estimate - that needs a separate confirm-and-pay pass.">Pay now</th>
+                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Share of any listening party with nothing paid out yet (last 45 days): 4% of the party window sales, split evenly among the floor staff on Sling. Paid on the party-bonus page, not by Mark paid.">Party owed</th>
+                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Party owed is paid separately on the party-bonus page.">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
                         </tr>

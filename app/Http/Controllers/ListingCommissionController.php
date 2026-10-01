@@ -1098,9 +1098,12 @@ class ListingCommissionController extends Controller
                     // to split (Sarah 2026-09-23: "no pool if one person
                     // worked the party"). Only pool up when 2+ actually rang.
                     $solo = count($ringers) <= 1;
-                    $pool = $solo ? 0.0 : round($sales * (self::PARTY_DEFAULT_PERCENT / 100), 2);
+                    // Split the UNROUNDED pool, then round each share once
+                    // (Miley 9/15: $725.71 x 4% / 2 = $14.514 -> $14.51 each,
+                    // same as payroll). Rounding the pool first gave $14.52.
                     $n = max(1, count($ringers));
-                    $each = round($pool / $n, 2);
+                    $each = $solo ? 0.0 : round($sales * (self::PARTY_DEFAULT_PERCENT / 100) / $n, 2);
+                    $pool = round($each * $n, 2);
                     $estStaff = [];
                     foreach ($ringers as $uid => $name) {
                         $estStaff[] = ['uid' => $uid, 'name' => $name, 'amount' => $each];
