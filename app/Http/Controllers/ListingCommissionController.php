@@ -1661,7 +1661,10 @@ class ListingCommissionController extends Controller
         $today = \Carbon::now();
         $start = $today->copy()->startOfMonth();
         if ((int) $today->format('j') <= 7) { $start = $start->subMonth(); }
-        return [$start->toDateString(), $today->toDateString()];
+        // Ends YESTERDAY: a party dated today hasn't happened / finished yet, so
+        // it has no sales to split and must not appear under anyone (Sarah
+        // 2026-10-01: "why the heck is michael getting remi wolf it didnt happen yet").
+        return [$start->toDateString(), $today->copy()->subDay()->toDateString()];
     }
 
     // Unpaid party shares in the payroll window, per user:
