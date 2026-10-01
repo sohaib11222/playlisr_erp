@@ -168,6 +168,7 @@ class ListingCommissionController extends Controller
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $partyPaidManual = $this->manualPartyEarnedByUser();
+        $periodSales = $this->periodSalesOwedByUser($businessId, $salesSummary);
         // Make sure a floor helper who only shows up via a party split (no listing
         // and no raw sales bonus of their own) still appears on the page.
         foreach ($partyAdj as $uid => $amt) {
@@ -209,9 +210,14 @@ class ListingCommissionController extends Controller
             // overpayment unrelated to party (Davis, Clyde, Mica) should still show.
             // So: compute the non-party net first, let party zero it out (floor 0),
             // but if it was ALREADY negative before party, leave that real credit as-is.
-            $partyPaidAllTime = round($this->partyPaidAllTimeForUser($uid), 2);
-            $nonPartyNet = round($p->sales_earned - ($p->sales_paid - $partyPaidAllTime), 2);
-            $p->sales_net = $nonPartyNet < 0 ? $nonPartyNet : max(0, round($nonPartyNet - $partyPaidAllTime, 2));
+            // PERIOD-BASED (2026-10-01): sales owed = this person's day-by-day
+            // bonus for every day AFTER their last "settle sales" payout, through
+            // today (same engine as /my-earnings/daily, so Sarah can audit it
+            // there). Not a lifetime earned-minus-paid: that recompute drifted
+            // every time old days re-targeted, and party payouts (which live in
+            // the same ledger) were silently eating the next month's sales bonus.
+            $p->sales_net = round((float) ($periodSales['owed'][(int) $uid] ?? 0), 2);
+            $p->sales_period_from = $periodSales['from'][(int) $uid] ?? self::SALES_BONUS_FROM;
             $p->listing_net = round($p->earned - $p->paid, 2);
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
@@ -305,61 +311,57 @@ class ListingCommissionController extends Controller
         }
         $dayRows = $dayRows->sortByDesc('bonus')->values();
 
-        // Heads-up banner: listening parties with nothing paid out yet, so
-        // Sarah sees this here too, not only on /admin/party-bonus (Sarah
-        // 2026-09-25). Wider window than that page's own 14-day default since
-        // this is a periodic review page, not the working tool.
+        // Listening parties THIS PAYROLL pays (current month, plus last month
+        // during the first week when the end-of-month run lands): unpaid share
+        // per person, folded into Party owed AND Pay now, and settled by Mark
+        // paid (Sarah 2026-10-01: "i marked it paid!!! thats the problem w this
+        // dumb dash"). Anything older that was never recorded is listed below
+        // the table for information only and never enters a total - old parties
+        // were paid outside the ERP or deliberately dropped (Sarah 2026-09-30).
+        [$partyStart, $partyEnd] = $this->payrollPartyWindow();
+        $partyShares = $this->unpaidPartySharesByUser($businessId);
         $partyLocations = DB::table('business_locations')
             ->where('business_id', $businessId)->where('is_active', 1)
             ->orderBy('name')->pluck('name', 'id');
-        $unpaidParties = $this->unpaidListeningParties(
-            $businessId, $partyLocations,
-            \Carbon::now()->subDays(45)->toDateString(), \Carbon::now()->toDateString()
-        );
-
-        // Fold the same unpaid-party estimate into the main "what to pay"
-        // table as its own column, right next to Sales/Listing owed (Sarah
-        // 2026-09-25: "why is it separate!!!!") instead of only a banner
-        // pointing elsewhere. Per-person total across every unpaid party in
-        // the window; still an ESTIMATE (real Clover ring data, but nothing's
-        // actually recorded until paid on /admin/party-bonus), so it's kept
-        // out of Pay now / Mark paid rather than silently folded into money
-        // this page can already send.
-        $partyEstByUser = []; // uid => ['amount' => total, 'name' => ..., 'parties' => ['Beck Listening Party - hollywood - Sep 18, 6:00 PM - 7:30 PM', ...]]
-        foreach ($unpaidParties as $u) {
-            foreach (($u['estimate']['staff'] ?? []) as $s) {
-                $uid = (int) $s['uid'];
-                if (!isset($partyEstByUser[$uid])) { $partyEstByUser[$uid] = ['amount' => 0.0, 'name' => $s['name'], 'parties' => []]; }
-                $partyEstByUser[$uid]['amount'] += (float) $s['amount'];
-                $partyEstByUser[$uid]['parties'][] = $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
-                    . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
-                    . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales (goal $' . number_format($u['estimate']['sales_goal'] ?? 0, 2) . ')';
-            }
+        $unpaidParties = $this->unpaidListeningParties($businessId, $partyLocations, $partyStart, $partyEnd);
+        $olderUnpaid = [];
+        foreach ($this->unpaidListeningParties($businessId, $partyLocations,
+                    \Carbon::now()->subDays(120)->toDateString(), \Carbon::parse($partyStart)->subDay()->toDateString()) as $old) {
+            $olderUnpaid[] = $old['name'] . ' - ' . ($old['location_name'] ?: '?') . ' - ' . \Carbon::parse($old['date'])->format('M j');
         }
+
         $peopleById = $people->keyBy('user_id');
-        foreach ($partyEstByUser as $uid => $v) {
+        foreach ($partyShares as $uid => $v) {
             if ($peopleById->has($uid)) {
                 $peopleById[$uid]->party_est_owed = round($v['amount'], 2);
-                $peopleById[$uid]->party_est_note = $v['parties'];
+                $peopleById[$uid]->party_est_note = array_column($v['parties'], 'label');
             } else {
-                // Someone who only shows up via a party estimate (no other
-                // listing/sales activity in this window) still needs a row.
+                // Someone who only shows up via a party share (no other
+                // listing/sales activity) still needs a row.
                 $people->push((object) [
                     'user_id' => $uid, 'name' => $v['name'], 'store' => '',
                     'total_comm' => 0.0, 'total_paid_all' => 0.0,
                     'listed_count' => 0, 'earned' => 0.0, 'paid' => 0.0,
                     'sales_achieved' => 0.0, 'sales_goal' => 0.0, 'sales_earned' => 0.0, 'sales_paid' => 0.0,
-                    'sales_disp' => 0.0, 'listing_disp' => 0.0,
+                    'sales_disp' => 0.0, 'listing_disp' => 0.0, 'sales_net' => 0.0, 'listing_net' => 0.0,
                     'total_owed_now' => 0.0, 'payroll_memo' => '',
                     'party_est_owed' => round($v['amount'], 2),
-                    'party_est_note' => $v['parties'],
+                    'party_est_note' => array_column($v['parties'], 'label'),
                 ]);
             }
         }
         foreach ($people as $p) {
             if (!isset($p->party_est_owed)) { $p->party_est_owed = 0.0; }
             if (!isset($p->party_est_note)) { $p->party_est_note = []; }
+            // Pay now = sales + listing + party. One number, one button.
+            $p->pay_now = round($p->total_owed_now + $p->party_est_owed, 2);
+            if ($p->party_est_owed > 0.004) {
+                $p->payroll_memo = trim(($p->payroll_memo ? preg_replace('/ = .*$/', '', $p->payroll_memo) . ' + ' : '')
+                    . 'Listening party $' . number_format($p->party_est_owed, 2))
+                    . ' = $' . number_format($p->pay_now, 2);
+            }
         }
+        $people = $people->sortByDesc('pay_now')->values();
 
         // Never let a proxy/browser serve a stale copy of this page — the owed
         // numbers must always reflect the latest payouts, or a just-paid person
@@ -388,6 +390,9 @@ class ListingCommissionController extends Controller
             'freeze'             => $this->loadFreeze(),
             'paid_groups'        => $this->groupPaidHistory($history, $salesHistory),
             'unpaid_parties'     => $unpaidParties,
+            'older_unpaid_parties' => $olderUnpaid,
+            'party_window'       => [$partyStart, $partyEnd],
+            'total_pay_now'      => $people->sum('pay_now'),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
@@ -466,30 +471,27 @@ class ListingCommissionController extends Controller
         }
         $listingNet = round($listingEarned - $listingPaid, 2);
 
-        $sales = $this->salesSummaryByUser($businessId)->get($userId);
-        $partyAdj = $this->partySplitAdjustmentsByUser();
-        $salesEarned = ($sales ? (float) $sales->earned : 0.0) + (float) ($partyAdj[$userId] ?? 0);
-        $salesPaid   = $sales ? (float) $sales->paid : 0.0;
-        // Must mirror index()'s sales_net exactly (party-payment floor included) —
-        // otherwise a person with a listening-party payment on file shows an owed
-        // balance on the page but this recompute lands at ~$0, and the button
-        // fires "nothing outstanding" even though Pay now says otherwise
-        // (Sarah 2026-09-03: hit this on Andy after actually paying him $4.16).
-        $partyPaidAllTime = round($this->partyPaidAllTimeForUser($userId), 2);
-        $nonPartyNet = round($salesEarned - ($salesPaid - $partyPaidAllTime), 2);
-        $salesNet = $nonPartyNet < 0 ? $nonPartyNet : max(0, round($nonPartyNet - $partyPaidAllTime, 2));
+        // Sales: this person's period bonus (days after their last settle, through
+        // today) - exactly what the page shows in Sales owed.
+        $periodSales = $this->periodSalesOwedByUser($businessId, null, $userId);
+        $salesNet  = round((float) ($periodSales['owed'][$userId] ?? 0), 2);
+        $salesFrom = $periodSales['from'][$userId] ?? self::SALES_BONUS_FROM;
 
-        if (round($listingNet + $salesNet, 2) <= 0.005) {
+        // Listening parties this payroll pays, this person's share - exactly what
+        // the page shows in Party owed.
+        $shares = $this->unpaidPartySharesByUser($businessId);
+        $partyRows = $shares[$userId]['parties'] ?? [];
+        $partyNet = round(array_sum(array_column($partyRows, 'amount')), 2);
+
+        if (round($listingNet + $salesNet + $partyNet, 2) <= 0.005) {
             return redirect('/admin/listing-commissions')
                 ->with('status', ['success' => 0, 'msg' => 'Nothing outstanding for that person (they\'re settled or in credit).']);
         }
 
-        $now = now()->toDateTimeString();
+        $now = now()->toDateString() . ' ' . now()->format('H:i:s');
         $today = now()->toDateString();
         $parts = []; $total = 0.0;
 
-        // Record each side at its net (a negative side is a credit being cleared
-        // by this run, so the two together always equal Pay now).
         if (abs($listingNet) > 0.005) {
             $lp = $this->loadPayouts();
             $lp[] = [
@@ -501,16 +503,35 @@ class ListingCommissionController extends Controller
             $parts[] = 'listing $' . number_format($listingNet, 2);
             $total += $listingNet;
         }
-        if (abs($salesNet) > 0.005) {
+        if ($salesNet > 0.005) {
             $sp = $this->loadSalesPayouts();
             $sp[] = [
                 'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
-                'amount' => $salesNet, 'from_date' => $today, 'to_date' => $today,
-                'manual' => true, 'note' => 'Payroll — settle sales', 'marked_by' => $request->session()->get('user.id'), 'marked_at' => $now,
+                'amount' => $salesNet, 'from_date' => $salesFrom, 'to_date' => $today,
+                'manual' => true, 'note' => 'Payroll — settle sales ' . $salesFrom . ' to ' . $today,
+                'marked_by' => $request->session()->get('user.id'), 'marked_at' => $now,
             ];
             $this->saveSalesPayouts($sp);
             $parts[] = 'sales $' . number_format($salesNet, 2);
             $total += $salesNet;
+        }
+        if ($partyNet > 0.005) {
+            // Same ledger shape as /admin/party-bonus Pay, so the party stops
+            // showing as unpaid everywhere and the history groups it as a party.
+            $sp = $this->loadSalesPayouts();
+            foreach ($partyRows as $pr) {
+                if ((float) $pr['amount'] <= 0) { continue; }
+                $sp[] = [
+                    'id' => bin2hex(random_bytes(8)), 'user_id' => $userId, 'name' => $name,
+                    'amount' => round((float) $pr['amount'], 2), 'from_date' => $pr['date'], 'to_date' => $pr['date'],
+                    'manual' => true,
+                    'note' => 'Listening party: ' . $pr['event'] . ' - ' . $pr['date'] . ($pr['store'] !== '' ? ' (' . $pr['store'] . ')' : ''),
+                    'marked_by' => $request->session()->get('user.id'), 'marked_at' => $pr['date'] . ' 12:00:00',
+                ];
+            }
+            $this->saveSalesPayouts($sp);
+            $parts[] = 'listening party $' . number_format($partyNet, 2);
+            $total += $partyNet;
         }
 
         return redirect('/admin/listing-commissions')->with('status', [
@@ -1613,6 +1634,134 @@ class ListingCommissionController extends Controller
     // All-time (unscoped) party paid for ONE user — used by the sales-net floor
     // logic above, distinct from manualPartyEarnedByUser() which is windowed to
     // the last 14 days for the Listening party column display.
+    // ---------------------------------------------------------------------
+    // Period-based payroll math (2026-10-01). The page used to show sales owed
+    // as a LIFETIME earned-minus-paid, which drifted whenever old days were
+    // re-targeted, and party payouts (same ledger) ate the next month's sales
+    // bonus. Now: sales owed = day-by-day bonus since the last settle; party is
+    // its own bucket scoped to the payroll month; Mark paid settles all three.
+    // ---------------------------------------------------------------------
+
+    // Parties this payroll pays: the current month, plus last month while we're
+    // still in its first week (the end-of-month run lands on the 1st-7th).
+    public function payrollPartyWindow()
+    {
+        $today = \Carbon::now();
+        $start = $today->copy()->startOfMonth();
+        if ((int) $today->format('j') <= 7) { $start = $start->subMonth(); }
+        return [$start->toDateString(), $today->toDateString()];
+    }
+
+    // Unpaid party shares in the payroll window, per user:
+    // uid => ['amount' => total, 'name' => ..., 'parties' => [['date','event','store','amount','label'], ...]]
+    public function unpaidPartySharesByUser($businessId)
+    {
+        [$pStart, $pEnd] = $this->payrollPartyWindow();
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)->where('is_active', 1)
+            ->orderBy('name')->pluck('name', 'id');
+        $out = [];
+        foreach ($this->unpaidListeningParties($businessId, $locations, $pStart, $pEnd) as $u) {
+            foreach (($u['estimate']['staff'] ?? []) as $st) {
+                $uid = (int) ($st['uid'] ?? 0);
+                $amt = round((float) ($st['amount'] ?? 0), 2);
+                if ($uid <= 0 || $amt <= 0) { continue; }
+                if (!isset($out[$uid])) { $out[$uid] = ['amount' => 0.0, 'name' => $st['name'], 'parties' => []]; }
+                $out[$uid]['amount'] = round($out[$uid]['amount'] + $amt, 2);
+                $out[$uid]['parties'][] = [
+                    'date'   => $u['date'],
+                    'event'  => (string) $u['name'],
+                    'store'  => (string) ($u['location_name'] ?: ''),
+                    'amount' => $amt,
+                    'label'  => $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
+                        . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
+                        . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales (goal $' . number_format($u['estimate']['sales_goal'] ?? 0, 2) . ')',
+                ];
+            }
+        }
+        return $out;
+    }
+
+    // Last day covered by a real sales settlement per user (party payouts
+    // ignored - they are their own bucket). uid => 'Y-m-d'.
+    private function lastSalesSettleByUser()
+    {
+        $out = [];
+        foreach ($this->loadSalesPayouts() as $p) {
+            if (stripos((string) ($p['note'] ?? ''), 'Listening party') === 0) { continue; }
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid <= 0) { continue; }
+            $d = substr((string) ($p['to_date'] ?? $p['from_date'] ?? $p['marked_at'] ?? ''), 0, 10);
+            if ($d === '') { continue; }
+            if (!isset($out[$uid]) || $d > $out[$uid]) { $out[$uid] = $d; }
+        }
+        return $out;
+    }
+
+    // Sales bonus owed per user for the CURRENT period: day-by-day bonus for
+    // every day after their last settle, through today (buildDailyEarnings is
+    // the same engine /my-earnings/daily renders, so the two agree to the penny).
+    // Returns ['owed' => uid => $, 'from' => uid => 'Y-m-d' (first unpaid day)].
+    // $salesSummary (optional) tells us which users have ever earned anything,
+    // so someone never settled is pulled from the program start.
+    public function periodSalesOwedByUser($businessId, $salesSummary = null, $onlyUserId = null)
+    {
+        $settle = $this->lastSalesSettleByUser();
+        $today = now()->toDateString();
+        $report = app(\App\Http\Controllers\ReportController::class);
+
+        $uids = [];
+        if ($onlyUserId) {
+            $uids = [(int) $onlyUserId];
+        } else {
+            if ($salesSummary === null) { $salesSummary = $this->salesSummaryByUser($businessId); }
+            foreach ($salesSummary as $uid => $s) { if ((float) ($s->earned ?? 0) > 0) { $uids[] = (int) $uid; } }
+            foreach ($settle as $uid => $d) { $uids[] = (int) $uid; }
+            $uids = array_values(array_unique($uids));
+        }
+
+        $from = [];
+        foreach ($uids as $uid) {
+            $from[$uid] = isset($settle[$uid])
+                ? \Carbon::parse($settle[$uid])->addDay()->toDateString()
+                : self::SALES_BONUS_FROM;
+        }
+
+        $owed = [];
+        if (empty($uids)) { return ['owed' => $owed, 'from' => $from]; }
+
+        $sum = function ($data, $fromByUid) use (&$owed) {
+            foreach (($data['days'] ?? []) as $date => $rows) {
+                foreach ($rows as $r) {
+                    $uid = (int) ($r['user_id'] ?? 0);
+                    if ($uid <= 0 || !isset($fromByUid[$uid])) { continue; }
+                    if (substr((string) $date, 0, 10) < $fromByUid[$uid]) { continue; }
+                    $owed[$uid] = round(($owed[$uid] ?? 0) + (float) ($r['sales_bonus'] ?? 0), 2);
+                }
+            }
+        };
+
+        // One pull from the earliest SETTLED start covers everyone with a
+        // settlement; anyone never settled (new hire) gets their own pull from
+        // the program start so one person can't force a 4-month build for all.
+        $settled = array_filter($from, function ($d, $uid) use ($settle) { return isset($settle[$uid]); }, ARRAY_FILTER_USE_BOTH);
+        $never   = array_filter($from, function ($d, $uid) use ($settle) { return !isset($settle[$uid]); }, ARRAY_FILTER_USE_BOTH);
+        if (!empty($settled)) {
+            $minFrom = min($settled);
+            if ($minFrom <= $today) {
+                $data = $report->buildDailyEarnings($businessId, $minFrom . ' 00:00:00', $today . ' 23:59:59',
+                    ($onlyUserId ?: null), true);
+                $sum($data, $settled);
+            }
+        }
+        foreach ($never as $uid => $d) {
+            $data = $report->buildDailyEarnings($businessId, $d . ' 00:00:00', $today . ' 23:59:59', $uid, true);
+            $sum($data, [$uid => $d]);
+        }
+        foreach ($uids as $uid) { if (!isset($owed[$uid])) { $owed[$uid] = 0.0; } }
+        return ['owed' => $owed, 'from' => $from];
+    }
+
     private function partyPaidAllTimeForUser($uid)
     {
         $total = 0.0;

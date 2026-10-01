@@ -119,17 +119,20 @@
 @endif
 
 @if (count($unpaid_parties) > 0)
-    <div class="alert alert-warning" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <div><strong>{{ count($unpaid_parties) }}</strong> listening {{ count($unpaid_parties) === 1 ? 'party has' : 'parties have' }} nothing paid out yet (last 45 days) - not included in the totals below.</div>
-        <a href="{{ url('/admin/party-bonus') }}" style="white-space:nowrap; font-weight:700;">Review &amp; pay &rarr;</a>
+    <div class="alert alert-info" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div><strong>{{ count($unpaid_parties) }}</strong> listening {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} this payroll ({{ \Carbon::parse($party_window[0])->format('M j') }} - {{ \Carbon::parse($party_window[1])->format('M j') }}) not recorded yet - each person's share is in Party owed and Pay now below, and Mark paid records it.</div>
+        <a href="{{ url('/admin/party-bonus') }}" style="white-space:nowrap; font-weight:700;">Adjust a split &rarr;</a>
     </div>
+@endif
+@if (!empty($older_unpaid_parties))
+    <p class="text-muted" style="font-size:12px; margin:-6px 0 10px;">Older parties with nothing recorded in the ERP (paid outside it or dropped - NOT in any total): {{ implode('; ', $older_unpaid_parties) }}</p>
 @endif
 
 <div class="row">
     <div class="col-md-12">
         <div class="box box-solid">
             <div class="box-body">
-                <div style="font-size:16px;">Total commission earned <strong>${{ number_format($total_commission, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Commission owed <strong>${{ number_format($total_owed_now, 2) }}</strong></div>
+                <div style="font-size:16px;">Total commission earned <strong>${{ number_format($total_commission, 2) }}</strong> &nbsp;·&nbsp; Paid <strong>${{ number_format($total_paid_all, 2) }}</strong> &nbsp;·&nbsp; Commission owed <strong>${{ number_format($total_pay_now, 2) }}</strong> <span class="text-muted" style="font-size:12px;">(sales + listing + listening party)</span></div>
             </div>
         </div>
     </div>
@@ -139,7 +142,7 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
             @php
-                $owedPeople = $people->filter(function ($p) { return abs($p->total_owed_now) >= 0.005 || ($p->party_est_owed ?? 0) >= 0.005; })->values();
+                $owedPeople = $people->filter(function ($p) { return abs($p->pay_now ?? $p->total_owed_now) >= 0.005; })->values();
                 $paidUpCount = $people->count() - $owedPeople->count();
             @endphp
             <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#23303d;">
@@ -164,10 +167,10 @@
                             <th class="lc-detail" style="text-align:right;" title="Sales target for this person since {{ $sales_bonus_from }}">Sales goal</th>
                             <th class="lc-detail" style="text-align:right;" title="Sales-goal bonus earned since {{ $sales_bonus_from }} (same as the leaderboard)">Sales earned</th>
                             <th class="lc-detail" style="text-align:right;" title="Sales commission already paid out">Sales paid</th>
-                            <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay (excludes the listening party). QuickBooks line.">Sales owed</th>
+                            <th style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;" title="Sales bonus to pay: this person's day-by-day bonus since their last settlement (see /my-earnings/daily). QuickBooks line.">Sales owed</th>
                             <th style="text-align:right; background:#FFF3C4;" title="Listing commission to pay. QuickBooks line.">Listing owed</th>
-                            <th style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;" title="Share of any listening party with nothing paid out yet (last 45 days): 4% of the party window sales, split evenly among the floor staff on Sling. Paid on the party-bonus page, not by Mark paid.">Party owed</th>
-                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed. Party owed is paid separately on the party-bonus page.">Pay now</th>
+                            <th style="text-align:right; background:#FFF3C4;" title="This payroll's listening parties (this month, plus last month during the first week) with nothing recorded yet: 4% of the party window sales, split evenly among the floor staff on Sling. QuickBooks line. Mark paid records it.">Party owed</th>
+                            <th style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A; font-size:15px;" title="Sales owed + Listing owed + Party owed. Mark paid settles all three.">Pay now</th>
                             <th style="min-width:240px;" title="What this payout is for — for the pay stub">What it's for</th>
                             <th></th>
                         </tr>
@@ -189,9 +192,9 @@
                                 @php $salesQb = $p->sales_disp ?? round($p->sales_net, 2); $listQb = $p->listing_disp ?? round($p->listing_net, 2); @endphp
                                 <td style="text-align:right; background:#FFF3C4; border-left:2px solid #E6CE5A;">@if(abs($salesQb) < 0.005)<span class="text-muted">—</span>@elseif($salesQb > 0)${{ number_format($salesQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($salesQb), 2) }}</span>@endif</td>
                                 <td style="text-align:right; background:#FFF3C4;">@if(abs($listQb) < 0.005)<span class="text-muted">—</span>@elseif($listQb > 0)${{ number_format($listQb, 2) }}@else <span style="color:#b3402e;">-${{ number_format(abs($listQb), 2) }}</span>@endif</td>
-                                <td style="text-align:right; background:#EDEDED; border-left:2px solid #ccc;">
+                                <td style="text-align:right; background:#FFF3C4;">
                                     @if(($p->party_est_owed ?? 0) >= 0.005)
-                                        <a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;">${{ number_format($p->party_est_owed, 2) }}</a>
+                                        <a href="{{ url('/admin/party-bonus') }}" style="font-weight:700;" title="Change who worked it or the amounts on the party-bonus page">${{ number_format($p->party_est_owed, 2) }}</a>
                                         @foreach ($p->party_est_note as $note)
                                             <div class="text-muted" style="font-size:11px; font-weight:400;">{{ $note }}</div>
                                         @endforeach
@@ -199,19 +202,20 @@
                                         <span class="text-muted">—</span>
                                     @endif
                                 </td>
-                                <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($p->total_owed_now > 0.004)<strong style="font-size:15px;">${{ number_format($p->total_owed_now, 2) }}</strong>@elseif($p->total_owed_now < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($p->total_owed_now), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
+                                @php $payNow = $p->pay_now ?? $p->total_owed_now; @endphp
+                                <td style="text-align:right; background:#FFE9A8; border-left:2px solid #E6CE5A;">@if($payNow > 0.004)<strong style="font-size:15px;">${{ number_format($payNow, 2) }}</strong>@elseif($payNow < -0.004)<strong style="font-size:15px; color:#b3402e;">-${{ number_format(abs($payNow), 2) }}</strong>@else <span class="text-muted">—</span>@endif</td>
                                 <td style="font-size:12px; color:#5A5045;">@if($p->payroll_memo){{ $p->payroll_memo }}@else <span class="text-muted">—</span>@endif</td>
                                 <td style="text-align:right; white-space:nowrap;">
-                                    @if($p->total_owed_now > 0.004)
+                                    @if($payNow > 0.004)
                                     <form method="POST" action="{{ url('/admin/listing-commissions/mark-all-paid') }}"
-                                          onsubmit="return confirm('Mark all commission paid for {{ $p->name }} (${{ number_format($p->total_owed_now, 2) }})?');"
+                                          onsubmit="return confirm('Mark all commission paid for {{ $p->name }} (${{ number_format($payNow, 2) }} - sales, listing and listening party)?');"
                                           style="margin:0;">
                                         @csrf
                                         <input type="hidden" name="user_id" value="{{ $p->user_id }}">
                                         <input type="hidden" name="from" value="{{ $from }}">
                                         <button type="submit" class="btn btn-success btn-xs">Mark paid</button>
                                     </form>
-                                    @elseif($p->total_owed_now < -0.004)
+                                    @elseif($payNow < -0.004)
                                         <span style="color:#b3402e;">overpaid</span>
                                     @else
                                         <span class="text-muted">paid up</span>

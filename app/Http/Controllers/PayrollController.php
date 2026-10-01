@@ -664,10 +664,16 @@ class PayrollController extends Controller
             \Log::warning('payroll listing pull failed: ' . $e->getMessage());
         }
         try {
-            foreach (app(ListingCommissionController::class)->salesSummaryByUser($businessId) as $uid => $s) {
+            $lc = app(ListingCommissionController::class);
+            $summary = $lc->salesSummaryByUser($businessId);
+            // Sales OWED is period-based (days since each person's last settle),
+            // the same number the Commissions page shows - not lifetime earned
+            // minus paid (2026-10-01).
+            $period = $lc->periodSalesOwedByUser($businessId, $summary);
+            foreach ($summary as $uid => $s) {
                 $uid = (int) $uid;
                 if (!isset($out[$uid])) { $out[$uid] = (object) ['listing_owed' => 0.0, 'listing_earned' => 0.0, 'sales_owed' => 0.0, 'sales_earned' => 0.0]; }
-                $out[$uid]->sales_owed   = (float) $s->owed;
+                $out[$uid]->sales_owed   = (float) ($period['owed'][$uid] ?? 0);
                 $out[$uid]->sales_earned = (float) $s->earned;
             }
         } catch (\Throwable $e) {
