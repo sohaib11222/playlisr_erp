@@ -1,0 +1,159 @@
+# READ-ONLY diagnostic for the monthly books close: prints, for a date range,
+# the same numbers the Profit / Loss report page computes (gross profit by
+# category and by location, via the identical SQL in ReportController@getProfit)
+# plus ERP revenue + units per category/location, and the like-for-like monthly
+# table (same logic as ReportController@lflSalesMonthly). No writes.
+name: Diag monthly close figures (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date YYYY-MM-DD"
+        required: true
+      end_date:
+        description: "End date YYYY-MM-DD"
+        required: true
+      months_back:
+        description: "LFL months to print (ending with the current month)"
+        required: true
+        default: "4"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Print close figures (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export CLOSE_START="${{ github.event.inputs.start_date }}"
+            export CLOSE_END="${{ github.event.inputs.end_date }}"
+            export CLOSE_MONTHS="${{ github.event.inputs.months_back }}"
+            echo "=== monthly close figures $CLOSE_START .. $CLOSE_END ==="
+            php artisan tinker --no-ansi <<'PHP'
+            $start = getenv('CLOSE_START');
+            $end = getenv('CLOSE_END');
+            $monthsBack = max(1, min(36, (int) getenv('CLOSE_MONTHS')));
+            $businesses = \DB::table('business')->pluck('id')->all();
+            echo "businesses: ".implode(',', $businesses)."\n";
+            foreach ($businesses as $bid) {
+              echo "\n##### BUSINESS $bid #####\n";
+              $gp = 'SUM(IF (TSPL.id IS NULL AND P.type="combo", (SELECT Sum((tspl2.quantity - tspl2.qty_returned) * (tsl.unit_price_inc_tax - pl2.purchase_price_inc_tax)) AS total FROM transaction_sell_lines AS tsl JOIN transaction_sell_lines_purchase_lines AS tspl2 ON tsl.id=tspl2.sell_line_id JOIN purchase_lines AS pl2 ON tspl2.purchase_line_id = pl2.id WHERE tsl.parent_sell_line_id = transaction_sell_lines.id), IF(P.enable_stock=0,(transaction_sell_lines.quantity - transaction_sell_lines.quantity_returned) * transaction_sell_lines.unit_price_inc_tax, (TSPL.quantity - TSPL.qty_returned) * (transaction_sell_lines.unit_price_inc_tax - PL.purchase_price_inc_tax)) )) AS gross_profit';
+              $rev = 'SUM((transaction_sell_lines.quantity - transaction_sell_lines.quantity_returned) * transaction_sell_lines.unit_price_inc_tax) AS revenue, SUM(transaction_sell_lines.quantity - transaction_sell_lines.quantity_returned) AS units, COUNT(DISTINCT sale.id) AS tx';
+              $base = function () use ($bid, $start, $end) {
+                return \DB::table('transaction_sell_lines')
+                  ->join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
+                  ->leftJoin('transaction_sell_lines_purchase_lines as TSPL', 'transaction_sell_lines.id', '=', 'TSPL.sell_line_id')
+                  ->leftJoin('purchase_lines as PL', 'TSPL.purchase_line_id', '=', 'PL.id')
+                  ->join('products as P', 'transaction_sell_lines.product_id', '=', 'P.id')
+                  ->where('sale.type', 'sell')->where('sale.status', 'final')
+                  ->where('sale.business_id', $bid)
+                  ->where('transaction_sell_lines.children_type', '!=', 'combo')
+                  ->whereDate('sale.transaction_date', '>=', $start)
+                  ->whereDate('sale.transaction_date', '<=', $end);
+              };
+              echo "\n--- PROFIT BY CATEGORY (same SQL as /reports/get-profit/category) ---\n";
+              echo "category\tgross_profit\trevenue\tunits\ttx\n";
+              $rows = $base()->leftJoin('categories as C', 'C.id', '=', 'P.category_id')
+                ->select(\DB::raw($gp), \DB::raw($rev), \DB::raw('C.name as category'))
+                ->groupBy('C.id')->orderBy('C.name')->get();
+              $tg = 0; $tr = 0; $tu = 0;
+              foreach ($rows as $r) {
+                printf("%s\t%.2f\t%.2f\t%s\t%s\n", $r->category ?? 'Uncategorized', $r->gross_profit, $r->revenue, $r->units, $r->tx);
+                $tg += $r->gross_profit; $tr += $r->revenue; $tu += $r->units;
+              }
+              printf("TOTAL\t%.2f\t%.2f\t%s\n", $tg, $tr, $tu);
+              echo "\n--- PROFIT BY LOCATION (same SQL as /reports/get-profit/location) ---\n";
+              echo "location\tgross_profit\trevenue\tunits\ttx\n";
+              $rows = $base()->join('business_locations as L', 'sale.location_id', '=', 'L.id')
+                ->select(\DB::raw($gp), \DB::raw($rev), \DB::raw('L.name as location'))
+                ->groupBy('L.id')->orderBy('L.id')->get();
+              foreach ($rows as $r) {
+                printf("%s\t%.2f\t%.2f\t%s\t%s\n", $r->location, $r->gross_profit, $r->revenue, $r->units, $r->tx);
+              }
+              echo "\n--- PROFIT BY LOCATION x WHATNOT FLAG ---\n";
+              $rows = $base()->join('business_locations as L', 'sale.location_id', '=', 'L.id')
+                ->select(\DB::raw($gp), \DB::raw($rev), \DB::raw('L.name as location'), \DB::raw('COALESCE(sale.is_whatnot,0) as wn'), \DB::raw('IFNULL(sale.import_source, "register") as src'))
+                ->groupBy('L.id', 'wn', 'src')->orderBy('L.id')->get();
+              foreach ($rows as $r) {
+                printf("%s\twhatnot=%s\tsrc=%s\tgp=%.2f\trev=%.2f\tunits=%s\ttx=%s\n", $r->location, $r->wn, $r->src, $r->gross_profit, $r->revenue, $r->units, $r->tx);
+              }
+              echo "\n--- SALES HEADER TOTALS (transactions.final_total, by location, whatnot flag) ---\n";
+              $rows = \DB::table('transactions as t')->join('business_locations as L', 't.location_id', '=', 'L.id')
+                ->where('t.business_id', $bid)->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereDate('t.transaction_date', '>=', $start)->whereDate('t.transaction_date', '<=', $end)
+                ->select(\DB::raw('L.name as location'), \DB::raw('COALESCE(t.is_whatnot,0) as wn'), \DB::raw('IFNULL(t.import_source,"register") as src'), \DB::raw('SUM(t.final_total) as total'), \DB::raw('SUM(t.tax_amount) as tax'), \DB::raw('SUM(t.discount_amount) as disc'), \DB::raw('COUNT(*) as tx'))
+                ->groupBy('L.id', 'wn', 'src')->orderBy('L.id')->get();
+              foreach ($rows as $r) {
+                printf("%s\twhatnot=%s\tsrc=%s\tfinal_total=%.2f\ttax=%.2f\tdiscount=%.2f\ttx=%s\n", $r->location, $r->wn, $r->src, $r->total, $r->tax, $r->disc, $r->tx);
+              }
+              echo "\n--- LFL MONTHLY (same logic as /reports/lfl-sales?view=monthly) ---\n";
+              $locations = \DB::table('business_locations')->where('business_id', $bid)->where('is_active', 1)
+                ->where('name', 'not like', '%warehouse%')->orderBy('id')->pluck('name', 'id');
+              $rc = function ($loc, $s, $e) use ($bid) {
+                $r = \DB::table('transactions')->where('business_id', $bid)->where('location_id', $loc)
+                  ->where('type', 'sell')->where('status', 'final')
+                  ->where(function ($w) { $w->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
+                  ->whereBetween('transaction_date', [$s, $e])
+                  ->selectRaw("COALESCE(SUM(CASE WHEN import_source LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as sheet_rev, COALESCE(SUM(CASE WHEN import_source IS NULL THEN final_total ELSE 0 END),0) as register_rev, COALESCE(SUM(CASE WHEN import_source IS NOT NULL AND import_source NOT LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as other_rev, COUNT(*) as tx_count")
+                  ->first();
+                return max((float) $r->sheet_rev, (float) $r->register_rev) + (float) $r->other_rev;
+              };
+              $now = \Carbon\Carbon::now(); $today = \Carbon\Carbon::today();
+              $cur = $now->copy()->startOfMonth();
+              for ($m = 0; $m < $monthsBack; $m++) {
+                $ms = $cur->copy()->subMonths($m)->startOfMonth();
+                if ($m === 0) {
+                  $me = $today->copy()->subDay()->endOfDay(); if ($me->lt($ms)) { $me = $ms->copy(); }
+                  $lyms = $ms->copy()->subYear(); $lyme = $me->copy()->subYear()->endOfDay();
+                  $label = $ms->format('M Y').' (MTD thru '.$me->format('M j').')';
+                } else {
+                  $me = $ms->copy()->endOfMonth(); $lyms = $ms->copy()->subYear()->startOfMonth(); $lyme = $lyms->copy()->endOfMonth();
+                  $label = $ms->format('M Y');
+                }
+                $line = $label; $ta = 0; $la = 0;
+                foreach ($locations as $lid => $lname) {
+                  $t = $rc($lid, $ms, $me); $l = $rc($lid, $lyms, $lyme);
+                  $ta += $t; $la += $l;
+                  $line .= sprintf(" | %s this=%.2f ly=%.2f pct=%s", $lname, $t, $l, $l > 0 ? number_format(($t-$l)/$l*100, 1) : 'n/a');
+                }
+                $line .= sprintf(" | TOTAL this=%.2f ly=%.2f pct=%s", $ta, $la, $la > 0 ? number_format(($ta-$la)/$la*100, 1) : 'n/a');
+                echo $line."\n";
+              }
+            }
+            echo "\n=== done ===\n";
+            PHP
