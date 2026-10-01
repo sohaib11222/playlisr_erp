@@ -219,6 +219,16 @@ class ListingCommissionController extends Controller
             $p->sales_net = round((float) ($periodSales['owed'][(int) $uid] ?? 0), 2);
             $p->sales_period_from = $periodSales['from'][(int) $uid] ?? self::SALES_BONUS_FROM;
             $p->listing_net = round($p->earned - $p->paid, 2);
+            // CREDITS stay separate (Sarah 2026-10-01: "keep all negative owed
+            // amounts separate"). A lifetime overpayment - sales paid (party
+            // payouts excluded) above sales earned, or listing paid above listing
+            // earned - is shown in its own section below the pay table and is
+            // NEVER netted against what's being paid now.
+            $partyPaidAllTime = round($this->partyPaidAllTimeForUser($uid), 2);
+            $p->credit_sales   = round(min(0, $p->sales_earned - ($p->sales_paid - $partyPaidAllTime)), 2);
+            $p->credit_listing = round(min(0, $p->listing_net), 2);
+            $p->credit_total   = round($p->credit_sales + $p->credit_listing, 2);
+            $p->listing_net    = max(0, $p->listing_net);
             // Combined cumulative commission across both types.
             $p->total_comm     = round($p->earned + $p->sales_earned, 2);
             $p->total_paid_all = round($p->paid + $p->sales_paid, 2);
@@ -344,6 +354,7 @@ class ListingCommissionController extends Controller
                     'listed_count' => 0, 'earned' => 0.0, 'paid' => 0.0,
                     'sales_achieved' => 0.0, 'sales_goal' => 0.0, 'sales_earned' => 0.0, 'sales_paid' => 0.0,
                     'sales_disp' => 0.0, 'listing_disp' => 0.0, 'sales_net' => 0.0, 'listing_net' => 0.0,
+                    'credit_sales' => 0.0, 'credit_listing' => 0.0, 'credit_total' => 0.0,
                     'total_owed_now' => 0.0, 'payroll_memo' => '',
                     'party_est_owed' => round($v['amount'], 2),
                     'party_est_note' => array_column($v['parties'], 'label'),
@@ -393,6 +404,7 @@ class ListingCommissionController extends Controller
             'older_unpaid_parties' => $olderUnpaid,
             'party_window'       => [$partyStart, $partyEnd],
             'total_pay_now'      => $people->sum('pay_now'),
+            'credit_people'      => $people->filter(function ($p) { return ($p->credit_total ?? 0) < -0.004; })->sortBy('credit_total')->values(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }

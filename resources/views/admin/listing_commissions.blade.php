@@ -142,7 +142,7 @@
     <div class="col-md-12">
         @component('components.widget', ['title' => 'By person — what to pay'])
             @php
-                $owedPeople = $people->filter(function ($p) { return abs($p->pay_now ?? $p->total_owed_now) >= 0.005; })->values();
+                $owedPeople = $people->filter(function ($p) { return ($p->pay_now ?? $p->total_owed_now) >= 0.005; })->values();
                 $paidUpCount = $people->count() - $owedPeople->count();
             @endphp
             <label style="display:inline-flex; align-items:center; gap:7px; cursor:pointer; margin-bottom:10px; font-weight:600; color:#23303d;">
@@ -152,7 +152,7 @@
                 <p style="font-size:15px; color:#2f7a4f; font-weight:600;">Everyone is paid up — nothing owed right now.</p>
                 @if($paidUpCount > 0)<p class="text-muted" style="margin:0;">{{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person' : 'people' }} on file, all settled. See the paid history below.</p>@endif
             @else
-                <p class="text-muted" style="margin-bottom:8px;">Showing who still owes or was overpaid (negative = credit). {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} settled (hidden).</p>
+                <p class="text-muted" style="margin-bottom:8px;">Showing who is owed money this payroll. {{ $paidUpCount }} {{ $paidUpCount == 1 ? 'person is' : 'people are' }} settled (hidden). Overpayments are listed separately below and are not deducted here.</p>
                 <table class="table table-striped" id="lc-people">
                     <thead>
                         <tr>
@@ -229,6 +229,38 @@
         @endcomponent
     </div>
 </div>
+
+@if (isset($credit_people) && $credit_people->isNotEmpty())
+<div class="row">
+    <div class="col-md-12">
+        @component('components.widget', ['title' => 'Overpaid - credit on file (kept separate, not deducted from anyone\'s pay)'])
+            <p class="text-muted" style="margin-bottom:8px;">Lifetime paid above lifetime earned. Informational - nothing here changes a Pay now amount. Fix one with "record a payment" below if it was a bookkeeping entry, or leave it.</p>
+            <table class="table table-striped" style="max-width:720px;">
+                <thead>
+                    <tr>
+                        <th>Person</th>
+                        <th>Store</th>
+                        <th style="text-align:right;">Sales credit</th>
+                        <th style="text-align:right;">Listing credit</th>
+                        <th style="text-align:right;">Total credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($credit_people as $c)
+                        <tr>
+                            <td><a href="{{ url('/my-earnings') }}?user_id={{ $c->user_id }}">{{ $c->name }}</a></td>
+                            <td>@if(!empty($c->store)){{ $c->store }}@else <span class="text-muted">—</span>@endif</td>
+                            <td style="text-align:right; color:#b3402e;">@if($c->credit_sales < -0.004)-${{ number_format(abs($c->credit_sales), 2) }}@else <span class="text-muted">—</span>@endif</td>
+                            <td style="text-align:right; color:#b3402e;">@if($c->credit_listing < -0.004)-${{ number_format(abs($c->credit_listing), 2) }}@else <span class="text-muted">—</span>@endif</td>
+                            <td style="text-align:right; color:#b3402e; font-weight:700;">-${{ number_format(abs($c->credit_total), 2) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endcomponent
+    </div>
+</div>
+@endif
 
 <div class="row">
     <div class="col-md-12">
