@@ -1024,13 +1024,21 @@ HTML,
     <li>The manager approves each request — don't show up unless you've been approved.</li>
 </ul>
 
+<h3>When the Schedule Goes Out</h3>
+<div class="help-must-do">
+    <strong>Always check the schedule when it goes out.</strong> We try to post each month about 2 weeks before the month starts, and Fatteen lets everyone know when it is up. Review your shifts right away and flag anything that does not work for you, so there is time to fix it.
+</div>
+
 <h3>Time Off</h3>
 <div class="help-must-do">
-    <strong>Give 2 weeks' notice for time off.</strong> Mark your shift as <strong>"available"</strong> in Sling so someone else can claim it. Tell the manager directly too.
+    <strong>If you need a few days off, tell Fatteen and your store manager at least 2 weeks in advance.</strong>
+</div>
+<div class="help-critical">
+    <strong>If you need to take off 1 week or more, your store manager has to approve it first.</strong> If you are away more than a week, we may have to hire someone to cover your shifts, so your usual shifts may not be exactly the same when you get back.
 </div>
 <ul>
-    <li>We're flexible when we know in advance.</li>
-    <li>Emergencies happen — call the manager as soon as you know.</li>
+    <li>The more notice we have, the better, so we can work out cover.</li>
+    <li>Emergencies happen. If one comes up, call your store manager as soon as you know.</li>
 </ul>
 
 <h3>Trading Shifts</h3>
@@ -1701,7 +1709,7 @@ HTML,
 
 <h2>12. People and schedule</h2>
 <ul>
-    <li><strong>Sling</strong> runs scheduling. Staff claim shifts and you (or Fatteen) approve. Time off needs 2 weeks' notice with the shift marked available; trades happen in-app with manager approval.</li>
+    <li><strong>Sling</strong> runs scheduling. Fatteen builds each month and posts it about 2 weeks before the month starts; staff are expected to check their shifts right away and flag problems. Staff claim shifts and you (or Fatteen) approve. Employees must tell you and Fatteen when they need a few days off, at least 2 weeks in advance. Employees do not mark their own shifts as available in Sling; you reassign the shift. Shift trades are requested inside Sling and need your approval. <strong>If an employee needs 1 week or more off, you have to approve it first.</strong> Fatteen does not approve these requests; when one comes to Fatteen, Fatteen passes it to you. Tell the employee that if they are away more than a week we may have to hire someone to cover their shifts, so their usual shifts may not be exactly the same when they get back.</li>
     <li><strong>Sick leave (California):</strong> 1 hour per 30 worked, usable after 90 days, up to 24 hours per year, capped at 48 accrued.</li>
     <li><strong>Roles on the floor:</strong> Front Desk (register, customers, listing), Shipping (online orders), Product and Floor Lead (pricing, organizing, restocking), Photo Upload (Discogs listing), Moving Shift (between stores/storage), Inventory Check (counts).</li>
     <li><strong>Weekly manager report:</strong> every week, send Jon and Sarah a short report on how the team is doing, what the store needs, what you are handling, and what you need help with. Template: <a href="/help/weekly-manager-report" target="_blank">Weekly Manager Report</a>.</li>
