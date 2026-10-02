@@ -42,4 +42,5 @@ Route::prefix('v1/nivessa-web')
         Route::post('coupons/validate', [\App\Http\Controllers\Api\NivessaCouponController::class, 'validateCoupon']);
         Route::post('coupons/redeem',   [\App\Http\Controllers\Api\NivessaCouponController::class, 'redeem']);
         Route::get('staff-phones', [\App\Http\Controllers\Api\NivessaStaffPhonesController::class, 'index']);
+        Route::get('on-shift', [\App\Http\Controllers\Api\NivessaOnShiftController::class, 'index']);
     });
