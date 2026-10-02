@@ -285,6 +285,9 @@ HTML,
     <li>Anything large or that you're unsure about — check with Jon. <strong>Don't quote big numbers on your own.</strong></li>
     <li>Always use the <strong><a href="/buy-from-customer" target="_blank">buy calculator</a></strong> to work out a fair offer.</li>
 </ul>
+<div class="help-critical">
+    <strong>Never buy back an item that has our own price sticker on it.</strong> If something a customer is trying to sell us already carries a Nivessa barcode or price sticker, it came off our wall, bins, or floor — do <strong>not</strong> buy it. A few people take our own stock and try to sell it right back to us for cash or credit. Set those items aside, put them back into inventory, and let Jon know. If a sticker looks peeled off or scraped away but the item still looks like ours, treat it the same way and check with a manager before buying.
+</div>
 
 <h3>Using the Buy Calculator</h3>
 <p>The buy form lives at <a href="/buy-from-customer" target="_blank"><code>playlist.nivessa.com/buy-from-customer</code></a>.</p>
