@@ -1,0 +1,39 @@
+# Read-only: show the latest exceptions in today's Laravel log (server-local date)
+# to diagnose the events page "Whoops" 500.
+name: Diag events page 500
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Tail latest errors
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            LOGFILE=$(ls -t storage/logs/laravel-*.log | head -1)
+            echo "=== $LOGFILE ==="
+            echo "=== last 12 ERROR headlines ==="
+            grep -n 'local.ERROR\|production.ERROR' "$LOGFILE" | tail -n 12 | cut -c1-700
+            echo "=== last ERROR with first 25 stack lines ==="
+            LN=$(grep -n 'local.ERROR\|production.ERROR' "$LOGFILE" | tail -n 1 | cut -d: -f1)
+            [ -n "$LN" ] && sed -n "${LN},$((LN+25))p" "$LOGFILE" | cut -c1-400
+            echo "=== event-related errors ==="
+            grep -n 'ERROR' "$LOGFILE" | grep -i 'event' | tail -n 5 | cut -c1-700
+            echo "=== done ==="
