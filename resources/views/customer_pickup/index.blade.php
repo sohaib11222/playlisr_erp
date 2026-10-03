@@ -31,9 +31,9 @@ body.pos-v2 #pickup_table thead th, body.pos-v2 #preorder_table thead th {
   color: #8a8070; font-weight: 700; padding: 9px 10px; border-bottom: 1px solid var(--pos-line); background: transparent; }
 body.pos-v2 #pickup_table tbody td, body.pos-v2 #preorder_table tbody td { padding: 11px 10px; border-bottom: 1px solid var(--pos-line); font-size: 13.5px; vertical-align: middle; color: var(--pos-ink); }
 body.pos-v2 #pickup_table tbody tr:hover, body.pos-v2 #preorder_table tbody tr:hover { background: var(--pos-accent-soft); }
-body.pos-v2 #pickup_table .label, body.pos-v2 #preorder_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+body.pos-v2 #pickup_table .label, body.pos-v2 #preorder_table .label, body.pos-v2 #website_pickup_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
 body.pos-v2 #pickup_table .btn-group, body.pos-v2 #preorder_table .btn-group { display: inline-flex; gap: 5px; }
-body.pos-v2 #pickup_table .btn-xs, body.pos-v2 #preorder_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+body.pos-v2 #pickup_table .btn-xs, body.pos-v2 #preorder_table .btn-xs, body.pos-v2 #website_pickup_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
 body.pos-v2 #preorder_table .source-select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 4px 8px; font-size: 12px; font-family: inherit;
   background: #fff; color: var(--pos-ink); max-width: 170px; text-overflow: ellipsis; }
@@ -42,8 +42,11 @@ body.pos-v2 .preorder-toggle .btn-accent, body.pos-v2 .preorder-toggle .btn-ghos
 /* Paid/unpaid status is information, not an action — keep it visually
    distinct from the accent action buttons (Mark paid / Mark picked up)
    in the same row so they don't read as the same kind of control. */
-body.pos-v2 #preorder_table .pill-paid { background: #e6f4ea; color: #2e7d32; border-color: #cce8d4; }
-body.pos-v2 #preorder_table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
+body.pos-v2 #preorder_table .pill-paid, body.pos-v2 #website_pickup_table .pill-paid { background: #e6f4ea; color: #2e7d32; border-color: #cce8d4; }
+body.pos-v2 #website_pickup_table .pill { display:inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
+body.pos-v2 #website_pickup_search { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 7px 10px; font-family: inherit; background: #fff; min-width: 240px; }
+body.pos-v2 #website_pickup_search:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 #preorder_table .pill-unpaid, body.pos-v2 #website_pickup_table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
 body.pos-v2 .dataTables_wrapper .dataTables_filter input,
 body.pos-v2 .dataTables_wrapper .dataTables_length select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 6px 9px; font-family: inherit; background: #fff; }
@@ -109,6 +112,11 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 <strong style="font-size:15px;">Website Pickup Orders</strong>
                 <p class="sub" style="margin:2px 0 0;">Paid nivessa.com orders held for in-store pickup — regular checkout, not tied to an event or AMS special order.</p>
             </div>
+            @if(!empty($websitePickups))
+            <div style="flex:0 1 auto;">
+                <input type="search" id="website_pickup_search" placeholder="Search customer name, email, phone or item" aria-label="Search website pickup orders">
+            </div>
+            @endif
         </div>
 
         @if(empty($websitePickups))
@@ -122,10 +130,11 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Customer</th>
                         <th>Item(s)</th>
                         <th>Total</th>
+                        <th>Paid</th>
                         <th>Placed</th>
                         <th>Street Date</th>
                         <th>Status</th>
-                        <th></th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -134,16 +143,30 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             $shipTs = !empty($wp['shipDate']) ? strtotime($wp['shipDate']) : null;
                             $notYetDue = !empty($wp['isPreorder']) && $shipTs && $shipTs > time();
                         @endphp
+                        @php
+                            $placedTs = !empty($wp['placed']) ? strtotime($wp['placed']) : 0;
+                            $methodLabel = ['stripe' => 'Card', 'paypal' => 'PayPal', 'free' => 'No charge'][$wp['paymentMethod'] ?? ''] ?? ucfirst($wp['paymentMethod'] ?? '');
+                            if (!empty($wp['storeCredit'])) { $methodLabel = trim($methodLabel . ' + store credit'); }
+                            $statusSort = !empty($wp['isPreorder']) ? ($notYetDue ? 0 : 1) : ($wp['status'] === 'ready_for_pickup' ? 3 : 2);
+                        @endphp
                         <tr @if(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
-                            <td>{{ $wp['location'] === 'pico' ? 'Pico Store' : 'Hollywood Store' }}</td>
-                            <td>{{ $wp['customer'] }}
+                            <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico Store' : 'Hollywood Store' }}</td>
+                            <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}
                                 <div class="sub" style="margin:0;">{{ $wp['email'] }}@if(!empty($wp['phone']))@if(!empty($wp['email'])) &middot; @endif{{ $wp['phone'] }}@endif</div>
                             </td>
-                            <td>{{ implode(', ', $wp['items']) ?: '—' }}</td>
-                            <td>${{ number_format($wp['total'], 2) }}</td>
-                            <td class="sub">{{ !empty($wp['placed']) ? date('M j, Y g:ia', strtotime($wp['placed'])) : '—' }}</td>
-                            <td>{{ $shipTs ? gmdate('M j, Y', $shipTs) : '—' }}</td>
-                            <td>
+                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}">{{ implode(', ', $wp['items']) ?: '—' }}</td>
+                            <td data-order="{{ $wp['total'] }}">${{ number_format($wp['total'], 2) }}</td>
+                            <td data-order="{{ !empty($wp['paid']) ? 1 : 0 }}">
+                                @if(!empty($wp['paid']))
+                                    <span class="pill pill-paid">Paid</span>
+                                @else
+                                    <span class="pill pill-unpaid">Unpaid</span>
+                                @endif
+                                @if($methodLabel !== '')<div class="sub" style="margin:2px 0 0;">{{ $methodLabel }}</div>@endif
+                            </td>
+                            <td class="sub" data-order="{{ $placedTs }}">{{ $placedTs ? date('M j, Y g:ia', $placedTs) : '—' }}</td>
+                            <td data-order="{{ $shipTs ?: 0 }}">{{ $shipTs ? gmdate('M j, Y', $shipTs) : '—' }}</td>
+                            <td data-order="{{ $statusSort }}">
                                 @if(!empty($wp['isPreorder']))
                                     <span class="label" style="background:#c9720a; font-weight:700;">PREORDER — NOT IN STOCK</span><br>
                                     @if($notYetDue)
@@ -375,7 +398,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 { data: 'sub_sku', name: 'variations.sub_sku', defaultContent: '-' },
                 { data: 'quantity', name: 'quantity' },
                 { data: 'expected_pickup_date', name: 'expected_pickup_date' },
-                { data: 'is_paid_label', name: 'is_paid', orderable: false, searchable: false },
+                { data: 'is_paid_label', name: 'customer_pickups.is_paid', orderable: true, searchable: false },
                 { data: 'status', name: 'status' },
                 { data: 'picked_up_info', name: 'picked_up_info', orderable: false, searchable: false },
                 { data: 'created_info', name: 'created_info', orderable: false, searchable: false },
@@ -388,6 +411,24 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         // list) — just bolt on client-side sorting, no ajax/paging/search.
         // Sort values come from each <td>'s data-order (raw price/date/
         // paid-priority) so sorting is correct, not alphabetical-on-HTML.
+        // Website pickup orders: same treatment — every column sortable
+        // (data-order carries the raw value), plus a customer search box
+        // that drives DataTables' filter so it matches name, email, phone
+        // and item text.
+        if ($('#website_pickup_table tbody tr').length) {
+            var website_pickup_table = $('#website_pickup_table').DataTable({
+                paging: false,
+                searching: true,
+                dom: 't',
+                info: false,
+                order: [],
+                columnDefs: [{ targets: -1, orderable: false }],
+            });
+            $('#website_pickup_search').on('input search', function() {
+                website_pickup_table.search(this.value).draw();
+            });
+        }
+
         if ($('#preorder_table tbody tr').length) {
             $('#preorder_table').DataTable({
                 paging: false,

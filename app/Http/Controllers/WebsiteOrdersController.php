@@ -233,6 +233,12 @@ class WebsiteOrdersController extends Controller
                 'status'      => $o['order_status'] ?? 'processing',
                 'isPreorder'  => $isPreorder,
                 'shipDate'    => $shipDate,
+                // Paid column on /customer-pickups: every row here is a
+                // completed payment, but cashiers want to see it (and how
+                // it was paid) at a glance on event night.
+                'paid'        => (($o['payment_status'] ?? '') === 'completed'),
+                'paymentMethod' => (string) ($o['paymentMethod'] ?? ''),
+                'storeCredit' => (float) ($o['used_store_credit'] ?? 0),
             ];
         }, $rows);
     }
