@@ -13,10 +13,14 @@
             <div class="box box-solid">
                 <div class="box-body">
                     <p>
-                        Lets customers get an itemized receipt texted after checkout, in
-                        addition to email. Paste your OpenPhone credentials below — this
-                        saves them on the website, not the ERP, since that's where the
-                        text actually gets sent from.
+                        Texted receipts now send straight from the ERP through the store's
+                        own Quo (OpenPhone) line, using the Quo API key saved under
+                        <a href="{{ route('quo.settings') }}">Communications Hub → Quo Settings</a>.
+                        Nothing on this page is needed for that to work.
+                    </p>
+                    <p class="text-muted">
+                        The fields below only feed the website's own copy of the OpenPhone
+                        credentials, which is used as a fallback if the ERP has no Quo API key.
                     </p>
 
                     {!! Form::open(['url' => route('integration-settings.openphone.save'), 'method' => 'post']) !!}
