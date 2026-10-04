@@ -2306,10 +2306,16 @@ class SellPosController extends Controller
     /**
      * POST /pos/{transaction_id}/text-receipt
      *
-     * Same cashier opt-in flow as emailReceipt, via OpenPhone instead —
-     * texts a short summary + a link to the public receipt page, since a
-     * full item list doesn't fit in a text. See erpReceipt.controller.js
-     * on the website for the token snapshot + OpenPhone call.
+     * Same cashier opt-in flow as emailReceipt, but texted. The ERP sends
+     * it directly through the store's own Quo (OpenPhone) line — the same
+     * API key and per-store numbers the Communications Hub replies and
+     * want-match texts already use — as a short itemized summary plus a
+     * link to the public receipt page (/invoice/{token}).
+     *
+     * The website bridge (erpReceipt.controller.js) used to do the sending
+     * with its own copy of the OpenPhone credentials, which the ERP can
+     * neither see nor verify, and texts quietly stopped arriving. It is now
+     * only a fallback for when the ERP has no Quo key at all.
      */
     public function textReceipt(Request $request, $transaction_id)
     {
@@ -2337,7 +2343,11 @@ class SellPosController extends Controller
                 return response()->json(['success' => false, 'msg' => 'No items on this sale.']);
             }
 
-            $sent = $this->pushReceiptText(array_merge(['to' => $phone], $base));
+            $sent = $this->sendReceiptTextViaQuo($transaction, $phone, $base);
+
+            if (!$sent) {
+                $sent = $this->pushReceiptText(array_merge(['to' => $phone], $base));
+            }
 
             if (!$sent) {
                 return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
@@ -2348,6 +2358,93 @@ class SellPosController extends Controller
             \Log::warning('textReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
             return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
         }
+    }
+
+    /**
+     * Text the receipt from the ERP's own Quo line for the store that rang
+     * the sale (Pico or Hollywood — same mapping SendPendingAssignmentTexts
+     * uses). Returns false, without throwing, when the ERP has no Quo API
+     * key or Quo rejects the send, so the caller can fall back.
+     */
+    private function sendReceiptTextViaQuo($transaction, string $phone, array $base): bool
+    {
+        $sms = new \App\Services\OpenPhoneService();
+        if ($sms->apiKey() === '') {
+            \Log::info('textReceipt: no Quo API key on the ERP, falling back to the website bridge for sale #' . $transaction->id);
+            return false;
+        }
+
+        $isPico = stripos((string) ($base['storeLocation'] ?? ''), 'pico') !== false;
+        $from = array_search($isPico ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
+        if ($from === false) {
+            return false;
+        }
+
+        $link = $this->transactionUtil->getInvoiceUrl($transaction->id, $transaction->business_id);
+        $message = $this->buildReceiptTextMessage($base, $link);
+
+        $result = $sms->sendFrom((string) $from, $phone, $message);
+        if (empty($result['success'])) {
+            \Log::warning('textReceipt: Quo send failed for sale #' . $transaction->id . ': ' . ($result['msg'] ?? 'unknown error'));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The SMS body: store, receipt no + date, up to six item lines, totals,
+     * and the receipt link. Kept short so it stays a few segments even on
+     * a big sale.
+     */
+    private function buildReceiptTextMessage(array $base, string $link): string
+    {
+        $store = trim((string) ($base['storeLocation'] ?? ''));
+        if ($store === '') {
+            $storeLabel = 'Nivessa';
+        } elseif (stripos($store, 'nivessa') !== false) {
+            $storeLabel = ucwords($store);
+        } else {
+            $storeLabel = 'Nivessa ' . ucwords($store);
+        }
+
+        $money = function ($n) {
+            return '$' . number_format((float) $n, 2);
+        };
+
+        $lines = [];
+        $lines[] = $storeLabel . ' - thanks for shopping with us!';
+        $lines[] = 'Receipt ' . $base['receiptNo'] . ' - ' . $base['saleDate'];
+
+        $items = $base['items'];
+        $maxItems = 6;
+        foreach (array_slice($items, 0, $maxItems) as $item) {
+            $name = trim((string) ($item['name'] ?? 'Item'));
+            if (mb_strlen($name) > 40) {
+                $name = rtrim(mb_substr($name, 0, 39)) . '…';
+            }
+            $qty = (float) ($item['quantity'] ?? 1);
+            $qtyLabel = '';
+            if (abs($qty - 1) > 0.0001) {
+                $qtyLabel = rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') . 'x ';
+            }
+            $lines[] = $qtyLabel . $name . ' ' . $money(((float) ($item['price'] ?? 0)) * $qty);
+        }
+        $extra = count($items) - $maxItems;
+        if ($extra > 0) {
+            $lines[] = '+' . $extra . ' more item' . ($extra === 1 ? '' : 's');
+        }
+
+        $totals = 'Subtotal ' . $money($base['subtotal']);
+        if ((float) ($base['discount'] ?? 0) > 0) {
+            $totals .= ', Discount -' . $money($base['discount']);
+        }
+        $totals .= ', Tax ' . $money($base['tax']);
+        $lines[] = $totals;
+        $lines[] = 'Total ' . $money($base['total']) . ' (' . $base['paymentMethod'] . ')';
+        $lines[] = 'Full receipt: ' . $link;
+
+        return implode("\n", $lines);
     }
 
     /**
