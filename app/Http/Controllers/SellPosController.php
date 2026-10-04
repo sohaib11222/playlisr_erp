@@ -2343,41 +2343,49 @@ class SellPosController extends Controller
                 return response()->json(['success' => false, 'msg' => 'No items on this sale.']);
             }
 
-            $sent = $this->sendReceiptTextViaQuo($transaction, $phone, $base);
+            $quo = $this->sendReceiptTextViaQuo($transaction, $phone, $base);
+            $sent = !empty($quo['success']);
 
             if (!$sent) {
                 $sent = $this->pushReceiptText(array_merge(['to' => $phone], $base));
             }
 
             if (!$sent) {
-                return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+                // Surface the real reason instead of a blind "try again" —
+                // the cashier can't fix it, but the admin reading the toast
+                // over their shoulder can (bad Quo key, blocked number…).
+                $why = trim((string) ($quo['msg'] ?? ''));
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'Could not send' . ($why !== '' ? ': ' . $why : ' — try again.'),
+                ]);
             }
 
             return response()->json(['success' => true, 'msg' => 'Receipt texted.']);
         } catch (\Throwable $e) {
             \Log::warning('textReceipt failed for sale #' . $transaction_id . ': ' . $e->getMessage());
-            return response()->json(['success' => false, 'msg' => 'Could not send — try again.']);
+            return response()->json(['success' => false, 'msg' => 'Could not send: ' . $e->getMessage()]);
         }
     }
 
     /**
      * Text the receipt from the ERP's own Quo line for the store that rang
      * the sale (Pico or Hollywood — same mapping SendPendingAssignmentTexts
-     * uses). Returns false, without throwing, when the ERP has no Quo API
-     * key or Quo rejects the send, so the caller can fall back.
+     * uses). Never throws for a Quo refusal: returns ['success' => bool,
+     * 'msg' => string] so the caller can fall back and show the reason.
      */
-    private function sendReceiptTextViaQuo($transaction, string $phone, array $base): bool
+    private function sendReceiptTextViaQuo($transaction, string $phone, array $base): array
     {
         $sms = new \App\Services\OpenPhoneService();
         if ($sms->apiKey() === '') {
             \Log::info('textReceipt: no Quo API key on the ERP, falling back to the website bridge for sale #' . $transaction->id);
-            return false;
+            return ['success' => false, 'msg' => 'Quo API key is not set on the ERP (Communications Hub → Quo Settings).'];
         }
 
         $isPico = stripos((string) ($base['storeLocation'] ?? ''), 'pico') !== false;
         $from = array_search($isPico ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
         if ($from === false) {
-            return false;
+            return ['success' => false, 'msg' => 'No Quo line configured for this store.'];
         }
 
         $link = $this->transactionUtil->getInvoiceUrl($transaction->id, $transaction->business_id);
@@ -2385,11 +2393,12 @@ class SellPosController extends Controller
 
         $result = $sms->sendFrom((string) $from, $phone, $message);
         if (empty($result['success'])) {
-            \Log::warning('textReceipt: Quo send failed for sale #' . $transaction->id . ': ' . ($result['msg'] ?? 'unknown error'));
-            return false;
+            $why = (string) ($result['msg'] ?? 'unknown error');
+            \Log::warning('textReceipt: Quo send failed for sale #' . $transaction->id . ': ' . $why);
+            return ['success' => false, 'msg' => $why];
         }
 
-        return true;
+        return ['success' => true, 'msg' => 'sent'];
     }
 
     /**
