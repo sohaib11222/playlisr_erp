@@ -633,6 +633,7 @@ HTML,
     <li><strong>Do not engage.</strong> Don't argue, don't make eye contact, don't try to reason with them. Get to a safe area.</li>
     <li><strong>Call or text the Hollywood Partnership: <code>567-459-9663</code></strong> — they respond faster than the police. Save this number in your phone now.</li>
     <li>Tell <strong>Sarah or Jon</strong> immediately so they can call the police if needed.</li>
+    <li><strong>Police:</strong> call <code>911</code> if anyone is in danger or a crime is happening right now. For something already over (a theft you noticed afterwards, a disturbance that has ended, a suspicious person who left), use the <strong>LAPD non-emergency dispatch line: <code>877-275-5273</code></strong> (1-877-ASK-LAPD).</li>
     <li>Make sure exits stay accessible. Stay calm.</li>
     <li>Once it's safe, write up what happened.</li>
 </ol>
@@ -1688,6 +1689,7 @@ HTML,
     <li><strong>Aggressive or unstable person:</strong> do not argue or engage. Call or text the <strong>Hollywood Partnership at 567-459-9663</strong> (they respond faster than police), then tell Jon or Sarah so they can call police if needed. Save that number in your phone now.</li>
     <li><strong>Suspicious seller:</strong> sealed retail-stickered stock from an evasive seller is likely stolen - pass kindly and get contact info. Record-company employees selling surplus sealed stock are legitimate; judge the seller, not the items.</li>
     <li><strong>Arriving to something off</strong> (broken lock, door not fully closed, missing inventory): do not enter, call Jon first.</li>
+    <li><strong>Police:</strong> <strong>911</strong> for anything happening right now. <strong>LAPD non-emergency dispatch 877-275-5273</strong> (1-877-ASK-LAPD) for anything already over - a theft noticed afterwards, a disturbance that has ended, a suspicious person who left.</li>
 </ul>
 
 <hr>
@@ -1748,6 +1750,7 @@ HTML,
     <li><strong>Fatteen</strong> - scheduling in Sling.</li>
     <li><strong>Muhammad (tech support)</strong> - WhatsApp +880 1723-948653, computer and printer issues.</li>
     <li><strong>Hollywood Partnership (safety)</strong> - 567-459-9663, faster than police for a situation on the block.</li>
+    <li><strong>LAPD non-emergency dispatch (Hollywood)</strong> - 877-275-5273 (1-877-ASK-LAPD), for incidents that are already over. Emergency: 911.</li>
     <li><strong>Golden</strong> - hosts the daily Whatnot show at Pico.</li>
 </ul>
 
