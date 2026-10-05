@@ -643,8 +643,27 @@ class PurchaseController extends Controller
 
         $statuses = $this->productUtil->orderStatuses();
 
+        // If this purchase came from a buy-from-customer offer, load the offer so
+        // the detail view can show the calculator line breakdown ("what we
+        // bought") — bulk/untitled buys don't materialize inventory lines, so the
+        // standard purchase_lines table is otherwise empty. Prefer the direct
+        // accepted_purchase_id link; fall back to the offer id stamped into the
+        // purchase's additional_notes for older records.
+        $bfc_offer = null;
+        if ($purchase->type == 'purchase') {
+            $bfc_offer = \App\BuyCustomerOffer::where('business_id', $business_id)
+                            ->where('accepted_purchase_id', $purchase->id)
+                            ->with('lines')
+                            ->first();
+            if (empty($bfc_offer) && preg_match('/Buy from customer (\d+)/', (string) $purchase->additional_notes, $m)) {
+                $bfc_offer = \App\BuyCustomerOffer::where('business_id', $business_id)
+                                ->with('lines')
+                                ->find((int) $m[1]);
+            }
+        }
+
         return view('purchase.show')
-                ->with(compact('taxes', 'purchase', 'payment_methods', 'purchase_taxes', 'activities', 'statuses', 'purchase_order_nos', 'purchase_order_dates'));
+                ->with(compact('taxes', 'purchase', 'payment_methods', 'purchase_taxes', 'activities', 'statuses', 'purchase_order_nos', 'purchase_order_dates', 'bfc_offer'));
     }
 
     /**
