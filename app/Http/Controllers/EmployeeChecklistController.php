@@ -31,6 +31,20 @@ class EmployeeChecklistController extends Controller
         'Help sort through the inventory at the warehouse',
     ];
 
+    /**
+     * Work Opportunity Tax Credit packet attached to the offer letter email (sendOffer).
+     * The new hire fills in 8850 (page 1) + 9061, and 9175 only if they were
+     * long-term unemployed. Sarah then files them with the CA EDD (eWOTC)
+     * within 28 days of the start date. Official copies live in
+     * resources/forms/wotc/ (IRS 8850 rev. 2016 is still the current form;
+     * ETA 9061 / 9175 from dol.gov/agencies/eta/wotc/how-to-file).
+     */
+    const WOTC_FORMS = [
+        ['IRS_Form_8850.pdf', 'IRS Form 8850 - WOTC Pre-Screening Notice.pdf'],
+        ['ETA_Form_9061.pdf', 'ETA Form 9061 - Individual Characteristics.pdf'],
+        ['ETA_Form_9175.pdf', 'ETA Form 9175 - Long-Term Unemployment Self-Attestation.pdf'],
+    ];
+
     const TYPE_LABELS = [
         'onboarding'  => 'Onboarding',
         'offboarding' => 'Offboarding',
@@ -41,6 +55,8 @@ class EmployeeChecklistController extends Controller
             'Paperwork / HR (do these first)' => [
                 'id_i9'        => 'Collect ID for work eligibility — passport (or driver\'s license + Social Security card) for the I-9.',
                 'sign_offer'   => 'Have them sign the offer letter and handbook acknowledgment.',
+                'wotc_collect' => 'Collect the signed tax saving forms (WOTC: 8850, 9061, and 9175 if they were unemployed 6+ months). They go out attached to the offer letter email; must be signed on or before the start date.',
+                'wotc_file'    => 'File the signed WOTC forms with the CA EDD (eWOTC at https://edd.ca.gov/en/jobs_and_training/work_opportunity_tax_credit/) within 28 days of their start date, or the credit is lost. (The credit lapsed 12/31/25 and is waiting on Congress; EDD holds filings and pays retroactively once renewed, so keep filing.)',
                 'quickbooks'   => 'Make sure they\'re set up in QuickBooks with direct deposit.',
                 'emergency'    => 'Get an emergency contact on file.',
             ],
@@ -209,7 +225,8 @@ class EmployeeChecklistController extends Controller
      * candidate's name/start date/job title/responsibilities (falls back to
      * the standard cashier responsibilities list if left blank), compiles
      * it to a PDF with mpdf (same library TransactionUtil uses for
-     * receipts), and emails it from sarah@nivessa.com specifically via
+     * receipts), attaches the WOTC tax saving forms (WOTC_FORMS), and emails
+     * it all from sarah@nivessa.com specifically via
      * OfferLetterMailer (its own SMTP credentials — see
      * app/Services/OfferLetterMailer.php).
      * Covers the checklist's "sign_offer" step.
@@ -257,8 +274,18 @@ class EmployeeChecklistController extends Controller
 
         $filename = 'Offer Letter - ' . $fullName . '.pdf';
 
+        // Onboarding packet = offer letter + the WOTC tax saving forms.
+        $attachments = [[$pdfBinary, $filename, 'application/pdf']];
+        foreach (self::WOTC_FORMS as $f) {
+            $path = resource_path('forms/wotc/' . $f[0]);
+            if (is_file($path)) {
+                $attachments[] = [file_get_contents($path), $f[1], 'application/pdf'];
+            }
+        }
+
         try {
-            \App\Services\OfferLetterMailer::send($email, $firstName, $jobTitle, $pdfBinary, $filename);
+            $html = view('emails.cashier_offer_letter', ['firstName' => $firstName, 'jobTitle' => $jobTitle])->render();
+            \App\Services\OfferLetterMailer::sendHtml($email, 'Nivessa Offer Letter & Next Steps', $html, $attachments);
         } catch (\Throwable $e) {
             \Log::warning('Cashier offer letter email failed: ' . $e->getMessage());
             return redirect()->action('EmployeeChecklistController@index', ['type' => 'onboarding'])

@@ -253,7 +253,7 @@
     @if(!$isOff)
         <div class="card">
             <h3 style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--d-ink-2);margin:0 0 4px;">Compile &amp; Send Offer</h3>
-            <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 14px;">Fills the standard offer letter with the job title and responsibilities below, compiles it to a PDF, and emails it for signature.</p>
+            <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 14px;">Fills the standard offer letter with the job title and responsibilities below, compiles it to a PDF, and emails it for signature together with the tax saving forms (WOTC 8850, 9061, 9175) to fill out and return.</p>
             <form method="POST" action="{{ route('employee-checklist.send-offer') }}">
                 @csrf
                 <div class="topbar" style="margin-bottom:0;">

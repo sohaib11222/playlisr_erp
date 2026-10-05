@@ -15,6 +15,20 @@ class OfferLetterMailer
 {
     public static function send(string $toEmail, string $firstName, string $jobTitle, string $pdfBinary, string $pdfFilename)
     {
+        $html = view('emails.cashier_offer_letter', ['firstName' => $firstName, 'jobTitle' => $jobTitle])->render();
+
+        self::sendHtml($toEmail, 'Nivessa Offer Letter & Next Steps', $html, [
+            [$pdfBinary, $pdfFilename, 'application/pdf'],
+        ]);
+    }
+
+    /**
+     * Generic sender on the same sarah@ transport: any subject/HTML body plus
+     * a list of attachments, each [binary, filename, mime]. Used by the offer
+     * letter above and the WOTC tax-saving form email (EmployeeChecklistController).
+     */
+    public static function sendHtml(string $toEmail, string $subject, string $html, array $attachments = [])
+    {
         $host = env('OFFER_MAIL_HOST');
         $port = env('OFFER_MAIL_PORT');
         $encryption = env('OFFER_MAIL_ENCRYPTION');
@@ -30,14 +44,15 @@ class OfferLetterMailer
         $transport->setPassword($password);
         $mailer = new \Swift_Mailer($transport);
 
-        $html = view('emails.cashier_offer_letter', ['firstName' => $firstName, 'jobTitle' => $jobTitle])->render();
-
-        $message = (new \Swift_Message('Nivessa Offer Letter & Next Steps'))
+        $message = (new \Swift_Message($subject))
             ->setFrom([$username => 'Sarah Hedvat'])
             ->setTo([$toEmail])
             ->setCc([$username => 'Sarah Hedvat'])
-            ->setBody($html, 'text/html')
-            ->attach(new \Swift_Attachment($pdfBinary, $pdfFilename, 'application/pdf'));
+            ->setBody($html, 'text/html');
+
+        foreach ($attachments as $att) {
+            $message->attach(new \Swift_Attachment($att[0], $att[1], $att[2] ?? 'application/pdf'));
+        }
 
         $sent = $mailer->send($message, $failures);
         if (!$sent) {
