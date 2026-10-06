@@ -140,7 +140,6 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Phone</th>
                         <th>Item(s)</th>
                         <th>Qty</th>
-                        <th>Total</th>
                         <th>Paid</th>
                         <th>Placed</th>
                         @if($showStreetDate)
@@ -171,7 +170,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
                             <td data-order="{{ strtolower($wp['email']) }}">{{ $wp['email'] ?: '—' }}</td>
                             <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
-                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:230px;">
+                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:190px;">
                                 @forelse($wp['items'] as $itemLabel)
                                     <div>{{ $itemLabel }}</div>
                                 @empty
@@ -179,14 +178,14 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endforelse
                             </td>
                             <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
-                            <td data-order="{{ $wp['total'] ?? 0 }}">{{ $wp['total'] === null ? '—' : '$' . number_format($wp['total'], 2) }}</td>
-                            <td data-order="{{ !empty($wp['paid']) ? 1 : 0 }}">
+                            <td data-order="{{ $wp['total'] ?? 0 }}" style="white-space:nowrap;">
+                                @if($wp['total'] !== null)<div>${{ number_format($wp['total'], 2) }}</div>@endif
                                 @if(!empty($wp['paid']))
                                     <span class="pill pill-paid">Paid</span>
                                 @else
                                     <span class="pill pill-unpaid">Unpaid</span>
                                 @endif
-                                @if($methodLabel !== '')<div class="sub" style="margin:2px 0 0;">{{ $methodLabel }}</div>@endif
+                                @if($methodLabel !== '') <span class="sub">{{ $methodLabel }}</span> @endif
                             </td>
                             <td class="sub" data-order="{{ $placedTs }}" style="white-space:nowrap;">{{ $placedTs ? date('n/j/y g:ia', $placedTs) : '—' }}</td>
                             @if($showStreetDate)
