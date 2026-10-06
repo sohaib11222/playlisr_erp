@@ -126,9 +126,13 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             <table class="table" id="website_pickup_table" style="width:100%;">
                 <thead>
                     <tr>
+                        <th>#</th>
                         <th>Store</th>
-                        <th>Customer</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
                         <th>Item(s)</th>
+                        <th>Qty</th>
                         <th>Total</th>
                         <th>Paid</th>
                         <th>Placed</th>
@@ -148,13 +152,24 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             $methodLabel = ['stripe' => 'Card', 'paypal' => 'PayPal', 'free' => 'No charge'][$wp['paymentMethod'] ?? ''] ?? ucfirst($wp['paymentMethod'] ?? '');
                             if (!empty($wp['storeCredit'])) { $methodLabel = trim($methodLabel . ' + store credit'); }
                             $statusSort = !empty($wp['isPreorder']) ? ($notYetDue ? 0 : 1) : ($wp['status'] === 'ready_for_pickup' ? 3 : 2);
+                            // Signing-event preorders get handed out at the event,
+                            // not pulled for a regular pickup (Sarah, 2026-10-06).
+                            $eventPickup = (bool) preg_grep('/axis mundi/i', $wp['items']);
                         @endphp
                         <tr @if(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
-                            <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico Store' : 'Hollywood Store' }}</td>
-                            <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}
-                                <div class="sub" style="margin:0;">{{ $wp['email'] }}@if(!empty($wp['phone']))@if(!empty($wp['email'])) &middot; @endif{{ $wp['phone'] }}@endif</div>
+                            <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
+                            <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}</td>
+                            <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
+                            <td data-order="{{ strtolower($wp['email']) }}">{{ $wp['email'] ?: '—' }}</td>
+                            <td>{{ $wp['phone'] ?: '—' }}</td>
+                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}">
+                                @forelse($wp['items'] as $itemLabel)
+                                    <div>{{ $itemLabel }}</div>
+                                @empty
+                                    —
+                                @endforelse
                             </td>
-                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}">{{ implode(', ', $wp['items']) ?: '—' }}</td>
+                            <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
                             <td data-order="{{ $wp['total'] }}">${{ number_format($wp['total'], 2) }}</td>
                             <td data-order="{{ !empty($wp['paid']) ? 1 : 0 }}">
                                 @if(!empty($wp['paid']))
@@ -167,7 +182,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td class="sub" data-order="{{ $placedTs }}">{{ $placedTs ? date('M j, Y g:ia', $placedTs) : '—' }}</td>
                             <td data-order="{{ $shipTs ?: 0 }}">{{ $shipTs ? gmdate('M j, Y', $shipTs) : '—' }}</td>
                             <td data-order="{{ $statusSort }}">
-                                @if(!empty($wp['isPreorder']))
+                                @if($eventPickup)
+                                    <span class="label" style="background:#2e7d32; font-weight:700;">Will pick up at event</span>
+                                @elseif(!empty($wp['isPreorder']))
                                     <span class="label" style="background:#c9720a; font-weight:700;">PREORDER — NOT IN STOCK</span><br>
                                     @if($notYetDue)
                                         <span class="sub" style="color:#a23;">Don't pull — ships {{ gmdate('M j, Y', $shipTs) }}</span>

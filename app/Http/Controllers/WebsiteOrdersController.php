@@ -208,8 +208,16 @@ class WebsiteOrdersController extends Controller
                 if ($isPreorder && !empty($product['preorderShipDate'])) {
                     $shipDates[] = $product['preorderShipDate'];
                 }
+                // Always show the quantity and the format (the CD and the
+                // standard LP of a release often share one product name, so
+                // staff couldn't tell what to pull). Sarah, 2026-10-06.
+                $format = trim((string) ($product['subCategory'] ?? ''));
+                if ($format !== '' && stripos($name, $format) === false) {
+                    $name .= " ({$format})";
+                }
                 return [
-                    'label'      => $qty > 1 ? "{$name} x{$qty}" : $name,
+                    'label'      => "{$qty} x {$name}",
+                    'qty'        => $qty,
                     'isPreorder' => $isPreorder,
                 ];
             }, $o['items'] ?? []);
@@ -227,6 +235,7 @@ class WebsiteOrdersController extends Controller
                 'email'       => $o['user_id']['email'] ?? '',
                 'phone'       => $o['contactNumber'] ?? '',
                 'items'       => array_map(fn($i) => $i['label'], $items),
+                'unitCount'   => array_sum(array_map(fn($i) => $i['qty'], $items)),
                 'total'       => (float) ($o['total_amount'] ?? 0),
                 'location'    => $o['pickup_location'] ?? '',
                 'placed'      => $o['createdAt'] ?? null,
