@@ -214,14 +214,18 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                     <button type="button" class="btn btn-success btn-xs js-hold-picked-up" data-id="{{ $wp['id'] }}">Mark Picked Up</button>
                                 @elseif($notYetDue)
                                     <span class="sub">Available after street date</span>
+                                @elseif(!$eventPickup)
+                                    {{-- Regular pickups: change status from a dropdown (Sarah, 2026-10-06).
+                                         Cancel stays on /website-orders since it can involve a refund. --}}
+                                    <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
+                                        {{ csrf_field() }}
+                                        <select name="status" class="form-control input-sm" style="height:28px; padding:2px 6px; font-size:12px; width:auto;" onchange="this.form.submit()" aria-label="Order status">
+                                            @foreach(['processing' => 'Preparing', 'ready_for_pickup' => 'Ready for Pickup', 'picked_up' => 'Picked Up'] as $sv => $sl)
+                                                <option value="{{ $sv }}" @if($wp['status'] === $sv) selected @endif>{{ $sl }}</option>
+                                            @endforeach
+                                        </select>
+                                    </form>
                                 @else
-                                    @if($wp['status'] !== 'ready_for_pickup' && !$eventPickup)
-                                        <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
-                                            {{ csrf_field() }}
-                                            <input type="hidden" name="status" value="ready_for_pickup">
-                                            <button type="submit" class="btn btn-default btn-xs">Mark Ready</button>
-                                        </form>
-                                    @endif
                                     <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
                                         {{ csrf_field() }}
                                         <input type="hidden" name="status" value="picked_up">
@@ -450,6 +454,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             var website_pickup_table = $('#website_pickup_table').DataTable({
                 paging: false,
                 searching: true,
+                // The site-wide sticky header (common.js) swaps in a header
+                // clone with no click handlers here, so sorting never fired.
+                fixedHeader: false,
                 dom: 't',
                 info: false,
                 order: [],
