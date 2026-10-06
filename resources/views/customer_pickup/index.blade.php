@@ -169,7 +169,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                             <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}</td>
                             <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
-                            <td data-order="{{ strtolower($wp['email']) }}" style="word-break:break-all; max-width:190px;">{{ $wp['email'] ?: '—' }}</td>
+                            <td data-order="{{ strtolower($wp['email']) }}">{{ $wp['email'] ?: '—' }}</td>
                             <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
                             <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:230px;">
                                 @forelse($wp['items'] as $itemLabel)
@@ -214,7 +214,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @elseif($notYetDue)
                                     <span class="sub">Available after street date</span>
                                 @else
-                                    @if($wp['status'] !== 'ready_for_pickup')
+                                    @if($wp['status'] !== 'ready_for_pickup' && !$eventPickup)
                                         <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
                                             {{ csrf_field() }}
                                             <input type="hidden" name="status" value="ready_for_pickup">
