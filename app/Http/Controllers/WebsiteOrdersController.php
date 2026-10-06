@@ -212,6 +212,7 @@ class WebsiteOrdersController extends Controller
                 // standard LP of a release often share one product name, so
                 // staff couldn't tell what to pull). Sarah, 2026-10-06.
                 $format = trim((string) ($product['subCategory'] ?? ''));
+                $format = ['vinyl records' => 'Vinyl', 'cds' => 'CD', 'cassettes' => 'Cassette'][strtolower($format)] ?? $format;
                 if ($format !== '' && stripos($name, $format) === false) {
                     $name .= " ({$format})";
                 }

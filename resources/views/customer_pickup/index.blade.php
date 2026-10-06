@@ -122,8 +122,15 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         @if(empty($websitePickups))
             <div class="sub" style="padding:8px 2px;">No website pickup orders waiting right now.</div>
         @else
+            @php
+                // Event pickups (Axis Mundi) don't need a street date, so the
+                // column only shows when some other order has one (Sarah, 2026-10-06).
+                $showStreetDate = collect($websitePickups)->contains(function ($w) {
+                    return !empty($w['shipDate']) && !preg_grep('/axis mundi/i', $w['items']);
+                });
+            @endphp
             <div class="table-responsive">
-            <table class="table" id="website_pickup_table" style="width:100%;">
+            <table class="table" id="website_pickup_table" style="width:100%; font-size:13px;">
                 <thead>
                     <tr>
                         <th>#</th>
@@ -136,7 +143,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Total</th>
                         <th>Paid</th>
                         <th>Placed</th>
+                        @if($showStreetDate)
                         <th>Street Date</th>
+                        @endif
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
@@ -160,9 +169,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                             <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}</td>
                             <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
-                            <td data-order="{{ strtolower($wp['email']) }}">{{ $wp['email'] ?: '—' }}</td>
-                            <td>{{ $wp['phone'] ?: '—' }}</td>
-                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}">
+                            <td data-order="{{ strtolower($wp['email']) }}" style="word-break:break-all; max-width:190px;">{{ $wp['email'] ?: '—' }}</td>
+                            <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
+                            <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:230px;">
                                 @forelse($wp['items'] as $itemLabel)
                                     <div>{{ $itemLabel }}</div>
                                 @empty
@@ -179,8 +188,10 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endif
                                 @if($methodLabel !== '')<div class="sub" style="margin:2px 0 0;">{{ $methodLabel }}</div>@endif
                             </td>
-                            <td class="sub" data-order="{{ $placedTs }}">{{ $placedTs ? date('M j, Y g:ia', $placedTs) : '—' }}</td>
-                            <td data-order="{{ $shipTs ?: 0 }}">{{ $shipTs ? gmdate('M j, Y', $shipTs) : '—' }}</td>
+                            <td class="sub" data-order="{{ $placedTs }}" style="white-space:nowrap;">{{ $placedTs ? date('n/j/y g:ia', $placedTs) : '—' }}</td>
+                            @if($showStreetDate)
+                            <td data-order="{{ $shipTs ?: 0 }}" style="white-space:nowrap;">{{ ($shipTs && !$eventPickup) ? gmdate('n/j/y', $shipTs) : '—' }}</td>
+                            @endif
                             <td data-order="{{ $statusSort }}">
                                 @if($eventPickup)
                                     <span class="label" style="background:#2e7d32; font-weight:700;">Will pick up at event</span>
