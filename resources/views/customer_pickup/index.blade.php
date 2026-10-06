@@ -44,6 +44,8 @@ body.pos-v2 .preorder-toggle .btn-accent, body.pos-v2 .preorder-toggle .btn-ghos
    in the same row so they don't read as the same kind of control. */
 body.pos-v2 #preorder_table .pill-paid, body.pos-v2 #website_pickup_table .pill-paid { background: #e6f4ea; color: #2e7d32; border-color: #cce8d4; }
 body.pos-v2 #website_pickup_table .pill { display:inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
+body.pos-v2 #website_pickup_table thead th { padding-right: 18px !important; }
+body.pos-v2 #website_pickup_table .label { white-space: normal; display: inline-block; line-height: 1.3; }
 body.pos-v2 #website_pickup_search { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 7px 10px; font-family: inherit; background: #fff; min-width: 240px; }
 body.pos-v2 #website_pickup_search:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 #preorder_table .pill-unpaid, body.pos-v2 #website_pickup_table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
@@ -168,7 +170,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                             <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}</td>
                             <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
-                            <td data-order="{{ strtolower($wp['email']) }}">{{ $wp['email'] ?: '—' }}</td>
+                            <td data-order="{{ strtolower($wp['email']) }}">@if($wp['email'] !== ''){!! str_replace('@', '<wbr>@', e($wp['email'])) !!}@else — @endif</td>
                             <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
                             <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:190px;">
                                 @forelse($wp['items'] as $itemLabel)
@@ -187,7 +189,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endif
                                 @if($methodLabel !== '') <span class="sub">{{ $methodLabel }}</span> @endif
                             </td>
-                            <td class="sub" data-order="{{ $placedTs }}" style="white-space:nowrap;">{{ $placedTs ? date('n/j/y g:ia', $placedTs) : '—' }}</td>
+                            <td class="sub" data-order="{{ $placedTs }}" >@if($placedTs){{ date('n/j/y', $placedTs) }}<br>{{ date('g:ia', $placedTs) }}@else — @endif</td>
                             @if($showStreetDate)
                             <td data-order="{{ $shipTs ?: 0 }}" style="white-space:nowrap;">{{ ($shipTs && !$eventPickup) ? gmdate('n/j/y', $shipTs) : '—' }}</td>
                             @endif
