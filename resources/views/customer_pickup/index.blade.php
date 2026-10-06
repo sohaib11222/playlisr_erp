@@ -170,7 +170,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endforelse
                             </td>
                             <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
-                            <td data-order="{{ $wp['total'] }}">${{ number_format($wp['total'], 2) }}</td>
+                            <td data-order="{{ $wp['total'] ?? 0 }}">{{ $wp['total'] === null ? '—' : '$' . number_format($wp['total'], 2) }}</td>
                             <td data-order="{{ !empty($wp['paid']) ? 1 : 0 }}">
                                 @if(!empty($wp['paid']))
                                     <span class="pill pill-paid">Paid</span>
@@ -198,7 +198,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">
-                                @if($notYetDue)
+                                @if(($wp['source'] ?? '') === 'store_hold')
+                                    <button type="button" class="btn btn-success btn-xs js-hold-picked-up" data-id="{{ $wp['id'] }}">Mark Picked Up</button>
+                                @elseif($notYetDue)
                                     <span class="sub">Available after street date</span>
                                 @else
                                     @if($wp['status'] !== 'ready_for_pickup')
@@ -439,10 +441,27 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 dom: 't',
                 info: false,
                 order: [],
-                columnDefs: [{ targets: -1, orderable: false }],
+                columnDefs: [{ targets: [0, -1], orderable: false }],
+            });
+            // Keep # as a plain 1..N row count in whatever order is shown,
+            // so sorting/searching doesn't scramble it.
+            website_pickup_table.on('order.dt search.dt draw.dt', function() {
+                website_pickup_table.column(0, { search: 'applied', order: 'applied' }).nodes().each(function(cell, i) {
+                    cell.innerHTML = i + 1;
+                });
             });
             $('#website_pickup_search').on('input search', function() {
                 website_pickup_table.search(this.value).draw();
+            });
+            // In-store event holds use the regular pickup endpoint (JSON).
+            $('#website_pickup_table').on('click', '.js-hold-picked-up', function() {
+                var btn = $(this).prop('disabled', true);
+                $.post('/customer-pickups/' + btn.data('id') + '/mark-picked-up', {
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(function(res) {
+                    if (res && res.success) { location.reload(); }
+                    else { toastr.error((res && res.msg) || 'Could not mark picked up'); btn.prop('disabled', false); }
+                }).fail(function() { toastr.error('Could not mark picked up'); btn.prop('disabled', false); });
             });
         }
 

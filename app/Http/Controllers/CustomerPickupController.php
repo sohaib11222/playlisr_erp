@@ -165,6 +165,45 @@ class CustomerPickupController extends Controller
         // since staff pulling pickups look at this page, not the order console.
         $websitePickups = (new \App\Http\Controllers\WebsiteOrdersController())->pickupOrdersRows();
 
+        // In-store holds for event releases (e.g. Axis Mundi rung up at the
+        // register) belong in the same list as the website preorders, so all
+        // of an event's pickups are in one place (Sarah, 2026-10-06).
+        $eventHolds = CustomerPickup::where('customer_pickups.business_id', $business_id)
+            ->where('customer_pickups.status', 'ready')
+            ->leftJoin('contacts', 'customer_pickups.contact_id', '=', 'contacts.id')
+            ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
+            ->leftJoin('business_locations', 'customer_pickups.location_id', '=', 'business_locations.id')
+            ->where('products.name', 'like', '%axis mundi%')
+            ->select(
+                'customer_pickups.*',
+                'contacts.name as customer_name',
+                'contacts.email as customer_email',
+                'contacts.mobile',
+                'products.name as product_name',
+                'business_locations.name as location_name'
+            )
+            ->get();
+        foreach ($eventHolds as $h) {
+            $qty = (int) $h->quantity;
+            $websitePickups[] = [
+                'id'            => $h->id,
+                'source'        => 'store_hold',
+                'customer'      => $h->customer_name ?: 'Walk-in',
+                'email'         => $h->customer_email ?: '',
+                'phone'         => $h->mobile ?: '',
+                'items'         => ["{$qty} x {$h->product_name} (in-store hold)"],
+                'unitCount'     => $qty,
+                'total'         => null,
+                'paid'          => (bool) $h->is_paid,
+                'paymentMethod' => '',
+                'location'      => stripos((string) $h->location_name, 'pico') !== false ? 'pico' : 'hollywood',
+                'placed'        => $h->created_at ? (string) $h->created_at : null,
+                'status'        => 'ready_for_pickup',
+                'isPreorder'    => false,
+                'shipDate'      => null,
+            ];
+        }
+
         return view('customer_pickup.index', compact(
             'statuses',
             'preorders',
