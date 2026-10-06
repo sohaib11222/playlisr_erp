@@ -1,0 +1,90 @@
+# One-click "set on-hand stock at a location from a counted CSV" on production.
+#
+# Runs `php artisan stock:set-counts`. DRY RUN by default — it only reports
+# what WOULD change (exact UPC matches + confident fuzzy name matches). Tick
+# "commit" to actually write the counts.
+#
+# Uses the same secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Set stock counts
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'CSV path in the repo (upc,qty,artist,title)'
+        required: true
+        default: "database/data/stock-counts/hollywood-cds-2026-10-05.csv"
+      location:
+        description: 'Location name to match (e.g. hollywood, pico)'
+        required: true
+        default: "hollywood"
+      commit:
+        description: 'Actually write the counts? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Share the deploy group so this can't race a Deploy production run.
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  set-counts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan attempt $attempt"
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "ssh-keyscan succeeded"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ssh-keyscan failed after 3 tries — continuing anyway"
+          exit 0
+
+      - name: Run stock:set-counts
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 15m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            FILE="${{ github.event.inputs.file }}"
+            LOC="${{ github.event.inputs.location }}"
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run — $FILE @ $LOC ==="
+              php artisan stock:set-counts "$FILE" --location="$LOC" --commit 2>&1
+            else
+              echo "=== DRY RUN — no changes — $FILE @ $LOC ==="
+              php artisan stock:set-counts "$FILE" --location="$LOC" 2>&1
+            fi
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              echo "=== tail laravel log (for the stack) ==="
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
+            fi
+            echo "=== done ==="
+            exit 0
