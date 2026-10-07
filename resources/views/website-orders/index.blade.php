@@ -485,10 +485,20 @@
       function woOpenStatus(orderId, currentStatus, currentTracking) {
         var form = document.getElementById('wo-status-form');
         form.action = '{{ url("/website-orders") }}/' + orderId + '/status';
+        form.dataset.orderId = orderId;
         document.getElementById('wo-status-select').value = currentStatus || '';
         document.getElementById('wo-status-tracking').value = currentTracking || '';
         document.getElementById('wo-status-dialog').showModal();
       }
+      // Picking "Cancelled" here hands off to the Cancel order dialog, which
+      // asks for the reason and sends the refund + apology email. A plain
+      // status change to cancelled told the customer nothing.
+      document.getElementById('wo-status-select').addEventListener('change', function () {
+        if (this.value !== 'cancelled') return;
+        var orderId = document.getElementById('wo-status-form').dataset.orderId;
+        document.getElementById('wo-status-dialog').close();
+        woOpenCancel(orderId);
+      });
       function woOpenCancel(orderId) {
         var form = document.getElementById('wo-cancel-form');
         form.action = '{{ url("/website-orders") }}/' + orderId + '/cancel';

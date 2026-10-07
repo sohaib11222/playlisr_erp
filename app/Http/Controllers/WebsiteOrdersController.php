@@ -276,6 +276,9 @@ class WebsiteOrdersController extends Controller
         if ($status === 'shipped' && $tracking === '') {
             return redirect()->back()->with('error', 'Enter a tracking number for shipped orders.');
         }
+        if ($status === 'cancelled') {
+            return redirect()->back()->with('error', 'Use the Cancel order button so the customer gets the reason and their refund.');
+        }
 
         $resp = $this->websiteApi('POST', "/erp/orders/{$id}/status", [
             'status' => $status,
