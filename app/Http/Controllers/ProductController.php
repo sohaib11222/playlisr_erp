@@ -3082,6 +3082,8 @@ class ProductController extends Controller
 
                 DB::commit();
                 $this->logProductEdited($selected_products);
+                // Take them off nivessa.com now, not at the nightly sync.
+                try { (new \App\Services\NivessaStockNotifier())->push($selected_products); } catch (\Throwable $e) {}
             }
 
             $output = ['success' => 1,
@@ -3119,6 +3121,7 @@ class ProductController extends Controller
                                 ->update(['is_inactive' => 0]);
 
                 $this->logProductEdited((int) $id);
+                try { (new \App\Services\NivessaStockNotifier())->push([(int) $id]); } catch (\Throwable $e) {}
 
                 $output = ['success' => true,
                                 'msg' => __("lang_v1.updated_success")

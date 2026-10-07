@@ -1037,6 +1037,7 @@ class AdminActionHistoryController extends Controller
         }
 
         \Cache::forget('products_index_sold_totals:' . (int) ($data['business_id'] ?? 0));
+        try { (new \App\Services\NivessaStockNotifier())->push([(int) $data['source_id'], (int) $data['target_id']]); } catch (\Throwable $e) {}
 
         $src = $data['source_name'] ?? ('#' . (int) $data['source_id']);
         $tgt = $data['target_name'] ?? ('#' . (int) $data['target_id']);
@@ -1069,6 +1070,7 @@ class AdminActionHistoryController extends Controller
         }
 
         \Cache::forget('products_index_sold_totals:' . (int) ($data['business_id'] ?? 0));
+        try { (new \App\Services\NivessaStockNotifier())->push(array_merge(array_column($merges, 'source_id'), array_column($merges, 'target_id'))); } catch (\Throwable $e) {}
         return redirect('/admin/admin-action-history')
             ->with('status', ['success' => 1, 'msg' => 'Un-merged a batch of ' . count($merges) . ' duplicate(s): history moved back, stock restored, duplicates reactivated.']);
     }

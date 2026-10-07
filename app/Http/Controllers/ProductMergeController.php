@@ -262,6 +262,7 @@ class ProductMergeController extends Controller
         }
 
         \Cache::forget('products_index_sold_totals:' . $business_id);
+        $this->pushToWebsite([$payload['source_id'] ?? 0, $payload['target_id'] ?? 0]);
 
         return response()->json([
             'success' => true,
@@ -986,6 +987,7 @@ class ProductMergeController extends Controller
                 ], JSON_PRETTY_PRINT)
             );
             \Cache::forget('products_index_sold_totals:' . $business_id);
+            $this->pushToWebsite(array_merge(array_column($merges, 'source_id'), array_column($merges, 'target_id')));
         }
 
         $remaining = max(0, $remainingBefore - $done);
@@ -1138,6 +1140,7 @@ class ProductMergeController extends Controller
             ], JSON_PRETTY_PRINT)
         );
         \Cache::forget('products_index_sold_totals:' . $business_id);
+        $this->pushToWebsite(array_merge(array_column($merges, 'source_id'), array_column($merges, 'target_id')));
 
         $msg = 'Kept "' . $keep['name'] . '" and merged in ' . count($merges) . ' product(s). Stock + sales combined.';
         if ($failed > 0) { $msg .= ' ' . $failed . ' failed.'; }
@@ -1149,5 +1152,22 @@ class ProductMergeController extends Controller
             'kept' => ['id' => $keep['id'], 'name' => $keep['name'], 'sku' => $keep['sku']],
             'merged' => count($merges),
         ]);
+    }
+
+    /**
+     * Tell nivessa.com about products whose sellable state just changed
+     * (merged away, deactivated, reactivated). Without this a merged or
+     * deactivated duplicate stayed live on the site until the nightly sync
+     * (found 2026-10-07: Diamond Eyes $36.25 copy). Never throws.
+     */
+    protected function pushToWebsite(array $productIds): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $productIds))));
+        if (empty($ids)) { return; }
+        try {
+            (new \App\Services\NivessaStockNotifier())->push($ids);
+        } catch (\Throwable $e) {
+            \Log::warning('Website push after product state change failed: ' . $e->getMessage());
+        }
     }
 }
