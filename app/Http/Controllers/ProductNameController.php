@@ -1965,18 +1965,19 @@ class ProductNameController extends Controller
     /** artistKey => ['spelling' => display name, 'titles' => distinct release count]. */
     protected function standardKnownArtists($business_id, $catIds)
     {
-        return \Cache::remember('name-standard-known-artists:' . $business_id, 1800, function () use ($business_id, $catIds) {
+        return \Cache::remember('name-standard-known-artists-v2:' . $business_id, 1800, function () use ($business_id, $catIds) {
             $stop = $this->titleStopKeys();
             $first = [];   // key => [titleKey => 1] from Discogs-linked names
             $spell = [];   // key => [spelling => count]
             $second = [];  // key => times seen as the SECOND part of any name
+            $pairs = [];   // key => [other side key => 1] across every name
             // Trusted source: products created by the Discogs inventory import,
             // whose names are Discogs' own "Artist - Title". Staff-typed names on
             // Discogs-linked products are NOT trusted (some are "Title - Artist").
             $hasAddedVia = \Schema::hasColumn('products', 'added_via');
             \DB::table('products')->where('business_id', $business_id)
                 ->select('id', 'name', $hasAddedVia ? 'added_via' : \DB::raw('NULL as added_via'))->orderBy('id')
-                ->chunk(5000, function ($rows) use (&$first, &$spell, &$second) {
+                ->chunk(5000, function ($rows) use (&$first, &$spell, &$second, &$pairs) {
                     foreach ($rows as $r) {
                         $parts = $this->standardSplit($r->name);
                         if (!$parts) { continue; }
@@ -1984,6 +1985,7 @@ class ProductNameController extends Controller
                         $ka = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($a));
                         $kb = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($b));
                         if ($kb !== '') { $second[$kb] = ($second[$kb] ?? 0) + 1; }
+                        if ($ka !== '' && $kb !== '' && $ka !== $kb) { $pairs[$ka][$kb] = 1; $pairs[$kb][$ka] = 1; }
                         if ($r->added_via === 'discogs_inventory_import' && $sep === '-' && $ka !== '') {
                             $first[$ka][$kb] = 1;
                             $sp = ProductNameNormalizer::stripMarkers($a);
@@ -2007,7 +2009,9 @@ class ProductNameController extends Controller
                 }
                 $out[$k] = ['spelling' => ProductNameNormalizer::properArtistCase($best), 'titles' => $n];
             }
-            return $out;
+            $partners = [];
+            foreach ($pairs as $k => $set) { $partners[$k] = count($set); }
+            return ['known' => $out, 'partners' => $partners];
         });
     }
 
@@ -2039,10 +2043,17 @@ class ProductNameController extends Controller
     }
 
     /** ['artist','title','name'] for one product, or ['flag' => reason]. */
-    protected function standardProposal($r, array $known)
+    protected function standardProposal($r, array $ctx)
     {
+        $known = $ctx['known'];
+        $partners = $ctx['partners'];
         if (stripos((string) $r->name, 'retired') !== false) { return ['flag' => 'retired']; }
         $pick = function ($k) use ($known) { return $known[$k] ?? null; };
+        // Keep a deliberate spelling as typed ("Blink-182"); only re-case ALL CAPS / all lower.
+        $show = function ($typed, $hit) {
+            $typed = ProductNameNormalizer::stripMarkers($typed);
+            return (preg_match('/\p{Lu}/u', $typed) && preg_match('/\p{Ll}/u', $typed)) ? $typed : $hit['spelling'];
+        };
         $artistCol = trim((string) $r->artist);
         $colKey = ($artistCol !== '' && !preg_match('/^(n\/?a|unknown|various.*|none|no artist|-)$/i', $artistCol))
             ? ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($artistCol)) : '';
@@ -2054,8 +2065,14 @@ class ProductNameController extends Controller
             $ka = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($a));
             $kb = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($b));
             $ia = $pick($ka); $ib = $pick($kb);
-            if ($ia && !$ib) { $artist = $ia['spelling']; $title = $b; }
-            elseif ($ib && !$ia) { $artist = $ib['spelling']; $title = $a; }
+            // Second opinion: a real artist sits next to many different titles,
+            // a title next to one artist. If this disagrees with the artist
+            // list, leave the name alone.
+            $pa = $partners[$ka] ?? 0; $pb = $partners[$kb] ?? 0;
+            if ($ia && !$ib && $pb > $pa && $pb >= 2) { return ['flag' => 'signals disagree']; }
+            if ($ib && !$ia && $pa > $pb && $pa >= 2) { return ['flag' => 'signals disagree']; }
+            if ($ia && !$ib) { $artist = $show($a, $ia); $title = $b; }
+            elseif ($ib && !$ia) { $artist = $show($b, $ib); $title = $a; }
             elseif ($ia && $ib) {
                 // e.g. Ween "Pod" vs the band P.O.D. — too risky to pick.
                 return ['flag' => 'both sides look like artists'];
@@ -2073,7 +2090,7 @@ class ProductNameController extends Controller
                 $k = ProductNameNormalizer::artistKey(implode(' ', array_slice($words, 0, $n)));
                 $hit = $pick($k);
                 if ($hit && ($n > 1 || (strlen($k) >= 5 && $hit['titles'] >= 3))) {
-                    $artist = $hit['spelling'];
+                    $artist = $show(implode(' ', array_slice($words, 0, $n)), $hit);
                     $title = implode(' ', array_slice($words, $n));
                     break;
                 }
@@ -2100,7 +2117,7 @@ class ProductNameController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         $catIds = $this->musicCategoryIds($business_id);
-        \Cache::forget('name-standard-known-artists:' . $business_id);
+        \Cache::forget('name-standard-known-artists-v2:' . $business_id);
         $known = $this->standardKnownArtists($business_id, $catIds);
         $toFix = 0; $ok = 0; $flagged = 0; $reasons = []; $fixes = []; $flags = [];
         $this->standardBaseQuery($business_id, $catIds)->select('id', 'name', 'artist')->orderBy('id')
@@ -2122,7 +2139,7 @@ class ProductNameController extends Controller
             });
         return response()->json([
             'success' => true, 'to_fix' => $toFix, 'already_standard' => $ok, 'flagged' => $flagged,
-            'known_artists' => count($known), 'flag_reasons' => $reasons, 'preview' => $fixes, 'flagged_preview' => $flags,
+            'known_artists' => count($known['known']), 'flag_reasons' => $reasons, 'preview' => $fixes, 'flagged_preview' => $flags,
         ]);
     }
 
