@@ -1735,6 +1735,8 @@ class ProductNameController extends Controller
     // her own catalog. Read-only scan, then a separate apply with snapshot +
     // undo (action backfill-genre-from-discogs reuses the genre undo).
 
+    protected $posterUnmatched = [];
+
     /** Parent categories that hold posters / wall art. */
     protected function posterCategoryIds($business_id)
     {
@@ -1791,15 +1793,17 @@ class ProductNameController extends Controller
         return $votes;
     }
 
-    /** Confident artist => genre: 2+ tagged releases and the top genre has >= 60% of them. */
+    /** Artist => usual genre: 2+ tagged releases and one genre clearly ahead of the next. */
     protected function confidentArtistGenres(array $votes)
     {
         $out = [];
         foreach ($votes as $k => $g) {
             arsort($g);
-            $total = array_sum($g);
+            $counts = array_values($g);
+            $total = array_sum($counts);
             $top = key($g);
-            if ($total >= 2 && $g[$top] / $total >= 0.6) { $out[$k] = $top; }
+            $second = $counts[1] ?? 0;
+            if ($total >= 2 && $counts[0] > $second) { $out[$k] = $top; }
         }
         return $out;
     }
@@ -1836,10 +1840,11 @@ class ProductNameController extends Controller
                 $tokens = explode(' ', $this->posterKey($r->name));
                 for ($n = min(6, count($tokens)); $n >= 1; $n--) {
                     $k = implode(' ', array_slice($tokens, 0, $n));
-                    if (mb_strlen($k) >= 4 && isset($artistGenre[$k])) { $match = [$k, $artistGenre[$k]]; break; }
+                    // One-word artists need 5+ letters so "King" doesn't grab "King of the Wild".
+                    if (($n > 1 || mb_strlen($k) >= 5) && isset($artistGenre[$k])) { $match = [$k, $artistGenre[$k]]; break; }
                 }
             }
-            if (!$match) { continue; }
+            if (!$match) { $this->posterUnmatched[] = $r->name; continue; }
             $proposals[] = [
                 'id' => (int) $r->id, 'name' => $r->name, 'category_id' => (int) $r->category_id,
                 'old' => $curSub ?: null, 'artist_key' => $match[0], 'genre' => $match[1],
@@ -1865,6 +1870,7 @@ class ProductNameController extends Controller
             'untagged' => $untagged,
             'matched' => count($proposals),
             'by_genre' => $byGenre,
+            'unmatched' => array_slice($this->posterUnmatched, 0, 300),
             'rows' => array_slice(array_map(function ($p) {
                 return ['id' => $p['id'], 'name' => $p['name'], 'artist' => $p['artist_key'], 'genre' => $p['genre']];
             }, $proposals), 0, 400),
