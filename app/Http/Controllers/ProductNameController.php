@@ -2014,7 +2014,8 @@ class ProductNameController extends Controller
     /** Split on a spaced "/", " - " or " – ". Returns [first, second, sep] or null. */
     protected function standardSplit($name)
     {
-        $name = trim(preg_replace('/\s+/u', ' ', str_replace(["\u{2013}", "\u{2014}"], '-', (string) $name)));
+        // Discogs-style "Artist\u{2013}Title" often has no spaces around the dash.
+        $name = trim(preg_replace('/\s+/u', ' ', preg_replace('/\s*[\x{2013}\x{2014}]\s*/u', ' - ', (string) $name)));
         $name = trim($name, "\"\u{201C}\u{201D}");
         foreach (['/', '-'] as $sep) {
             $parts = preg_split('/\s+' . preg_quote($sep, '/') . '\s+/u', $name);
@@ -2056,9 +2057,8 @@ class ProductNameController extends Controller
             if ($ia && !$ib) { $artist = $ia['spelling']; $title = $b; }
             elseif ($ib && !$ia) { $artist = $ib['spelling']; $title = $a; }
             elseif ($ia && $ib) {
-                if ($ia['titles'] >= 3 * $ib['titles']) { $artist = $ia['spelling']; $title = $b; }
-                elseif ($ib['titles'] >= 3 * $ia['titles']) { $artist = $ib['spelling']; $title = $a; }
-                else { return ['flag' => 'both sides look like artists']; }
+                // e.g. Ween "Pod" vs the band P.O.D. — too risky to pick.
+                return ['flag' => 'both sides look like artists'];
             } elseif ($colKey !== '' && ($colKey === $ka || $colKey === $kb)) {
                 // Not a known artist yet, but the artist column agrees with one side.
                 $artist = ProductNameNormalizer::properArtistCase(ProductNameNormalizer::stripMarkers($colKey === $ka ? $a : $b));
