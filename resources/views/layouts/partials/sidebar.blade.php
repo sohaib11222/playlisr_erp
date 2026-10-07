@@ -42,7 +42,7 @@
      the Favorites group above. Per-user, saved via /sidebar-favorites/toggle.
      Inline (rendered each request) so it never goes stale. --}}
 <style>
-.sidebar-favorites .header { color: #E8CF68; }
+.sidebar-favorites .header { color: #8693A5; }
 .sidebar-favorites > li > a > .fa-star { color: #FFC107; }
 .sidebar-menu a.has-fav-star { position: relative; padding-right: 34px; }
 .sidebar-fav-star {

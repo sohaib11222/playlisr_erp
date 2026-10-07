@@ -2,9 +2,9 @@
      Nivessa global theme layer (2026-04-20)
 
      Surface-level reskin that applies site-wide. Covers ONLY:
-       - Typography (Poppins — matches nivessa.com)
-       - Body / content background (cream)
-       - Main header + sidebar (espresso, yellow accent)
+       - Typography (Inter, 2026-10-07 for readability)
+       - Body / content background (soft gray-white)
+       - Main header + sidebar (calm slate, teal accent)
        - Color tokens (CSS custom properties) for pages that opt in
 
      Intentionally does NOT restyle buttons, forms, tables, modals,
@@ -19,29 +19,34 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-	/* Palette aligned to nivessa.com (2026-06-03): Poppins, espresso #3B2E2A,
-	   cream #FDF5E7, the logo's warm yellow #FFE070, terracotta #D59052.
-	   Replaces the earlier Inter-Tight / near-black / gold approximation so the
-	   header + sidebar match the rebranded login and dashboard. */
+	/* Calm palette (2026-10-07): Sarah wanted relaxing colors, high
+	   contrast and an easy-to-read font. Slate-navy header + sidebar,
+	   soft gray-white content, one muted teal accent. Inter replaces
+	   Poppins (taller x-height, narrower, reads cleaner at small sizes). */
 	:root {
-		--nv-bg:          #FDF5E7;
+		--nv-bg:          #F5F7FA;
 		--nv-surface:     #FFFFFF;
-		--nv-surface-2:   #FDF7EC;
-		--nv-ink:         #3B2E2A;
-		--nv-ink-2:       #6B5B4F;
-		--nv-ink-3:       #8A7A6B;
-		--nv-line:        #E7D9C0;
-		--nv-line-2:      #D9C9B0;
-		--nv-brand:       #3B2E2A;
-		--nv-brand-ink:   #FDF5E7;
-		--nv-accent:      #FFE070;
-		--nv-accent-deep: #D59052;
-		--nv-accent-soft: #FFF7EC;
-		--nv-accent-text: #B5742F;
+		--nv-surface-2:   #F8FAFC;
+		--nv-ink:         #1F2937;
+		--nv-ink-2:       #374151;
+		--nv-ink-3:       #6B7280;
+		--nv-line:        #E5E7EB;
+		--nv-line-2:      #D1D5DB;
+		--nv-brand:       #1E2A3A;
+		--nv-brand-ink:   #F1F5F9;
+		--nv-accent:      #5EAAA8;
+		--nv-accent-deep: #3F8A88;
+		--nv-accent-soft: #EAF5F4;
+		--nv-accent-text: #1D6F6C;
 		--nv-cr:          #B91C1C;
+		--nv-side-bg:     #1B2533;
+		--nv-side-bg-2:   #151E2A;
+		--nv-side-ink:    #E6EBF1;
+		--nv-side-ink-2:  #C3CCD8;
+		--nv-side-muted:  #8693A5;
 	}
 
 	/* ---------- Typography ---------- */
@@ -53,7 +58,9 @@
 	   Fix: drop the !important, include emoji + symbol fonts in the fallback
 	   stack, and let .fa/.glyphicon rules keep their own font-family. */
 	html, body {
-		font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+		color: var(--nv-ink);
+		-webkit-font-smoothing: antialiased;
+		font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 	}
 	body .content-wrapper,
 	body .main-sidebar,
@@ -105,7 +112,7 @@
 	body .main-header .navbar,
 	body .main-header {
 		background-color: var(--nv-brand) !important;
-		border-bottom: 1px solid #000 !important;
+		border-bottom: 1px solid var(--nv-side-bg-2) !important;
 	}
 	body .main-header .logo {
 		background-color: var(--nv-brand) !important;
@@ -125,7 +132,7 @@
 		vertical-align: middle;
 	}
 	body .main-header .logo:hover {
-		background-color: #3a2e22 !important;
+		background-color: var(--nv-side-bg-2) !important;
 	}
 	body .main-header .navbar .sidebar-toggle {
 		color: var(--nv-brand-ink) !important;
@@ -149,63 +156,103 @@
 	}
 
 	/* ---------- Sidebar (left nav) ---------- */
-	/* AdminLTE sidebar is dark navy by default. Shift to a Nivessa-flavored
-	   dark that coordinates with the near-black navbar. */
-	/* AdminLTE's skin rule (.skin-blue-light .main-sidebar) is more specific
-	   than a plain `body .main-sidebar`, so match its skin-class prefix to win
-	   the cascade — otherwise the sidebar stays the default navy. */
+	/* Calm slate sidebar, high-contrast off-white labels, every item on ONE
+	   line. Widened 230 -> 260px (desktop, expanded only) so the longest
+	   labels fit; anything still too long gets an ellipsis instead of
+	   wrapping. Collapsed / mini / mobile states keep AdminLTE's own sizes.
+	   AdminLTE's skin rule (.skin-blue-light .main-sidebar) is more specific
+	   than a plain `body .main-sidebar`, so match its skin-class prefix. */
 	body .main-sidebar,
 	body .left-side,
 	body[class*="skin-"] .main-sidebar,
 	body[class*="skin-"] .left-side,
 	body[class*="skin-"] .wrapper .main-sidebar,
 	body .sidebar {
-		background-color: #2E2420 !important;
+		background-color: var(--nv-side-bg) !important;
 	}
-	body .sidebar-menu > li > a {
-		color: #E8DBC7 !important;
-		border-left-color: transparent !important;
-		/* Long labels (User Management, Help & Handbook, Listening
-		   Parties, Administer Backup) are wider than the sidebar in
-		   Poppins. Let them wrap and clear the dropdown caret instead
-		   of being cropped at the cream content edge. */
-		white-space: normal !important;
-		overflow: visible !important;
-		padding-right: 30px !important;
-		line-height: 1.25;
+	@media (min-width: 768px) {
+		body:not(.sidebar-collapse) .main-sidebar { width: 260px; }
+		body:not(.sidebar-collapse) .content-wrapper,
+		body:not(.sidebar-collapse) .main-footer { margin-left: 260px; }
+		body:not(.sidebar-collapse) .main-header .navbar { margin-left: 260px; }
 	}
-	body .sidebar-menu > li > a > .pull-right-container {
+	body[class*="skin-"] .sidebar-menu > li > a {
+		color: var(--nv-side-ink) !important;
+		border-left: 3px solid transparent !important;
+		font-size: 14px;
+		font-weight: 500;
+		line-height: 1.3;
+		padding: 10px 28px 10px 13px !important;
+	}
+	body[class*="skin-"] .sidebar-menu > li > a > .fa,
+	body[class*="skin-"] .sidebar-menu > li > a > i {
+		width: 20px;
+		margin-right: 6px;
+		text-align: center;
+		color: var(--nv-side-muted);
+	}
+	body[class*="skin-"]:not(.sidebar-collapse) .sidebar-menu li > a {
+		white-space: nowrap !important;
+		overflow: hidden !important;
+		text-overflow: ellipsis;
+	}
+	body[class*="skin-"] .sidebar-menu > li > a > .pull-right-container {
 		right: 8px;
 	}
-	body .sidebar-menu > li:hover > a,
-	body .sidebar-menu > li.active > a,
-	body .sidebar-menu > li.menu-open > a {
-		background: #241C18 !important;
-		color: var(--nv-accent) !important;
+	body[class*="skin-"] .sidebar-menu > li:hover > a {
+		background: rgba(255,255,255,0.05) !important;
+		color: #FFFFFF !important;
+	}
+	body[class*="skin-"] .sidebar-menu > li.active > a,
+	body[class*="skin-"] .sidebar-menu > li.menu-open > a {
+		background: rgba(94,170,168,0.14) !important;
+		color: #FFFFFF !important;
 		border-left-color: var(--nv-accent) !important;
+		font-weight: 600;
 	}
-	body .sidebar-menu > li > .treeview-menu {
-		background: #241C18 !important;
-		padding: 6px 0;
+	body[class*="skin-"] .sidebar-menu > li:hover > a > i,
+	body[class*="skin-"] .sidebar-menu > li.active > a > i,
+	body[class*="skin-"] .sidebar-menu > li.menu-open > a > i {
+		color: var(--nv-accent);
 	}
-	body .sidebar-menu .treeview-menu > li > a {
-		color: #C9BEA7 !important;
-		white-space: normal !important;
+	body[class*="skin-"] .sidebar-menu > li > .treeview-menu {
+		background: var(--nv-side-bg-2) !important;
+		padding: 4px 0 6px;
 	}
-	body .sidebar-menu .treeview-menu > li > a:hover,
-	body .sidebar-menu .treeview-menu > li.active > a {
-		color: var(--nv-accent) !important;
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a {
+		color: var(--nv-side-ink-2) !important;
+		font-size: 13.5px;
+		padding: 6px 10px 6px 22px !important;
+	}
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a:hover {
+		color: #FFFFFF !important;
 		background: transparent !important;
+	}
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li.active > a {
+		color: #FFFFFF !important;
+		background: transparent !important;
+		font-weight: 600;
+	}
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li.active > a > i {
+		color: var(--nv-accent);
+	}
+	/* Section labels (FAVORITES etc.) */
+	body[class*="skin-"] .sidebar-menu > li.header {
+		color: var(--nv-side-muted) !important;
+		background: transparent !important;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: .08em;
 	}
 	/* User panel at top of sidebar */
 	body .sidebar .user-panel .info > p {
-		color: var(--nv-accent) !important;
+		color: var(--nv-side-ink) !important;
 		font-weight: 600;
 	}
 
 	/* ---------- Scrollbar accent ---------- */
 	body ::-webkit-scrollbar-thumb {
-		background: #d4c69e;
+		background: #CBD2DC;
 		border-radius: 4px;
 	}
 	body ::-webkit-scrollbar-track {
