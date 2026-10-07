@@ -130,6 +130,7 @@ class StreetpulseFileGenerator
         $query = TransactionSellLine::join('transactions', 'transaction_sell_lines.transaction_id', '=', 'transactions.id')
             ->leftJoin('variations', 'transaction_sell_lines.variation_id', '=', 'variations.id')
             ->leftJoin('products', 'transaction_sell_lines.product_id', '=', 'products.id')
+            ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->where('transactions.business_id', $businessId)
             ->where('transactions.type', 'sell')
             ->where('transactions.status', 'final')
@@ -148,7 +149,8 @@ class StreetpulseFileGenerator
                 'transactions.transaction_date',
                 'transactions.created_at',
                 'variations.sub_sku as variation_sku',
-                'products.sku as product_sku'
+                'products.sku as product_sku',
+                'categories.name as category_name'
             )
             ->get();
 
@@ -176,7 +178,9 @@ class StreetpulseFileGenerator
             $salesData[] = [
                 'upc' => $upc,
                 'timestamp' => $timestamp,
-                'used' => 0 // Default to 0 (new items)
+                // Used-stock categories ("Vinyl - Used", "CD - Used", ...) are
+                // flagged so StreetPulse doesn't count them as new sales.
+                'used' => stripos((string) $line->category_name, 'used') !== false ? 1 : 0
             ];
         }
 
