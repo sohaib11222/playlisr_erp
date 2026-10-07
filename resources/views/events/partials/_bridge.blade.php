@@ -649,29 +649,65 @@
   {{-- Order plan moved into the Listening-party prep section (edit.blade.php)
        via partials/_order_plan.blade.php. --}}
 
-  {{-- ---------- Giveaway spin ---------- --}}
-  <div class="ev-card">
-    <h2>Giveaway spin</h2>
-    <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:10px 14px;margin-bottom:12px;background:var(--pos-accent-soft,#FFF9DB);font-size:13px;line-height:1.5;">
-      <strong>How it works:</strong>
-      <ol style="margin:6px 0 0;padding-left:18px;">
-        <li>Only <strong>checked-in guests</strong> can win, so check people in (RSVP table above) before spinning.</li>
-        <li>Hit <strong>Spin the wheel</strong>. It shuffles, then lands on one random name.</li>
-        <li>The <strong>Winner</strong> shows below the button. Spin again for another draw.</li>
-      </ol>
+  {{-- ---------- Giveaway ----------
+       Built so a giveaway can be run on the spot with zero prep (Andy,
+       2026-10-07: three on-the-fly digital raffles had failed because only
+       hand-checked-in guests could win). "Start giveaway" puts a big QR on
+       screen; anyone in the room scans it, types their name + email on
+       nivessa.com/check-in, and is in the draw within seconds. Paper raffle
+       tickets have their own number draw below as a backup. --}}
+  @php
+    $spinPool = array_values(array_filter($pool, fn ($p) => !empty($p['checkedIn'])));
+    $checkInUrl = 'https://nivessa.com/check-in?event=' . rawurlencode($evName)
+      . (!empty($event['id']) ? '&eventId=' . rawurlencode($event['id']) : '');
+  @endphp
+  <div class="ev-card" id="giveaway">
+    <h2>Giveaway</h2>
+    <p class="sub" style="margin-top:0;">Hit <strong>Start giveaway</strong> and turn the screen to the room. Anyone can scan the QR to enter (no RSVP needed), then hit <strong>Draw winner</strong>. Checked-in RSVPs are already entered.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      <button type="button" class="btn-accent" id="gw-start" style="font-size:16px;padding:12px 22px;">Start giveaway</button>
+      <span class="ev-meta"><span id="gw-count-inline">{{ count($spinPool) }}</span> entered so far</span>
     </div>
-    @php $spinPool = array_values(array_filter($pool, fn ($p) => !empty($p['checkedIn']))); @endphp
-    @if(empty($spinPool))
-      <div class="empty">No one is checked in yet — check guests in (RSVP table above) and they'll be entered in the spin.</div>
-    @else
-      <div class="ev-meta" style="margin-bottom:12px;">{{ count($spinPool) }} checked-in guest{{ count($spinPool) === 1 ? '' : 's' }} in the draw.</div>
-      <div id="spin-display" style="font-size:26px;font-weight:800;min-height:40px;padding:10px 0;color:var(--pos-accent-text);">—</div>
-      <button type="button" class="btn-accent" id="spin-btn">Spin the wheel</button>
-      <script>
-        window.__spinPool = @json($spinPool);
-      </script>
-    @endif
+    <div id="spin-display" style="font-size:26px;font-weight:800;min-height:40px;padding:6px 0;color:var(--pos-accent-text);"></div>
+
+    <div style="border-top:1px solid var(--pos-line,#ECE3CF);margin-top:10px;padding-top:12px;">
+      <strong style="font-size:13px;">Using paper raffle tickets?</strong>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:13px;">
+        Tickets from <input type="number" id="tk-from" value="1" min="0" style="width:90px;padding:6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
+        to <input type="number" id="tk-to" placeholder="last #" min="0" style="width:90px;padding:6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
+        <button type="button" class="btn-ghost" id="tk-draw">Draw a ticket number</button>
+        <span id="tk-result" style="font-size:22px;font-weight:800;"></span>
+      </div>
+    </div>
   </div>
+
+  {{-- Full-screen giveaway view, shown to the room. --}}
+  <div id="gw-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#fffdf5;overflow:auto;">
+    <button type="button" id="gw-close" class="btn-ghost" style="position:absolute;top:16px;right:16px;">Close</button>
+    <div style="max-width:1100px;margin:0 auto;padding:40px 24px;display:flex;gap:48px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100%;box-sizing:border-box;">
+      <div style="text-align:center;flex:0 1 420px;">
+        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Scan to enter the giveaway</div>
+        <div style="font-size:16px;color:#6b5d3f;margin-bottom:18px;">Takes 10 seconds. Name + email, that's it.</div>
+        <div id="gw-qr" style="display:inline-block;background:#fff;padding:16px;border-radius:16px;border:1px solid #ECE3CF;"></div>
+        <div style="font-size:14px;color:#6b5d3f;margin-top:12px;word-break:break-all;">{{ $checkInUrl }}</div>
+      </div>
+      <div style="text-align:center;flex:1 1 360px;">
+        <div style="font-size:80px;font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
+        <div style="font-size:18px;color:#6b5d3f;margin-bottom:12px;">entered</div>
+        <div id="gw-recent" style="font-size:15px;color:#6b5d3f;min-height:44px;margin-bottom:22px;"></div>
+        <button type="button" class="btn-accent" id="spin-btn" style="font-size:24px;padding:16px 40px;">Draw winner</button>
+        <div id="gw-display" style="font-size:44px;font-weight:900;min-height:60px;margin-top:26px;"></div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    window.__spinPool = @json($spinPool);
+    window.__giveaway = {
+      poolUrl: @json(route('events.giveawayPool', ['id' => $event['id'] ?? ''])),
+      checkInUrl: @json($checkInUrl)
+    };
+  </script>
 
   {{-- Preorders now live entirely in the guest list above (active inline,
        canceled hidden). The standalone Preorders card was removed per Sarah. --}}
@@ -688,52 +724,105 @@
       });
     });
 
-    // Spin wheel
+    // Giveaway
+    var randIndex = function (n) {
+      // Cryptographically-strong random index in [0, n), unbiased.
+      if (window.crypto && window.crypto.getRandomValues) {
+        var buf = new Uint32Array(1);
+        var limit = Math.floor(4294967296 / n) * n;
+        var x;
+        do { window.crypto.getRandomValues(buf); x = buf[0]; } while (x >= limit);
+        return x % n;
+      }
+      return Math.floor(Math.random() * n);
+    };
+    var gw = window.__giveaway;
     var btn = document.getElementById('spin-btn');
-    var disp = document.getElementById('spin-display');
-    if (btn && disp) {
-      // Remember who already won this session so a 2nd/3rd-prize spin never
-      // lands on the same person while other guests are still eligible.
-      var alreadyWon = [];
-      // Cryptographically-strong random index in [0, n). Falls back to
-      // Math.random on very old browsers. Never deterministic.
-      var randIndex = function (n) {
-        if (window.crypto && window.crypto.getRandomValues) {
-          var buf = new Uint32Array(1);
-          // Reject the top slice so the modulo is unbiased across [0, n).
-          var limit = Math.floor(4294967296 / n) * n;
-          var x;
-          do { window.crypto.getRandomValues(buf); x = buf[0]; } while (x >= limit);
-          return x % n;
-        }
-        return Math.floor(Math.random() * n);
+    var disp = document.getElementById('gw-display');
+    var inlineDisp = document.getElementById('spin-display');
+    var overlay = document.getElementById('gw-overlay');
+    if (gw && btn && overlay) {
+      // Winners already drawn this session are never drawn again while
+      // anyone else is still eligible.
+      var alreadyWon = {};
+      var pollTimer = null, drawing = false;
+      var setCount = function () {
+        var n = (window.__spinPool || []).length;
+        document.getElementById('gw-count').textContent = n;
+        document.getElementById('gw-count-inline').textContent = n;
+        var recent = (window.__spinPool || []).slice(0, 4).map(function (p) { return p.name; });
+        document.getElementById('gw-recent').textContent = recent.length ? 'Latest: ' + recent.join(', ') : 'Waiting for the first entry...';
       };
-      btn.addEventListener('click', function () {
-        // Checked-in guests only — the pool is already filtered server-side.
-        var pool = (window.__spinPool || []);
-        if (!pool.length) { disp.textContent = 'No one is checked in yet'; return; }
-
-        // Eligible = everyone not already drawn. Once everyone has won, reset
-        // so the wheel keeps working for extra prizes.
-        var eligible = pool.filter(function (p) { return alreadyWon.indexOf(p) === -1; });
-        if (!eligible.length) { alreadyWon = []; eligible = pool.slice(); }
-
-        btn.disabled = true;
-        var ticks = 0, total = 28 + randIndex(8);
-        var iv = setInterval(function () {
-          // Flash random names for the reel effect.
-          disp.textContent = pool[randIndex(pool.length)].name;
-          ticks++;
-          if (ticks >= total) {
-            clearInterval(iv);
-            var winner = eligible[randIndex(eligible.length)];
-            alreadyWon.push(winner);
-            disp.textContent = 'Winner: ' + winner.name;
-            btn.disabled = false;
+      var refresh = function () {
+        return fetch(gw.poolUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { if (d && d.ok && Array.isArray(d.pool)) { window.__spinPool = d.pool; setCount(); } })
+          .catch(function () { /* keep the last list; the draw still works */ });
+      };
+      var qrDone = false;
+      document.getElementById('gw-start').addEventListener('click', function () {
+        overlay.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        if (!qrDone) {
+          var box = document.getElementById('gw-qr');
+          if (window.QRCode) {
+            new QRCode(box, { text: gw.checkInUrl, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
+          } else {
+            box.innerHTML = '<img alt="QR code" width="320" height="320" src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' + encodeURIComponent(gw.checkInUrl) + '">';
           }
-        }, 80);
+          qrDone = true;
+        }
+        setCount();
+        refresh();
+        if (!pollTimer) { pollTimer = setInterval(function () { if (!drawing) refresh(); }, 5000); }
+      });
+      document.getElementById('gw-close').addEventListener('click', function () {
+        overlay.style.display = 'none';
+        document.body.style.overflow = '';
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      });
+      btn.addEventListener('click', function () {
+        if (drawing) return;
+        drawing = true;
+        btn.disabled = true;
+        disp.textContent = 'Getting entries...';
+        // Pull the very latest entries right before drawing.
+        refresh().then(function () {
+          var pool = window.__spinPool || [];
+          if (!pool.length) {
+            disp.textContent = 'No entries yet';
+            btn.disabled = false; drawing = false; return;
+          }
+          var key = function (p) { return (p.name || '').toLowerCase(); };
+          var eligible = pool.filter(function (p) { return !alreadyWon[key(p)]; });
+          if (!eligible.length) { alreadyWon = {}; eligible = pool.slice(); }
+          var ticks = 0, total = 28 + randIndex(8);
+          var iv = setInterval(function () {
+            disp.textContent = pool[randIndex(pool.length)].name;
+            ticks++;
+            if (ticks >= total) {
+              clearInterval(iv);
+              var winner = eligible[randIndex(eligible.length)];
+              alreadyWon[key(winner)] = true;
+              disp.textContent = 'Winner: ' + winner.name;
+              if (inlineDisp) inlineDisp.textContent = 'Winner: ' + winner.name;
+              btn.textContent = 'Draw again';
+              btn.disabled = false; drawing = false;
+            }
+          }, 80);
+        });
       });
     }
+
+    // Paper raffle tickets: draw a number in the range.
+    var tkBtn = document.getElementById('tk-draw');
+    if (tkBtn) tkBtn.addEventListener('click', function () {
+      var from = parseInt(document.getElementById('tk-from').value, 10);
+      var to = parseInt(document.getElementById('tk-to').value, 10);
+      var out = document.getElementById('tk-result');
+      if (isNaN(from) || isNaN(to) || to < from) { out.textContent = 'Enter the first and last ticket numbers'; return; }
+      out.textContent = '#' + (from + randIndex(to - from + 1));
+    });
 
     // RSVP table: search by name/email + click-to-sort any column.
     var rt = document.getElementById('rsvp-table');

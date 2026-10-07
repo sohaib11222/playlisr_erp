@@ -578,6 +578,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // One-time: load 6/23 distributor orders into the per-store ordered matrix
     Route::post('/events-seed-orders', 'EventsController@seedOrders')->name('events.seedOrders');
     // RSVP + preorder management (records live on nivessa.com, reached via bridge)
+    Route::get('/events/{id}/giveaway-pool', 'EventsController@giveawayPool')->name('events.giveawayPool');
     Route::post('/events/{id}/rsvps', 'EventsController@rsvpAdd')->name('events.rsvpAdd');
     Route::post('/events/{id}/rsvps/{rsvpId}/check-in', 'EventsController@rsvpCheckIn')->name('events.rsvpCheckIn');
     Route::post('/events/{id}/rsvps/{rsvpId}/guests/{guestIndex}/check-in', 'EventsController@rsvpGuestCheckIn')->name('events.rsvpGuestCheckIn');

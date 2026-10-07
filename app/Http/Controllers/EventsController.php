@@ -1129,6 +1129,53 @@ class EventsController extends Controller
     }
 
     /** Toggle an RSVP's check-in state via the website bridge. */
+    /**
+     * Live giveaway pool (JSON) for the ERP event page's giveaway screen.
+     * Everyone checked in — including walk-ins who scanned the QR and
+     * self-checked-in on nivessa.com/check-in — so a giveaway can be run on
+     * the spot without checking anyone in by hand (Andy, 2026-10-07).
+     * Polled every few seconds while the giveaway screen is open.
+     */
+    public function giveawayPool(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $items = self::load($this->businessId($request))['items'];
+        if (!isset($items[$id])) {
+            return response()->json(['ok' => false, 'pool' => []], 404);
+        }
+        $event = $items[$id];
+        $bridge = $this->bridgeData($event['name'] ?? '', $event['id'] ?? null);
+        if (!($bridge['ready'] ?? false)) {
+            return response()->json(['ok' => false, 'pool' => []]);
+        }
+        // Same store scope as the page. Self check-ins carry no store, so
+        // they stay in whichever store's draw is running.
+        $scope = (string) session('events.storeScope.' . $id, 'all');
+        $pool = [];
+        foreach ((array) $bridge['rsvps'] as $r) {
+            $loc = (string) ($r['eventLocationKey'] ?? '');
+            if ($scope !== 'all' && $loc !== '' && $loc !== $scope) { continue; }
+            $em = strtolower(trim($r['email'] ?? ''));
+            $nm = trim(($r['firstName'] ?? '') . ' ' . ($r['lastName'] ?? '')) ?: ($r['name'] ?? $em);
+            $pkey = $em ?: $nm;
+            if ($nm !== '' && !empty($r['checkedIn'])) {
+                $pool[$pkey] = ['name' => $nm, 'checkedIn' => true, 'at' => $r['updatedAt'] ?? $r['createdAt'] ?? ''];
+            }
+            foreach (array_values(array_filter((array) ($r['additionalGuests'] ?? []))) as $gi => $g) {
+                $gn = trim(($g['firstName'] ?? '') . ' ' . ($g['lastName'] ?? ''));
+                if ($gn === '' || empty($g['checkedIn'])) { continue; }
+                $gkey = strtolower(trim($g['email'] ?? '')) ?: ('g:' . $pkey . ':' . $gi . ':' . strtolower($gn));
+                $pool[$gkey] = ['name' => $gn, 'checkedIn' => true, 'at' => $r['updatedAt'] ?? ''];
+            }
+        }
+        $pool = array_values($pool);
+        // Newest entries first so the screen can show who just joined.
+        usort($pool, function ($a, $b) { return strcmp((string) $b['at'], (string) $a['at']); });
+        return response()->json(['ok' => true, 'pool' => $pool]);
+    }
+
     public function rsvpCheckIn(Request $request, string $id, string $rsvpId)
     {
         if (!auth()->user()->can('product.create')) {
