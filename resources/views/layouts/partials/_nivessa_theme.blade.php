@@ -44,8 +44,8 @@
 		--nv-cr:          #B91C1C;
 		--nv-side-bg:     #1B2533;
 		--nv-side-bg-2:   #151E2A;
-		--nv-side-ink:    #E6EBF1;
-		--nv-side-ink-2:  #C3CCD8;
+		--nv-side-ink:    #FFFFFF;
+		--nv-side-ink-2:  #FFFFFF;
 		--nv-side-muted:  #8693A5;
 	}
 
@@ -179,7 +179,7 @@
 	body[class*="skin-"] .sidebar-menu > li > a {
 		color: var(--nv-side-ink) !important;
 		border-left: 3px solid transparent !important;
-		font-size: 14px;
+		font-size: 14px !important;
 		font-weight: 500;
 		line-height: 1.3;
 		padding: 10px 28px 10px 13px !important;
@@ -220,9 +220,13 @@
 		padding: 4px 0 6px;
 	}
 	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a {
+		/* Match the top-level items exactly; app.css forces 95% !important
+		   which compounded into oversized submenu text. */
 		color: var(--nv-side-ink-2) !important;
-		font-size: 13.5px;
-		padding: 6px 10px 6px 22px !important;
+		font-size: 14px !important;
+		font-weight: 400;
+		line-height: 1.3;
+		padding: 8px 10px 8px 42px !important;
 	}
 	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a:hover {
 		color: #FFFFFF !important;
@@ -232,6 +236,13 @@
 		color: #FFFFFF !important;
 		background: transparent !important;
 		font-weight: 600;
+	}
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a > i,
+	body[class*="skin-"] .sidebar-menu .treeview-menu > li > a > .fa {
+		width: 16px;
+		font-size: 12px !important;
+		margin-right: 6px;
+		color: var(--nv-side-muted);
 	}
 	body[class*="skin-"] .sidebar-menu .treeview-menu > li.active > a > i {
 		color: var(--nv-accent);
