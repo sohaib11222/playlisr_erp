@@ -652,10 +652,10 @@
   {{-- ---------- Giveaway ----------
        Built so a giveaway can be run on the spot with zero prep (Andy,
        2026-10-07: three on-the-fly digital raffles had failed because only
-       hand-checked-in guests could win). "Start giveaway" puts a big QR on
-       screen; anyone in the room scans it, types their name + email on
-       nivessa.com/check-in, and is in the draw within seconds. Paper raffle
-       tickets have their own number draw below as a backup. --}}
+       hand-checked-in guests could win). Winners must still be checked in
+       (Sarah): "Start giveaway" puts a big QR on screen, guests scan it and
+       check themselves in on nivessa.com/check-in, and are in the draw
+       within seconds. --}}
   @php
     $spinPool = array_values(array_filter($pool, fn ($p) => !empty($p['checkedIn'])));
     $checkInUrl = 'https://nivessa.com/check-in?event=' . rawurlencode($evName)
@@ -663,22 +663,13 @@
   @endphp
   <div class="ev-card" id="giveaway">
     <h2>Giveaway</h2>
-    <p class="sub" style="margin-top:0;">Hit <strong>Start giveaway</strong> and turn the screen to the room. Anyone can scan the QR to enter (no RSVP needed), then hit <strong>Draw winner</strong>. Checked-in RSVPs are already entered.</p>
+    <p class="sub" style="margin-top:0;">Only checked-in guests can win. Hit <strong>Start giveaway</strong> and turn the screen to the room: guests scan the QR to check themselves in on their phone, then hit <strong>Draw winner</strong>.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
       <button type="button" class="btn-accent" id="gw-start" style="font-size:16px;padding:12px 22px;">Start giveaway</button>
-      <span class="ev-meta"><span id="gw-count-inline">{{ count($spinPool) }}</span> entered so far</span>
+      <span class="ev-meta"><span id="gw-count-inline">{{ count($spinPool) }}</span> checked in</span>
     </div>
     <div id="spin-display" style="font-size:26px;font-weight:800;min-height:40px;padding:6px 0;color:var(--pos-accent-text);"></div>
 
-    <div style="border-top:1px solid var(--pos-line,#ECE3CF);margin-top:10px;padding-top:12px;">
-      <strong style="font-size:13px;">Using paper raffle tickets?</strong>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:13px;">
-        Tickets from <input type="number" id="tk-from" value="1" min="0" style="width:90px;padding:6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
-        to <input type="number" id="tk-to" placeholder="last #" min="0" style="width:90px;padding:6px;border:1px solid var(--pos-line,#ECE3CF);border-radius:8px;">
-        <button type="button" class="btn-ghost" id="tk-draw">Draw a ticket number</button>
-        <span id="tk-result" style="font-size:22px;font-weight:800;"></span>
-      </div>
-    </div>
   </div>
 
   {{-- Full-screen giveaway view, shown to the room. --}}
@@ -686,14 +677,14 @@
     <button type="button" id="gw-close" class="btn-ghost" style="position:absolute;top:16px;right:16px;">Close</button>
     <div style="max-width:1100px;margin:0 auto;padding:40px 24px;display:flex;gap:48px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100%;box-sizing:border-box;">
       <div style="text-align:center;flex:0 1 420px;">
-        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Scan to enter the giveaway</div>
+        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Scan to check in for the giveaway</div>
         <div style="font-size:16px;color:#6b5d3f;margin-bottom:18px;">Takes 10 seconds. Name + email, that's it.</div>
         <div id="gw-qr" style="display:inline-block;background:#fff;padding:16px;border-radius:16px;border:1px solid #ECE3CF;"></div>
         <div style="font-size:14px;color:#6b5d3f;margin-top:12px;word-break:break-all;">{{ $checkInUrl }}</div>
       </div>
       <div style="text-align:center;flex:1 1 360px;">
         <div style="font-size:80px;font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
-        <div style="font-size:18px;color:#6b5d3f;margin-bottom:12px;">entered</div>
+        <div style="font-size:18px;color:#6b5d3f;margin-bottom:12px;">checked in</div>
         <div id="gw-recent" style="font-size:15px;color:#6b5d3f;min-height:44px;margin-bottom:22px;"></div>
         <button type="button" class="btn-accent" id="spin-btn" style="font-size:24px;padding:16px 40px;">Draw winner</button>
         <div id="gw-display" style="font-size:44px;font-weight:900;min-height:60px;margin-top:26px;"></div>
@@ -751,7 +742,7 @@
         document.getElementById('gw-count').textContent = n;
         document.getElementById('gw-count-inline').textContent = n;
         var recent = (window.__spinPool || []).slice(0, 4).map(function (p) { return p.name; });
-        document.getElementById('gw-recent').textContent = recent.length ? 'Latest: ' + recent.join(', ') : 'Waiting for the first entry...';
+        document.getElementById('gw-recent').textContent = recent.length ? 'Latest: ' + recent.join(', ') : 'Waiting for the first check-in...';
       };
       var refresh = function () {
         return fetch(gw.poolUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
@@ -785,12 +776,12 @@
         if (drawing) return;
         drawing = true;
         btn.disabled = true;
-        disp.textContent = 'Getting entries...';
+        disp.textContent = 'Getting check-ins...';
         // Pull the very latest entries right before drawing.
         refresh().then(function () {
           var pool = window.__spinPool || [];
           if (!pool.length) {
-            disp.textContent = 'No entries yet';
+            disp.textContent = 'No one is checked in yet';
             btn.disabled = false; drawing = false; return;
           }
           var key = function (p) { return (p.name || '').toLowerCase(); };
@@ -813,16 +804,6 @@
         });
       });
     }
-
-    // Paper raffle tickets: draw a number in the range.
-    var tkBtn = document.getElementById('tk-draw');
-    if (tkBtn) tkBtn.addEventListener('click', function () {
-      var from = parseInt(document.getElementById('tk-from').value, 10);
-      var to = parseInt(document.getElementById('tk-to').value, 10);
-      var out = document.getElementById('tk-result');
-      if (isNaN(from) || isNaN(to) || to < from) { out.textContent = 'Enter the first and last ticket numbers'; return; }
-      out.textContent = '#' + (from + randIndex(to - from + 1));
-    });
 
     // RSVP table: search by name/email + click-to-sort any column.
     var rt = document.getElementById('rsvp-table');
