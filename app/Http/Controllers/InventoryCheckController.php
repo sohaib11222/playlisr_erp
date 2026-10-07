@@ -1014,7 +1014,7 @@ class InventoryCheckController extends Controller
             foreach ($recent as $p) {
                 $bucket = (stripos((string) ($p->cat ?? ''), 'used') !== false) ? 'used' : 'new';
                 $stat[$bucket]['n']++;
-                $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist ?? null, $p->name ?? null, null, $p->sku ?? null);
+                $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist ?? null, $p->name ?? null, $p->cat ?? null, $p->sku ?? null);
                 $ams = null;
                 foreach ($prices as $pr) {
                     if (($pr['supplier_key'] ?? '') === 'ams') { $ams = $pr; break; }

@@ -1178,6 +1178,21 @@ class InventoryCheckService
      * round trip even when iterating 100s of chart picks.
      */
     /**
+     * Coarse format family ('lp' / 'cd' / 'cassette') from a product category
+     * name ("Vinyl - Sealed", "CD - Used") or a feed's format ("LP", "CD").
+     * null = unknown, which never counts as a match for name-based pricing.
+     */
+    public function formatFamily(?string $s): ?string
+    {
+        $s = strtolower(trim((string) $s));
+        if ($s === '') return null;
+        if (preg_match('/vinyl|\blp\b|\d+lp|12"|7"|45 rpm|record/', $s)) return 'lp';
+        if (preg_match('/\bcds?\b|compact disc/', $s)) return 'cd';
+        if (preg_match('/cassette|tape/', $s)) return 'cassette';
+        return null;
+    }
+
+    /**
      * Return EVERY supplier's match for this (artist, title), sorted
      * cheapest first. Lets the UI show AMS / Secretly / Beggars / Redeye /
      * VP prices side-by-side per row so Sarah can pick the cheapest at
@@ -1208,20 +1223,30 @@ class InventoryCheckService
         };
 
         $compact = $index['compact'];
+        $want = $this->formatFamily($format);
 
         // 1) Barcode match — strongest. Any real UPC/EAN token in the SKU.
         foreach ($this->skuUpcCandidates($upc) as $u => $_) {
             foreach ($index['byUpc'][$u] ?? [] as $i) $consider($compact[$i]);
         }
+        // A supplier matched by barcode is the exact release — never let a
+        // looser title match from that supplier (a CD, a cassette, another
+        // pressing) undercut it. Found 2026-10-07: Deftones Diamond Eyes LP
+        // showed AMS $7.18, the price of a different format.
+        $byBarcode = $hits;
 
         // 2) Name match — normalized (punctuation/&/the/and-insensitive) exact
         // title key, then verify the artist is compatible. Handles product
         // names stored either as just the title or as "ARTIST - TITLE".
+        // Same format only: an LP never takes a CD's price or vice versa.
         foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
             if ($tKey === '') continue;
             foreach ($index['byTitle'][$tKey] ?? [] as $i) {
                 $e = $compact[$i];
+                if (isset($byBarcode[$e['supplier_key']])) continue;
                 if (!$this->artistMatches($aNorm, $e['artist_norm'] ?? '')) continue;
+                $got = $this->formatFamily($e['format'] ?? null);
+                if ($want === null || $got === null || $want !== $got) continue;
                 $consider($e);
             }
         }

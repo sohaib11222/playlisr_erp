@@ -845,7 +845,7 @@ class ProductController extends Controller
                     // AMS/Redeye/… feeds populate this column automatically.
                     try {
                         $prices = app(\App\Services\InventoryCheckService::class)
-                            ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, null, $row->sku ?? null);
+                            ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, $row->category ?? null, $row->sku ?? null);
                     } catch (\Throwable $e) {
                         $prices = [];
                     }
