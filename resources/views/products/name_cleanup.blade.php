@@ -257,6 +257,28 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
         </div>
     </div>
 
+    <div class="mgn-card" style="border:1px solid #CDE3CD;background:#F3F9F3;border-radius:14px;padding:18px 20px;margin-top:18px;">
+        <h2>Standardize names: Artist - Title</h2>
+        <p class="sub">For products with no Discogs link (Rebuild from Discogs covers the linked ones). Fixes "DEFTONES / DIAMOND EYES", "Diamond Eyes / Deftones" and "DIAMOND EYES - DEFTONES" into "Deftones - Diamond Eyes", and fills a blank or N/A artist. The artist side is picked from artists already on Discogs-linked products, never guessed from position, so anything unclear is left alone. Checking changes nothing. The fix runs in batches with the tab open, can be undone in Admin Action History, and the website picks up new names on the nightly sync.</p>
+        <div class="mgn-actions" style="margin-top:0;">
+            <button class="mgn-btn mgn-btn-ghost" id="stScanBtn" type="button">Check + preview</button>
+            <span class="mgn-note" id="stScanNote" style="margin-top:0"></span>
+        </div>
+        <div id="stPreview" style="display:none;margin-top:14px;">
+            <div class="mgn-note mgn-summary" id="stSummary" style="margin-top:0;color:#1F1B16;"></div>
+            <div style="margin-top:10px;max-height:380px;overflow:auto;border:1px solid #E1EFE1;border-radius:10px;background:#fff;">
+                <table class="mgn-table">
+                    <thead><tr><th>Current name</th><th>New name</th></tr></thead>
+                    <tbody id="stRows"></tbody>
+                </table>
+            </div>
+            <div class="mgn-actions" style="margin-top:14px;">
+                <button class="mgn-btn mgn-btn-primary" id="stApplyBtn" type="button">Looks right, standardize all</button>
+                <span class="mgn-note" id="stApplyNote" style="margin-top:0"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="mgn-card" style="border-color:#C9A227;">
         <h2>Rebuild from Discogs <span style="color:#8E8273;font-weight:400">(accurate — recommended)</span></h2>
         <p class="sub">The Artist field is unreliable (often holds the title), so this pulls the true artist + title straight from Discogs using each product's release id, and rewrites the name as "ARTIST - TITLE". Rate-limited (~55/min), runs in batches, undoable. Only products with a Discogs release id are touched; "retired" is skipped.</p>
@@ -931,6 +953,47 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 ? ('Filled ' + j.filled + ' poster genre(s)' + (j.created ? ', added ' + j.created + ' genre(s) under Posters' : '') + '. Undo at Admin Action History.')
                 : (j.msg || 'Fill failed, nothing changed.');
         }).catch(function () { applyBtn.disabled = false; document.getElementById('pgApplyNote').textContent = 'Fill failed.'; });
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+    }
+    function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+    var scanBtn = document.getElementById('stScanBtn'), applyBtn = document.getElementById('stApplyBtn');
+    if (!scanBtn) { return; }
+    scanBtn.addEventListener('click', function () {
+        scanBtn.disabled = true;
+        document.getElementById('stScanNote').textContent = 'Checking every name, this takes a minute...';
+        post('/products/name-cleanup/standard-scan').then(function (j) {
+            scanBtn.disabled = false;
+            if (!j.success) { document.getElementById('stScanNote').textContent = j.msg || 'Check failed.'; return; }
+            document.getElementById('stScanNote').textContent = '';
+            var reasons = Object.keys(j.flag_reasons || {}).map(function (k) { return esc(k) + ' ' + j.flag_reasons[k].toLocaleString(); }).join(', ');
+            document.getElementById('stSummary').innerHTML = '<b>' + j.to_fix.toLocaleString() + '</b> names will be standardized. ' + j.already_standard.toLocaleString() + ' already match. ' + j.flagged.toLocaleString() + ' left alone (' + reasons + '). Sample below.';
+            document.getElementById('stRows').innerHTML = (j.preview || []).map(function (r) {
+                return '<tr><td><a href="/products/' + r.id + '/edit" target="_blank">' + esc(r.old) + '</a></td><td>' + esc(r.new) + '</td></tr>';
+            }).join('') || '<tr><td colspan="2">Nothing to change.</td></tr>';
+            document.getElementById('stPreview').style.display = '';
+            applyBtn.style.display = j.to_fix ? '' : 'none';
+        }).catch(function () { scanBtn.disabled = false; document.getElementById('stScanNote').textContent = 'Check failed.'; });
+    });
+    applyBtn.addEventListener('click', function () {
+        applyBtn.disabled = true;
+        var total = 0, note = document.getElementById('stApplyNote');
+        (function step(after) {
+            post('/products/name-cleanup/standard-apply', { after_id: after }).then(function (j) {
+                if (!j.success) { note.textContent = (j.msg || 'Failed') + ' Renamed ' + total + ' before stopping.'; applyBtn.disabled = false; return; }
+                total += j.renamed;
+                if (j.done) { note.textContent = 'Done. Renamed ' + total.toLocaleString() + '. Undo at Admin Action History.'; return; }
+                note.textContent = 'Renamed ' + total.toLocaleString() + ' so far, ' + j.remaining.toLocaleString() + ' products left to check. Keep this tab open.';
+                step(j.after_id);
+            }).catch(function () { note.textContent = 'Network hiccup, retrying...'; setTimeout(function () { step(after); }, 5000); });
+        })(0);
     });
 })();
 </script>

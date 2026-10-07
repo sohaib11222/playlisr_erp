@@ -420,6 +420,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/name-cleanup/discogs-genre-fill', 'ProductNameController@discogsGenreFill')->name('products.genre.discogs');
     Route::post('/products/name-cleanup/poster-genre-scan', 'ProductNameController@posterGenreScan')->name('products.genre.poster.scan');
     Route::post('/products/name-cleanup/poster-genre-apply', 'ProductNameController@posterGenreApply')->name('products.genre.poster.apply');
+    Route::post('/products/name-cleanup/standard-scan', 'ProductNameController@standardScan')->name('products.name.standard.scan');
+    Route::post('/products/name-cleanup/standard-apply', 'ProductNameController@standardApply')->name('products.name.standard.apply');
     // Owner-only, read-only: tally which Discogs genres/styles don't match any
     // existing sub-category, so Sarah can see what's missing from her taxonomy.
     Route::post('/products/name-cleanup/discogs-genre-unmatched', 'ProductNameController@discogsGenreUnmatchedScan')->name('products.genre.discogs.unmatched');

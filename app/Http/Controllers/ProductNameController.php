@@ -1951,4 +1951,241 @@ class ProductNameController extends Controller
 
         return response()->json(['success' => true, 'filled' => $filled, 'created' => count($created)]);
     }
+
+    // ================= STANDARDIZE NAMES (no Discogs id) =================
+    // Sarah 2026-10-07: one naming standard, "Artist - Title". Discogs-linked
+    // products are handled by "Rebuild from Discogs"; this covers the rest,
+    // e.g. "DEFTONES / DIAMOND EYES", "Diamond Eyes / Deftones",
+    // "DIAMOND EYES - DEFTONES" all -> "Deftones - Diamond Eyes".
+    // Which side is the artist is decided by a known-artist list built from
+    // Discogs-linked products (their names come from Discogs as
+    // "Artist - Title", so the first part really is the artist), never from
+    // position alone. Anything ambiguous is left alone and counted as flagged.
+
+    /** artistKey => ['spelling' => display name, 'titles' => distinct release count]. */
+    protected function standardKnownArtists($business_id, $catIds)
+    {
+        return \Cache::remember('name-standard-known-artists:' . $business_id, 1800, function () use ($business_id, $catIds) {
+            $stop = $this->titleStopKeys();
+            $first = [];   // key => [titleKey => 1] from Discogs-linked names
+            $spell = [];   // key => [spelling => count]
+            $second = [];  // key => times seen as the SECOND part of any name
+            \DB::table('products')->where('business_id', $business_id)->whereIn('category_id', $catIds)
+                ->select('id', 'name', 'discogs_release_id')->orderBy('id')
+                ->chunk(5000, function ($rows) use (&$first, &$spell, &$second) {
+                    foreach ($rows as $r) {
+                        $parts = $this->standardSplit($r->name);
+                        if (!$parts) { continue; }
+                        [$a, $b, $sep] = $parts;
+                        $ka = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($a));
+                        $kb = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($b));
+                        if ($kb !== '') { $second[$kb] = ($second[$kb] ?? 0) + 1; }
+                        if ((int) $r->discogs_release_id > 0 && $sep === '-' && $ka !== '') {
+                            $first[$ka][$kb] = 1;
+                            $sp = ProductNameNormalizer::stripMarkers($a);
+                            $spell[$ka][$sp] = ($spell[$ka][$sp] ?? 0) + 1;
+                        }
+                    }
+                });
+            $out = [];
+            foreach (ProductNameNormalizer::curatedArtists() as $k => $spelling) {
+                $out[$k] = ['spelling' => $spelling, 'titles' => 99];
+            }
+            foreach ($first as $k => $titles) {
+                $n = count($titles);
+                if ($n < 2 || isset($stop[$k]) || isset($out[$k]) || strlen($k) < 2) { continue; }
+                if (($second[$k] ?? 0) * 2 > $n) { continue; } // shows up as a title too often
+                // Prefer a mixed-case spelling ("Deftones") over ALL CAPS.
+                $best = null;
+                arsort($spell[$k]);
+                foreach (array_keys($spell[$k]) as $sp) {
+                    if ($best === null) { $best = $sp; }
+                    if (preg_match('/\p{Ll}/u', $sp) && preg_match('/\p{Lu}/u', $sp)) { $best = $sp; break; }
+                }
+                $out[$k] = ['spelling' => ProductNameNormalizer::properArtistCase($best), 'titles' => $n];
+            }
+            return $out;
+        });
+    }
+
+    /** Split on a spaced "/", " - " or " – ". Returns [first, second, sep] or null. */
+    protected function standardSplit($name)
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', str_replace(["\u{2013}", "\u{2014}"], '-', (string) $name)));
+        $name = trim($name, "\"\u{201C}\u{201D}");
+        foreach (['/', '-'] as $sep) {
+            $parts = preg_split('/\s+' . preg_quote($sep, '/') . '\s+/u', $name);
+            if (count($parts) < 2) { continue; }
+            if (count($parts) !== 2) { return null; }
+            $a = trim($parts[0]); $b = trim($parts[1]);
+            if ($a === '' || $b === '') { return null; }
+            return [$a, $b, $sep];
+        }
+        return null;
+    }
+
+    protected function standardTitle($t)
+    {
+        $t = trim(preg_replace('/\s+/u', ' ', (string) $t));
+        // Re-case only all-one-case titles; leave deliberate casing alone.
+        if (!(preg_match('/\p{Lu}/u', $t) && preg_match('/\p{Ll}/u', $t))) {
+            $t = ProductNameNormalizer::properTitle($t);
+        }
+        return $t;
+    }
+
+    /** ['artist','title','name'] for one product, or ['flag' => reason]. */
+    protected function standardProposal($r, array $known)
+    {
+        if (stripos((string) $r->name, 'retired') !== false) { return ['flag' => 'retired']; }
+        $pick = function ($k) use ($known) { return $known[$k] ?? null; };
+        $artistCol = trim((string) $r->artist);
+        $colKey = ($artistCol !== '' && !preg_match('/^(n\/?a|unknown|various.*|none|no artist|-)$/i', $artistCol))
+            ? ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($artistCol)) : '';
+
+        $artist = null; $title = null;
+        $parts = $this->standardSplit($r->name);
+        if ($parts) {
+            [$a, $b] = $parts;
+            $ka = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($a));
+            $kb = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($b));
+            $ia = $pick($ka); $ib = $pick($kb);
+            if ($ia && !$ib) { $artist = $ia['spelling']; $title = $b; }
+            elseif ($ib && !$ia) { $artist = $ib['spelling']; $title = $a; }
+            elseif ($ia && $ib) {
+                if ($ia['titles'] >= 3 * $ib['titles']) { $artist = $ia['spelling']; $title = $b; }
+                elseif ($ib['titles'] >= 3 * $ia['titles']) { $artist = $ib['spelling']; $title = $a; }
+                else { return ['flag' => 'both sides look like artists']; }
+            } elseif ($colKey !== '' && ($colKey === $ka || $colKey === $kb)) {
+                // Not a known artist yet, but the artist column agrees with one side.
+                $artist = ProductNameNormalizer::properArtistCase(ProductNameNormalizer::stripMarkers($colKey === $ka ? $a : $b));
+                $title = $colKey === $ka ? $b : $a;
+            } else {
+                return ['flag' => 'artist not recognized'];
+            }
+        } else {
+            // No separator ("DEFTONES DIAMOND EYES"): longest known artist the name starts with.
+            $words = preg_split('/\s+/u', trim((string) $r->name));
+            for ($n = min(6, count($words) - 1); $n >= 1; $n--) {
+                $k = ProductNameNormalizer::artistKey(implode(' ', array_slice($words, 0, $n)));
+                $hit = $pick($k);
+                if ($hit && ($n > 1 || (strlen($k) >= 5 && $hit['titles'] >= 3))) {
+                    $artist = $hit['spelling'];
+                    $title = implode(' ', array_slice($words, $n));
+                    break;
+                }
+            }
+            if ($artist === null) { return ['flag' => 'no separator, artist not recognized']; }
+        }
+        $title = $this->standardTitle($title);
+        if ($title === '' || $artist === '') { return ['flag' => 'empty part']; }
+        return ['artist' => $artist, 'title' => $title, 'name' => $artist . ' - ' . $title];
+    }
+
+    protected function standardBaseQuery($business_id, $catIds)
+    {
+        return \DB::table('products')->where('business_id', $business_id)->whereIn('category_id', $catIds)
+            ->where(function ($q) { $q->whereNull('discogs_release_id')->orWhere('discogs_release_id', 0); });
+    }
+
+    public function standardScan(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        \Cache::forget('name-standard-known-artists:' . $business_id);
+        $known = $this->standardKnownArtists($business_id, $catIds);
+        $toFix = 0; $ok = 0; $flagged = 0; $reasons = []; $fixes = []; $flags = [];
+        $this->standardBaseQuery($business_id, $catIds)->select('id', 'name', 'artist')->orderBy('id')
+            ->chunk(5000, function ($rows) use ($known, &$toFix, &$ok, &$flagged, &$reasons, &$fixes, &$flags) {
+                foreach ($rows as $r) {
+                    $p = $this->standardProposal($r, $known);
+                    if (isset($p['flag'])) {
+                        $flagged++;
+                        $reasons[$p['flag']] = ($reasons[$p['flag']] ?? 0) + 1;
+                        if (count($flags) < 150 && mt_rand(1, 20) === 1) { $flags[] = ['id' => (int) $r->id, 'name' => $r->name, 'reason' => $p['flag']]; }
+                        continue;
+                    }
+                    if ($p['name'] === $r->name) { $ok++; continue; }
+                    $toFix++;
+                    if (count($fixes) < 400 && ($toFix <= 100 || mt_rand(1, 40) === 1)) {
+                        $fixes[] = ['id' => (int) $r->id, 'old' => $r->name, 'new' => $p['name']];
+                    }
+                }
+            });
+        return response()->json([
+            'success' => true, 'to_fix' => $toFix, 'already_standard' => $ok, 'flagged' => $flagged,
+            'known_artists' => count($known), 'flag_reasons' => $reasons, 'preview' => $fixes, 'flagged_preview' => $flags,
+        ]);
+    }
+
+    public function standardApply(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        $known = $this->standardKnownArtists($business_id, $catIds);
+        $afterId = (int) $request->input('after_id', 0);
+
+        $rows = $this->standardBaseQuery($business_id, $catIds)->where('id', '>', $afterId)
+            ->select('id', 'name', 'artist')->orderBy('id')->limit(1500)->get();
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'renamed' => 0, 'done' => true, 'after_id' => $afterId]);
+        }
+        $lastId = (int) $rows->last()->id;
+        $changes = [];
+        foreach ($rows as $r) {
+            $p = $this->standardProposal($r, $known);
+            if (isset($p['flag']) || $p['name'] === $r->name) { continue; }
+            $artistCol = trim((string) $r->artist);
+            $fillArtist = $artistCol === '' || preg_match('/^(n\/?a|unknown|none|no artist|-)$/i', $artistCol);
+            $changes[] = [
+                'id' => (int) $r->id,
+                'old_name' => $r->name, 'new_name' => $p['name'],
+                'old_artist' => $r->artist, 'new_artist' => $fillArtist ? $p['artist'] : $r->artist,
+            ];
+        }
+
+        $renamed = 0;
+        if ($changes) {
+            $timestamp = now()->format('Y-m-d_His') . '-' . $lastId;
+            \DB::beginTransaction();
+            try {
+                $done = [];
+                foreach ($changes as $c) {
+                    // Only if untouched since the preview read it.
+                    $q = \DB::table('products')->where('id', $c['id'])->where('name', $c['old_name']);
+                    if ($q->update(['name' => $c['new_name'], 'artist' => $c['new_artist']])) { $done[] = $c; }
+                }
+                $renamed = count($done);
+                \Storage::disk('local')->put(
+                    "admin-snapshots/product-quote-cleanup-standard-{$timestamp}.json",
+                    json_encode([
+                        'timestamp' => $timestamp,
+                        'action' => 'product-quote-cleanup',
+                        'user_id' => auth()->id(),
+                        'business_id' => $business_id,
+                        'source_name' => $renamed . ' name(s) standardized to Artist - Title',
+                        'target_name' => 'products.name + artist',
+                        'rows' => $done,
+                    ], JSON_PRETTY_PRINT)
+                );
+                \DB::commit();
+            } catch (\Throwable $e) {
+                \DB::rollBack();
+                \Log::emergency('standardApply failed: ' . $e->getMessage());
+                return response()->json(['success' => false, 'msg' => 'Rename failed, nothing changed this batch.']);
+            }
+        }
+        $remaining = $this->standardBaseQuery($business_id, $catIds)->where('id', '>', $lastId)->count();
+        return response()->json(['success' => true, 'renamed' => $renamed, 'after_id' => $lastId, 'remaining' => $remaining, 'done' => $remaining === 0]);
+    }
 }
