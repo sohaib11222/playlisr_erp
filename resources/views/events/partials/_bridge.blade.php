@@ -663,7 +663,7 @@
   @endphp
   <div class="ev-card" id="giveaway">
     <h2>Giveaway</h2>
-    <p class="sub" style="margin-top:0;">Only checked-in guests can win. Hit <strong>Start giveaway</strong> and turn the screen to the room: guests scan the QR to check themselves in on their phone, then hit <strong>Draw winner</strong>.</p>
+    <p class="sub" style="margin-top:0;">Only checked-in guests can win. Hit <strong>Start giveaway</strong> and turn the screen to the room: guests scan the QR to check themselves in on their phone, or staff can type in anyone without a phone. Then hit <strong>Draw winner</strong>.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
       <button type="button" class="btn-accent" id="gw-start" style="font-size:16px;padding:12px 22px;">Start giveaway</button>
       <span class="ev-meta"><span id="gw-count-inline">{{ count($spinPool) }}</span> checked in</span>
@@ -681,6 +681,14 @@
         <div style="font-size:16px;color:#6b5d3f;margin-bottom:18px;">Takes 10 seconds. Name + email, that's it.</div>
         <div id="gw-qr" style="display:inline-block;background:#fff;padding:16px;border-radius:16px;border:1px solid #ECE3CF;"></div>
         <div style="font-size:14px;color:#6b5d3f;margin-top:12px;word-break:break-all;">{{ $checkInUrl }}</div>
+        {{-- Dead phone / no phone: staff types the name, they're checked in. --}}
+        <form id="gw-add" style="margin-top:22px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;">
+          <span style="font-size:14px;font-weight:700;width:100%;">No phone? Check them in here:</span>
+          <input type="text" name="firstName" placeholder="First name" required style="padding:8px;border:1px solid #ECE3CF;border-radius:8px;width:130px;">
+          <input type="text" name="lastName" placeholder="Last name" required style="padding:8px;border:1px solid #ECE3CF;border-radius:8px;width:130px;">
+          <button type="submit" class="btn-ghost">Check in</button>
+          <span id="gw-add-msg" style="font-size:13px;width:100%;"></span>
+        </form>
       </div>
       <div style="text-align:center;flex:1 1 360px;">
         <div style="font-size:80px;font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
@@ -696,7 +704,9 @@
     window.__spinPool = @json($spinPool);
     window.__giveaway = {
       poolUrl: @json(route('events.giveawayPool', ['id' => $event['id'] ?? ''])),
-      checkInUrl: @json($checkInUrl)
+      checkInUrl: @json($checkInUrl),
+      addUrl: @json(route('events.rsvpAdd', ['id' => $event['id'] ?? ''])),
+      store: @json(in_array($storeScope, ['hollywood', 'pico'], true) ? $storeScope : '')
     };
   </script>
 
@@ -771,6 +781,24 @@
         overlay.style.display = 'none';
         document.body.style.overflow = '';
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      });
+      var addForm = document.getElementById('gw-add');
+      if (addForm) addForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var msg = document.getElementById('gw-add-msg');
+        var fd = new FormData(addForm);
+        var name = (fd.get('firstName') + ' ' + fd.get('lastName')).trim();
+        fd.append('checkedIn', '1');
+        fd.append('store', gw.store);
+        fd.append('_token', (document.querySelector('meta[name="csrf-token"]') || {}).content || '');
+        msg.textContent = 'Checking in...';
+        fetch(gw.addUrl, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok && d && d.ok }; }); })
+          .then(function (res) {
+            if (res.ok) { msg.textContent = name + ' is checked in.'; addForm.reset(); refresh(); }
+            else { msg.textContent = 'Could not check in ' + name + '. Try again.'; }
+          })
+          .catch(function () { msg.textContent = 'Could not check in ' + name + '. Try again.'; });
       });
       btn.addEventListener('click', function () {
         if (drawing) return;

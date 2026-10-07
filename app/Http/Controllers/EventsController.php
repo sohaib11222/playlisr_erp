@@ -1082,7 +1082,9 @@ class EventsController extends Controller
         $request->validate([
             'firstName' => 'required|string|max:100',
             'lastName'  => 'required|string|max:100',
-            'email'     => 'required|email|max:191',
+            // Email may be blank only from the giveaway screen's "no phone"
+            // box; the regular walk-in form still requires it in the HTML.
+            'email'     => 'nullable|email|max:191',
             'phone'     => 'nullable|string|max:40',
             'guests'    => 'nullable|integer|min:0|max:50',
             'interestedInPurchase' => 'nullable|in:vinyl,cd,both,not_sure,no',
@@ -1104,7 +1106,9 @@ class EventsController extends Controller
         $payload = [
             'firstName' => trim($request->input('firstName')),
             'lastName'  => trim($request->input('lastName')),
-            'email'     => trim($request->input('email')),
+            'email'     => trim((string) $request->input('email')) !== ''
+                ? trim($request->input('email'))
+                : 'walkin-' . date('YmdHis') . '-' . mt_rand(1000, 9999) . '@noemail.nivessa.com',
             'phone'     => $request->input('phone') ?: null,
             'guests'    => (int) $request->input('guests', 0),
             'attendance' => 'yes',
@@ -1120,6 +1124,9 @@ class EventsController extends Controller
         ];
 
         $resp = $this->websiteApi('POST', '/erp/rsvps', $payload);
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => $resp !== null]);
+        }
         if ($resp === null) {
             return redirect()->route('events.edit', ['id' => $id])
                 ->with('error', 'Could not reach the website to add the RSVP.');
