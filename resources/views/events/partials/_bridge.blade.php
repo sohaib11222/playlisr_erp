@@ -673,7 +673,7 @@
         <li>If that person isn't here, click <strong>Draw again</strong>. Nobody can win twice.</li>
         <li>When you're done, click <strong>Close</strong> in the top right corner.</li>
       </ol>
-      <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">When the event starts, everyone who RSVP'd with a phone number automatically gets a text with the check-in link. You can also tell people to go to <strong>nivessa.com/checkin</strong> on their phone.</div>
+      <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">When the event starts, everyone who RSVP'd with a phone number automatically gets a text with the check-in link. You can also tell people to go to <strong>nivessa.com/checkin</strong> on their phone. <a href="{{ route('events.checkinTextsPreview', ['id' => $event['id'] ?? '']) }}" target="_blank">See who gets the text</a></div>
       <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">Only people who checked in can win. Anyone who RSVP'd and was already checked in at the door is entered too.</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">

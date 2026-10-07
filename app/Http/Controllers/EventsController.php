@@ -1129,6 +1129,16 @@ class EventsController extends Controller
     }
 
     /** Toggle an RSVP's check-in state via the website bridge. */
+    /** Dry run of the start-of-event check-in texts for this event. Sends nothing. */
+    public function checkinTextsPreview(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        \Artisan::call('events:send-checkin-texts', ['--dry' => true, '--force' => true, '--event' => $id]);
+        return response(\Artisan::output(), 200)->header('Content-Type', 'text/plain; charset=utf-8');
+    }
+
     /**
      * Live giveaway pool (JSON) for the ERP event page's giveaway screen.
      * Everyone checked in — including walk-ins who scanned the QR and
