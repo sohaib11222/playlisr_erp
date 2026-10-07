@@ -1727,4 +1727,220 @@ class ProductNameController extends Controller
             'done' => ($remaining === 0 && !$rateLimited),
         ]);
     }
+
+    // ================= POSTER GENRES =================
+    // Posters / Art & Photography had no genre at all (sub-category was just
+    // "Posters"). Per Sarah 2026-10-07: give them the same genre list as
+    // Vinyl - Sealed and fill each one from the artist's usual music genre in
+    // her own catalog. Read-only scan, then a separate apply with snapshot +
+    // undo (action backfill-genre-from-discogs reuses the genre undo).
+
+    /** Parent categories that hold posters / wall art. */
+    protected function posterCategoryIds($business_id)
+    {
+        return \DB::table('categories')->where('business_id', $business_id)->where('parent_id', 0)
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['%poster%'])->orWhereRaw('LOWER(name) LIKE ?', ['%art & photo%']);
+            })->pluck('id')->map(function ($v) { return (int) $v; })->all();
+    }
+
+    protected function posterKey($s)
+    {
+        $s = mb_strtolower(html_entity_decode((string) $s, ENT_QUOTES));
+        $s = str_replace('&', ' and ', $s);
+        $s = preg_replace('/[^a-z0-9]+/u', ' ', $s);
+        $s = trim(preg_replace('/\s+/', ' ', $s));
+        return preg_replace('/^the /', '', $s);
+    }
+
+    /**
+     * artistKey => [genre name => votes] from every genre-tagged music product.
+     * Votes come from the artist column when it's a real name, plus the
+     * "ARTIST - TITLE" / "ARTIST / TITLE" prefix of the product name.
+     */
+    protected function artistGenreVotes($business_id)
+    {
+        $musicIds = $this->musicCategoryIds($business_id);
+        $votes = [];
+        if (empty($musicIds)) { return $votes; }
+        \DB::table('products as p')
+            ->join('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->where('p.business_id', $business_id)
+            ->whereIn('p.category_id', $musicIds)
+            ->where('p.sub_category_id', '>', 0)
+            ->select('p.id', 'p.name', 'p.artist', 'sc.name as genre')
+            ->orderBy('p.id')
+            ->chunk(5000, function ($rows) use (&$votes) {
+                foreach ($rows as $r) {
+                    $genre = trim((string) $r->genre);
+                    if ($genre === '' || preg_match('/poster|misc|other|various/i', $genre)) { continue; }
+                    $keys = [];
+                    $a = trim((string) $r->artist);
+                    if ($a !== '' && !preg_match('/^(n\/?a|unknown|various.*|none|no artist|-)$/i', $a)) {
+                        $keys[$this->posterKey($a)] = true;
+                    }
+                    if (preg_match('/^(.+?)\s+[-\/–]\s+/u', (string) $r->name, $m)) {
+                        $keys[$this->posterKey($m[1])] = true;
+                    }
+                    foreach (array_keys($keys) as $k) {
+                        if (mb_strlen($k) < 3) { continue; }
+                        $votes[$k][$genre] = ($votes[$k][$genre] ?? 0) + 1;
+                    }
+                }
+            });
+        return $votes;
+    }
+
+    /** Confident artist => genre: 2+ tagged releases and the top genre has >= 60% of them. */
+    protected function confidentArtistGenres(array $votes)
+    {
+        $out = [];
+        foreach ($votes as $k => $g) {
+            arsort($g);
+            $total = array_sum($g);
+            $top = key($g);
+            if ($total >= 2 && $g[$top] / $total >= 0.6) { $out[$k] = $top; }
+        }
+        return $out;
+    }
+
+    /** Proposed genre changes for every untagged poster. */
+    protected function posterGenreProposals($business_id)
+    {
+        $posterIds = $this->posterCategoryIds($business_id);
+        if (empty($posterIds)) { return [[], 0]; }
+        $artistGenre = $this->confidentArtistGenres($this->artistGenreVotes($business_id));
+        $catNames = \DB::table('categories')->where('business_id', $business_id)->pluck('name', 'id')->all();
+
+        $rows = \DB::table('products')->where('business_id', $business_id)
+            ->whereIn('category_id', $posterIds)
+            ->select('id', 'name', 'artist', 'category_id', 'sub_category_id')
+            ->orderBy('id')->get();
+
+        $proposals = [];
+        $untagged = 0;
+        foreach ($rows as $r) {
+            $curSub = (int) $r->sub_category_id;
+            $curName = $curSub ? mb_strtolower((string) ($catNames[$curSub] ?? '')) : '';
+            // Only posters with no real genre yet: blank, or a sub-category that
+            // just repeats the format ("Posters", "Art & Photography").
+            if ($curSub && !preg_match('/poster|art|photo|print|picture/', $curName)) { continue; }
+            $untagged++;
+
+            $match = null;
+            $a = $this->posterKey($r->artist);
+            if ($a !== '' && isset($artistGenre[$a])) {
+                $match = [$a, $artistGenre[$a]];
+            } else {
+                // Longest artist name the poster title starts with, whole words only.
+                $tokens = explode(' ', $this->posterKey($r->name));
+                for ($n = min(6, count($tokens)); $n >= 1; $n--) {
+                    $k = implode(' ', array_slice($tokens, 0, $n));
+                    if (mb_strlen($k) >= 4 && isset($artistGenre[$k])) { $match = [$k, $artistGenre[$k]]; break; }
+                }
+            }
+            if (!$match) { continue; }
+            $proposals[] = [
+                'id' => (int) $r->id, 'name' => $r->name, 'category_id' => (int) $r->category_id,
+                'old' => $curSub ?: null, 'artist_key' => $match[0], 'genre' => $match[1],
+            ];
+        }
+        return [$proposals, $untagged];
+    }
+
+    public function posterGenreScan(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '768M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        [$proposals, $untagged] = $this->posterGenreProposals($business_id);
+        $byGenre = [];
+        foreach ($proposals as $p) { $byGenre[$p['genre']] = ($byGenre[$p['genre']] ?? 0) + 1; }
+        arsort($byGenre);
+        return response()->json([
+            'success' => true,
+            'untagged' => $untagged,
+            'matched' => count($proposals),
+            'by_genre' => $byGenre,
+            'rows' => array_slice(array_map(function ($p) {
+                return ['id' => $p['id'], 'name' => $p['name'], 'artist' => $p['artist_key'], 'genre' => $p['genre']];
+            }, $proposals), 0, 400),
+        ]);
+    }
+
+    public function posterGenreApply(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '768M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        [$proposals] = $this->posterGenreProposals($business_id);
+        if (empty($proposals)) {
+            return response()->json(['success' => true, 'filled' => 0, 'created' => 0]);
+        }
+
+        $timestamp = now()->format('Y-m-d_His');
+        $changes = [];
+        $created = [];
+        $filled = 0;
+        \DB::beginTransaction();
+        try {
+            $subCache = [];
+            foreach ($proposals as $p) {
+                $ck = $p['category_id'] . '|' . $this->normalizeGenreKey($p['genre']);
+                if (!isset($subCache[$ck])) {
+                    $subId = $this->matchExistingSubCategory($business_id, $p['category_id'], [$p['genre']]);
+                    if (!$subId) {
+                        $subId = (int) \DB::table('categories')->insertGetId([
+                            'name' => $p['genre'],
+                            'business_id' => $business_id,
+                            'short_code' => null,
+                            'parent_id' => $p['category_id'],
+                            'created_by' => auth()->id(),
+                            'category_type' => 'product',
+                            'description' => 'Poster genre (copied from music genres)',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                        $created[] = $subId;
+                    }
+                    $subCache[$ck] = $subId;
+                }
+                $new = $subCache[$ck];
+                $q = \DB::table('products')->where('id', $p['id']);
+                $p['old'] ? $q->where('sub_category_id', $p['old']) : $q->where(function ($w) {
+                    $w->whereNull('sub_category_id')->orWhere('sub_category_id', 0);
+                });
+                if ($q->update(['sub_category_id' => $new])) {
+                    $changes[] = ['id' => $p['id'], 'old' => $p['old'], 'new' => $new];
+                    $filled++;
+                }
+            }
+            \Storage::disk('local')->put(
+                "admin-snapshots/backfill-genre-from-discogs-posters-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'backfill-genre-from-discogs',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => $filled . ' poster genre(s) from artists\' music genres',
+                    'target_name' => 'products.sub_category_id',
+                    'created_category_ids' => $created,
+                    'rows' => $changes,
+                ], JSON_PRETTY_PRINT)
+            );
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::emergency('posterGenreApply failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Fill failed, nothing changed.']);
+        }
+
+        return response()->json(['success' => true, 'filled' => $filled, 'created' => count($created)]);
+    }
 }

@@ -163,6 +163,27 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 </div>
             </div>
         </div>
+        <div style="margin-top:14px;padding:14px;border:1px solid #CDE3CD;background:#F3F9F3;border-radius:10px;">
+            <div style="font-weight:600;color:#1B5E20;">Give posters a genre</div>
+            <p class="sub" style="margin:6px 0 10px;">Posters and Art &amp; Photography only had "Posters" as a sub-category. This matches each poster to its artist and uses that artist's usual genre from your own music (only when 2+ of their records agree). The genre is added under Posters if it isn't there yet. Posters with no confident match are left alone. Checking changes nothing, and the fill can be undone in Admin Action History.</p>
+            <div class="mgn-actions" style="margin-top:0;">
+                <button class="mgn-btn mgn-btn-ghost" id="pgScanBtn" type="button">Check + preview</button>
+                <span class="mgn-note" id="pgScanNote" style="margin-top:0"></span>
+            </div>
+            <div id="pgPreview" style="display:none;margin-top:14px;">
+                <div class="mgn-note mgn-summary" id="pgSummary" style="margin-top:0;color:#1F1B16;"></div>
+                <div style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid #E1EFE1;border-radius:10px;background:#fff;">
+                    <table class="mgn-table">
+                        <thead><tr><th>Poster</th><th>Matched artist</th><th>Genre it will get</th></tr></thead>
+                        <tbody id="pgRows"></tbody>
+                    </table>
+                </div>
+                <div class="mgn-actions" style="margin-top:14px;">
+                    <button class="mgn-btn mgn-btn-primary" id="pgApplyBtn" type="button">Looks right, fill them all</button>
+                    <span class="mgn-note" id="pgApplyNote" style="margin-top:0"></span>
+                </div>
+            </div>
+        </div>
         <div style="margin-top:14px;padding:14px;border:1px solid #E6DCCF;background:#FEFAF0;border-radius:10px;">
             <div style="font-weight:600;color:#3B2E2A;">See what's missing from your genre list</div>
             <p class="sub" style="margin:6px 0 10px;">Read-only — writes nothing. Scans blank-genre products the fill above couldn't match, and tallies which Discogs genre/style came up most often, so you can see what's worth adding as a real sub-category on <a href="/taxonomies" target="_blank">/taxonomies</a>. Rate-limited same as the fill; leave the tab open — it keeps going until you stop it or it runs out.</p>
@@ -873,6 +894,43 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
             showMsg('Filled ' + d.filled + ' artist(s). ' + d.remaining + ' still missing overall. Run "Scan names" above to rename to ARTIST - TITLE; undo at Admin Action History.', true);
             if (!arData.length) { arResult.style.display = 'none'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
         }).catch(function () { arApplyBtn.disabled = false; showMsg('Fill failed — re-scan to see what remains.', false); });
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    function post(url) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: '{}' }).then(function (r) { return r.json(); });
+    }
+    function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+    var scanBtn = document.getElementById('pgScanBtn'), applyBtn = document.getElementById('pgApplyBtn');
+    if (!scanBtn) { return; }
+    scanBtn.addEventListener('click', function () {
+        scanBtn.disabled = true;
+        document.getElementById('pgScanNote').textContent = 'Checking every poster...';
+        post('/products/name-cleanup/poster-genre-scan').then(function (j) {
+            scanBtn.disabled = false;
+            if (!j.success) { document.getElementById('pgScanNote').textContent = j.msg || 'Check failed.'; return; }
+            document.getElementById('pgScanNote').textContent = '';
+            var parts = Object.keys(j.by_genre || {}).map(function (g) { return esc(g) + ' ' + j.by_genre[g]; });
+            document.getElementById('pgSummary').innerHTML = '<b>' + j.matched + '</b> of ' + j.untagged + ' posters without a genre can be matched. ' + parts.join(', ') + (j.matched > j.rows.length ? ' (showing first ' + j.rows.length + ')' : '');
+            document.getElementById('pgRows').innerHTML = (j.rows || []).map(function (r) {
+                return '<tr><td><a href="/products/' + r.id + '/edit" target="_blank">' + esc(r.name) + '</a></td><td>' + esc(r.artist) + '</td><td>' + esc(r.genre) + '</td></tr>';
+            }).join('') || '<tr><td colspan="3">Nothing to fill.</td></tr>';
+            document.getElementById('pgPreview').style.display = '';
+            applyBtn.style.display = j.matched ? '' : 'none';
+        }).catch(function () { scanBtn.disabled = false; document.getElementById('pgScanNote').textContent = 'Check failed.'; });
+    });
+    applyBtn.addEventListener('click', function () {
+        applyBtn.disabled = true;
+        document.getElementById('pgApplyNote').textContent = 'Filling...';
+        post('/products/name-cleanup/poster-genre-apply').then(function (j) {
+            document.getElementById('pgApplyNote').textContent = j.success
+                ? ('Filled ' + j.filled + ' poster genre(s)' + (j.created ? ', added ' + j.created + ' genre(s) under Posters' : '') + '. Undo at Admin Action History.')
+                : (j.msg || 'Fill failed, nothing changed.');
+        }).catch(function () { applyBtn.disabled = false; document.getElementById('pgApplyNote').textContent = 'Fill failed.'; });
     });
 })();
 </script>

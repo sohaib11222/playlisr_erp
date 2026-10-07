@@ -418,6 +418,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // a release id), sealed vinyl first. Same shape as the artist fill above.
     Route::post('/products/name-cleanup/discogs-genre-scan', 'ProductNameController@discogsGenreScan')->name('products.genre.discogs.scan');
     Route::post('/products/name-cleanup/discogs-genre-fill', 'ProductNameController@discogsGenreFill')->name('products.genre.discogs');
+    Route::post('/products/name-cleanup/poster-genre-scan', 'ProductNameController@posterGenreScan')->name('products.genre.poster.scan');
+    Route::post('/products/name-cleanup/poster-genre-apply', 'ProductNameController@posterGenreApply')->name('products.genre.poster.apply');
     // Owner-only, read-only: tally which Discogs genres/styles don't match any
     // existing sub-category, so Sarah can see what's missing from her taxonomy.
     Route::post('/products/name-cleanup/discogs-genre-unmatched', 'ProductNameController@discogsGenreUnmatchedScan')->name('products.genre.discogs.unmatched');
