@@ -81,6 +81,9 @@
                        autocomplete="off"
                        placeholder="Search products by artist, title, SKU, or barcode…">
                 <ul id="product_search_recent" class="dropdown-menu" style="display:none; width:100%; max-height:280px; overflow-y:auto;"></ul>
+                <button type="button" id="product_search_copy_link" class="btn btn-default btn-sm" style="margin-top:6px;" title="Copy a link that opens this search">
+                    <i class="fa fa-link"></i> Copy search link
+                </button>
             </div>
         </div>
     </div>
@@ -442,7 +445,23 @@
                 try { sessionStorage.setItem(PRODUCT_SEARCH_KEY, term || ''); }
                 catch (e) {}
             };
-            var __product_search_restore = getSavedProductSearch();
+            // A shared link (?search=...) wins over this tab's saved search.
+            var getUrlProductSearch = function() {
+                try { return new URLSearchParams(window.location.search).get('search'); }
+                catch (e) { return null; }
+            };
+            var setUrlProductSearch = function(term) {
+                try {
+                    var url = new URL(window.location.href);
+                    if (term) { url.searchParams.set('search', term); }
+                    else { url.searchParams.delete('search'); }
+                    window.history.replaceState(null, '', url.toString());
+                } catch (e) {}
+            };
+            var __url_search = getUrlProductSearch();
+            var __product_search_restore = __url_search !== null ? __url_search : getSavedProductSearch();
+            if (__url_search !== null) { saveProductSearch(__url_search); }
+            setUrlProductSearch(__product_search_restore);
             if (__product_search_restore) {
                 $('#product_search_main').val(__product_search_restore);
             }
@@ -671,6 +690,7 @@
                     if (term === __search_last) { return; }
                     __search_last = term;
                     saveProductSearch(term);
+                    setUrlProductSearch(term);
                     // Cancel any in-flight AJAX so old responses don't overwrite new ones
                     if (__search_xhr && __search_xhr.readyState !== 4) {
                         try { __search_xhr.abort(); } catch (e) {}
@@ -722,6 +742,20 @@
                     e.preventDefault();
                     try { localStorage.removeItem(RECENT_KEY); } catch (e) {}
                     $('#product_search_recent').hide().empty();
+                });
+                // Copy a link that opens the product list with this search
+                $('#product_search_copy_link').on('click', function() {
+                    var term = $.trim($('#product_search_main').val());
+                    var url = new URL(window.location.href);
+                    if (term) { url.searchParams.set('search', term); }
+                    else { url.searchParams.delete('search'); }
+                    var link = url.toString();
+                    var done = function() { toastr.success('Search link copied'); };
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(link).then(done, function() { window.prompt('Copy this link:', link); });
+                    } else {
+                        window.prompt('Copy this link:', link);
+                    }
                 });
                 // Hide the dropdown when clicking away
                 $(document).on('click', function(e) {
