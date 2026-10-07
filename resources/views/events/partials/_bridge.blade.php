@@ -666,6 +666,7 @@
     <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:14px 18px;margin-bottom:14px;background:var(--pos-accent-soft,#FFF9DB);font-size:16px;line-height:1.6;">
       <strong style="font-size:17px;">How to run the giveaway</strong>
       <ol style="margin:8px 0 0;padding-left:22px;">
+        <li>When the event starts, everyone who RSVP'd with a phone number automatically gets a text with the check-in link (nivessa.com/checkin). You don't need to do anything for this.</li>
         <li>Click the yellow <strong>Start giveaway</strong> button below. A big QR code fills the screen.</li>
         <li>Turn the screen so the crowd can see it and say: <em>"Scan this with your phone camera to check in for tonight's giveaway. You must be here to win."</em></li>
         <li>Give people a few minutes. The big number shows how many have checked in. It updates by itself, you don't need to click anything.</li>
@@ -673,7 +674,7 @@
         <li>If that person isn't here, click <strong>Draw again</strong>. Nobody can win twice.</li>
         <li>When you're done, click <strong>Close</strong> in the top right corner.</li>
       </ol>
-      <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">When the event starts, everyone who RSVP'd with a phone number automatically gets a text with the check-in link. You can also tell people to go to <strong>nivessa.com/checkin</strong> on their phone. <a href="{{ route('events.checkinTextsPreview', ['id' => $event['id'] ?? '']) }}" target="_blank">See who gets the text</a></div>
+      <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">You can also tell people to go to <strong>nivessa.com/checkin</strong> on their phone. <a href="{{ route('events.checkinTextsPreview', ['id' => $event['id'] ?? '']) }}" target="_blank">See who gets the text</a></div>
       <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">Only people who checked in can win. Anyone who RSVP'd and was already checked in at the door is entered too.</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
