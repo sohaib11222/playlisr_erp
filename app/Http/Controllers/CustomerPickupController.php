@@ -169,7 +169,14 @@ class CustomerPickupController extends Controller
         // register) belong in the same list as the website preorders, so all
         // of an event's pickups are in one place (Sarah, 2026-10-06).
         $eventHolds = CustomerPickup::where('customer_pickups.business_id', $business_id)
-            ->where('customer_pickups.status', 'ready')
+            ->where(function ($q) {
+                // Picked-up holds stay listed (shown green) for 30 days.
+                $q->where('customer_pickups.status', 'ready')
+                  ->orWhere(function ($q2) {
+                      $q2->where('customer_pickups.status', 'picked_up')
+                         ->where('customer_pickups.updated_at', '>=', now()->subDays(30));
+                  });
+            })
             ->leftJoin('contacts', 'customer_pickups.contact_id', '=', 'contacts.id')
             ->leftJoin('products', 'customer_pickups.product_id', '=', 'products.id')
             ->leftJoin('business_locations', 'customer_pickups.location_id', '=', 'business_locations.id')
@@ -198,11 +205,17 @@ class CustomerPickupController extends Controller
                 'paymentMethod' => '',
                 'location'      => stripos((string) $h->location_name, 'pico') !== false ? 'pico' : 'hollywood',
                 'placed'        => $h->created_at ? (string) $h->created_at : null,
-                'status'        => 'ready_for_pickup',
+                'status'        => $h->status === 'picked_up' ? 'picked_up' : 'ready_for_pickup',
                 'isPreorder'    => false,
                 'shipDate'      => null,
             ];
         }
+        // Keep picked-up rows at the bottom (stable for everything else).
+        $i = 0;
+        $websitePickups = collect($websitePickups)
+            ->map(function ($w) use (&$i) { $w['_i'] = $i++; return $w; })
+            ->sortBy(function ($w) { return [($w['status'] ?? '') === 'picked_up' ? 1 : 0, $w['_i']]; })
+            ->values()->all();
 
         return view('customer_pickup.index', compact(
             'statuses',

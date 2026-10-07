@@ -451,7 +451,10 @@ class EventsController extends Controller
                 foreach ((array) ($resp['data'] ?? $resp['preorders'] ?? []) as $p) {
                     $status = $p['status'] ?? 'pending';
                     $active = in_array($status, ['pending', 'ready'], true);
-                    if (!$showAll && !$active) { continue; }
+                    // Picked-up preorders stay in the default view (shown
+                    // green) so the name isn't lost; only canceled hides.
+                    if (!$showAll && !$active && !($status === 'picked_up'
+                        && strtotime($p['updatedAt'] ?? $p['createdAt'] ?? '') > strtotime('-30 days'))) { continue; }
                     $eid = (string) ($p['eventId'] ?? '');
                     $pickup = $p['preorderPickupDate'] ?? null;
                     if (!$pickup && isset($eventById[$eid])) {
@@ -502,7 +505,8 @@ class EventsController extends Controller
                 ->get();
             foreach ($special as $s) {
                 $active = $s->status === 'pending';
-                if (!$showAll && !$active) { continue; }
+                if (!$showAll && !$active && !($s->status === 'fulfilled'
+                    && strtotime((string) $s->updated_at) > strtotime('-30 days'))) { continue; }
                 // Map the special-order vocabulary onto the shared one.
                 $label = $s->status === 'fulfilled' ? 'picked up'
                        : ($s->status === 'cancelled' ? 'canceled' : 'pending');
@@ -534,6 +538,8 @@ class EventsController extends Controller
 
         // Soonest pickup first; undated pickups sink to the bottom.
         usort($rows, function ($a, $b) {
+            // Picked-up rows sink below everything still waiting.
+            if ($a['active'] !== $b['active']) { return $a['active'] ? -1 : 1; }
             $pa = $a['pickup'] ?: '9999-12-31';
             $pb = $b['pickup'] ?: '9999-12-31';
             if ($pa !== $pb) { return strcmp($pa, $pb); }

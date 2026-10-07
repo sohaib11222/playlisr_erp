@@ -34,6 +34,8 @@ body.pos-v2 #pickup_table tbody tr:hover, body.pos-v2 #preorder_table tbody tr:h
 body.pos-v2 #pickup_table .label, body.pos-v2 #preorder_table .label, body.pos-v2 #website_pickup_table .label { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
 body.pos-v2 #pickup_table .btn-group, body.pos-v2 #preorder_table .btn-group { display: inline-flex; gap: 5px; }
 body.pos-v2 #pickup_table .btn-xs, body.pos-v2 #preorder_table .btn-xs, body.pos-v2 #website_pickup_table .btn-xs { border-radius: 8px; font-family: inherit; font-weight: 600; }
+/* Picked-up rows stay listed, tinted green (Sarah, 2026-10-07). */
+body.pos-v2 #website_pickup_table tbody tr.row-picked-up td, body.pos-v2 #preorder_table tbody tr.row-picked-up td { background: #e6f4ea; color: #4b6b52; }
 body.pos-v2 #preorder_table .source-select {
   border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 4px 8px; font-size: 12px; font-family: inherit;
   background: #fff; color: var(--pos-ink); max-width: 170px; text-overflow: ellipsis; }
@@ -165,8 +167,11 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             // Signing-event preorders get handed out at the event,
                             // not pulled for a regular pickup (Sarah, 2026-10-06).
                             $eventPickup = (bool) preg_grep('/axis mundi/i', $wp['items']);
+                            // Picked up: keep the row (staff still need the name), just green.
+                            $pickedUp = ($wp['status'] ?? '') === 'picked_up';
+                            if ($pickedUp) { $statusSort = 9; }
                         @endphp
-                        <tr @if(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
+                        <tr @if($pickedUp) class="row-picked-up" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                             <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                             <td data-order="{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}">{{ $wp['location'] === 'pico' ? 'Pico' : 'Hollywood' }}</td>
                             <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
@@ -194,7 +199,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ $shipTs ?: 0 }}" style="white-space:nowrap;">{{ ($shipTs && !$eventPickup) ? gmdate('n/j/y', $shipTs) : '—' }}</td>
                             @endif
                             <td data-order="{{ $statusSort }}">
-                                @if($eventPickup)
+                                @if($pickedUp)
+                                    <span class="label" style="background:#2e7d32; font-weight:700;">Picked up</span>
+                                @elseif($eventPickup)
                                     <span class="label" style="background:#2e7d32; font-weight:700;">Will pick up at event</span>
                                 @elseif(!empty($wp['isPreorder']))
                                     <span class="label" style="background:#c9720a; font-weight:700;">PREORDER — NOT IN STOCK</span><br>
@@ -210,7 +217,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">
-                                @if(($wp['source'] ?? '') === 'store_hold')
+                                @if($pickedUp)
+                                    <span class="sub">Done</span>
+                                @elseif(($wp['source'] ?? '') === 'store_hold')
                                     <button type="button" class="btn btn-success btn-xs js-hold-picked-up" data-id="{{ $wp['id'] }}">Mark Picked Up</button>
                                 @elseif($notYetDue)
                                     <span class="sub">Available after street date</span>
@@ -264,7 +273,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         @endif
 
         @if(empty($preorders))
-            <div class="sub" style="padding:8px 2px;">{{ $preorderShowAll ? 'No preorders yet.' : 'No active preorders — everything has been picked up or canceled.' }}</div>
+            <div class="sub" style="padding:8px 2px;">{{ $preorderShowAll ? 'No preorders yet.' : 'No active preorders.' }}</div>
         @else
             @php $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in']; @endphp
             <div class="table-responsive">
@@ -290,8 +299,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             $filterVal = $preorderShowAll ? 'all' : '';
                             $sourceForSort = $p['source'] !== '' ? $p['source'] : ('At event' . ($p['eventName'] ? ' — ' . $p['eventName'] : ''));
                             $paidSort = !$p['paidKnown'] ? 0 : ($p['paid'] ? 2 : 1);
+                            $pickedUp = $p['statusLabel'] === 'picked up';
                         @endphp
-                        <tr>
+                        <tr @if($pickedUp) class="row-picked-up" @endif>
                             <td>{{ $p['name'] }}
                                 <div class="sub" style="margin:0;">{{ $p['email'] }}@if(!empty($p['phone']))@if(!empty($p['email'])) &middot; @endif{{ $p['phone'] }}@endif</div>
                             </td>
@@ -332,6 +342,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             </td>
                             @if($preorderShowAll)<td>{{ $p['statusLabel'] }}</td>@endif
                             <td style="white-space:nowrap;">
+                                @if($pickedUp && !$preorderShowAll)
+                                    <span class="label" style="background:#2e7d32; font-weight:700;">Picked up</span>
+                                @endif
                                 @if(!empty($p['active']))
                                     @if($p['type'] === 'event' && $p['paidKnown'] && empty($p['paid']))
                                         <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $p['id']]) }}" style="display:inline;">

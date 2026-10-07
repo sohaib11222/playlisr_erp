@@ -193,10 +193,19 @@ class WebsiteOrdersController extends Controller
             if (($o['fulfillment_method'] ?? null) !== 'pickup') return false;
             if (($o['payment_status'] ?? '') !== 'completed') return false;
             $status = $o['order_status'] ?? '';
+            // Picked-up orders stay on the list for 30 days (shown green)
+            // so staff still have the customer's name and items after
+            // handing it over (Sarah, 2026-10-07).
+            if ($status === 'picked_up') {
+                $ts = strtotime($o['updatedAt'] ?? $o['createdAt'] ?? '');
+                return $ts && $ts > strtotime('-30 days');
+            }
             return in_array($status, ['processing', 'ready_for_pickup'], true);
         }));
 
-        usort($rows, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
+        // Oldest first, picked-up orders at the bottom.
+        usort($rows, fn($a, $b) => [($a['order_status'] ?? '') === 'picked_up', strtotime($a['createdAt'] ?? '')]
+            <=> [($b['order_status'] ?? '') === 'picked_up', strtotime($b['createdAt'] ?? '')]);
 
         return array_map(function ($o) {
             $shipDates = [];
