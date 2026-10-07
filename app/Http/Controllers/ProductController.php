@@ -209,6 +209,8 @@ class ProductController extends Controller
             // Stock is summed over the locations this user may see, narrowed
             // further when the list is filtered to one location — same rules the
             // old vld join encoded, just expressed inside the subselect.
+            $locationNames = DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
+
             $vld_scope = '';
             if ($permitted_locations != 'all') {
                 $ids = array_filter(array_map('intval', (array) $permitted_locations));
@@ -272,6 +274,13 @@ class ProductController extends Controller
                             from variations v2
                             join variation_location_details vld on vld.variation_id = v2.id
                            where v2.product_id = products.id and v2.deleted_at is null' . $vld_scope . ') as current_stock'),
+                // Per-store breakdown ("hollywood:1|pico:1") so a listing that
+                // lives at both stores reads "Hollywood 1 / Pico 1" instead of
+                // a bare total. Plain text so it survives export.
+                DB::raw('(select group_concat(concat(vld.location_id, \':\', vld.qty_available) separator \'|\')
+                            from variations v2
+                            join variation_location_details vld on vld.variation_id = v2.id
+                           where v2.product_id = products.id and v2.deleted_at is null' . $vld_scope . ') as stock_by_location'),
                 DB::raw('(select max(v2.sell_price_inc_tax) from variations v2
                            where v2.product_id = products.id and v2.deleted_at is null) as max_price'),
                 DB::raw('(select min(v2.sell_price_inc_tax) from variations v2
@@ -693,10 +702,24 @@ class ProductController extends Controller
                 ->addColumn('mass_delete', function ($row) {
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
-                ->editColumn('current_stock', function($row){
+                ->editColumn('current_stock', function($row) use ($locationNames) {
                     $qty = (float) $row->current_stock;
                     if ($qty !== 0.0 || $row->current_stock !== null) {
-                        return number_format((int) round($qty), 0) . ' ' . $row->unit;
+                        $total = number_format((int) round($qty), 0) . ' ' . $row->unit;
+                        $byLoc = [];
+                        foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
+                            [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
+                            $byLoc[(int) $locId] = ($byLoc[(int) $locId] ?? 0) + (float) $q;
+                        }
+                        if (count($byLoc) > 1) {
+                            ksort($byLoc);
+                            $lines = [];
+                            foreach ($byLoc as $locId => $q) {
+                                $lines[] = ucwords($locationNames[$locId] ?? ('Location ' . $locId)) . ' ' . number_format((int) round($q), 0);
+                            }
+                            return $total . ' <small style="display:block">(' . e(implode(' / ', $lines)) . ')</small>';
+                        }
+                        return $total;
                     }
                     return '--';
                 })
