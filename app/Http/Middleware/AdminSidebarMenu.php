@@ -807,6 +807,10 @@ class AdminSidebarMenu
         $moduleUtil = new ModuleUtil;
         $moduleUtil->getModuleData('modifyAdminMenu');
 
+        // Record this page visit and sort the menu most-used first.
+        \App\Utils\NavUsage::record($request);
+        \App\Utils\NavUsage::applyOrder(Menu::instance('admin-sidebar-menu'));
+
         return $next($request);
     }
 }

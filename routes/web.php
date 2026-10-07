@@ -1216,6 +1216,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Favorites group at the top of the sidebar. Per-user JSON sidecar, no
     // migration; nobody else sees your stars. See SidebarFavoriteController.
     Route::post('/sidebar-favorites/toggle', 'SidebarFavoriteController@toggle')->name('sidebar-favorites.toggle');
+    Route::get('/sidebar-usage', function () {
+        abort_unless(auth()->user()->can('business_settings.access'), 403);
+        return response()->json(\App\Utils\NavUsage::report(\Menu::instance('admin-sidebar-menu')));
+    })->name('sidebar-usage');
 
     // Listing commissions owed to staff for items they listed. Derived live
     // from products.created_by + users.cmmsn_percent × sell price; "paid" is
