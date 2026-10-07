@@ -1736,6 +1736,7 @@ class ProductNameController extends Controller
     // undo (action backfill-genre-from-discogs reuses the genre undo).
 
     protected $posterUnmatched = [];
+    protected $artistTotals = [];
 
     /** Parent categories that hold posters / wall art. */
     protected function posterCategoryIds($business_id)
@@ -1803,7 +1804,7 @@ class ProductNameController extends Controller
             $total = array_sum($counts);
             $top = key($g);
             $second = $counts[1] ?? 0;
-            if ($total >= 2 && $counts[0] > $second) { $out[$k] = $top; }
+            if ($total >= 2 && $counts[0] > $second) { $out[$k] = $top; $this->artistTotals[$k] = $total; }
         }
         return $out;
     }
@@ -1840,8 +1841,9 @@ class ProductNameController extends Controller
                 $tokens = explode(' ', $this->posterKey($r->name));
                 for ($n = min(6, count($tokens)); $n >= 1; $n--) {
                     $k = implode(' ', array_slice($tokens, 0, $n));
-                    // One-word artists need 5+ letters so "King" doesn't grab "King of the Wild".
-                    if (($n > 1 || mb_strlen($k) >= 5) && isset($artistGenre[$k])) { $match = [$k, $artistGenre[$k]]; break; }
+                    // One-word artists need 5+ letters so "King" doesn't grab "King of the Wild",
+                    // and 3+ records, so "Gloria" doesn't grab "Gloria Swanson".
+                    if (isset($artistGenre[$k]) && ($n > 1 || (mb_strlen($k) >= 5 && ($this->artistTotals[$k] ?? 0) >= 3))) { $match = [$k, $artistGenre[$k]]; break; }
                 }
             }
             if (!$match) { $this->posterUnmatched[] = $r->name; continue; }
