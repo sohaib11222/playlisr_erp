@@ -745,9 +745,26 @@ class BusinessController extends Controller
                 ]);
             }
             
-            $result = $streetpulseService->syncDailySales($date);
+            // Upload one file per store, the same way the nightly job does.
+            // Without a location the generator lumps every store's sales under
+            // the business-level acronym, which mis-reports a re-sent day.
+            $locations = \App\BusinessLocation::where('business_id', request()->session()->get('user.business_id'))
+                ->whereNotNull('streetpulse_acronym')
+                ->where('streetpulse_acronym', '!=', '')
+                ->get();
+            if ($locations->isEmpty()) {
+                return response()->json($streetpulseService->syncDailySales($date));
+            }
 
-            return response()->json($result);
+            $msgs = [];
+            $allOk = true;
+            foreach ($locations as $location) {
+                $r = $streetpulseService->syncDailySales($date, $location->id);
+                $allOk = $allOk && !empty($r['success']);
+                $msgs[] = $location->name . ': ' . ($r['msg'] ?? '');
+            }
+
+            return response()->json(['success' => $allOk, 'msg' => implode(' | ', $msgs)]);
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile(). "Line:" . $e->getLine(). "Message:" . $e->getMessage());
             
