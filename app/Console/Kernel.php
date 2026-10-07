@@ -239,6 +239,12 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->withoutOverlapping(5);
 
+        // Text RSVP guests the giveaway check-in link when an event starts
+        // (SendEventCheckinTexts). Sends once per guest per event.
+        $schedule->command('events:send-checkin-texts')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(10);
+
         // Event RSVPs -> Contacts. Links each RSVP/+guest to an existing
         // customer by email/mobile, or creates a new customer contact, so
         // anyone who's ever RSVPed shows up in Contacts > Customers search.
