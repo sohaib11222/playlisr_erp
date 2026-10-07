@@ -81,9 +81,6 @@
                        autocomplete="off"
                        placeholder="Search products by artist, title, SKU, or barcode…">
                 <ul id="product_search_recent" class="dropdown-menu" style="display:none; width:100%; max-height:280px; overflow-y:auto;"></ul>
-                <button type="button" id="product_search_copy_link" class="btn btn-default btn-sm" style="margin-top:6px;" title="Copy a link that opens this search">
-                    <i class="fa fa-link"></i> Copy search link
-                </button>
             </div>
         </div>
     </div>
@@ -742,20 +739,6 @@
                     e.preventDefault();
                     try { localStorage.removeItem(RECENT_KEY); } catch (e) {}
                     $('#product_search_recent').hide().empty();
-                });
-                // Copy a link that opens the product list with this search
-                $('#product_search_copy_link').on('click', function() {
-                    var term = $.trim($('#product_search_main').val());
-                    var url = new URL(window.location.href);
-                    if (term) { url.searchParams.set('search', term); }
-                    else { url.searchParams.delete('search'); }
-                    var link = url.toString();
-                    var done = function() { toastr.success('Search link copied'); };
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(link).then(done, function() { window.prompt('Copy this link:', link); });
-                    } else {
-                        window.prompt('Copy this link:', link);
-                    }
                 });
                 // Hide the dropdown when clicking away
                 $(document).on('click', function(e) {
