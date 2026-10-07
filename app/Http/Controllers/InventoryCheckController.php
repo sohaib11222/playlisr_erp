@@ -1012,7 +1012,12 @@ class InventoryCheckController extends Controller
             $stat = ['new' => ['n' => 0, 'ams' => 0], 'used' => ['n' => 0, 'ams' => 0]];
             $bySku = 0;
             foreach ($recent as $p) {
-                $bucket = (stripos((string) ($p->cat ?? ''), 'used') !== false) ? 'used' : 'new';
+                // Only sealed vs used: vintage 45s, posters, merch etc. aren't
+                // AMS stock and made "new" coverage look far worse than it is.
+                $cat = (string) ($p->cat ?? '');
+                if (stripos($cat, 'used') !== false) { $bucket = 'used'; }
+                elseif (stripos($cat, 'sealed') !== false) { $bucket = 'new'; }
+                else { continue; }
                 $stat[$bucket]['n']++;
                 $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist ?? null, $p->name ?? null, $p->cat ?? null, $p->sku ?? null);
                 $ams = null;

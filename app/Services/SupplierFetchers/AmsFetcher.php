@@ -78,16 +78,6 @@ class AmsFetcher extends AbstractHttpFetcher
             $sorts[] = '';
         }
 
-        $rows = [];
-        foreach ([['Vinyl', $vinylPages, 'LP'], ['CD', $cdPages, 'CD']] as [$path, $pages, $defaultFormat]) {
-            foreach ($sorts as $sort) {
-                if ((microtime(true) - $startedAt) > (float) env('AMS_FETCH_BUDGET_SEC', 45)) break;
-                foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp, $startedAt, $sort) as $row) {
-                    $rows[] = $row;
-                }
-            }
-        }
-
         // 5) Barcode lookups for reorder candidates AMS doesn't surface in its
         // SalesRank lists (deep catalog — older titles that still sell for us
         // but aren't current best-sellers). Every product page is keyed purely
@@ -96,11 +86,12 @@ class AmsFetcher extends AbstractHttpFetcher
         // We feed it the barcodes of our own low-stock movers and merge the
         // hits in. Bounded by a wall-clock budget so the synchronous
         // "Fetch AMS now" button finishes before the JS client aborts.
+        // Runs FIRST (2026-10-07): our own products' barcodes are the most
+        // valuable lookups — exact matches — and used to get only the budget
+        // left over after the 90-minute catalog walk, so most sealed CDs and
+        // records never got an AMS price.
+        $rows = [];
         $have = [];
-        foreach ($rows as $r) {
-            $n = $this->normalizeBarcode((string) ($r['upc'] ?? ''));
-            if ($n !== '') $have[$n] = true;
-        }
         // Also skip barcodes already priced in a previous run's feed so each
         // run advances into new territory instead of re-pulling the same items.
         try {
@@ -116,8 +107,23 @@ class AmsFetcher extends AbstractHttpFetcher
             // Non-fatal — worst case we re-look-up a few we already had.
         }
 
-        foreach ($this->lookupByBarcodes($this->candidateBarcodes($have), $startedAt) as $row) {
+        $asked = $this->candidateBarcodes($have);
+        $found = [];
+        foreach ($this->lookupByBarcodes($asked, $startedAt) as $row) {
             $rows[] = $row;
+            $n = $this->normalizeBarcode((string) ($row['upc'] ?? ''));
+            if ($n !== '') $found[$n] = true;
+        }
+        $this->rememberMisses($asked, $found, $startedAt);
+
+
+        foreach ([['Vinyl', $vinylPages, 'LP'], ['CD', $cdPages, 'CD']] as [$path, $pages, $defaultFormat]) {
+            foreach ($sorts as $sort) {
+                if ((microtime(true) - $startedAt) > (float) env('AMS_FETCH_BUDGET_SEC', 45)) break;
+                foreach ($this->walkCatalog($path, $defaultFormat, max(1, $pages), $ipp, $startedAt, $sort) as $row) {
+                    $rows[] = $row;
+                }
+            }
         }
 
         return $rows;
@@ -138,17 +144,25 @@ class AmsFetcher extends AbstractHttpFetcher
         if ($cap === 0) return [];
         $bizId = $this->resolveBusinessId();
         if (!$bizId) return [];
-        $maxStock = (int) env('AMS_BARCODE_MAX_STOCK', 3);
 
+        // Every NEW (non-used) product with a real UPC/EAN, in-stock and
+        // best-selling first. Used copies are skipped: AMS sells new only.
+        // Barcodes AMS didn't carry last time are skipped for 30 days.
+        $misses = $this->loadMisses();
+        $cutoff = time() - 30 * 86400;
         try {
-            $rows = \Illuminate\Support\Facades\DB::table('product_stock_cache')
-                ->where('business_id', $bizId)
-                ->where('stock', '<=', $maxStock)
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->orderByDesc('total_sold')
-                ->limit(20000)
-                ->pluck('sku');
+            $rows = \Illuminate\Support\Facades\DB::table('products as p')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->where('p.business_id', $bizId)
+                ->where('p.is_inactive', 0)
+                ->whereNotNull('p.sku')
+                ->whereRaw("p.sku REGEXP '^[0-9 -]{11,16}$'")
+                ->where(function ($q) {
+                    $q->whereNull('c.name')->orWhereRaw("LOWER(c.name) NOT LIKE '%used%'");
+                })
+                ->orderByDesc('p.id')
+                ->limit(60000)
+                ->pluck('p.sku');
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('AmsFetcher: candidateBarcodes query failed', ['err' => $e->getMessage()]);
             return [];
@@ -158,14 +172,44 @@ class AmsFetcher extends AbstractHttpFetcher
         $seen = [];
         foreach ($rows as $sku) {
             $digits = preg_replace('/\D+/', '', (string) $sku);
-            if (strlen($digits) < 11 || strlen($digits) > 13) continue; // not a UPC/EAN
+            if (strlen($digits) < 11 || strlen($digits) > 14) continue; // not a UPC/EAN
             $norm = ltrim($digits, '0');
             if ($norm === '' || isset($seen[$norm]) || isset($skip[$norm])) continue;
+            if (isset($misses[$norm]) && $misses[$norm] > $cutoff) continue;
             $seen[$norm] = true;
             $out[] = $norm;
             if (count($out) >= $cap) break;
         }
         return $out;
+    }
+
+    /** Barcodes whose AMS page actually loaded this run (budget may stop early). */
+    protected array $attemptedBarcodes = [];
+
+    protected function missesPath(): string
+    {
+        return storage_path('app/supplier-ams-barcode-misses.json');
+    }
+
+    /** @return array<string,int> normalized barcode => last time AMS didn't have it */
+    protected function loadMisses(): array
+    {
+        $j = @json_decode((string) @file_get_contents($this->missesPath()), true);
+        return is_array($j) ? $j : [];
+    }
+
+    /** Remember barcodes AMS didn't carry so the next runs spend time on new ones. */
+    protected function rememberMisses(array $asked, array $found, float $startedAt): void
+    {
+        if (empty($asked)) return;
+        $misses = $this->loadMisses();
+        $now = time();
+        foreach ($asked as $n) {
+            if (!isset($this->attemptedBarcodes[(string) $n])) { continue; }
+            if (!isset($found[$n])) { $misses[$n] = $now; }
+            else { unset($misses[$n]); }
+        }
+        @file_put_contents($this->missesPath(), json_encode($misses));
     }
 
     /**
@@ -191,7 +235,8 @@ class AmsFetcher extends AbstractHttpFetcher
                 $urls[$ean] = 'https://www.allmediasupply.com/Product/x/x/' . $ean;
             }
             foreach ($this->multiGet($urls) as $ean => $html) {
-                if ($html === null || $html === '') continue;
+                if ($html === null || $html === '') continue; // network error: not a real miss
+                $this->attemptedBarcodes[(string) $ean] = true;
                 $row = $this->parseProductPageHtml($html, (string) $ean);
                 if ($row !== null) $out[] = $row;
             }
