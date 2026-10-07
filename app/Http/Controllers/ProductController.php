@@ -210,6 +210,22 @@ class ProductController extends Controller
             // further when the list is filtered to one location — same rules the
             // old vld join encoded, just expressed inside the subselect.
             $locationNames = DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
+            // Per-store stock columns (Hollywood / Pico) next to the total.
+            $hwLocIds = [];
+            $picoLocIds = [];
+            foreach ($locationNames as $locId => $locName) {
+                $n = strtolower((string) $locName);
+                if (strpos($n, 'hollywood') !== false) { $hwLocIds[] = (int) $locId; }
+                if (strpos($n, 'pico') !== false) { $picoLocIds[] = (int) $locId; }
+            }
+            $stockAt = function ($row, array $locIds) {
+                $sum = null;
+                foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
+                    [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
+                    if (in_array((int) $locId, $locIds, true)) { $sum = ($sum ?? 0) + (float) $q; }
+                }
+                return $sum === null ? '--' : number_format((int) round($sum), 0);
+            };
 
             $vld_scope = '';
             if ($permitted_locations != 'all') {
@@ -702,26 +718,18 @@ class ProductController extends Controller
                 ->addColumn('mass_delete', function ($row) {
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
-                ->editColumn('current_stock', function($row) use ($locationNames) {
+                ->editColumn('current_stock', function($row){
                     $qty = (float) $row->current_stock;
                     if ($qty !== 0.0 || $row->current_stock !== null) {
-                        $total = number_format((int) round($qty), 0) . ' ' . $row->unit;
-                        $byLoc = [];
-                        foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
-                            [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
-                            $byLoc[(int) $locId] = ($byLoc[(int) $locId] ?? 0) + (float) $q;
-                        }
-                        if (count($byLoc) > 1) {
-                            ksort($byLoc);
-                            $lines = [];
-                            foreach ($byLoc as $locId => $q) {
-                                $lines[] = ucwords($locationNames[$locId] ?? ('Location ' . $locId)) . ' ' . number_format((int) round($q), 0);
-                            }
-                            return $total . ' <small style="display:block">(' . e(implode(' / ', $lines)) . ')</small>';
-                        }
-                        return $total;
+                        return number_format((int) round($qty), 0) . ' ' . $row->unit;
                     }
                     return '--';
+                })
+                ->addColumn('hw_stock', function ($row) use ($stockAt, $hwLocIds) {
+                    return $stockAt($row, $hwLocIds);
+                })
+                ->addColumn('pico_stock', function ($row) use ($stockAt, $picoLocIds) {
+                    return $stockAt($row, $picoLocIds);
                 })
                 ->addColumn(
                     'purchase_price',

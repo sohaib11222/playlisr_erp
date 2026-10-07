@@ -1,6 +1,6 @@
 @php 
     // Columns: select, actions, store, product, artist, category, subcategory, prices, current stock, units sold, sku, created at, last updated, last updated by, created by, discogs id, discogs, ebay, nivessa.com
-    $colspan = 20;
+    $colspan = 22;
     $custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
 <table class="table table-bordered table-striped ajax_view hide-footer" id="product_table">
@@ -19,7 +19,9 @@
             @can('access_default_selling_price')
                 <th>@lang('lang_v1.selling_price')</th>
             @endcan
-            <th>@lang('report.current_stock')</th>
+            <th>HW Stock</th>
+            <th>Pico Stock</th>
+            <th>Total Stock</th>
             <th>Units Sold</th>
             <th>@lang('product.sku')</th>
             <th>Created at</th>
