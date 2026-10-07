@@ -685,20 +685,19 @@
 
   {{-- Full-screen giveaway view, shown to the room. --}}
   <div id="gw-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#fffdf5;overflow:auto;">
-    <button type="button" id="gw-close" class="btn-ghost" style="position:absolute;top:16px;right:16px;">Close</button>
-    <div style="max-width:1100px;margin:0 auto;padding:40px 24px;display:flex;gap:48px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100%;box-sizing:border-box;">
-      <div style="text-align:center;flex:0 1 420px;">
-        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Check in to be entered in tonight's giveaway</div>
-        <div style="font-size:18px;color:#6b5d3f;margin-bottom:18px;">Scan with your phone camera. Takes 10 seconds.<br><strong>Must be present to win.</strong></div>
+    <button type="button" id="gw-close" style="position:absolute;top:20px;right:20px;font-size:22px;font-weight:700;padding:12px 28px;border-radius:12px;border:2px solid #2b2418;background:#fff;color:#2b2418;cursor:pointer;">Close</button>
+    <div style="max-width:92vw;margin:0 auto;padding:40px 24px;display:flex;gap:6vw;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100%;box-sizing:border-box;">
+      <div style="text-align:center;flex:0 1 auto;">
+        <div style="font-size:clamp(34px,3.6vw,80px);font-weight:800;line-height:1.15;margin-bottom:10px;">Check in to be entered in tonight's giveaway</div>
+        <div style="font-size:clamp(18px,1.8vw,40px);color:#6b5d3f;margin-bottom:24px;">Scan with your phone camera. Takes 10 seconds.<br><strong>Must be present to win.</strong></div>
         <div id="gw-qr" style="display:inline-block;background:#fff;padding:16px;border-radius:16px;border:1px solid #ECE3CF;"></div>
-        <div style="font-size:14px;color:#6b5d3f;margin-top:12px;word-break:break-all;">{{ $checkInUrl }}</div>
-      </div>
+              </div>
       <div style="text-align:center;flex:1 1 360px;">
-        <div style="font-size:80px;font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
-        <div style="font-size:18px;color:#6b5d3f;margin-bottom:12px;">checked in</div>
-        <div id="gw-recent" style="font-size:15px;color:#6b5d3f;min-height:44px;margin-bottom:22px;"></div>
-        <button type="button" class="btn-accent" id="spin-btn" style="font-size:24px;padding:16px 40px;">Draw winner</button>
-        <div id="gw-display" style="font-size:44px;font-weight:900;min-height:60px;margin-top:26px;"></div>
+        <div style="font-size:clamp(80px,9vw,200px);font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
+        <div style="font-size:clamp(18px,1.8vw,40px);color:#6b5d3f;margin-bottom:12px;">checked in</div>
+        <div id="gw-recent" style="font-size:clamp(15px,1.2vw,28px);color:#6b5d3f;min-height:44px;margin-bottom:22px;"></div>
+        <button type="button" class="btn-accent" id="spin-btn" style="font-size:clamp(24px,2.2vw,48px);padding:0.6em 1.6em;">Draw winner</button>
+        <div id="gw-display" style="font-size:clamp(44px,4.5vw,110px);font-weight:900;min-height:60px;margin-top:26px;"></div>
       </div>
     </div>
   </div>
@@ -768,7 +767,8 @@
         if (!qrDone) {
           var box = document.getElementById('gw-qr');
           if (window.QRCode) {
-            new QRCode(box, { text: gw.checkInUrl, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
+            var qs = Math.max(320, Math.min(800, Math.round(Math.min(window.innerWidth * 0.32, window.innerHeight * 0.6))));
+            new QRCode(box, { text: gw.checkInUrl, width: qs, height: qs, correctLevel: QRCode.CorrectLevel.M });
           } else {
             box.innerHTML = '<img alt="QR code" width="320" height="320" src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' + encodeURIComponent(gw.checkInUrl) + '">';
           }
