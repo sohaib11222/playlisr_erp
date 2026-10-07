@@ -68,7 +68,7 @@ class AdminSidebarMenu
                         );
                     },
                     ['icon' => 'fa fas fa-box']
-                )->order(7);
+                )->order(8);
             }
 
             //Communications Hub — log every inbound customer message across
@@ -82,7 +82,7 @@ class AdminSidebarMenu
                     action('CommunicationController@index'),
                     'Communications Hub',
                     ['icon' => 'fa fas fa-comments', 'active' => request()->segment(1) == 'communications']
-                )->order(11);
+                )->order(15);
             }
 
             //Tasks & Projects — team-wide daily + weekly tasks + longer-running
@@ -132,7 +132,7 @@ class AdminSidebarMenu
                     );
                 },
                 ['icon' => 'fa fas fa-tasks']
-            )->order(9);
+            )->order(16);
 
             //Events dropdown — Events and the email copy editor grouped
             //together. Preorders (listening-party + in-store special orders)
@@ -155,7 +155,7 @@ class AdminSidebarMenu
                         );
                     },
                     ['icon' => 'fa fas fa-music']
-                )->order(8);
+                )->order(13);
             }
 
             //Discounts lives inside the Products dropdown below — no longer
@@ -184,30 +184,8 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-boxes']
             )->order(12);
 
-            //User management dropdown
-            if (auth()->user()->can('user.view') || auth()->user()->can('user.create') || auth()->user()->can('roles.view')) {
-                $menu->dropdown(
-                    __('user.user_management'),
-                    function ($sub) {
-                        if (auth()->user()->can('user.view')) {
-                            $sub->url(
-                                action('ManageUserController@index'),
-                                __('user.users'),
-                                ['icon' => 'fa fas fa-user', 'active' => request()->segment(1) == 'users']
-                            );
-                        }
-                        if (auth()->user()->can('roles.view')) {
-                            $sub->url(
-                                action('RoleController@index'),
-                                __('user.roles'),
-                                ['icon' => 'fa fas fa-briefcase', 'active' => request()->segment(1) == 'roles']
-                            );
-                        }
-
-                    },
-                    ['icon' => 'fa fas fa-users']
-                )->order(10);
-            }
+            //User Management (Users, Roles) now lives in the Admin Tools
+            //dropdown at the bottom of the menu.
 
             //Contacts dropdown
             if (auth()->user()->can('supplier.view') || auth()->user()->can('customer.view') || auth()->user()->can('supplier.view_own') || auth()->user()->can('customer.view_own')) {
@@ -251,7 +229,7 @@ class AdminSidebarMenu
                         }
                     },
                     ['icon' => 'fa fas fa-address-book', 'id' => "tour_step4"]
-                )->order(15);
+                )->order(14);
             }
 
             //Products dropdown
@@ -346,39 +324,8 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-gem', 'active' => request()->segment(1) == 'brands']
                             );
                         }
-                        // Owner-only: merge duplicate products (Jonathan Hedvat).
-                        if (
-                            strtolower(trim((string) auth()->user()->first_name)) === 'jonathan'
-                            && strtolower(trim((string) auth()->user()->last_name)) === 'hedvat'
-                        ) {
-                            $sub->url(
-                                route('products.merge.index'),
-                                'Merge Duplicates',
-                                ['icon' => 'fa fas fa-object-group', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'merge']
-                            );
-                            $sub->url(
-                                route('products.name.index'),
-                                'Name Cleanup',
-                                ['icon' => 'fa fas fa-font', 'active' => request()->segment(1) == 'products' && request()->segment(2) == 'name-cleanup']
-                            );
-                            $sub->url(
-                                route('products.orphanedStockCleanup'),
-                                'Orphaned Stock Cleanup',
-                                ['icon' => 'fa fas fa-eraser', 'active' => request()->segment(1) == 'admin' && request()->segment(2) == 'orphaned-stock-cleanup']
-                            );
-                        }
-                        if (auth()->user()->can('product.create')) {
-                            $sub->url(
-                                route('manual-item-price-rules.index'),
-                                'Manual Item Price Rules',
-                                ['icon' => 'fa fas fa-dollar-sign', 'active' => request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules']
-                            );
-                            $sub->url(
-                                route('product-entry-rules.index'),
-                                'Product Entry Rules',
-                                ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'settings' && request()->segment(2) == 'product-entry-rules']
-                            );
-                        }
+                        // Merge Duplicates, Name Cleanup, Orphaned Stock Cleanup and the
+                        // two Rules pages moved to the Admin Tools dropdown.
                         if (auth()->user()->can('discount.access')) {
                             $sub->url(
                                 action('DiscountController@index'),
@@ -394,7 +341,7 @@ class AdminSidebarMenu
 //                        );
                     },
                     ['icon' => 'fa fas fa-cubes', 'id' => 'tour_step5']
-                )->order(20);
+                )->order(9);
             }
 
             //Purchase dropdown
@@ -446,7 +393,7 @@ class AdminSidebarMenu
                         }
                     },
                     ['icon' => 'fa fas fa-arrow-circle-down', 'id' => 'tour_step6']
-                )->order(25);
+                )->order(10);
             }
             //Sell dropdown
             if ($is_admin || auth()->user()->hasAnyPermission(['sell.view', 'sell.create', 'direct_sell.access', 'view_own_sell_only', 'view_commission_agent_sell', 'access_shipping', 'access_own_shipping', 'access_commission_agent_shipping', 'access_sell_return', 'direct_sell.view', 'direct_sell.update', 'access_own_sell_return']) ) {
@@ -530,7 +477,7 @@ class AdminSidebarMenu
 
                     },
                     ['icon' => 'fa fas fa-arrow-circle-up', 'id' => 'tour_step7']
-                )->order(30);
+                )->order(7);
             }
 
             //Stock transfer dropdown
@@ -659,19 +606,19 @@ class AdminSidebarMenu
                 action('ReportsHubController@index'),
                 __('report.reports'),
                 ['icon' => 'fa fas fa-chart-bar', 'id' => 'tour_step8', 'active' => request()->segment(1) == 'reports']
-            )->order(55);
+            )->order(17);
 
             $menu->url(
                 action('InventoryCheckController@index'),
                 'Inventory Check',
                 ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
-            )->order(56);
+            )->order(11);
 
             $menu->url(
                 action('HelpController@index'),
                 'Help & Handbook',
                 ['icon' => 'fa fas fa-life-ring', 'active' => request()->segment(1) == 'help']
-            )->order(57);
+            )->order(20);
 
             //Supplies & requests. "Request a Supply" is open to every staff
             //member; the manage views are admin-only (business_settings.access).
@@ -701,7 +648,7 @@ class AdminSidebarMenu
                     }
                 },
                 ['icon' => 'fa fas fa-truck-loading']
-            )->order(58);
+            )->order(18);
 
             //Sourcing — demand-driven merchandise categories (toys, comics,
             //cards, etc.). Visible to every authenticated staff member, same
@@ -711,17 +658,48 @@ class AdminSidebarMenu
                 action('SourcingController@index'),
                 'Sourcing',
                 ['icon' => 'fa fas fa-search-dollar', 'active' => request()->segment(1) == 'sourcing']
-            )->order(59);
+            )->order(19);
 
 
-            //Backup menu
-            if (auth()->user()->can('backup')) {
-                $menu->url(action('BackUpController@index'), __('lang_v1.backup'), ['icon' => 'fa fas fa-hdd', 'active' => request()->segment(1) == 'backup'])->order(60);
+            //Admin Tools — one dropdown at the bottom for the set-and-forget
+            //admin pages, so the daily menu stays short (Sarah 2026-10-07:
+            //"make it very very simple", consolidate, don't delete). Every
+            //link keeps the exact permission gate it had in its old spot.
+            $user = auth()->user();
+            $is_owner = strtolower(trim((string) $user->first_name)) === 'jonathan'
+                && strtolower(trim((string) $user->last_name)) === 'hedvat';
+            $admin_links = [];
+            if ($user->can('user.view')) {
+                $admin_links[] = [action('ManageUserController@index'), __('user.users'), 'fa fas fa-user', request()->segment(1) == 'users'];
             }
-
-            //Modules menu
-            if (auth()->user()->can('manage_modules')) {
-                $menu->url(action('Install\ModulesController@index'), __('lang_v1.modules'), ['icon' => 'fa fas fa-plug', 'active' => request()->segment(1) == 'manage-modules'])->order(61);
+            if ($user->can('roles.view')) {
+                $admin_links[] = [action('RoleController@index'), __('user.roles'), 'fa fas fa-briefcase', request()->segment(1) == 'roles'];
+            }
+            if ($user->can('product.create')) {
+                $admin_links[] = [route('manual-item-price-rules.index'), 'Manual Item Price Rules', 'fa fas fa-dollar-sign', request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules'];
+                $admin_links[] = [route('product-entry-rules.index'), 'Product Entry Rules', 'fa fas fa-magic', request()->segment(1) == 'settings' && request()->segment(2) == 'product-entry-rules'];
+            }
+            if ($is_owner) {
+                $admin_links[] = [route('products.merge.index'), 'Merge Duplicates', 'fa fas fa-object-group', request()->segment(1) == 'products' && request()->segment(2) == 'merge'];
+                $admin_links[] = [route('products.name.index'), 'Name Cleanup', 'fa fas fa-font', request()->segment(1) == 'products' && request()->segment(2) == 'name-cleanup'];
+                $admin_links[] = [route('products.orphanedStockCleanup'), 'Orphaned Stock Cleanup', 'fa fas fa-eraser', request()->segment(1) == 'admin' && request()->segment(2) == 'orphaned-stock-cleanup'];
+            }
+            if ($user->can('backup')) {
+                $admin_links[] = [action('BackUpController@index'), __('lang_v1.backup'), 'fa fas fa-hdd', request()->segment(1) == 'backup'];
+            }
+            if ($user->can('manage_modules')) {
+                $admin_links[] = [action('Install\ModulesController@index'), __('lang_v1.modules'), 'fa fas fa-plug', request()->segment(1) == 'manage-modules'];
+            }
+            if (!empty($admin_links)) {
+                $menu->dropdown(
+                    'Admin Tools',
+                    function ($sub) use ($admin_links) {
+                        foreach ($admin_links as $l) {
+                            $sub->url($l[0], $l[1], ['icon' => $l[2], 'active' => $l[3]]);
+                        }
+                    },
+                    ['icon' => 'fa fas fa-tools']
+                )->order(40);
             }
 
             //Booking menu
