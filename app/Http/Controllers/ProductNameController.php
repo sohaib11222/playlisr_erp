@@ -2098,7 +2098,9 @@ class ProductNameController extends Controller
             for ($n = min(6, count($words) - 1); $n >= 1; $n--) {
                 $k = $this->stdKey(implode(' ', array_slice($words, 0, $n)));
                 $hit = $pick($k);
-                if ($hit && ($n > 1 || (strlen($k) >= 5 && $hit['titles'] >= 3))) {
+                // Multi-word artists only: a one-word match ("Roots of Rock & Roll")
+                // is too often just the first word of a title.
+                if ($hit && $n > 1) {
                     $artist = $show(implode(' ', array_slice($words, 0, $n)), $hit);
                     $title = implode(' ', array_slice($words, $n));
                     break;
