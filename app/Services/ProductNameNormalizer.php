@@ -71,9 +71,13 @@ class ProductNameNormalizer
         if ($title === '') {
             return ['name' => $name, 'compliant' => false, 'confident' => false, 'reason' => 'cannot derive a title'];
         }
-        $title = self::titleCase($title);
+        // Re-case only an all-one-case title ("DIAMOND EYES"); keep deliberate casing.
+        if (!(preg_match('/\p{Lu}/u', $title) && preg_match('/\p{Ll}/u', $title))) {
+            $title = self::titleCase($title);
+        }
 
-        $canonical = $artist . ' - ' . $title;
+        // "DEFTONES" -> "Deftones" (stylizations like AC/DC, KISS are kept).
+        $canonical = self::properArtistCase($artist) . ' - ' . $title;
         return [
             'name' => $canonical,
             'compliant' => ($canonical === $name),
@@ -656,8 +660,12 @@ class ProductNameNormalizer
 
         if (count($parts) <= 1) {
             // No separator. If the whole name is just the artist, there's no
-            // title to keep; otherwise the name already is the title.
-            return self::sortedKey($name) === $aKey ? '' : $name;
+            // title to keep. If it starts with the artist ("DEFTONES DIAMOND
+            // EYES"), the rest is the title; otherwise the name is the title.
+            if (self::sortedKey($name) === $aKey) { return ''; }
+            $prefix = '/^' . preg_quote(trim($artist), '/') . '\s+/iu';
+            if (preg_match($prefix, $name)) { return trim(preg_replace($prefix, '', $name)); }
+            return $name;
         }
 
         $titleParts = [];

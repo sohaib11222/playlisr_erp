@@ -1143,6 +1143,7 @@ class ProductController extends Controller
             $nameCanon = \App\Services\ProductNameNormalizer::canonical($product_details['artist'] ?? '', $product_details['name'] ?? '');
             if ($nameCanon['confident']) {
                 $product_details['name'] = $nameCanon['name'];
+                $product_details['artist'] = \App\Services\ProductNameNormalizer::properArtistCase($product_details['artist']);
             }
 
             // Block obvious duplicates before they land. The create form already
@@ -1804,7 +1805,10 @@ class ProductController extends Controller
             }
 
             $product->brand_id = $product_details['brand_id'];
-            $product->artist = $product_details['artist'];
+            // Same casing standard as the name: "DEFTONES" -> "Deftones".
+            $product->artist = trim((string) ($product_details['artist'] ?? '')) !== ''
+                ? \App\Services\ProductNameNormalizer::properArtistCase($product_details['artist'])
+                : $product_details['artist'];
             // Enforce "ARTIST - TITLE" when a real artist + derivable title exist.
             $nameCanon = \App\Services\ProductNameNormalizer::canonical($product_details['artist'] ?? '', $product_details['name'] ?? '');
             $product->name = $nameCanon['confident'] ? $nameCanon['name'] : $product_details['name'];
