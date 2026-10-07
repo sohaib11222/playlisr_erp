@@ -663,7 +663,18 @@
   @endphp
   <div class="ev-card" id="giveaway">
     <h2>Giveaway</h2>
-    <p class="sub" style="margin-top:0;">Only checked-in guests can win. Hit <strong>Start giveaway</strong> and turn the screen to the room: guests scan the QR to check themselves in on their phone, or staff can type in anyone without a phone. Then hit <strong>Draw winner</strong>.</p>
+    <div style="border:1px solid var(--pos-line,#ECE3CF);border-radius:10px;padding:14px 18px;margin-bottom:14px;background:var(--pos-accent-soft,#FFF9DB);font-size:16px;line-height:1.6;">
+      <strong style="font-size:17px;">How to run the giveaway</strong>
+      <ol style="margin:8px 0 0;padding-left:22px;">
+        <li>Click the yellow <strong>Start giveaway</strong> button below. A big QR code fills the screen.</li>
+        <li>Turn the screen so the crowd can see it and say: <em>"Scan this with your phone camera to check in for tonight's giveaway. You must be here to win."</em></li>
+        <li>Give people a few minutes. The big number shows how many have checked in. It updates by itself, you don't need to click anything.</li>
+        <li>Click <strong>Draw winner</strong>. The winner's name shows up in big letters. Call it out.</li>
+        <li>If that person isn't here, click <strong>Draw again</strong>. Nobody can win twice.</li>
+        <li>When you're done, click <strong>Close</strong> in the top right corner.</li>
+      </ol>
+      <div style="margin-top:8px;font-size:14px;color:#6b5d3f;">Only people who checked in can win. Anyone who RSVP'd and was already checked in at the door is entered too.</div>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
       <button type="button" class="btn-accent" id="gw-start" style="font-size:16px;padding:12px 22px;">Start giveaway</button>
       <span class="ev-meta"><span id="gw-count-inline">{{ count($spinPool) }}</span> checked in</span>
@@ -677,18 +688,10 @@
     <button type="button" id="gw-close" class="btn-ghost" style="position:absolute;top:16px;right:16px;">Close</button>
     <div style="max-width:1100px;margin:0 auto;padding:40px 24px;display:flex;gap:48px;flex-wrap:wrap;align-items:center;justify-content:center;min-height:100%;box-sizing:border-box;">
       <div style="text-align:center;flex:0 1 420px;">
-        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Scan to check in for the giveaway</div>
-        <div style="font-size:16px;color:#6b5d3f;margin-bottom:18px;">Takes 10 seconds. Name + email, that's it.</div>
+        <div style="font-size:34px;font-weight:800;line-height:1.15;margin-bottom:6px;">Check in to be entered in tonight's giveaway</div>
+        <div style="font-size:18px;color:#6b5d3f;margin-bottom:18px;">Scan with your phone camera. Takes 10 seconds.<br><strong>Must be present to win.</strong></div>
         <div id="gw-qr" style="display:inline-block;background:#fff;padding:16px;border-radius:16px;border:1px solid #ECE3CF;"></div>
         <div style="font-size:14px;color:#6b5d3f;margin-top:12px;word-break:break-all;">{{ $checkInUrl }}</div>
-        {{-- Dead phone / no phone: staff types the name, they're checked in. --}}
-        <form id="gw-add" style="margin-top:22px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;">
-          <span style="font-size:14px;font-weight:700;width:100%;">No phone? Check them in here:</span>
-          <input type="text" name="firstName" placeholder="First name" required style="padding:8px;border:1px solid #ECE3CF;border-radius:8px;width:130px;">
-          <input type="text" name="lastName" placeholder="Last name" required style="padding:8px;border:1px solid #ECE3CF;border-radius:8px;width:130px;">
-          <button type="submit" class="btn-ghost">Check in</button>
-          <span id="gw-add-msg" style="font-size:13px;width:100%;"></span>
-        </form>
       </div>
       <div style="text-align:center;flex:1 1 360px;">
         <div style="font-size:80px;font-weight:900;line-height:1;" id="gw-count">{{ count($spinPool) }}</div>
@@ -704,9 +707,7 @@
     window.__spinPool = @json($spinPool);
     window.__giveaway = {
       poolUrl: @json(route('events.giveawayPool', ['id' => $event['id'] ?? ''])),
-      checkInUrl: @json($checkInUrl),
-      addUrl: @json(route('events.rsvpAdd', ['id' => $event['id'] ?? ''])),
-      store: @json(in_array($storeScope, ['hollywood', 'pico'], true) ? $storeScope : '')
+      checkInUrl: @json($checkInUrl)
     };
   </script>
 
@@ -781,24 +782,6 @@
         overlay.style.display = 'none';
         document.body.style.overflow = '';
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      });
-      var addForm = document.getElementById('gw-add');
-      if (addForm) addForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        var msg = document.getElementById('gw-add-msg');
-        var fd = new FormData(addForm);
-        var name = (fd.get('firstName') + ' ' + fd.get('lastName')).trim();
-        fd.append('checkedIn', '1');
-        fd.append('store', gw.store);
-        fd.append('_token', (document.querySelector('meta[name="csrf-token"]') || {}).content || '');
-        msg.textContent = 'Checking in...';
-        fetch(gw.addUrl, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok && d && d.ok }; }); })
-          .then(function (res) {
-            if (res.ok) { msg.textContent = name + ' is checked in.'; addForm.reset(); refresh(); }
-            else { msg.textContent = 'Could not check in ' + name + '. Try again.'; }
-          })
-          .catch(function () { msg.textContent = 'Could not check in ' + name + '. Try again.'; });
       });
       btn.addEventListener('click', function () {
         if (drawing) return;
