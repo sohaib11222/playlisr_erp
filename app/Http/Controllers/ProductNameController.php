@@ -1970,8 +1970,12 @@ class ProductNameController extends Controller
             $first = [];   // key => [titleKey => 1] from Discogs-linked names
             $spell = [];   // key => [spelling => count]
             $second = [];  // key => times seen as the SECOND part of any name
-            \DB::table('products')->where('business_id', $business_id)->whereIn('category_id', $catIds)
-                ->select('id', 'name', 'discogs_release_id')->orderBy('id')
+            // Trusted source: products created by the Discogs inventory import,
+            // whose names are Discogs' own "Artist - Title". Staff-typed names on
+            // Discogs-linked products are NOT trusted (some are "Title - Artist").
+            $hasAddedVia = \Schema::hasColumn('products', 'added_via');
+            \DB::table('products')->where('business_id', $business_id)
+                ->select('id', 'name', $hasAddedVia ? 'added_via' : \DB::raw('NULL as added_via'))->orderBy('id')
                 ->chunk(5000, function ($rows) use (&$first, &$spell, &$second) {
                     foreach ($rows as $r) {
                         $parts = $this->standardSplit($r->name);
@@ -1980,7 +1984,7 @@ class ProductNameController extends Controller
                         $ka = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($a));
                         $kb = ProductNameNormalizer::artistKey(ProductNameNormalizer::stripMarkers($b));
                         if ($kb !== '') { $second[$kb] = ($second[$kb] ?? 0) + 1; }
-                        if ((int) $r->discogs_release_id > 0 && $sep === '-' && $ka !== '') {
+                        if ($r->added_via === 'discogs_inventory_import' && $sep === '-' && $ka !== '') {
                             $first[$ka][$kb] = 1;
                             $sp = ProductNameNormalizer::stripMarkers($a);
                             $spell[$ka][$sp] = ($spell[$ka][$sp] ?? 0) + 1;
@@ -1993,8 +1997,7 @@ class ProductNameController extends Controller
             }
             foreach ($first as $k => $titles) {
                 $n = count($titles);
-                if ($n < 2 || isset($stop[$k]) || isset($out[$k]) || strlen($k) < 2) { continue; }
-                if (($second[$k] ?? 0) * 2 > $n) { continue; } // shows up as a title too often
+                if (isset($stop[$k]) || isset($out[$k]) || strlen($k) < 2 || preg_match('/^various/', $k)) { continue; }
                 // Prefer a mixed-case spelling ("Deftones") over ALL CAPS.
                 $best = null;
                 arsort($spell[$k]);

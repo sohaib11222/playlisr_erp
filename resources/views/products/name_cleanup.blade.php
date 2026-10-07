@@ -259,7 +259,7 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
 
     <div class="mgn-card" style="border:1px solid #CDE3CD;background:#F3F9F3;border-radius:14px;padding:18px 20px;margin-top:18px;">
         <h2>Standardize names: Artist - Title</h2>
-        <p class="sub">For products with no Discogs link (Rebuild from Discogs covers the linked ones). Fixes "DEFTONES / DIAMOND EYES", "Diamond Eyes / Deftones" and "DIAMOND EYES - DEFTONES" into "Deftones - Diamond Eyes", and fills a blank or N/A artist. The artist side is picked from artists already on Discogs-linked products, never guessed from position, so anything unclear is left alone. Checking changes nothing. The fix runs in batches with the tab open, can be undone in Admin Action History, and the website picks up new names on the nightly sync.</p>
+        <p class="sub">For products with no Discogs link (Rebuild from Discogs covers the linked ones). Fixes "DEFTONES / DIAMOND EYES", "Diamond Eyes / Deftones" and "DIAMOND EYES - DEFTONES" into "Deftones - Diamond Eyes", and fills a blank or N/A artist. The artist side is picked from artists named by Discogs on imported products, never guessed from position, so anything unclear is left alone. Checking changes nothing. The fix runs in batches with the tab open, can be undone in Admin Action History, and the website picks up new names on the nightly sync.</p>
         <div class="mgn-actions" style="margin-top:0;">
             <button class="mgn-btn mgn-btn-ghost" id="stScanBtn" type="button">Check + preview</button>
             <span class="mgn-note" id="stScanNote" style="margin-top:0"></span>
