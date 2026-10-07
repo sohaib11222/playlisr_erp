@@ -2069,8 +2069,11 @@ class ProductNameController extends Controller
             // a title next to one artist. If this disagrees with the artist
             // list, leave the name alone.
             $pa = $partners[$ka] ?? 0; $pb = $partners[$kb] ?? 0;
-            if ($ia && !$ib && $pb > $pa && $pb >= 2) { return ['flag' => 'signals disagree']; }
-            if ($ib && !$ia && $pa > $pb && $pa >= 2) { return ['flag' => 'signals disagree']; }
+            // The other side must look like a title (sits next to one artist at
+            // most) unless the artist column already names the winner. Catches
+            // titles that are also band names: Joe Bataan "Riot!", Joey Badass "1999".
+            if ($ia && !$ib && $pb >= 2 && $colKey !== $ka) { return ['flag' => 'signals disagree']; }
+            if ($ib && !$ia && $pa >= 2 && $colKey !== $kb) { return ['flag' => 'signals disagree']; }
             if ($ia && !$ib) { $artist = $show($a, $ia); $title = $b; }
             elseif ($ib && !$ia) { $artist = $show($b, $ib); $title = $a; }
             elseif ($ia && $ib) {
@@ -2083,6 +2086,8 @@ class ProductNameController extends Controller
             } else {
                 return ['flag' => 'artist not recognized'];
             }
+        } elseif (preg_match('#\s[-/]\s|\s/|/\s#u', (string) $r->name)) {
+            return ['flag' => 'more than two parts'];
         } else {
             // No separator ("DEFTONES DIAMOND EYES"): longest known artist the name starts with.
             $words = preg_split('/\s+/u', trim((string) $r->name));
@@ -2097,7 +2102,7 @@ class ProductNameController extends Controller
             }
             if ($artist === null) { return ['flag' => 'no separator, artist not recognized']; }
         }
-        $title = $this->standardTitle($title);
+        $title = $this->standardTitle(trim($title, " /-"));
         if ($title === '' || $artist === '') { return ['flag' => 'empty part']; }
         return ['artist' => $artist, 'title' => $title, 'name' => $artist . ' - ' . $title];
     }
