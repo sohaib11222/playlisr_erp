@@ -1,0 +1,68 @@
+# READ-ONLY: every ERP movement of the 3 Axis Mundi products.
+# READ-ONLY: user reports the POS Requests report (/reports/pos-requests)
+# stops showing data at Sep 7 no matter how far back the period is set.
+# Check whether pos_search_misses actually stopped getting new rows around
+# then, and look for recent errors on the logging endpoint.
+
+name: Diag Axis Mundi full trace (read-only)
+
+on:
+  push:
+    branches: [diag-imm-trace]
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $ids=[149018,149019,149020]; $vids=[148971,148972,148973];
+            echo "=== PURCHASE LINES (all types: purchase, opening_stock, purchase_transfer) ===\n";
+            foreach (DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->whereIn('pl.product_id',$ids)->select('t.id','t.type','t.status','t.ref_no','t.transaction_date','t.location_id','t.contact_id','pl.product_id','pl.quantity','pl.quantity_sold','pl.quantity_adjusted','pl.quantity_returned','pl.mfg_quantity_used','pl.purchase_price')->orderBy('t.transaction_date')->get() as $r) echo "{$r->transaction_date} tx={$r->id} {$r->type}/{$r->status} ref={$r->ref_no} loc={$r->location_id} supplier={$r->contact_id} pid={$r->product_id} qty={$r->quantity} sold={$r->quantity_sold} adj={$r->quantity_adjusted} ret={$r->quantity_returned} cost={$r->purchase_price}\n";
+            echo "\n=== ALL TRANSACTIONS touching these products via sell lines (any type/status) ===\n";
+            foreach (DB::table('transaction_sell_lines as l')->join('transactions as t','t.id','=','l.transaction_id')->whereIn('l.product_id',$ids)->selectRaw('t.type, t.status, t.location_id, l.product_id, SUM(l.quantity) q, SUM(l.quantity_returned) ret, COUNT(*) n')->groupBy('t.type','t.status','t.location_id','l.product_id')->get() as $r) echo "{$r->type}/{$r->status} loc={$r->location_id} pid={$r->product_id} qty={$r->q} returned={$r->ret} lines={$r->n}\n";
+            echo "\n=== sell_return / stock_adjustment / transfers ===\n";
+            foreach (DB::table('transactions')->whereIn('type',['sell_return','stock_adjustment','sell_transfer','purchase_transfer','purchase_return'])->where('transaction_date','>=','2026-08-20')->get(['id','type','status','transaction_date','location_id','return_parent_id','transfer_parent_id','additional_notes']) as $t) { $hit = DB::table('transaction_sell_lines')->where('transaction_id',$t->id)->whereIn('product_id',$ids)->sum('quantity') + DB::table('purchase_lines')->where('transaction_id',$t->id)->whereIn('product_id',$ids)->sum('quantity') + (Schema::hasTable('stock_adjustment_lines') ? DB::table('stock_adjustment_lines')->where('transaction_id',$t->id)->whereIn('product_id',$ids)->sum('quantity') : 0); if ($hit>0 || ($t->type==='sell_return' && $t->return_parent_id && DB::table('transaction_sell_lines')->where('transaction_id',$t->return_parent_id)->whereIn('product_id',$ids)->where('quantity_returned','>',0)->exists())) echo "{$t->transaction_date} tx={$t->id} {$t->type}/{$t->status} loc={$t->location_id} parent={$t->return_parent_id}/{$t->transfer_parent_id} qty=$hit note={$t->additional_notes}\n"; }
+            echo "\n=== stock now (all locations) ===\n";
+            foreach (DB::table('variation_location_details')->whereIn('variation_id',$vids)->get() as $s) echo "var={$s->variation_id} loc={$s->location_id} qty={$s->qty_available}\n";
+            echo "\n=== website sales in ERP per product (Website Customer) and count of distinct website orders ===\n";
+            foreach (DB::table('transaction_sell_lines as l')->join('transactions as t','t.id','=','l.transaction_id')->join('contacts as c','c.id','=','t.contact_id')->whereIn('l.product_id',$ids)->where('t.type','sell')->where('c.name','Website Customer')->selectRaw('l.product_id, t.status, SUM(l.quantity) q, COUNT(DISTINCT t.id) n')->groupBy('l.product_id','t.status')->get() as $r) echo "pid={$r->product_id} {$r->status} qty={$r->q} txns={$r->n}\n";
+            echo "\n=== website order ids in ERP notes for Axis Mundi ===\n";
+            foreach (DB::table('transaction_sell_lines as l')->join('transactions as t','t.id','=','l.transaction_id')->whereIn('l.product_id',$ids)->where('t.type','sell')->whereNotNull('t.additional_notes')->where('t.additional_notes','like','%Website order%')->select('t.transaction_date','t.invoice_no','t.status','t.additional_notes','l.product_id','l.quantity')->orderBy('t.transaction_date')->get() as $r) echo "{$r->transaction_date} inv={$r->invoice_no} {$r->status} pid={$r->product_id} x".(0+$r->quantity)." | {$r->additional_notes}\n";
+            PHP
+            echo done
