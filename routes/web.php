@@ -1218,7 +1218,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/sidebar-favorites/toggle', 'SidebarFavoriteController@toggle')->name('sidebar-favorites.toggle');
     Route::get('/sidebar-usage', function () {
         abort_unless(auth()->user()->can('business_settings.access'), 403);
-        return response()->json(\App\Utils\NavUsage::report(\Menu::instance('admin-sidebar-menu')));
+        $report = \App\Utils\NavUsage::report(\Menu::instance('admin-sidebar-menu'));
+        $rows = collect($report['items'])->reject(function ($r) {
+            return in_array($r['title'], ['Connector'], true);
+        })->sortByDesc('score')->values()->all();
+        return view('sidebar_usage', ['report' => $report, 'rows' => $rows, 'minDays' => \App\Utils\NavUsage::MIN_DAYS]);
     })->name('sidebar-usage');
 
     // Listing commissions owed to staff for items they listed. Derived live

@@ -66,10 +66,10 @@ class NavUsage
         }
     }
 
-    // [day => [key => [user ids]]] for the window, cached an hour.
+    // [day => [key => [user ids]]] for the window, cached 10 minutes.
     private static function window()
     {
-        return Cache::remember('nav-usage-window', 3600, function () {
+        return Cache::remember('nav-usage-window', 600, function () {
             $out = [];
             for ($i = 0; $i < self::WINDOW_DAYS; $i++) {
                 $day = date('Y-m-d', strtotime("-$i days"));
