@@ -550,6 +550,55 @@
 				})();
 				</script>
 
+				<div class="cr-unrung" style="display:none;margin:12px 0;padding:12px 14px;border:1px solid #E8B4A8;background:#FDF1EE;border-radius:10px;">
+					<div style="font-weight:700;color:#8A3A2E;margin-bottom:6px;" class="cr-unrung-title"></div>
+					<div class="cr-unrung-list" style="font-size:13px;color:#3B2E2A;margin-bottom:8px;"></div>
+					<div style="font-size:13px;color:#3B2E2A;margin-bottom:8px;">These were charged on Clover but never rung in the ERP, so the records still show as in stock. Please ring the items in on the POS (open it in a new tab) before closing.</div>
+					<label style="font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center;margin:0;">
+						<input type="checkbox" class="cr-unrung-ok"> I rang these in, or wrote what happened in the closing note
+					</label>
+				</div>
+				<script>
+				/* Clover charges not rung in the ERP this shift (Sarah 10/8).
+				   Loads after the modal opens; if the check fails or finds
+				   nothing, this stays hidden and closing works as before. When
+				   it finds charges, Close Register needs the checkbox ticked. */
+				(function () {
+					function onReady(fn) {
+						if (typeof jQuery === 'undefined') { setTimeout(function () { onReady(fn); }, 50); return; }
+						jQuery(fn);
+					}
+					onReady(function ($) {
+						try {
+							var $wrap = $('.cr-card-slips').last();
+							var $box = $('.cr-unrung').last();
+							if (!$wrap.length || !$box.length || $box.data('checked')) return;
+							$box.data('checked', true);
+							var $form = $box.closest('form');
+							$.get('/cash-register/clover-unrung', {
+								location_id: $wrap.data('location-id'),
+								start: $wrap.data('shift-start')
+							}).done(function (r) {
+								if (!r || !r.ok || !r.charges || !r.charges.length) return;
+								var total = 0;
+								var lines = r.charges.map(function (c) { total += c.amount; return '$' + c.amount.toFixed(2) + ' at ' + c.time; });
+								$box.find('.cr-unrung-title').text(r.charges.length + ' Clover charge' + (r.charges.length > 1 ? 's' : '') + ' this shift not rung in the ERP ($' + total.toFixed(2) + ')');
+								$box.find('.cr-unrung-list').text(lines.join(' · '));
+								$box.show();
+								$form.on('submit.unrung', function (e) {
+									if (!$box.find('.cr-unrung-ok').is(':checked')) {
+										e.preventDefault();
+										$box.css('border-color', '#B71C1C');
+										$box.find('.cr-unrung-ok').focus();
+										return false;
+									}
+								});
+							});
+						} catch (err) { /* never block closing */ }
+					});
+				})();
+				</script>
+
 				<script>
 				/* Over-$500 safe alert: watch the closing-amount field and
 				   suggest moving the excess (rounded down to nearest $100)

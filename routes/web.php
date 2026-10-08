@@ -153,6 +153,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/clover-eod/mark-reconciled', 'ReportController@cloverEodMarkReconciled')->name('reports.clover-eod.reconciled');
     Route::post('/reports/clover-eod/save-notes', 'ReportController@cloverEodSaveNotes')->name('reports.clover-eod.notes');
     Route::get('/clover/shift-summary', 'CloverController@shiftSummary')->name('clover.shift-summary');
+    Route::get('/cash-register/clover-unrung', 'ShiftCloverCheckController@check');
     
     Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
     Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
