@@ -1202,6 +1202,7 @@ HTML;
             $newRow.find('select[name$="[item_type]"]').val(prevType);
             $newRow.find('select[name$="[condition_grade]"]').val(prevGrade);
             $tbody.append($newRow);
+            bfcTypeSearch($newRow);
             bfcApplyRowState($newRow);
             bfcRecalcAll();
         });
@@ -1328,6 +1329,12 @@ HTML;
                 ];
             }
         @endphp
+        // Sarah 2026-10-08: item Type is searchable (type "sweat" to find Sweatshirt).
+        function bfcTypeSearch($scope) {
+            if (!$.fn.select2) return;
+            $scope.find('select[name$="[item_type]"]').not('.select2-hidden-accessible').select2({ width: '100%' });
+        }
+        $(function () { bfcTypeSearch($('#offer_lines_table')); });
         var BFC_RULES = @json($bfcRules);
         var BFC_HAS_CALC = @json(!empty($calc));
         // The negotiation ladder auto-fills from the live total at 50 / 75 / 95%
