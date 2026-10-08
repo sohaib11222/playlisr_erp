@@ -674,14 +674,78 @@ class BuyFromCustomerController extends Controller
             }
             // Sarah 2026-10-08: Quenton paid $115 cash for a collection the
             // calculator valued at $24.23. Paying way over the system's number
-            // is a hard stop for everyone but Luis / managers — an override
-            // reason isn't enough, they have to call Luis first.
-            if (self::isOverpay($final, $autoFinal) && !self::canApproveOverpay(auth()->user())) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'final_amount_paid' => self::overpayMessage($final, $autoFinal),
-                ]);
+            // is a hard stop: an override reason isn't enough, Luis (or a
+            // manager) has to sign off with their own login. Buys from the same
+            // seller in the last 24h are added in so a collection can't be split
+            // into small buys to slip under the limit.
+            $creditBonus = (float) ($this->calculator->getRules()['credit_bonus_multiplier'] ?? 1) ?: 1;
+            $toCash = function ($amt, $isCredit) use ($creditBonus) {
+                return $isCredit ? (float) $amt / $creditBonus : (float) $amt;
+            };
+            $paidCash = $toCash($final, $pm === 'store_credit');
+            $autoCash = $toCash($autoFinal, $pm === 'store_credit');
+            foreach ($this->recentSellerBuys($request) as $prior) {
+                $priorCredit = $prior->payout_type === 'store_credit';
+                $paidCash += $toCash($priorCredit ? $prior->final_offer_credit : $prior->final_offer_cash, $priorCredit);
+                $autoCash += round((float) $prior->calculated_cash_total * 0.95, 2);
+            }
+            if (self::isOverpay($paidCash, $autoCash)) {
+                $cashier = auth()->user();
+                $approver = self::canApproveOverpay($cashier) ? $cashier : $this->overpayApprover($request, $cashier);
+                if (!$approver) {
+                    $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'));
+                    if ($request->filled('approver_username')) {
+                        $msg .= ' The approval login was not accepted.';
+                    }
+                    throw \Illuminate\Validation\ValidationException::withMessages(['final_amount_paid' => $msg]);
+                }
+                $request->merge(['price_override_reason' => mb_substr(sprintf(
+                    '[Over limit: paid $%s vs system $%s, approved by %s] %s',
+                    number_format($final, 2), number_format($autoFinal, 2),
+                    trim($approver->first_name . ' ' . $approver->last_name),
+                    $request->input('price_override_reason')
+                ), 0, 500)]);
             }
         }
+    }
+
+    // Accepted, paid buys from the same seller (account or phone) in the last
+    // 24 hours, not counting the offer being accepted right now.
+    protected function recentSellerBuys(Request $request)
+    {
+        $contactId = $request->input('seller_mode') === 'contact' ? $request->input('contact_id') : null;
+        $phone = preg_replace('/\D+/', '', (string) $request->input('seller_phone'));
+        if (empty($contactId) && strlen($phone) < 7) return collect();
+
+        return BuyCustomerOffer::where('business_id', $request->session()->get('user.business_id'))
+            ->where('status', 'accepted')
+            ->where('accepted_at', '>=', now()->subDay())
+            ->where(function ($q) { $q->whereNull('is_donated')->orWhere('is_donated', false); })
+            ->when($request->input('offer_id'), function ($q, $id) { $q->where('id', '!=', $id); })
+            ->where(function ($q) use ($contactId, $phone) {
+                if (!empty($contactId)) $q->orWhere('contact_id', $contactId);
+                if (strlen($phone) >= 7) {
+                    $q->orWhereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(seller_phone,' ',''),'-',''),'(',''),')',''),'+','') LIKE ?", ['%' . substr($phone, -10)]);
+                }
+            })
+            ->get();
+    }
+
+    // Luis or a manager signs off by typing their own username + password on
+    // the cashier's screen. They can't be the cashier, and must be active.
+    protected function overpayApprover(Request $request, $cashier)
+    {
+        $username = trim((string) $request->input('approver_username', ''));
+        $password = (string) $request->input('approver_password', '');
+        if ($username === '' || $password === '') return null;
+
+        $approver = \App\User::where('business_id', $request->session()->get('user.business_id'))
+            ->where('username', $username)
+            ->where('status', 'active')
+            ->first();
+        if (!$approver || ($cashier && $approver->id === $cashier->id)) return null;
+        if (!\Illuminate\Support\Facades\Hash::check($password, $approver->password)) return null;
+        return self::canApproveOverpay($approver) ? $approver : null;
     }
 
     // Over 25% above the calculator AND at least $10 over — small rounding
@@ -697,23 +761,32 @@ class BuyFromCustomerController extends Controller
             && ($paid - $suggested) >= self::OVERPAY_MIN_DOLLARS;
     }
 
-    public static function overpayMessage($paid, $suggested)
+    public static function overpayMessage($paid, $suggested, $locationId = null)
     {
         return sprintf(
-            'You cannot pay $%s for this. The system says it is worth $%s. Please call Luis before buying.',
+            'You cannot pay $%s for this. The system says it is worth $%s. Please call %s before buying.',
             number_format((float) $paid, 2),
-            number_format(max(0, (float) $suggested), 2)
+            number_format(max(0, (float) $suggested), 2),
+            self::overpayContactName($locationId)
         );
     }
 
-    // Luis (buying lead), the managers and admins can still pay over.
+    // Who to call for an over-limit buy: Zak at Pico, Luis at Hollywood.
+    public static function overpayContactName($locationId)
+    {
+        $name = $locationId ? (string) BusinessLocation::where('id', $locationId)->value('name') : '';
+        return stripos($name, 'pico') !== false ? 'Zak' : 'Luis';
+    }
+
+    // Luis (Hollywood), Zak (Pico), the managers and admins can still pay over. Names
+    // can't be self-edited (UserController@updateProfile), so this can't be
+    // gamed by renaming yourself.
     public static function canApproveOverpay($user)
     {
         if (!$user) return false;
-        if (strtolower(trim((string) $user->first_name)) === 'luis') return true;
+        if (in_array(strtolower(trim((string) $user->first_name)), ['luis', 'zak', 'zakary', 'zachary'], true)) return true;
         if (ChooseRoleController::userCanManager($user)) return true;
-        $business_id = request()->session()->get('user.business_id');
-        return $business_id && $user->hasRole('Admin#' . $business_id);
+        return !empty($user->business_id) && $user->hasRole('Admin#' . $user->business_id);
     }
 
     protected function validateAcceptCompliance(Request $request)

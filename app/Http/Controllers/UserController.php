@@ -75,6 +75,13 @@ class UserController extends Controller
                 'guardian_name', 'custom_field_1', 'custom_field_2',
                 'custom_field_3', 'custom_field_4', 'id_proof_name', 'id_proof_number', 'gender', 'family_number', 'alt_number']);
 
+            // Sarah 2026-10-08: manager-only actions (buy over-limit approval,
+            // returns, Manager role) key off first name, so staff can't rename
+            // themselves here. Admins change names from Users.
+            if (!auth()->user()->hasRole('Admin#' . $request->session()->get('user.business_id'))) {
+                unset($input['surname'], $input['first_name'], $input['last_name']);
+            }
+
             if (!empty($request->input('dob'))) {
                 $input['dob'] = $this->moduleUtil->uf_date($request->input('dob'));
             }

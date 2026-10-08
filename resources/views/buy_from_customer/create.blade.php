@@ -217,6 +217,8 @@
     @php
         $input = $input_data ?? old();
         $input = is_array($input) ? $input : [];
+        // Never echo an approver's login back into the page as hidden fields.
+        unset($input['approver_username'], $input['approver_password']);
         $calc = $calculation ?? null;
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
@@ -757,6 +759,7 @@ HTML;
                                                 $bfcPureAuto = null;
                                             }
                                             $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user());
+                                            $bfcCallWho = \App\Http\Controllers\BuyFromCustomerController::overpayContactName($input['location_id'] ?? null);
                                         @endphp
                                         <div class="col-md-4">
                                             <p class="help-block small" style="margin-top:24px;">
@@ -768,7 +771,17 @@ HTML;
                                     <div id="bfc_overpay_alert" class="alert alert-danger" style="display:none; font-size:15px; font-weight:600;"
                                          data-auto-cash="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_cash'], 2, '.', '') : '' }}"
                                          data-auto-credit="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_credit'], 2, '.', '') : '' }}"
-                                         data-can-overpay="{{ $bfcCanOverpay ? '1' : '0' }}"></div>
+                                         data-can-overpay="{{ $bfcCanOverpay ? '1' : '0' }}"
+                                         data-call-who="{{ $bfcCallWho }}"></div>
+                                    @if(!$bfcCanOverpay)
+                                        <div id="bfc_overpay_approval" class="well well-sm" style="display:none; border-color:#d9534f;">
+                                            <strong>{{ $bfcCallWho }} or a manager approves here with their own login:</strong>
+                                            <div class="row" style="margin-top:8px;">
+                                                <div class="col-md-5"><input type="text" name="approver_username" class="form-control" placeholder="Their username" autocomplete="off"></div>
+                                                <div class="col-md-5"><input type="password" name="approver_password" class="form-control" placeholder="Their password" autocomplete="new-password"></div>
+                                            </div>
+                                        </div>
+                                    @endif
                                     <hr style="margin:6px 0 14px;">
                                     <h4>Override</h4>
                                     <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
@@ -1640,16 +1653,17 @@ HTML;
                 if (!isFinite(paid) || !isFinite(auto)) return '';
                 auto = Math.max(0, auto);
                 if (!(paid > auto * 1.25 && (paid - auto) >= 10)) return '';
-                return 'You cannot pay $' + paid.toFixed(2) + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call Luis before buying.';
+                return 'You cannot pay $' + paid.toFixed(2) + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
             }
             function bfcRefreshOverpay() {
                 var $a = $('#bfc_overpay_alert');
                 var msg = bfcOverpayMessage();
-                if (!msg) { $a.hide(); return; }
+                if (!msg) { $a.hide(); $('#bfc_overpay_approval').hide(); return; }
                 if (String($a.data('can-overpay')) === '1') {
                     msg += ' (You can approve this yourself.)';
                 }
                 $a.text(msg).show();
+                $('#bfc_overpay_approval').show();
             }
             $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', bfcRefreshOverpay);
             bfcRefreshOverpay();
@@ -1657,8 +1671,9 @@ HTML;
             $('#accept_buy_offer_form').on('submit', function (e) {
                 var problems = [];
                 var overpayMsg = bfcOverpayMessage();
-                if (overpayMsg && String($('#bfc_overpay_alert').data('can-overpay')) !== '1') {
-                    problems.push(overpayMsg);
+                if (overpayMsg && String($('#bfc_overpay_alert').data('can-overpay')) !== '1'
+                    && (!$.trim($('input[name="approver_username"]').val()) || !$('input[name="approver_password"]').val())) {
+                    problems.push(overpayMsg + ' ' + $('#bfc_overpay_alert').data('call-who') + ' or a manager has to enter their login below.');
                 }
                 if (!$('input[name="compliance_items_owned"]').is(':checked')) {
                     problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
