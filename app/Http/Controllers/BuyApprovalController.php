@@ -57,16 +57,22 @@ class BuyApprovalController extends Controller
             ->first();
     }
 
-    // ERP phone first, then the phone on their Sling profile.
+    // ERP phone first, then the phone on the Sling profile with the SAME
+    // email. (Matching through synced shifts sent Jon's test text to Zak on
+    // 2026-10-08 because a shift was linked to the wrong person.)
     public static function phoneFor(User $user)
     {
         $phone = trim((string) $user->contact_number);
         if ($phone !== '') return $phone;
+        $email = strtolower(trim((string) $user->email));
+        if ($email === '') return '';
         try {
-            $slingId = \App\SlingShift::where('erp_user_id', $user->id)->whereNotNull('sling_user_id')->latest('id')->value('sling_user_id');
-            if ($slingId) {
-                $phones = (new \App\Services\SlingClient())->userPhones();
-                return $phones[(string) $slingId] ?? '';
+            $sling = new \App\Services\SlingClient();
+            $phones = $sling->userPhones();
+            foreach ((array) $sling->users() as $u) {
+                if (strtolower(trim((string) ($u['email'] ?? ''))) === $email) {
+                    return $phones[(string) ($u['id'] ?? '')] ?? '';
+                }
             }
         } catch (\Throwable $e) {
             Log::info('BuyApproval: Sling phone lookup failed: ' . $e->getMessage());

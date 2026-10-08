@@ -48,5 +48,5 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
             php artisan tinker --no-ansi <<'PHP'
-            foreach ([1, 18] as $id) { $u = App\User::find($id); $p = App\Http\Controllers\BuyApprovalController::phoneFor($u); echo "RESULT user#{$id} {$u->first_name} contact_number_ends=" . substr(preg_replace('/\D/','',(string)$u->contact_number),-4) . " phoneFor_ends=" . substr(preg_replace('/\D/','',$p),-4) . "\n"; }
+            foreach ([1, 18, 26] as $id) { $u = App\User::find($id); $p = App\Http\Controllers\BuyApprovalController::phoneFor($u); echo "RESULT user#{$id} {$u->first_name} contact_number_ends=" . substr(preg_replace('/\D/','',(string)$u->contact_number),-4) . " phoneFor_ends=" . substr(preg_replace('/\D/','',$p),-4) . "\n"; }
             PHP
