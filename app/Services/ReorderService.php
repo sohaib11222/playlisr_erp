@@ -196,6 +196,7 @@ class ReorderService
      */
     /** Backtest: pretend it's this date (no bin counts, no logged orders). */
     protected $asOf = null;
+    public $blankOverride = null;
 
     protected function now(): Carbon
     {
@@ -210,6 +211,7 @@ class ReorderService
             $state['counts'] = [];
             $state['orders'] = [];
         }
+        if ($this->blankOverride) $state['settings']['blank_count'] = $this->blankOverride;
         $s = $state['settings'];
         $label = $format === 'cd' ? 'CD' : ($format === 'cassette' ? 'Cassette' : 'Vinyl');
         $sealedNames = $this->categoryIds($business_id, 'sealed', $format);
