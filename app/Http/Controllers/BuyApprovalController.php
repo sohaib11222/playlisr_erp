@@ -23,7 +23,7 @@ class BuyApprovalController extends Controller
 {
     const MAX_PHOTOS = 6;
     const VALID_HOURS = 3;
-    const TEXTING_ON = false;
+    const TEXTING_ON = true;
 
     public static function dir()
     {
