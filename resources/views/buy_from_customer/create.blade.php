@@ -204,6 +204,8 @@
         .bfc-create .bfc-max-summary > div { flex: 1; min-width: 220px; background: #e6f4ea; border: 2px solid #1e8e3e; border-radius: 8px; padding: 12px 16px; }
         .bfc-create .bfc-max-summary span { display: block; font-size: 15px; font-weight: 600; }
         .bfc-create .bfc-max-summary strong { font-size: 26px; font-weight: 800; color: #111; }
+        .bfc-create .bfc-max-summary > div.bfc-max-credit { background: #e8f0fe; border-color: #1a5fa0; }
+        .bfc-create .bfc-breakdown summary { text-decoration: underline; color: #1a5fa0 !important; }
         .bfc-create .bfc-breakdown summary { cursor: pointer; font-weight: 600; font-size: 15px; margin: 8px 0; }
         /* Buy form buttons: same size, aligned, readable. */
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
@@ -717,7 +719,7 @@ HTML;
                     <div class="box-body">
                         <div class="bfc-max-summary">
                             <div><span>Max cash offer</span><strong>@format_currency(data_get($calc, 'final_offer_cash', 0))</strong></div>
-                            <div><span>Max store credit offer</span><strong>@format_currency(data_get($calc, 'final_offer_credit', 0))</strong></div>
+                            <div class="bfc-max-credit"><span>Max store credit offer</span><strong>@format_currency(data_get($calc, 'final_offer_credit', 0))</strong></div>
                         </div>
 
                         <details class="bfc-breakdown">
