@@ -440,7 +440,7 @@ class ProductMergeController extends Controller
      * oldest (lowest id). Combined totals land on it either way, so this only
      * decides which record's name/price/image stays.
      */
-    protected function scanData($business_id)
+    protected function scanData($business_id, $crossStore = false)
     {
         $products = \DB::table('products')
             ->where('business_id', $business_id)
@@ -583,14 +583,24 @@ class ProductMergeController extends Controller
             // (sub-category) is intentionally NOT part of the key — the same
             // album is often miscategorised (Rock vs Metal), and per Sarah we
             // merge per listing + store + format regardless of genre.
+            // Cross-store mode (Sarah 2026-10-07: "the pico and hw sku should
+            // be the same. same product"): group by format only, and keep just
+            // the groups that span 2+ different stores, so a Hollywood listing
+            // and a Pico listing of the same barcode become ONE listing with
+            // per-store stock. Same-store dupes stay with the regular sweep.
             $byBucket = [];
             foreach ($rows as $r) {
-                $bucket = ($storeSig[(int) $r->id] ?? '') . '|cat|' . ((int) $r->category_id);
+                $bucket = ($crossStore ? 'any' : ($storeSig[(int) $r->id] ?? '')) . '|cat|' . ((int) $r->category_id);
                 $byBucket[$bucket][] = $r;
             }
 
             foreach ($byBucket as $bucketKey => $storeRows) {
                 if (count($storeRows) < 2) { continue; }
+                if ($crossStore) {
+                    $sigs = [];
+                    foreach ($storeRows as $r) { $sigs[$storeSig[(int) $r->id] ?? ''] = true; }
+                    if (count($sigs) < 2) { continue; }
+                }
 
                 $singleOk = true;
                 foreach ($storeRows as $r) {
@@ -702,9 +712,15 @@ class ProductMergeController extends Controller
                     $totalMerges += count($mergeIn);
                 }
                 $stripCalc = function ($i) { unset($i['per_loc'], $i['fresh']); return $i; };
+                $groupStore = $storeLabel[$keep['id']] ?? 'No store';
+                if ($crossStore) {
+                    $labels = [];
+                    foreach ($items as $it) { $labels[$storeLabel[$it['id']] ?? 'No store'] = true; }
+                    $groupStore = implode(' + ', array_keys($labels));
+                }
                 $groups[] = [
                     'key' => $key . '#' . $bucketKey,
-                    'store' => $storeLabel[$keep['id']] ?? 'No store',
+                    'store' => $groupStore,
                     'category' => $catLabel,
                     'keep' => $stripCalc($keep),
                     'merge_in' => array_map($stripCalc, $mergeIn),
@@ -727,7 +743,7 @@ class ProductMergeController extends Controller
             return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
         }
         $business_id = $request->session()->get('user.business_id');
-        $data = $this->scanData($business_id);
+        $data = $this->scanData($business_id, (bool) $request->input('cross_store', false));
 
         return response()->json([
             'success' => true,
@@ -925,7 +941,8 @@ class ProductMergeController extends Controller
         $max = (int) $request->input('max', 150);
         if ($max < 1) { $max = 150; }
 
-        $data = $this->scanData($business_id);
+        $crossStore = (bool) $request->input('cross_store', false);
+        $data = $this->scanData($business_id, $crossStore);
         $remainingBefore = $data['total_merges'];
 
         $merges = [];
@@ -960,6 +977,17 @@ class ProductMergeController extends Controller
                         (int) $srcProduct->is_inactive, (int) $srcProduct->not_for_selling,
                         $src['name'], $keep['name'], $business_id
                     );
+                    if ($crossStore) {
+                        // The survivor now sells at every store the duplicate did.
+                        $have = \DB::table('product_locations')->where('product_id', $keep['id'])->pluck('location_id')->map(function ($v) { return (int) $v; })->all();
+                        foreach (\DB::table('product_locations')->where('product_id', $src['id'])->pluck('location_id') as $loc) {
+                            if (!in_array((int) $loc, $have, true)) {
+                                \DB::table('product_locations')->insert(['product_id' => $keep['id'], 'location_id' => (int) $loc]);
+                                $have[] = (int) $loc;
+                                $payload['added_locations'][] = (int) $loc;
+                            }
+                        }
+                    }
                     \DB::commit();
                     $merges[] = $payload;
                     $done++;

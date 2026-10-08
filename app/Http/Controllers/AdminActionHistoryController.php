@@ -1252,6 +1252,13 @@ class AdminActionHistoryController extends Controller
             throw new \RuntimeException('merge payload missing source/target/variation');
         }
 
+        // 0) A cross-store merge added the duplicate's stores to the survivor;
+        // take those store assignments back off.
+        if (!empty($m['added_locations'])) {
+            DB::table('product_locations')->where('product_id', $targetId)
+                ->whereIn('location_id', array_map('intval', (array) $m['added_locations']))->delete();
+        }
+
         // 1) Move sales / purchase / adjustment lines back by their ids.
         foreach ([
             'transaction_sell_lines' => $m['sell_line_ids'] ?? [],

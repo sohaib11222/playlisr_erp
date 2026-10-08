@@ -130,6 +130,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         <h2>Or merge the whole catalog</h2>
         <p class="sub">Scans every product and groups duplicates that share the SAME real barcode (8+ digit UPC/EAN, leading zeros ignored — placeholder SKUs like "003" are ignored), the same store, and the same format (category, e.g. Vinyl - Sealed). Title and genre don't have to match — a shared barcode is the source of truth, so title variants and miscategorised genres still merge. Each set merges into one listing — keeping the trustworthy copy's name/price, combining units sold, and reconciling stock to whichever copy was most recently updated (not summed). Multiple-variation products are skipped for manual review. Scanning changes nothing.</p>
         <div class="mg-actions">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-right:8px;"><input type="checkbox" id="mgCrossStore"> Same album at both stores (one listing for Hollywood + Pico)</label>
             <button class="mg-btn mg-btn-ghost" id="mgScanBtn" type="button">Scan whole catalog</button>
             <a class="mg-btn mg-btn-ghost" href="{{ route('products.merge.scan-export') }}" style="text-decoration:none;display:inline-flex;align-items:center;">Download full list (CSV)</a>
         </div>
@@ -251,7 +252,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
         scanResult.style.display = 'none';
         scanBtn.disabled = true;
         scanBtn.textContent = 'Scanning…';
-        post('{{ route('products.merge.scan') }}', {}).then(function (d) {
+        post('{{ route('products.merge.scan') }}', { cross_store: document.getElementById('mgCrossStore').checked ? 1 : 0 }).then(function (d) {
             scanBtn.disabled = false;
             scanBtn.textContent = 'Scan whole catalog';
             if (!d.success) { showMsg(d.msg || 'Scan failed.', false); return; }
@@ -339,7 +340,7 @@ body.merge-v2 .content { padding: 0 16px 60px; }
     });
 
     function runBulkBatch(totalDone, totalMismatchSkipped) {
-        post('{{ route('products.merge.bulk') }}', { max: 150 }).then(function (d) {
+        post('{{ route('products.merge.bulk') }}', { max: 150, cross_store: document.getElementById('mgCrossStore').checked ? 1 : 0 }).then(function (d) {
             if (!d.success) { bulkBtn.disabled = false; showMsg(d.msg || 'Merge failed.', false); return; }
             totalDone += d.merged;
             totalMismatchSkipped += (d.price_mismatch_skipped || 0);
