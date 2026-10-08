@@ -755,19 +755,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/ume-spotlights-bucket', 'InventoryCheckController@umeSpotlightsBucket');
     Route::get('/reports/inventory-check-assistant/supplier-diagnostics', 'InventoryCheckController@supplierDiagnostics');
     Route::get('/reports/inventory-check-assistant/supplier-coverage', 'InventoryCheckController@supplierCoverage');
-    // What we pay one supplier per item (Sarah 10/8, e.g. Posters Wholesale).
-    Route::get('/reports/inventory-check-assistant/supplier-unit-costs', function (\Illuminate\Http\Request $request) {
-        $biz = (int) $request->session()->get('user.business_id');
-        $name = (string) $request->query('name', 'posters');
-        $rows = \DB::table('purchase_lines as pl')->join('transactions as t', 't.id', '=', 'pl.transaction_id')
-            ->join('contacts as ct', 'ct.id', '=', 't.contact_id')->join('products as p', 'p.id', '=', 'pl.product_id')
-            ->where('t.business_id', $biz)->where('t.type', 'purchase')
-            ->whereRaw('LOWER(COALESCE(ct.supplier_business_name, ct.name)) LIKE ?', ['%' . strtolower($name) . '%'])
-            ->select('ct.supplier_business_name as supplier', 't.transaction_date as date', 'p.name', 'pl.quantity', 'pl.purchase_price')
-            ->orderByDesc('t.transaction_date')->limit(300)->get();
-        $prices = $rows->pluck('purchase_price')->map(function ($v) { return round((float) $v, 2); })->countBy()->sortDesc();
-        return response()->json(['lines' => count($rows), 'units' => $rows->sum('quantity'), 'price_counts' => $prices, 'latest' => $rows->take(15)]);
-    });
     // Which distributor is cheapest (Sarah 10/8): same barcode, head to head.
     Route::get('/reports/inventory-check-assistant/supplier-compare', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
