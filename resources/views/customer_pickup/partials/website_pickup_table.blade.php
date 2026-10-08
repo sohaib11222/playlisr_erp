@@ -68,7 +68,15 @@
                 <td data-order="{{ strtolower($wp['customer']) }}" class="cust-cell">
                     <strong>{{ $wp['customer'] }}</strong>
                     @if($wp['email'] !== '')<span class="status-sub cust-line">{!! str_replace('@', '<wbr>@', e($wp['email'])) !!}</span>@endif
-                    @if($wp['phone'])<span class="status-sub">{{ $wp['phone'] }}</span>@endif
+                    @php
+                        // One phone format for every row: (843) 714-9197 (Sarah, 2026-10-08).
+                        $digits = preg_replace('/\D/', '', (string) $wp['phone']);
+                        if (strlen($digits) === 11 && $digits[0] === '1') { $digits = substr($digits, 1); }
+                        $phoneOut = strlen($digits) === 10
+                            ? '(' . substr($digits, 0, 3) . ') ' . substr($digits, 3, 3) . '-' . substr($digits, 6)
+                            : $wp['phone'];
+                    @endphp
+                    @if($wp['phone'])<span class="status-sub">{{ $phoneOut }}</span>@endif
                 </td>
                 <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" class="item-cell">
                     @forelse($wp['items'] as $itemLabel)
