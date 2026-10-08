@@ -183,6 +183,12 @@
         .content .box-body th, .content .box-body label { text-transform: none !important; letter-spacing: 0 !important; }
         .bfc-rules { font-size: 16px !important; line-height: 1.5; }
         .bfc-rules li { margin-bottom: 4px; }
+        /* Buy form buttons: same size, aligned, readable. */
+        .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
+        .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
+        .content #reject_buy_offer_form { display: flex !important; align-items: center; gap: 10px; margin: 18px 0 0 !important; padding-top: 16px; border-top: 1px solid #ddd; max-width: 920px; }
+        .content #reject_buy_offer_form .form-control { flex: 1; max-width: 420px; height: 46px; }
+        .content .bfc-reject-label { font-weight: 700; font-size: 16px; white-space: nowrap; }
         /* Sarah 2026-10-08: black text, not gray. */
         .content, .content .text-muted, .content .help-block, .content small, .content .small,
         .content .bfc-step-help, .content .bfc-running-note, .content .box-title,
@@ -266,7 +272,7 @@
     <div class="alert alert-warning bfc-rules">
         <strong>Buying rules</strong>
         <ol style="margin:6px 0 0; padding-left:20px;">
-            <li>You must pay the number the system gives you. Overpaying costs the store a lot of money and anyone who overpays too frequently will lose buying privileges.</li>
+            <li>You must pay the number the system gives you. <strong style="color:#c62828 !important;">Overpaying costs the store a lot of money and anyone who overpays too frequently will lose buying privileges.</strong></li>
             <li>If you are unsure or need approval, please call your store manager to help you.</li>
         </ol>
     </div>
@@ -740,7 +746,7 @@ HTML;
                                         <input type="hidden" name="{{$k}}" value="{{ $v }}">
                                     @endif
                                 @endforeach
-                                <button type="submit" class="btn btn-default"><i class="fa fa-save"></i> Save draft</button>
+                                <button type="submit" class="btn btn-default bfc-btn"><i class="fa fa-save"></i> Save draft</button>
                                 {!! Form::close() !!}
 
                                 {!! Form::open(['url' => route('buy-from-customer.accept'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;', 'id' => 'accept_buy_offer_form']) !!}
@@ -862,7 +868,7 @@ HTML;
                                     <div id="bfc_accept_error" class="alert alert-danger" style="display:none;"></div>
                                 </div>
 
-                                <button type="submit" class="btn btn-success" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept offer (create purchase)</button>
+                                <button type="submit" class="btn btn-success bfc-btn" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept and finish buy</button>
                                 {!! Form::close() !!}
 
                                 {!! Form::open(['url' => route('buy-from-customer.reject'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;', 'id' => 'reject_buy_offer_form']) !!}
@@ -877,8 +883,9 @@ HTML;
                                         <input type="hidden" name="{{$k}}" value="{{ $v }}">
                                     @endif
                                 @endforeach
-                                <input type="text" name="rejection_reason" class="form-control" style="display:inline-block; width:260px;" placeholder="Rejection reason" required>
-                                <button type="submit" class="btn btn-danger"><i class="fa fa-times"></i> Mark rejected</button>
+                                <span class="bfc-reject-label">Seller said no?</span>
+                                <input type="text" name="rejection_reason" class="form-control" placeholder="Why? (example: wanted more money)" required>
+                                <button type="submit" class="btn btn-danger bfc-btn"><i class="fa fa-times"></i> Mark as no deal</button>
                                 {!! Form::close() !!}
                             </div>
                         </div>
