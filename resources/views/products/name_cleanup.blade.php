@@ -258,6 +258,17 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
     </div>
 
     <div class="mgn-card" style="border:1px solid #CDE3CD;background:#F3F9F3;border-radius:14px;padding:18px 20px;margin-top:18px;">
+        <h2>Link products to Discogs by barcode</h2>
+        <p class="sub">Products with a real barcode but no Discogs link can't use the Discogs tools on this page. This looks each barcode up on Discogs and links it only when every match is the same album, in the same format. Runs about 55 a minute with this tab open, and every batch can be undone. Afterwards, run Rebuild from Discogs and the fills.</p>
+        <div class="mgn-actions" style="margin-top:0;">
+            <button class="mgn-btn mgn-btn-ghost" id="dlScanBtn" type="button">Check</button>
+            <button class="mgn-btn mgn-btn-primary" id="dlRunBtn" type="button" style="display:none;">Link them</button>
+            <button class="mgn-btn mgn-btn-ghost" id="dlStopBtn" type="button" style="display:none;">Stop</button>
+            <span class="mgn-note" id="dlNote" style="margin-top:0"></span>
+        </div>
+    </div>
+
+    <div class="mgn-card" style="border:1px solid #CDE3CD;background:#F3F9F3;border-radius:14px;padding:18px 20px;margin-top:18px;">
         <h2>Standardize names: Artist - Title</h2>
         <p class="sub">For products with no Discogs link (Rebuild from Discogs covers the linked ones). Fixes "DEFTONES / DIAMOND EYES", "Diamond Eyes / Deftones" and "DIAMOND EYES - DEFTONES" into "Deftones - Diamond Eyes", and fills a blank or N/A artist. The artist side is picked from artists named by Discogs on imported products, never guessed from position, so anything unclear is left alone. Checking changes nothing. The fix runs in batches with the tab open, can be undone in Admin Action History, and the website picks up new names on the nightly sync.</p>
         <div class="mgn-actions" style="margin-top:0;">
@@ -991,6 +1002,42 @@ body.mgn-v2 .content { padding: 0 16px 60px; }
                 total += j.renamed;
                 if (j.done) { note.textContent = 'Done. Renamed ' + total.toLocaleString() + '. Undo at Admin Action History.'; return; }
                 note.textContent = 'Renamed ' + total.toLocaleString() + ' so far, ' + j.remaining.toLocaleString() + ' products left to check. Keep this tab open.';
+                step(j.after_id);
+            }).catch(function () { note.textContent = 'Network hiccup, retrying...'; setTimeout(function () { step(after); }, 5000); });
+        })(0);
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+    }
+    var note = document.getElementById('dlNote'), runBtn = document.getElementById('dlRunBtn'), stopBtn = document.getElementById('dlStopBtn');
+    if (!runBtn) { return; }
+    var stop = false;
+    document.getElementById('dlScanBtn').addEventListener('click', function () {
+        note.textContent = 'Checking...';
+        post('/products/name-cleanup/discogs-link-scan').then(function (j) {
+            if (!j.success) { note.textContent = j.msg || 'Check failed.'; return; }
+            note.textContent = j.candidates.toLocaleString() + ' products with a barcode and no Discogs link (about ' + j.minutes + ' minutes).';
+            runBtn.style.display = j.candidates ? '' : 'none';
+        });
+    });
+    stopBtn.addEventListener('click', function () { stop = true; note.textContent += ' Stopping after this batch...'; });
+    runBtn.addEventListener('click', function () {
+        runBtn.disabled = true; stopBtn.style.display = ''; stop = false;
+        var linked = 0, flagged = 0;
+        (function step(after) {
+            if (stop) { note.textContent = 'Stopped. Linked ' + linked + ', ' + flagged + ' unclear left alone.'; runBtn.disabled = false; stopBtn.style.display = 'none'; return; }
+            post('/products/name-cleanup/discogs-link-run', { after_id: after }).then(function (j) {
+                if (!j.success) { note.textContent = (j.msg || 'Failed') + ' Linked ' + linked + ' before stopping.'; runBtn.disabled = false; return; }
+                linked += j.linked; flagged += j.flagged;
+                if (j.done) { note.textContent = 'Done. Linked ' + linked + ', ' + flagged + ' unclear left alone. Undo at Admin Action History.'; stopBtn.style.display = 'none'; return; }
+                if (j.rate_limited) { note.textContent = 'Discogs asked us to slow down, waiting a minute... (linked ' + linked + ')'; setTimeout(function () { step(j.after_id); }, 61000); return; }
+                note.textContent = 'Linked ' + linked.toLocaleString() + ', ' + flagged + ' unclear left alone, ' + j.remaining.toLocaleString() + ' to go. Keep this tab open.';
                 step(j.after_id);
             }).catch(function () { note.textContent = 'Network hiccup, retrying...'; setTimeout(function () { step(after); }, 5000); });
         })(0);

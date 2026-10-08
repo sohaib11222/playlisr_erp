@@ -183,6 +183,14 @@ class DiscogsService
         return $response;
     }
 
+    /** Release search by exact barcode (type=release). */
+    public function searchByBarcode($barcode)
+    {
+        $url = $this->baseUrl . $this->databaseSearchUrl . '?token=' . $this->token
+            . '&type=release&per_page=25&barcode=' . urlencode((string) $barcode);
+        return $this->callApi($url);
+    }
+
     public function getReleaseApiUrl($filter)
     {
         $query = $filter['query'] ?? '';

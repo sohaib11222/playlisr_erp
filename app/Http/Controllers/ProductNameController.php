@@ -2219,4 +2219,114 @@ class ProductNameController extends Controller
         $remaining = $this->standardBaseQuery($business_id, $catIds)->where('id', '>', $lastId)->count();
         return response()->json(['success' => true, 'renamed' => $renamed, 'after_id' => $lastId, 'remaining' => $remaining, 'done' => $remaining === 0]);
     }
+
+    // ================= LINK TO DISCOGS BY BARCODE =================
+    // Sarah 2026-10-08. Products with a real barcode but no Discogs link
+    // can't use Rebuild from Discogs / Fill artist / Fill genre. Search
+    // Discogs by barcode; link only when every same-format result is the
+    // same album (one master), so a wrong link is very unlikely.
+
+    protected function discogsLinkQuery($business_id)
+    {
+        $catIds = $this->musicCategoryIds($business_id);
+        return \DB::table('products as p')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)
+            ->where('p.is_inactive', 0)
+            ->whereIn('p.category_id', $catIds ?: [0])
+            ->where(function ($q) { $q->whereNull('p.discogs_release_id')->orWhere('p.discogs_release_id', 0); })
+            ->whereRaw("p.sku REGEXP '^[0-9 -]{11,16}$'");
+    }
+
+    public function discogsLinkScan(Request $request)
+    {
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $n = $this->discogsLinkQuery($business_id)->count();
+        $misses = $this->discogsLinkMisses();
+        return response()->json(['success' => true, 'candidates' => $n, 'skipped_before' => count($misses), 'minutes' => (int) ceil($n / 55)]);
+    }
+
+    protected function discogsLinkMissesPath()
+    {
+        return storage_path('app/discogs-barcode-link-misses.json');
+    }
+
+    protected function discogsLinkMisses()
+    {
+        $j = @json_decode((string) @file_get_contents($this->discogsLinkMissesPath()), true);
+        return is_array($j) ? $j : [];
+    }
+
+    public function discogsLinkRun(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $svc = new DiscogsService($business_id);
+        if (!$svc->isConfigured()) {
+            return response()->json(['success' => false, 'msg' => 'Discogs API token not configured.']);
+        }
+        $afterId = (int) $request->input('after_id', 0);
+        $misses = $this->discogsLinkMisses();
+        $rows = $this->discogsLinkQuery($business_id)->where('p.id', '>', $afterId)
+            ->select('p.id', 'p.name', 'p.sku', 'c.name as cat')->orderBy('p.id')->limit(40)->get();
+        if ($rows->isEmpty()) {
+            return response()->json(['success' => true, 'linked' => 0, 'done' => true, 'after_id' => $afterId]);
+        }
+        $ica = app(\App\Services\InventoryCheckService::class);
+        $linked = []; $flagged = 0; $rateLimited = false; $lastId = $afterId; $calls = 0;
+        foreach ($rows as $r) {
+            $upc = preg_replace('/\D+/', '', (string) $r->sku);
+            if (isset($misses[$upc]) && $misses[$upc] > time() - 30 * 86400) { $lastId = (int) $r->id; continue; }
+            if ($calls > 0) usleep(1100000); // ~55/min, under Discogs' 60/min
+            $calls++;
+            $res = $svc->searchByBarcode($upc);
+            if (!empty($res['error'])) {
+                if (stripos((string) ($res['message'] ?? ''), '429') !== false) { $rateLimited = true; break; }
+                $lastId = (int) $r->id;
+                continue;
+            }
+            $lastId = (int) $r->id;
+            $want = $ica->formatFamily($r->cat);
+            $hits = [];
+            foreach ((array) ($res['data']->results ?? []) as $x) {
+                $fmts = mb_strtolower(implode(' ', (array) ($x->format ?? [])));
+                $fam = strpos($fmts, 'vinyl') !== false ? 'lp' : (strpos($fmts, 'cd') !== false ? 'cd' : (strpos($fmts, 'cassette') !== false ? 'cassette' : null));
+                if ($want && $fam && $fam !== $want) continue;
+                $hits[] = $x;
+            }
+            $masters = [];
+            foreach ($hits as $x) { $masters[(int) ($x->master_id ?? 0) ?: ('r' . $x->id)] = true; }
+            if (empty($hits) || count($masters) !== 1) {
+                $misses[$upc] = time();
+                $flagged++;
+                continue;
+            }
+            // Same album; pick the pressing most people own.
+            usort($hits, function ($a, $b) { return ((int) ($b->community->have ?? 0)) <=> ((int) ($a->community->have ?? 0)); });
+            $rid = (int) $hits[0]->id;
+            $n = \DB::table('products')->where('id', $r->id)
+                ->where(function ($q) { $q->whereNull('discogs_release_id')->orWhere('discogs_release_id', 0); })
+                ->update(['discogs_release_id' => $rid]);
+            if ($n) { $linked[] = ['id' => (int) $r->id, 'old' => null, 'new' => $rid, 'name' => $r->name, 'title' => (string) ($hits[0]->title ?? '')]; }
+        }
+        @file_put_contents($this->discogsLinkMissesPath(), json_encode($misses));
+        if ($linked) {
+            $ts = now()->format('Y-m-d_His') . '-' . $lastId;
+            \Storage::disk('local')->put("admin-snapshots/discogs-link-barcode-{$ts}.json", json_encode([
+                'timestamp' => $ts, 'action' => 'discogs-link-barcode', 'user_id' => auth()->id(), 'business_id' => $business_id,
+                'source_name' => count($linked) . ' product(s) linked to Discogs by barcode',
+                'target_name' => 'products.discogs_release_id', 'rows' => $linked,
+            ], JSON_PRETTY_PRINT));
+        }
+        $remaining = $this->discogsLinkQuery($business_id)->where('p.id', '>', $lastId)->count();
+        return response()->json(['success' => true, 'linked' => count($linked), 'flagged' => $flagged,
+            'rate_limited' => $rateLimited, 'after_id' => $lastId, 'remaining' => $remaining,
+            'done' => $remaining === 0 && !$rateLimited, 'sample' => array_slice($linked, 0, 5)]);
+    }
 }

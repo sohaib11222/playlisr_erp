@@ -40,7 +40,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'legacy-listing-retire'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'legacy-listing-retire', 'discogs-link-barcode'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -192,6 +192,17 @@ class AdminActionHistoryController extends Controller
             return $this->undoMergeProductsBulk($data, $key);
         }
 
+        // discogs-link-barcode: unlink products linked by the barcode matcher.
+        if ($action === 'discogs-link-barcode') {
+            $n = 0;
+            foreach ($data['rows'] ?? [] as $r) {
+                $n += DB::table('products')->where('id', (int) ($r['id'] ?? 0))->where('discogs_release_id', (int) ($r['new'] ?? -1))
+                    ->update(['discogs_release_id' => null]);
+            }
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => "Unlinked {$n} product(s) from Discogs."]);
+        }
+
         // legacy-listing-retire: reactivate the retired old setup listings.
         if ($action === 'legacy-listing-retire') {
             $ids = array_values(array_filter(array_map(function ($r) { return (int) ($r['id'] ?? 0); }, $data['rows'] ?? [])));
@@ -295,7 +306,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'move-sale-location', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku', 'legacy-listing-retire'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'move-sale-location', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku', 'legacy-listing-retire', 'discogs-link-barcode'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
