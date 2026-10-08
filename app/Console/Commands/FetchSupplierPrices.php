@@ -9,6 +9,7 @@ use App\Services\SupplierFetchers\BeggarsFetcher;
 use App\Services\SupplierFetchers\RedeyeFetcher;
 use App\Services\SupplierFetchers\SecretlyFetcher;
 use App\Services\SupplierFetchers\MatadorFetcher;
+use App\Services\SupplierFetchers\DeejayFetcher;
 use App\Services\SupplierFetchers\SupplierFetcherContract;
 use App\Services\SupplierFetchers\VpFetcher;
 use App\Business;
@@ -43,7 +44,8 @@ class FetchSupplierPrices extends Command
         'secretly' => SecretlyFetcher::class,
         'redeye' => RedeyeFetcher::class,
         'matador' => MatadorFetcher::class, // public Box catalog, no login (10/8)
-        // Monostereo / Deejay: browser pull / upload only.
+        'deejay' => DeejayFetcher::class,   // deejay.de form login, EUR -> USD (10/8)
+        // Monostereo: browser pull (email-code login).
         // VP + generic Beggars dropped 2026-07-30 (Nivessa doesn't use them).
     ];
 
@@ -68,6 +70,7 @@ class FetchSupplierPrices extends Command
                 'AMS_VINYL_PAGES' => '1000',
                 'AMS_CD_PAGES' => '1000',
                 'AMS_BARCODE_LOOKUPS' => '20000',
+                'DEEJAY_FETCH_BUDGET_SEC' => '3600',
                 'REDEYE_FETCH_BUDGET_SEC' => '5400',
                 'REDEYE_LIST_PAGES' => '500',
             ];

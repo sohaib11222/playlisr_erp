@@ -571,7 +571,8 @@
                         { data: 'dist_monostereo', name: 'dist_monostereo', orderable: false, searchable: false },
                         { data: 'dist_redeye', name: 'dist_redeye', orderable: false, searchable: false },
                         { data: 'dist_secretly', name: 'dist_secretly', orderable: false, searchable: false },
-                        { data: 'dist_matador', name: 'dist_matador', orderable: false, searchable: false }
+                        { data: 'dist_matador', name: 'dist_matador', orderable: false, searchable: false },
+                        { data: 'dist_deejay', name: 'dist_deejay', orderable: false, searchable: false }
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){
