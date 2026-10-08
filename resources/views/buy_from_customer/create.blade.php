@@ -831,11 +831,10 @@ HTML;
                                         </div>
                                     @endif
                                     <hr style="margin:6px 0 14px;">
-                                    <h4 class="bfc-step-sub">Paid a different amount?</h4>
-                                    <p class="bfc-step-help">Say why in one line.</p>
+                                    <h4 class="bfc-step-sub">Did you pay more or less than the max offer?</h4>
                                     <div class="form-group">
-                                        <label>Override reason <span id="override_required_label" class="text-danger" style="display:none;">(required)</span></label>
-                                        <textarea name="price_override_reason" class="form-control" rows="2" placeholder="e.g. Manager approved bump for sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
+                                        <label>If yes, explain why <span id="override_required_label" class="text-danger" style="display:none;">(required)</span></label>
+                                        <textarea name="price_override_reason" class="form-control" rows="2" placeholder="Example: Luis approved it because it's a sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
                                     </div>
 
                                     <h4 class="bfc-step"><span class="bfc-step-num">5</span> Seller checks both boxes and signs</h4>
@@ -1711,9 +1710,6 @@ HTML;
                     $('#bfc_overpay_approval').show();
                 }
                 if (!msg) { $a.hide(); if (String($('#bfc_overpay_approval').data('force')) !== '1') $('#bfc_overpay_approval').hide(); return; }
-                if (String($a.data('can-overpay')) === '1') {
-                    msg = 'Warning: you are paying $' + $('#bfc_accept_final_amount').val() + ' and the system says this is worth less. You are a manager, so you can still accept this buy.';
-                }
                 $a.text(msg).show();
                 $('#bfc_overpay_approval').show();
             }
