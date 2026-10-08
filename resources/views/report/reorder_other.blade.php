@@ -46,6 +46,58 @@
     </div>
 
     <div class="box box-solid">
+        <div class="box-header with-border"><h3 class="box-title">1. Most popular items <small>new stuff that sells the most, so it never runs out</small></h3></div>
+        <div class="box-body table-responsive">
+            <table class="table table-bordered table-condensed">
+                <thead><tr><th>Item</th><th>Area</th><th class="text-right">Sold, 90 days</th><th class="text-right">ERP stock</th><th class="text-right">Weeks left</th><th>Last bought from</th><th>Check</th></tr></thead>
+                <tbody>
+                @foreach($popular as $p)
+                    <tr>
+                        <td>{{ $p['name'] }}</td>
+                        <td>{{ $p['area'] }}</td>
+                        <td class="text-right">{{ $p['sold'] + 0 }}</td>
+                        <td class="text-right">{{ $p['stock'] }}</td>
+                        <td class="text-right">{{ $p['generic'] || $p['weeks'] === null ? '' : number_format($p['weeks']) }}</td>
+                        <td>@if($p['purchase_id'])<a href="{{ url('/purchases/' . $p['purchase_id']) }}" target="_blank">{{ $p['supplier'] ?: 'no supplier' }}</a>, ${{ number_format($p['supplier_cost'], 2) }}@else<span class="ro-muted">never bought in the ERP</span>@endif</td>
+                        <td>
+                            @if($p['generic'])<span class="ro-flag-wrong">One catch-all item for many designs, count the shelf</span>
+                            @elseif($p['stock'] <= 0)<span class="ro-flag-wrong">Out: reorder or count it</span>
+                            @elseif($p['weeks'] !== null && $p['weeks'] < 4)<span class="ro-flag-low">Running low: reorder</span>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border"><h3 class="box-title">2. Used: what to buy more of <small>used can't be reordered, so buy these genres when people bring in collections</small></h3></div>
+        <div class="box-body table-responsive">
+            <table class="table table-bordered table-condensed">
+                <thead><tr><th>Area</th><th>Genre</th><th class="text-right">Sold, 90 days</th><th class="text-right">Sales, 90 days</th><th class="text-right">ERP stock</th><th class="text-right">Weeks left</th><th>Check</th></tr></thead>
+                <tbody>
+                @forelse($usedGenres as $g)
+                    <tr>
+                        <td>{{ $g['area'] }}</td>
+                        <td>{{ $g['genre'] }}</td>
+                        <td class="text-right">{{ number_format($g['sold']) }}</td>
+                        <td class="text-right">${{ number_format($g['revenue']) }}</td>
+                        <td class="text-right">{{ number_format($g['stock']) }}</td>
+                        <td class="text-right">{{ number_format($g['weeks']) }}</td>
+                        <td>@if($g['weeks'] < 8)<span class="ro-flag-low">Low: buy more of this</span>@elseif($g['weeks'] > 104)<span class="ro-muted">Plenty (or the count is off)</span>@endif</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="7" class="text-muted">No used sales in 90 days.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border"><h3 class="box-title">3. Every area of the store <small>click a row for its top sellers</small></h3></div>
         <div class="box-body table-responsive">
             <table class="table table-bordered table-condensed ro-cat">
                 <thead>

@@ -545,7 +545,81 @@ class ReorderService
             ];
         }
         usort($out, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
-        return $out;
+
+        // Most popular new items anywhere in the store (stickers, pins, toys,
+        // cards, shirts...), so nothing that sells a lot quietly runs out.
+        $usedCatIds = [];
+        foreach ($cats as $cid => $name) {
+            if (stripos($name, 'used') !== false) $usedCatIds[] = $cid;
+        }
+        $popular = [];
+        foreach ($sales->whereNotIn('category_id', $usedCatIds)->sortByDesc('qty')->take(30) as $l) {
+            $have = $pidStock[(int) $l->id] ?? 0;
+            $weekly = (float) $l->qty / 13;
+            $lb = $lastBuy[(int) $l->id] ?? null;
+            $generic = preg_match('/^\d{1,4}$/', (string) $l->sku) && $have > 200;
+            $popular[] = [
+                'name' => trim(($l->artist ? $l->artist . ' / ' : '') . $l->name),
+                'area' => $cats[$l->category_id] ?? '',
+                'sold' => (float) $l->qty,
+                'revenue' => (float) $l->rev,
+                'stock' => $have,
+                'weeks' => $weekly > 0 ? $have / $weekly : null,
+                'generic' => $generic,
+                'supplier' => $lb ? trim($lb->supplier_business_name ?: $lb->name) : null,
+                'supplier_cost' => $lb ? round((float) $lb->purchase_price, 2) : null,
+                'purchase_id' => $lb ? (int) $lb->tid : null,
+            ];
+        }
+
+        // Used stock can't be reordered, so say which genres to buy more of
+        // when people sell us collections: sold in 90 days vs what's left.
+        $usedGenres = [];
+        if (!empty($usedCatIds)) {
+            $gs = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->leftJoin('categories as sub', 'sub.id', '=', 'p.sub_category_id')
+                ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+                ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', $start)
+                ->whereIn('p.category_id', $usedCatIds)
+                ->groupBy('p.category_id', 'sub.name')
+                ->select('p.category_id', 'sub.name as genre', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+                    DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'))
+                ->get();
+            $gStock = DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->leftJoin('categories as sub', 'sub.id', '=', 'p.sub_category_id')
+                ->where('vld.location_id', $locationId)->where('vld.qty_available', '>', 0)
+                ->whereIn('p.category_id', $usedCatIds)
+                ->groupBy('p.category_id', 'sub.name')
+                ->select('p.category_id', 'sub.name as genre', DB::raw('SUM(vld.qty_available) as q'))
+                ->get();
+            $stockMap = [];
+            foreach ($gStock as $r) {
+                $k = $r->category_id . '|' . $this->genre($r->genre);
+                $stockMap[$k] = ($stockMap[$k] ?? 0) + (int) $r->q;
+            }
+            $merged = [];
+            foreach ($gs as $r) {
+                $k = $r->category_id . '|' . $this->genre($r->genre);
+                $merged[$k] = $merged[$k] ?? ['area' => $cats[$r->category_id], 'genre' => $this->genre($r->genre), 'sold' => 0, 'revenue' => 0];
+                $merged[$k]['sold'] += (float) $r->qty;
+                $merged[$k]['revenue'] += (float) $r->rev;
+            }
+            foreach ($merged as $k => $g) {
+                if ($g['sold'] < 5) continue;
+                $have = $stockMap[$k] ?? 0;
+                $g['stock'] = $have;
+                $g['weeks'] = $have / ($g['sold'] / 13);
+                $usedGenres[] = $g;
+            }
+            usort($usedGenres, function ($a, $b) { return $a['weeks'] <=> $b['weeks']; });
+        }
+
+        return ['areas' => $out, 'popular' => $popular, 'used_genres' => $usedGenres];
     }
 
     /** Bin count, order qty and distributor price for one row. */

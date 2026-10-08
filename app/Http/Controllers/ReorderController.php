@@ -46,8 +46,11 @@ class ReorderController extends Controller
     {
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
         if ($format === 'other') {
+            $other = $locationId ? $this->svc->otherAreas($business_id, $locationId) : [];
             return view('report.reorder_other', [
-                'areas' => $locationId ? $this->svc->otherAreas($business_id, $locationId) : [],
+                'areas' => $other['areas'] ?? [],
+                'popular' => $other['popular'] ?? [],
+                'usedGenres' => $other['used_genres'] ?? [],
                 'locations' => $locations,
                 'locationId' => $locationId,
                 'storeName' => $locations[$locationId] ?? '',
