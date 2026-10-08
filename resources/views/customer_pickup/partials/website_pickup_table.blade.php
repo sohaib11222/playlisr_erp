@@ -6,16 +6,13 @@
     <thead>
         <tr>
             <th>#</th>
-            <th>Store</th>
             <th>Type</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
+            <th>Customer</th>
             <th>Item(s)</th>
             <th>Qty</th>
             <th>Paid</th>
             <th>Placed</th>
-            <th>Street Date</th>
+            <th>Street</th>
             <th>Status</th>
             <th>Action</th>
         </tr>
@@ -41,9 +38,9 @@
             @endphp
             <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                 <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
-                <td data-order="{{ $storeLabel }}">{{ $storeLabel }}</td>
-                <td data-order="{{ $sourceLabel }}" style="white-space:nowrap;">
+                <td data-order="{{ $sourceLabel }}">
                     <span class="src-tag">{{ $sourceLabel }}</span>
+                    @if($storeLabel !== '—')<span class="status-sub">{{ $storeLabel }}</span>@endif
                     @if($pre && $pre['type'] === 'event')
                         <div class="item-meta src-meta">
                         <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $pre['id']]) }}" style="margin:0;">
@@ -65,10 +62,12 @@
                         </div>
                     @endif
                 </td>
-                <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
-                <td data-order="{{ strtolower($wp['email']) }}">@if($wp['email'] !== ''){!! str_replace('@', '<wbr>@', e($wp['email'])) !!}@else — @endif</td>
-                <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
-                <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:190px;">
+                <td data-order="{{ strtolower($wp['customer']) }}" class="cust-cell">
+                    <strong>{{ $wp['customer'] }}</strong>
+                    @if($wp['email'] !== '')<span class="status-sub cust-line">{!! str_replace('@', '<wbr>@', e($wp['email'])) !!}</span>@endif
+                    @if($wp['phone'])<span class="status-sub">{{ $wp['phone'] }}</span>@endif
+                </td>
+                <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" class="item-cell">
                     @forelse($wp['items'] as $itemLabel)
                         <div>{{ $itemLabel }}</div>
                     @empty
@@ -76,7 +75,7 @@
                     @endforelse
                 </td>
                 <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
-                <td data-order="{{ $wp['total'] ?? 0 }}" style="white-space:nowrap;">
+                <td data-order="{{ $wp['total'] ?? 0 }}">
                     @if($wp['total'] !== null)<div>${{ number_format($wp['total'], 2) }}</div>@endif
                     @if(array_key_exists('paid', $wp) && $wp['paid'] === null)
                         <span class="sub">—</span>
@@ -85,9 +84,9 @@
                     @else
                         <span class="pill pill-unpaid">Unpaid</span>
                     @endif
-                    @if($methodLabel !== '') <span class="sub">{{ $methodLabel }}</span> @endif
+                    @if($methodLabel !== '')<span class="status-sub">{{ $methodLabel }}</span>@endif
                 </td>
-                <td class="sub" data-order="{{ $placedTs }}" >@if($placedTs){{ date('n/j/y', $placedTs) }}<br>{{ date('g:ia', $placedTs) }}@else — @endif</td>
+                <td class="sub" data-order="{{ $placedTs }}" >@if($placedTs){{ date('n/j/y', $placedTs) }}@else — @endif</td>
                 <td data-order="{{ $shipTs ?: 0 }}" style="white-space:nowrap;">{{ ($shipTs && !$eventPickup) ? gmdate('n/j/y', $shipTs) : '—' }}</td>
                 <td data-order="{{ $statusSort }}">
                     @if($pickedUp)
@@ -99,6 +98,9 @@
                             <span class="label" style="background:#7a6a4a;">Preorder</span>
                         @endif
                         @if(!empty($pre['pickup']))<span class="status-sub">Pickup {{ date('D M j', strtotime($pre['pickup'])) }}</span>@endif
+                    @elseif(!empty($wp['waitingStock']))
+                        <span class="label" style="background:#6a5acd;">Waiting on Stock</span>
+                        <span class="status-sub">Customer not notified</span>
                     @elseif($wp['status'] === 'ready_for_pickup')
                         <span class="label label-warning">Ready for Pickup</span>
                     @elseif($eventPickup)
@@ -114,7 +116,7 @@
                         <span class="label label-default">Preparing</span>
                     @endif
                 </td>
-                <td style="white-space:nowrap;">
+                <td>
                     @if($pickedUp)
                         <span class="sub">Done</span>
                     @elseif($pre)
@@ -145,8 +147,10 @@
                         <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="margin:0;">
                             {{ csrf_field() }}
                             <select name="status" class="act-select" onchange="this.form.submit()" aria-label="Order status">
-                                @foreach(['processing' => 'Preparing', 'ready_for_pickup' => 'Ready for Pickup', 'picked_up' => 'Picked Up'] as $sv => $sl)
-                                    <option value="{{ $sv }}" @if($wp['status'] === $sv) selected @endif>{{ $sl }}</option>
+                                {{-- Waiting on Stock is ERP-only, never sent to the website, so no customer notice (2026-10-08). --}}
+                                @php $curStatus = !empty($wp['waitingStock']) ? 'waiting_stock' : $wp['status']; @endphp
+                                @foreach(['processing' => 'Preparing', 'waiting_stock' => 'Waiting on Stock', 'ready_for_pickup' => 'Ready for Pickup', 'picked_up' => 'Picked Up'] as $sv => $sl)
+                                    <option value="{{ $sv }}" @if($curStatus === $sv) selected @endif>{{ $sl }}</option>
                                 @endforeach
                             </select>
                         </form>

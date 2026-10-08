@@ -235,6 +235,14 @@ class CustomerPickupController extends Controller
             ];
         }
 
+        // ERP-only "Waiting on Stock" flag on web orders (no customer notice).
+        $waitingStockIds = \App\Services\WaitingStockOrders::ids((int) $business_id);
+        foreach ($websitePickups as &$w) {
+            $w['waitingStock'] = empty($w['source']) && ($w['status'] ?? '') !== 'picked_up'
+                && in_array((string) $w['id'], $waitingStockIds, true);
+        }
+        unset($w);
+
         // Keep picked-up rows at the bottom (stable for everything else).
         $i = 0;
         $websitePickups = collect($websitePickups)

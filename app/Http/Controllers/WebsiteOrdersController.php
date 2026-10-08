@@ -269,6 +269,13 @@ class WebsiteOrdersController extends Controller
 
         $status = (string) $request->input('status');
         $tracking = trim((string) $request->input('tracking_number'));
+        // "Waiting on Stock" is ERP-only: flag it here and never call the
+        // website, so the customer isn't notified. Any other status clears it.
+        $business_id = (int) $request->session()->get('user.business_id');
+        if ($status === 'waiting_stock') {
+            \App\Services\WaitingStockOrders::set($business_id, $id, true);
+            return redirect()->back()->with('status', 'Marked waiting on stock. Customer was not notified.');
+        }
         if (!array_key_exists($status, self::STATUSES)) {
             return redirect()->back()->with('error', 'Pick a valid order status.');
         }
@@ -292,6 +299,7 @@ class WebsiteOrdersController extends Controller
         if ($resp === null || ($resp['success'] ?? false) !== true) {
             return redirect()->back()->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website to update the order.');
         }
+        \App\Services\WaitingStockOrders::set($business_id, $id, false);
 
         return redirect()->back()->with('status', 'Order status updated.');
     }

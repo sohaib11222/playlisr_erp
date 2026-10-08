@@ -56,12 +56,19 @@ body.pos-v2 .wp-table .label { white-space: nowrap; display: inline-block; line-
 body.pos-v2 .wp-table .status-sub { display: block; font-size: 12px; color: #6b6253; margin-top: 5px; white-space: nowrap; }
 body.pos-v2 .wp-table .item-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
 body.pos-v2 .wp-table .src-tag { font-weight: 600; }
+/* Fit the card width, no sideways scroll (Sarah, 2026-10-08). */
+body.pos-v2 #website-pickups .table-responsive { overflow-x: visible; border: 0; }
+body.pos-v2 .wp-table tbody td { padding: 10px 7px; }
+body.pos-v2 .wp-table thead th { padding: 9px 18px 9px 7px !important; }
+body.pos-v2 .wp-table .cust-cell { min-width: 150px; }
+body.pos-v2 .wp-table .cust-line { white-space: normal; word-break: break-word; }
+body.pos-v2 .wp-table .item-cell { min-width: 170px; }
 body.pos-v2 .wp-table .src-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
-body.pos-v2 .wp-table .source-select { max-width: 150px; font-size: 11.5px; padding: 3px 6px; }
+body.pos-v2 .wp-table .source-select { max-width: 130px; font-size: 11.5px; padding: 3px 6px; }
 body.pos-v2 .wp-table .act-select { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 5px 8px; font-size: 12px; font-family: inherit;
-  background: #fff; color: var(--pos-ink); width: 150px; height: 30px; }
+  background: #fff; color: var(--pos-ink); width: 135px; height: 30px; }
 body.pos-v2 .wp-table .act-select:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
-body.pos-v2 .wp-table .act-btn { display: block; margin-top: 6px; width: 150px; padding: 5px 8px; font-size: 12px; border-radius: 8px; text-align: center; }
+body.pos-v2 .wp-table .act-btn { display: block; margin-top: 6px; width: 135px; padding: 5px 8px; font-size: 12px; border-radius: 8px; text-align: center; }
 body.pos-v2 #website_pickup_search { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 7px 10px; font-family: inherit; background: #fff; min-width: 240px; }
 body.pos-v2 #website_pickup_search:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 #preorder_table .pill-unpaid, body.pos-v2 .wp-table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
