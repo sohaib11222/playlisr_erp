@@ -14,7 +14,9 @@ namespace App\Services\SupplierFetchers;
  */
 class DeejayFetcher extends AbstractHttpFetcher
 {
-    protected string $base = 'https://www.deejay.de';
+    // Dealer accounts log in on deejay's wholesale site, vinylfuture.com
+    // (same platform, dealer prices; found 10/8 when Sarah logged in).
+    protected string $base = 'https://www.vinylfuture.com';
 
     public function supplierKey(): string { return 'deejay'; }
 
@@ -29,17 +31,17 @@ class DeejayFetcher extends AbstractHttpFetcher
         @unlink($this->cookieJar);
         $page = $this->get($this->base . '/');
         // The login form carries a hidden per-session token named "deejay".
-        $token = preg_match('#name="deejay"\s+value="([^"]+)"#', $page, $tm) ? $tm[1] : '';
+        $token = preg_match('#name="vinylfuture"\s+value="([^"]+)"#', $page, $tm) ? $tm[1] : '';
         $resp = $this->login($this->base . '/ajaxHelper/handleLogin.php', [
             'loginFeld' => $creds['DEEJAY_PORTAL_USER'],
             'passwortFeld' => $creds['DEEJAY_PORTAL_PASS'],
-            'deejay' => $token,
+            'vinylfuture' => $token,
             'longSession' => '1',
             'loginSubmit' => '1',
         ], ['Referer: ' . $this->base . '/']);
-        $home = $this->get($this->base . '/');
-        // Logged out pages show the header login button; logged in ones don't.
-        if (strpos($home, 'id="loginModalBtn"') !== false) {
+        $home = $this->get($this->base . '/start');
+        // Logged-in pages carry a logout link.
+        if (stripos($home, 'logout=Logout') === false) {
             $said = trim(preg_replace('/\s+/', ' ', strip_tags(preg_replace('#<(script|style)[^>]*>.*?</\1>#is', '', (string) $resp))));
             throw new \RuntimeException('Deejay: login failed (token ' . ($token !== '' ? 'sent' : 'MISSING') . '; site said: ' . mb_substr($said, 0, 160)
                 . '). Check the deejay.de login saved in the ICA Credentials form.');
