@@ -60,8 +60,17 @@ class BuyApprovalController extends Controller
     // ERP phone first, then the phone on the Sling profile with the SAME
     // email. (Matching through synced shifts sent Jon's test text to Zak on
     // 2026-10-08 because a shift was linked to the wrong person.)
+    // Sarah 2026-10-08: numbers she gave directly. Wins over everything.
+    const APPROVER_PHONES = [
+        'luis' => '+17868539780',
+        'zak' => '+16142308916',
+        'zakary' => '+16142308916',
+    ];
+
     public static function phoneFor(User $user)
     {
+        $known = self::APPROVER_PHONES[strtolower(trim((string) $user->first_name))] ?? null;
+        if ($known) return $known;
         $phone = trim((string) $user->contact_number);
         if ($phone !== '') return $phone;
         $email = strtolower(trim((string) $user->email));
@@ -141,6 +150,7 @@ class BuyApprovalController extends Controller
         }
 
         $rid = Str::random(24);
+        $code = (string) random_int(1000, 9999);
         $secret = Str::random(32);
         $photos = [];
         foreach ((array) $request->file('photos', []) as $i => $file) {
@@ -176,20 +186,30 @@ class BuyApprovalController extends Controller
             'notes' => (string) $request->input('notes'),
             'photos' => $photos,
             'status' => 'pending',
+            'code' => $code,
+            'approver_phone' => self::digits10($phone),
             'created_at' => now()->toDateTimeString(),
         ];
         self::save($rec);
 
         $link = route('buy-approval.show', ['token' => $rid . '-' . $secret]);
+        // Approval is by REPLY from the approver's own phone (checked in the
+        // signed Quo webhook). The link only shows the items and photos. Store
+        // Quo lines are shared inboxes, so a link-button approval could be
+        // tapped by anyone on that line, including the cashier.
+        $qty = (int) array_sum(array_column($lines, 'qty'));
         $msg = sprintf(
-            ($isTest ? 'TEST ' : '') . 'Buy approval%s: %s wants to pay $%s %s for %d item%s. The system says $%s. Approve or deny: %s',
+            '%sBuy approval%s: %s wants to pay $%s %s for %d item%s. The system says $%s. Reply YES %s to approve or NO %s to deny. See the items: %s',
+            $isTest ? 'TEST ' : '',
             $locationName ? ' (' . $locationName . ')' : '',
             $cashier->first_name,
             number_format($paid, 2),
             $pmLabel,
-            (int) array_sum(array_column($lines, 'qty')),
-            array_sum(array_column($lines, 'qty')) == 1 ? '' : 's',
+            $qty,
+            $qty == 1 ? '' : 's',
             number_format($auto, 2),
+            $code,
+            $code,
             $link
         );
         $line = array_search(stripos($locationName, 'pico') !== false ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
@@ -237,16 +257,48 @@ class BuyApprovalController extends Controller
         return view('buy_from_customer.approval', compact('rec', 'token', 'expired'));
     }
 
-    // Approver (no login): approve or deny.
+    public static function digits10($phone)
+    {
+        return substr(preg_replace('/\D+/', '', (string) $phone), -10);
+    }
+
+    // Called from the signed Quo webhook for every inbound text. "YES 1234" /
+    // "NO 1234" from the approver's own phone decides that request. A bare
+    // YES / NO works when they have exactly one pending request. Returns true
+    // when the text was an approval reply.
+    public static function handleReply($fromPhone, $text)
+    {
+        if (!preg_match('/^\s*(yes|y|ok|okay|approve|approved|no|n|deny|denied)\b\W*(\d{4})?/i', (string) $text, $m)) return false;
+        $from = self::digits10($fromPhone);
+        if (strlen($from) < 10 || !is_dir(self::dir())) return false;
+        $approve = in_array(strtolower($m[1]), ['yes', 'y', 'ok', 'okay', 'approve', 'approved'], true);
+        $code = $m[2] ?? null;
+
+        $pending = [];
+        foreach (glob(self::dir() . '/*.json') as $path) {
+            if (filemtime($path) < time() - self::VALID_HOURS * 3600) continue;
+            $rec = json_decode((string) file_get_contents($path), true);
+            if (!is_array($rec) || ($rec['status'] ?? '') !== 'pending') continue;
+            if (($rec['approver_phone'] ?? '') !== $from) continue;
+            if ($code !== null && ($rec['code'] ?? '') !== $code) continue;
+            $pending[] = $rec;
+        }
+        if (count($pending) !== 1) {
+            Log::info('BuyApproval: reply did not match exactly one pending request', ['from' => $from, 'matches' => count($pending)]);
+            return count($pending) > 0;
+        }
+        $rec = $pending[0];
+        $rec['status'] = $approve ? 'approved' : 'denied';
+        $rec['decided_at'] = now()->toDateTimeString();
+        $rec['decided_by_phone'] = $from;
+        self::save($rec);
+        return true;
+    }
+
+    // Link-button approval is off (shared Quo inbox); decisions come by reply.
     public function decide(Request $request, $token)
     {
-        $rec = $this->fromToken($token);
-        if ($rec['status'] === 'pending' && now()->diffInHours(\Carbon\Carbon::parse($rec['created_at'])) < self::VALID_HOURS) {
-            $rec['status'] = $request->input('decision') === 'approve' ? 'approved' : 'denied';
-            $rec['decided_at'] = now()->toDateTimeString();
-            $rec['decided_ip'] = $request->ip();
-            self::save($rec);
-        }
+        $this->fromToken($token);
         return redirect()->route('buy-approval.show', ['token' => $token]);
     }
 

@@ -38,13 +38,7 @@
 
     <div class="card">
         @if($rec['status'] === 'pending' && !$expired)
-            <form method="post" action="{{ route('buy-approval.decide', ['token' => $token]) }}">
-                @csrf
-                <div class="btns">
-                    <button type="submit" name="decision" value="approve" class="approve">Approve ${{ number_format($rec['paid'], 2) }}</button>
-                    <button type="submit" name="decision" value="deny" class="deny">Deny</button>
-                </div>
-            </form>
+            <div class="status">Reply YES {{ $rec['code'] ?? '' }} to the text to approve, or NO {{ $rec['code'] ?? '' }} to deny.</div>
         @elseif($rec['status'] === 'approved' || $rec['status'] === 'used')
             <div class="status" style="color:#2e7d32;">Approved. {{ $rec['cashier_name'] }} can finish the buy.</div>
         @elseif($rec['status'] === 'denied')

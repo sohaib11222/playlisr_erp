@@ -725,6 +725,13 @@ class QuoWebhookController extends Controller
                 $text = $resource['text'] ?? $resource['body'] ?? '';
                 $externalId = !empty($resource['id']) ? 'quo-msg-' . $resource['id'] : null;
 
+                // Buy approval replies ("YES 1234") from Luis / Zak.
+                try {
+                    \App\Http\Controllers\BuyApprovalController::handleReply($sender, (string) $text);
+                } catch (\Throwable $e) {
+                    Log::warning('Quo webhook: buy approval reply failed: ' . $e->getMessage());
+                }
+
                 $this->logCommunication($business_id, $system_user_id, $channel, $sender, (string) $text, $externalId);
             } elseif ($type === 'call.completed') {
                 // Quo has no subscribable "missed call" event on this plan —
