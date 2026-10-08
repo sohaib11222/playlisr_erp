@@ -54,7 +54,7 @@ class SupplierHarvestController extends Controller
     protected function cors($response)
     {
         // Each supplier portal the pull runs from.
-        $allowed = [self::ORIGIN, 'https://b2b.secretlydistribution.com'];
+        $allowed = [self::ORIGIN, 'https://b2b.secretlydistribution.com', 'https://b2b.redeyeworldwide.com'];
         $origin = request()->headers->get('Origin');
         return $response->header('Access-Control-Allow-Origin', in_array($origin, $allowed, true) ? $origin : self::ORIGIN)
             ->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -108,7 +108,7 @@ class SupplierHarvestController extends Controller
     {
         $biz = $this->businessForToken($request->query('token'));
         if (!$biz) return $this->cors(response()->json(['success' => false, 'msg' => 'Bad token'], 403));
-        if (!in_array($supplier, ['alliance', 'secretly'], true)) {
+        if (!in_array($supplier, ['alliance', 'secretly', 'redeye'], true)) {
             return $this->cors(response()->json(['success' => false, 'msg' => 'Unknown supplier'], 400));
         }
         $rows = json_decode((string) $request->getContent(), true);
@@ -148,7 +148,8 @@ class SupplierHarvestController extends Controller
                 'cost' => round($cost, 2),
                 'qty' => isset($r['qty']) ? (int) $r['qty'] : null,
                 'upc' => $k,
-                'url' => $supplier === 'alliance' ? self::ORIGIN . '/search?q=' . $k : null,
+                'url' => $supplier === 'alliance' ? self::ORIGIN . '/search?q=' . $k : (!empty($r['url']) ? (string) $r['url'] : null),
+                'checked_at' => date('c'),
             ];
         }
 
@@ -168,5 +169,28 @@ class SupplierHarvestController extends Controller
             'rows' => array_values($byKey),
         ]);
         return $this->cors(response()->json(['success' => true, 'saved' => count($clean), 'total' => count($byKey)]));
+    }
+
+    /**
+     * Redeye product-page ids for the barcodes we carry, taken from the last
+     * Redeye feed (their catalog lists no prices; each page has "Your cost").
+     * The browser pull re-reads those pages for today's price.
+     */
+    public function redeyeIds(Request $request)
+    {
+        $biz = $this->businessForToken($request->query('token'));
+        if (!$biz) return $this->cors(response()->json(['success' => false, 'msg' => 'Bad token'], 403));
+        $norm = function ($u) { return ltrim((string) preg_replace('/\D+/', '', (string) $u), '0'); };
+        $ours = [];
+        \DB::table('products')->where('business_id', $biz)->where('is_inactive', 0)
+            ->whereRaw("sku REGEXP '^[0-9 -]{11,16}$'")->orderBy('id')->select('id', 'sku')
+            ->chunk(10000, function ($rows) use (&$ours, $norm) { foreach ($rows as $r) { $ours[$norm($r->sku)] = true; } });
+        $feed = app(\App\Services\InventoryCheckService::class)->loadSupplierFeed($biz, 'redeye');
+        $ids = [];
+        foreach ((array) ($feed['rows'] ?? []) as $r) {
+            if (!isset($ours[$norm($r['upc'] ?? '')])) continue;
+            if (preg_match('#/products/details/(\d+)#', (string) ($r['url'] ?? ''), $m)) { $ids[$m[1]] = true; }
+        }
+        return $this->cors(response()->json(['success' => true, 'ids' => array_map('strval', array_keys($ids))]));
     }
 }

@@ -83,6 +83,7 @@ Route::middleware(['setData'])->group(function () {
     // CORS for webami.aent.com, outside auth + CSRF. See SupplierHarvestController.
     Route::options('/supplier-harvest/{any}', 'SupplierHarvestController@preflight')->where('any', '.*');
     Route::get('/supplier-harvest/upcs', 'SupplierHarvestController@upcs');
+    Route::get('/supplier-harvest/redeye-ids', 'SupplierHarvestController@redeyeIds');
     Route::post('/supplier-harvest/upload/{supplier}', 'SupplierHarvestController@upload');
 
     // Instagram DM webhook — signature-verified in the controller. GET is
