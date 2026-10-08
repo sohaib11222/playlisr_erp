@@ -158,22 +158,18 @@
                                 <input type="hidden" name="notify_on" value="{{ $pre['pickup'] ?? '' }}">
                                 <input type="hidden" name="store" value="{{ $wp['location'] }}">
                             @endif
-                            <select class="act-select" onchange="if (this.value === 'ready') { this.form.action = this.dataset.readyUrl; } if (this.value) { this.form.submit(); }" @if($canReady) data-ready-url="{{ route('events.overviewEventReady', ['preorderId' => $pre['id']]) }}" @endif aria-label="Order status">
+                            {{-- "Free giveaway" lives in this dropdown, not as a button on every row:
+                                 label-supplied prize, not our stock, no charge, un-rings any ERP sale. --}}
+                            @php $canGiveaway = $pre['type'] === 'event' && empty($pre['giveaway']); @endphp
+                            <select class="act-select" onchange="if (this.value === 'ready') { this.form.action = this.dataset.readyUrl; } if (this.value === 'giveaway') { this.form.action = this.dataset.giveawayUrl; } if (this.value) { this.form.submit(); }" @if($canReady) data-ready-url="{{ route('events.overviewEventReady', ['preorderId' => $pre['id']]) }}" @endif @if($canGiveaway) data-giveaway-url="{{ route('events.overviewEventGiveaway', ['preorderId' => $pre['id']]) }}" @endif aria-label="Order status">
                                 <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? ($readyFrom ? 'Ready on ' . gmdate('M j', $readyFrom) : 'Ready for Pickup') : 'Waiting' }}</option>
                                 @if($canReady)
                                     <option value="ready">{{ $streetTs && $streetTs > strtotime('today') ? 'Ready, notify on ' . gmdate('M j', $streetTs) : 'Ready for Pickup (notify now)' }}</option>
                                 @endif
                                 <option value="picked_up">Picked Up</option>
+                                @if($canGiveaway)<option value="giveaway">Free giveaway (not our stock)</option>@endif
                             </select>
                         </form>
-                        @if($pre['type'] === 'event' && empty($pre['giveaway']))
-                            {{-- Label-supplied prize: not our stock, no charge. Un-rings any ERP sale. --}}
-                            <form method="POST" action="{{ route('events.overviewEventGiveaway', ['preorderId' => $pre['id']]) }}" style="margin:0;">
-                                {{ csrf_field() }}
-                                <input type="hidden" name="filter" value="">
-                                <button type="submit" class="btn-ghost act-btn">Free giveaway</button>
-                            </form>
-                        @endif
                         @if($pre['type'] === 'event' && $pre['paidKnown'] && empty($pre['paid']) && empty($pre['giveaway']))
                             <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $pre['id']]) }}" style="margin:0;">
                                 {{ csrf_field() }}
