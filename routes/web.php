@@ -755,6 +755,49 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/ume-spotlights-bucket', 'InventoryCheckController@umeSpotlightsBucket');
     Route::get('/reports/inventory-check-assistant/supplier-diagnostics', 'InventoryCheckController@supplierDiagnostics');
     Route::get('/reports/inventory-check-assistant/supplier-coverage', 'InventoryCheckController@supplierCoverage');
+    // Which distributor is cheapest (Sarah 10/8): same barcode, head to head.
+    Route::get('/reports/inventory-check-assistant/supplier-compare', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        @ini_set('memory_limit', '1024M');
+        $ica = app(\App\Services\InventoryCheckService::class);
+        $ours = [];
+        \DB::table('products')->where('business_id', $biz)->where('is_inactive', 0)
+            ->whereRaw("sku REGEXP '^[0-9 -]{8,16}$'")->orderBy('id')->select('id', 'sku')
+            ->chunk(10000, function ($rows) use (&$ours, $ica) { foreach ($rows as $r) $ours[$ica->upcKey($r->sku)] = true; });
+        $by = []; $labels = [];
+        foreach ($ica->knownSuppliers() as $key => $meta) {
+            $feed = $ica->loadSupplierFeed($biz, $key);
+            foreach ((array) ($feed['rows'] ?? []) as $r) {
+                $u = $ica->upcKey($r['upc'] ?? ''); $c = (float) ($r['cost'] ?? 0);
+                if ($u === '' || $c <= 0) continue;
+                if (!isset($by[$u][$key]) || $c < $by[$u][$key]) $by[$u][$key] = $c;
+                $labels[$key] = $meta['label'] ?? $key;
+            }
+        }
+        $stat = [];
+        foreach ($by as $u => $s) {
+            if (count($s) < 2) continue;
+            $min = min($s); $carried = isset($ours[$u]);
+            foreach ($s as $k => $c) {
+                foreach ([$carried ? 'ours' : null, 'all'] as $scope) {
+                    if (!$scope) continue;
+                    $x = &$stat[$scope][$k];
+                    $x['shared'] = ($x['shared'] ?? 0) + 1;
+                    if ($c <= $min + 0.005) $x['cheapest'] = ($x['cheapest'] ?? 0) + 1;
+                    $x['over'] = ($x['over'] ?? 0) + ($c - $min);
+                    unset($x);
+                }
+            }
+        }
+        $out = [];
+        foreach ($stat as $scope => $rows) {
+            foreach ($rows as $k => $x) {
+                $out[$scope][] = ['supplier' => $labels[$k], 'titles_shared' => $x['shared'], 'cheapest_pct' => round(100 * ($x['cheapest'] ?? 0) / $x['shared']), 'avg_above_cheapest' => round($x['over'] / $x['shared'], 2)];
+            }
+            usort($out[$scope], function ($a, $b) { return $b['cheapest_pct'] <=> $a['cheapest_pct']; });
+        }
+        return response()->json($out);
+    });
     Route::get('/reports/inventory-check-assistant/supplier-backfill', 'InventoryCheckController@queueSupplierBackfill');
     Route::get('/reports/inventory-check-assistant/supplier-feeds', 'InventoryCheckController@listSupplierFeeds');
     Route::post('/reports/inventory-check-assistant/supplier-feeds', 'InventoryCheckController@uploadSupplierFeed');
