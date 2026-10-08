@@ -194,7 +194,9 @@
         .content .bfc-step-help, .content .bfc-running-note, .content .box-title,
         .content label, .content th, .content td, .content .meta-row, .content details summary { color: #111 !important; }
         .content .form-control::placeholder { color: #555 !important; opacity: 1; }
-        .content .alert.bfc-rules, .content .alert.bfc-rules * { color: #111 !important; background-color: #ffe08a !important; border-color: #e0b400 !important; }
+        .content .alert.bfc-rules { background: #fff !important; border: 1px solid #ddd !important; border-left: 5px solid #c62828 !important; border-radius: 6px; }
+        .content .alert.bfc-rules, .content .alert.bfc-rules * { color: #111 !important; background-color: transparent !important; }
+        .content h4.bfc-step-sub { font-size: 17px !important; font-weight: 700 !important; }
         .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
         .bfc-step-sub { font-size: 17px; font-weight: 700; margin: 16px 0 4px; }
         .bfc-step-help { font-size: 15px; color: #444; margin: 0 0 10px; }
