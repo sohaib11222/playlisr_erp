@@ -149,6 +149,7 @@
                         <tr class="ro-row @if($r['cant_order']) ro-cant @endif"
                             data-i="{{ $i }}"
                             data-pid="{{ $r['product_id'] }}"
+                            data-pids="{{ implode(',', $r['product_ids'] ?? []) }}"
                             data-genre="{{ $r['genre'] }}"
                             data-why="{{ implode(' ', $r['why']) }}"
                             data-text="{{ mb_strtolower($r['artist'] . ' ' . $r['title']) }}"
@@ -166,6 +167,7 @@
                                 <div class="ro-muted">{{ $r['supplier_upc'] ?: $r['sku'] }}
                                     @if($r['cant_order']) <span class="text-danger">Can't order: {{ $r['cant_order'] }}</span>@endif
                                     @if($r['used_note']) <span>{{ $r['used_note'] }}</span>@endif
+                                    @if(!empty($r['merged']))<div>Merged {{ count($r['merged']) }} entries: {{ implode(' | ', $r['merged']) }}</div>@endif
                                 </div>
                             </td>
                             <td>{{ $r['grade'] }}</td>
@@ -358,7 +360,7 @@
             tr.querySelector('.ro-order').value = calc(tr);
             var saved = tr.querySelector('.ro-saved');
             saved.textContent = '...';
-            $.post('/reports/reorder/count', $.extend({ _token: CSRF, product_id: tr.dataset.pid, qty: e.target.value }, Q))
+            $.post('/reports/reorder/count', $.extend({ _token: CSRF, product_id: tr.dataset.pid, product_ids: tr.dataset.pids, qty: e.target.value }, Q))
                 .done(function () { saved.textContent = 'saved'; })
                 .fail(function () { saved.textContent = 'not saved'; saved.style.color = '#c62828'; });
         }

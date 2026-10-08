@@ -88,7 +88,8 @@ class ReorderController extends Controller
         $pid = (int) $request->input('product_id');
         $raw = trim((string) $request->input('qty'));
         if (!$pid) return response()->json(['ok' => false], 422);
-        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '');
+        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '',
+            array_map('intval', array_filter(explode(',', (string) $request->input('product_ids', '')))));
         return response()->json(['ok' => true]);
     }
 

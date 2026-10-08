@@ -79,9 +79,13 @@ class ReorderService
     }
 
     /** Record a bin count (null clears it). Keyed by location + product. */
-    public function saveCount(int $business_id, int $locationId, int $productId, ?int $qty, string $by): void
+    public function saveCount(int $business_id, int $locationId, int $productId, ?int $qty, string $by, array $alsoClear = []): void
     {
         $state = $this->loadState($business_id);
+        // A merged album row is counted once: drop counts on its other copies.
+        foreach ($alsoClear as $other) {
+            if ((int) $other !== $productId) unset($state['counts'][$locationId . ':' . (int) $other]);
+        }
         $key = $locationId . ':' . $productId;
         if ($qty === null) {
             unset($state['counts'][$key]);
@@ -273,6 +277,69 @@ class ReorderService
         $sellDays = $this->daysToSell($business_id, $locationId, $pids);
         $onOrder = $this->onOrder($business_id, $locationId, $format, $orders, $pids);
 
+        // One row per album, like Clarissa's sheet: the same title is often
+        // in the ERP several times (manual entry, alternate cover, typo).
+        // Pool their sales, stock and orders under the copy with a barcode
+        // that sells best, so a title isn't under-ordered across 3 rows.
+        $byKey = [];
+        foreach ($pids as $pid) {
+            $k = $this->albumKey($meta[$pid]->artist, $meta[$pid]->name);
+            $byKey[$k === '' ? 'pid:' . $pid : $k][] = $pid;
+        }
+        // Rows with no artist join the one keyed album with that title.
+        $byTitle = [];
+        foreach (array_keys($byKey) as $k) {
+            if (strpos($k, '|') !== false && strpos($k, '|') > 0) $byTitle[substr($k, strpos($k, '|'))][] = $k;
+        }
+        foreach (array_keys($byKey) as $k) {
+            if (strpos($k, '|') === 0 && count($byTitle[$k] ?? []) === 1) {
+                $byKey[$byTitle[$k][0]] = array_merge($byKey[$byTitle[$k][0]], $byKey[$k]);
+                unset($byKey[$k]);
+            }
+        }
+        $rank = ['A' => 3, 'B' => 2, 'C' => 1];
+        $members = [];
+        foreach ($byKey as $group) {
+            usort($group, function ($x, $y) use ($meta, $agg) {
+                return [!empty($meta[$y]->upc), $agg[$y]['ytd'] ?? 0] <=> [!empty($meta[$x]->upc), $agg[$x]['ytd'] ?? 0];
+            });
+            $primary = $group[0];
+            $members[$primary] = $group;
+            if (count($group) === 1) continue;
+            $m = ['ytd' => 0, 'd10' => 0, 'since' => 0, 'months' => [], 'dates' => [], 'last' => null, 'daily' => []];
+            $sd = ['sum' => 0, 'n' => 0, 'sold' => 0, 'purchased' => 0];
+            foreach ($group as $g) {
+                $a = $agg[$g] ?? null;
+                if ($a) {
+                    foreach (['ytd', 'd10', 'since'] as $f) $m[$f] += $a[$f];
+                    $m['months'] += $a['months'];
+                    foreach ($a['daily'] ?? [] as $d => $q) $m['daily'][$d] = ($m['daily'][$d] ?? 0) + $q;
+                    if ($a['last'] && $a['last'] > $m['last']) $m['last'] = $a['last'];
+                }
+                if ($g !== $primary) {
+                    $erpStock[$primary] = ($erpStock[$primary] ?? 0) + ($erpStock[$g] ?? 0);
+                    $onOrder[$primary] = ($onOrder[$primary] ?? 0) + ($onOrder[$g] ?? 0);
+                    $cg = $locClass[$g] ?? '';
+                    if (($rank[$cg] ?? 0) > ($rank[$locClass[$primary] ?? ''] ?? 0)) {
+                        $locClass[$primary] = $cg;
+                        $abcxyz[$primary] = $abcxyz[$g] ?? ($abcxyz[$primary] ?? '');
+                    }
+                }
+                if (isset($sellDays[$g])) {
+                    if ($sellDays[$g]['avg'] !== null) {
+                        $sd['sum'] += $sellDays[$g]['avg'] * $sellDays[$g]['sold'];
+                        $sd['n'] += $sellDays[$g]['sold'];
+                    }
+                    $sd['sold'] += $sellDays[$g]['sold'];
+                    $sd['purchased'] += $sellDays[$g]['purchased'];
+                }
+            }
+            $m['dates'] = array_keys($m['daily']);
+            $agg[$primary] = $m;
+            $sellDays[$primary] = ['avg' => $sd['n'] ? round($sd['sum'] / $sd['n']) : null, 'sold' => $sd['sold'], 'purchased' => $sd['purchased']];
+        }
+        $pids = array_keys($members);
+
         $cover = (float) ($s['cover_months_' . $format] ?? $s['cover_months_vinyl']);
         $rows = [];
         foreach ($pids as $pid) {
@@ -318,6 +385,8 @@ class ReorderService
 
             $rows[] = $this->finishRow([
                 'product_id' => $pid,
+                'product_ids' => $members[$pid],
+                'merged' => count($members[$pid]) > 1 ? array_values(array_unique(array_map(function ($g) use ($meta) { return $meta[$g]->name; }, $members[$pid]))) : [],
                 'genre' => $this->genre($m->genre),
                 'artist' => $m->artist,
                 'title' => $m->name,
@@ -370,17 +439,17 @@ class ReorderService
         $count = null;
         $countAt = null;
         $countRaw = null;
-        if (!empty($r['product_id'])) {
-            $c = $state['counts'][$locationId . ':' . $r['product_id']] ?? null;
+        foreach ($r['product_ids'] ?? [] as $cpid) {
+            $c = $state['counts'][$locationId . ':' . $cpid] ?? null;
             if ($c && Carbon::parse($c['at'])->gt(Carbon::now()->subDays((int) $s['count_fresh_days']))) {
                 // Copies sold after the count have left the bin.
-                $countRaw = (int) $c['qty'];
+                $countRaw = (int) $countRaw + (int) $c['qty'];
                 $soldAfter = 0;
                 foreach ($r['daily'] ?? [] as $d => $q) {
                     if ($d > substr($c['at'], 0, 10)) $soldAfter += $q;
                 }
-                $count = max(0, $countRaw - (int) $soldAfter);
-                $countAt = $c['at'];
+                $count = max(0, (int) $countRaw - (int) $soldAfter);
+                $countAt = max((string) $countAt, $c['at']);
             }
         }
         unset($r['daily']);
@@ -709,7 +778,10 @@ class ReorderService
             $x = preg_replace('/[^a-z0-9]+/u', ' ', $x);
             return trim(preg_replace('/\s+/', ' ', $x));
         };
-        $a = $norm($artist);
+        $toks = array_filter(explode(' ', $norm($artist)));
+        sort($toks);
+        $a = implode(' ', $toks);
+        if (in_array($a, ['various', 'various artists', 'artists various', 'soundtrack', 'unknown'], true)) $a = 'various';
         $t = $norm($name);
         return $t === '' ? '' : $a . '|' . $t;
     }
