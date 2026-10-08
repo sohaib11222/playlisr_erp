@@ -492,6 +492,7 @@ class EventsController extends Controller
                         'statusLabel' => str_replace('_', ' ', $status),
                         'notifiedAt'  => $p['notifiedAt'] ?? null,
                         'remindedAt'  => $p['remindedAt'] ?? null,
+                        'giveaway'    => !empty($p['giveaway']),
                         'active'      => $active,
                     ];
                 }
@@ -614,6 +615,19 @@ class EventsController extends Controller
             return $this->overviewRedirect($request, 'error', ($resp['message'] ?? null) ?: 'Could not reach the website to send the reminder.');
         }
         return $this->overviewRedirect($request, 'status', $resp['message'] ?? 'Reminder sent.');
+    }
+
+    /** Mark a listening-party preorder as a free giveaway (label-supplied prize, not our stock). */
+    public function overviewEventGiveaway(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/giveaway', ['giveaway' => true]);
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return $this->overviewRedirect($request, 'error', ($resp['message'] ?? null) ?: 'Could not reach the website to update the preorder.');
+        }
+        return $this->overviewRedirect($request, 'status', $resp['message'] ?? 'Marked as a free giveaway.');
     }
 
     /** Mark an in-store special-order preorder picked up (fulfilled). */

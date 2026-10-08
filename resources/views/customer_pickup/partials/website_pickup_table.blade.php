@@ -94,7 +94,9 @@
                 <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
                 <td data-order="{{ $wp['total'] ?? 0 }}">
                     @if($wp['total'] !== null)<div>${{ number_format($wp['total'], 2) }}</div>@endif
-                    @if(array_key_exists('paid', $wp) && $wp['paid'] === null)
+                    @if(!empty($wp['giveaway']))
+                        <span class="pill pill-paid">Free giveaway</span>
+                    @elseif(array_key_exists('paid', $wp) && $wp['paid'] === null)
                         <span class="sub">—</span>
                     @elseif(!empty($wp['paid']))
                         <span class="pill pill-paid">Paid</span>
@@ -164,7 +166,15 @@
                                 <option value="picked_up">Picked Up</option>
                             </select>
                         </form>
-                        @if($pre['type'] === 'event' && $pre['paidKnown'] && empty($pre['paid']))
+                        @if($pre['type'] === 'event' && empty($pre['giveaway']))
+                            {{-- Label-supplied prize: not our stock, no charge. Un-rings any ERP sale. --}}
+                            <form method="POST" action="{{ route('events.overviewEventGiveaway', ['preorderId' => $pre['id']]) }}" style="margin:0;">
+                                {{ csrf_field() }}
+                                <input type="hidden" name="filter" value="">
+                                <button type="submit" class="btn-ghost act-btn">Free giveaway</button>
+                            </form>
+                        @endif
+                        @if($pre['type'] === 'event' && $pre['paidKnown'] && empty($pre['paid']) && empty($pre['giveaway']))
                             <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $pre['id']]) }}" style="margin:0;">
                                 {{ csrf_field() }}
                                 <input type="hidden" name="filter" value="">

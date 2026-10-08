@@ -224,8 +224,10 @@ class CustomerPickupController extends Controller
                 'phone'         => $p['phone'] ?? '',
                 'items'         => [$p['item']],
                 'unitCount'     => 1,
-                'total'         => $p['price'],
-                'paid'          => $p['paidKnown'] ? (bool) $p['paid'] : null,
+                // Free giveaway: no price, no paid/unpaid (Sarah, 2026-10-08).
+                'total'         => !empty($p['giveaway']) ? null : $p['price'],
+                'paid'          => (!empty($p['giveaway']) || !$p['paidKnown']) ? null : (bool) $p['paid'],
+                'giveaway'      => !empty($p['giveaway']),
                 'paymentMethod' => '',
                 'location'      => $p['location'] ?? '',
                 'placed'        => $p['placed'] ?? null,

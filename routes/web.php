@@ -610,6 +610,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
     Route::post('/events-preorders/event/{preorderId}/ready', 'EventsController@overviewMarkEventReady')->name('events.overviewEventReady');
     Route::post('/events-preorders/event/{preorderId}/remind', 'EventsController@overviewRemindEvent')->name('events.overviewEventRemind');
+    Route::post('/events-preorders/event/{preorderId}/giveaway', 'EventsController@overviewEventGiveaway')->name('events.overviewEventGiveaway');
     Route::post('/events-preorders/event/{preorderId}/paid', 'EventsController@overviewMarkEventPaid')->name('events.overviewEventPaid');
     Route::post('/events-preorders/event/{preorderId}/source', 'EventsController@overviewSetEventSource')->name('events.overviewEventSource');
     Route::post('/events-preorders/special/{id}/pickup', 'EventsController@overviewMarkSpecialPickedUp')->name('events.overviewSpecialPickup');
