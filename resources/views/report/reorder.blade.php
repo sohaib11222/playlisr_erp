@@ -31,7 +31,7 @@
 </style>
 
 <section class="content-header">
-    <h1>Weekly Reorder <small>{{ $storeName }}, sealed {{ $format === 'cd' ? 'CDs' : 'vinyl' }}</small></h1>
+    <h1>Weekly Reorder <small>{{ $storeName }}, sealed {{ ['cd' => 'CDs', 'cassette' => 'cassettes'][$format] ?? 'vinyl' }}</small></h1>
 </section>
 
 <section class="content">
@@ -55,6 +55,7 @@
                     <select name="format" class="form-control" onchange="this.form.submit()">
                         <option value="vinyl" @if($format === 'vinyl') selected @endif>Sealed vinyl</option>
                         <option value="cd" @if($format === 'cd') selected @endif>Sealed CDs</option>
+                        <option value="cassette" @if($format === 'cassette') selected @endif>Sealed cassettes</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -250,6 +251,7 @@
                         <table class="table table-condensed">
                             <tr><td>Months of cover, vinyl</td><td><input name="cover_months_vinyl" class="form-control ro-num" value="{{ $settings['cover_months_vinyl'] }}"></td></tr>
                             <tr><td>Months of cover, CDs</td><td><input name="cover_months_cd" class="form-control ro-num" value="{{ $settings['cover_months_cd'] }}"></td></tr>
+                            <tr><td>Months of cover, cassettes</td><td><input name="cover_months_cassette" class="form-control ro-num" value="{{ $settings['cover_months_cassette'] }}"></td></tr>
                             <tr><td>ABC factor A / B / C</td><td style="display:flex;gap:4px;">
                                 @foreach(['A','B','C'] as $k)<input name="abc_{{ $k }}" class="form-control ro-num" value="{{ $settings['abc_factor'][$k] }}">@endforeach</td></tr>
                             <tr><td>XYZ factor X / Y / Z</td><td style="display:flex;gap:4px;">

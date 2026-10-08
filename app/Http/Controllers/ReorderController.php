@@ -36,7 +36,7 @@ class ReorderController extends Controller
                 return stripos($n, 'hollywood') !== false;
             }, $locations)) ?: array_key_first($locations));
         }
-        $format = $request->input('format') === 'cd' ? 'cd' : 'vinyl';
+        $format = in_array($request->input('format'), ['cd', 'cassette'], true) ? $request->input('format') : 'vinyl';
         $since = $request->input('since');
         $since = $since && preg_match('/^\d{4}-\d{2}-\d{2}$/', $since) ? $since : null;
         return [$business_id, $locations, $locationId, $format, $since];
@@ -162,6 +162,7 @@ class ReorderController extends Controller
         $this->svc->saveSettings($business_id, [
             'cover_months_vinyl' => $num('cover_months_vinyl', $d['cover_months_vinyl'], 0.1, 6),
             'cover_months_cd'    => $num('cover_months_cd', $d['cover_months_cd'], 0.1, 6),
+            'cover_months_cassette' => $num('cover_months_cassette', $d['cover_months_cassette'], 0.1, 12),
             'abc_factor' => ['A' => $num('abc_A', 1.25, 0, 3), 'B' => $num('abc_B', 1, 0, 3), 'C' => $num('abc_C', 0.75, 0, 3)],
             'xyz_factor' => ['X' => $num('xyz_X', 1, 0, 3), 'Y' => $num('xyz_Y', 0.9, 0, 3), 'Z' => $num('xyz_Z', 0.75, 0, 3)],
             'bought_once_days' => (int) $num('bought_once_days', 90, 1, 365),

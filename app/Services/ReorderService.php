@@ -25,6 +25,7 @@ class ReorderService
     const DEFAULT_SETTINGS = [
         'cover_months_vinyl' => 1.0,   // vinyl ordered less often: ~1 month of cover
         'cover_months_cd'    => 0.5,   // CDs ordered weekly: ~half a month
+        'cover_months_cassette' => 3.0, // Clarissa's cassette sheet keeps 3 months
         'abc_factor'         => ['A' => 1.25, 'B' => 1.0, 'C' => 0.75],
         'xyz_factor'         => ['X' => 1.0, 'Y' => 0.9, 'Z' => 0.75],
         'pace_weight_recent' => 0.4,   // 40% last 10 days, 60% this year's monthly avg
@@ -174,10 +175,11 @@ class ReorderService
      */
     public function categoryIds(int $business_id, string $condition, string $format): array
     {
-        $fmt = $format === 'cd' ? '/\bcds?\b|compact disc/i' : '/vinyl|\blps?\b/i';
+        $fmt = $format === 'cd' ? '/\bcds?\b|compact disc/i'
+            : ($format === 'cassette' ? '/cassette|\btapes?\b/i' : '/vinyl|\blps?\b/i');
         $out = [];
         foreach (Category::where('business_id', $business_id)->where('category_type', 'product')->get(['id', 'name']) as $c) {
-            if (stripos($c->name, $condition) !== false && preg_match($fmt, $c->name) && stripos($c->name, 'cassette') === false) {
+            if (stripos($c->name, $condition) !== false && preg_match($fmt, $c->name) && ($format === 'cassette' || stripos($c->name, 'cassette') === false)) {
                 $out[(int) $c->id] = $c->name;
             }
         }
@@ -185,14 +187,14 @@ class ReorderService
     }
 
     /**
-     * @param string $format 'vinyl' | 'cd'
+     * @param string $format 'vinyl' | 'cd' | 'cassette'
      * @param string|null $since override "last order" date (Y-m-d)
      */
     public function build(int $business_id, int $locationId, string $format, ?string $since = null): array
     {
         $state = $this->loadState($business_id);
         $s = $state['settings'];
-        $label = $format === 'cd' ? 'CD' : 'Vinyl';
+        $label = $format === 'cd' ? 'CD' : ($format === 'cassette' ? 'Cassette' : 'Vinyl');
         $sealedNames = $this->categoryIds($business_id, 'sealed', $format);
         $usedNames = $this->categoryIds($business_id, 'used', $format);
         $sealedCats = array_keys($sealedNames);
@@ -271,7 +273,7 @@ class ReorderService
         $sellDays = $this->daysToSell($business_id, $locationId, $pids);
         $onOrder = $this->onOrder($business_id, $locationId, $format, $orders, $pids);
 
-        $cover = $format === 'cd' ? (float) $s['cover_months_cd'] : (float) $s['cover_months_vinyl'];
+        $cover = (float) ($s['cover_months_' . $format] ?? $s['cover_months_vinyl']);
         $rows = [];
         foreach ($pids as $pid) {
             $m = $meta[$pid];
