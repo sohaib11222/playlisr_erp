@@ -1937,4 +1937,58 @@ class InventoryCheckController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    /**
+     * Plain-text coverage: of every active SEALED product, how many have an
+     * AMS / Alliance / any distributor price (same matcher as the Distributor
+     * prices column). Read-only.
+     */
+    public function supplierCoverage(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        $business_id = $request->session()->get('user.business_id');
+        $stat = [];
+        DB::table('products as p')
+            ->join('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)
+            ->whereRaw("LOWER(c.name) LIKE '%sealed%'")
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat',
+                DB::raw('(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id) as stock'))
+            ->orderBy('p.id')
+            ->chunk(2000, function ($rows) use (&$stat, $business_id) {
+                foreach ($rows as $p) {
+                    $cat = (string) $p->cat;
+                    $inStock = (float) $p->stock > 0;
+                    foreach ([$cat, 'ALL SEALED'] as $k) {
+                        foreach ([$k, $k . ' (in stock)'] as $kk) {
+                            if ($kk !== $k && !$inStock) continue;
+                            $stat[$kk] = $stat[$kk] ?? ['n' => 0, 'ams' => 0, 'alliance' => 0, 'any' => 0, 'both' => 0, 'barcode' => 0];
+                        }
+                    }
+                    $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist, $p->name, $cat, $p->sku);
+                    $keys = array_column($prices, 'supplier_key');
+                    $ams = in_array('ams', $keys, true); $al = in_array('alliance', $keys, true);
+                    $bc = (bool) preg_match('/^[0-9 -]{11,16}$/', (string) $p->sku);
+                    foreach ([$cat, 'ALL SEALED'] as $k) {
+                        foreach ($inStock ? [$k, $k . ' (in stock)'] : [$k] as $kk) {
+                            $stat[$kk]['n']++;
+                            if ($ams) $stat[$kk]['ams']++;
+                            if ($al) $stat[$kk]['alliance']++;
+                            if ($ams || $al || $prices) $stat[$kk]['any']++;
+                            if ($ams && $al) $stat[$kk]['both']++;
+                            if ($bc) $stat[$kk]['barcode']++;
+                        }
+                    }
+                }
+            });
+        ksort($stat);
+        $L = ['SEALED PRODUCT PRICE COVERAGE (active products)', ''];
+        foreach ($stat as $k => $v) {
+            $pc = function ($x) use ($v) { return $v['n'] ? round(100 * $x / $v['n']) . '%' : '-'; };
+            $L[] = sprintf('%-32s %6d products | AMS %6d (%s) | Alliance %6d (%s) | both %6d | any distributor %6d (%s) | real barcode %6d (%s)',
+                $k, $v['n'], $v['ams'], $pc($v['ams']), $v['alliance'], $pc($v['alliance']), $v['both'], $v['any'], $pc($v['any']), $v['barcode'], $pc($v['barcode']));
+        }
+        return response(implode("\n", $L), 200)->header('Content-Type', 'text/plain; charset=UTF-8');
+    }
 }
