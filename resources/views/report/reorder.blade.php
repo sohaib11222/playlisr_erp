@@ -319,7 +319,7 @@
         if (BLANK === 'zero') return Math.max(0, sug - onord);
         var once = /\b(once|used)\b/.test(d.why);
         var base = once ? Math.max(1, +d.since) : +d.since;
-        if (base === 0 && +d.erp <= 0 && +d.onorder === 0 && (/\bcore\b/.test(d.why) || +d.ytd >= 2)) base = Math.max(1, sug);
+        if (base === 0 && +d.erp <= 0 && +d.onorder === 0 && (/\bcore\b/.test(d.why) || +d.ytd >= 3)) base = Math.max(1, sug);
         return Math.max(0, Math.min(base, Math.max(sug, 1)));
     }
 
