@@ -118,7 +118,7 @@
                         @endif
                         @if(!empty($pre['pickup']))<span class="status-sub">Pickup {{ date('D M j', strtotime($pre['pickup'])) }}</span>@endif
                         @if($wp['status'] === 'ready_for_pickup')
-                            <span class="status-sub">{{ !empty($pre['notifiedAt']) ? 'Customer notified' : ($readyFrom ? 'Customer gets text + email ' . gmdate('M j', $readyFrom) . ' 9am' : 'Not notified yet') }}</span>
+                            <span class="status-sub">{{ !empty($pre['notifiedAt']) ? 'Customer notified' : ($readyFrom ? 'Customer gets text + email ' . gmdate('M j', $readyFrom) . (gmdate('w', $readyFrom) === '0' ? ' 9am' : ' 10am') : 'Not notified yet') }}</span>
                         @endif
                     @elseif(!empty($wp['waitingStock']))
                         <span class="label" style="background:#6a5acd;">Waiting on Stock</span>
