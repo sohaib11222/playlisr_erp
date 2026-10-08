@@ -266,8 +266,8 @@
     <div class="alert alert-warning bfc-rules">
         <strong>Buying rules</strong>
         <ol style="margin:6px 0 0; padding-left:20px;">
-            <li>You must pay the number the system gives you. Overpaying costs the business a lot of money, and anyone who keeps overpaying will lose buying privileges.</li>
-            <li>If you are unsure or need approval, call your store manager.</li>
+            <li>You must pay the number the system gives you. Overpaying costs the store a lot of money and anyone who overpays too frequently will lose buying privileges.</li>
+            <li>If you are unsure or need approval, please call your store manager to help you.</li>
         </ol>
     </div>
 
