@@ -4269,8 +4269,9 @@ class ProductController extends Controller
                         'artist'              => $productData['artist'] ?? null,
                         'sku'                 => (!empty($productData['sku']) ? $productData['sku'] : 111),
                         'brand_id'            => null,
-                        'category_id'         => $productData['category_id'] ?? null,
-                        'sub_category_id'     => $productData['sub_category_id'] ?? null,
+                        'category_id'         => !empty($productData['category_id']) ? $productData['category_id'] : null,
+                        // Blank or 0 ("none") must be NULL — 0 violates the categories FK.
+                        'sub_category_id'     => !empty($productData['sub_category_id']) ? $productData['sub_category_id'] : null,
                         'tax'                 => 1,
                         'tax_type'            => 'exclusive',
                         'alert_quantity'      => 1,
