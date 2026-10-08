@@ -362,10 +362,11 @@
         render();
     });
 
+    // Full redraw (filter, sort, genre headers): only when those change.
     function render() {
         var genre = document.getElementById('ro-genre').value;
         var text = document.getElementById('ro-search').value.toLowerCase().trim();
-        var counts = {}, lastGenre = null, lists = {}, noUpc = 0, titles = 0, copies = 0, cost = 0;
+        var lastGenre = null;
         document.querySelectorAll('tr.ro-genre').forEach(function (g) { g.remove(); });
         var ordered = rows.slice();
         if (sortKey !== 'genre') {
@@ -377,20 +378,12 @@
                 return (x < y ? -1 : 1) * sortDir;
             });
         }
-        ordered.forEach(function (tr) { tbody.appendChild(tr); });
+        var frag = document.createDocumentFragment();
+        ordered.forEach(function (tr) { frag.appendChild(tr); });
+        tbody.appendChild(frag);
         ordered.forEach(function (tr) {
             var d = tr.dataset, q = orderOf(tr);
             tr.classList.toggle('ro-zero', q === 0);
-            d.why.split(' ').forEach(function (w) { counts[w] = (counts[w] || 0) + 1; });
-            if (q > 0) {
-                titles++; copies += q; cost += q * (+d.cost || 0);
-                if (d.upc) {
-                    var L = lists[d.supplier] = lists[d.supplier] || { lines: [], copies: 0, cost: 0 };
-                    L.lines.push(d.upc + ' ' + q);
-                    L.copies += q;
-                    L.cost += q * (+d.cost || 0);
-                } else noUpc++;
-            }
             // A row you just edited stays put (even at 0) until you change the filter.
             var show = (d.keep === '1' || filter === 'all' || (filter === 'order' ? q > 0 : (' ' + d.why + ' ').indexOf(' ' + filter + ' ') >= 0))
                 && (!genre || d.genre === genre)
@@ -403,6 +396,26 @@
                 g.firstChild.textContent = d.genre;
                 tr.parentNode.insertBefore(g, tr);
                 lastGenre = d.genre;
+            }
+        });
+        totals();
+    }
+
+    // Counts, order lists, budget and summary. Cheap: no DOM moves.
+    var totalsQueued = false;
+    function totals() {
+        var counts = {}, lists = {}, noUpc = 0, titles = 0, copies = 0, cost = 0;
+        rows.forEach(function (tr) {
+            var d = tr.dataset, q = orderOf(tr);
+            d.why.split(' ').forEach(function (w) { counts[w] = (counts[w] || 0) + 1; });
+            if (q > 0) {
+                titles++; copies += q; cost += q * (+d.cost || 0);
+                if (d.upc) {
+                    var L = lists[d.supplier] = lists[d.supplier] || { lines: [], copies: 0, cost: 0 };
+                    L.lines.push(d.upc + ' ' + q);
+                    L.copies += q;
+                    L.cost += q * (+d.cost || 0);
+                } else noUpc++;
             }
         });
         Object.keys(counts).forEach(function (k) {
@@ -453,7 +466,11 @@
         render();
     });
     document.getElementById('ro-genre').addEventListener('change', render);
-    document.getElementById('ro-search').addEventListener('input', render);
+    var searchTimer;
+    document.getElementById('ro-search').addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(render, 250);
+    });
 
     document.getElementById('ro-table').addEventListener('change', function (e) {
         var tr = e.target.closest('tr.ro-row');
@@ -467,7 +484,12 @@
                 .done(function () { saved.textContent = 'saved'; })
                 .fail(function () { saved.textContent = 'not saved'; saved.style.color = '#c62828'; });
         }
-        render();
+        // Just this row + the totals; the table itself doesn't move.
+        tr.classList.toggle('ro-zero', orderOf(tr) === 0);
+        if (!totalsQueued) {
+            totalsQueued = true;
+            setTimeout(function () { totalsQueued = false; totals(); }, 150);
+        }
     });
 
     document.getElementById('ro-mark').addEventListener('click', function () {
