@@ -40,7 +40,13 @@
                 $storeLabel = $wp['location'] === 'pico' ? 'Pico' : ($wp['location'] === 'hollywood' || !$pre ? 'Hollywood' : '—');
             @endphp
             <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
-                <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
+                @php
+                    // Number only the Waiting rows on first paint, so the # count
+                    // doesn't skip before the tabs kick in (Sarah, 2026-10-08).
+                    $rowOlder = !$pickedUp && isset($isOlder) && $isOlder($wp);
+                    if (!$pickedUp && !$rowOlder) { $waitNo = ($waitNo ?? 0) + 1; }
+                @endphp
+                <td data-order="{{ $loop->iteration }}">{{ (!$pickedUp && !$rowOlder) ? $waitNo : '' }}</td>
                 <td data-order="{{ $sourceLabel }}">
                     <span class="src-tag">{{ $sourceLabel }}</span>
                     @if($storeLabel !== '—')<span class="status-sub">{{ $storeLabel }}</span>@endif
