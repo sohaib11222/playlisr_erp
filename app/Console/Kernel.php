@@ -100,8 +100,10 @@ class Kernel extends ConsoleKernel
         // the Wednesday ordering pass. Each fetcher skips itself if its
         // .env credentials aren't set, so this is safe to ship before
         // every supplier is wired up. Sarah 2026-05-21.
+        // Moved 2026-10-08 (Sarah): Sunday 11pm PT, after close, together
+        // with the browser pulls (Alliance/Secretly/Redeye/Monostereo).
         $schedule->command('supplier-prices:fetch all --full')
-            ->weeklyOn(1, '06:00')
+            ->weeklyOn(0, '23:00')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(120);
 

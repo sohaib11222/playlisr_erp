@@ -404,6 +404,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
     Route::get('/price-new-buys', 'PriceBuysController@index');
+    Route::get('/reports/supplier-price-pulls', function () {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') { abort(403, 'Owner-only.'); }
+        $token = \App\Http\Controllers\SupplierHarvestController::tokenFor((int) request()->session()->get('user.business_id'));
+        return view('report.supplier_pulls', compact('token'));
+    });
     Route::get('/reports/alliance-price-pull', function () {
         $u = auth()->user();
         if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') { abort(403, 'Owner-only.'); }
