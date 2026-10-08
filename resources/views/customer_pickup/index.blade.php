@@ -133,11 +133,6 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             return ($w['status'] ?? '') !== 'picked_up' && $ts && $ts < $olderCutoff;
         };
         $olderCount = count(array_filter($websitePickups, $isOlder));
-        // Event pickups (Axis Mundi) don't need a street date, so the
-        // column only shows when some other order has one (Sarah, 2026-10-06).
-        $showStreetDate = collect($websitePickups)->contains(function ($w) {
-            return !empty($w['shipDate']) && !preg_grep('/axis mundi/i', $w['items']);
-        });
         $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in'];
         $wpPickedCount = collect($websitePickups)->where('status', 'picked_up')->count();
         $wpWaitingCount = count($websitePickups) - $wpPickedCount - $olderCount;

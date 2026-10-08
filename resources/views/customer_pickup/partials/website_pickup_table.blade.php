@@ -1,13 +1,13 @@
 {{-- One pickup list: website orders, in-store event holds, and party /
      special-order preorders (Sarah, 2026-10-08). Older (30+ day) rows get
-     .row-older for the Older tab. Expects $rows, $tableId, $showStreetDate. --}}
+     .row-older for the Older tab. Expects $rows, $tableId. --}}
 <div class="table-responsive">
 <table class="table wp-table" id="{{ $tableId }}" style="width:100%; font-size:13px;">
     <thead>
         <tr>
             <th>#</th>
             <th>Store</th>
-            <th>Source</th>
+            <th>Type</th>
             <th>Name</th>
             <th>Email</th>
             <th>Phone</th>
@@ -15,9 +15,7 @@
             <th>Qty</th>
             <th>Paid</th>
             <th>Placed</th>
-            @if($showStreetDate)
             <th>Street Date</th>
-            @endif
             <th>Status</th>
             <th>Action</th>
         </tr>
@@ -90,9 +88,7 @@
                     @if($methodLabel !== '') <span class="sub">{{ $methodLabel }}</span> @endif
                 </td>
                 <td class="sub" data-order="{{ $placedTs }}" >@if($placedTs){{ date('n/j/y', $placedTs) }}<br>{{ date('g:ia', $placedTs) }}@else — @endif</td>
-                @if($showStreetDate)
                 <td data-order="{{ $shipTs ?: 0 }}" style="white-space:nowrap;">{{ ($shipTs && !$eventPickup) ? gmdate('n/j/y', $shipTs) : '—' }}</td>
-                @endif
                 <td data-order="{{ $statusSort }}">
                     @if($pickedUp)
                         <span class="label" style="background:#2e7d32;">Picked up</span>

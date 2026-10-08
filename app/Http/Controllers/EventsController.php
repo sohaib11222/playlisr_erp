@@ -476,6 +476,7 @@ class EventsController extends Controller
                         'sourceTag'   => 'Listening party',
                         'placed'      => $p['createdAt'] ?? null,
                         'pickup'      => $pickup,
+                        'streetDate'  => $eventById[$eid]['streetDate'] ?? null,
                         'paid'        => !empty($p['paid']),
                         'paidKnown'   => true,
                         'status'      => $status,

@@ -231,7 +231,7 @@ class CustomerPickupController extends Controller
                 'placed'        => $p['placed'] ?? null,
                 'status'        => $pickedUp ? 'picked_up' : (($p['status'] ?? '') === 'ready' ? 'ready_for_pickup' : 'preorder'),
                 'isPreorder'    => false,
-                'shipDate'      => null,
+                'shipDate'      => $p['streetDate'] ?? null,
             ];
         }
 
