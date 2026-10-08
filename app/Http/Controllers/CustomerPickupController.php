@@ -156,7 +156,7 @@ class CustomerPickupController extends Controller
 
         // Party + in-store-special-order preorders, folded in so this page is
         // the one place to see everything a customer is waiting on.
-        $preorderShowAll = request()->input('preorder_status') === 'all';
+        $preorderShowAll = false; // one merged list now; canceled stay hidden
         [$preorders, $preorderKeySet, $preorderReachable] = (new \App\Http\Controllers\EventsController())
             ->preordersRows($business_id, $preorderShowAll);
 
@@ -210,6 +210,31 @@ class CustomerPickupController extends Controller
                 'shipDate'      => null,
             ];
         }
+        // Party + special-order preorders live in the same list now, not
+        // their own table (Sarah, 2026-10-08). Canceled ones stay hidden.
+        foreach ($preorders as $p) {
+            $pickedUp = $p['statusLabel'] === 'picked up';
+            if (empty($p['active']) && !$pickedUp) { continue; }
+            $websitePickups[] = [
+                'id'            => $p['id'],
+                'source'        => 'preorder',
+                'pre'           => $p,
+                'customer'      => $p['name'],
+                'email'         => $p['email'] ?? '',
+                'phone'         => $p['phone'] ?? '',
+                'items'         => [$p['item']],
+                'unitCount'     => 1,
+                'total'         => $p['price'],
+                'paid'          => $p['paidKnown'] ? (bool) $p['paid'] : null,
+                'paymentMethod' => '',
+                'location'      => '',
+                'placed'        => $p['placed'] ?? null,
+                'status'        => $pickedUp ? 'picked_up' : (($p['status'] ?? '') === 'ready' ? 'ready_for_pickup' : 'preorder'),
+                'isPreorder'    => false,
+                'shipDate'      => null,
+            ];
+        }
+
         // Keep picked-up rows at the bottom (stable for everything else).
         $i = 0;
         $websitePickups = collect($websitePickups)
