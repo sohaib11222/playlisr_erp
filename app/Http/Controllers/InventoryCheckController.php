@@ -1943,6 +1943,20 @@ class InventoryCheckController extends Controller
      * AMS / Alliance / any distributor price (same matcher as the Distributor
      * prices column). Read-only.
      */
+    protected $unpriced = [];
+    protected $pricedKeys = [];
+
+    /** Order-insensitive album key + format family (same idea as the old-listings page). */
+    protected function dupKey($name, $cat)
+    {
+        $s = mb_strtolower(html_entity_decode((string) $name, ENT_QUOTES));
+        $s = preg_replace('/\([^)]*\)|\[[^\]]*\]/u', ' ', $s);
+        $w = preg_split('/[^a-z0-9]+/u', str_replace('&', ' and ', $s), -1, PREG_SPLIT_NO_EMPTY);
+        $w = array_values(array_filter($w, function ($x) { return !in_array($x, ['the', 'lp', 'vinyl', 'cd', 'sealed', 'x', 'and'], true); }));
+        sort($w);
+        return implode(' ', $w) . '|' . $this->inventoryCheckService->formatFamily($cat);
+    }
+
     public function supplierCoverage(Request $request)
     {
         @set_time_limit(0);
@@ -1967,6 +1981,13 @@ class InventoryCheckController extends Controller
                         }
                     }
                     $prices = $this->inventoryCheckService->allSupplierPrices($business_id, $p->artist, $p->name, $cat, $p->sku);
+                    if (empty($prices)) {
+                        // Unpriced: is it a duplicate of a listing that IS priced?
+                        $k = $this->dupKey($p->name, $cat);
+                        $this->unpriced[] = ['id' => (int) $p->id, 'key' => $k, 'barcode' => (bool) preg_match('/^[0-9 -]{11,16}$/', (string) $p->sku), 'stock' => (float) $p->stock, 'name' => $p->name];
+                    } else {
+                        $this->pricedKeys[$this->dupKey($p->name, $cat)] = true;
+                    }
                     $keys = array_column($prices, 'supplier_key');
                     $ams = in_array('ams', $keys, true); $al = in_array('alliance', $keys, true);
                     $bc = (bool) preg_match('/^[0-9 -]{11,16}$/', (string) $p->sku);
@@ -1984,6 +2005,18 @@ class InventoryCheckController extends Controller
             });
         ksort($stat);
         $L = ['SEALED PRODUCT PRICE COVERAGE (active products)', ''];
+        $u = $this->unpriced; $n = count($u);
+        $noBc = count(array_filter($u, function ($x) { return !$x['barcode']; }));
+        $dupOfPriced = array_filter($u, function ($x) { return isset($this->pricedKeys[$x['key']]); });
+        $keyCount = []; foreach ($u as $x) { $keyCount[$x['key']] = ($keyCount[$x['key']] ?? 0) + 1; }
+        $dupAmongUnpriced = count(array_filter($u, function ($x) use ($keyCount) { return $keyCount[$x['key']] > 1 && !isset($this->pricedKeys[$x['key']]); }));
+        $L[] = "NO DISTRIBUTOR PRICE: {$n} sealed products";
+        $L[] = '  no real barcode (made-up SKU): ' . $noBc;
+        $L[] = '  duplicate of another listing that DOES have a price: ' . count($dupOfPriced);
+        $L[] = '  duplicate of other unpriced listings only: ' . $dupAmongUnpriced;
+        $L[] = '  in stock: ' . count(array_filter($u, function ($x) { return $x['stock'] > 0; }));
+        $L[] = '  sample duplicates of a priced listing: ' . implode(' | ', array_slice(array_map(function ($x) { return $x['name']; }, array_values($dupOfPriced)), 0, 12));
+        $L[] = '';
         foreach ($stat as $k => $v) {
             $pc = function ($x) use ($v) { return $v['n'] ? round(100 * $x / $v['n']) . '%' : '-'; };
             $L[] = sprintf('%-32s %6d products | AMS %6d (%s) | Alliance %6d (%s) | both %6d | any distributor %6d (%s) | real barcode %6d (%s)',
