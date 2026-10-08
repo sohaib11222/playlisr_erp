@@ -209,6 +209,8 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                             <td data-order="{{ $statusSort }}">
                                 @if($pickedUp)
                                     <span class="label" style="background:#2e7d32; font-weight:700;">Picked up</span>
+                                @elseif($wp['status'] === 'ready_for_pickup')
+                                    <span class="label label-warning">Ready for Pickup</span>
                                 @elseif($eventPickup)
                                     <span class="label" style="background:#2e7d32; font-weight:700;">Will pick up at event</span>
                                 @elseif(!empty($wp['isPreorder']))
@@ -231,8 +233,9 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                     <button type="button" class="btn btn-success btn-xs js-hold-picked-up" data-id="{{ $wp['id'] }}">Mark Picked Up</button>
                                 @elseif($notYetDue)
                                     <span class="sub">Available after street date</span>
-                                @elseif(!$eventPickup)
-                                    {{-- Regular pickups: change status from a dropdown (Sarah, 2026-10-06).
+                                @else
+                                    {{-- Change status from a dropdown (Sarah, 2026-10-06); event pickups too,
+                                         so leftover event orders can be set Ready for Pickup (2026-10-07).
                                          Cancel stays on /website-orders since it can involve a refund. --}}
                                     <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
                                         {{ csrf_field() }}
@@ -241,12 +244,6 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                                                 <option value="{{ $sv }}" @if($wp['status'] === $sv) selected @endif>{{ $sl }}</option>
                                             @endforeach
                                         </select>
-                                    </form>
-                                @else
-                                    <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
-                                        {{ csrf_field() }}
-                                        <input type="hidden" name="status" value="picked_up">
-                                        <button type="submit" class="btn btn-success btn-xs">Mark Picked Up</button>
                                     </form>
                                 @endif
                             </td>
