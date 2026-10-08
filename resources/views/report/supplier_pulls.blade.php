@@ -4,7 +4,7 @@
 @section('content')
 <div style="max-width:960px;margin:0 auto;padding:24px 16px 60px;color:#1F1B16;">
     <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;">Supplier price pulls</h1>
-    <p style="color:#6B6155;font-size:15px;">AMS refreshes on its own every night at 11pm. These four suppliers block our server from logging in, so their prices are pulled in your browser while you're logged into their site. A nightly 11:15pm job runs all four automatically if Chrome is open and you're logged in. To run one by hand: open the supplier's site, log in, then click its button in your bookmarks bar.</p>
+    <p style="color:#6B6155;font-size:15px;">AMS and Matador refresh on their own Sunday and Wednesday nights at 11pm. These four suppliers block our server from logging in, so their prices are pulled in your browser while you're logged into their site. A Sunday and Wednesday 11:15pm job runs all four automatically if Chrome is open and you're logged in. To run one by hand: open the supplier's site, log in, then click its button in your bookmarks bar.</p>
     <table style="width:100%;border-collapse:collapse;font-size:15px;margin-top:14px;">
         <tr><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Supplier</th><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Site to be on</th><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Button (drag to bookmarks bar)</th></tr>
         @foreach ([['alliance','Alliance','https://webami.aent.com/music'],['secretly','Secretly','https://b2b.secretlydistribution.com/'],['redeye','Redeye','https://b2b.redeyeworldwide.com/best-sellers/catalog'],['monostereo','Monostereo','https://newb2b.monostereo1stop.com/search?q=093624967330']] as $s)

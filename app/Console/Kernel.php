@@ -103,7 +103,7 @@ class Kernel extends ConsoleKernel
         // 2026-10-08 (Sarah: "prices change daily"): every night 11pm PT,
         // after close, alongside the nightly browser pulls.
         $schedule->command('supplier-prices:fetch all --full')
-            ->dailyAt('23:00')
+            ->days([0, 3])->at('23:00') // Sun + Wed nights, so Clarissa (Mon-Fri) has fresh prices
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(120);
 
