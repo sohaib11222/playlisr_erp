@@ -23,7 +23,7 @@ class WebsiteOrdersController extends Controller
         'sold_in_store'   => 'Sold in store before online inventory updated',
         'sold_on_discogs' => 'Sold on Discogs before online inventory updated',
         'condition_issue' => "Condition issue we didn't catch",
-        'inventory_error' => "Can't locate it in current inventory",
+        'inventory_error' => 'No longer available',
         'other'           => 'Other (type a reason)',
     ];
 
