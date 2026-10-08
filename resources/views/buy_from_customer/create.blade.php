@@ -186,7 +186,18 @@
         .content .bfc-offer-box { background: #e7f0fb; border: 2px solid #2c699a; border-radius: 10px; padding: 6px 18px 12px; margin: 16px 0; }
         .content .bfc-offer-box h4.bfc-step { margin-top: 12px; }
         .content .bfc-offer-box table { background: #fff; }
-        .content .bfc-offer-box .bfc-final-row input { font-size: 20px !important; font-weight: 800; height: 46px; }
+        /* Offer table: rows 1-2 plain, row 3 (the max) stands out in green. */
+        .bfc-create .bfc-offer-box .bfc-offer-table { max-width: 760px; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #c9d6e3; }
+        .bfc-create .bfc-offer-box .bfc-offer-table th { font-size: 15px !important; color: #111 !important; background: #f3f6f9 !important; padding: 10px 12px; }
+        .bfc-create .bfc-offer-box .bfc-offer-table td, .bfc-create .bfc-offer-box .bfc-offer-table th.bfc-offer-rowlabel { padding: 10px 12px; vertical-align: middle; background: #fff; }
+        .bfc-create .bfc-offer-box .bfc-offer-table th.bfc-offer-rowlabel { width: 210px; font-size: 16px !important; border-left: 0; }
+        .bfc-create .bfc-offer-box .bfc-offer-table .form-control { background: #fff !important; border: 1px solid #c8c8c8 !important; color: #111 !important; font-size: 17px !important; font-weight: 500; height: 44px; box-shadow: none; }
+        .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row td,
+        .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row th.bfc-offer-rowlabel { background: #e6f4ea !important; }
+        .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row th.bfc-offer-rowlabel { border-left: 6px solid #1e8e3e !important; font-size: 18px !important; }
+        .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row th.bfc-offer-rowlabel small { color: #1e8e3e !important; font-size: 14px !important; font-weight: 700 !important; }
+        .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row .form-control { border: 2px solid #1e8e3e !important; font-size: 22px !important; font-weight: 800 !important; height: 52px; }
+        .bfc-create .bfc-offer-box .bfc-calc-hint { display: none; }
         /* Buy form buttons: same size, aligned, readable. */
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
         .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
@@ -570,7 +581,7 @@ HTML;
                          from the suggestion). Blank a field to fall back to the auto
                          suggestion on the next Calculate. --}}
                     <div class="bfc-running">
-                        <span class="bfc-running-note">Gray boxes don't apply to that item type.</span>
+                        <span class="bfc-running-note">You can skip gray boxes. That item type doesn't need them.</span>
                         <span class="bfc-running-figs">
                             <strong id="bfc_running_total" style="display:none;">$0.00</strong>
                             <span>Max cash offer <strong id="bfc_running_final">$0.00</strong></span>
