@@ -233,6 +233,28 @@
         .bfc-offer-rowlabel small { font-size: 13px !important; display: block; margin-top: 2px; }
         .bfc-running { font-size: 15px; }
         .bfc-running-note { font-size: 13px; color: #666; }
+        /* Sarah 2026-10-08: one text size (15px) and black text everywhere on
+           this page. Only step titles, big money numbers and buttons differ. */
+        .bfc-create th, .bfc-create td, .bfc-create label, .bfc-create small, .bfc-create .small,
+        .bfc-create .text-muted, .bfc-create .help-block, .bfc-create .meta-row, .bfc-create .meta-row *,
+        .bfc-create select, .bfc-create option, .bfc-create input, .bfc-create textarea,
+        .bfc-create .input-group-addon, .bfc-create .bfc-running-note, .bfc-create .bfc-running-figs span,
+        .bfc-create .bfc-line-value, .bfc-create details summary, .bfc-create .btn-sm, .bfc-create .btn-xs,
+        .bfc-create .btn-default, .bfc-create .btn-warning, .bfc-create p, .bfc-create li {
+            font-size: 15px !important; color: #111 !important; letter-spacing: 0 !important; text-transform: none !important;
+        }
+        .bfc-create .form-control::placeholder { color: #555 !important; }
+        .bfc-create .box-header .box-title { font-size: 18px !important; color: #111 !important; }
+        .bfc-create h4:not(.bfc-step):not(.bfc-step-sub) { font-size: 17px !important; color: #111 !important; text-transform: none !important; letter-spacing: 0 !important; }
+        .bfc-create .text-danger { color: #c62828 !important; }
+        .bfc-create .btn-link { color: #1a5fa0 !important; }
+        .bfc-create .btn-warning { color: #fff !important; font-weight: 700; }
+        .bfc-create .bfc-offer-box .bfc-final-row small { color: #1e8e3e !important; font-weight: 700 !important; }
+        .bfc-create .bfc-max-warning, .bfc-create .bfc-max-warning span { color: #b71c1c !important; }
+        .bfc-create .bfc-max-warning { font-size: 17px !important; }
+        .bfc-create .bfc-max-warning span { font-size: 19px !important; }
+        .bfc-create .bfc-offer-box .bfc-final-row input { font-size: 22px !important; }
+        .bfc-create .bfc-running-figs strong { font-size: 20px !important; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
