@@ -2061,6 +2061,14 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             }
         }
 
+        // AI tools sometimes return the whole CSV list on one line, each row
+        // ending "...,Price, Next Name,...". Break after "<number>, " so each
+        // row becomes its own line (in-row fields have no space after commas).
+        text = text.split('\n').map(function (line) {
+            if (line.split(',').length <= 8) return line;
+            return line.replace(/,(\d+(?:\.\d+)?),[ \t]+(?=\S)/g, ',$1,\n');
+        }).join('\n');
+
         const lines = text.split('\n').filter(line => line.trim() !== '');
         const products = [];
         
