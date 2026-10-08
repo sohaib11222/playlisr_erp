@@ -762,10 +762,10 @@ HTML;
                                     <div class="form-group" style="background:#FFF8E1; border:1px solid #F0DC7A; border-radius:6px; padding:10px 14px;">
                                         <label style="margin:0; font-weight:600; color:#5A4410; cursor:pointer;">
                                             <input type="checkbox" name="is_donated" value="1" id="bfc_is_donated_checkbox" style="margin-right:8px;">
-                                            This collection was donated (no payout)
+                                            Donated (we paid $0)
                                         </label>
-                                        <div style="font-size:12px; color:#8B6914; margin-top:4px; margin-left:24px;">
-                                            Check this when the seller gave the collection away. Final amount paid locks to $0, no override reason or store-credit payout is needed, and the record is tagged <strong>[DONATED]</strong> — including on the purchase you'll price at /products afterward.
+                                        <div style="font-size:15px; margin-top:4px; margin-left:24px;">
+                                            Check this only if the seller gave us the items for free.
                                         </div>
                                     </div>
                                     {{-- Sarah 2026-07-09: capture the amount actually handed over
