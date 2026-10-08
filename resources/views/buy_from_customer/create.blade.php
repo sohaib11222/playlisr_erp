@@ -198,6 +198,13 @@
         .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row th.bfc-offer-rowlabel small { color: #1e8e3e !important; font-size: 14px !important; font-weight: 700 !important; }
         .bfc-create .bfc-offer-box .bfc-offer-table tr.bfc-final-row .form-control { border: 2px solid #1e8e3e !important; font-size: 22px !important; font-weight: 800 !important; height: 52px; }
         .bfc-create .bfc-offer-box .bfc-calc-hint { display: none; }
+        .bfc-create .bfc-max-warning { margin: 12px 0 8px; padding: 12px 16px; background: #fdecea; border: 2px solid #c62828; border-radius: 8px; color: #b71c1c !important; font-size: 17px; font-weight: 700; max-width: 760px; }
+        .bfc-create .bfc-max-warning span { color: #b71c1c !important; font-size: 19px; font-weight: 800; }
+        .bfc-create .bfc-max-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+        .bfc-create .bfc-max-summary > div { flex: 1; min-width: 220px; background: #e6f4ea; border: 2px solid #1e8e3e; border-radius: 8px; padding: 12px 16px; }
+        .bfc-create .bfc-max-summary span { display: block; font-size: 15px; font-weight: 600; }
+        .bfc-create .bfc-max-summary strong { font-size: 26px; font-weight: 800; color: #111; }
+        .bfc-create .bfc-breakdown summary { cursor: pointer; font-weight: 600; font-size: 15px; margin: 8px 0; }
         /* Buy form buttons: same size, aligned, readable. */
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
         .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
@@ -641,6 +648,9 @@ HTML;
                     @php
                         $bfcCreditBonus = app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'];
                     @endphp
+                    <div class="bfc-max-warning">
+                        Do not pay more than <span id="bfc_max_warn_cash">${{ number_format((float) ($offerFinalCash ?? 0), 2) }}</span> cash or <span id="bfc_max_warn_credit">${{ number_format((float) ($offerFinalCredit ?? 0), 2) }}</span> in store credit. Paying more needs your store manager's approval.
+                    </div>
                     <p class="bfc-step-help">Store credit is always {{ rtrim(rtrim(number_format($bfcCreditBonus, 2), '0'), '.') }}x the cash offer.</p>
                     </div>
                     <div class="form-group">
@@ -674,23 +684,15 @@ HTML;
         <div class="row">
             <div class="col-md-12">
                 <div class="box box-success" id="bfc_calc_result">
-                    <div class="box-header with-border"><h3 class="box-title">Calculated offer &amp; transaction details</h3></div>
+                    <div class="box-header with-border"><h3 class="box-title">Your max offer</h3></div>
                     <div class="box-body">
-                        <h4 class="text-muted">Automatic snapshot</h4>
-                        <div class="row small" style="margin-bottom:12px;">
-                            <div class="col-md-4"><strong>Date &amp; time:</strong> {{ @format_datetime(\Carbon\Carbon::now()) }}</div>
-                            <div class="col-md-4"><strong>Store:</strong> {{ $locName }}</div>
-                            <div class="col-md-4"><strong>Employee:</strong> {{ auth()->user()->user_full_name ?? auth()->user()->username ?? '—' }}</div>
+                        <div class="bfc-max-summary">
+                            <div><span>Max cash offer</span><strong>@format_currency(data_get($calc, 'final_offer_cash', 0))</strong></div>
+                            <div><span>Max store credit offer</span><strong>@format_currency(data_get($calc, 'final_offer_credit', 0))</strong></div>
                         </div>
 
-                        <h4>Calculator totals</h4>
-                        <div class="row">
-                            <div class="col-md-3"><strong>Calculator cash total (suggested):</strong><br>@format_currency(data_get($calc, 'calculated_cash_total', 0))</div>
-                            <div class="col-md-3"><strong>Calculator credit total (suggested):</strong><br>@format_currency(data_get($calc, 'calculated_credit_total', 0))</div>
-                            <div class="col-md-3"><strong>Final cash:</strong><br>@format_currency(data_get($calc, 'final_offer_cash', 0))</div>
-                            <div class="col-md-3"><strong>Final credit:</strong><br>@format_currency(data_get($calc, 'final_offer_credit', 0))</div>
-                        </div>
-
+                        <details class="bfc-breakdown">
+                        <summary>See item breakdown</summary>
                         <hr>
                         @php $calcLines = data_get($calc, 'lines', []); @endphp
                         @if(!empty($calcLines))
@@ -759,6 +761,8 @@ HTML;
                             </div>
                         </div>
 
+                        </details>
+
                         <div class="row" style="margin-top:15px;">
                             <div class="col-md-12">
                                 {!! Form::open(['url' => route('buy-from-customer.store'), 'method' => 'post', 'style' => 'display:inline-block;']) !!}
@@ -795,11 +799,8 @@ HTML;
                                     <div class="form-group" style="background:#FFF8E1; border:1px solid #F0DC7A; border-radius:6px; padding:10px 14px;">
                                         <label style="margin:0; font-weight:600; color:#5A4410; cursor:pointer;">
                                             <input type="checkbox" name="is_donated" value="1" id="bfc_is_donated_checkbox" style="margin-right:8px;">
-                                            Donated (we paid $0)
+                                            Donated: the seller gave us the items for free and we paid $0
                                         </label>
-                                        <div style="font-size:15px; margin-top:4px; margin-left:24px;">
-                                            Check this only if the seller gave us the items for free.
-                                        </div>
                                     </div>
                                     {{-- Sarah 2026-07-09: capture the amount actually handed over
                                          (cash / store credit / Zelle-Venmo) in one blank field. This is
@@ -1399,6 +1400,8 @@ HTML;
             cashTotal = Math.round(cashTotal * 100) / 100;
             $('#bfc_running_total').text(bfcMoney(cashTotal));
             $('#bfc_running_final').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
+            $('#bfc_max_warn_cash').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
+            $('#bfc_max_warn_credit').text(bfcMoney(Math.round(Math.round(cashTotal * 0.95 * 100) / 100 * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
             $('#bfc_running_credit').text(bfcMoney(Math.round(Math.round(cashTotal * 0.95 * 100) / 100 * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
             if (!BFC_HAS_CALC) { bfcPopulateLadder(cashTotal); }
         }
