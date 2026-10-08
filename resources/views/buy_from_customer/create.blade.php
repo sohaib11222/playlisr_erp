@@ -178,7 +178,7 @@
         .content .box-body .form-control { height: 40px; }
         .content .box-body textarea.form-control { height: auto; }
         .content .box-body th { font-size: 13px; color: #333; text-transform: none; }
-        .content h4.bfc-step { font-size: 21px !important; font-weight: 700 !important; text-transform: none !important; letter-spacing: 0 !important; margin: 22px 0 10px; color: #111; display: flex; align-items: center; gap: 10px; }
+        .content h4.bfc-step { font-size: 23px !important; font-weight: 700 !important; text-transform: none !important; letter-spacing: 0 !important; margin: 22px 0 10px; color: #111; display: flex; align-items: center; gap: 10px; }
         .content h4.bfc-step-sub { text-transform: none !important; letter-spacing: 0 !important; }
         .content .box-body th, .content .box-body label { text-transform: none !important; letter-spacing: 0 !important; }
         .bfc-rules { font-size: 16px !important; line-height: 1.5; }
@@ -227,7 +227,7 @@
         .content .form-control::placeholder { color: #555 !important; opacity: 1; }
         .content .alert.bfc-rules { background: #fff !important; border: 1px solid #ddd !important; border-left: 5px solid #c62828 !important; border-radius: 6px; }
         .content .alert.bfc-rules, .content .alert.bfc-rules * { color: #111 !important; background-color: transparent !important; }
-        .content h4.bfc-step-sub { font-size: 17px !important; font-weight: 700 !important; }
+        .content h4.bfc-step-sub { font-size: 19px !important; font-weight: 700 !important; }
         .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
         .bfc-step-sub { font-size: 17px; font-weight: 700; margin: 16px 0 4px; }
         .bfc-step-help { font-size: 15px; color: #444; margin: 0 0 10px; }
@@ -243,20 +243,24 @@
         .bfc-create .input-group-addon, .bfc-create .bfc-running-note, .bfc-create .bfc-running-figs span,
         .bfc-create .bfc-line-value, .bfc-create details summary, .bfc-create .btn-sm, .bfc-create .btn-xs,
         .bfc-create .btn-default, .bfc-create .btn-warning, .bfc-create p, .bfc-create li {
-            font-size: 15px !important; color: #111 !important; letter-spacing: 0 !important; text-transform: none !important;
+            font-size: 17px !important; color: #111 !important; letter-spacing: 0 !important; text-transform: none !important;
         }
         .bfc-create .form-control::placeholder { color: #555 !important; }
-        .bfc-create .box-header .box-title { font-size: 18px !important; color: #111 !important; }
-        .bfc-create h4:not(.bfc-step):not(.bfc-step-sub) { font-size: 17px !important; color: #111 !important; text-transform: none !important; letter-spacing: 0 !important; }
+        .bfc-create .box-header .box-title { font-size: 21px !important; color: #111 !important; }
+        .bfc-create h4:not(.bfc-step):not(.bfc-step-sub) { font-size: 19px !important; color: #111 !important; text-transform: none !important; letter-spacing: 0 !important; }
         .bfc-create .text-danger { color: #c62828 !important; }
         .bfc-create .btn-link { color: #1a5fa0 !important; }
         .bfc-create .btn-warning { color: #fff !important; font-weight: 700; }
         .bfc-create .bfc-offer-box .bfc-final-row small { color: #1e8e3e !important; font-weight: 700 !important; }
         .bfc-create .bfc-max-warning, .bfc-create .bfc-max-warning span { color: #b71c1c !important; }
-        .bfc-create .bfc-max-warning { font-size: 17px !important; }
-        .bfc-create .bfc-max-warning span { font-size: 19px !important; }
+        .bfc-create .bfc-max-warning { font-size: 18px !important; }
+        .bfc-create .bfc-max-warning span { font-size: 20px !important; }
         .bfc-create .bfc-offer-box .bfc-final-row input { font-size: 22px !important; }
-        .bfc-create .bfc-running-figs strong { font-size: 20px !important; }
+        .bfc-create .bfc-running-figs strong { font-size: 22px !important; }
+        .bfc-create .bfc-btn, .bfc-create .btn-lg { font-size: 18px !important; }
+        .bfc-create #bfc_overpay_alert, .bfc-create .alert { font-size: 17px !important; }
+        .bfc-create .form-control { height: 44px; }
+        .bfc-create .bfc-offer-box .bfc-final-row input { font-size: 24px !important; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
