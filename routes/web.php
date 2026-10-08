@@ -408,6 +408,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/review-2024/data', 'LegacyListingController@review2024Data');
     Route::post('/products/review-2024/retire-below-cost', 'LegacyListingController@retireBelowCost2024');
     Route::get('/price-new-buys', 'PriceBuysController@index');
+    Route::get('/stock-lookup', 'StockLookupController@index');
+    Route::get('/stock-lookup/data', 'StockLookupController@data');
     Route::get('/reports/supplier-price-pulls', function () {
         $u = auth()->user();
         if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') { abort(403, 'Owner-only.'); }

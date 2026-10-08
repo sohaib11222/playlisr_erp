@@ -247,6 +247,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'products' && request()->segment(2) == '']
                             );
                         }
+                        if (auth()->user()->can('product.view')) {
+                            $sub->url(
+                                url('/stock-lookup'),
+                                'Do we have it?',
+                                ['icon' => 'fa fas fa-search', 'active' => request()->segment(1) == 'stock-lookup']
+                            );
+                        }
                         if (auth()->user()->can('product.create')) {
                             $sub->url(
                                 action('ProductController@create'),
