@@ -32,7 +32,7 @@
             <h2>Retire: no sales, no stock</h2>
             <div><span class="lc-big" id="lcRetireCount">0</span> listings. They come off the products list and the website, and every one can be brought back from Admin Action History.</div>
             <div class="lc-table-wrap"><table class="lc-table">
-                <thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Cost</th><th>Price</th><th>Created</th><th>By</th></tr></thead>
+                <thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Cost</th><th>Price</th><th>Created</th><th>By</th><th>Other listing of this album</th></tr></thead>
                 <tbody id="lcRetireRows"></tbody>
             </table></div>
             <div style="margin-top:12px;">
@@ -45,7 +45,7 @@
             <h2>Check the shelf first: no sales, but showing stock</h2>
             <div><span class="lc-big" id="lcCheckCount">0</span> listings (<span id="lcCheckUnits">0</span> units). These might be real copies, so nothing happens to them here.</div>
             <div class="lc-table-wrap"><table class="lc-table">
-                <thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Cost</th><th>Price</th><th>Stock</th><th>Created</th><th>By</th></tr></thead>
+                <thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Cost</th><th>Price</th><th>Stock</th><th>Created</th><th>By</th><th>Other listing of this album</th></tr></thead>
                 <tbody id="lcCheckRows"></tbody>
             </table></div>
         </div>
@@ -64,7 +64,9 @@
     function money(n) { return '$' + Number(n || 0).toFixed(2); }
     function row(r, withStock) {
         return '<tr><td><a href="/products/' + r.id + '/edit" target="_blank">' + esc(r.name) + '</a></td><td>' + esc(r.sku) + '</td><td>' + esc(r.category || '') + '</td><td>' + money(r.cost) + '</td><td>' + money(r.price) + '</td>'
-            + (withStock ? '<td>' + Math.round(r.stock) + '</td>' : '') + '<td>' + esc(r.created) + '</td><td>' + esc(r.by) + '</td></tr>';
+            + (withStock ? '<td>' + Math.round(r.stock) + '</td>' : '') + '<td>' + esc(r.created) + '</td><td>' + esc(r.by) + '</td><td>'
+            + ((r.twins || []).map(function (t) { return '<a href="/products/' + t.id + '/edit" target="_blank">' + esc(t.sku) + '</a> ' + money(t.cost) + ' / ' + money(t.price); }).join('<br>') || '<span style="color:#B71C1C">none</span>')
+            + '</td></tr>';
     }
     var scanBtn = document.getElementById('lcScan'), applyBtn = document.getElementById('lcApply');
     scanBtn.addEventListener('click', function () {
@@ -75,10 +77,11 @@
             if (!j.success) { document.getElementById('lcScanNote').textContent = j.msg || 'Check failed.'; return; }
             document.getElementById('lcScanNote').textContent = '';
             document.getElementById('lcRetireCount').textContent = j.retire_count.toLocaleString();
+            document.getElementById('lcScanNote').textContent = j.with_twin.toLocaleString() + ' of ' + j.total.toLocaleString() + ' have another listing of the same album and format.';
             document.getElementById('lcCheckCount').textContent = j.check_count.toLocaleString();
             document.getElementById('lcCheckUnits').textContent = Math.round(j.check_units).toLocaleString();
-            document.getElementById('lcRetireRows').innerHTML = j.retire.map(function (r) { return row(r, false); }).join('') || '<tr><td colspan="7">None.</td></tr>';
-            document.getElementById('lcCheckRows').innerHTML = j.check.map(function (r) { return row(r, true); }).join('') || '<tr><td colspan="8">None.</td></tr>';
+            document.getElementById('lcRetireRows').innerHTML = j.retire.map(function (r) { return row(r, false); }).join('') || '<tr><td colspan="8">None.</td></tr>';
+            document.getElementById('lcCheckRows').innerHTML = j.check.map(function (r) { return row(r, true); }).join('') || '<tr><td colspan="9">None.</td></tr>';
             applyBtn.style.display = j.retire_count ? '' : 'none';
             document.getElementById('lcResults').style.display = '';
         }).catch(function () { scanBtn.disabled = false; document.getElementById('lcScanNote').textContent = 'Check failed.'; });

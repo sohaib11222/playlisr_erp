@@ -54,6 +54,52 @@ class LegacyListingController extends Controller
             ->orderBy('p.id');
     }
 
+    /** Order-insensitive name key: "Diamond Eyes / Deftones" == "DEFTONES - DIAMOND EYES". */
+    protected function nameKey($name)
+    {
+        $s = mb_strtolower(html_entity_decode((string) $name, ENT_QUOTES));
+        $s = preg_replace('/\([^)]*\)|\[[^\]]*\]/u', ' ', $s);
+        $s = str_replace('&', ' and ', $s);
+        $words = preg_split('/[^a-z0-9]+/u', $s, -1, PREG_SPLIT_NO_EMPTY);
+        $drop = ['the' => 1, 'lp' => 1, 'vinyl' => 1, 'cd' => 1, 'sealed' => 1, 'x' => 1, 'and' => 1];
+        $words = array_values(array_filter($words, function ($w) use ($drop) { return !isset($drop[$w]); }));
+        sort($words);
+        return implode(' ', $words);
+    }
+
+    protected function formatFamily($cat)
+    {
+        $c = mb_strtolower((string) $cat);
+        if (strpos($c, 'vinyl') !== false || strpos($c, '45') !== false) return 'lp';
+        if (strpos($c, 'cd') !== false) return 'cd';
+        if (strpos($c, 'cassette') !== false) return 'cassette';
+        return $c;
+    }
+
+    /**
+     * Other active listings of the same album + format, keyed by
+     * nameKey|format => [{id,name,sku,price,cost,stock}], excluding $skipIds.
+     */
+    protected function twinIndex($business_id, array $wantKeys, array $skipIds)
+    {
+        $idx = [];
+        \DB::table('products as p')
+            ->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)
+            ->select('p.id', 'p.name', 'p.sku', 'c.name as category', 'v.sell_price_inc_tax as price', 'v.dpp_inc_tax as cost')
+            ->orderBy('p.id')
+            ->chunk(10000, function ($rows) use (&$idx, $wantKeys, $skipIds) {
+                foreach ($rows as $r) {
+                    if (isset($skipIds[(int) $r->id])) continue;
+                    $k = $this->nameKey($r->name) . '|' . $this->formatFamily($r->category);
+                    if (!isset($wantKeys[$k])) continue;
+                    $idx[$k][] = ['id' => (int) $r->id, 'name' => $r->name, 'sku' => $r->sku, 'price' => (float) $r->price, 'cost' => (float) $r->cost];
+                }
+            });
+        return $idx;
+    }
+
     public function index()
     {
         if (!$this->isOwner()) { abort(403, 'Owner-only.'); }
@@ -68,13 +114,23 @@ class LegacyListingController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         $retire = []; $check = [];
-        $nRetire = 0; $nCheck = 0; $checkUnits = 0;
-        foreach ($this->candidates($business_id)->get() as $r) {
+        $nRetire = 0; $nCheck = 0; $checkUnits = 0; $withTwin = 0;
+        $all = $this->candidates($business_id)->get();
+        $wantKeys = []; $skip = [];
+        foreach ($all as $r) {
+            $wantKeys[$this->nameKey($r->name) . '|' . $this->formatFamily($r->category)] = true;
+            $skip[(int) $r->id] = true;
+        }
+        $twins = $this->twinIndex($business_id, $wantKeys, $skip);
+        foreach ($all as $r) {
+            $tw = $twins[$this->nameKey($r->name) . '|' . $this->formatFamily($r->category)] ?? [];
+            if ($tw) { $withTwin++; }
             $row = [
                 'id' => (int) $r->id, 'name' => $r->name, 'sku' => $r->sku,
                 'category' => $r->category, 'cost' => (float) $r->cost, 'price' => (float) $r->price,
                 'stock' => (float) $r->stock, 'created' => substr((string) $r->created_at, 0, 10),
                 'by' => trim((string) $r->created_by_name),
+                'twins' => array_slice($tw, 0, 3),
             ];
             if ((float) $r->stock > 0) {
                 $nCheck++; $checkUnits += (float) $r->stock;
@@ -86,7 +142,7 @@ class LegacyListingController extends Controller
         }
         return response()->json([
             'success' => true,
-            'retire_count' => $nRetire, 'retire' => $retire,
+            'retire_count' => $nRetire, 'retire' => $retire, 'with_twin' => $withTwin, 'total' => count($all),
             'check_count' => $nCheck, 'check_units' => $checkUnits, 'check' => $check,
         ]);
     }
