@@ -122,6 +122,7 @@ class ReorderController extends Controller
         $asOf = (string) $request->input('as_of');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $asOf)) return response()->json(['error' => 'as_of=Y-m-d required'], 422);
         if (in_array($request->input('blank'), ['sold', 'erp', 'zero'], true)) $this->svc->blankOverride = $request->input('blank');
+        if ($request->filled('auto')) $this->svc->autoExtra = array_intersect(explode(',', $request->input('auto')), ['lastyear', 'otherstore', 'core', 'other', 'once']);
         $data = $this->svc->build($business_id, $locationId, $format, $since, $asOf);
         $ids = array_filter(array_map('intval', explode(',', (string) $request->input('purchase_ids'))));
         $actual = \Illuminate\Support\Facades\DB::table('purchase_lines as pl')
@@ -333,6 +334,8 @@ class ReorderController extends Controller
             'overdue' => "Hasn't sold lately: missing?",
             'once' => 'Bought once, sold fast',
             'used' => 'Sells used: buy new',
+            'lastyear' => 'Sold here last year',
+            'otherstore' => 'Sells at the other store',
             'other' => 'Sold this year',
         ];
     }

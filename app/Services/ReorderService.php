@@ -197,6 +197,8 @@ class ReorderService
     /** Backtest: pretend it's this date (no bin counts, no logged orders). */
     protected $asOf = null;
     public $blankOverride = null;
+    /** Reasons that also get auto-ordered when the ERP shows none left. */
+    public $autoExtra = [];
 
     protected function now(): Carbon
     {
@@ -280,8 +282,25 @@ class ReorderService
         $locClass = $abcData['location_map'][$locationId] ?? $abcData['location_map'][(string) $locationId] ?? [];
         $abcxyz = $this->abc->loadAbcXyzMap();
 
-        // Candidates: anything sold this year + every A-grade sealed title here.
+        // Last year's sales here, and this year's sales at the other store(s):
+        // Jon reorders from both (backtest 10/8: ~45 last-year titles and ~30
+        // Pico vinyl titles per order that this store hadn't sold this year).
+        $lastYear = $this->soldByProduct($business_id, $sealedCats, function ($q) use ($locationId, $yearStart) {
+            $q->where('t.location_id', $locationId)
+                ->where('t.transaction_date', '>=', $yearStart->copy()->subYear()->toDateTimeString())
+                ->where('t.transaction_date', '<', $yearStart->toDateTimeString());
+        });
+        $otherStore = $this->soldByProduct($business_id, $sealedCats, function ($q) use ($locationId, $yearStart) {
+            $q->where('t.location_id', '!=', $locationId)
+                ->where('t.transaction_date', '>=', $yearStart->toDateTimeString())
+                ->where('t.transaction_date', '<=', $this->now()->toDateTimeString());
+        });
+
+        // Candidates: anything sold this year + every A-grade sealed title here
+        // + 2+ sold here last year + 2+ sold at the other store this year.
         $pids = array_keys($agg);
+        foreach ($lastYear as $pid => $q) if ($q >= 2) $pids[] = $pid;
+        foreach ($otherStore as $pid => $q) if ($q >= 2) $pids[] = $pid;
         foreach ($locClass as $pid => $cls) {
             if ($cls === 'A') $pids[] = (int) $pid;
         }
@@ -321,6 +340,10 @@ class ReorderService
             });
             $primary = $group[0];
             $members[$primary] = $group;
+            $ly = 0; $os = 0;
+            foreach ($group as $g) { $ly += $lastYear[$g] ?? 0; $os += $otherStore[$g] ?? 0; }
+            $lastYear[$primary] = $ly;
+            $otherStore[$primary] = $os;
             if (count($group) === 1) continue;
             $m = ['ytd' => 0, 'd10' => 0, 'since' => 0, 'months' => [], 'dates' => [], 'last' => null, 'daily' => []];
             $sd = ['sum' => 0, 'n' => 0, 'sold' => 0, 'purchased' => 0];
@@ -392,7 +415,12 @@ class ReorderService
             if ($isCore && $a['since'] == 0) $why[] = 'core';
             if ($overdue) $why[] = 'overdue';
             if ($boughtOnceFast) $why[] = 'once';
+            $ly = (float) ($lastYear[$pid] ?? 0);
+            $os = (float) ($otherStore[$pid] ?? 0);
+            if ($a['ytd'] == 0 && $ly >= 2) $why[] = 'lastyear';
+            if ($a['ytd'] == 0 && $os >= 2) $why[] = 'otherstore';
             if (empty($why)) $why[] = 'other';
+            if ($suggested < 1 && ($ly >= 2 || $os >= 2)) $suggested = 1;
 
             $cost = (float) ($m->cost ?? 0);
             $cantOrder = null;
@@ -414,6 +442,8 @@ class ReorderService
                 'sold_10d' => $a['d10'],
                 'sold_ytd' => $a['ytd'],
                 'months_sold' => count($a['months']),
+                'sold_last_year' => $ly,
+                'sold_other_store' => $os,
                 'avg_days_to_sell' => $sd['avg'] ?? null,
                 'last_sold' => $a['last'],
                 'days_since_sale' => $daysSinceSale,
@@ -707,10 +737,32 @@ class ReorderService
         // titles are listed to look at, not auto-ordered: tested against
         // Jon's last 3 orders (Sep 24 - Oct 7) he bought ~3% of those.
         $base = (int) $r['sold_since'];
+        if ($base === 0 && $this->autoExtra && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0
+            && array_intersect($this->autoExtra, $r['why'])) {
+            $base = max(1, $sug);
+        }
         return max(0, min($base, max($sug, 1)));
     }
 
     // ---------------------------------------------------------------- data
+
+    /** Units sold per product in sealed categories, with an extra where-clause. */
+    protected function soldByProduct(int $business_id, array $cats, callable $scope): array
+    {
+        if (empty($cats)) return [];
+        $q = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->whereIn('p.category_id', $cats);
+        $scope($q);
+        $out = [];
+        foreach ($q->groupBy('p.id')->select('p.id', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as q'))->get() as $r) {
+            if ((float) $r->q > 0) $out[(int) $r->id] = (float) $r->q;
+        }
+        return $out;
+    }
 
     protected function productMeta(int $business_id, array $pids, array $sealedCats): array
     {
@@ -955,7 +1007,7 @@ class ReorderService
                 'sku' => null,
                 'grade' => '',
                 'why' => ['used'],
-                'sold_since' => 0, 'sold_10d' => 0, 'sold_ytd' => 0, 'months_sold' => 0,
+                'sold_since' => 0, 'sold_10d' => 0, 'sold_ytd' => 0, 'months_sold' => 0, 'sold_last_year' => 0, 'sold_other_store' => 0,
                 'avg_days_to_sell' => null, 'last_sold' => null, 'days_since_sale' => null,
                 'erp_stock' => 0, 'on_order' => 0,
                 'suggested' => max(1, min(3, (int) $g['n10'])),

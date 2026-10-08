@@ -4,8 +4,8 @@
 @section('content')
 @php
     $whyLabels = app(\App\Http\Controllers\ReorderController::class)->whyLabels();
-    $whyShort = ['sold' => 'Sold', 'core' => 'Always stock', 'overdue' => 'Missing?', 'once' => 'Sold fast once', 'used' => 'Sells used', 'other' => 'Sold this year'];
-    $whyColors = ['sold' => '#2e7d32', 'core' => '#1565c0', 'overdue' => '#c62828', 'once' => '#6a1b9a', 'used' => '#ef6c00', 'other' => '#757575'];
+    $whyShort = ['sold' => 'Sold', 'core' => 'Always stock', 'overdue' => 'Missing?', 'once' => 'Sold fast once', 'used' => 'Sells used', 'other' => 'Sold this year', 'lastyear' => 'Sold last year', 'otherstore' => 'Other store'];
+    $whyColors = ['sold' => '#2e7d32', 'core' => '#1565c0', 'overdue' => '#c62828', 'once' => '#6a1b9a', 'used' => '#ef6c00', 'other' => '#757575', 'lastyear' => '#00838f', 'otherstore' => '#5d4037'];
     $genres = collect($rows)->pluck('genre')->unique()->values();
     $q = ['location_id' => $locationId, 'format' => $format];
 @endphp
@@ -179,7 +179,9 @@
                             </td>
                             <td>@foreach($r['why'] as $w)<span class="ro-tag" style="background:{{ $whyColors[$w] ?? '#777' }}" title="{{ $whyLabels[$w] ?? $w }}">{{ $whyShort[$w] ?? $w }}</span> @endforeach</td>
                             <td class="n">{{ $r['sold_since'] ?: '' }}</td>
-                            <td class="n">{{ $r['sold_ytd'] ?: '' }}</td>
+                            <td class="n">{{ $r['sold_ytd'] ?: '' }}
+                                @if(!empty($r['sold_last_year']))<div class="ro-muted">last yr {{ $r['sold_last_year'] + 0 }}</div>@endif
+                                @if(!empty($r['sold_other_store']))<div class="ro-muted">other store {{ $r['sold_other_store'] + 0 }}</div>@endif</td>
                             <td class="n">{{ $r['avg_days_to_sell'] !== null ? $r['avg_days_to_sell'] : '' }}</td>
                             <td>{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
                                 @if(in_array('overdue', $r['why']))<div class="ro-muted text-danger">{{ $r['days_since_sale'] }} days ago</div>@endif</td>
