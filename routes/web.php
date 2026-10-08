@@ -458,6 +458,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/name-cleanup/poster-genre-apply', 'ProductNameController@posterGenreApply')->name('products.genre.poster.apply');
     Route::post('/products/name-cleanup/standard-scan', 'ProductNameController@standardScan')->name('products.name.standard.scan');
     Route::post('/products/name-cleanup/discogs-link-scan', 'ProductNameController@discogsLinkScan');
+    Route::get('/products/name-cleanup/format-stats', 'ProductNameController@nameFormatStats');
     Route::post('/products/name-cleanup/discogs-link-run', 'ProductNameController@discogsLinkRun');
     Route::post('/products/name-cleanup/standard-apply', 'ProductNameController@standardApply')->name('products.name.standard.apply');
     // Owner-only, read-only: tally which Discogs genres/styles don't match any

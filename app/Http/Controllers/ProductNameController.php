@@ -2329,4 +2329,56 @@ class ProductNameController extends Controller
             'rate_limited' => $rateLimited, 'after_id' => $lastId, 'remaining' => $remaining,
             'done' => $remaining === 0 && !$rateLimited, 'sample' => array_slice($linked, 0, 5)]);
     }
+
+    /**
+     * Plain-text: how product names are written today, overall and by who
+     * created them per year, so Sarah can pick the standard staff already use.
+     */
+    public function nameFormatStats(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) { abort(403, 'Owner-only.'); }
+        $business_id = $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        $known = $this->standardKnownArtists($business_id, $catIds)['known'];
+        $tot = []; $byWho = []; $ex = [];
+        \DB::table('products as p')->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->whereIn('p.category_id', $catIds ?: [0])
+            ->select('p.id', 'p.name', 'p.created_at', \DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as who"))
+            ->orderBy('p.id')
+            ->chunk(5000, function ($rows) use (&$tot, &$byWho, &$ex, $known) {
+                foreach ($rows as $r) {
+                    $n = trim((string) $r->name);
+                    $parts = $this->standardSplit($n);
+                    if (!$parts) { $shape = 'no separator'; }
+                    else {
+                        [$a, $b, $sep] = $parts;
+                        $ia = isset($known[$this->stdKey($a)]); $ib = isset($known[$this->stdKey($b)]);
+                        $order = $ia && !$ib ? 'Artist first' : ($ib && !$ia ? 'Title first' : 'order unclear');
+                        $shape = $order . ' with "' . ($sep === '-' ? ' - ' : ' / ') . '"';
+                        if (strpos($a, ',') !== false && $ia) { $shape = 'LAST, FIRST / Title'; }
+                    }
+                    $letters = preg_replace('/[^\p{L}]/u', '', $n);
+                    $case = $letters === '' ? '' : (mb_strtoupper($letters) === $letters ? 'ALL CAPS' : (mb_strtolower($letters) === $letters ? 'all lowercase' : 'Mixed case'));
+                    $k = $shape . ' + ' . $case;
+                    $tot[$k] = ($tot[$k] ?? 0) + 1;
+                    $who = trim((string) $r->who) ?: '?';
+                    $y = substr((string) $r->created_at, 0, 4);
+                    $byWho[$y . ' ' . $who][$k] = ($byWho[$y . ' ' . $who][$k] ?? 0) + 1;
+                    if (!isset($ex[$k]) || count($ex[$k]) < 3) { $ex[$k][] = $n; }
+                }
+            });
+        arsort($tot);
+        $sum = array_sum($tot);
+        $L = ['HOW PRODUCT NAMES ARE WRITTEN (active music products: ' . $sum . ')', ''];
+        foreach ($tot as $k => $v) { $L[] = sprintf('%6d  %4.1f%%  %-48s e.g. %s', $v, 100 * $v / $sum, $k, implode(' | ', $ex[$k])); }
+        $L[] = ''; $L[] = 'BY YEAR + WHO CREATED THEM (top style each, 100+ products):';
+        ksort($byWho);
+        foreach ($byWho as $w => $m) {
+            $t = array_sum($m); if ($t < 100) continue;
+            arsort($m); $top = key($m);
+            $L[] = sprintf('%-34s %6d  top: %s (%d%%)', $w, $t, $top, round(100 * $m[$top] / $t));
+        }
+        return response(implode("\n", $L), 200)->header('Content-Type', 'text/plain; charset=UTF-8');
+    }
 }
