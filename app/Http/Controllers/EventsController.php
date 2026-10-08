@@ -436,6 +436,7 @@ class EventsController extends Controller
             $eventById[(string) $eid] = [
                 'name'       => $ev['name'] ?? '',
                 'streetDate' => $ev['streetDate'] ?? null,
+                'location'   => array_values(array_filter((array) ($ev['location'] ?? []))),
             ];
         }
 
@@ -477,6 +478,14 @@ class EventsController extends Controller
                         'placed'      => $p['createdAt'] ?? null,
                         'pickup'      => $pickup,
                         'streetDate'  => $eventById[$eid]['streetDate'] ?? null,
+                        // Store: the preorder's own key if the bridge sends one,
+                        // else the event's store when it's at just one.
+                        'location'    => (function () use ($p, $eventById, $eid) {
+                            $k = strtolower((string) ($p['eventLocationKey'] ?? $p['location'] ?? ''));
+                            if ($k === 'hollywood' || $k === 'pico') { return $k; }
+                            $locs = array_map('strtolower', $eventById[$eid]['location'] ?? []);
+                            return count($locs) === 1 ? $locs[0] : '';
+                        })(),
                         'paid'        => !empty($p['paid']),
                         'paidKnown'   => true,
                         'status'      => $status,

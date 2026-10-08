@@ -34,7 +34,7 @@
                 if ($pickedUp) { $statusSort = 9; }
                 $pre = ($wp['source'] ?? '') === 'preorder' ? $wp['pre'] : null;
                 $sourceLabel = $pre ? $pre['sourceTag'] : (($wp['source'] ?? '') === 'store_hold' ? 'In-store hold' : 'Web order');
-                $storeLabel = $pre ? '—' : ($wp['location'] === 'pico' ? 'Pico' : 'Hollywood');
+                $storeLabel = $wp['location'] === 'pico' ? 'Pico' : ($wp['location'] === 'hollywood' || !$pre ? 'Hollywood' : '—');
             @endphp
             <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                 <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>

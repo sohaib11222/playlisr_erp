@@ -227,7 +227,7 @@ class CustomerPickupController extends Controller
                 'total'         => $p['price'],
                 'paid'          => $p['paidKnown'] ? (bool) $p['paid'] : null,
                 'paymentMethod' => '',
-                'location'      => '',
+                'location'      => $p['location'] ?? '',
                 'placed'        => $p['placed'] ?? null,
                 'status'        => $pickedUp ? 'picked_up' : (($p['status'] ?? '') === 'ready' ? 'ready_for_pickup' : 'preorder'),
                 'isPreorder'    => false,
