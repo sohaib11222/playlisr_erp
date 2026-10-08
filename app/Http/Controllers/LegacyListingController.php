@@ -319,4 +319,86 @@ class LegacyListingController extends Controller
         }
         return response()->json(['success' => true, 'retired' => $done]);
     }
+
+    // ================= 2024 LISTINGS REVIEW =================
+    // Sarah 2026-10-08: "i rly need to comb through ERP listings from 2024".
+    // Every active listing created in 2024 with the red flags we found
+    // (made-up SKU, cost + 25% price, duplicate album, no sales, stock),
+    // filterable and exportable. Read-only.
+
+    public function review2024()
+    {
+        if (!$this->isOwner()) { abort(403, 'Owner-only.'); }
+        return view('products.review_2024');
+    }
+
+    public function review2024Data(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $locNames = \DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
+
+        $rows = \DB::table('products as p')
+            ->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)
+            ->where('p.created_at', '>=', '2024-01-01 00:00:00')->where('p.created_at', '<', '2025-01-01 00:00:00')
+            ->groupBy('p.id')
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.created_at', 'p.not_for_selling', 'p.discogs_release_id',
+                \DB::raw('MAX(c.name) as cat'), \DB::raw('MAX(sc.name) as genre'),
+                \DB::raw('MAX(v.dpp_inc_tax) as cost'), \DB::raw('MAX(v.sell_price_inc_tax) as price'),
+                \DB::raw("MAX(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) as by_name"),
+                \DB::raw("(select group_concat(concat(vld.location_id, ':', vld.qty_available) separator '|') from variation_location_details vld where vld.product_id = p.id) as stock_by_loc"),
+                \DB::raw("(select coalesce(sum(tsl.quantity),0) from transaction_sell_lines tsl join transactions t on t.id = tsl.transaction_id where tsl.product_id = p.id and t.type = 'sell' and t.status = 'final') as sold"),
+                \DB::raw("(select max(t.transaction_date) from transaction_sell_lines tsl join transactions t on t.id = tsl.transaction_id where tsl.product_id = p.id and t.type = 'sell' and t.status = 'final') as last_sold"))
+            ->orderBy('p.id')->get();
+
+        // Album duplicates across ALL active listings (any year).
+        $keyCount = [];
+        $all = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->select('p.name', 'c.name as cat');
+        foreach ($all->cursor() as $r) {
+            $k = $this->nameKey($r->name) . '|' . $this->formatFamily($r->cat);
+            $keyCount[$k] = ($keyCount[$k] ?? 0) + 1;
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $hw = 0; $pico = 0; $other = 0;
+            foreach (array_filter(explode('|', (string) $r->stock_by_loc)) as $part) {
+                [$lid, $q] = array_pad(explode(':', $part, 2), 2, 0);
+                $n = mb_strtolower((string) ($locNames[(int) $lid] ?? ''));
+                if (strpos($n, 'hollywood') !== false) $hw += (float) $q;
+                elseif (strpos($n, 'pico') !== false) $pico += (float) $q;
+                else $other += (float) $q;
+            }
+            $cost = (float) $r->cost; $price = (float) $r->price;
+            $k = $this->nameKey($r->name) . '|' . $this->formatFamily($r->cat);
+            $flags = [];
+            if (!preg_match('/^[0-9 -]{11,16}$/', (string) $r->sku)) $flags[] = 'made-up SKU';
+            if ($cost > 0 && abs($price - $cost * 1.25) < 0.011) $flags[] = 'cost +25% price';
+            if ($price <= 0) $flags[] = 'no price';
+            if ($cost > 0 && $price > 0 && $price < $cost) $flags[] = 'price below cost';
+            if (($keyCount[$k] ?? 0) > 1) $flags[] = 'duplicate album';
+            if ((float) $r->sold <= 0) $flags[] = 'never sold';
+            if (!$r->genre) $flags[] = 'no genre';
+            if (!(int) $r->discogs_release_id) $flags[] = 'no Discogs link';
+            if ((int) $r->not_for_selling) $flags[] = 'not for selling';
+            $out[] = [
+                'id' => (int) $r->id, 'name' => $r->name, 'artist' => $r->artist, 'sku' => $r->sku,
+                'cat' => $r->cat, 'genre' => $r->genre, 'cost' => round($cost, 2), 'price' => round($price, 2),
+                'hw' => $hw, 'pico' => $pico, 'other' => $other, 'sold' => (float) $r->sold,
+                'last_sold' => $r->last_sold ? substr((string) $r->last_sold, 0, 10) : null,
+                'created' => substr((string) $r->created_at, 0, 10), 'by' => trim((string) $r->by_name),
+                'flags' => $flags,
+            ];
+        }
+        return response()->json(['success' => true, 'rows' => $out]);
+    }
 }

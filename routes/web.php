@@ -403,6 +403,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
+    Route::get('/products/review-2024', 'LegacyListingController@review2024');
+    Route::get('/products/review-2024/data', 'LegacyListingController@review2024Data');
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/reports/supplier-price-pulls', function () {
         $u = auth()->user();
