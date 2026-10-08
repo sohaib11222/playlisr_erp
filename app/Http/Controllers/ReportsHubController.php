@@ -46,6 +46,7 @@ class ReportsHubController extends Controller
                 'title' => 'Inventory',
                 'icon'  => 'fa-warehouse',
                 'reports' => [
+                    ['key' => 'reorder',               'name' => 'Weekly Reorder',        'icon' => 'fa-redo',               'action' => 'ReorderController@index',                     'desc' => 'This week\'s AMS/RedEye order per store and format, by genre. Enter bin counts, export, paste into AMS.'],
                     ['key' => 'inventory-check-assistant', 'name' => 'Inventory Check Assistant', 'icon' => 'fa-magic',          'action' => 'InventoryCheckController@index',              'desc' => 'Unified reorder: most sold, fast sellers, empty tabs + AMS export.'],
                     ['key' => 'pos-requests',          'name' => 'POS Requests',          'icon' => 'fa-search-minus',       'action' => 'PosSearchRequestController@index',            'desc' => 'Searches at the register that came back empty — what customers asked for that we don\'t carry.'],
                     ['key' => 'stock-report',          'name' => 'Stock Report',          'icon' => 'fa-boxes',              'action' => 'ReportController@getStockReport',             'desc' => 'Stock on hand by location.'],

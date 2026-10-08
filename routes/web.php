@@ -724,6 +724,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/items-report', 'ReportController@itemsReport');
     Route::get('/reports/items-report/export', 'ReportController@itemsReportExport')->name('reports.items-report.export');
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
+    // Weekly Reorder (Jon's spreadsheet process as one page, Sarah 2026-10-08)
+    Route::get('/reports/reorder', 'ReorderController@index');
+    Route::get('/reports/reorder/csv', 'ReorderController@csv');
+    Route::post('/reports/reorder/count', 'ReorderController@saveCount');
+    Route::post('/reports/reorder/import-counts', 'ReorderController@importCounts');
+    Route::post('/reports/reorder/ordered', 'ReorderController@markOrdered');
+    Route::post('/reports/reorder/orders/{id}/delete', 'ReorderController@deleteOrder');
+    Route::post('/reports/reorder/settings', 'ReorderController@saveSettings');
     Route::get('/reports/inventory-check-assistant/data', 'InventoryCheckController@data');
     Route::get('/reports/inventory-check-assistant/buckets', 'InventoryCheckController@buckets');
     Route::get('/reports/inventory-check-assistant/events-bucket', 'InventoryCheckController@eventsBucket');
