@@ -204,13 +204,18 @@
                             elseif (empty($wp['source'])) { $remindUrl = route('website-orders.remind', ['id' => $wp['id']]); }
                         }
                         $remindedAt = $pre ? ($pre['remindedAt'] ?? null) : ($wp['remindedAt'] ?? null);
+                        $remindedVia = $pre ? ($pre['remindedVia'] ?? null) : ($wp['remindedVia'] ?? null);
+                        // Website stamps are UTC; show LA time so staff can see how recently they texted.
+                        $remindedLabel = $remindedAt
+                            ? (new \DateTime($remindedAt))->setTimezone(new \DateTimeZone('America/Los_Angeles'))->format('M j, g:ia')
+                            : null;
                     @endphp
                     @if($remindUrl)
                         <form method="POST" action="{{ $remindUrl }}" style="margin:0;">
                             {{ csrf_field() }}
                             <input type="hidden" name="filter" value="">
                             <button type="submit" class="btn-ghost act-btn" onclick="this.disabled=true; this.form.submit();">Remind</button>
-                            @if($remindedAt)<span class="status-sub">Reminded {{ date('n/j', strtotime($remindedAt)) }}</span>@endif
+                            @if($remindedLabel)<span class="status-sub">Last reminded {{ $remindedLabel }}@if($remindedVia) ({{ $remindedVia }})@endif</span>@endif
                         </form>
                     @endif
                 </td>

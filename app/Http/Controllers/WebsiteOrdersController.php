@@ -258,6 +258,7 @@ class WebsiteOrdersController extends Controller
                 'paymentMethod' => (string) ($o['paymentMethod'] ?? ''),
                 'storeCredit' => (float) ($o['used_store_credit'] ?? 0),
                 'remindedAt'  => $o['pickup_reminded_at'] ?? null,
+                'remindedVia' => $o['pickup_reminded_via'] ?? null,
             ];
         }, $rows);
     }

@@ -492,6 +492,7 @@ class EventsController extends Controller
                         'statusLabel' => str_replace('_', ' ', $status),
                         'notifiedAt'  => $p['notifiedAt'] ?? null,
                         'remindedAt'  => $p['remindedAt'] ?? null,
+                        'remindedVia' => $p['remindedVia'] ?? null,
                         'giveaway'    => !empty($p['giveaway']),
                         'active'      => $active,
                     ];
