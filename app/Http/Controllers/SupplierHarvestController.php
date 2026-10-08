@@ -93,6 +93,16 @@ class SupplierHarvestController extends Controller
     /** Merge priced rows [{upc, cost, qty}] into the supplier feed. */
     public function upload(Request $request, $supplier)
     {
+        try {
+            return $this->doUpload($request, $supplier);
+        } catch (\Throwable $e) {
+            \Log::error('supplier-harvest upload failed: ' . $e->getMessage());
+            return $this->cors(response()->json(['success' => false, 'msg' => 'Server error: ' . $e->getMessage()], 500));
+        }
+    }
+
+    protected function doUpload(Request $request, $supplier)
+    {
         $biz = $this->businessForToken($request->query('token'));
         if (!$biz) return $this->cors(response()->json(['success' => false, 'msg' => 'Bad token'], 403));
         if (!in_array($supplier, ['alliance'], true)) {
@@ -110,7 +120,8 @@ class SupplierHarvestController extends Controller
         if ($want) {
             \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->where('p.business_id', $biz)->whereRaw("p.sku REGEXP '^[0-9 -]{11,16}$'")
-                ->select('p.sku', 'p.name', 'p.artist', 'c.name as cat')
+                ->select('p.id', 'p.sku', 'p.name', 'p.artist', 'c.name as cat')
+                ->orderBy('p.id')
                 ->chunk(5000, function ($ps) use (&$info, $want, $norm) {
                     foreach ($ps as $p) {
                         $k = $norm($p->sku);
