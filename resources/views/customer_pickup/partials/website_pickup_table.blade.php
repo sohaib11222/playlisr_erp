@@ -7,6 +7,7 @@
         <tr>
             <th>#</th>
             <th>Store</th>
+            <th>Source</th>
             <th>Name</th>
             <th>Email</th>
             <th>Phone</th>
@@ -37,22 +38,17 @@
                 $pickedUp = ($wp['status'] ?? '') === 'picked_up';
                 if ($pickedUp) { $statusSort = 9; }
                 $pre = ($wp['source'] ?? '') === 'preorder' ? $wp['pre'] : null;
+                $sourceLabel = $pre ? $pre['sourceTag'] : (($wp['source'] ?? '') === 'store_hold' ? 'In-store hold' : 'Web order');
                 $storeLabel = $pre ? '—' : ($wp['location'] === 'pico' ? 'Pico' : 'Hollywood');
             @endphp
             <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                 <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                 <td data-order="{{ $storeLabel }}">{{ $storeLabel }}</td>
-                <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
-                <td data-order="{{ strtolower($wp['email']) }}">@if($wp['email'] !== ''){!! str_replace('@', '<wbr>@', e($wp['email'])) !!}@else — @endif</td>
-                <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
-                <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:190px;">
-                    @forelse($wp['items'] as $itemLabel)
-                        <div>{{ $itemLabel }}</div>
-                    @empty
-                        —
-                    @endforelse
+                <td data-order="{{ $sourceLabel }}" style="white-space:nowrap;">
+                    <span class="src-tag">{{ $sourceLabel }}</span>
                     @if($pre && $pre['type'] === 'event')
-                        <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $pre['id']]) }}" style="margin:4px 0 0;">
+                        <div class="item-meta src-meta">
+                        <form method="POST" action="{{ route('events.overviewEventSource', ['preorderId' => $pre['id']]) }}" style="margin:0;">
                             {{ csrf_field() }}
                             <input type="hidden" name="filter" value="">
                             <select name="source" onchange="this.form.submit()" class="source-select" aria-label="Where placed" title="{{ $pre['source'] !== '' ? $pre['source'] : ('At event' . ($pre['eventName'] ? ' - ' . $pre['eventName'] : '')) }}">
@@ -66,9 +62,20 @@
                             </select>
                         </form>
                         @if(!empty($pre['eventId']))
-                            <a href="{{ route('events.edit', ['id' => $pre['eventId']]) }}" style="font-size:12px;">Open event</a>
+                            <a href="{{ route('events.edit', ['id' => $pre['eventId']]) }}">Open event</a>
                         @endif
+                        </div>
                     @endif
+                </td>
+                <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
+                <td data-order="{{ strtolower($wp['email']) }}">@if($wp['email'] !== ''){!! str_replace('@', '<wbr>@', e($wp['email'])) !!}@else — @endif</td>
+                <td style="white-space:nowrap;">{{ $wp['phone'] ?: '—' }}</td>
+                <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" style="min-width:190px;">
+                    @forelse($wp['items'] as $itemLabel)
+                        <div>{{ $itemLabel }}</div>
+                    @empty
+                        —
+                    @endforelse
                 </td>
                 <td data-order="{{ $wp['unitCount'] }}"><strong>{{ $wp['unitCount'] }}</strong></td>
                 <td data-order="{{ $wp['total'] ?? 0 }}" style="white-space:nowrap;">
@@ -88,21 +95,24 @@
                 @endif
                 <td data-order="{{ $statusSort }}">
                     @if($pickedUp)
-                        <span class="label" style="background:#2e7d32; font-weight:700;">Picked up</span>
+                        <span class="label" style="background:#2e7d32;">Picked up</span>
                     @elseif($pre)
-                        <span class="label" style="background:#7a6a4a; font-weight:700;">{{ $pre['sourceTag'] }}</span>
-                        @if($wp['status'] === 'ready_for_pickup')<br><span class="label label-warning">Ready for Pickup</span>@endif
-                        @if(!empty($pre['pickup']))<br><span class="sub">Pickup {{ date('D, M j', strtotime($pre['pickup'])) }}</span>@endif
+                        @if($wp['status'] === 'ready_for_pickup')
+                            <span class="label label-warning">Ready for Pickup</span>
+                        @else
+                            <span class="label" style="background:#7a6a4a;">Preorder</span>
+                        @endif
+                        @if(!empty($pre['pickup']))<span class="status-sub">Pickup {{ date('D M j', strtotime($pre['pickup'])) }}</span>@endif
                     @elseif($wp['status'] === 'ready_for_pickup')
                         <span class="label label-warning">Ready for Pickup</span>
                     @elseif($eventPickup)
-                        <span class="label" style="background:#2e7d32; font-weight:700;">Will pick up at event</span>
+                        <span class="label" style="background:#2e7d32;">Pickup at event</span>
                     @elseif(!empty($wp['isPreorder']))
-                        <span class="label" style="background:#c9720a; font-weight:700;">PREORDER - NOT IN STOCK</span><br>
+                        <span class="label" style="background:#c9720a;">Preorder, not in stock</span>
                         @if($notYetDue)
-                            <span class="sub" style="color:#a23;">Don't pull - ships {{ gmdate('M j, Y', $shipTs) }}</span>
+                            <span class="status-sub" style="color:#a23;">Don't pull, ships {{ gmdate('M j, Y', $shipTs) }}</span>
                         @else
-                            <span class="sub">Street date has passed - check it's in before pulling</span>
+                            <span class="status-sub">Street date passed, check it's in</span>
                         @endif
                     @else
                         <span class="label label-default">Preparing</span>
@@ -112,29 +122,33 @@
                     @if($pickedUp)
                         <span class="sub">Done</span>
                     @elseif($pre)
-                        @if($pre['type'] === 'event' && $pre['paidKnown'] && empty($pre['paid']))
-                            <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $pre['id']]) }}" style="display:inline;">
-                                {{ csrf_field() }}
-                                <input type="hidden" name="filter" value="">
-                                <button type="submit" class="btn-ghost" style="padding:5px 12px;font-size:12px;">Mark paid</button>
-                            </form>
-                        @endif
-                        <form method="POST" action="{{ $pre['type'] === 'event' ? route('events.overviewEventPickup', ['preorderId' => $pre['id']]) : route('events.overviewSpecialPickup', ['id' => $pre['id']]) }}" style="display:inline;">
+                        {{-- Same dropdown as the website rows; picking "Picked Up" posts to the preorder pickup endpoint. --}}
+                        <form method="POST" action="{{ $pre['type'] === 'event' ? route('events.overviewEventPickup', ['preorderId' => $pre['id']]) : route('events.overviewSpecialPickup', ['id' => $pre['id']]) }}" style="margin:0;">
                             {{ csrf_field() }}
                             <input type="hidden" name="filter" value="">
-                            <button type="submit" class="btn-accent" style="padding:5px 12px;font-size:12px;">Mark picked up</button>
+                            <select class="act-select" onchange="if (this.value === 'picked_up') { this.form.submit(); }" aria-label="Order status">
+                                <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? 'Ready for Pickup' : 'Waiting' }}</option>
+                                <option value="picked_up">Picked Up</option>
+                            </select>
                         </form>
+                        @if($pre['type'] === 'event' && $pre['paidKnown'] && empty($pre['paid']))
+                            <form method="POST" action="{{ route('events.overviewEventPaid', ['preorderId' => $pre['id']]) }}" style="margin:0;">
+                                {{ csrf_field() }}
+                                <input type="hidden" name="filter" value="">
+                                <button type="submit" class="btn-ghost act-btn">Mark paid</button>
+                            </form>
+                        @endif
                     @elseif(($wp['source'] ?? '') === 'store_hold')
-                        <button type="button" class="btn btn-success btn-xs js-hold-picked-up" data-id="{{ $wp['id'] }}">Mark Picked Up</button>
+                        <button type="button" class="btn-ghost act-btn js-hold-picked-up" data-id="{{ $wp['id'] }}" style="margin-top:0;">Mark picked up</button>
                     @elseif($notYetDue)
                         <span class="sub">Available after street date</span>
                     @else
                         {{-- Change status from a dropdown (Sarah, 2026-10-06); event pickups too,
                              so leftover event orders can be set Ready for Pickup (2026-10-07).
                              Cancel stays on /website-orders since it can involve a refund. --}}
-                        <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="display:inline;">
+                        <form method="POST" action="{{ route('website-orders.updateStatus', ['id' => $wp['id']]) }}" style="margin:0;">
                             {{ csrf_field() }}
-                            <select name="status" class="form-control input-sm" style="height:28px; padding:2px 6px; font-size:12px; width:auto;" onchange="this.form.submit()" aria-label="Order status">
+                            <select name="status" class="act-select" onchange="this.form.submit()" aria-label="Order status">
                                 @foreach(['processing' => 'Preparing', 'ready_for_pickup' => 'Ready for Pickup', 'picked_up' => 'Picked Up'] as $sv => $sl)
                                     <option value="{{ $sv }}" @if($wp['status'] === $sv) selected @endif>{{ $sl }}</option>
                                 @endforeach

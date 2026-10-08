@@ -46,8 +46,22 @@ body.pos-v2 .preorder-toggle .btn-accent, body.pos-v2 .preorder-toggle .btn-ghos
    in the same row so they don't read as the same kind of control. */
 body.pos-v2 #preorder_table .pill-paid, body.pos-v2 .wp-table .pill-paid { background: #e6f4ea; color: #2e7d32; border-color: #cce8d4; }
 body.pos-v2 .wp-table .pill { display:inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
-body.pos-v2 .wp-table thead th { padding-right: 18px !important; }
-body.pos-v2 .wp-table .label { white-space: normal; display: inline-block; line-height: 1.3; }
+/* Pickup Orders list: same header/row rhythm as the table above. */
+body.pos-v2 .wp-table { width: 100% !important; border-collapse: collapse; }
+body.pos-v2 .wp-table thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a8070;
+  font-weight: 700; padding: 9px 22px 9px 10px !important; border-bottom: 1px solid var(--pos-line); background: transparent; white-space: nowrap; }
+body.pos-v2 .wp-table tbody td { padding: 12px 10px; border-bottom: 1px solid var(--pos-line); vertical-align: top; color: var(--pos-ink); line-height: 1.45; }
+body.pos-v2 .wp-table tbody tr:hover td { background: var(--pos-accent-soft); }
+body.pos-v2 .wp-table .label { white-space: nowrap; display: inline-block; line-height: 1.4; }
+body.pos-v2 .wp-table .status-sub { display: block; font-size: 12px; color: #6b6253; margin-top: 5px; white-space: nowrap; }
+body.pos-v2 .wp-table .item-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
+body.pos-v2 .wp-table .src-tag { font-weight: 600; }
+body.pos-v2 .wp-table .src-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
+body.pos-v2 .wp-table .source-select { max-width: 150px; font-size: 11.5px; padding: 3px 6px; }
+body.pos-v2 .wp-table .act-select { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 5px 8px; font-size: 12px; font-family: inherit;
+  background: #fff; color: var(--pos-ink); width: 150px; height: 30px; }
+body.pos-v2 .wp-table .act-select:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
+body.pos-v2 .wp-table .act-btn { display: block; margin-top: 6px; width: 150px; padding: 5px 8px; font-size: 12px; border-radius: 8px; text-align: center; }
 body.pos-v2 #website_pickup_search { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 7px 10px; font-family: inherit; background: #fff; min-width: 240px; }
 body.pos-v2 #website_pickup_search:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 #preorder_table .pill-unpaid, body.pos-v2 .wp-table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }

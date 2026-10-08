@@ -198,7 +198,7 @@ class CustomerPickupController extends Controller
                 'customer'      => $h->customer_name ?: 'Walk-in',
                 'email'         => $h->customer_email ?: '',
                 'phone'         => $h->mobile ?: '',
-                'items'         => ["{$qty} x {$h->product_name} (in-store hold)"],
+                'items'         => ["{$qty} x {$h->product_name}"],
                 'unitCount'     => $qty,
                 'total'         => null,
                 'paid'          => (bool) $h->is_paid,
