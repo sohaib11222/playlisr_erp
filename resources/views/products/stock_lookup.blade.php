@@ -48,7 +48,7 @@
     // Prefill from ?q= after the page finishes loading (a global script
     // clears inputs on load).
     var start = new URLSearchParams(location.search).get('q');
-    if (start) { window.addEventListener('load', function () { setTimeout(function () { q.value = start; run(); }, 400); }); }
+    if (start) { setTimeout(function () { q.value = start; run(); }, 700); }
 })();
 </script>
 @endsection
