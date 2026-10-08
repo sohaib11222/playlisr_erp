@@ -54,7 +54,7 @@ class SupplierHarvestController extends Controller
     protected function cors($response)
     {
         // Each supplier portal the pull runs from.
-        $allowed = [self::ORIGIN, 'https://b2b.secretlydistribution.com', 'https://b2b.redeyeworldwide.com'];
+        $allowed = [self::ORIGIN, 'https://b2b.secretlydistribution.com', 'https://b2b.redeyeworldwide.com', 'https://newb2b.monostereo1stop.com'];
         $origin = request()->headers->get('Origin');
         return $response->header('Access-Control-Allow-Origin', in_array($origin, $allowed, true) ? $origin : self::ORIGIN)
             ->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -108,7 +108,7 @@ class SupplierHarvestController extends Controller
     {
         $biz = $this->businessForToken($request->query('token'));
         if (!$biz) return $this->cors(response()->json(['success' => false, 'msg' => 'Bad token'], 403));
-        if (!in_array($supplier, ['alliance', 'secretly', 'redeye'], true)) {
+        if (!in_array($supplier, ['alliance', 'secretly', 'redeye', 'monostereo'], true)) {
             return $this->cors(response()->json(['success' => false, 'msg' => 'Unknown supplier'], 400));
         }
         $rows = json_decode((string) $request->getContent(), true);
