@@ -465,6 +465,7 @@
             onsubmit="return confirm('Cancel this order and email the customer? This can\'t be undone from here.');">
         {{ csrf_field() }}
         <h3>Cancel order</h3>
+        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">This cancels the <strong>whole order</strong> and refunds everything the customer paid. If only some items are unavailable, don't cancel: refund just those items by hand.</p>
         <label>Reason</label>
         <select name="reason" required>
           <option value="">Choose a reason…</option>
