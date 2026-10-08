@@ -672,7 +672,48 @@ class BuyFromCustomerController extends Controller
                     'price_override_reason' => 'required|string|max:500',
                 ]);
             }
+            // Sarah 2026-10-08: Quenton paid $115 cash for a collection the
+            // calculator valued at $24.23. Paying way over the system's number
+            // is a hard stop for everyone but Luis / managers — an override
+            // reason isn't enough, they have to call Luis first.
+            if (self::isOverpay($final, $autoFinal) && !self::canApproveOverpay(auth()->user())) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'final_amount_paid' => self::overpayMessage($final, $autoFinal),
+                ]);
+            }
         }
+    }
+
+    // Over 25% above the calculator AND at least $10 over — small rounding
+    // bumps on cheap buys still go through with just an override reason.
+    const OVERPAY_RATIO = 1.25;
+    const OVERPAY_MIN_DOLLARS = 10;
+
+    public static function isOverpay($paid, $suggested)
+    {
+        $paid = (float) $paid;
+        $suggested = max(0, (float) $suggested);
+        return $paid > $suggested * self::OVERPAY_RATIO
+            && ($paid - $suggested) >= self::OVERPAY_MIN_DOLLARS;
+    }
+
+    public static function overpayMessage($paid, $suggested)
+    {
+        return sprintf(
+            'You cannot pay $%s for this. The system says it is worth $%s. Please call Luis before buying.',
+            number_format((float) $paid, 2),
+            number_format(max(0, (float) $suggested), 2)
+        );
+    }
+
+    // Luis (buying lead), the managers and admins can still pay over.
+    public static function canApproveOverpay($user)
+    {
+        if (!$user) return false;
+        if (strtolower(trim((string) $user->first_name)) === 'luis') return true;
+        if (ChooseRoleController::userCanManager($user)) return true;
+        $business_id = request()->session()->get('user.business_id');
+        return $business_id && $user->hasRole('Admin#' . $business_id);
     }
 
     protected function validateAcceptCompliance(Request $request)

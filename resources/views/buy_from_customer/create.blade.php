@@ -750,6 +750,14 @@ HTML;
                                                 </div>
                                             </div>
                                         </div>
+                                        @php
+                                            try {
+                                                $bfcPureAuto = app(\App\Services\BuyOfferCalculatorService::class)->calculate($input['lines'] ?? [], []);
+                                            } catch (\Throwable $e) {
+                                                $bfcPureAuto = null;
+                                            }
+                                            $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user());
+                                        @endphp
                                         <div class="col-md-4">
                                             <p class="help-block small" style="margin-top:24px;">
                                                 Suggested — Cash <strong>${{ number_format((float) data_get($calc, 'final_offer_cash', 0), 2) }}</strong>
@@ -757,6 +765,10 @@ HTML;
                                             </p>
                                         </div>
                                     </div>
+                                    <div id="bfc_overpay_alert" class="alert alert-danger" style="display:none; font-size:15px; font-weight:600;"
+                                         data-auto-cash="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_cash'], 2, '.', '') : '' }}"
+                                         data-auto-credit="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_credit'], 2, '.', '') : '' }}"
+                                         data-can-overpay="{{ $bfcCanOverpay ? '1' : '0' }}"></div>
                                     <hr style="margin:6px 0 14px;">
                                     <h4>Override</h4>
                                     <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
@@ -1617,8 +1629,37 @@ HTML;
             // staying as Drafts because Accept was failing validation server-
             // side with no UI feedback. We still show server errors at the top
             // (see $errors block) — this is the first line of defense.
+            // Sarah 2026-10-08: hard stop when the amount paid is way over the
+            // calculator (mirrors BuyFromCustomerController::isOverpay). Luis,
+            // managers and admins just see the warning; everyone else is blocked.
+            function bfcOverpayMessage() {
+                var $a = $('#bfc_overpay_alert');
+                if (!$a.length || $('#bfc_is_donated_checkbox').is(':checked')) return '';
+                var paid = parseFloat($('#bfc_accept_final_amount').val());
+                var auto = parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash'));
+                if (!isFinite(paid) || !isFinite(auto)) return '';
+                auto = Math.max(0, auto);
+                if (!(paid > auto * 1.25 && (paid - auto) >= 10)) return '';
+                return 'You cannot pay $' + paid.toFixed(2) + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call Luis before buying.';
+            }
+            function bfcRefreshOverpay() {
+                var $a = $('#bfc_overpay_alert');
+                var msg = bfcOverpayMessage();
+                if (!msg) { $a.hide(); return; }
+                if (String($a.data('can-overpay')) === '1') {
+                    msg += ' (You can approve this yourself.)';
+                }
+                $a.text(msg).show();
+            }
+            $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', bfcRefreshOverpay);
+            bfcRefreshOverpay();
+
             $('#accept_buy_offer_form').on('submit', function (e) {
                 var problems = [];
+                var overpayMsg = bfcOverpayMessage();
+                if (overpayMsg && String($('#bfc_overpay_alert').data('can-overpay')) !== '1') {
+                    problems.push(overpayMsg);
+                }
                 if (!$('input[name="compliance_items_owned"]').is(':checked')) {
                     problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
                 }
