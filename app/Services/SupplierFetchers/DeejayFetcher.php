@@ -30,7 +30,7 @@ class DeejayFetcher extends AbstractHttpFetcher
         $page = $this->get($this->base . '/');
         // The login form carries a hidden per-session token named "deejay".
         $token = preg_match('#name="deejay"\s+value="([^"]+)"#', $page, $tm) ? $tm[1] : '';
-        $this->login($this->base . '/ajaxHelper/handleLogin.php', [
+        $resp = $this->login($this->base . '/ajaxHelper/handleLogin.php', [
             'loginFeld' => $creds['DEEJAY_PORTAL_USER'],
             'passwortFeld' => $creds['DEEJAY_PORTAL_PASS'],
             'deejay' => $token,
@@ -40,7 +40,9 @@ class DeejayFetcher extends AbstractHttpFetcher
         $home = $this->get($this->base . '/');
         // Logged out pages show the header login button; logged in ones don't.
         if (strpos($home, 'id="loginModalBtn"') !== false) {
-            throw new \RuntimeException('Deejay: login failed. Check the deejay.de login saved in the ICA Credentials form.');
+            $said = trim(preg_replace('/\s+/', ' ', strip_tags(preg_replace('#<(script|style)[^>]*>.*?</\1>#is', '', (string) $resp))));
+            throw new \RuntimeException('Deejay: login failed (token ' . ($token !== '' ? 'sent' : 'MISSING') . '; site said: ' . mb_substr($said, 0, 160)
+                . '). Check the deejay.de login saved in the ICA Credentials form.');
         }
 
         $rate = 1.08;
