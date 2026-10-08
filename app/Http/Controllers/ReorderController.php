@@ -154,7 +154,24 @@ class ReorderController extends Controller
         foreach ($sug as $r) {
             if (empty($matchedRows[$r['product_id']])) $extra[] = ['title' => trim($r['artist'] . ' / ' . $r['title']), 'qty' => $r['order_qty'], 'why' => $r['why']];
         }
+        // Which rules agree with Jon: per reason, how many suggested titles he also ordered.
+        $byWhy = [];
+        foreach ($sug as $r) {
+            $hitRow = !empty($matchedRows[$r['product_id']]);
+            foreach ($r['why'] as $w) {
+                $byWhy[$w] = $byWhy[$w] ?? ['suggested' => 0, 'jon_also' => 0];
+                $byWhy[$w]['suggested']++;
+                if ($hitRow) $byWhy[$w]['jon_also']++;
+            }
+        }
+        $missWhy = [];
+        foreach ($missed as $m) {
+            $k = is_array($m['page']) ? implode(',', $m['page']['why']) . (($m['page']['sold_ytd'] ?? 0) <= 2 ? ' (1-2 sold)' : ' (3+ sold)') : 'never sold here this year';
+            $missWhy[$k] = ($missWhy[$k] ?? 0) + 1;
+        }
         return response()->json([
+            'by_why' => $byWhy,
+            'missed_why' => $missWhy,
             'as_of' => $asOf,
             'since' => $data['since']->toDateTimeString(),
             'actual_titles' => count($actual), 'actual_copies' => (float) $actual->sum('qty'),
