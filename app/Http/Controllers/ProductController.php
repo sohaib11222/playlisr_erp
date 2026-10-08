@@ -1140,6 +1140,17 @@ class ProductController extends Controller
             'single_dpp_inc_tax.min' => 'Cost (what you paid) must be greater than $0',
         ]);
 
+        // Sealed items must carry their real barcode as the SKU (Sarah 10/8).
+        $sealedCat = (string) DB::table('categories')->where('id', (int) $request->input('category_id'))->value('name');
+        if (stripos($sealedCat, 'sealed') !== false
+            && !preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $request->input('sku')))) {
+            $msg = 'Sealed items need the barcode as the SKU. Scan the barcode on the shrink wrap.';
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => 0, 'msg' => $msg, 'errors' => ['sku' => [$msg]]], 422);
+            }
+            return redirect()->back()->withInput()->withErrors(['sku' => $msg])->with('status', ['success' => 0, 'msg' => $msg]);
+        }
+
         try {
             $business_id = $this->getBusinessId();
             $form_fields = ['name', 'brand_id', 'artist', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'tax_exempt', 'weight', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_description', 'sub_unit_ids', 'bin_position', 'listing_location', 'format'];
@@ -4140,6 +4151,17 @@ class ProductController extends Controller
                     $validator->errors()->add(
                         "products.$index.artist",
                         'Artist is required for this category'
+                    );
+                }
+
+                // Sealed items must carry their real barcode as the SKU
+                // (Sarah 10/8): made-up SKUs can't be matched to distributor
+                // prices or to duplicate listings.
+                if (!$isExistingProduct && $catName !== null && stripos($catName, 'sealed') !== false
+                    && !preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) ($productInput['sku'] ?? '')))) {
+                    $validator->errors()->add(
+                        "products.$index.sku",
+                        'Sealed items need the barcode as the SKU. Scan the barcode on the shrink wrap.'
                     );
                 }
             }
