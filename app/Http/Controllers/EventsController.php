@@ -490,6 +490,7 @@ class EventsController extends Controller
                         'paidKnown'   => true,
                         'status'      => $status,
                         'statusLabel' => str_replace('_', ' ', $status),
+                        'notifiedAt'  => $p['notifiedAt'] ?? null,
                         'active'      => $active,
                     ];
                 }
@@ -578,6 +579,27 @@ class EventsController extends Controller
         return $resp === null
             ? $this->overviewRedirect($request, 'error', 'Could not reach the website to update the preorder.')
             : $this->overviewRedirect($request, 'status', 'Preorder marked picked up.');
+    }
+
+    /**
+     * Mark a listening-party preorder ready (it's in the bin). The website
+     * holds the customer's text/email until the pickup date and sends it
+     * that morning, so staff can mark it early (Sarah, 2026-10-08).
+     */
+    public function overviewMarkEventReady(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $notifyOn = (string) $request->input('notify_on', '');
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/status', [
+            'status' => 'ready',
+            'notifyOn' => preg_match('/^\d{4}-\d{2}-\d{2}/', $notifyOn) ? substr($notifyOn, 0, 10) : null,
+            'storeLocation' => (string) $request->input('store', ''),
+        ]);
+        return $resp === null
+            ? $this->overviewRedirect($request, 'error', 'Could not reach the website to update the preorder.')
+            : $this->overviewRedirect($request, 'status', $resp['message'] ?? 'Preorder marked ready.');
     }
 
     /** Mark an in-store special-order preorder picked up (fulfilled). */

@@ -608,6 +608,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/events-sales-report', 'EventsController@salesReport')->name('events.salesReport');
     Route::get('/events-sales-report/export', 'EventsController@salesReportExport')->name('events.salesReportExport');
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
+    Route::post('/events-preorders/event/{preorderId}/ready', 'EventsController@overviewMarkEventReady')->name('events.overviewEventReady');
     Route::post('/events-preorders/event/{preorderId}/paid', 'EventsController@overviewMarkEventPaid')->name('events.overviewEventPaid');
     Route::post('/events-preorders/event/{preorderId}/source', 'EventsController@overviewSetEventSource')->name('events.overviewEventSource');
     Route::post('/events-preorders/special/{id}/pickup', 'EventsController@overviewMarkSpecialPickedUp')->name('events.overviewSpecialPickup');

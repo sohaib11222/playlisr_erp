@@ -117,6 +117,9 @@
                             <span class="label" style="background:#7a6a4a;">Preorder</span>
                         @endif
                         @if(!empty($pre['pickup']))<span class="status-sub">Pickup {{ date('D M j', strtotime($pre['pickup'])) }}</span>@endif
+                        @if($wp['status'] === 'ready_for_pickup')
+                            <span class="status-sub">{{ !empty($pre['notifiedAt']) ? 'Customer notified' : ($readyFrom ? 'Customer notified ' . gmdate('M j', $readyFrom) . ' morning' : 'Not notified yet') }}</span>
+                        @endif
                     @elseif(!empty($wp['waitingStock']))
                         <span class="label" style="background:#6a5acd;">Waiting on Stock</span>
                         <span class="status-sub">Customer not notified</span>
@@ -143,11 +146,21 @@
                         <span class="sub">Done</span>
                     @elseif($pre)
                         {{-- Same dropdown as the website rows; picking "Picked Up" posts to the preorder pickup endpoint. --}}
+                        {{-- Ready = it's in the bin. Before street date the customer's
+                             text/email waits and goes out that morning (Sarah, 2026-10-08). --}}
+                        @php $canReady = $pre['type'] === 'event' && $wp['status'] !== 'ready_for_pickup'; @endphp
                         <form method="POST" action="{{ $pre['type'] === 'event' ? route('events.overviewEventPickup', ['preorderId' => $pre['id']]) : route('events.overviewSpecialPickup', ['id' => $pre['id']]) }}" style="margin:0;">
                             {{ csrf_field() }}
                             <input type="hidden" name="filter" value="">
-                            <select class="act-select" onchange="if (this.value === 'picked_up') { this.form.submit(); }" aria-label="Order status">
-                                <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? 'Ready for Pickup' : 'Waiting' }}</option>
+                            @if($canReady)
+                                <input type="hidden" name="notify_on" value="{{ $pre['pickup'] ?? '' }}">
+                                <input type="hidden" name="store" value="{{ $wp['location'] }}">
+                            @endif
+                            <select class="act-select" onchange="if (this.value === 'ready') { this.form.action = this.dataset.readyUrl; } if (this.value) { this.form.submit(); }" @if($canReady) data-ready-url="{{ route('events.overviewEventReady', ['preorderId' => $pre['id']]) }}" @endif aria-label="Order status">
+                                <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? ($readyFrom ? 'Ready from ' . gmdate('M j', $readyFrom) : 'Ready for Pickup') : 'Waiting' }}</option>
+                                @if($canReady)
+                                    <option value="ready">{{ $streetTs && $streetTs > strtotime('today') ? 'Ready, notify on ' . gmdate('M j', $streetTs) : 'Ready for Pickup (notify now)' }}</option>
+                                @endif
                                 <option value="picked_up">Picked Up</option>
                             </select>
                         </form>
