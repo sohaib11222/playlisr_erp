@@ -23,6 +23,7 @@ class BuyApprovalController extends Controller
 {
     const MAX_PHOTOS = 6;
     const VALID_HOURS = 3;
+    const TEXTING_ON = false;
 
     public static function dir()
     {
@@ -91,6 +92,12 @@ class BuyApprovalController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $cashier = auth()->user();
         $locationId = $request->input('location_id') ?: null;
+
+        // Sarah 2026-10-08: texting is paused until she says to turn it back on.
+        if (!self::TEXTING_ON) {
+            $who = BuyFromCustomerController::overpayContactName($locationId);
+            return response()->json(['ok' => false, 'msg' => "Please call {$who} to approve this buy."], 422);
+        }
 
         $approver = self::approverFor($business_id, $locationId);
         $who = BuyFromCustomerController::overpayContactName($locationId);
