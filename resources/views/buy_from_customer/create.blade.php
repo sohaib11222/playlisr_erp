@@ -183,6 +183,12 @@
         .content .box-body th, .content .box-body label { text-transform: none !important; letter-spacing: 0 !important; }
         .bfc-rules { font-size: 16px !important; line-height: 1.5; }
         .bfc-rules li { margin-bottom: 4px; }
+        /* Sarah 2026-10-08: black text, not gray. */
+        .content, .content .text-muted, .content .help-block, .content small, .content .small,
+        .content .bfc-step-help, .content .bfc-running-note, .content .box-title,
+        .content label, .content th, .content td, .content .meta-row, .content details summary { color: #111 !important; }
+        .content .form-control::placeholder { color: #555 !important; opacity: 1; }
+        .content .alert.bfc-rules, .content .alert.bfc-rules * { color: #111 !important; background-color: #ffe08a !important; border-color: #e0b400 !important; }
         .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
         .bfc-step-sub { font-size: 17px; font-weight: 700; margin: 16px 0 4px; }
         .bfc-step-help { font-size: 15px; color: #444; margin: 0 0 10px; }
