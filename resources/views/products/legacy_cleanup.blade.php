@@ -22,7 +22,7 @@
 
 <div class="lc-wrap">
     <h1>Old setup listings</h1>
-    <p class="lc-sub">Listings with a made-up SKU (no barcode) and a selling price that is exactly cost + 25%, which is how the 2024 catalog setup priced things. Only ones that have never sold are shown. Checking changes nothing.</p>
+    <p class="lc-sub">Listings with a made-up SKU (no barcode) and a selling price that is exactly cost + 25%, which is how the 2024 catalog setup priced things. Only listings created in 2024 that have never sold are shown. Checking changes nothing.</p>
 
     <button class="lc-btn lc-btn-ghost" id="lcScan" type="button">Check</button>
     <span class="lc-note" id="lcScanNote"></span>

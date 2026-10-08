@@ -37,6 +37,9 @@ class LegacyListingController extends Controller
             ->leftJoin('users as u', 'u.id', '=', 'p.created_by')
             ->where('p.business_id', $business_id)
             ->where('p.is_inactive', 0)
+            // The 2024 setup only; a recent listing that happens to be priced
+            // at cost + 25% is a real one.
+            ->where('p.created_at', '<', '2025-01-01 00:00:00')
             ->where('v.dpp_inc_tax', '>', 0)
             ->whereRaw('ABS(v.sell_price_inc_tax - v.dpp_inc_tax * 1.25) < 0.011')
             ->whereRaw("p.sku REGEXP '^[0-9]{1,8}$'")
