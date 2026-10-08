@@ -19,10 +19,13 @@
     .ro-chip.active { background:#333; color:#fff; border-color:#333; }
     .ro-tag { display:inline-block; color:#fff; border-radius:10px; padding:1px 8px; font-size:12px; margin:1px 2px 1px 0; white-space:nowrap; }
     table.ro-table { font-size:14px; }
-    table.ro-table th { position:sticky; top:0; background:#f4f4f4; z-index:1; white-space:nowrap; cursor:pointer; user-select:none; }
+    table.ro-table { width:100%; table-layout:auto; }
+    table.ro-table th { position:sticky; top:0; background:#f4f4f4; z-index:1; white-space:normal; line-height:1.2; font-size:12px; cursor:pointer; user-select:none; vertical-align:bottom !important; }
     table.ro-table th:hover { background:#e8e8e8; }
     table.ro-table th .ro-arrow { color:#999; font-size:11px; }
-    table.ro-table td { vertical-align:middle !important; padding:7px 8px !important; }
+    table.ro-table td { vertical-align:middle !important; padding:6px 5px !important; }
+    table.ro-table td:first-child { min-width:200px; word-break:break-word; }
+    .ro-wrap { max-height:75vh; overflow-y:auto; overflow-x:hidden; }
     table.ro-table td.n { text-align:center; }
     table.ro-table .ro-artist { font-weight:bold; }
     table.ro-table .ro-title { color:#333; }
@@ -31,7 +34,7 @@
     .ro-settings .ro-num { display:inline-block; }
     .ro-tool h4 { font-size:15px; margin:14px 0 6px; }
     tr.ro-genre td { background:#eef3f8; font-weight:bold; font-size:14px; }
-    .ro-num { width:58px; text-align:right; padding:2px 4px; }
+    .ro-num { width:50px; text-align:right; padding:2px 4px; }
     .ro-order { font-weight:bold; }
     tr.ro-zero .ro-order { color:#999; font-weight:normal; }
     tr.ro-cant { opacity:.6; }
@@ -127,7 +130,7 @@
                 <a href="#" id="ro-unsort" style="display:none; align-self:center;">Back to bin order (by genre)</a>
                 <span class="ro-muted" style="align-self:center;">Click any column name to sort.</span>
             </div>
-            <div class="table-responsive" style="max-height:75vh; overflow:auto;">
+            <div class="ro-wrap">
                 <table class="table table-condensed table-bordered ro-table" id="ro-table">
                     <thead>
                         <tr>
@@ -178,7 +181,7 @@
                             <td class="n">{{ $r['sold_since'] ?: '' }}</td>
                             <td class="n">{{ $r['sold_ytd'] ?: '' }}</td>
                             <td class="n">{{ $r['avg_days_to_sell'] !== null ? $r['avg_days_to_sell'] : '' }}</td>
-                            <td style="white-space:nowrap;">{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
+                            <td>{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
                                 @if(in_array('overdue', $r['why']))<div class="ro-muted text-danger">{{ $r['days_since_sale'] }} days ago</div>@endif</td>
                             <td class="n">{{ $r['erp_stock'] }}</td>
                             <td>
@@ -190,7 +193,7 @@
                             </td>
                             <td class="n">{{ $r['on_order'] ?: '' }}</td>
                             <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
-                            <td style="white-space:nowrap;">@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>@endif</td>
+                            <td>@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>@endif</td>
                         </tr>
                     @endforeach
                     </tbody>
