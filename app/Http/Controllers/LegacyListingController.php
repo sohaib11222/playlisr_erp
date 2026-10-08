@@ -69,10 +69,12 @@ class LegacyListingController extends Controller
 
     protected function formatFamily($cat)
     {
+        // Format + condition: a used copy is not a duplicate of a sealed one.
         $c = mb_strtolower((string) $cat);
-        if (strpos($c, 'vinyl') !== false || strpos($c, '45') !== false) return 'lp';
-        if (strpos($c, 'cd') !== false) return 'cd';
-        if (strpos($c, 'cassette') !== false) return 'cassette';
+        $used = strpos($c, 'used') !== false ? '-used' : '';
+        if (strpos($c, 'vinyl') !== false || strpos($c, '45') !== false) return 'lp' . $used;
+        if (strpos($c, 'cd') !== false) return 'cd' . $used;
+        if (strpos($c, 'cassette') !== false) return 'cassette' . $used;
         return $c;
     }
 
