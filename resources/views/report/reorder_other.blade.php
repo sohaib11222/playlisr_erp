@@ -74,13 +74,14 @@
                                 <span class="ro-muted">Nothing sold in 90 days.</span>
                             @else
                                 <table class="table table-condensed">
-                                    <tr><th>Top sellers</th><th class="text-right">Sold</th><th class="text-right">ERP stock</th><th>Last sold</th><th></th></tr>
+                                    <tr><th>Top sellers</th><th class="text-right">Sold</th><th class="text-right">ERP stock</th><th>Last sold</th><th>Last bought from</th><th></th></tr>
                                     @foreach($a['top'] as $t)
                                         <tr>
                                             <td>{{ $t['name'] }} <span class="ro-muted">{{ $t['sku'] }}</span></td>
                                             <td class="text-right">{{ $t['sold'] }}</td>
                                             <td class="text-right">{{ $t['stock'] }}</td>
                                             <td>{{ $t['last'] ? \Carbon\Carbon::parse($t['last'])->format('M j') : '' }}</td>
+                                            <td>@if($t['supplier'] || $t['purchase_id'])<a href="{{ url('/purchases/' . $t['purchase_id']) }}" target="_blank">{{ $t['supplier'] ?: 'no supplier' }}</a>, ${{ number_format($t['supplier_cost'], 2) }} x {{ $t['supplier_qty'] + 0 }} on {{ \Carbon\Carbon::parse($t['supplier_date'])->format('M j') }}@else<span class="ro-muted">never bought in the ERP</span>@endif</td>
                                             <td>@if($t['restock'])<span class="ro-flag-low">Out: restock or count it</span>@endif</td>
                                         </tr>
                                     @endforeach

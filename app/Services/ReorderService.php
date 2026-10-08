@@ -481,6 +481,24 @@ class ReorderService
             }
         }
 
+        // Who we last bought each seller from (any store), to know where to reorder.
+        $lastBuy = [];
+        foreach (array_chunk($pids, 1000) as $chunk) {
+            $rows = DB::table('purchase_lines as pl')
+                ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+                ->join('variations as v', 'v.id', '=', 'pl.variation_id')
+                ->leftJoin('contacts as c', 'c.id', '=', 't.contact_id')
+                ->where('t.business_id', $business_id)->where('t.type', 'purchase')
+                ->whereIn('v.product_id', $chunk)
+                ->orderBy('t.transaction_date')
+                ->select('v.product_id', 't.transaction_date', 't.ref_no', 't.id as tid', 'pl.purchase_price', 'pl.quantity',
+                    'c.name', 'c.supplier_business_name')
+                ->get();
+            foreach ($rows as $r) {
+                $lastBuy[(int) $r->product_id] = $r; // ordered by date: last one wins
+            }
+        }
+
         $out = [];
         foreach ($cats as $cid => $name) {
             $lines = $sales->where('category_id', $cid);
@@ -507,6 +525,11 @@ class ReorderService
                     'stock' => $have,
                     'last' => substr($l->last_at, 0, 10),
                     'restock' => !$isUsed && $have <= 0,
+                    'supplier' => isset($lastBuy[(int) $l->id]) ? trim($lastBuy[(int) $l->id]->supplier_business_name ?: $lastBuy[(int) $l->id]->name) : null,
+                    'supplier_cost' => isset($lastBuy[(int) $l->id]) ? round((float) $lastBuy[(int) $l->id]->purchase_price, 2) : null,
+                    'supplier_qty' => isset($lastBuy[(int) $l->id]) ? (float) $lastBuy[(int) $l->id]->quantity : null,
+                    'supplier_date' => isset($lastBuy[(int) $l->id]) ? substr($lastBuy[(int) $l->id]->transaction_date, 0, 10) : null,
+                    'purchase_id' => isset($lastBuy[(int) $l->id]) ? (int) $lastBuy[(int) $l->id]->tid : null,
                 ];
             }
             $out[] = [
