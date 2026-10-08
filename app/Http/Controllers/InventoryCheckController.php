@@ -1984,7 +1984,7 @@ class InventoryCheckController extends Controller
                     if (empty($prices)) {
                         // Unpriced: is it a duplicate of a listing that IS priced?
                         $k = $this->dupKey($p->name, $cat);
-                        $this->unpriced[] = ['id' => (int) $p->id, 'key' => $k, 'barcode' => (bool) preg_match('/^[0-9 -]{11,16}$/', (string) $p->sku), 'stock' => (float) $p->stock, 'name' => $p->name];
+                        $this->unpriced[] = ['id' => (int) $p->id, 'key' => $k, 'barcode' => (bool) preg_match('/^[0-9 -]{11,16}$/', (string) $p->sku), 'stock' => (float) $p->stock, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $cat, 'artist' => $p->artist];
                     } else {
                         $this->pricedKeys[$this->dupKey($p->name, $cat)] = true;
                     }
@@ -2004,6 +2004,20 @@ class InventoryCheckController extends Controller
                 }
             });
         ksort($stat);
+        if ($request->query('csv')) {
+            // Every unpriced sealed listing, with whether it duplicates another listing.
+            $keyCount = []; foreach ($this->unpriced as $x) { $keyCount[$x['key']] = ($keyCount[$x['key']] ?? 0) + 1; }
+            $fh = fopen('php://temp', 'w+');
+            fputcsv($fh, ['Product', 'Artist', 'SKU', 'Real barcode?', 'Format', 'Stock', 'Duplicate of a priced listing?', 'Other unpriced listings of same album', 'ERP link']);
+            foreach ($this->unpriced as $x) {
+                fputcsv($fh, [$x['name'], $x['artist'], $x['sku'], $x['barcode'] ? 'yes' : 'no (made-up)', $x['cat'], $x['stock'],
+                    isset($this->pricedKeys[$x['key']]) ? 'yes' : 'no', max(0, ($keyCount[$x['key']] ?? 1) - 1),
+                    url('/products/' . $x['id'] . '/edit')]);
+            }
+            rewind($fh); $csv = stream_get_contents($fh); fclose($fh);
+            return response($csv, 200)->header('Content-Type', 'text/csv')
+                ->header('Content-Disposition', 'attachment; filename="sealed-without-distributor-price.csv"');
+        }
         $L = ['SEALED PRODUCT PRICE COVERAGE (active products)', ''];
         $u = $this->unpriced; $n = count($u);
         $noBc = count(array_filter($u, function ($x) { return !$x['barcode']; }));
