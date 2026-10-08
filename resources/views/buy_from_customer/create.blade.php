@@ -63,7 +63,7 @@
         .bfc-create .bfc-running-note { font-size: 11px; color: #999; }
         .bfc-create .bfc-running-figs { display: flex; gap: 22px; font-size: 12px; color: #666; }
         .bfc-create .bfc-running-figs strong { font-size: 18px; color: #333; margin-left: 6px; font-variant-numeric: tabular-nums; }
-        .bfc-create .bfc-running-figs strong#bfc_running_final { color: #2c699a; }
+        .bfc-create .bfc-running-figs strong#bfc_running_final, .bfc-create .bfc-running-figs strong#bfc_running_credit { color: #2c699a; }
         .bfc-create .negotiation-row { display: grid; grid-template-columns: repeat(4, minmax(0, 180px)) 1fr; gap: 12px; align-items: end; }
         .bfc-create .negotiation-row .form-control { max-width: 180px; }
         .bfc-create .meta-row { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; }
@@ -552,8 +552,9 @@ HTML;
                     <div class="bfc-running">
                         <span class="bfc-running-note">Gray boxes don't apply to that item type.</span>
                         <span class="bfc-running-figs">
-                            <span>Items value <strong id="bfc_running_total">$0.00</strong></span>
-                            <span>Most you can pay (cash) <strong id="bfc_running_final">$0.00</strong></span>
+                            <strong id="bfc_running_total" style="display:none;">$0.00</strong>
+                            <span>Max cash offer <strong id="bfc_running_final">$0.00</strong></span>
+                            <span>Max store credit offer <strong id="bfc_running_credit">$0.00</strong></span>
                         </span>
                     </div>
                     <h4 class="bfc-step"><span class="bfc-step-num">3</span> Make your offer</h4>
@@ -1365,6 +1366,7 @@ HTML;
             cashTotal = Math.round(cashTotal * 100) / 100;
             $('#bfc_running_total').text(bfcMoney(cashTotal));
             $('#bfc_running_final').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
+            $('#bfc_running_credit').text(bfcMoney(Math.round(Math.round(cashTotal * 0.95 * 100) / 100 * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
             if (!BFC_HAS_CALC) { bfcPopulateLadder(cashTotal); }
         }
 
