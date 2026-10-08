@@ -117,6 +117,14 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 <p class="sub" style="margin:2px 0 0;">Paid nivessa.com orders held for in-store pickup — regular checkout, not tied to an event or AMS special order.</p>
             </div>
             @if(!empty($websitePickups))
+            @php
+                $wpPickedCount = collect($websitePickups)->where('status', 'picked_up')->count();
+                $wpWaitingCount = count($websitePickups) - $wpPickedCount;
+            @endphp
+            <div class="preorder-toggle" id="website_pickup_tabs" style="flex:0 1 auto;">
+                <a href="#website-pickups" class="btn-accent js-wp-tab" data-tab="waiting" style="text-decoration:none;">Waiting ({{ $wpWaitingCount }})</a>
+                <a href="#website-pickups" class="btn-ghost js-wp-tab" data-tab="picked" style="text-decoration:none;">Picked up ({{ $wpPickedCount }})</a>
+            </div>
             <div style="flex:0 1 auto;">
                 <input type="search" id="website_pickup_search" placeholder="Search customer name, email, phone or item" aria-label="Search website pickup orders">
             </div>
@@ -482,6 +490,22 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                     cell.innerHTML = i + 1;
                 });
             });
+            // Waiting / Picked up tabs: picked-up rows live on their own tab
+            // so open orders are easy to see (Sarah, 2026-10-07).
+            var wpTab = 'waiting';
+            $.fn.dataTable.ext.search.push(function(settings, data, idx) {
+                if (settings.nTable.id !== 'website_pickup_table') { return true; }
+                var picked = $(website_pickup_table.row(idx).node()).hasClass('row-picked-up');
+                return wpTab === 'picked' ? picked : !picked;
+            });
+            $('#website_pickup_tabs').on('click', '.js-wp-tab', function(e) {
+                e.preventDefault();
+                wpTab = $(this).data('tab');
+                $('#website_pickup_tabs .js-wp-tab').removeClass('btn-accent').addClass('btn-ghost');
+                $(this).removeClass('btn-ghost').addClass('btn-accent');
+                website_pickup_table.draw();
+            });
+            website_pickup_table.draw();
             $('#website_pickup_search').on('input search', function() {
                 website_pickup_table.search(this.value).draw();
             });
