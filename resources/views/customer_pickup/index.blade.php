@@ -112,22 +112,21 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
 
     @php
         // Orders still waiting 30+ days after they were placed get their own
-        // section so the main list stays current (Sarah, 2026-10-08).
+        // tab so the main list stays current (Sarah, 2026-10-08).
         $olderCutoff = strtotime('-30 days');
         $isOlder = function ($w) use ($olderCutoff) {
             $ts = !empty($w['placed']) ? strtotime($w['placed']) : 0;
             return ($w['status'] ?? '') !== 'picked_up' && $ts && $ts < $olderCutoff;
         };
-        $recentPickups = array_values(array_filter($websitePickups, function ($w) use ($isOlder) { return !$isOlder($w); }));
-        $olderPickups = array_values(array_filter($websitePickups, $isOlder));
+        $olderCount = count(array_filter($websitePickups, $isOlder));
         // Event pickups (Axis Mundi) don't need a street date, so the
         // column only shows when some other order has one (Sarah, 2026-10-06).
         $showStreetDate = collect($websitePickups)->contains(function ($w) {
             return !empty($w['shipDate']) && !preg_grep('/axis mundi/i', $w['items']);
         });
         $sourceOpts = ['Website order', 'Instagram DM', 'Phone', 'Email', 'Walk-in'];
-        $wpPickedCount = collect($recentPickups)->where('status', 'picked_up')->count();
-        $wpWaitingCount = count($recentPickups) - $wpPickedCount;
+        $wpPickedCount = collect($websitePickups)->where('status', 'picked_up')->count();
+        $wpWaitingCount = count($websitePickups) - $wpPickedCount - $olderCount;
     @endphp
 
     <div class="pickup-card" id="website-pickups">
@@ -139,6 +138,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             @if(!empty($websitePickups))
             <div class="preorder-toggle" id="website_pickup_tabs" style="flex:0 1 auto;">
                 <a href="#website-pickups" class="btn-accent js-wp-tab" data-tab="waiting" style="text-decoration:none;">Waiting ({{ $wpWaitingCount }})</a>
+                <a href="#website-pickups" class="btn-ghost js-wp-tab" data-tab="older" style="text-decoration:none;">Older than 30 days ({{ $olderCount }})</a>
                 <a href="#website-pickups" class="btn-ghost js-wp-tab" data-tab="picked" style="text-decoration:none;">Picked up ({{ $wpPickedCount }})</a>
             </div>
             <div style="flex:0 1 auto;">
@@ -157,24 +157,13 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
             </div>
         @endif
 
-        @if(empty($recentPickups))
+        @if(empty($websitePickups))
             <div class="sub" style="padding:8px 2px;">No pickup orders waiting right now.</div>
         @else
-            @include('customer_pickup.partials.website_pickup_table', ['rows' => $recentPickups, 'tableId' => 'website_pickup_table'])
+            @include('customer_pickup.partials.website_pickup_table', ['rows' => $websitePickups, 'tableId' => 'website_pickup_table'])
         @endif
     </div>
 
-    @if(!empty($olderPickups))
-    <div class="pickup-card" id="older-pickups">
-        <div class="pickup-toolbar">
-            <div>
-                <strong style="font-size:15px;">Older Pickups ({{ count($olderPickups) }})</strong>
-                <p class="sub" style="margin:2px 0 0;">Placed more than 30 days ago and still not picked up.</p>
-            </div>
-        </div>
-        @include('customer_pickup.partials.website_pickup_table', ['rows' => $olderPickups, 'tableId' => 'older_pickup_table'])
-    </div>
-    @endif
 </div>
 
 <div class="modal fade" id="pickup_completion_modal" tabindex="-1" role="dialog">
@@ -270,10 +259,12 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
         var wpTab = 'waiting';
         $.fn.dataTable.ext.search.push(function(settings, data, idx) {
             if (settings.nTable.id !== 'website_pickup_table') { return true; }
-            var picked = $(settings.aoData[idx].nTr).hasClass('row-picked-up');
-            return wpTab === 'picked' ? picked : !picked;
+            var tr = $(settings.aoData[idx].nTr);
+            if (wpTab === 'picked') { return tr.hasClass('row-picked-up'); }
+            if (wpTab === 'older') { return tr.hasClass('row-older'); }
+            return !tr.hasClass('row-picked-up') && !tr.hasClass('row-older');
         });
-        ['#website_pickup_table', '#older_pickup_table'].forEach(function(sel) {
+        ['#website_pickup_table'].forEach(function(sel) {
             if (!$(sel + ' tbody tr').length) { return; }
             var t = $(sel).DataTable({
                 paging: false,

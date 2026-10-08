@@ -1,6 +1,6 @@
 {{-- One pickup list: website orders, in-store event holds, and party /
-     special-order preorders (Sarah, 2026-10-08). Used for the main list and
-     the 30+ day "Older" section. Expects $rows, $tableId, $showStreetDate. --}}
+     special-order preorders (Sarah, 2026-10-08). Older (30+ day) rows get
+     .row-older for the Older tab. Expects $rows, $tableId, $showStreetDate. --}}
 <div class="table-responsive">
 <table class="table wp-table" id="{{ $tableId }}" style="width:100%; font-size:13px;">
     <thead>
@@ -39,7 +39,7 @@
                 $pre = ($wp['source'] ?? '') === 'preorder' ? $wp['pre'] : null;
                 $storeLabel = $pre ? '—' : ($wp['location'] === 'pico' ? 'Pico' : 'Hollywood');
             @endphp
-            <tr @if($pickedUp) class="row-picked-up" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
+            <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
                 <td data-order="{{ $loop->iteration }}">{{ $loop->iteration }}</td>
                 <td data-order="{{ $storeLabel }}">{{ $storeLabel }}</td>
                 <td data-order="{{ strtolower($wp['customer']) }}">{{ $wp['customer'] }}</td>
