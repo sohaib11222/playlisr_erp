@@ -27,7 +27,7 @@
       + "for(let i=0;i<U.length;i+=50){const ids=U.slice(i,i+50);"
       + "const r=await fetch('/ajax/priceavail',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body:'ids='+encodeURIComponent(ids.join('|'))});"
       + "if(r.status===401||r.status===403)throw new Error('WebAMI says you are logged out');"
-      + "const j=await r.json().catch(()=>[]);(Array.isArray(j)?j:[]).forEach(x=>{if(x&&x.Id&&x.Price&&!x.Error){got.push({upc:x.Id,cost:String(x.Price).replace(/[^0-9.]/g,''),qty:parseInt(x.Qty)||0});}});"
+      + "const txt=await r.text();if(!txt.trim())throw new Error('WebAMI logged you out. Log back in and click the button again.');const j=(()=>{try{return JSON.parse(txt)}catch(e){return []}})();(Array.isArray(j)?j:[]).forEach(x=>{if(x&&x.Id&&x.Price&&!x.Error){got.push({upc:x.Id,cost:String(x.Price).replace(/[^0-9.]/g,''),qty:parseInt(x.Qty)||0});}});"
       + "done+=ids.length;box.textContent='Alliance pull: checked '+done+' of '+U.length+', '+got.length+' priced';"
       + "if(got.length>=500||i+50>=U.length){const s=await fetch(B+'/upload/alliance?token='+T,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(got)}).then(r=>r.json());if(!s.success)throw new Error(s.msg||'save failed');saved+=s.saved;got=[];}"
       + "await new Promise(z=>setTimeout(z,250));}"

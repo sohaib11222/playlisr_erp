@@ -101,7 +101,11 @@ class AmsFetcher extends AbstractHttpFetcher
             foreach (($feed['rows'] ?? []) as $r) {
                 if (!is_array($r)) continue;
                 $n = $this->normalizeBarcode((string) ($r['upc'] ?? ''));
-                if ($n !== '' && isset($r['cost']) && (float) $r['cost'] > 0) $have[$n] = true;
+                // Only skip prices checked in the last 14 days; older ones get
+                // re-checked so a price change at AMS reaches the ERP (found
+                // 10/8: a CD stuck at $7.18 after AMS moved it to $8.79).
+                $fresh = !empty($r['checked_at']) && strtotime((string) $r['checked_at']) > time() - 14 * 86400;
+                if ($n !== '' && isset($r['cost']) && (float) $r['cost'] > 0 && $fresh) $have[$n] = true;
             }
         } catch (\Throwable $e) {
             // Non-fatal — worst case we re-look-up a few we already had.
@@ -238,7 +242,7 @@ class AmsFetcher extends AbstractHttpFetcher
                 if ($html === null || $html === '') continue; // network error: not a real miss
                 $this->attemptedBarcodes[(string) $ean] = true;
                 $row = $this->parseProductPageHtml($html, (string) $ean);
-                if ($row !== null) $out[] = $row;
+                if ($row !== null) { $row['checked_at'] = date('c'); $out[] = $row; }
             }
         }
         return $out;
