@@ -27,15 +27,19 @@ class DeejayFetcher extends AbstractHttpFetcher
     {
         $creds = $this->readCredentials();
         @unlink($this->cookieJar);
-        $this->get($this->base . '/');
+        $page = $this->get($this->base . '/');
+        // The login form carries a hidden per-session token named "deejay".
+        $token = preg_match('#name="deejay"\s+value="([^"]+)"#', $page, $tm) ? $tm[1] : '';
         $this->login($this->base . '/ajaxHelper/handleLogin.php', [
             'loginFeld' => $creds['DEEJAY_PORTAL_USER'],
             'passwortFeld' => $creds['DEEJAY_PORTAL_PASS'],
+            'deejay' => $token,
             'longSession' => '1',
             'loginSubmit' => '1',
-        ]);
+        ], ['Referer: ' . $this->base . '/']);
         $home = $this->get($this->base . '/');
-        if (stripos($home, 'logout') === false && stripos($home, 'abmelden') === false) {
+        // Logged out pages show the header login button; logged in ones don't.
+        if (strpos($home, 'id="loginModalBtn"') !== false) {
             throw new \RuntimeException('Deejay: login failed. Check the deejay.de login saved in the ICA Credentials form.');
         }
 
