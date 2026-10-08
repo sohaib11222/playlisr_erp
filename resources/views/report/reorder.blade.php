@@ -58,6 +58,7 @@
                         <option value="vinyl" @if($format === 'vinyl') selected @endif>Sealed vinyl</option>
                         <option value="cd" @if($format === 'cd') selected @endif>Sealed CDs</option>
                         <option value="cassette" @if($format === 'cassette') selected @endif>Sealed cassettes</option>
+                        <option value="other">Everything else (apparel, toys, books...)</option>
                     </select>
                 </div>
                 <div class="form-group">

@@ -432,6 +432,99 @@ class ReorderService
         ];
     }
 
+    /**
+     * Everything that isn't sealed vinyl/CD/cassette (apparel, toys, cards,
+     * books, DVDs, posters, used music...): per category, what sold in the
+     * last 90 days, what the ERP thinks is on hand, and whether that stock
+     * looks believable. Plus each category's top sellers.
+     */
+    public function otherAreas(int $business_id, int $locationId): array
+    {
+        $start = Carbon::now()->subDays(90)->toDateTimeString();
+        $sealedMusic = array_keys($this->categoryIds($business_id, 'sealed', 'vinyl')
+            + $this->categoryIds($business_id, 'sealed', 'cd') + $this->categoryIds($business_id, 'sealed', 'cassette'));
+        $cats = Category::where('business_id', $business_id)->where('category_type', 'product')
+            ->where('parent_id', 0)->whereNotIn('id', $sealedMusic ?: [0])->pluck('name', 'id')->all();
+        if (empty($cats)) return [];
+
+        $sales = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.location_id', $locationId)
+            ->where('t.transaction_date', '>=', $start)
+            ->whereIn('p.category_id', array_keys($cats))
+            ->groupBy('p.id')
+            ->select('p.id', 'p.category_id', 'p.name', 'p.product_custom_field1 as artist', DB::raw('MIN(v.sub_sku) as sku'),
+                DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'),
+                DB::raw('MAX(t.transaction_date) as last_at'))
+            ->get();
+        $stock = DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('vld.location_id', $locationId)
+            ->where('p.business_id', $business_id)
+            ->whereIn('p.category_id', array_keys($cats))
+            ->groupBy('p.category_id')
+            ->select('p.category_id', DB::raw('SUM(GREATEST(vld.qty_available,0)) as q'),
+                DB::raw('SUM(CASE WHEN vld.qty_available > 0 THEN 1 ELSE 0 END) as titles'))
+            ->get()->keyBy('category_id');
+        $pidStock = [];
+        $pids = $sales->pluck('id')->all();
+        foreach (array_chunk($pids, 2000) as $chunk) {
+            foreach (DB::table('variation_location_details as vld')->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->where('vld.location_id', $locationId)->whereIn('v.product_id', $chunk)
+                ->groupBy('v.product_id')->select('v.product_id', DB::raw('SUM(vld.qty_available) as q'))->get() as $r) {
+                $pidStock[(int) $r->product_id] = (int) round((float) $r->q);
+            }
+        }
+
+        $out = [];
+        foreach ($cats as $cid => $name) {
+            $lines = $sales->where('category_id', $cid);
+            $sold = (float) $lines->sum('qty');
+            $onHand = (int) round((float) ($stock[$cid]->q ?? 0));
+            if ($sold <= 0 && $onHand <= 0) continue;
+            $weekly = $sold / 13;
+            $weeks = $weekly > 0 ? $onHand / $weekly : null;
+            $isUsed = stripos($name, 'used') !== false;
+            if ($onHand >= 50 && ($weeks === null || $weeks > 104)) {
+                $flag = ['wrong', 'Stock looks wrong: more than 2 years of sales on hand. Spot check it.'];
+            } elseif ($sold > 0 && $weeks !== null && $weeks < 4) {
+                $flag = ['low', 'Running low: under 4 weeks left.'];
+            } else {
+                $flag = ['ok', ''];
+            }
+            $top = [];
+            foreach ($lines->sortByDesc('qty')->take(15) as $l) {
+                $have = $pidStock[(int) $l->id] ?? 0;
+                $top[] = [
+                    'name' => trim(($l->artist ? $l->artist . ' / ' : '') . $l->name),
+                    'sku' => $l->sku,
+                    'sold' => (float) $l->qty,
+                    'stock' => $have,
+                    'last' => substr($l->last_at, 0, 10),
+                    'restock' => !$isUsed && $have <= 0,
+                ];
+            }
+            $out[] = [
+                'name' => $name,
+                'sold' => $sold,
+                'revenue' => (float) $lines->sum('rev'),
+                'on_hand' => $onHand,
+                'titles_in_stock' => (int) ($stock[$cid]->titles ?? 0),
+                'weeks' => $weeks,
+                'flag' => $flag,
+                'used' => $isUsed,
+                'top' => $top,
+            ];
+        }
+        usort($out, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
+        return $out;
+    }
+
     /** Bin count, order qty and distributor price for one row. */
     protected function finishRow(array $r, int $business_id, int $locationId, array $state, ?string $categoryName): array
     {

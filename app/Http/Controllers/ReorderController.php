@@ -36,7 +36,7 @@ class ReorderController extends Controller
                 return stripos($n, 'hollywood') !== false;
             }, $locations)) ?: array_key_first($locations));
         }
-        $format = in_array($request->input('format'), ['cd', 'cassette'], true) ? $request->input('format') : 'vinyl';
+        $format = in_array($request->input('format'), ['cd', 'cassette', 'other'], true) ? $request->input('format') : 'vinyl';
         $since = $request->input('since');
         $since = $since && preg_match('/^\d{4}-\d{2}-\d{2}$/', $since) ? $since : null;
         return [$business_id, $locations, $locationId, $format, $since];
@@ -45,6 +45,14 @@ class ReorderController extends Controller
     public function index(Request $request)
     {
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
+        if ($format === 'other') {
+            return view('report.reorder_other', [
+                'areas' => $locationId ? $this->svc->otherAreas($business_id, $locationId) : [],
+                'locations' => $locations,
+                'locationId' => $locationId,
+                'storeName' => $locations[$locationId] ?? '',
+            ]);
+        }
         $data = $locationId ? $this->svc->build($business_id, $locationId, $format, $since) : ['rows' => []];
         return view('report.reorder', array_merge($data, [
             'locations' => $locations,
