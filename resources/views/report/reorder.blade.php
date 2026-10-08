@@ -69,6 +69,7 @@
                 Counting sales since <b>{{ $since->format('D M j, g:ia') }}</b> <span class="ro-muted">({{ $since_source }})</span>.
                 <span id="ro-summary"></span>
             </p>
+            <p class="ro-muted" style="margin:4px 0 0;">Categories: {{ implode(', ', $categories ?? []) ?: 'none found' }}</p>
             @if(!$abc_loaded)
                 <p class="text-warning" style="margin:6px 0 0;">No ABC grades for this store yet, so every title is treated as a B.</p>
             @endif

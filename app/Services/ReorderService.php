@@ -168,12 +168,20 @@ class ReorderService
 
     // ---------------------------------------------------------------- build
 
-    public function categoryIds(int $business_id, string $pattern): array
+    /**
+     * Product categories for one condition + format. Names vary ("Sealed
+     * Vinyl", "Vinyl - Sealed", "CD (Sealed)", "Sealed LP"), so match words.
+     */
+    public function categoryIds(int $business_id, string $condition, string $format): array
     {
-        return Category::where('business_id', $business_id)
-            ->where('category_type', 'product')
-            ->where('name', 'like', '%' . $pattern . '%')
-            ->pluck('id')->map(function ($i) { return (int) $i; })->all();
+        $fmt = $format === 'cd' ? '/\bcds?\b|compact disc/i' : '/vinyl|\blps?\b/i';
+        $out = [];
+        foreach (Category::where('business_id', $business_id)->where('category_type', 'product')->get(['id', 'name']) as $c) {
+            if (stripos($c->name, $condition) !== false && preg_match($fmt, $c->name) && stripos($c->name, 'cassette') === false) {
+                $out[(int) $c->id] = $c->name;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -185,8 +193,10 @@ class ReorderService
         $state = $this->loadState($business_id);
         $s = $state['settings'];
         $label = $format === 'cd' ? 'CD' : 'Vinyl';
-        $sealedCats = $this->categoryIds($business_id, 'Sealed ' . $label);
-        $usedCats = $this->categoryIds($business_id, 'Used ' . $label);
+        $sealedNames = $this->categoryIds($business_id, 'sealed', $format);
+        $usedNames = $this->categoryIds($business_id, 'used', $format);
+        $sealedCats = array_keys($sealedNames);
+        $usedCats = array_keys($usedNames);
         $today = Carbon::today();
         $yearStart = $today->copy()->startOfYear();
         $monthsElapsed = max(1.0, $yearStart->diffInDays($today) / 30.4);
@@ -347,6 +357,7 @@ class ReorderService
             'orders' => array_slice($orders, 0, 8),
             'settings' => $s,
             'abc_loaded' => !empty($locClass),
+            'categories' => array_merge(array_values($sealedNames), array_values($usedNames)),
         ];
     }
 
