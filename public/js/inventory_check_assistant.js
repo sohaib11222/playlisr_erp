@@ -1899,77 +1899,47 @@
             host.innerHTML = '<p class="text-muted small">No supplier feeds configured.</p>';
             return;
         }
-        host.innerHTML = Object.keys(feeds).map((key) => {
+        // Simple status table (Sarah 10/8: "want to keep it simple").
+        // Prices pull themselves now, so: how each one updates, how many
+        // prices, when, and a login box only where the server logs in.
+        const how = {
+            ams: 'Automatic, Sun + Wed nights',
+            matador: 'Automatic from their catalog, Sun + Wed',
+            secretly: 'Automatic, Sun + Wed (uses saved login)',
+            redeye: 'Automatic, Sun + Wed (uses saved login)',
+            deejay: 'Automatic, Sun + Wed (uses saved login)',
+            alliance: 'From your Chrome, Sun + Wed (stay logged into WebAMI)',
+            monostereo: 'From your Chrome, Sun + Wed (stay logged into Monostereo)',
+        };
+        const serverLogin = { ams: 1, secretly: 1, redeye: 1, deejay: 1 };
+        host.innerHTML = '<table class="table table-condensed" style="margin:0;"><thead><tr><th>Supplier</th><th>How it updates</th><th>Prices</th><th>Last updated</th><th></th></tr></thead><tbody>'
+            + Object.keys(feeds).map((key) => {
             const f = feeds[key];
-            const status = f.row_count
-                ? `<span class="ica-supplier-stat">${f.row_count.toLocaleString()} titles tracked · last updated ${String(f.imported_at || '').substring(0, 10)}</span>`
-                : '<span class="ica-supplier-stat ica-supplier-empty">No titles yet — add your first below</span>';
             const af = f.auto_fetch;
-            let afHtml = '<small class="text-muted">Auto-fetch: not yet configured · needs portal URL + credentials in server .env</small>';
-            if (af) {
-                const when = String(af.at || '').substring(0, 16).replace('T', ' ');
-                afHtml = af.ok
-                    ? `<small class="ica-supplier-autofetch ok">Auto-fetch ✓ ${escapeHtml(when)} — ${escapeHtml(af.message || '')}</small>`
-                    : `<small class="ica-supplier-autofetch err">Auto-fetch ✗ ${escapeHtml(when)} — ${escapeHtml(af.message || '')}</small>`;
-            }
-            return `
-                <details class="ica-supplier-row" data-key="${escapeHtml(key)}">
-                    <summary>
-                        <strong>${escapeHtml(f.label || key)}</strong>
-                        <small class="text-muted">${escapeHtml(f.notes || '')}</small>
-                        ${status}
-                    </summary>
-                    <div class="ica-supplier-body">
-                        <div class="ica-supplier-autofetch-row">
-                            ${afHtml}
-                            <button type="button" class="btn btn-xs btn-default ica-supplier-autofetch-go" data-key="${escapeHtml(key)}">Run auto-fetch now</button>
-                        </div>
-                        <details class="ica-supplier-creds">
-                            <summary>🔐 Portal credentials (for auto-fetch)</summary>
-                            <p class="text-muted small">Stored encrypted on the server. Never displayed back. Auto-fetch uses these to log into the supplier portal.</p>
-                            <div class="ica-creds-row">
-                                <label>Username</label>
-                                <input type="text" class="form-control input-sm ica-cred-user" autocomplete="off" data-key="${escapeHtml(key)}" placeholder="leave blank to keep current">
-                                <label>Account #</label>
-                                <input type="text" class="form-control input-sm ica-cred-account" autocomplete="off" data-key="${escapeHtml(key)}" placeholder="(only if portal asks for one)">
-                                <label>Password</label>
-                                <input type="password" class="form-control input-sm ica-cred-pass" autocomplete="new-password" data-key="${escapeHtml(key)}" placeholder="leave blank to keep current">
-                                <button type="button" class="btn btn-primary btn-sm ica-cred-save" data-key="${escapeHtml(key)}">Save</button>
-                            </div>
-                            <span class="ica-cred-msg" data-key="${escapeHtml(key)}"></span>
-                        </details>
-                        <div class="ica-supplier-form">
-                            <label class="ica-supplier-label">Add one title (artist + title + cost):</label>
-                            <div class="ica-supplier-quickadd">
-                                <input type="text" class="form-control input-sm ica-sup-artist" placeholder="Artist" data-key="${escapeHtml(key)}">
-                                <input type="text" class="form-control input-sm ica-sup-title" placeholder="Title" data-key="${escapeHtml(key)}">
-                                <select class="form-control input-sm ica-sup-format" data-key="${escapeHtml(key)}">
-                                    <option value="">—</option>
-                                    <option value="LP">LP</option>
-                                    <option value="CD">CD</option>
-                                    <option value="Cassette">Cassette</option>
-                                    <option value="7&quot;">7"</option>
-                                </select>
-                                <input type="number" class="form-control input-sm ica-sup-cost" placeholder="$" step="0.01" min="0" data-key="${escapeHtml(key)}">
-                                <button type="button" class="btn btn-primary btn-sm ica-supplier-quick" data-key="${escapeHtml(key)}">Add</button>
-                            </div>
-                            <span class="ica-supplier-msg"></span>
-                        </div>
-                        <details class="ica-supplier-paste">
-                            <summary>Paste rows from supplier site →</summary>
-                            <p class="text-muted small">Paste CSV (Artist, Title, Cost) or tab-separated rows copied from a supplier portal. First line is the header.</p>
-                            <textarea class="form-control input-sm ica-sup-body" rows="4" placeholder="Artist,Title,Cost&#10;Drake,Take Care,12.50" data-key="${escapeHtml(key)}"></textarea>
-                            <button type="button" class="btn btn-default btn-sm ica-supplier-paste-go" data-key="${escapeHtml(key)}">Save pasted rows</button>
-                        </details>
-                        <details class="ica-supplier-paste">
-                            <summary>Upload xlsx/csv file (if you have one) →</summary>
-                            <input type="file" class="ica-supplier-file" accept=".xlsx,.xls,.csv,.tsv,.txt" data-key="${escapeHtml(key)}">
-                            <button type="button" class="btn btn-default btn-sm ica-supplier-file-go" data-key="${escapeHtml(key)}">Upload file</button>
-                        </details>
+            const loginBad = serverLogin[key] && af && !af.ok && /login|credential|user found|password/i.test(af.message || '');
+            const statusCell = loginBad
+                ? '<span style="color:#B71C1C;font-weight:600;">Login not working, re-save it</span>'
+                : (f.row_count ? '<span style="color:#2F6B3E;">OK</span>' : '<span class="text-muted">No prices yet</span>');
+            const creds = serverLogin[key] ? `
+                <details class="ica-supplier-row" data-key="${escapeHtml(key)}" style="margin-top:4px;">
+                    <summary style="cursor:pointer;font-size:12px;">Update login</summary>
+                    <div class="ica-creds-row" style="margin-top:6px;">
+                        <input type="text" class="form-control input-sm ica-cred-user" autocomplete="off" data-key="${escapeHtml(key)}" placeholder="Username / email">
+                        <input type="hidden" class="ica-cred-account" data-key="${escapeHtml(key)}" value="">
+                        <input type="password" class="form-control input-sm ica-cred-pass" autocomplete="new-password" data-key="${escapeHtml(key)}" placeholder="Password">
+                        <button type="button" class="btn btn-primary btn-sm ica-cred-save" data-key="${escapeHtml(key)}">Save</button>
                     </div>
-                </details>
-            `;
-        }).join('');
+                    <span class="ica-cred-msg" data-key="${escapeHtml(key)}"></span>
+                </details>` : '';
+            return `<tr>
+                <td><strong>${escapeHtml(f.label || key)}</strong></td>
+                <td>${escapeHtml(how[key] || 'Manual')}</td>
+                <td>${f.row_count ? f.row_count.toLocaleString() : '0'}</td>
+                <td>${escapeHtml(String(f.imported_at || '').substring(0, 10))}</td>
+                <td>${statusCell}${creds}</td>
+            </tr>`;
+        }).join('') + '</tbody></table>'
+            + '<p class="text-muted small" style="margin-top:8px;">Alliance and Monostereo buttons: <a href="/reports/supplier-price-pulls" target="_blank">supplier price pulls</a>.</p>';
 
         // Wire all three buttons
         host.querySelectorAll('.ica-supplier-quick').forEach((btn) => btn.addEventListener('click', () => supplierSubmit('single', btn)));

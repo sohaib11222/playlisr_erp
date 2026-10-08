@@ -482,7 +482,7 @@ HTML;
         <div class="row">
             <div class="col-md-12">
                 @component('components.widget', ['class' => 'box-info', 'title' => 'Supplier price feeds'])
-                <p class="text-muted small">Each supplier (AMS, Secretly, Beggars, Redeye, VP) is a row below. Expand one and type artist + title + cost as you look prices up on the supplier's site — entries accumulate. Paste-from-portal + xlsx upload are nested options if you ever have bulk data. The cheapest match across all uploaded prices becomes the green "$X.XX via &lt;supplier&gt;" badge on chart-pick rows.</p>
+                <p class="text-muted small">Distributor prices update themselves twice a week. The cheapest current price shows in the Best cost column on Products.</p>
                 <div style="margin:6px 0 14px;">
                     <button type="button" id="ica_diag_btn" class="btn btn-warning btn-sm"><i class="fa fa-stethoscope"></i> Diagnose why prices won't fetch</button>
                     <pre id="ica_diag_out" style="display:none;white-space:pre-wrap;margin-top:8px;background:#fffbe6;border:1px solid #e0d48a;border-radius:6px;padding:10px;font-size:12px;line-height:1.45;overflow-x:auto;"></pre>
