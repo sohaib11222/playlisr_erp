@@ -170,7 +170,53 @@ class ReorderController extends Controller
             $k = is_array($m['page']) ? implode(',', $m['page']['why']) . (($m['page']['sold_ytd'] ?? 0) <= 2 ? ' (1-2 sold)' : ' (3+ sold)') : 'never sold here this year';
             $missWhy[$k] = ($missWhy[$k] ?? 0) + 1;
         }
+        // What else could explain Jon's picks the page missed?
+        $missIds = [];
+        foreach ($actual as $a) {
+            $r = $byPid[(int) $a->id] ?? ($byKey[$this->svc->albumKey(null, $a->name)] ?? null);
+            if (!($r && $r['order_qty'] > 0)) $missIds[(int) $a->id] = $a;
+        }
+        $explain = ['new_in_erp_last_45d' => 0, 'sold_at_other_store_this_year' => 0, 'sold_here_before_this_year' => 0,
+            'sold_used_here_last_180d' => 0, 'none_of_these' => 0, 'total_missed' => count($missIds)];
+        if ($missIds) {
+            $ids = array_keys($missIds);
+            $asOfStart = \Carbon\Carbon::parse($asOf);
+            $created = \Illuminate\Support\Facades\DB::table('products')->whereIn('id', $ids)->pluck('created_at', 'id');
+            $soldWhere = function ($q) use ($business_id) {
+                return $q->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                    ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+                    ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final');
+            };
+            $other = $soldWhere(\Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl'))
+                ->whereIn('v.product_id', $ids)->where('t.location_id', '!=', $locationId)
+                ->where('t.transaction_date', '>=', $asOfStart->copy()->startOfYear())->where('t.transaction_date', '<=', $asOfStart)
+                ->distinct()->pluck('v.product_id')->flip();
+            $before = $soldWhere(\Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl'))
+                ->whereIn('v.product_id', $ids)->where('t.location_id', $locationId)
+                ->where('t.transaction_date', '<', $asOfStart->copy()->startOfYear())
+                ->distinct()->pluck('v.product_id')->flip();
+            $usedCats = array_keys($this->svc->categoryIds($business_id, 'used', $format));
+            $usedKeys = [];
+            foreach ($soldWhere(\Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl'))
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->whereIn('p.category_id', $usedCats ?: [0])->where('t.location_id', $locationId)
+                ->where('t.transaction_date', '>=', $asOfStart->copy()->subDays(180))->where('t.transaction_date', '<=', $asOfStart)
+                ->select('p.name', 'p.product_custom_field1 as artist')->get() as $u) {
+                $usedKeys[$this->svc->albumKey($u->artist, $u->name)] = true;
+                $usedKeys[$this->svc->albumKey(null, $u->name)] = true;
+            }
+            foreach ($missIds as $pid => $a) {
+                $any = false;
+                if (!empty($created[$pid]) && \Carbon\Carbon::parse($created[$pid])->gte($asOfStart->copy()->subDays(45))) { $explain['new_in_erp_last_45d']++; $any = true; }
+                if (isset($other[$pid])) { $explain['sold_at_other_store_this_year']++; $any = true; }
+                if (isset($before[$pid])) { $explain['sold_here_before_this_year']++; $any = true; }
+                if (isset($usedKeys[$this->svc->albumKey(null, $a->name)])) { $explain['sold_used_here_last_180d']++; $any = true; }
+                if (!$any) $explain['none_of_these']++;
+            }
+        }
+
         return response()->json([
+            'explain_missed' => $explain,
             'by_why' => $byWhy,
             'missed_why' => $missWhy,
             'as_of' => $asOf,
