@@ -79,6 +79,12 @@ Route::middleware(['setData'])->group(function () {
     // into the Communications Hub.
     Route::post('/webhooks/quo', 'QuoWebhookController@webhook')->name('quo.webhook');
 
+    // Browser-run supplier price pull (WebAMI bookmarklet). Token-auth +
+    // CORS for webami.aent.com, outside auth + CSRF. See SupplierHarvestController.
+    Route::options('/supplier-harvest/{any}', 'SupplierHarvestController@preflight')->where('any', '.*');
+    Route::get('/supplier-harvest/upcs', 'SupplierHarvestController@upcs');
+    Route::post('/supplier-harvest/upload/{supplier}', 'SupplierHarvestController@upload');
+
     // Instagram DM webhook — signature-verified in the controller. GET is
     // Meta's one-time verification handshake; POST is the actual message
     // delivery. Both outside auth (Meta calls us) and outside CSRF.
@@ -391,6 +397,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
     Route::get('/price-new-buys', 'PriceBuysController@index');
+    Route::get('/reports/alliance-price-pull', function () {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') { abort(403, 'Owner-only.'); }
+        $token = \App\Http\Controllers\SupplierHarvestController::tokenFor((int) request()->session()->get('user.business_id'));
+        return view('report.alliance_pull', compact('token'));
+    });
     Route::get('/price-new-buys/data', 'PriceBuysController@data');
     Route::post('/price-new-buys/{id}/save', 'PriceBuysController@save');
     Route::post('/price-new-buys/{id}/missing', 'PriceBuysController@missing');
