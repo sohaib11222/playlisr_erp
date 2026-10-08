@@ -730,6 +730,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Weekly Reorder (Jon's spreadsheet process as one page, Sarah 2026-10-08)
     Route::get('/reports/reorder', 'ReorderController@index');
     Route::get('/reports/reorder/csv', 'ReorderController@csv');
+    Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
     Route::post('/reports/reorder/import-counts', 'ReorderController@importCounts');
     Route::post('/reports/reorder/ordered', 'ReorderController@markOrdered');

@@ -111,6 +111,58 @@ class ReorderController extends Controller
         }, $name, ['Content-Type' => 'text/csv']);
     }
 
+    /**
+     * Backtest against a real past order: run the page as of the day before
+     * it and compare titles/copies with that purchase's lines.
+     * /reports/reorder/backtest?location_id=&format=&as_of=Y-m-d&since=Y-m-d&purchase_ids=1,2
+     */
+    public function backtest(Request $request)
+    {
+        [$business_id, , $locationId, $format, $since] = $this->params($request);
+        $asOf = (string) $request->input('as_of');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $asOf)) return response()->json(['error' => 'as_of=Y-m-d required'], 422);
+        $data = $this->svc->build($business_id, $locationId, $format, $since, $asOf);
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->input('purchase_ids'))));
+        $actual = \Illuminate\Support\Facades\DB::table('purchase_lines as pl')
+            ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'pl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('t.business_id', $business_id)->whereIn('t.id', $ids ?: [0])
+            ->groupBy('p.id')
+            ->select('p.id', 'p.name', 'c.name as cat', \Illuminate\Support\Facades\DB::raw('SUM(pl.quantity) as qty'))
+            ->get();
+        $byPid = [];
+        foreach ($data['rows'] as $r) {
+            foreach ($r['product_ids'] ?? [] as $pid) $byPid[$pid] = $r;
+        }
+        $sug = array_filter($data['rows'], function ($r) { return $r['order_qty'] > 0; });
+        $hit = 0; $hitCopies = 0; $missed = []; $matchedRows = [];
+        foreach ($actual as $a) {
+            $r = $byPid[(int) $a->id] ?? null;
+            if ($r && $r['order_qty'] > 0) {
+                $hit++; $hitCopies += min((int) $a->qty, $r['order_qty']);
+                $matchedRows[$r['product_id']] = true;
+            } else {
+                $missed[] = ['name' => $a->name, 'cat' => $a->cat, 'qty' => (float) $a->qty,
+                    'page' => $r ? ['why' => $r['why'], 'sold_ytd' => $r['sold_ytd'], 'sold_since' => $r['sold_since']] : 'not on page'];
+            }
+        }
+        $extra = [];
+        foreach ($sug as $r) {
+            if (empty($matchedRows[$r['product_id']])) $extra[] = ['title' => trim($r['artist'] . ' / ' . $r['title']), 'qty' => $r['order_qty'], 'why' => $r['why']];
+        }
+        return response()->json([
+            'as_of' => $asOf,
+            'since' => $data['since']->toDateTimeString(),
+            'actual_titles' => count($actual), 'actual_copies' => (float) $actual->sum('qty'),
+            'page_titles' => count($sug), 'page_copies' => array_sum(array_column($sug, 'order_qty')),
+            'both_titles' => $hit, 'both_copies' => $hitCopies,
+            'missed' => array_slice($missed, 0, 80),
+            'page_only' => array_slice($extra, 0, 80),
+        ]);
+    }
+
     public function saveCount(Request $request)
     {
         [$business_id, , $locationId] = $this->params($request);

@@ -194,22 +194,35 @@ class ReorderService
      * @param string $format 'vinyl' | 'cd' | 'cassette'
      * @param string|null $since override "last order" date (Y-m-d)
      */
-    public function build(int $business_id, int $locationId, string $format, ?string $since = null): array
+    /** Backtest: pretend it's this date (no bin counts, no logged orders). */
+    protected $asOf = null;
+
+    protected function now(): Carbon
     {
+        return $this->asOf ? $this->asOf->copy()->setTime(23, 59, 59) : Carbon::now();
+    }
+
+    public function build(int $business_id, int $locationId, string $format, ?string $since = null, ?string $asOf = null): array
+    {
+        $this->asOf = $asOf ? Carbon::parse($asOf)->startOfDay() : null;
         $state = $this->loadState($business_id);
+        if ($this->asOf) {
+            $state['counts'] = [];
+            $state['orders'] = [];
+        }
         $s = $state['settings'];
         $label = $format === 'cd' ? 'CD' : ($format === 'cassette' ? 'Cassette' : 'Vinyl');
         $sealedNames = $this->categoryIds($business_id, 'sealed', $format);
         $usedNames = $this->categoryIds($business_id, 'used', $format);
         $sealedCats = array_keys($sealedNames);
         $usedCats = array_keys($usedNames);
-        $today = Carbon::today();
+        $today = $this->asOf ? $this->asOf->copy() : Carbon::today();
         $yearStart = $today->copy()->startOfYear();
         $monthsElapsed = max(1.0, $yearStart->diffInDays($today) / 30.4);
 
         // Last order: the newest order marked placed here, else the newest
         // distributor purchase for this store + format, else 7 days ago.
-        $orders = $this->ordersFor($business_id, $locationId, $format);
+        $orders = $this->asOf ? [] : $this->ordersFor($business_id, $locationId, $format);
         $lastOrder = $orders[0] ?? null;
         $sinceSource = 'order marked placed on this page';
         if ($since) {
@@ -238,6 +251,7 @@ class ReorderService
             ->where('t.location_id', $locationId)
             ->whereIn('p.category_id', $sealedCats ?: [0])
             ->where('t.transaction_date', '>=', $yearStart->toDateTimeString())
+            ->where('t.transaction_date', '<=', $this->now()->toDateTimeString())
             ->groupBy('p.id', DB::raw('DATE(t.transaction_date)'))
             ->select('p.id as pid', DB::raw('DATE(t.transaction_date) as d'), DB::raw('MAX(t.transaction_date) as last_at'),
                 DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'))
@@ -275,7 +289,7 @@ class ReorderService
         $pids = array_keys($meta); // drops A-grades that aren't sealed $label
         $erpStock = $this->stockByProduct($business_id, $locationId, $pids);
         $sellDays = $this->daysToSell($business_id, $locationId, $pids);
-        $onOrder = $this->onOrder($business_id, $locationId, $format, $orders, $pids);
+        $onOrder = $this->asOf ? [] : $this->onOrder($business_id, $locationId, $format, $orders, $pids);
 
         // One row per album, like Clarissa's sheet: the same title is often
         // in the ERP several times (manual entry, alternate cover, typo).
@@ -843,7 +857,8 @@ class ReorderService
             ->where('t.business_id', $business_id)
             ->where('t.location_id', $locationId)
             ->where('t.type', 'purchase')
-            ->where('t.transaction_date', '>=', Carbon::now()->subDays(30)->toDateTimeString())
+            ->where('t.transaction_date', '>=', $this->now()->subDays(30)->toDateTimeString())
+            ->where('t.transaction_date', '<=', $this->now()->toDateTimeString())
             ->whereExists(function ($q) use ($sealedCats) {
                 $q->select(DB::raw(1))->from('purchase_lines as pl')
                     ->join('variations as v', 'v.id', '=', 'pl.variation_id')
@@ -871,7 +886,7 @@ class ReorderService
     protected function usedToSealed(int $business_id, int $locationId, array $usedCats, array $s, array $meta, array &$rows, string $format): array
     {
         if (empty($usedCats)) return [];
-        $start = Carbon::now()->subDays(45)->toDateTimeString();
+        $start = $this->now()->subDays(45)->toDateTimeString();
         $lines = DB::table('transaction_sell_lines as sl')
             ->join('transactions as sale', 'sale.id', '=', 'sl.transaction_id')
             ->join('variations as v', 'v.id', '=', 'sl.variation_id')
@@ -884,12 +899,13 @@ class ReorderService
             ->where('sale.location_id', $locationId)
             ->whereIn('p.category_id', $usedCats)
             ->where('sale.transaction_date', '>=', $start)
+            ->where('sale.transaction_date', '<=', $this->now()->toDateTimeString())
             ->select('p.name', 'p.product_custom_field1 as artist', 'sale.transaction_date as sold_at',
                 'sl.unit_price_inc_tax as price', 'pur.transaction_date as bought_at')
             ->get();
 
         $byKey = [];
-        $tenAgo = Carbon::now()->subDays(10)->toDateTimeString();
+        $tenAgo = $this->now()->subDays(10)->toDateTimeString();
         foreach ($lines as $l) {
             $key = $this->albumKey($l->artist, $l->name);
             if ($key === '') continue;
