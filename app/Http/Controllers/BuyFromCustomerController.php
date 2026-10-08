@@ -705,7 +705,7 @@ class BuyFromCustomerController extends Controller
                     }
                 }
                 if (!$approver) {
-                    $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'));
+                    $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'), $pm);
                     if ($request->filled('approver_username')) {
                         $msg .= ' The approval login was not accepted.';
                     }
@@ -776,11 +776,13 @@ class BuyFromCustomerController extends Controller
             && ($paid - $suggested) >= self::OVERPAY_MIN_DOLLARS;
     }
 
-    public static function overpayMessage($paid, $suggested, $locationId = null)
+    public static function overpayMessage($paid, $suggested, $locationId = null, $pm = 'cash_in_store')
     {
+        $pmWord = $pm === 'store_credit' ? 'in store credit' : ($pm === 'zelle_venmo' ? 'by Zelle/Venmo' : 'cash');
         return sprintf(
-            'You cannot pay $%s for this. The system says it is worth $%s. Please call %s before buying.',
+            'You cannot pay $%s %s for this. The system says it is worth $%s. Please call %s before buying.',
             number_format((float) $paid, 2),
+            $pmWord,
             number_format(max(0, (float) $suggested), 2),
             self::overpayContactName($locationId)
         );

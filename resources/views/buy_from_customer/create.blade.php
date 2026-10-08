@@ -208,8 +208,15 @@
         /* Buy form buttons: same size, aligned, readable. */
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
         .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
-        .content #reject_buy_offer_form { display: flex !important; align-items: center; gap: 10px; margin: 18px 0 0 !important; padding-top: 16px; border-top: 1px solid #ddd; max-width: 920px; }
-        .content #reject_buy_offer_form .form-control { flex: 1; max-width: 420px; height: 46px; }
+        .content #reject_buy_offer_form, .content #save_draft_buy_offer_form { display: none !important; }
+        .content .bfc-action-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid #ddd; }
+        .content .bfc-action-spacer { flex: 1; }
+        .content .bfc-btn-accept { background: #1e8e3e !important; border-color: #1e8e3e !important; color: #fff !important; font-weight: 700; font-size: 18px !important; }
+        .content .bfc-btn-accept .fa { color: #fff !important; }
+        .content .bfc-btn-draft { background: #fff !important; border: 2px solid #333 !important; color: #111 !important; font-weight: 700; }
+        .content .bfc-btn-reject { background: #c62828 !important; border-color: #c62828 !important; color: #fff !important; font-weight: 700; }
+        .content .bfc-btn-reject .fa { color: #fff !important; }
+        .content .bfc-reject-input { width: 260px; height: 46px; }
         .content .bfc-reject-label { font-weight: 700; font-size: 16px; white-space: nowrap; }
         /* Sarah 2026-10-08: black text, not gray. */
         .content, .content .text-muted, .content .help-block, .content small, .content .small,
@@ -765,7 +772,7 @@ HTML;
 
                         <div class="row" style="margin-top:15px;">
                             <div class="col-md-12">
-                                {!! Form::open(['url' => route('buy-from-customer.store'), 'method' => 'post', 'style' => 'display:inline-block;']) !!}
+                                {!! Form::open(['url' => route('buy-from-customer.store'), 'method' => 'post', 'style' => 'display:inline-block;', 'id' => 'save_draft_buy_offer_form']) !!}
                                 @foreach($input as $k => $v)
                                     @if($k === 'lines' && is_array($v))
                                         @foreach($v as $li => $line)
@@ -777,7 +784,6 @@ HTML;
                                         <input type="hidden" name="{{$k}}" value="{{ $v }}">
                                     @endif
                                 @endforeach
-                                <button type="submit" class="btn btn-default bfc-btn"><i class="fa fa-save"></i> Save draft</button>
                                 {!! Form::close() !!}
 
                                 {!! Form::open(['url' => route('buy-from-customer.accept'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;', 'id' => 'accept_buy_offer_form']) !!}
@@ -838,8 +844,8 @@ HTML;
                                         @endphp
                                         <div class="col-md-4">
                                             <p class="help-block small" style="margin-top:24px;">
-                                                Suggested — Cash <strong>${{ number_format((float) data_get($calc, 'final_offer_cash', 0), 2) }}</strong>
-                                                · Credit <strong>${{ number_format((float) data_get($calc, 'final_offer_credit', 0), 2) }}</strong>
+                                                Max offer: Cash <strong>${{ number_format((float) data_get($calc, 'final_offer_cash', 0), 2) }}</strong>
+                                                · Store credit <strong>${{ number_format((float) data_get($calc, 'final_offer_credit', 0), 2) }}</strong>
                                             </p>
                                         </div>
                                     </div>
@@ -865,10 +871,12 @@ HTML;
                                         </div>
                                     @endif
                                     <hr style="margin:6px 0 14px;">
-                                    <h4 class="bfc-step-sub">Did you pay more or less than the max offer?</h4>
-                                    <div class="form-group">
-                                        <label>If yes, explain why <span id="override_required_label" class="text-danger" style="display:none;">(required)</span></label>
-                                        <textarea name="price_override_reason" class="form-control" rows="2" placeholder="Example: Luis approved it because it's a sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
+                                    <div id="bfc_override_box" style="display:none;">
+                                        <h4 class="bfc-step-sub" id="bfc_override_heading">You are paying a different amount than the max offer. Why?</h4>
+                                        <div class="form-group">
+                                            <span id="override_required_label" style="display:none;"></span>
+                                            <textarea name="price_override_reason" class="form-control" rows="2" placeholder="Example: Luis approved it because it's a sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
+                                        </div>
                                     </div>
 
                                     <h4 class="bfc-step"><span class="bfc-step-num">5</span> Seller checks both boxes and signs</h4>
@@ -896,7 +904,6 @@ HTML;
                                     <div id="bfc_accept_error" class="alert alert-danger" style="display:none;"></div>
                                 </div>
 
-                                <button type="submit" class="btn btn-success bfc-btn" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept and finish buy</button>
                                 {!! Form::close() !!}
 
                                 {!! Form::open(['url' => route('buy-from-customer.reject'), 'method' => 'post', 'style' => 'display:inline-block; margin-left:6px;', 'id' => 'reject_buy_offer_form']) !!}
@@ -911,10 +918,16 @@ HTML;
                                         <input type="hidden" name="{{$k}}" value="{{ $v }}">
                                     @endif
                                 @endforeach
-                                <span class="bfc-reject-label">Seller said no?</span>
-                                <input type="text" name="rejection_reason" class="form-control" placeholder="Why? (example: wanted more money)" required>
-                                <button type="submit" class="btn btn-danger bfc-btn"><i class="fa fa-times"></i> Mark as no deal</button>
                                 {!! Form::close() !!}
+
+                                {{-- One action row; buttons submit their forms via the form= attribute. --}}
+                                <div class="bfc-action-bar">
+                                    <button type="submit" form="accept_buy_offer_form" class="btn bfc-btn bfc-btn-accept" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept and finish buy</button>
+                                    <button type="submit" form="save_draft_buy_offer_form" class="btn bfc-btn bfc-btn-draft"><i class="fa fa-save"></i> Save draft</button>
+                                    <span class="bfc-action-spacer"></span>
+                                    <input type="text" form="reject_buy_offer_form" name="rejection_reason" class="form-control bfc-reject-input" placeholder="Seller said no? Why?" required>
+                                    <button type="submit" form="reject_buy_offer_form" class="btn bfc-btn bfc-btn-reject"><i class="fa fa-times"></i> No deal</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1730,6 +1743,32 @@ HTML;
             // Sarah 2026-10-08: hard stop when the amount paid is way over the
             // calculator (mirrors BuyFromCustomerController::isOverpay). Luis,
             // managers and admins just see the warning; everyone else is blocked.
+            function bfcPmWord() {
+                var pm = $('#bfc_accept_pm').val();
+                return pm === 'store_credit' ? 'in store credit' : (pm === 'zelle_venmo' ? 'by Zelle/Venmo' : 'cash');
+            }
+            // Show the "why?" box only when the amount paid differs from the max offer.
+            function bfcRefreshOverrideBox() {
+                var $a = $('#bfc_overpay_alert');
+                var $box = $('#bfc_override_box');
+                if (!$box.length || !$a.length) return;
+                var donated = $('#bfc_is_donated_checkbox').is(':checked');
+                var paid = parseFloat($('#bfc_accept_final_amount').val());
+                var auto = parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash'));
+                var hasText = $.trim($box.find('textarea').val()) !== '';
+                if (donated || !isFinite(paid) || !isFinite(auto) || Math.abs(paid - auto) <= 0.009) {
+                    $box.toggle(hasText && !donated);
+                    return;
+                }
+                var diff = Math.abs(paid - auto).toFixed(2);
+                $('#bfc_override_heading').text(paid > auto
+                    ? 'You are paying $' + diff + ' MORE than the max offer. Explain why:'
+                    : 'You are paying $' + diff + ' less than the max offer. Explain why:');
+                $box.show();
+            }
+            $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', bfcRefreshOverrideBox);
+            bfcRefreshOverrideBox();
+
             function bfcOverpayMessage() {
                 var $a = $('#bfc_overpay_alert');
                 if (!$a.length || $('#bfc_is_donated_checkbox').is(':checked')) return '';
@@ -1738,7 +1777,7 @@ HTML;
                 if (!isFinite(paid) || !isFinite(auto)) return '';
                 auto = Math.max(0, auto);
                 if (!(paid > auto * 1.20 && (paid - auto) >= 10)) return '';
-                return 'You cannot pay $' + paid.toFixed(2) + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
+                return 'You cannot pay $' + paid.toFixed(2) + ' ' + bfcPmWord() + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
             }
             function bfcRefreshOverpay() {
                 var $a = $('#bfc_overpay_alert');
