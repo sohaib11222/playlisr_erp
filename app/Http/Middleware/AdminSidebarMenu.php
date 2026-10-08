@@ -391,6 +391,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer']
                             );
                         }
+                        if (auth()->user()->can('product.update')) {
+                            $sub->url(
+                                url('/price-new-buys'),
+                                'Price New Buys',
+                                ['icon' => 'fa fas fa-tag', 'active' => request()->segment(1) == 'price-new-buys']
+                            );
+                        }
                     },
                     ['icon' => 'fa fas fa-arrow-circle-down', 'id' => 'tour_step6']
                 )->order(10);

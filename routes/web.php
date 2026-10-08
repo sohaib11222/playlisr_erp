@@ -390,6 +390,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
+    Route::get('/price-new-buys', 'PriceBuysController@index');
+    Route::get('/price-new-buys/data', 'PriceBuysController@data');
+    Route::post('/price-new-buys/{id}/save', 'PriceBuysController@save');
+    Route::post('/price-new-buys/{id}/missing', 'PriceBuysController@missing');
     Route::post('/products/legacy-cleanup/scan', 'LegacyListingController@scan');
     Route::post('/products/legacy-cleanup/apply', 'LegacyListingController@apply');
     Route::post('/products/legacy-cleanup/bfc-scan', 'LegacyListingController@bfcScan');
