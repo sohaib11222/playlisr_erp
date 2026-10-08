@@ -753,7 +753,7 @@ HTML;
                                                 <td>{{ $itemTypes[data_get($cl, 'item_type')] ?? data_get($cl, 'item_type') }}</td>
                                                 <td>{{ data_get($cl, 'title') ?: '—' }}</td>
                                                 <td>{{ data_get($cl, 'condition_grade') ?: '—' }}</td>
-                                                <td class="text-right">{{ number_format((float) data_get($cl, 'quantity', 0), 2) }}</td>
+                                                <td class="text-right">{{ (float) data_get($cl, 'quantity', 0) + 0 }}</td>
                                                 <td class="text-right">@format_currency(data_get($cl, 'line_cash_total', 0))</td>
                                                 <td class="text-right">@format_currency(data_get($cl, 'line_credit_total', 0))</td>
                                             </tr>
@@ -777,13 +777,13 @@ HTML;
                                 <table class="table table-condensed table-bordered">
                                     <thead><tr><th>Format</th><th class="text-right">Qty</th></tr></thead>
                                     <tbody>
-                                        <tr><td>LPs / vinyl bulk &amp; individual</td><td class="text-right">{{ number_format(data_get($fc, 'lp', 0), 2) }}</td></tr>
-                                        <tr><td>45s</td><td class="text-right">{{ number_format(data_get($fc, 'rpm45', 0), 2) }}</td></tr>
-                                        <tr><td>CDs</td><td class="text-right">{{ number_format(data_get($fc, 'cd', 0), 2) }}</td></tr>
-                                        <tr><td>Cassettes</td><td class="text-right">{{ number_format(data_get($fc, 'cassette', 0), 2) }}</td></tr>
-                                        <tr><td>DVDs</td><td class="text-right">{{ number_format(data_get($fc, 'dvd', 0), 2) }}</td></tr>
-                                        <tr><td>Blu-rays</td><td class="text-right">{{ number_format(data_get($fc, 'bluray', 0), 2) }}</td></tr>
-                                        <tr><td>Other</td><td class="text-right">{{ number_format(data_get($fc, 'other', 0), 2) }}</td></tr>
+                                        @if((float) data_get($fc, 'lp', 0) > 0)<tr><td>LPs / vinyl bulk &amp; individual</td><td class="text-right">{{ (float) data_get($fc, 'lp', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'rpm45', 0) > 0)<tr><td>45s</td><td class="text-right">{{ (float) data_get($fc, 'rpm45', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'cd', 0) > 0)<tr><td>CDs</td><td class="text-right">{{ (float) data_get($fc, 'cd', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'cassette', 0) > 0)<tr><td>Cassettes</td><td class="text-right">{{ (float) data_get($fc, 'cassette', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'dvd', 0) > 0)<tr><td>DVDs</td><td class="text-right">{{ (float) data_get($fc, 'dvd', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'bluray', 0) > 0)<tr><td>Blu-rays</td><td class="text-right">{{ (float) data_get($fc, 'bluray', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($fc, 'other', 0) > 0)<tr><td>Other</td><td class="text-right">{{ (float) data_get($fc, 'other', 0) + 0 }}</td></tr>@endif
                                     </tbody>
                                 </table>
                             </div>
@@ -791,9 +791,9 @@ HTML;
                                 <table class="table table-condensed table-bordered">
                                     <thead><tr><th>Condition bucket</th><th class="text-right">Qty</th></tr></thead>
                                     <tbody>
-                                        <tr><td>Mint / Near Mint</td><td class="text-right">{{ number_format(data_get($cb, 'mint_nm', 0), 2) }}</td></tr>
-                                        <tr><td>VG+ / VG</td><td class="text-right">{{ number_format(data_get($cb, 'vg_plus_vg', 0), 2) }}</td></tr>
-                                        <tr><td>Good+ and below / other grades</td><td class="text-right">{{ number_format(data_get($cb, 'g_plus_below', 0), 2) }}</td></tr>
+                                        @if((float) data_get($cb, 'mint_nm', 0) > 0)<tr><td>Mint / Near Mint</td><td class="text-right">{{ (float) data_get($cb, 'mint_nm', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($cb, 'vg_plus_vg', 0) > 0)<tr><td>VG+ / VG</td><td class="text-right">{{ (float) data_get($cb, 'vg_plus_vg', 0) + 0 }}</td></tr>@endif
+                                        @if((float) data_get($cb, 'g_plus_below', 0) > 0)<tr><td>Good+ and below / other grades</td><td class="text-right">{{ (float) data_get($cb, 'g_plus_below', 0) + 0 }}</td></tr>@endif
                                     </tbody>
                                 </table>
                             </div>
@@ -1799,7 +1799,7 @@ HTML;
                     return;
                 }
                 var diff = Math.abs(paid - auto).toFixed(2);
-                $('#bfc_override_heading').text(paid > auto
+                $('#bfc_override_heading').css('cssText', paid > auto ? 'color:#c62828 !important' : '').text(paid > auto
                     ? 'You are paying $' + diff + ' MORE than the max offer. Explain why:'
                     : 'You are paying $' + diff + ' less than the max offer. Explain why:');
                 $box.show();
@@ -1814,7 +1814,7 @@ HTML;
                 var auto = parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash'));
                 if (!isFinite(paid) || !isFinite(auto)) return '';
                 auto = Math.max(0, auto);
-                if (!(paid > auto * 1.20 && (paid - auto) >= 10)) return '';
+                if (!(paid > auto * 1.20 && (paid - auto) >= 1)) return '';
                 return 'You cannot pay $' + paid.toFixed(2) + ' ' + bfcPmWord() + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
             }
             function bfcRefreshOverpay() {

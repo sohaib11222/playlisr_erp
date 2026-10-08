@@ -763,10 +763,10 @@ class BuyFromCustomerController extends Controller
     // Phone approval consumed by this accept (marked used once it succeeds).
     protected $usedApprovalId = null;
 
-    // Over 20% above the calculator AND at least $10 over — small rounding
+    // Over 20% above the calculator AND at least $1 over (Sarah 2026-10-08: $10 floor let a $10 buy of a $0.95 item through) — small rounding
     // bumps on cheap buys still go through with just an override reason.
     const OVERPAY_RATIO = 1.20;
-    const OVERPAY_MIN_DOLLARS = 10;
+    const OVERPAY_MIN_DOLLARS = 1;
 
     public static function isOverpay($paid, $suggested)
     {
