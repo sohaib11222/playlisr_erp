@@ -391,7 +391,8 @@
                     L.cost += q * (+d.cost || 0);
                 } else noUpc++;
             }
-            var show = (filter === 'all' || (filter === 'order' ? q > 0 : (' ' + d.why + ' ').indexOf(' ' + filter + ' ') >= 0))
+            // A row you just edited stays put (even at 0) until you change the filter.
+            var show = (d.keep === '1' || filter === 'all' || (filter === 'order' ? q > 0 : (' ' + d.why + ' ').indexOf(' ' + filter + ' ') >= 0))
                 && (!genre || d.genre === genre)
                 && (!text || d.text.indexOf(text) >= 0);
             tr.style.display = show ? '' : 'none';
@@ -448,6 +449,7 @@
         document.querySelectorAll('.ro-chip').forEach(function (c) { c.classList.remove('active'); });
         chip.classList.add('active');
         filter = chip.dataset.f;
+        rows.forEach(function (tr) { delete tr.dataset.keep; });
         render();
     });
     document.getElementById('ro-genre').addEventListener('change', render);
@@ -456,6 +458,7 @@
     document.getElementById('ro-table').addEventListener('change', function (e) {
         var tr = e.target.closest('tr.ro-row');
         if (!tr) return;
+        tr.dataset.keep = '1';
         if (e.target.classList.contains('ro-count')) {
             tr.querySelector('.ro-order').value = calc(tr);
             var saved = tr.querySelector('.ro-saved');
