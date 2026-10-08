@@ -703,6 +703,12 @@ class ReorderService
         // 'sold': replace what left the bin, never more than the target.
         $base = in_array('once', $r['why'], true) || in_array('used', $r['why'], true)
             ? max(1, (int) $r['sold_since']) : (int) $r['sold_since'];
+        // Sold out earlier and never replaced (the Led Zeppelin case): it
+        // sells, nothing sold lately, and the ERP shows none left.
+        if ($base === 0 && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0
+            && (in_array('core', $r['why'], true) || $r['sold_ytd'] >= 2)) {
+            $base = max(1, $sug);
+        }
         return max(0, min($base, max($sug, 1)));
     }
 
