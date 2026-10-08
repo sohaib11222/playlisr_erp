@@ -210,6 +210,29 @@ class ProductController extends Controller
             // further when the list is filtered to one location — same rules the
             // old vld join encoded, just expressed inside the subselect.
             $locationNames = DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
+            // Distributor prices per row, cheapest first, keyed by supplier.
+            // $key given => that supplier's cell HTML instead.
+            $supplierPriceCache = [];
+            $supplierPricesFor = function ($row, $key = null) use (&$supplierPriceCache, $business_id) {
+                $id = (int) $row->id;
+                if (!array_key_exists($id, $supplierPriceCache)) {
+                    try {
+                        $list = app(\App\Services\InventoryCheckService::class)
+                            ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, $row->category ?? null, $row->sku ?? null);
+                    } catch (\Throwable $e) { $list = []; }
+                    $byKey = [];
+                    foreach ($list as $p) { if ((float) ($p['cost'] ?? 0) > 0 && !isset($byKey[$p['supplier_key']])) $byKey[$p['supplier_key']] = $p; }
+                    $supplierPriceCache[$id] = $byKey;
+                }
+                $byKey = $supplierPriceCache[$id];
+                if ($key === null) { return $byKey; }
+                if (!isset($byKey[$key])) { return ''; }
+                $p = $byKey[$key];
+                $isBest = reset($byKey) && abs((float) reset($byKey)['cost'] - (float) $p['cost']) < 0.005;
+                $txt = '$' . number_format((float) $p['cost'], 2);
+                $html = $isBest ? '<b style="color:#0b3d1a;">' . $txt . '</b>' : $txt;
+                return !empty($p['url']) ? '<a href="' . e($p['url']) . '" target="_blank" rel="noopener" style="color:inherit;">' . $html . '</a>' : $html;
+            };
             // Per-store stock columns (Hollywood / Pico) next to the total.
             $hwLocIds = [];
             $picoLocIds = [];
@@ -838,38 +861,32 @@ class ProductController extends Controller
                     $url = 'https://nivessa.com/products/' . rawurlencode($sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
                     return '<a href="' . $url . '" target="_blank" rel="noopener"><i class="fa fa-external-link"></i> View</a>';
                 })
-                ->addColumn('distributor_prices', function ($row) use ($business_id) {
-                    // What each distributor charges for this product, cheapest
-                    // first, matched by UPC/SKU (strong) then artist/title.
-                    // Reuses the same feed matcher the ICA buckets use, so the
-                    // AMS/Redeye/… feeds populate this column automatically.
-                    try {
-                        $prices = app(\App\Services\InventoryCheckService::class)
-                            ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, $row->category ?? null, $row->sku ?? null);
-                    } catch (\Throwable $e) {
-                        $prices = [];
-                    }
-                    if (empty($prices)) {
-                        return '<span class="text-muted" title="No distributor carries this (or their feed isn\'t loaded yet)">—</span>';
-                    }
-                    $best = (float) ($prices[0]['cost'] ?? 0);
-                    $chips = [];
-                    foreach ($prices as $p) {
-                        $cost = (float) ($p['cost'] ?? 0);
-                        if ($cost <= 0) { continue; }
-                        $label = e($p['supplier_label'] ?? $p['supplier_key'] ?? '?');
-                        $isBest = abs($cost - $best) < 0.005;
-                        $style = $isBest
-                            ? 'background:#e6f4ea;color:#0b3d1a;font-weight:600;'
-                            : 'background:#f3f3f3;color:#333;';
-                        $chip = '<span style="display:inline-block;margin:1px 2px;padding:1px 7px;border-radius:10px;font-size:11px;white-space:nowrap;' . $style . '">'
-                            . $label . ' $' . number_format($cost, 2) . '</span>';
-                        if (!empty($p['url'])) {
-                            $chip = '<a href="' . e($p['url']) . '" target="_blank" rel="noopener" style="text-decoration:none;">' . $chip . '</a>';
-                        }
-                        $chips[] = $chip;
-                    }
-                    return $chips ? implode(' ', $chips) : '<span class="text-muted">—</span>';
+                // One column per distributor (Sarah 10/8: "show this more
+                // clearly"), plus Best cost. Same matcher as before; looked up
+                // once per row and shared by the columns.
+                ->addColumn('best_cost', function ($row) use ($supplierPricesFor) {
+                    $p = $supplierPricesFor($row);
+                    if (!$p) { return '<span class="text-muted">—</span>'; }
+                    $best = reset($p);
+                    $margin = ((float) ($row->max_price ?? 0)) - (float) $best['cost'];
+                    return '<div style="white-space:nowrap;font-weight:600;color:#0b3d1a;">$' . number_format((float) $best['cost'], 2)
+                        . ' <span style="font-weight:400;color:#555;">' . e($best['supplier_label'] ?? $best['supplier_key']) . '</span></div>'
+                        . ((float) ($row->max_price ?? 0) > 0 ? '<small style="color:' . ($margin < 0 ? '#B71C1C' : '#6B6155') . ';">margin $' . number_format($margin, 2) . '</small>' : '');
+                })
+                ->addColumn('dist_ams', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'ams');
+                })
+                ->addColumn('dist_alliance', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'alliance');
+                })
+                ->addColumn('dist_monostereo', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'monostereo');
+                })
+                ->addColumn('dist_redeye', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'redeye');
+                })
+                ->addColumn('dist_secretly', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'secretly');
                 })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
@@ -885,7 +902,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'distributor_prices'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'best_cost', 'dist_ams', 'dist_alliance', 'dist_monostereo', 'dist_redeye', 'dist_secretly'])
                 ->make(true);
         }
 
