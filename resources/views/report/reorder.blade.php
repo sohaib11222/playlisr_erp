@@ -27,7 +27,9 @@
     tr.ro-cant { opacity:.6; }
     .ro-muted { color:#888; font-size:11px; }
     .ro-saved { color:#2e7d32; font-size:11px; }
-    #ro-paste { font-family:monospace; width:100%; height:160px; }
+    .ro-list textarea { font-family:monospace; width:100%; height:110px; }
+    .ro-list { margin-bottom:12px; }
+    .ro-list h4 { margin:0 0 4px; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
 </style>
 
 <section class="content-header">
@@ -86,7 +88,7 @@
                         <li>Pick the store and format above. The list starts from what sold since the last order.</li>
                         <li>Walk the bins in genre order. Type what's in the bin in <b>In bin</b>. It saves as you go and the order qty updates.</li>
                         <li>Check the <b>Core: check bins</b> and <b>Overdue</b> titles too. They should always be there, so count them even if nothing sold.</li>
-                        <li>Copy the AMS list below into AMS Quick Order (Cut &amp; Paste). Don't check out. Jon reviews the cart and submits it.</li>
+                        <li>Each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
                         <li>Click <b>Mark as ordered</b>. Next week starts from here, and these copies show as on order.</li>
                     </ol>
                 </div>
@@ -94,11 +96,10 @@
         </div>
         <div class="col-md-5">
             <div class="box box-solid">
-                <div class="box-header with-border"><h3 class="box-title">AMS paste list <small>UPC and qty</small></h3></div>
+                <div class="box-header with-border"><h3 class="box-title">Order lists <small>each title goes to the cheapest distributor that has it</small></h3></div>
                 <div class="box-body">
-                    <textarea id="ro-paste" readonly></textarea>
+                    <div id="ro-lists"></div>
                     <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-                        <button type="button" class="btn btn-primary btn-sm" id="ro-copy"><i class="fa fa-copy"></i> Copy</button>
                         <button type="button" class="btn btn-success btn-sm" id="ro-mark"><i class="fa fa-check"></i> Mark as ordered</button>
                         <span class="ro-muted" id="ro-paste-note" style="align-self:center;"></span>
                     </div>
@@ -154,6 +155,7 @@
                             data-why="{{ implode(' ', $r['why']) }}"
                             data-text="{{ mb_strtolower($r['artist'] . ' ' . $r['title']) }}"
                             data-upc="{{ $r['supplier_upc'] }}"
+                            data-supplier="{{ $r['best_supplier'] ?: 'No price found' }}"
                             data-title="{{ $r['title'] }}"
                             data-suggested="{{ $r['suggested'] }}"
                             data-onorder="{{ $r['on_order'] }}"
@@ -309,7 +311,7 @@
     function render() {
         var genre = document.getElementById('ro-genre').value;
         var text = document.getElementById('ro-search').value.toLowerCase().trim();
-        var counts = {}, lastGenre = null, paste = [], noUpc = 0, titles = 0, copies = 0, cost = 0;
+        var counts = {}, lastGenre = null, lists = {}, noUpc = 0, titles = 0, copies = 0, cost = 0;
         document.querySelectorAll('tr.ro-genre').forEach(function (g) { g.remove(); });
         rows.forEach(function (tr) {
             var d = tr.dataset, q = orderOf(tr);
@@ -317,7 +319,12 @@
             d.why.split(' ').forEach(function (w) { counts[w] = (counts[w] || 0) + 1; });
             if (q > 0) {
                 titles++; copies += q; cost += q * (+d.cost || 0);
-                if (d.upc) paste.push(d.upc + ' ' + q); else noUpc++;
+                if (d.upc) {
+                    var L = lists[d.supplier] = lists[d.supplier] || { lines: [], copies: 0, cost: 0 };
+                    L.lines.push(d.upc + ' ' + q);
+                    L.copies += q;
+                    L.cost += q * (+d.cost || 0);
+                } else noUpc++;
             }
             var show = (filter === 'all' || (filter === 'order' ? q > 0 : (' ' + d.why + ' ').indexOf(' ' + filter + ' ') >= 0))
                 && (!genre || d.genre === genre)
@@ -336,7 +343,27 @@
             var el = document.querySelector('[data-count="' + k + '"]');
             if (el) el.textContent = counts[k];
         });
-        document.getElementById('ro-paste').value = paste.join('\n');
+        var box = document.getElementById('ro-lists');
+        box.innerHTML = '';
+        Object.keys(lists).sort(function (a, b) {
+            return (a === 'No price found') - (b === 'No price found') || lists[b].cost - lists[a].cost;
+        }).forEach(function (name) {
+            var L = lists[name], div = document.createElement('div');
+            div.className = 'ro-list';
+            div.innerHTML = '<h4><span></span><button type="button" class="btn btn-primary btn-xs">Copy</button></h4><textarea readonly></textarea>';
+            div.querySelector('span').textContent = name + ': ' + L.lines.length + ' titles, ' + L.copies + ' copies' +
+                (name === 'No price found' ? ' (look these up)' : ', about $' + Math.round(L.cost).toLocaleString());
+            var ta = div.querySelector('textarea');
+            ta.value = L.lines.join('\n');
+            div.querySelector('button').addEventListener('click', function () {
+                ta.select();
+                try { document.execCommand('copy'); } catch (err) {}
+                if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
+                this.textContent = 'Copied';
+            });
+            box.appendChild(div);
+        });
+        if (!Object.keys(lists).length) box.innerHTML = '<p class="ro-muted">Nothing to order yet.</p>';
         document.getElementById('ro-paste-note').textContent = noUpc ? noUpc + ' titles to order have no barcode, order them by hand.' : '';
         document.getElementById('ro-summary').textContent = 'To order: ' + titles + ' titles, ' + copies + ' copies, about $' +
             Math.round(cost).toLocaleString() + ' at the best price.';
@@ -367,19 +394,11 @@
         render();
     });
 
-    document.getElementById('ro-copy').addEventListener('click', function () {
-        var ta = document.getElementById('ro-paste');
-        ta.select();
-        try { document.execCommand('copy'); } catch (err) {}
-        if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
-        this.innerHTML = '<i class="fa fa-check"></i> Copied';
-    });
-
     document.getElementById('ro-mark').addEventListener('click', function () {
         var lines = [];
         rows.forEach(function (tr) {
             var q = orderOf(tr);
-            if (q > 0) lines.push({ product_id: tr.dataset.pid, upc: tr.dataset.upc, title: tr.dataset.title, qty: q });
+            if (q > 0) lines.push({ product_id: tr.dataset.pid, upc: tr.dataset.upc, title: tr.dataset.title, qty: q, supplier: tr.dataset.supplier });
         });
         if (!lines.length) { toastr.warning('Nothing to order.'); return; }
         var btn = this;

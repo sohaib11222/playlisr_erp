@@ -133,6 +133,7 @@ class ReorderController extends Controller
                 'product_id' => (int) ($l['product_id'] ?? 0) ?: null,
                 'upc' => (string) ($l['upc'] ?? ''),
                 'title' => mb_substr((string) ($l['title'] ?? ''), 0, 200),
+                'supplier' => mb_substr((string) ($l['supplier'] ?? ''), 0, 60),
                 'qty' => $qty,
             ];
         }
