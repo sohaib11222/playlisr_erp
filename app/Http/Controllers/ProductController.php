@@ -911,6 +911,9 @@ class ProductController extends Controller
                 ->addColumn('dist_secretly', function ($row) use ($supplierPricesFor) {
                     return $supplierPricesFor($row, 'secretly');
                 })
+                ->addColumn('dist_matador', function ($row) use ($supplierPricesFor) {
+                    return $supplierPricesFor($row, 'matador');
+                })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function($q) use($keyword){
                             $q->where('sub_sku', 'like', "%{$keyword}%");
@@ -925,7 +928,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'best_cost', 'dist_ams', 'dist_alliance', 'dist_monostereo', 'dist_redeye', 'dist_secretly'])
+                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'best_cost', 'dist_ams', 'dist_alliance', 'dist_monostereo', 'dist_redeye', 'dist_secretly', 'dist_matador'])
                 ->make(true);
         }
 

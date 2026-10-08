@@ -1,6 +1,6 @@
 @php 
     // Columns: select, actions, store, product, artist, category, subcategory, prices, current stock, units sold, sku, created at, last updated, last updated by, created by, discogs id, discogs, ebay, nivessa.com
-    $colspan = 27;
+    $colspan = 28;
     $custom_labels = json_decode(session('business.custom_labels'), true);
 @endphp
 <table class="table table-bordered table-striped ajax_view hide-footer" id="product_table">
@@ -38,6 +38,7 @@
             <th>Monostereo</th>
             <th>Redeye</th>
             <th>Secretly</th>
+            <th>Matador</th>
         </tr>
     </thead>
     <tfoot>
