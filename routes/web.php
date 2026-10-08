@@ -392,6 +392,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
     Route::post('/products/legacy-cleanup/scan', 'LegacyListingController@scan');
     Route::post('/products/legacy-cleanup/apply', 'LegacyListingController@apply');
+    Route::post('/products/legacy-cleanup/bfc-scan', 'LegacyListingController@bfcScan');
+    Route::post('/products/legacy-cleanup/bfc-apply', 'LegacyListingController@bfcApply');
     Route::post('/products/merge/preview', 'ProductMergeController@preview')->name('products.merge.preview');
     Route::post('/products/merge/scan', 'ProductMergeController@scan')->name('products.merge.scan');
     Route::get('/products/merge/name-duplicates', 'ProductMergeController@nameDupScan')->name('products.merge.name-duplicates');

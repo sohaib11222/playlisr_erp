@@ -214,4 +214,109 @@ class LegacyListingController extends Controller
         }
         return response()->json(['success' => true, 'retired' => $done]);
     }
+
+    // ================= BUY-FROM-CUSTOMER GHOSTS =================
+    // Every Buy from Customer line becomes a $0 "Not for selling" product
+    // until someone prices it. When the copy gets priced under a different
+    // listing instead, the $0 record stays behind forever (Pico 150226
+    // Diamond Eyes). Sarah 10/7: retire the ones older than a month with no
+    // sales and no stock; ones still showing stock may be real unpriced
+    // copies, so they're only listed.
+
+    protected function bfcCandidates($business_id)
+    {
+        $q = \DB::table('products as p')
+            ->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->leftJoin('product_locations as pl', 'pl.product_id', '=', 'p.id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 'pl.location_id')
+            ->where('p.business_id', $business_id)
+            ->where('p.is_inactive', 0)
+            ->where('p.not_for_selling', 1)
+            ->where('p.created_at', '<', now()->subDays(30))
+            ->where(function ($w) { $w->whereNull('v.sell_price_inc_tax')->orWhere('v.sell_price_inc_tax', '<=', 0); })
+            ->whereRaw('not exists (select 1 from transaction_sell_lines tsl where tsl.product_id = p.id)');
+        if (\Schema::hasColumn('products', 'added_via')) {
+            $q->where(function ($w) {
+                $w->where('p.added_via', 'buy_from_customer')
+                  ->orWhere('p.product_description', 'like', 'Bought from customer%');
+            });
+        } else {
+            $q->where('p.product_description', 'like', 'Bought from customer%');
+        }
+        return $q->groupBy('p.id')
+            ->select(
+                'p.id', 'p.name', 'p.sku', 'p.created_at', 'p.product_description', \DB::raw('MAX(c.name) as category'),
+                \DB::raw('MAX(v.dpp_inc_tax) as cost'), \DB::raw('0 as price'),
+                \DB::raw("MAX(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) as created_by_name"),
+                \DB::raw("GROUP_CONCAT(DISTINCT bl.name) as store"),
+                \DB::raw('(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id) as stock')
+            )
+            ->orderBy('p.id');
+    }
+
+    public function bfcScan(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $retire = []; $check = []; $nRetire = 0; $nCheck = 0; $units = 0;
+        foreach ($this->bfcCandidates($business_id)->get() as $r) {
+            preg_match('/offer\s+(BFC-\d+)/i', (string) $r->product_description, $m);
+            $row = [
+                'id' => (int) $r->id, 'name' => $r->name, 'sku' => $r->sku, 'category' => $r->category,
+                'cost' => (float) $r->cost, 'price' => 0.0, 'stock' => (float) $r->stock,
+                'created' => substr((string) $r->created_at, 0, 10), 'by' => trim((string) $r->created_by_name),
+                'store' => $r->store, 'offer' => $m[1] ?? '', 'twins' => [],
+            ];
+            if ((float) $r->stock > 0) { $nCheck++; $units += (float) $r->stock; if (count($check) < 500) $check[] = $row; }
+            else { $nRetire++; if (count($retire) < 500) $retire[] = $row; }
+        }
+        return response()->json(['success' => true, 'retire_count' => $nRetire, 'retire' => $retire,
+            'check_count' => $nCheck, 'check_units' => $units, 'check' => $check]);
+    }
+
+    public function bfcApply(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $ids = [];
+        foreach ($this->bfcCandidates($business_id)->get() as $r) {
+            if ((float) $r->stock <= 0) { $ids[] = (int) $r->id; }
+        }
+        if (empty($ids)) { return response()->json(['success' => true, 'retired' => 0]); }
+        $timestamp = now()->format('Y-m-d_His');
+        \DB::beginTransaction();
+        try {
+            $done = 0;
+            foreach (array_chunk($ids, 1000) as $chunk) {
+                $done += \DB::table('products')->whereIn('id', $chunk)->where('is_inactive', 0)
+                    ->update(['is_inactive' => 1, 'updated_at' => now()]);
+            }
+            \Storage::disk('local')->put(
+                "admin-snapshots/legacy-listing-retire-bfc-{$timestamp}.json",
+                json_encode([
+                    'timestamp' => $timestamp,
+                    'action' => 'legacy-listing-retire',
+                    'user_id' => auth()->id(),
+                    'business_id' => $business_id,
+                    'source_name' => $done . ' leftover $0 Buy-from-Customer record(s), older than a month, no sales, no stock',
+                    'target_name' => 'retired (is_inactive = 1)',
+                    'rows' => array_map(function ($id) { return ['id' => $id]; }, $ids),
+                ], JSON_PRETTY_PRINT)
+            );
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::emergency('bfc-ghost-retire failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Retire failed, nothing changed.']);
+        }
+        return response()->json(['success' => true, 'retired' => $done]);
+    }
 }

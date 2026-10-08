@@ -24,7 +24,9 @@
     <h1>Old setup listings</h1>
     <p class="lc-sub">Listings with a made-up SKU (no barcode) and a selling price that is exactly cost + 25%, which is how the 2024 catalog setup priced things. Only listings created in 2024 that have never sold are shown. Checking changes nothing.</p>
 
-    <button class="lc-btn lc-btn-ghost" id="lcScan" type="button">Check</button>
+    <button class="lc-btn lc-btn-ghost" id="lcScan" type="button">Check old setup listings</button>
+    <button class="lc-btn lc-btn-ghost" id="lcScanBfc" type="button">Check Buy-from-Customer leftovers</button>
+    <p class="lc-sub" style="margin-top:10px;">Buy-from-Customer leftovers: $0 "Not for selling" records from Buy from Customer that are over a month old and never sold. Usually the copy got priced under a different listing and this record was left behind.</p>
     <span class="lc-note" id="lcScanNote"></span>
 
     <div id="lcResults" style="display:none;margin-top:18px;">
@@ -66,31 +68,39 @@
     function row(r, withStock) {
         return '<tr><td><a href="/products/' + r.id + '/edit" target="_blank">' + esc(r.name) + '</a></td><td>' + esc(r.sku) + '</td><td>' + esc(r.category || '') + '</td><td>' + money(r.cost) + '</td><td>' + money(r.price) + '</td>'
             + (withStock ? '<td>' + Math.round(r.stock) + '</td>' : '') + '<td>' + esc(r.created) + '</td><td>' + esc(r.by) + '</td><td>'
-            + ((r.twins || []).map(function (t) { return '<a href="/products/' + t.id + '/edit" target="_blank">' + esc(t.sku) + '</a> ' + money(t.cost) + ' / ' + money(t.price); }).join('<br>') || '<span style="color:#B71C1C">none</span>')
+            + (r.offer ? esc(r.offer) + (r.store ? ' (' + esc(r.store) + ')' : '') : '') + ((r.twins || []).map(function (t) { return '<a href="/products/' + t.id + '/edit" target="_blank">' + esc(t.sku) + '</a> ' + money(t.cost) + ' / ' + money(t.price); }).join('<br>') || (r.offer ? '' : '<span style="color:#B71C1C">none</span>'))
             + '</td></tr>';
     }
     var scanBtn = document.getElementById('lcScan'), applyBtn = document.getElementById('lcApply');
-    scanBtn.addEventListener('click', function () {
-        scanBtn.disabled = true;
+    var mode = 'legacy';
+    function runScan(m) {
+        mode = m;
+        scanBtn.disabled = true; document.getElementById('lcScanBfc').disabled = true;
+        document.getElementById('lcApplyTwin').style.display = m === 'bfc' ? 'none' : '';
+        applyBtn.textContent = m === 'bfc' ? 'Retire these leftovers' : 'Retire all of these';
+        applyBtn.disabled = false; document.getElementById('lcApplyNote').textContent = '';
         document.getElementById('lcScanNote').textContent = 'Checking the whole catalog...';
-        post('/products/legacy-cleanup/scan').then(function (j) {
+        post(m === 'bfc' ? '/products/legacy-cleanup/bfc-scan' : '/products/legacy-cleanup/scan').then(function (j) {
+            document.getElementById('lcScanBfc').disabled = false;
             scanBtn.disabled = false;
             if (!j.success) { document.getElementById('lcScanNote').textContent = j.msg || 'Check failed.'; return; }
             document.getElementById('lcScanNote').textContent = '';
             document.getElementById('lcRetireCount').textContent = j.retire_count.toLocaleString();
-            document.getElementById('lcScanNote').textContent = j.with_twin.toLocaleString() + ' of ' + j.total.toLocaleString() + ' have another listing of the same album and format.';
+            document.getElementById('lcScanNote').textContent = m === 'bfc' ? 'Buy-from-Customer leftovers.' : (j.with_twin.toLocaleString() + ' of ' + j.total.toLocaleString() + ' have another listing of the same album and format.');
             document.getElementById('lcCheckCount').textContent = j.check_count.toLocaleString();
             document.getElementById('lcCheckUnits').textContent = Math.round(j.check_units).toLocaleString();
             document.getElementById('lcRetireRows').innerHTML = j.retire.map(function (r) { return row(r, false); }).join('') || '<tr><td colspan="8">None.</td></tr>';
             document.getElementById('lcCheckRows').innerHTML = j.check.map(function (r) { return row(r, true); }).join('') || '<tr><td colspan="9">None.</td></tr>';
             applyBtn.style.display = j.retire_count ? '' : 'none';
             document.getElementById('lcResults').style.display = '';
-        }).catch(function () { scanBtn.disabled = false; document.getElementById('lcScanNote').textContent = 'Check failed.'; });
-    });
+        }).catch(function () { scanBtn.disabled = false; document.getElementById('lcScanBfc').disabled = false; document.getElementById('lcScanNote').textContent = 'Check failed.'; });
+    }
+    scanBtn.addEventListener('click', function () { runScan('legacy'); });
+    document.getElementById('lcScanBfc').addEventListener('click', function () { runScan('bfc'); });
     function retire(onlyTwin) {
         applyBtn.disabled = true; document.getElementById('lcApplyTwin').disabled = true;
         document.getElementById('lcApplyNote').textContent = 'Retiring...';
-        fetch('/products/legacy-cleanup/apply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ only_with_twin: onlyTwin ? 1 : 0 }) }).then(function (r) { return r.json(); }).then(function (j) {
+        fetch(mode === 'bfc' ? '/products/legacy-cleanup/bfc-apply' : '/products/legacy-cleanup/apply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ only_with_twin: onlyTwin ? 1 : 0 }) }).then(function (r) { return r.json(); }).then(function (j) {
             document.getElementById('lcApplyNote').textContent = j.success
                 ? ('Retired ' + j.retired.toLocaleString() + '. Undo any time at Admin Action History.')
                 : (j.msg || 'Retire failed, nothing changed.');
