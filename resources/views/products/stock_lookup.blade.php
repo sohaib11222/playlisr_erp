@@ -45,7 +45,10 @@
     }
     q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 300); });
     out.addEventListener('click', function (e) { var m = e.target.closest('.sl-more'); if (!m) return; var s = document.getElementById('slSub' + m.getAttribute('data-i')); s.style.display = s.style.display === 'block' ? 'none' : 'block'; });
-    var start = new URLSearchParams(location.search).get('q'); if (start) { q.value = start; run(); }
+    // Prefill from ?q= after the page finishes loading (a global script
+    // clears inputs on load).
+    var start = new URLSearchParams(location.search).get('q');
+    if (start) { window.addEventListener('load', function () { setTimeout(function () { q.value = start; run(); }, 400); }); }
 })();
 </script>
 @endsection
