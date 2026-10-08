@@ -1682,7 +1682,7 @@ HTML;
                 }
                 if (!msg) { $a.hide(); if (String($('#bfc_overpay_approval').data('force')) !== '1') $('#bfc_overpay_approval').hide(); return; }
                 if (String($a.data('can-overpay')) === '1') {
-                    msg += ' (You can approve this yourself.)';
+                    msg = 'Warning: you are paying $' + $('#bfc_accept_final_amount').val() + ' and the system says this is worth less. You are a manager, so you can still accept this buy.';
                 }
                 $a.text(msg).show();
                 $('#bfc_overpay_approval').show();
