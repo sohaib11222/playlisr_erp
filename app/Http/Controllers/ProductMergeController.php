@@ -959,6 +959,13 @@ class ProductMergeController extends Controller
                 $priceMismatchSkipped += count($group['merge_in']);
                 continue;
             }
+            if ($request->input('same_price_only')) {
+                // Sarah 10/7: merge the exact-same-price sets first.
+                $p0 = (float) $group['keep']['sell_price'];
+                $samePrice = true;
+                foreach ($group['merge_in'] as $m) { if (abs((float) $m['sell_price'] - $p0) > 0.009) { $samePrice = false; break; } }
+                if (!$samePrice) { continue; }
+            }
             $keep = $group['keep'];
             $targetVars = \DB::table('variations')->where('product_id', $keep['id'])->whereNull('deleted_at')->first();
             if (!$targetVars) { $failed++; continue; }
