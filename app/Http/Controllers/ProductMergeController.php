@@ -959,12 +959,18 @@ class ProductMergeController extends Controller
                 $priceMismatchSkipped += count($group['merge_in']);
                 continue;
             }
-            if ($request->input('same_price_only')) {
+            $wholeDollar = null;
+            $groupPrices = array_merge([(float) $group['keep']['sell_price']], array_map(function ($m) { return (float) $m['sell_price']; }, $group['merge_in']));
+            $spread = max($groupPrices) - min($groupPrices);
+            if ($request->input('same_price_only') && $spread > 0.009) {
                 // Sarah 10/7: merge the exact-same-price sets first.
-                $p0 = (float) $group['keep']['sell_price'];
-                $samePrice = true;
-                foreach ($group['merge_in'] as $m) { if (abs((float) $m['sell_price'] - $p0) > 0.009) { $samePrice = false; break; } }
-                if (!$samePrice) { continue; }
+                continue;
+            }
+            if ($request->input('penny_only')) {
+                // Only sets a penny apart ($52 vs $51.99); keep the whole-dollar price.
+                if ($spread <= 0.009 || $spread > 0.011) { continue; }
+                foreach ($groupPrices as $gp) { if (abs($gp - round($gp)) < 0.001) { $wholeDollar = round($gp, 2); break; } }
+                if ($wholeDollar === null) { continue; }
             }
             $keep = $group['keep'];
             $targetVars = \DB::table('variations')->where('product_id', $keep['id'])->whereNull('deleted_at')->first();
@@ -994,6 +1000,14 @@ class ProductMergeController extends Controller
                                 $payload['added_locations'][] = (int) $loc;
                             }
                         }
+                    }
+                    // Only when the listing carries no tax (both price fields equal).
+                    if ($wholeDollar !== null && abs((float) $targetVars->sell_price_inc_tax - $wholeDollar) > 0.001
+                        && abs((float) $targetVars->sell_price_inc_tax - (float) $targetVars->default_sell_price) < 0.001) {
+                        $payload['price_before'] = (float) $targetVars->sell_price_inc_tax;
+                        \DB::table('variations')->where('id', $targetVars->id)
+                            ->update(['default_sell_price' => $wholeDollar, 'sell_price_inc_tax' => $wholeDollar]);
+                        $payload['price_after'] = $wholeDollar;
                     }
                     \DB::commit();
                     $merges[] = $payload;
