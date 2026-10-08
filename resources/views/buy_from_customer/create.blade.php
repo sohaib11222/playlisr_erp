@@ -557,7 +557,7 @@ HTML;
                         </span>
                     </div>
                     <h4 class="bfc-step"><span class="bfc-step-num">3</span> Make your offer</h4>
-                    <p class="bfc-step-help">Start with row 1. Only go up if they say no. <strong>Row 3 is the most you can pay.</strong></p>
+                    <p class="bfc-step-help">Start with row 1. Only go up if they say no. <strong style="color:#c62828 !important; font-weight:800;">Row 3 is the most you can pay.</strong></p>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
                         $offerStartingCredit = data_get($calc, 'starting_offer_credit');
