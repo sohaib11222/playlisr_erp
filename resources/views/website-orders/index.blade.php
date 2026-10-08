@@ -475,7 +475,7 @@
             onsubmit="return woConfirmCancel(this);">
         {{ csrf_field() }}
         <h3>Cancel order</h3>
-        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">Untick anything that is still going out. Ticked items are cancelled and refunded (with their tax); if every item is ticked, the whole order is cancelled and refunded.</p>
+        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">Tick the items to cancel. They're refunded with their tax, and the customer gets an email with the reason.</p>
         <label>Items to cancel</label>
         <div id="wo-cancel-items" style="display:grid;gap:6px;margin-bottom:12px;font-size:14px;"></div>
         <input type="hidden" name="item_select" id="wo-cancel-item-select" value="0">
@@ -546,7 +546,7 @@
           cb.type = 'checkbox';
           cb.name = 'item_ids[]';
           cb.value = l.id;
-          cb.checked = !l.cancelled && !l.gift;
+          cb.checked = false;
           cb.disabled = l.cancelled || l.gift;
           var text = document.createElement('span');
           text.textContent = l.name + (l.qty > 1 ? ' x' + l.qty : '') + ' ($' + (l.price * l.qty).toFixed(2) + ')' +
