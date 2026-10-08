@@ -133,13 +133,15 @@ class ReorderController extends Controller
             ->select('p.id', 'p.name', 'c.name as cat', \Illuminate\Support\Facades\DB::raw('SUM(pl.quantity) as qty'))
             ->get();
         $byPid = [];
+        $byKey = [];
         foreach ($data['rows'] as $r) {
             foreach ($r['product_ids'] ?? [] as $pid) $byPid[$pid] = $r;
+            $byKey[$this->svc->albumKey($r['artist'], $r['title'])] = $r;
         }
         $sug = array_filter($data['rows'], function ($r) { return $r['order_qty'] > 0; });
         $hit = 0; $hitCopies = 0; $missed = []; $matchedRows = [];
         foreach ($actual as $a) {
-            $r = $byPid[(int) $a->id] ?? null;
+            $r = $byPid[(int) $a->id] ?? ($byKey[$this->svc->albumKey(null, $a->name)] ?? null);
             if ($r && $r['order_qty'] > 0) {
                 $hit++; $hitCopies += min((int) $a->qty, $r['order_qty']);
                 $matchedRows[$r['product_id']] = true;

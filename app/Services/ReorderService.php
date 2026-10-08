@@ -726,6 +726,7 @@ class ReorderService
                 ->get();
             foreach ($rows as $r) {
                 $r->upc = $this->upcFrom($r->sku);
+                if (preg_match('#^https?://#i', (string) $r->artist)) $r->artist = null; // image URL saved in the artist field
                 $out[(int) $r->id] = $r;
             }
         }
