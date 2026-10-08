@@ -250,6 +250,16 @@
                 }
                 sort($rowShipDates);
                 $rowShipDate = $rowShipDates[0] ?? null;
+                // Lines the Cancel dialog can tick (item-level cancel).
+                $cancelLines = collect($o['items'] ?? [])->map(fn($it) => [
+                  'id' => (string) ($it['_id'] ?? ''),
+                  'name' => (($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount'])))
+                    ? 'Nivessa Gift Card' : ($it['product_id']['name'] ?? ($it['product_name'] ?? 'Item')),
+                  'qty' => (int) ($it['quantity'] ?? 1),
+                  'price' => (float) ($it['price'] ?? 0),
+                  'cancelled' => !empty($it['cancelled']),
+                  'gift' => ($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount'])),
+                ])->values();
               @endphp
               <tr class="wo-row">
                 <td>
@@ -290,7 +300,7 @@
                       <button type="submit" class="wo-btn" style="width:100%;">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                     </form>
                     @if(!$isArchived)
-                      <button type="button" class="wo-btn wo-btn-danger" onclick="woOpenCancel('{{ $o['_id'] }}')">Cancel order</button>
+                      <button type="button" class="wo-btn wo-btn-danger" data-lines="{{ json_encode($cancelLines) }}" onclick="woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                     @endif
                   </div>
                 </td>
@@ -368,7 +378,7 @@
                                 @if($itemIsGift)
                                   <span style="color:#166534;font-weight:600;">Nivessa Gift Card - ${{ $item['gift_card_amount'] ?? $item['price'] ?? '' }}</span>
                                 @else
-                                  {{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}
+                                  @if(!empty($item['cancelled']))<s>@endif{{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}@if(!empty($item['cancelled']))</s> <span class="wo-pill st-cancelled">Cancelled</span>@endif
                                   @if($isPreorder)
                                     <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:#f97316;color:#fff;font-size:10px;font-weight:700;">Preorder</span>
                                     @if($shipDate)
@@ -462,10 +472,13 @@
     {{-- Shared "Cancel order" dialog — same reuse pattern. --}}
     <dialog id="wo-cancel-dialog" class="wo-dialog">
       <form method="POST" id="wo-cancel-form" class="wo-dialog-body"
-            onsubmit="return confirm('Cancel this order and email the customer? This can\'t be undone from here.');">
+            onsubmit="return woConfirmCancel(this);">
         {{ csrf_field() }}
         <h3>Cancel order</h3>
-        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">This cancels the <strong>whole order</strong> and refunds everything the customer paid. If only some items are unavailable, don't cancel: refund just those items by hand.</p>
+        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">Untick anything that is still going out. Ticked items are cancelled and refunded (with their tax); if every item is ticked, the whole order is cancelled and refunded.</p>
+        <label>Items to cancel</label>
+        <div id="wo-cancel-items" style="display:grid;gap:6px;margin-bottom:12px;font-size:14px;"></div>
+        <input type="hidden" name="item_select" id="wo-cancel-item-select" value="0">
         <label>Reason</label>
         <select name="reason" required>
           <option value="">Choose a reason…</option>
@@ -500,10 +513,48 @@
         document.getElementById('wo-status-dialog').close();
         woOpenCancel(orderId);
       });
-      function woOpenCancel(orderId) {
+      function woConfirmCancel(form) {
+        var boxes = form.querySelectorAll('input[name="item_ids[]"]');
+        var picked = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)');
+        var open = form.querySelectorAll('input[name="item_ids[]"]:not(:disabled)');
+        if (boxes.length && !picked.length) {
+          alert('Tick at least one item to cancel.');
+          return false;
+        }
+        var whole = !boxes.length || picked.length === open.length;
+        return confirm(whole
+          ? 'Cancel the whole order, refund the customer and email them? This can\'t be undone from here.'
+          : 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The rest of the order still goes out.');
+      }
+      function woOpenCancel(orderId, btn) {
         var form = document.getElementById('wo-cancel-form');
         form.action = '{{ url("/website-orders") }}/' + orderId + '/cancel';
         form.reset();
+        var box = document.getElementById('wo-cancel-items');
+        box.innerHTML = '';
+        var lines = [];
+        try { lines = JSON.parse((btn && btn.getAttribute('data-lines')) || '[]'); } catch (e) {}
+        if (!btn) {
+          var b = document.querySelector('button[onclick^="woOpenCancel(\'' + orderId + '\'"]');
+          try { lines = JSON.parse((b && b.getAttribute('data-lines')) || '[]'); } catch (e) {}
+        }
+        document.getElementById('wo-cancel-item-select').value = lines.length ? '1' : '0';
+        lines.forEach(function (l) {
+          var row = document.createElement('label');
+          row.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;font-weight:400;margin:0;';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.name = 'item_ids[]';
+          cb.value = l.id;
+          cb.checked = !l.cancelled && !l.gift;
+          cb.disabled = l.cancelled || l.gift;
+          var text = document.createElement('span');
+          text.textContent = l.name + (l.qty > 1 ? ' x' + l.qty : '') + ' ($' + (l.price * l.qty).toFixed(2) + ')' +
+            (l.cancelled ? ' - already cancelled' : l.gift ? ' - gift card, can\'t cancel here' : '');
+          row.appendChild(cb);
+          row.appendChild(text);
+          box.appendChild(row);
+        });
         document.getElementById('wo-cancel-dialog').showModal();
       }
     </script>

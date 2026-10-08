@@ -393,7 +393,15 @@ class WebsiteOrdersController extends Controller
             return redirect()->route('website-orders.index')->with('error', "A note is required when reason is 'Other'.");
         }
 
+        // Item-level cancel: the dialog sends the ticked lines. An empty
+        // pick when there were items to pick is a mistake, not "everything".
+        $itemIds = array_values(array_filter((array) $request->input('item_ids', []), 'is_string'));
+        if ($request->input('item_select') === '1' && empty($itemIds)) {
+            return redirect()->route('website-orders.index')->with('error', 'Tick at least one item to cancel.');
+        }
+
         $resp = $this->websiteApi('POST', "/erp/orders/{$id}/cancel", [
+            'itemIds' => $itemIds,
             'reason' => $reason,
             'note' => $note !== '' ? $note : null,
             'cancelledBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
@@ -407,7 +415,7 @@ class WebsiteOrdersController extends Controller
             return redirect()->route('website-orders.index')->with('error', $resp['message'] ?? 'Cancellation failed.');
         }
 
-        return redirect()->route('website-orders.index')->with('status', 'Order cancelled and the customer has been notified.');
+        return redirect()->route('website-orders.index')->with('status', ($resp['message'] ?? 'Order cancelled.') . ' The customer has been emailed and #shipping has the refund status.');
     }
 
     /** Same resolution as EventsController's — config, env, .env on disk, then the UI-set store file. */
