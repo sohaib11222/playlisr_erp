@@ -1,0 +1,52 @@
+# READ-ONLY diagnostic: how many active, login-enabled staff have a mobile
+# number on file (contact_number) vs not — informs whether the new
+# task/project-assignment SMS notifications will actually reach people.
+name: Diag buy page error
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count staff with/without a phone number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            grep -n "buy-from-customer\|buy_from_customer\|BuyFromCustomer\|BuyApproval" storage/logs/laravel*.log 2>/dev/null | grep -i "error\|exception" | tail -5 | cut -c1-1500
+            ls -t storage/logs | head -3
+            tail -c 200000 storage/logs/$(ls -t storage/logs | head -1) | grep -m3 -A2 "production.ERROR" | cut -c1-1500
