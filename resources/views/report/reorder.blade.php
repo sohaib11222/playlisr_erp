@@ -93,6 +93,7 @@
                         <li>At the bottom, each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
                         <li>Click <b>Mark as ordered</b>. Next week starts from here, and these copies show as on order.</li>
                     </ol>
+                    <p class="ro-muted" style="margin:8px 0 0;"><b>Where the numbers come from:</b> sales are live from the register. Distributor prices refresh every night at 11pm. ABC grades update on the 1st of each month. Stock is your bin count, or the ERP count if there isn't one. To fix a price or title, edit the product in the ERP.</p>
                 </div>
             </div>
         </div>
@@ -191,6 +192,18 @@
         </div>
     </div>
 
+            @if($budget)
+            <div class="box box-solid">
+                <div class="box-body" style="font-size:15px;">
+                    <b>Budget for new stock, {{ $budget['store'] }}, this week</b>
+                    @if($budget['start'])<span class="ro-muted">({{ \Carbon\Carbon::parse($budget['start'])->format('M j') }} to {{ \Carbon\Carbon::parse($budget['end'])->format('M j') }})</span>@endif:
+                    ${{ number_format($budget['new']['spent']) }} spent of ${{ number_format($budget['new']['budget']) }},
+                    <b style="color:{{ $budget['new']['remaining'] < 0 ? '#c62828' : '#2e7d32' }}">${{ number_format($budget['new']['remaining']) }} left</b>.
+                    This order: <b id="ro-order-cost">$0</b>, which leaves <b id="ro-after">${{ number_format($budget['new']['remaining']) }}</b>.
+                </div>
+            </div>
+            @endif
+
             <div class="box box-solid">
                 <div class="box-header with-border"><h3 class="box-title">Order lists <small>each title goes to the cheapest distributor that has it</small></h3></div>
                 <div class="box-body">
@@ -287,6 +300,7 @@
 (function () {
     var CSRF = "{{ csrf_token() }}";
     var BLANK = @json($settings['blank_count']);
+    var BUDGET_LEFT = {{ $budget ? (float) $budget['new']['remaining'] : 0 }};
     var Q = @json($q);
     var filter = 'order';
     var rows = Array.prototype.slice.call(document.querySelectorAll('#ro-table tr.ro-row'));
@@ -366,6 +380,14 @@
         });
         if (!Object.keys(lists).length) box.innerHTML = '<p class="ro-muted">Nothing to order yet.</p>';
         document.getElementById('ro-paste-note').textContent = noUpc ? noUpc + ' titles to order have no barcode, order them by hand.' : '';
+        var oc = document.getElementById('ro-order-cost');
+        if (oc) {
+            var left = BUDGET_LEFT - cost;
+            oc.textContent = '$' + Math.round(cost).toLocaleString();
+            var af = document.getElementById('ro-after');
+            af.textContent = (left < 0 ? '-$' : '$') + Math.abs(Math.round(left)).toLocaleString();
+            af.style.color = left < 0 ? '#c62828' : '#2e7d32';
+        }
         document.getElementById('ro-summary').textContent = 'To order: ' + titles + ' titles, ' + copies + ' copies, about $' +
             Math.round(cost).toLocaleString() + ' at the best price.';
     }

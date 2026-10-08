@@ -57,7 +57,25 @@ class ReorderController extends Controller
             ]);
         }
         $data = $locationId ? $this->svc->build($business_id, $locationId, $format, $since) : ['rows' => []];
+
+        // This store's "new stock" slice of the weekly purchasing budget
+        // (same numbers as the Inventory Check banner).
+        $budget = null;
+        try {
+            $pb = app(\App\Services\InventoryCheckService::class)
+                ->currentPurchaseBudget($business_id, auth()->user()->permitted_locations());
+            foreach ($pb['per_store'] ?? [] as $st) {
+                if (stripos($locations[$locationId] ?? '', $st['label']) !== false) {
+                    $budget = ['store' => $st['label'], 'new' => $st['new'], 'week_no' => $pb['week_no'] ?? null,
+                        'start' => $pb['start'] ?? null, 'end' => $pb['end'] ?? null];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Reorder budget failed', ['err' => $e->getMessage()]);
+        }
+
         return view('report.reorder', array_merge($data, [
+            'budget' => $budget,
             'locations' => $locations,
             'locationId' => $locationId,
             'format' => $format,
