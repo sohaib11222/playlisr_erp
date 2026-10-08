@@ -429,6 +429,11 @@
             var createdAtColIndex = $('#product_table thead th').filter(function() {
                 return $(this).text().trim() === 'Created at';
             }).index();
+            // Default: most recently updated first (Sarah 10/8), for the
+            // full list and every search.
+            var updatedAtColIndex = $('#product_table thead th').filter(function() {
+                return $(this).text().trim() === 'Last updated at';
+            }).index();
 
             // Restore the last search term for this tab session — otherwise
             // clicking into a product and pressing Back lands on an empty,
@@ -466,7 +471,7 @@
             product_table = $('#product_table').DataTable({
                 processing: true,
                 serverSide: true,
-                aaSorting: [[createdAtColIndex >= 0 ? createdAtColIndex : 12, 'desc']],
+                aaSorting: [[updatedAtColIndex >= 0 ? updatedAtColIndex : (createdAtColIndex >= 0 ? createdAtColIndex : 12), 'desc']],
                 search: { search: __product_search_restore },
                 scrollY:        "75vh",
                 scrollX:        true,

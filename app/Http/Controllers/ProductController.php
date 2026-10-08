@@ -582,6 +582,9 @@ class ProductController extends Controller
 
             $two_phase = $page_length > 0;
             foreach ($requested_sorts as $sort) {
+                // Last-updated (the default sort since 10/8) resolves its page
+                // on products.updated_at so it stays on the fast path.
+                if ($sort[0] === 'real_updated_at') { continue; }
                 if (!in_array($sort[0], $plain_sort_columns, true)) {
                     $two_phase = false;
                     break;
@@ -605,6 +608,11 @@ class ProductController extends Controller
                 $lean = (clone $products)->setEagerLoads([])->select('products.id');
                 $apply_search($lean);
                 foreach ($requested_sorts as $sort) {
+                    if ($sort[0] === 'real_updated_at') {
+                        // Future-dated rows (bad sync clock) sort last, not first.
+                        $lean->orderByRaw('IF(products.updated_at > NOW(), NULL, products.updated_at) ' . ($sort[1] === 'desc' ? 'DESC' : 'ASC'));
+                        continue;
+                    }
                     $lean->orderBy($sort[0], $sort[1]);
                 }
                 $page_ids = $lean
