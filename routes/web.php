@@ -409,6 +409,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/review-2024/retire-below-cost', 'LegacyListingController@retireBelowCost2024');
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/stock-lookup', 'StockLookupController@index');
+    Route::get('/products/fix-barcodes', 'BarcodeFixController@index');
+    Route::get('/products/fix-barcodes/data', 'BarcodeFixController@data');
+    Route::post('/products/fix-barcodes/{id}/save', 'BarcodeFixController@save');
+    Route::post('/products/fix-barcodes/{id}/merge', 'BarcodeFixController@merge');
+    Route::post('/products/fix-barcodes/{id}/skip', 'BarcodeFixController@skip');
     Route::get('/stock-lookup/data', 'StockLookupController@data');
     Route::get('/reports/supplier-price-pulls', function () {
         $u = auth()->user();

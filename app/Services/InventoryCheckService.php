@@ -1284,7 +1284,7 @@ class InventoryCheckService
         }
         $datPath = storage_path('app/supplier-index-' . $business_id . '.ser');
         $sigPath = storage_path('app/supplier-index-' . $business_id . '.sig');
-        $sig = 'v2|' . $sig; // index shape changed 10/8 (in_stock, checked_at)
+        $sig = 'v3|' . $sig; // index shape changed 10/8 (in_stock, checked_at, title)
 
         if ($sig !== '' && is_file($datPath) && is_file($sigPath)
             && trim((string) @file_get_contents($sigPath)) === $sig) {
@@ -1317,6 +1317,7 @@ class InventoryCheckService
                     'in_stock' => array_key_exists('in_stock', $row) ? ($row['in_stock'] === null ? null : (bool) $row['in_stock']) : null,
                     'checked_at' => $row['checked_at'] ?? ($feed['imported_at'] ?? null),
                     'artist_norm' => $this->normalizeMatchText((string) ($row['artist'] ?? '')),
+                    'title' => isset($row['title']) ? mb_substr((string) $row['title'], 0, 120) : null,
                 ];
                 $u = $this->normalizeUpc($row['upc'] ?? null);
                 if ($u !== '') $out['byUpc'][$u][] = $i;
@@ -1431,6 +1432,49 @@ class InventoryCheckService
         if (empty($ta) || empty($tb)) return true;
         $common = count(array_intersect($ta, $tb));
         return $common >= min(count($ta), count($tb)); // one set ⊆ the other
+    }
+
+    /**
+     * Every distributor listing of this album in this format (one per barcode),
+     * for the made-up SKU fixer: unlike allSupplierPrices() it keeps every
+     * edition instead of the cheapest per supplier, so the standard and the
+     * colored pressing both show up.
+     */
+    public function albumListings(int $business_id, ?string $artist, ?string $title, ?string $format): array
+    {
+        $index = $this->supplierIndex($business_id);
+        $want = $this->formatFamily($format);
+        if (empty($index['suppliers']) || $want === null) return [];
+        $out = [];
+        foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
+            if ($tKey === '') continue;
+            foreach ($index['byTitle'][$tKey] ?? [] as $i) {
+                $e = $index['compact'][$i];
+                if (!$this->artistMatches($aNorm, $e['artist_norm'] ?? '')) continue;
+                if ($this->formatFamily($e['format'] ?? null) !== $want) continue;
+                $u = $this->normalizeUpc($e['upc'] ?? null);
+                if ($u === '') continue;
+                if (!isset($out[$u])) $out[$u] = ['upc' => preg_replace('/\D+/', '', (string) $e['upc']), 'title' => $e['title'] ?? null, 'format' => $e['format'] ?? null, 'suppliers' => []];
+                $out[$u]['suppliers'][$e['supplier_label']] = $e['cost'];
+            }
+        }
+        return array_values($out);
+    }
+
+    /** [[artistNorm, titleKey], ...] for a product, same keys the supplier matcher uses. */
+    public function albumKeys(?string $artist, ?string $title): array
+    {
+        return $this->titleKeyCandidates($artist, $title);
+    }
+
+    public function artistsCompatible(string $a, string $b): bool
+    {
+        return $this->artistMatches($a, $b);
+    }
+
+    public function upcKey($raw): string
+    {
+        return $this->normalizeUpc($raw);
     }
 
     public function bestSupplierPrice(int $business_id, ?string $artist, ?string $title, ?string $format = null, ?string $upc = null): ?array
