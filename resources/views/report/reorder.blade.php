@@ -28,7 +28,8 @@
     .ro-muted { color:#888; font-size:11px; }
     .ro-saved { color:#2e7d32; font-size:11px; }
     .ro-list textarea { font-family:monospace; width:100%; height:110px; }
-    .ro-list { margin-bottom:12px; }
+    #ro-lists { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; }
+    .ro-list { margin-bottom:0; }
     .ro-list h4 { margin:0 0 4px; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
 </style>
 
@@ -81,7 +82,7 @@
     </div>
 
     <div class="row">
-        <div class="col-md-7">
+        <div class="col-md-12">
             <div class="box box-solid">
                 <div class="box-header with-border"><h3 class="box-title">Each week</h3></div>
                 <div class="box-body">
@@ -89,21 +90,9 @@
                         <li>Pick the store and format above. The list starts from what sold since the last order.</li>
                         <li>Walk the bins in genre order. Type what's in the bin in <b>In bin</b>. It saves as you go and the order qty updates.</li>
                         <li>Check the <b>Core: check bins</b> and <b>Overdue</b> titles too. They should always be there, so count them even if nothing sold.</li>
-                        <li>Each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
+                        <li>At the bottom, each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
                         <li>Click <b>Mark as ordered</b>. Next week starts from here, and these copies show as on order.</li>
                     </ol>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-5">
-            <div class="box box-solid">
-                <div class="box-header with-border"><h3 class="box-title">Order lists <small>each title goes to the cheapest distributor that has it</small></h3></div>
-                <div class="box-body">
-                    <div id="ro-lists"></div>
-                    <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-                        <button type="button" class="btn btn-success btn-sm" id="ro-mark"><i class="fa fa-check"></i> Mark as ordered</button>
-                        <span class="ro-muted" id="ro-paste-note" style="align-self:center;"></span>
-                    </div>
                 </div>
             </div>
         </div>
@@ -201,6 +190,17 @@
             </div>
         </div>
     </div>
+
+            <div class="box box-solid">
+                <div class="box-header with-border"><h3 class="box-title">Order lists <small>each title goes to the cheapest distributor that has it</small></h3></div>
+                <div class="box-body">
+                    <div id="ro-lists"></div>
+                    <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-success btn-sm" id="ro-mark"><i class="fa fa-check"></i> Mark as ordered</button>
+                        <span class="ro-muted" id="ro-paste-note" style="align-self:center;"></span>
+                    </div>
+                </div>
+            </div>
 
     <div class="row">
         <div class="col-md-6">
