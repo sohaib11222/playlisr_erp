@@ -389,6 +389,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Owner-only merge-duplicates tool. Declared BEFORE the products resource
     // so "products/merge" isn't swallowed by the {product} show route.
     Route::get('/products/merge', 'ProductMergeController@index')->name('products.merge.index');
+    Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
+    Route::post('/products/legacy-cleanup/scan', 'LegacyListingController@scan');
+    Route::post('/products/legacy-cleanup/apply', 'LegacyListingController@apply');
     Route::post('/products/merge/preview', 'ProductMergeController@preview')->name('products.merge.preview');
     Route::post('/products/merge/scan', 'ProductMergeController@scan')->name('products.merge.scan');
     Route::get('/products/merge/name-duplicates', 'ProductMergeController@nameDupScan')->name('products.merge.name-duplicates');
