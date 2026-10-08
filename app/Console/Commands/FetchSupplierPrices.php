@@ -8,6 +8,7 @@ use App\Services\SupplierFetchers\AmsFetcher;
 use App\Services\SupplierFetchers\BeggarsFetcher;
 use App\Services\SupplierFetchers\RedeyeFetcher;
 use App\Services\SupplierFetchers\SecretlyFetcher;
+use App\Services\SupplierFetchers\MatadorFetcher;
 use App\Services\SupplierFetchers\SupplierFetcherContract;
 use App\Services\SupplierFetchers\VpFetcher;
 use App\Business;
@@ -41,7 +42,8 @@ class FetchSupplierPrices extends Command
         'alliance' => AllianceFetcher::class,
         'secretly' => SecretlyFetcher::class,
         'redeye' => RedeyeFetcher::class,
-        // Matador / Monostereo / Deejay: upload-only for now (no scraper yet).
+        'matador' => MatadorFetcher::class, // public Box catalog, no login (10/8)
+        // Monostereo / Deejay: browser pull / upload only.
         // VP + generic Beggars dropped 2026-07-30 (Nivessa doesn't use them).
     ];
 
