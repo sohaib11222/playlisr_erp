@@ -350,6 +350,9 @@ class BuyFromCustomerController extends Controller
             $created['offer_id'] = $offer->id;
             return $created;
         });
+        if ($this->usedApprovalId) {
+            BuyApprovalController::markUsed($this->usedApprovalId, $result['offer_id']);
+        }
 
         $msg = sprintf(
             'Offer accepted. Created %d draft purchase line(s)%s. Price each item at /products before finalizing the purchase.',
@@ -692,6 +695,14 @@ class BuyFromCustomerController extends Controller
             if (self::isOverpay($paidCash, $autoCash)) {
                 $cashier = auth()->user();
                 $approver = self::canApproveOverpay($cashier) ? $cashier : $this->overpayApprover($request, $cashier);
+                // Or Luis / Zak approved it from their phone (texted link).
+                if (!$approver && $request->filled('overpay_request_id')) {
+                    $approval = BuyApprovalController::approvedFor($request->input('overpay_request_id'), optional($cashier)->id, $pm, $final);
+                    if ($approval) {
+                        $approver = \App\User::find($approval['approver_id']);
+                        $this->usedApprovalId = $approval['rid'];
+                    }
+                }
                 if (!$approver) {
                     $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'));
                     if ($request->filled('approver_username')) {
@@ -747,6 +758,9 @@ class BuyFromCustomerController extends Controller
         if (!\Illuminate\Support\Facades\Hash::check($password, $approver->password)) return null;
         return self::canApproveOverpay($approver) ? $approver : null;
     }
+
+    // Phone approval consumed by this accept (marked used once it succeeds).
+    protected $usedApprovalId = null;
 
     // Over 25% above the calculator AND at least $10 over — small rounding
     // bumps on cheap buys still go through with just an override reason.

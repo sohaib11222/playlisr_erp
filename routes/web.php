@@ -90,6 +90,12 @@ Route::middleware(['setData'])->group(function () {
     // delivery. Both outside auth (Meta calls us) and outside CSRF.
     Route::get('/webhooks/instagram', 'InstagramWebhookController@verify')->name('instagram.verify');
     Route::post('/webhooks/instagram', 'InstagramWebhookController@webhook')->name('instagram.webhook');
+
+    // Over-limit buy approval from Luis's / Zak's phone. No login: the secret
+    // in the texted link is the auth (see BuyApprovalController).
+    Route::get('/buy-approval/{token}', 'BuyApprovalController@show')->name('buy-approval.show');
+    Route::post('/buy-approval/{token}', 'BuyApprovalController@decide')->middleware('throttle:30,1')->name('buy-approval.decide');
+    Route::get('/buy-approval/{token}/photo/{n}', 'BuyApprovalController@photo')->name('buy-approval.photo');
 });
 
 //Routes for authenticated users only
@@ -468,6 +474,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
     Route::post('/buy-from-customer/reject', 'BuyFromCustomerController@reject')->name('buy-from-customer.reject');
+    Route::post('/buy-from-customer/request-approval', 'BuyApprovalController@requestApproval')->name('buy-from-customer.request-approval');
+    Route::get('/buy-from-customer/approval-status/{rid}', 'BuyApprovalController@status')->name('buy-from-customer.approval-status');
     Route::get('/buy-from-customer/history', 'BuyFromCustomerController@history')->name('buy-from-customer.history');
     Route::get('/buy-from-customer/results', 'BuyFromCustomerController@results')->name('buy-from-customer.results');
     Route::get('/buy-from-customer/storage-locations', 'BuyFromCustomerController@storageLocations')->name('buy-from-customer.storage-locations');

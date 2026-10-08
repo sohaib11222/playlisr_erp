@@ -218,7 +218,7 @@
         $input = $input_data ?? old();
         $input = is_array($input) ? $input : [];
         // Never echo an approver's login back into the page as hidden fields.
-        unset($input['approver_username'], $input['approver_password']);
+        unset($input['approver_username'], $input['approver_password'], $input['overpay_request_id']);
         $calc = $calculation ?? null;
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
@@ -774,9 +774,16 @@ HTML;
                                          data-can-overpay="{{ $bfcCanOverpay ? '1' : '0' }}"
                                          data-call-who="{{ $bfcCallWho }}"></div>
                                     @if(!$bfcCanOverpay)
-                                        <div id="bfc_overpay_approval" class="well well-sm" style="display:none; border-color:#d9534f;">
-                                            <strong>{{ $bfcCallWho }} or a manager approves here with their own login:</strong>
-                                            <div class="row" style="margin-top:8px;">
+                                        <div id="bfc_overpay_approval" class="well well-sm" style="display:none; border-color:#d9534f;" data-force="{{ $errors->has('final_amount_paid') ? '1' : '0' }}">
+                                            <strong>Text {{ $bfcCallWho }} for approval.</strong> Add photos of the collection so they can see it.
+                                            <div style="margin-top:8px;">
+                                                <input type="file" id="bfc_approval_photos" accept="image/*" multiple style="display:inline-block;">
+                                                <button type="button" class="btn btn-warning" id="bfc_request_approval_btn" style="margin-top:6px;">Text {{ $bfcCallWho }} for approval</button>
+                                            </div>
+                                            <input type="hidden" name="overpay_request_id" id="bfc_overpay_request_id" value="">
+                                            <div id="bfc_approval_status" style="margin-top:8px; font-weight:600;"></div>
+                                            <div class="text-muted small" style="margin-top:10px;">If {{ $bfcCallWho }} or a manager is here, they can type their login instead:</div>
+                                            <div class="row" style="margin-top:6px;">
                                                 <div class="col-md-5"><input type="text" name="approver_username" class="form-control" placeholder="Their username" autocomplete="off"></div>
                                                 <div class="col-md-5"><input type="password" name="approver_password" class="form-control" placeholder="Their password" autocomplete="new-password"></div>
                                             </div>
@@ -1658,22 +1665,77 @@ HTML;
             function bfcRefreshOverpay() {
                 var $a = $('#bfc_overpay_alert');
                 var msg = bfcOverpayMessage();
-                if (!msg) { $a.hide(); $('#bfc_overpay_approval').hide(); return; }
+                if (!msg && String($('#bfc_overpay_approval').data('force')) === '1') {
+                    $('#bfc_overpay_approval').show();
+                }
+                if (!msg) { $a.hide(); if (String($('#bfc_overpay_approval').data('force')) !== '1') $('#bfc_overpay_approval').hide(); return; }
                 if (String($a.data('can-overpay')) === '1') {
                     msg += ' (You can approve this yourself.)';
                 }
                 $a.text(msg).show();
                 $('#bfc_overpay_approval').show();
             }
-            $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', bfcRefreshOverpay);
+            $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', function () {
+                // Changing the amount or payment type after approval needs a new approval.
+                if ($('#bfc_overpay_request_id').val()) {
+                    $('#bfc_overpay_request_id').val('');
+                    bfcStopPolling();
+                    $('#bfc_approval_status').css('color', '#a94442').text('The amount changed, so text for approval again.');
+                }
+                bfcRefreshOverpay();
+            });
             bfcRefreshOverpay();
+
+            // Phone approval: text Luis / Zak a link, then wait for their tap.
+            var bfcPollTimer = null;
+            function bfcStopPolling() { if (bfcPollTimer) { clearInterval(bfcPollTimer); bfcPollTimer = null; } }
+            $('#bfc_request_approval_btn').on('click', function () {
+                var $btn = $(this);
+                var $st = $('#bfc_approval_status');
+                var form = document.getElementById('accept_buy_offer_form');
+                var fd = new FormData(form);
+                fd.delete('approver_password');
+                fd.delete('seller_signature_data');
+                var files = document.getElementById('bfc_approval_photos').files;
+                for (var i = 0; i < files.length && i < 6; i++) fd.append('photos[]', files[i]);
+                bfcStopPolling();
+                $('#bfc_overpay_request_id').val('');
+                $btn.prop('disabled', true);
+                $st.css('color', '#555').text('Sending text...');
+                $.ajax({
+                    url: @json(route('buy-from-customer.request-approval')),
+                    method: 'POST', data: fd, processData: false, contentType: false,
+                    headers: { 'Accept': 'application/json' }
+                }).done(function (res) {
+                    $st.text('Text sent to ' + res.who + '. Waiting for them to approve...');
+                    var rid = res.rid;
+                    bfcPollTimer = setInterval(function () {
+                        $.getJSON(@json(url('/buy-from-customer/approval-status')) + '/' + rid).done(function (s) {
+                            if (s.status === 'approved') {
+                                bfcStopPolling();
+                                $('#bfc_overpay_request_id').val(rid);
+                                $st.css('color', '#3c763d').text('Approved by ' + s.approver + '. You can accept the buy now.');
+                                $('#bfc_accept_error').hide();
+                            } else if (s.status === 'denied') {
+                                bfcStopPolling();
+                                $st.css('color', '#a94442').text('Denied by ' + s.approver + '. You cannot pay this amount.');
+                            }
+                        });
+                    }, 4000);
+                }).fail(function (xhr) {
+                    var j = xhr.responseJSON || {};
+                    var msg = j.msg || (j.errors ? Object.values(j.errors)[0][0] : 'Could not send the text. Please call instead.');
+                    $st.css('color', '#a94442').text(msg);
+                }).always(function () { $btn.prop('disabled', false); });
+            });
 
             $('#accept_buy_offer_form').on('submit', function (e) {
                 var problems = [];
                 var overpayMsg = bfcOverpayMessage();
                 if (overpayMsg && String($('#bfc_overpay_alert').data('can-overpay')) !== '1'
+                    && !$('#bfc_overpay_request_id').val()
                     && (!$.trim($('input[name="approver_username"]').val()) || !$('input[name="approver_password"]').val())) {
-                    problems.push(overpayMsg + ' ' + $('#bfc_overpay_alert').data('call-who') + ' or a manager has to enter their login below.');
+                    problems.push(overpayMsg + ' Text ' + $('#bfc_overpay_alert').data('call-who') + ' for approval below.');
                 }
                 if (!$('input[name="compliance_items_owned"]').is(':checked')) {
                     problems.push('Tick "Seller confirms the items are legally theirs and not stolen."');
