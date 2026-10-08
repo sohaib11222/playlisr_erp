@@ -1,0 +1,57 @@
+# READ-ONLY diagnostic: how many active, login-enabled staff have a mobile
+# number on file (contact_number) vs not — informs whether the new
+# task/project-assignment SMS notifications will actually reach people.
+name: Send buy approval test text
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        default: send
+        required: false
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count staff with/without a phone number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            ACTION="${{ github.event.inputs.action }}" php artisan tinker --no-ansi <<'PHP'
+            $rid = 'ZZTESTsarahReply00000001'; $C = App\Http\Controllers\BuyApprovalController::class;
+            if (getenv('ACTION') === 'status') { $r = $C::load($rid); echo "RESULT status=" . ($r['status'] ?? 'none') . " decided_at=" . ($r['decided_at'] ?? '') . "\n"; } else { $secret = 'SarahTestSecret0000000000000001x'; $code = (string) random_int(1000, 9999); $C::save(['rid' => $rid, 'secret_hash' => hash('sha256', $secret), 'business_id' => 1, 'cashier_id' => 0, 'cashier_name' => 'TEST ONLY', 'location_id' => 2, 'location_name' => 'hollywood', 'approver_id' => 0, 'approver_name' => 'Sarah (test)', 'payment_method' => 'cash_in_store', 'pm_label' => 'cash', 'paid' => 115, 'auto' => 24.23, 'seller' => 'Test Seller', 'lines' => [['qty' => 17, 'type' => 'DVD Used', 'title' => null, 'value' => null, 'grade' => null, 'line_cash' => 2.55], ['qty' => 28, 'type' => 'Book', 'title' => null, 'value' => null, 'grade' => null, 'line_cash' => 11.2]], 'notes' => '', 'photos' => [], 'status' => 'pending', 'code' => $code, 'approver_phone' => '9177045735', 'created_at' => now()->toDateTimeString()]); $link = route('buy-approval.show', ['token' => $rid . '-' . $secret]); $msg = "TEST Buy approval (hollywood): Quenton wants to pay \$115.00 cash for 45 items. The system says \$24.23. Reply YES {$code} to approve or NO {$code} to deny. See the items: {$link}"; $line = array_search('phone_2', App\Communication::QUO_NUMBERS, true); $res = app(App\Services\OpenPhoneService::class)->sendFrom((string) $line, '+19177045735', $msg); echo "RESULT sent=" . (!empty($res['success']) ? 'yes' : 'no ' . ($res['msg'] ?? '')) . " code={$code}\n"; }
+            PHP
