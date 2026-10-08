@@ -110,7 +110,7 @@
                         <span class="label" style="background:#2e7d32;">Picked up</span>
                     @elseif($pre)
                         @if($readyFrom)
-                            <span class="label pill-ready-from">Ready from {{ gmdate('M j', $readyFrom) }}</span>
+                            <span class="label pill-ready-from">Ready on {{ gmdate('M j', $readyFrom) }}</span>
                         @elseif($wp['status'] === 'ready_for_pickup')
                             <span class="label pill-ready">Ready for Pickup</span>
                         @else
@@ -124,7 +124,7 @@
                         <span class="label" style="background:#6a5acd;">Waiting on Stock</span>
                         <span class="status-sub">Customer not notified</span>
                     @elseif($readyFrom)
-                        <span class="label pill-ready-from">Ready from {{ gmdate('M j', $readyFrom) }}</span>
+                        <span class="label pill-ready-from">Ready on {{ gmdate('M j', $readyFrom) }}</span>
                         <span class="status-sub">Can't pick up before street date</span>
                     @elseif($wp['status'] === 'ready_for_pickup')
                         <span class="label pill-ready">Ready for Pickup</span>
@@ -157,7 +157,7 @@
                                 <input type="hidden" name="store" value="{{ $wp['location'] }}">
                             @endif
                             <select class="act-select" onchange="if (this.value === 'ready') { this.form.action = this.dataset.readyUrl; } if (this.value) { this.form.submit(); }" @if($canReady) data-ready-url="{{ route('events.overviewEventReady', ['preorderId' => $pre['id']]) }}" @endif aria-label="Order status">
-                                <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? ($readyFrom ? 'Ready from ' . gmdate('M j', $readyFrom) : 'Ready for Pickup') : 'Waiting' }}</option>
+                                <option value="" selected>{{ $wp['status'] === 'ready_for_pickup' ? ($readyFrom ? 'Ready on ' . gmdate('M j', $readyFrom) : 'Ready for Pickup') : 'Waiting' }}</option>
                                 @if($canReady)
                                     <option value="ready">{{ $streetTs && $streetTs > strtotime('today') ? 'Ready, notify on ' . gmdate('M j', $streetTs) : 'Ready for Pickup (notify now)' }}</option>
                                 @endif
@@ -182,7 +182,7 @@
                             <select name="status" class="act-select" onchange="this.form.submit()" aria-label="Order status">
                                 {{-- Waiting on Stock is ERP-only, never sent to the website, so no customer notice (2026-10-08). --}}
                                 @php $curStatus = !empty($wp['waitingStock']) ? 'waiting_stock' : $wp['status']; @endphp
-                                @php $readyLabel = ($streetTs && $streetTs > strtotime('today')) ? 'Ready from ' . gmdate('M j', $streetTs) : 'Ready for Pickup'; @endphp
+                                @php $readyLabel = ($streetTs && $streetTs > strtotime('today')) ? 'Ready on ' . gmdate('M j', $streetTs) : 'Ready for Pickup'; @endphp
                                 @foreach(['processing' => 'Preparing', 'waiting_stock' => 'Waiting on Stock', 'ready_for_pickup' => $readyLabel, 'picked_up' => 'Picked Up'] as $sv => $sl)
                                     <option value="{{ $sv }}" @if($curStatus === $sv) selected @endif>{{ $sl }}</option>
                                 @endforeach
