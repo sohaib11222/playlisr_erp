@@ -1671,7 +1671,7 @@ HTML;
                 var auto = parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash'));
                 if (!isFinite(paid) || !isFinite(auto)) return '';
                 auto = Math.max(0, auto);
-                if (!(paid > auto * 1.25 && (paid - auto) >= 10)) return '';
+                if (!(paid > auto * 1.20 && (paid - auto) >= 10)) return '';
                 return 'You cannot pay $' + paid.toFixed(2) + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
             }
             function bfcRefreshOverpay() {
