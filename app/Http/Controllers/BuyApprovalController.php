@@ -94,6 +94,12 @@ class BuyApprovalController extends Controller
 
         $approver = self::approverFor($business_id, $locationId);
         $who = BuyFromCustomerController::overpayContactName($locationId);
+        // Manager testing the cashier flow (?as_cashier=1): text themselves, not Luis/Zak.
+        $isTest = $request->boolean('as_cashier') && BuyFromCustomerController::canApproveOverpay($cashier);
+        if ($isTest) {
+            $approver = $cashier;
+            $who = $cashier->first_name;
+        }
         if (!$approver) {
             return response()->json(['ok' => false, 'msg' => "Couldn't find {$who}'s ERP account. Please call {$who}."], 422);
         }
@@ -163,7 +169,7 @@ class BuyApprovalController extends Controller
 
         $link = route('buy-approval.show', ['token' => $rid . '-' . $secret]);
         $msg = sprintf(
-            'Buy approval%s: %s wants to pay $%s %s for %d item%s. The system says $%s. Approve or deny: %s',
+            ($isTest ? 'TEST ' : '') . 'Buy approval%s: %s wants to pay $%s %s for %d item%s. The system says $%s. Approve or deny: %s',
             $locationName ? ' (' . $locationName . ')' : '',
             $cashier->first_name,
             number_format($paid, 2),

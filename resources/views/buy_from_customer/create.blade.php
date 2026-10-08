@@ -350,6 +350,9 @@ HTML;
                 </div>
                 <div class="box-body">
                     <form id="buy_offer_form" method="POST" action="{{ route('buy-from-customer.calculate') }}">
+                        @if(request()->boolean('as_cashier'))
+                            <input type="hidden" name="as_cashier" value="1">
+                        @endif
                         @csrf
                         {{-- offer_id is set after the first auto-saved Calculate so subsequent
                              Calculates UPDATE that draft instead of creating a new BFC each click. --}}
@@ -758,7 +761,8 @@ HTML;
                                             } catch (\Throwable $e) {
                                                 $bfcPureAuto = null;
                                             }
-                                            $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user());
+                                            // ?as_cashier=1 lets a manager walk through the cashier flow (approval texts go to themselves).
+                                            $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user()) && empty($input['as_cashier']) && !request()->boolean('as_cashier');
                                             $bfcCallWho = \App\Http\Controllers\BuyFromCustomerController::overpayContactName($input['location_id'] ?? null);
                                         @endphp
                                         <div class="col-md-4">
