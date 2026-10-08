@@ -178,7 +178,11 @@
         .content .box-body .form-control { height: 40px; }
         .content .box-body textarea.form-control { height: auto; }
         .content .box-body th { font-size: 13px; color: #333; text-transform: none; }
-        .bfc-step { font-size: 20px; font-weight: 700; margin: 22px 0 10px; color: #111; display: flex; align-items: center; gap: 10px; }
+        .content h4.bfc-step { font-size: 21px !important; font-weight: 700 !important; text-transform: none !important; letter-spacing: 0 !important; margin: 22px 0 10px; color: #111; display: flex; align-items: center; gap: 10px; }
+        .content h4.bfc-step-sub { text-transform: none !important; letter-spacing: 0 !important; }
+        .content .box-body th, .content .box-body label { text-transform: none !important; letter-spacing: 0 !important; }
+        .bfc-rules { font-size: 16px !important; line-height: 1.5; }
+        .bfc-rules li { margin-bottom: 4px; }
         .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
         .bfc-step-sub { font-size: 17px; font-weight: 700; margin: 16px 0 4px; }
         .bfc-step-help { font-size: 15px; color: #444; margin: 0 0 10px; }
@@ -253,7 +257,7 @@
         }
     @endphp
 
-    <div class="alert alert-warning" style="font-size:15px;">
+    <div class="alert alert-warning bfc-rules">
         <strong>Buying rules</strong>
         <ol style="margin:6px 0 0; padding-left:20px;">
             <li>You must pay the number the system gives you. Overpaying costs the business a lot of money, and anyone who keeps overpaying will lose buying privileges.</li>
