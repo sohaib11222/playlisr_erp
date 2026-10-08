@@ -95,7 +95,7 @@ class BuyApprovalController extends Controller
         $approver = self::approverFor($business_id, $locationId);
         $who = BuyFromCustomerController::overpayContactName($locationId);
         // Manager testing the cashier flow (?as_cashier=1): text themselves, not Luis/Zak.
-        $isTest = $request->boolean('as_cashier') && BuyFromCustomerController::canApproveOverpay($cashier);
+        $isTest = filter_var($request->input('as_cashier'), FILTER_VALIDATE_BOOLEAN) && BuyFromCustomerController::canApproveOverpay($cashier);
         if ($isTest) {
             $approver = $cashier;
             $who = $cashier->first_name;

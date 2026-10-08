@@ -237,6 +237,14 @@
         }
     @endphp
 
+    <div class="alert alert-warning" style="font-size:15px;">
+        <strong>Buying rules</strong>
+        <ol style="margin:6px 0 0; padding-left:20px;">
+            <li>You must pay the number the system gives you. Overpaying costs the business a lot of money, and anyone who keeps overpaying will lose buying privileges.</li>
+            <li>If you are unsure or need approval, call your store manager.</li>
+        </ol>
+    </div>
+
     <div class="row">
         <div class="col-md-12">
             <div class="meta-row">
@@ -350,7 +358,7 @@ HTML;
                 </div>
                 <div class="box-body">
                     <form id="buy_offer_form" method="POST" action="{{ route('buy-from-customer.calculate') }}">
-                        @if(request()->boolean('as_cashier'))
+                        @if(filter_var(request()->input('as_cashier'), FILTER_VALIDATE_BOOLEAN))
                             <input type="hidden" name="as_cashier" value="1">
                         @endif
                         @csrf
@@ -762,7 +770,7 @@ HTML;
                                                 $bfcPureAuto = null;
                                             }
                                             // ?as_cashier=1 lets a manager walk through the cashier flow (approval texts go to themselves).
-                                            $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user()) && empty($input['as_cashier']) && !request()->boolean('as_cashier');
+                                            $bfcCanOverpay = \App\Http\Controllers\BuyFromCustomerController::canApproveOverpay(auth()->user()) && empty($input['as_cashier']) && !filter_var(request()->input('as_cashier'), FILTER_VALIDATE_BOOLEAN);
                                             $bfcCallWho = \App\Http\Controllers\BuyFromCustomerController::overpayContactName($input['location_id'] ?? null);
                                         @endphp
                                         <div class="col-md-4">

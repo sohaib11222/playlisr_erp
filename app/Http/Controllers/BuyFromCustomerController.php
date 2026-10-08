@@ -694,7 +694,7 @@ class BuyFromCustomerController extends Controller
             }
             if (self::isOverpay($paidCash, $autoCash)) {
                 $cashier = auth()->user();
-                $selfApprove = self::canApproveOverpay($cashier) && !$request->boolean('as_cashier');
+                $selfApprove = self::canApproveOverpay($cashier) && !filter_var($request->input('as_cashier'), FILTER_VALIDATE_BOOLEAN);
                 $approver = $selfApprove ? $cashier : $this->overpayApprover($request, $cashier);
                 // Or Luis / Zak approved it from their phone (texted link).
                 if (!$approver && $request->filled('overpay_request_id')) {
