@@ -1979,7 +1979,7 @@
                     row.querySelector('.ica-cred-user').value = '';
                     row.querySelector('.ica-cred-account').value = '';
                     row.querySelector('.ica-cred-pass').value = '';
-                    if (msg) msg.textContent = 'Saved encrypted. You can now click "Run auto-fetch now" above.';
+                    if (msg) msg.textContent = 'Saved. It will be used on the next Sunday or Wednesday pull.';
                 } else {
                     if (msg) msg.textContent = (resp && resp.message) || 'Save failed.';
                 }
