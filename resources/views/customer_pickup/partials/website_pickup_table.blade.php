@@ -34,6 +34,9 @@
                 if ($pickedUp) { $statusSort = 9; }
                 $pre = ($wp['source'] ?? '') === 'preorder' ? $wp['pre'] : null;
                 $sourceLabel = $pre ? $pre['sourceTag'] : (($wp['source'] ?? '') === 'store_hold' ? 'In-store hold' : 'Web order');
+                // Ready but before the street date: they can only collect from that day.
+                $streetTs = $shipTs ?: ($pre && !empty($pre['pickup']) ? strtotime($pre['pickup']) : null);
+                $readyFrom = ($wp['status'] ?? '') === 'ready_for_pickup' && $streetTs && $streetTs > strtotime('today') ? $streetTs : null;
                 $storeLabel = $wp['location'] === 'pico' ? 'Pico' : ($wp['location'] === 'hollywood' || !$pre ? 'Hollywood' : '—');
             @endphp
             <tr @if($pickedUp) class="row-picked-up" @elseif(isset($isOlder) && $isOlder($wp)) class="row-older" @elseif(!empty($wp['isPreorder'])) style="background:#fff7e0;" @endif>
@@ -92,8 +95,10 @@
                     @if($pickedUp)
                         <span class="label" style="background:#2e7d32;">Picked up</span>
                     @elseif($pre)
-                        @if($wp['status'] === 'ready_for_pickup')
-                            <span class="label label-warning">Ready for Pickup</span>
+                        @if($readyFrom)
+                            <span class="label pill-ready-from">Ready from {{ gmdate('M j', $readyFrom) }}</span>
+                        @elseif($wp['status'] === 'ready_for_pickup')
+                            <span class="label pill-ready">Ready for Pickup</span>
                         @else
                             <span class="label" style="background:#7a6a4a;">Preorder</span>
                         @endif
@@ -101,8 +106,11 @@
                     @elseif(!empty($wp['waitingStock']))
                         <span class="label" style="background:#6a5acd;">Waiting on Stock</span>
                         <span class="status-sub">Customer not notified</span>
+                    @elseif($readyFrom)
+                        <span class="label pill-ready-from">Ready from {{ gmdate('M j', $readyFrom) }}</span>
+                        <span class="status-sub">Can't pick up before street date</span>
                     @elseif($wp['status'] === 'ready_for_pickup')
-                        <span class="label label-warning">Ready for Pickup</span>
+                        <span class="label pill-ready">Ready for Pickup</span>
                     @elseif($eventPickup)
                         <span class="label" style="background:#2e7d32;">Pickup at event</span>
                     @elseif(!empty($wp['isPreorder']))
@@ -138,8 +146,6 @@
                         @endif
                     @elseif(($wp['source'] ?? '') === 'store_hold')
                         <button type="button" class="btn-ghost act-btn js-hold-picked-up" data-id="{{ $wp['id'] }}" style="margin-top:0;">Mark picked up</button>
-                    @elseif($notYetDue)
-                        <span class="sub">Available after street date</span>
                     @else
                         {{-- Change status from a dropdown (Sarah, 2026-10-06); event pickups too,
                              so leftover event orders can be set Ready for Pickup (2026-10-07).
@@ -149,7 +155,8 @@
                             <select name="status" class="act-select" onchange="this.form.submit()" aria-label="Order status">
                                 {{-- Waiting on Stock is ERP-only, never sent to the website, so no customer notice (2026-10-08). --}}
                                 @php $curStatus = !empty($wp['waitingStock']) ? 'waiting_stock' : $wp['status']; @endphp
-                                @foreach(['processing' => 'Preparing', 'waiting_stock' => 'Waiting on Stock', 'ready_for_pickup' => 'Ready for Pickup', 'picked_up' => 'Picked Up'] as $sv => $sl)
+                                @php $readyLabel = ($streetTs && $streetTs > strtotime('today')) ? 'Ready from ' . gmdate('M j', $streetTs) : 'Ready for Pickup'; @endphp
+                                @foreach(['processing' => 'Preparing', 'waiting_stock' => 'Waiting on Stock', 'ready_for_pickup' => $readyLabel, 'picked_up' => 'Picked Up'] as $sv => $sl)
                                     <option value="{{ $sv }}" @if($curStatus === $sv) selected @endif>{{ $sl }}</option>
                                 @endforeach
                             </select>

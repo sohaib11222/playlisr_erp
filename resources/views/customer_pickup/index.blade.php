@@ -56,6 +56,8 @@ body.pos-v2 .wp-table .label { white-space: nowrap; display: inline-block; line-
 body.pos-v2 .wp-table .status-sub { display: block; font-size: 12px; color: #6b6253; margin-top: 5px; white-space: nowrap; }
 body.pos-v2 .wp-table .item-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
 body.pos-v2 .wp-table .src-tag { font-weight: 600; }
+body.pos-v2 .wp-table .pill-ready { background: #2e7d32; color: #fff; }
+body.pos-v2 .wp-table .pill-ready-from { background: #e6f4ea; color: #2e7d32; border: 1px solid #a8d5b5; }
 /* Fit the card width, no sideways scroll (Sarah, 2026-10-08). */
 body.pos-v2 #website-pickups .table-responsive { overflow-x: visible; border: 0; }
 body.pos-v2 .wp-table tbody td { padding: 10px 7px; }
@@ -98,8 +100,10 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
     @if(is_string(session('status')))<div class="alert-ok">{{ session('status') }}</div>@endif
     @if(is_string(session('error')))<div class="alert-err">{{ session('error') }}</div>@endif
 
-    <div class="pickup-card">
+    {{-- In-store holds / AMS orders: hidden while there's nothing in it (Sarah, 2026-10-08). --}}
+    <div class="pickup-card" id="store_pickups_card" style="display:none;">
         <div class="pickup-toolbar">
+            <strong style="font-size:15px; margin-right:auto;">In-Store Holds &amp; AMS Orders</strong>
             <span class="filter-label">Show:</span>
             <select id="status_filter">
                 <option value="">All Statuses</option>
@@ -258,6 +262,12 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 { data: 'action', name: 'action', orderable: false, searchable: false },
             ],
             order: [[1, 'desc']],
+            // No export/print/column buttons or page-size picker here.
+            dom: 'rtip',
+        });
+        // Only show the holds card when it actually has something in it.
+        pickup_table.on('xhr.dt', function(e, settings, json) {
+            if (json && json.recordsTotal > 0) { $('#store_pickups_card').show(); }
         });
 
         // Preorders table is fully server-rendered (small, non-paginated
