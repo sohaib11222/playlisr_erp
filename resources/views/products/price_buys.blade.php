@@ -55,8 +55,8 @@
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function catOptions(sel) {
         var h = '<option value="">Pick format</option>';
-        Object.keys(categories).forEach(function (id) {
-            h += '<option value="' + id + '"' + (Number(id) === Number(sel) ? ' selected' : '') + '>' + esc(categories[id]) + '</option>';
+        categories.forEach(function (c) {
+            h += '<option value="' + c[0] + '"' + (Number(c[0]) === Number(sel) ? ' selected' : '') + '>' + esc(c[1]) + '</option>';
         });
         return h;
     }

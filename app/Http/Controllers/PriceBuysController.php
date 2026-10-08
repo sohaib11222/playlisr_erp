@@ -42,7 +42,7 @@ class PriceBuysController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $categories = \DB::table('categories')->where('business_id', $business_id)
             ->where('parent_id', 0)->where('category_type', 'product')->whereNull('deleted_at')
-            ->orderBy('name')->pluck('name', 'id');
+            ->orderBy('name')->get(['id', 'name'])->map(function ($c) { return [(int) $c->id, $c->name]; })->values();
         return view('products.price_buys', compact('categories'));
     }
 
