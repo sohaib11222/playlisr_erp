@@ -401,4 +401,45 @@ class LegacyListingController extends Controller
         }
         return response()->json(['success' => true, 'rows' => $out]);
     }
+
+    /**
+     * Retire 2024 listings priced BELOW cost (Sarah 10/8: "we can definitely
+     * delete those but do not want to lose any sales history"). Retire =
+     * is_inactive, so every past sale stays. Only listings with no stock;
+     * ones showing stock are left for a look.
+     */
+    public function retireBelowCost2024(Request $request)
+    {
+        @set_time_limit(0);
+        if (!$this->isOwner()) {
+            return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        }
+        $business_id = $request->session()->get('user.business_id');
+        $rows = \DB::table('products as p')
+            ->join('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)
+            ->where('p.created_at', '>=', '2024-01-01 00:00:00')->where('p.created_at', '<', '2025-01-01 00:00:00')
+            ->whereRaw('v.dpp_inc_tax > 0 and v.sell_price_inc_tax > 0 and v.sell_price_inc_tax < v.dpp_inc_tax')
+            ->groupBy('p.id')
+            ->select('p.id', \DB::raw('(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id) as stock'))
+            ->get();
+        $ids = []; $withStock = 0;
+        foreach ($rows as $r) { if ((float) $r->stock > 0) { $withStock++; } else { $ids[] = (int) $r->id; } }
+        if ($request->input('dry')) {
+            return response()->json(['success' => true, 'would_retire' => count($ids), 'left_with_stock' => $withStock]);
+        }
+        $done = 0;
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $done += \DB::table('products')->whereIn('id', $chunk)->where('is_inactive', 0)->update(['is_inactive' => 1, 'updated_at' => now()]);
+        }
+        if ($ids) {
+            $ts = now()->format('Y-m-d_His');
+            \Storage::disk('local')->put("admin-snapshots/legacy-listing-retire-belowcost-{$ts}.json", json_encode([
+                'timestamp' => $ts, 'action' => 'legacy-listing-retire', 'user_id' => auth()->id(), 'business_id' => $business_id,
+                'source_name' => $done . ' 2024 listing(s) priced below cost, no stock (sales history kept)',
+                'target_name' => 'retired (is_inactive = 1)', 'rows' => array_map(function ($id) { return ['id' => $id]; }, $ids),
+            ], JSON_PRETTY_PRINT));
+        }
+        return response()->json(['success' => true, 'retired' => $done, 'left_with_stock' => $withStock]);
+    }
 }

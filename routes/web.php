@@ -405,6 +405,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/legacy-cleanup', 'LegacyListingController@index');
     Route::get('/products/review-2024', 'LegacyListingController@review2024');
     Route::get('/products/review-2024/data', 'LegacyListingController@review2024Data');
+    Route::post('/products/review-2024/retire-below-cost', 'LegacyListingController@retireBelowCost2024');
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/reports/supplier-price-pulls', function () {
         $u = auth()->user();
