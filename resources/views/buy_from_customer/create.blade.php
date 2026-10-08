@@ -183,6 +183,10 @@
         .content .box-body th, .content .box-body label { text-transform: none !important; letter-spacing: 0 !important; }
         .bfc-rules { font-size: 16px !important; line-height: 1.5; }
         .bfc-rules li { margin-bottom: 4px; }
+        .content .bfc-offer-box { background: #e7f0fb; border: 2px solid #2c699a; border-radius: 10px; padding: 6px 18px 12px; margin: 16px 0; }
+        .content .bfc-offer-box h4.bfc-step { margin-top: 12px; }
+        .content .bfc-offer-box table { background: #fff; }
+        .content .bfc-offer-box .bfc-final-row input { font-size: 20px !important; font-weight: 800; height: 46px; }
         /* Buy form buttons: same size, aligned, readable. */
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
         .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
@@ -251,6 +255,14 @@
     @php
         $input = $input_data ?? old();
         $input = is_array($input) ? $input : [];
+        // Sarah 2026-10-08: buys only happen at Pico or Hollywood.
+        $bfcStoreLocations = [];
+        foreach ((array) (is_object($locations) && method_exists($locations, 'toArray') ? $locations->toArray() : $locations) as $bfcLocId => $bfcLocName) {
+            if (preg_match('/pico|hollywood/i', (string) $bfcLocName)) {
+                $bfcStoreLocations[$bfcLocId] = ucwords(strtolower((string) $bfcLocName));
+            }
+        }
+        if (empty($bfcStoreLocations)) $bfcStoreLocations = $locations;
         // Never echo an approver's login back into the page as hidden fields.
         unset($input['approver_username'], $input['approver_password'], $input['overpay_request_id']);
         $calc = $calculation ?? null;
@@ -404,7 +416,7 @@ HTML;
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>Store location</label>
-                                {!! Form::select('location_id', $locations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'id' => 'location_id', 'style' => 'width:100%;']) !!}
+                                {!! Form::select('location_id', $bfcStoreLocations, $input['location_id'] ?? null, ['class' => 'form-control select2', 'id' => 'location_id', 'style' => 'width:100%;']) !!}
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -565,6 +577,7 @@ HTML;
                             <span>Max store credit offer <strong id="bfc_running_credit">$0.00</strong></span>
                         </span>
                     </div>
+                    <div class="bfc-offer-box">
                     <h4 class="bfc-step"><span class="bfc-step-num">3</span> Make your offer</h4>
                     <p class="bfc-step-help">Start with row 1. Only go up if they say no. <strong style="color:#c62828 !important; font-weight:800;">Row 3 is the most you can pay.</strong></p>
                     @php
@@ -618,6 +631,7 @@ HTML;
                         $bfcCreditBonus = app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'];
                     @endphp
                     <p class="bfc-step-help">Store credit is always {{ rtrim(rtrim(number_format($bfcCreditBonus, 2), '0'), '.') }}x the cash offer.</p>
+                    </div>
                     <div class="form-group">
                         <label>Notes <span class="text-muted">(optional: sealed items, rare finds, condition)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
