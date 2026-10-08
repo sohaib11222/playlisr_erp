@@ -1,0 +1,60 @@
+# READ-ONLY diagnostic: how many active, login-enabled staff have a mobile
+# number on file (contact_number) vs not — informs whether the new
+# task/project-assignment SMS notifications will actually reach people.
+name: Test buy approval page
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        default: create
+        required: false
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count staff with/without a phone number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            ACTION="${{ github.event.inputs.action }}" php artisan tinker --no-ansi <<'PHP'
+            $rid = 'ZZTESTapprovalPage000001';
+            if (getenv('ACTION') === 'delete') { @unlink(App\Http\Controllers\BuyApprovalController::dir() . '/' . $rid . '.json'); echo "deleted\n"; return; }
+            $secret = 'TestSecretXyz123TestSecretXyz123';
+            App\Http\Controllers\BuyApprovalController::save(['rid' => $rid, 'secret_hash' => hash('sha256', $secret), 'business_id' => 1, 'cashier_id' => 0, 'cashier_name' => 'TEST ONLY', 'location_id' => 2, 'location_name' => 'hollywood', 'approver_id' => 26, 'approver_name' => 'Luis Casanova', 'payment_method' => 'cash_in_store', 'pm_label' => 'cash', 'paid' => 115, 'auto' => 24.23, 'seller' => 'Test Seller', 'lines' => [['qty' => 17, 'type' => 'DVD Used', 'title' => null, 'value' => null, 'grade' => null, 'line_cash' => 2.55], ['qty' => 28, 'type' => 'Book', 'title' => null, 'value' => null, 'grade' => null, 'line_cash' => 11.2]], 'notes' => '', 'photos' => [], 'status' => 'pending', 'created_at' => now()->toDateTimeString()]);
+            echo "token={$rid}-{$secret}\n";
+            PHP
