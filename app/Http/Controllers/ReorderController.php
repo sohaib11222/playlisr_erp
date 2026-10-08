@@ -211,10 +211,10 @@ class ReorderController extends Controller
     {
         return [
             'sold' => 'Sold since last order',
-            'core' => 'Core: check bins',
-            'overdue' => 'Overdue',
+            'core' => 'Always stock: check the bin',
+            'overdue' => "Hasn't sold lately: missing?",
             'once' => 'Bought once, sold fast',
-            'used' => 'Sells used: buy sealed',
+            'used' => 'Sells used: buy new',
             'other' => 'Sold this year',
         ];
     }

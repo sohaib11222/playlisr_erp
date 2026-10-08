@@ -4,6 +4,7 @@
 @section('content')
 @php
     $whyLabels = app(\App\Http\Controllers\ReorderController::class)->whyLabels();
+    $whyShort = ['sold' => 'Sold', 'core' => 'Always stock', 'overdue' => 'Missing?', 'once' => 'Sold fast once', 'used' => 'Sells used', 'other' => 'Sold this year'];
     $whyColors = ['sold' => '#2e7d32', 'core' => '#1565c0', 'overdue' => '#c62828', 'once' => '#6a1b9a', 'used' => '#ef6c00', 'other' => '#757575'];
     $genres = collect($rows)->pluck('genre')->unique()->values();
     $q = ['location_id' => $locationId, 'format' => $format];
@@ -16,10 +17,19 @@
     .ro-chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
     .ro-chip { border:1px solid #ccc; background:#fff; border-radius:14px; padding:3px 11px; cursor:pointer; font-size:13px; }
     .ro-chip.active { background:#333; color:#fff; border-color:#333; }
-    .ro-tag { display:inline-block; color:#fff; border-radius:3px; padding:0 5px; font-size:11px; margin:1px 2px 1px 0; white-space:nowrap; }
-    table.ro-table { font-size:13px; }
-    table.ro-table th { position:sticky; top:0; background:#f4f4f4; z-index:1; white-space:nowrap; }
-    table.ro-table td { vertical-align:middle !important; }
+    .ro-tag { display:inline-block; color:#fff; border-radius:10px; padding:1px 8px; font-size:12px; margin:1px 2px 1px 0; white-space:nowrap; }
+    table.ro-table { font-size:14px; }
+    table.ro-table th { position:sticky; top:0; background:#f4f4f4; z-index:1; white-space:nowrap; cursor:pointer; user-select:none; }
+    table.ro-table th:hover { background:#e8e8e8; }
+    table.ro-table th .ro-arrow { color:#999; font-size:11px; }
+    table.ro-table td { vertical-align:middle !important; padding:7px 8px !important; }
+    table.ro-table td.n { text-align:center; }
+    table.ro-table .ro-artist { font-weight:bold; }
+    table.ro-table .ro-title { color:#333; }
+    .ro-grade { display:inline-block; border:1px solid #ccc; border-radius:3px; padding:0 4px; font-size:10px; color:#666; margin-right:4px; }
+    .ro-settings td { padding:6px 4px !important; vertical-align:middle !important; }
+    .ro-settings .ro-num { display:inline-block; }
+    .ro-tool h4 { font-size:15px; margin:14px 0 6px; }
     tr.ro-genre td { background:#eef3f8; font-weight:bold; font-size:14px; }
     .ro-num { width:58px; text-align:right; padding:2px 4px; }
     .ro-order { font-weight:bold; }
@@ -88,8 +98,8 @@
                 <div class="box-body">
                     <ol class="ro-steps">
                         <li>Pick the store and format above. The list starts from what sold since the last order.</li>
-                        <li>Walk the bins in genre order. Type what's in the bin in <b>In bin</b>. It saves as you go and the order qty updates.</li>
-                        <li>Check the <b>Core: check bins</b> and <b>Overdue</b> titles too. They should always be there, so count them even if nothing sold.</li>
+                        <li>Walk the bins in genre order. Type what's actually there in <b>Counted</b>. It saves as you go and <b>Order</b> updates.</li>
+                        <li>Also count the <b>Always stock</b> and <b>Missing?</b> titles. They should always be in the bin, even if nothing sold.</li>
                         <li>At the bottom, each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
                         <li>Click <b>Mark as ordered</b>. Next week starts from here, and these copies show as on order.</li>
                     </ol>
@@ -114,26 +124,24 @@
                     @foreach($genres as $g)<option>{{ $g }}</option>@endforeach
                 </select>
                 <input id="ro-search" class="form-control" style="width:240px;" placeholder="Search artist or title">
+                <a href="#" id="ro-unsort" style="display:none; align-self:center;">Back to bin order (by genre)</a>
+                <span class="ro-muted" style="align-self:center;">Click any column name to sort.</span>
             </div>
             <div class="table-responsive" style="max-height:75vh; overflow:auto;">
                 <table class="table table-condensed table-bordered ro-table" id="ro-table">
                     <thead>
                         <tr>
-                            <th>Artist / Title</th>
-                            <th>Grade</th>
-                            <th>Why</th>
-                            <th title="Sold since the last order">Since</th>
-                            <th>10 days</th>
-                            <th>This year</th>
-                            <th title="Purchase date to sale date">Days to sell</th>
-                            <th>Last sold</th>
-                            <th>ERP stock</th>
-                            <th>In bin</th>
-                            <th>On order</th>
-                            <th>Target</th>
-                            <th>Order</th>
-                            <th>Best price</th>
-                            <th>AMS</th>
+                            <th data-sort="album">Album <span class="ro-arrow"></span></th>
+                            <th data-sort="why">Why <span class="ro-arrow"></span></th>
+                            <th data-sort="since" title="Copies sold since the last order">Sold since last order <span class="ro-arrow"></span></th>
+                            <th data-sort="ytd">Sold this year <span class="ro-arrow"></span></th>
+                            <th data-sort="days" title="Average days from when we bought it to when it sold">Days to sell <span class="ro-arrow"></span></th>
+                            <th data-sort="last">Last sold <span class="ro-arrow"></span></th>
+                            <th data-sort="erp" title="What the ERP thinks is in the store">ERP says <span class="ro-arrow"></span></th>
+                            <th data-sort="count" title="Type what's actually in the bin">Counted <span class="ro-arrow"></span></th>
+                            <th data-sort="onorder" title="Already ordered, not here yet">On the way <span class="ro-arrow"></span></th>
+                            <th data-sort="order">Order <span class="ro-arrow"></span></th>
+                            <th data-sort="cost">Cheapest <span class="ro-arrow"></span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -145,6 +153,10 @@
                             data-genre="{{ $r['genre'] }}"
                             data-why="{{ implode(' ', $r['why']) }}"
                             data-text="{{ mb_strtolower($r['artist'] . ' ' . $r['title']) }}"
+                            data-album="{{ mb_strtolower(($r['artist'] ?: '') . ' ' . $r['title']) }}"
+                            data-ytd="{{ $r['sold_ytd'] }}"
+                            data-days="{{ $r['avg_days_to_sell'] ?? '' }}"
+                            data-last="{{ $r['last_sold'] ?? '' }}"
                             data-upc="{{ $r['supplier_upc'] }}"
                             data-supplier="{{ $r['best_supplier'] ?: 'No price found' }}"
                             data-title="{{ $r['title'] }}"
@@ -153,25 +165,22 @@
                             data-erp="{{ $r['erp_stock'] }}"
                             data-since="{{ $r['sold_since'] }}"
                             data-cant="{{ $r['cant_order'] ? 1 : 0 }}"
-                            data-cost="{{ $r['best_cost'] ?? $r['ams_cost'] ?? $r['erp_cost'] ?? 0 }}"
-                            data-countsold="{{ $r['count'] !== null && $r['count_raw'] !== null ? $r['count_raw'] - $r['count'] : 0 }}">
-                            <td>
-                                <b>{{ $r['artist'] }}</b> {{ $r['artist'] ? '/' : '' }} {{ $r['title'] }}
-                                <div class="ro-muted">{{ $r['supplier_upc'] ?: $r['sku'] }}
+                            data-cost="{{ $r['best_cost'] ?? $r['ams_cost'] ?? $r['erp_cost'] ?? 0 }}">
+                            <td title="{{ !empty($r['merged']) ? 'Combines ' . count($r['merged']) . ' ERP entries: ' . implode(' | ', $r['merged']) : '' }}">
+                                @if($r['artist'])<div class="ro-artist">{{ $r['artist'] }}</div>@endif
+                                <div class="ro-title">{{ $r['title'] }}</div>
+                                <div class="ro-muted">@if($r['grade'])<span class="ro-grade" title="Sales grade: A best seller to C slow, X steady to Z rare">{{ $r['grade'] }}</span>@endif{{ $r['supplier_upc'] ?: $r['sku'] }}
                                     @if($r['cant_order']) <span class="text-danger">Can't order: {{ $r['cant_order'] }}</span>@endif
-                                    @if($r['used_note']) <span>{{ $r['used_note'] }}</span>@endif
-                                    @if(!empty($r['merged']))<div>Merged {{ count($r['merged']) }} entries: {{ implode(' | ', $r['merged']) }}</div>@endif
+                                    @if($r['used_note']) <div>{{ $r['used_note'] }}</div>@endif
                                 </div>
                             </td>
-                            <td>{{ $r['grade'] }}</td>
-                            <td>@foreach($r['why'] as $w)<span class="ro-tag" style="background:{{ $whyColors[$w] ?? '#777' }}">{{ $whyLabels[$w] ?? $w }}</span>@endforeach</td>
-                            <td class="text-right">{{ $r['sold_since'] ?: '' }}</td>
-                            <td class="text-right">{{ $r['sold_10d'] ?: '' }}</td>
-                            <td class="text-right">{{ $r['sold_ytd'] ?: '' }}</td>
-                            <td class="text-right">{{ $r['avg_days_to_sell'] !== null ? $r['avg_days_to_sell'] : '' }}</td>
+                            <td>@foreach($r['why'] as $w)<span class="ro-tag" style="background:{{ $whyColors[$w] ?? '#777' }}" title="{{ $whyLabels[$w] ?? $w }}">{{ $whyShort[$w] ?? $w }}</span> @endforeach</td>
+                            <td class="n">{{ $r['sold_since'] ?: '' }}</td>
+                            <td class="n">{{ $r['sold_ytd'] ?: '' }}</td>
+                            <td class="n">{{ $r['avg_days_to_sell'] !== null ? $r['avg_days_to_sell'] : '' }}</td>
                             <td style="white-space:nowrap;">{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
                                 @if(in_array('overdue', $r['why']))<div class="ro-muted text-danger">{{ $r['days_since_sale'] }} days ago</div>@endif</td>
-                            <td class="text-right">{{ $r['erp_stock'] }}</td>
+                            <td class="n">{{ $r['erp_stock'] }}</td>
                             <td>
                                 @if($r['product_id'])
                                     <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
@@ -179,11 +188,9 @@
                                     <span class="ro-saved"></span>
                                 @endif
                             </td>
-                            <td class="text-right">{{ $r['on_order'] ?: '' }}</td>
-                            <td class="text-right">{{ $r['suggested'] }}</td>
-                            <td><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
-                            <td style="white-space:nowrap;">@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }} <span class="ro-muted">{{ $r['best_supplier'] }}</span>@endif</td>
-                            <td>@if($r['ams_cost'])${{ number_format($r['ams_cost'], 2) }}@endif</td>
+                            <td class="n">{{ $r['on_order'] ?: '' }}</td>
+                            <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
+                            <td style="white-space:nowrap;">@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>@endif</td>
                         </tr>
                     @endforeach
                     </tbody>
@@ -215,78 +222,70 @@
                 </div>
             </div>
 
-    <div class="row">
-        <div class="col-md-6">
-            <div class="box box-solid collapsed-box">
-                <div class="box-header with-border">
-                    <h3 class="box-title">Orders marked placed</h3>
-                    <div class="box-tools pull-right"><button type="button" class="btn btn-box-tool" data-widget="collapse"><i class="fa fa-plus"></i></button></div>
-                </div>
-                <div class="box-body">
+    <div class="box box-solid collapsed-box ro-tool">
+        <div class="box-header with-border">
+            <h3 class="box-title">Settings and past orders <small>you rarely need these</small></h3>
+            <div class="box-tools pull-right"><button type="button" class="btn btn-box-tool" data-widget="collapse"><i class="fa fa-plus"></i></button></div>
+        </div>
+        <div class="box-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h4>Past orders</h4>
                     @forelse($orders as $o)
                         <div style="margin-bottom:6px;">
-                            <b>{{ \Carbon\Carbon::parse($o['at'])->format('D M j, g:ia') }}</b>
+                            <b>{{ \Carbon\Carbon::parse($o['at'])->format('D M j, g:ia') }}</b>:
                             {{ count($o['lines']) }} titles, {{ array_sum(array_column($o['lines'], 'qty')) }} copies
                             @if($o['by']) by {{ $o['by'] }}@endif
                             <form method="POST" action="{{ action('ReorderController@deleteOrder', array_merge(['id' => $o['id']], $q)) }}" style="display:inline;">
                                 @csrf
-                                <button class="btn btn-link btn-xs text-danger" onclick="if (this.dataset.armed) return true; this.dataset.armed = 1; this.textContent = 'click again to remove'; return false;">remove</button>
+                                <button class="btn btn-link btn-xs text-danger" onclick="if (this.dataset.armed) return true; this.dataset.armed = 1; this.textContent = 'click again to undo'; return false;">undo</button>
                             </form>
                         </div>
                     @empty
-                        <p class="text-muted">None yet. Until the first one, sales count from the last distributor purchase in the ERP.</p>
+                        <p class="text-muted">None yet. Once you click Mark as ordered, it shows here.</p>
                     @endforelse
-                </div>
-            </div>
-            <div class="box box-solid collapsed-box">
-                <div class="box-header with-border">
-                    <h3 class="box-title">Load bin counts from a spreadsheet</h3>
-                    <div class="box-tools pull-right"><button type="button" class="btn btn-box-tool" data-widget="collapse"><i class="fa fa-plus"></i></button></div>
-                </div>
-                <div class="box-body">
+
+                    <h4>Already counted in a spreadsheet?</h4>
                     <form method="POST" action="{{ action('ReorderController@importCounts', $q) }}" enctype="multipart/form-data">
                         @csrf
-                        <p class="ro-muted">A CSV with a "upc" column and a "qty" column, for {{ $storeName }}. Sales after the count date are taken out automatically.</p>
+                        <p class="ro-muted">Upload a CSV with two columns named <b>upc</b> and <b>qty</b>. The counts fill in the Counted column for {{ $storeName }}.</p>
                         <div class="ro-bar">
                             <input type="file" name="file" accept=".csv" class="form-control" style="width:auto;">
-                            <label style="margin:0;">Counted on <input type="date" name="counted_on" class="form-control" value="{{ now()->toDateString() }}"></label>
-                            <button class="btn btn-default">Load counts</button>
+                            <label style="margin:0;">Day you counted <input type="date" name="counted_on" class="form-control" value="{{ now()->toDateString() }}"></label>
+                            <button class="btn btn-default">Upload</button>
                         </div>
                     </form>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="box box-solid collapsed-box">
-                <div class="box-header with-border">
-                    <h3 class="box-title">Settings</h3>
-                    <div class="box-tools pull-right"><button type="button" class="btn btn-box-tool" data-widget="collapse"><i class="fa fa-plus"></i></button></div>
-                </div>
-                <div class="box-body">
+                <div class="col-md-6">
+                    <h4>How much to order</h4>
+                    <p class="ro-muted">Order = how many we should have, minus what's counted in the bin, minus what's on the way.</p>
                     <form method="POST" action="{{ action('ReorderController@saveSettings', $q) }}">
                         @csrf
-                        <p class="ro-muted">Target = monthly pace (40% last 10 days, 60% this year's average) x months of cover x ABC factor x XYZ factor. Order = Target minus In bin minus On order.</p>
-                        <table class="table table-condensed">
-                            <tr><td>Months of cover, vinyl</td><td><input name="cover_months_vinyl" class="form-control ro-num" value="{{ $settings['cover_months_vinyl'] }}"></td></tr>
-                            <tr><td>Months of cover, CDs</td><td><input name="cover_months_cd" class="form-control ro-num" value="{{ $settings['cover_months_cd'] }}"></td></tr>
-                            <tr><td>Months of cover, cassettes</td><td><input name="cover_months_cassette" class="form-control ro-num" value="{{ $settings['cover_months_cassette'] }}"></td></tr>
-                            <tr><td>ABC factor A / B / C</td><td style="display:flex;gap:4px;">
-                                @foreach(['A','B','C'] as $k)<input name="abc_{{ $k }}" class="form-control ro-num" value="{{ $settings['abc_factor'][$k] }}">@endforeach</td></tr>
-                            <tr><td>XYZ factor X / Y / Z</td><td style="display:flex;gap:4px;">
-                                @foreach(['X','Y','Z'] as $k)<input name="xyz_{{ $k }}" class="form-control ro-num" value="{{ $settings['xyz_factor'][$k] }}">@endforeach</td></tr>
-                            <tr><td>Bought once: reorder if it sold within (days)</td><td><input name="bought_once_days" class="form-control ro-num" value="{{ $settings['bought_once_days'] }}"></td></tr>
-                            <tr><td>Used: buy sealed if it sold within (days of buying it)</td><td><input name="used_fast_days" class="form-control ro-num" value="{{ $settings['used_fast_days'] }}"></td></tr>
-                            <tr><td>Used: or sold for at least ($)</td><td><input name="used_min_price" class="form-control ro-num" value="{{ $settings['used_min_price'] }}"></td></tr>
-                            <tr><td>Most copies on one line</td><td><input name="max_line_qty" class="form-control ro-num" value="{{ $settings['max_line_qty'] }}"></td></tr>
-                            <tr><td>Bin counts expire after (days)</td><td><input name="count_fresh_days" class="form-control ro-num" value="{{ $settings['count_fresh_days'] }}"></td></tr>
-                            <tr><td>When a title has no bin count</td><td>
+                        <table class="table ro-settings">
+                            <tr><td>Months of stock to keep</td><td>
+                                vinyl <input name="cover_months_vinyl" class="form-control ro-num" value="{{ $settings['cover_months_vinyl'] }}">
+                                CDs <input name="cover_months_cd" class="form-control ro-num" value="{{ $settings['cover_months_cd'] }}">
+                                cassettes <input name="cover_months_cassette" class="form-control ro-num" value="{{ $settings['cover_months_cassette'] }}"></td></tr>
+                            <tr><td>Extra for best sellers, less for slow ones<div class="ro-muted">1 = normal, 1.25 = 25% more</div></td><td>
+                                best <input name="abc_A" class="form-control ro-num" value="{{ $settings['abc_factor']['A'] }}">
+                                middle <input name="abc_B" class="form-control ro-num" value="{{ $settings['abc_factor']['B'] }}">
+                                slow <input name="abc_C" class="form-control ro-num" value="{{ $settings['abc_factor']['C'] }}"></td></tr>
+                            <tr><td>Less for titles that sell on and off</td><td>
+                                steady <input name="xyz_X" class="form-control ro-num" value="{{ $settings['xyz_factor']['X'] }}">
+                                up and down <input name="xyz_Y" class="form-control ro-num" value="{{ $settings['xyz_factor']['Y'] }}">
+                                rare <input name="xyz_Z" class="form-control ro-num" value="{{ $settings['xyz_factor']['Z'] }}"></td></tr>
+                            <tr><td>Reorder a title we bought once if it sold within</td><td><input name="bought_once_days" class="form-control ro-num" value="{{ $settings['bought_once_days'] }}"> days</td></tr>
+                            <tr><td>Suggest buying new when a used copy sold within</td><td><input name="used_fast_days" class="form-control ro-num" value="{{ $settings['used_fast_days'] }}"> days, or for $<input name="used_min_price" class="form-control ro-num" value="{{ $settings['used_min_price'] }}"> or more</td></tr>
+                            <tr><td>Never order more than</td><td><input name="max_line_qty" class="form-control ro-num" value="{{ $settings['max_line_qty'] }}"> copies of one title</td></tr>
+                            <tr><td>Ignore bin counts older than</td><td><input name="count_fresh_days" class="form-control ro-num" value="{{ $settings['count_fresh_days'] }}"> days</td></tr>
+                            <tr><td>If a title hasn't been counted</td><td>
                                 <select name="blank_count" class="form-control">
                                     <option value="sold" @if($settings['blank_count'] === 'sold') selected @endif>Order back what sold</option>
-                                    <option value="erp" @if($settings['blank_count'] === 'erp') selected @endif>Use ERP stock</option>
+                                    <option value="erp" @if($settings['blank_count'] === 'erp') selected @endif>Trust the ERP count</option>
                                     <option value="zero" @if($settings['blank_count'] === 'zero') selected @endif>Assume the bin is empty</option>
                                 </select></td></tr>
                         </table>
-                        <button class="btn btn-default">Save settings</button>
+                        <button class="btn btn-default">Save</button>
                     </form>
                 </div>
             </div>
@@ -303,6 +302,8 @@
     var BUDGET_LEFT = {{ $budget ? (float) $budget['new']['remaining'] : 0 }};
     var Q = @json($q);
     var filter = 'order';
+    var sortKey = 'genre', sortDir = 1;
+    var tbody = document.querySelector('#ro-table tbody');
     var rows = Array.prototype.slice.call(document.querySelectorAll('#ro-table tr.ro-row'));
 
     function num(v) { var n = parseInt(v, 10); return isNaN(n) ? null : n; }
@@ -323,12 +324,57 @@
 
     function orderOf(tr) { return num(tr.querySelector('.ro-order').value) || 0; }
 
+    function sortVal(tr) {
+        var d = tr.dataset, v;
+        switch (sortKey) {
+            case 'album': return d.album || '';
+            case 'why': return d.why;
+            case 'last': return d.last || null;
+            case 'count': var c = tr.querySelector('.ro-count'); return c && c.value !== '' ? +c.value : null;
+            case 'order': return orderOf(tr);
+            case 'onorder': return +d.onorder;
+            case 'cost': return +d.cost || null;
+            default: v = d[sortKey]; return v === '' || v === undefined ? null : +v;
+        }
+    }
+
+    document.querySelectorAll('#ro-table th[data-sort]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var k = th.dataset.sort;
+            // Numbers start biggest-first, names A to Z.
+            sortDir = sortKey === k ? -sortDir : (k === 'album' || k === 'why' ? 1 : -1);
+            sortKey = k;
+            document.querySelectorAll('#ro-table .ro-arrow').forEach(function (a) { a.textContent = ''; });
+            th.querySelector('.ro-arrow').textContent = sortDir === 1 ? '\u25B2' : '\u25BC';
+            document.getElementById('ro-unsort').style.display = '';
+            render();
+        });
+    });
+    document.getElementById('ro-unsort').addEventListener('click', function (e) {
+        e.preventDefault();
+        sortKey = 'genre';
+        document.querySelectorAll('#ro-table .ro-arrow').forEach(function (a) { a.textContent = ''; });
+        this.style.display = 'none';
+        render();
+    });
+
     function render() {
         var genre = document.getElementById('ro-genre').value;
         var text = document.getElementById('ro-search').value.toLowerCase().trim();
         var counts = {}, lastGenre = null, lists = {}, noUpc = 0, titles = 0, copies = 0, cost = 0;
         document.querySelectorAll('tr.ro-genre').forEach(function (g) { g.remove(); });
-        rows.forEach(function (tr) {
+        var ordered = rows.slice();
+        if (sortKey !== 'genre') {
+            ordered.sort(function (a, b) {
+                var x = sortVal(a), y = sortVal(b);
+                if (x === y) return (+a.dataset.i) - (+b.dataset.i);
+                if (x === null) return 1;
+                if (y === null) return -1;
+                return (x < y ? -1 : 1) * sortDir;
+            });
+        }
+        ordered.forEach(function (tr) { tbody.appendChild(tr); });
+        ordered.forEach(function (tr) {
             var d = tr.dataset, q = orderOf(tr);
             tr.classList.toggle('ro-zero', q === 0);
             d.why.split(' ').forEach(function (w) { counts[w] = (counts[w] || 0) + 1; });
@@ -345,10 +391,10 @@
                 && (!genre || d.genre === genre)
                 && (!text || d.text.indexOf(text) >= 0);
             tr.style.display = show ? '' : 'none';
-            if (show && d.genre !== lastGenre) {
+            if (show && sortKey === 'genre' && d.genre !== lastGenre) {
                 var g = document.createElement('tr');
                 g.className = 'ro-genre';
-                g.innerHTML = '<td colspan="15"></td>';
+                g.innerHTML = '<td colspan="11"></td>';
                 g.firstChild.textContent = d.genre;
                 tr.parentNode.insertBefore(g, tr);
                 lastGenre = d.genre;
