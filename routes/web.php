@@ -609,6 +609,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/events-sales-report/export', 'EventsController@salesReportExport')->name('events.salesReportExport');
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
     Route::post('/events-preorders/event/{preorderId}/ready', 'EventsController@overviewMarkEventReady')->name('events.overviewEventReady');
+    Route::post('/events-preorders/event/{preorderId}/remind', 'EventsController@overviewRemindEvent')->name('events.overviewEventRemind');
     Route::post('/events-preorders/event/{preorderId}/paid', 'EventsController@overviewMarkEventPaid')->name('events.overviewEventPaid');
     Route::post('/events-preorders/event/{preorderId}/source', 'EventsController@overviewSetEventSource')->name('events.overviewEventSource');
     Route::post('/events-preorders/special/{id}/pickup', 'EventsController@overviewMarkSpecialPickedUp')->name('events.overviewSpecialPickup');
@@ -645,6 +646,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');
     Route::post('/website-orders/{id}/status', 'WebsiteOrdersController@updateStatus')->name('website-orders.updateStatus');
     Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
+    Route::post('/website-orders/{id}/remind', 'WebsiteOrdersController@remind')->name('website-orders.remind');
 
     // Customer email copy editor — moved here from nivessa.com's
     // /admin/email-templates so the ERP is the only place admin tooling

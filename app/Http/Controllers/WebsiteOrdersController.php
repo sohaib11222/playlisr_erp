@@ -257,6 +257,7 @@ class WebsiteOrdersController extends Controller
                 'paid'        => (($o['payment_status'] ?? '') === 'completed'),
                 'paymentMethod' => (string) ($o['paymentMethod'] ?? ''),
                 'storeCredit' => (float) ($o['used_store_credit'] ?? 0),
+                'remindedAt'  => $o['pickup_reminded_at'] ?? null,
             ];
         }, $rows);
     }
@@ -302,6 +303,19 @@ class WebsiteOrdersController extends Controller
         \App\Services\WaitingStockOrders::set($business_id, $id, false);
 
         return redirect()->back()->with('status', 'Order status updated.');
+    }
+
+    /** Re-send the ready-for-pickup email + text to a customer who hasn't come in (Sarah, 2026-10-08). */
+    public function remind(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/remind", []);
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return redirect()->back()->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website to send the reminder.');
+        }
+        return redirect()->back()->with('status', $resp['message'] ?? 'Reminder sent.');
     }
 
     public function archive(Request $request, string $id)

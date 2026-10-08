@@ -189,6 +189,24 @@
                             </select>
                         </form>
                     @endif
+                    {{-- Remind a customer who hasn't come in: re-sends the ready
+                         email + text (Sarah, 2026-10-08). Not before street date. --}}
+                    @php
+                        $remindUrl = null;
+                        if (!$pickedUp && $wp['status'] === 'ready_for_pickup' && !$readyFrom) {
+                            if ($pre && $pre['type'] === 'event') { $remindUrl = route('events.overviewEventRemind', ['preorderId' => $pre['id']]); }
+                            elseif (empty($wp['source'])) { $remindUrl = route('website-orders.remind', ['id' => $wp['id']]); }
+                        }
+                        $remindedAt = $pre ? ($pre['remindedAt'] ?? null) : ($wp['remindedAt'] ?? null);
+                    @endphp
+                    @if($remindUrl)
+                        <form method="POST" action="{{ $remindUrl }}" style="margin:0;">
+                            {{ csrf_field() }}
+                            <input type="hidden" name="filter" value="">
+                            <button type="submit" class="btn-ghost act-btn" onclick="this.disabled=true; this.form.submit();">Remind</button>
+                            @if($remindedAt)<span class="status-sub">Reminded {{ date('n/j', strtotime($remindedAt)) }}</span>@endif
+                        </form>
+                    @endif
                 </td>
             </tr>
         @endforeach

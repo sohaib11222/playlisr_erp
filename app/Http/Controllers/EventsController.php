@@ -491,6 +491,7 @@ class EventsController extends Controller
                         'status'      => $status,
                         'statusLabel' => str_replace('_', ' ', $status),
                         'notifiedAt'  => $p['notifiedAt'] ?? null,
+                        'remindedAt'  => $p['remindedAt'] ?? null,
                         'active'      => $active,
                     ];
                 }
@@ -600,6 +601,19 @@ class EventsController extends Controller
         return $resp === null
             ? $this->overviewRedirect($request, 'error', 'Could not reach the website to update the preorder.')
             : $this->overviewRedirect($request, 'status', $resp['message'] ?? 'Preorder marked ready.');
+    }
+
+    /** Re-send the ready text + email to a listening-party preorder customer who hasn't come in. */
+    public function overviewRemindEvent(Request $request, string $preorderId)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('POST', '/erp/preorders/' . rawurlencode($preorderId) . '/remind', []);
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return $this->overviewRedirect($request, 'error', ($resp['message'] ?? null) ?: 'Could not reach the website to send the reminder.');
+        }
+        return $this->overviewRedirect($request, 'status', $resp['message'] ?? 'Reminder sent.');
     }
 
     /** Mark an in-store special-order preorder picked up (fulfilled). */
