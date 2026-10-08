@@ -71,9 +71,9 @@ body.pos-v2 #website_pickup_table:not(.dataTable) tr.row-picked-up { display: no
 body.pos-v2 .wp-table .src-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
 body.pos-v2 .wp-table .source-select { max-width: 112px; font-size: 11.5px; padding: 3px 6px; }
 body.pos-v2 .wp-table .act-select { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 5px 8px; font-size: 12px; font-family: inherit;
-  background: #fff; color: var(--pos-ink); width: 122px; height: 30px; }
+  background: #fff; color: var(--pos-ink); width: 156px; height: 30px; }
 body.pos-v2 .wp-table .act-select:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
-body.pos-v2 .wp-table .act-btn { display: block; margin-top: 6px; width: 122px; padding: 5px 8px; font-size: 12px; border-radius: 8px; text-align: center; }
+body.pos-v2 .wp-table .act-btn { display: block; margin-top: 6px; width: 156px; padding: 5px 8px; font-size: 12px; border-radius: 8px; text-align: center; }
 body.pos-v2 #website_pickup_search { border: 1px solid var(--pos-line-2); border-radius: 8px; padding: 7px 10px; font-family: inherit; background: #fff; min-width: 240px; }
 body.pos-v2 #website_pickup_search:focus { outline: none; border-color: var(--pos-accent-deep); box-shadow: 0 0 0 3px var(--pos-accent-soft); }
 body.pos-v2 #preorder_table .pill-unpaid, body.pos-v2 .wp-table .pill-unpaid { background: #fdeaea; color: #a23; border-color: #f3cccc; }
