@@ -545,8 +545,8 @@ HTML;
                         <thead>
                             <tr>
                                 <th class="bfc-offer-rowlabel"></th>
-                                <th>Cash</th>
-                                <th>Credit</th>
+                                <th style="font-size:15px;">Cash Offer</th>
+                                <th style="font-size:15px;">In Store Credit Offer</th>
                             </tr>
                         </thead>
                         <tbody>
