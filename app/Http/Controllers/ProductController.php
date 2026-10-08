@@ -871,7 +871,7 @@ class ProductController extends Controller
                     $margin = ((float) ($row->max_price ?? 0)) - (float) $best['cost'];
                     return '<div style="white-space:nowrap;font-weight:600;color:#0b3d1a;">$' . number_format((float) $best['cost'], 2)
                         . ' <span style="font-weight:400;color:#555;">' . e($best['supplier_label'] ?? $best['supplier_key']) . '</span></div>'
-                        . ((float) ($row->max_price ?? 0) > 0 ? '<small style="color:' . ($margin < 0 ? '#B71C1C' : '#6B6155') . ';">margin $' . number_format($margin, 2) . '</small>' : '');
+                        . ((float) ($row->max_price ?? 0) > 0 && stripos((string) ($row->category ?? ''), 'used') === false ? '<small style="color:' . ($margin < 0 ? '#B71C1C' : '#6B6155') . ';">margin $' . number_format($margin, 2) . '</small>' : '');
                 })
                 ->addColumn('dist_ams', function ($row) use ($supplierPricesFor) {
                     return $supplierPricesFor($row, 'ams');
