@@ -170,6 +170,22 @@
            call for the cashier — buy the best items, don't overpay unless it's a
            fast mover. (Sarah 2026-07-26) */
         .bfc-create .bfc-used-budget-coach { margin-top: 10px; padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45; color: #7a5b00; background: #fffaf0; border: 1px solid #f0d9a8; border-left: 4px solid #e0a800; border-radius: 4px; }
+        /* Sarah 2026-10-08: make the whole form easy to read. One base size,
+           clear numbered steps, bigger inputs. */
+        .content .box-body, .content .box-body label, .content .box-body .form-control,
+        .content .box-body td, .content .box-body .help-block { font-size: 15px; }
+        .content .box-body label { font-weight: 600; color: #222; }
+        .content .box-body .form-control { height: 40px; }
+        .content .box-body textarea.form-control { height: auto; }
+        .content .box-body th { font-size: 13px; color: #333; text-transform: none; }
+        .bfc-step { font-size: 20px; font-weight: 700; margin: 22px 0 10px; color: #111; display: flex; align-items: center; gap: 10px; }
+        .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
+        .bfc-step-sub { font-size: 17px; font-weight: 700; margin: 16px 0 4px; }
+        .bfc-step-help { font-size: 15px; color: #444; margin: 0 0 10px; }
+        .bfc-offer-rowlabel { font-size: 15px !important; }
+        .bfc-offer-rowlabel small { font-size: 13px !important; display: block; margin-top: 2px; }
+        .bfc-running { font-size: 15px; }
+        .bfc-running-note { font-size: 13px; color: #666; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -349,7 +365,7 @@ HTML;
 
             <div class="box box-solid">
                 <div class="box-header with-border">
-                    <h3 class="box-title">Seller + Offer Setup</h3>
+                    <h3 class="box-title">Buy from a customer</h3>
                     <div class="box-tools">
                         <a class="btn btn-default btn-sm" href="{{ route('buy-from-customer.history') }}">
                             <i class="fa fa-history"></i> History
@@ -365,6 +381,7 @@ HTML;
                         {{-- offer_id is set after the first auto-saved Calculate so subsequent
                              Calculates UPDATE that draft instead of creating a new BFC each click. --}}
                         <input type="hidden" name="offer_id" id="bfc_offer_id" value="{{ $saved_offer_id ?? session('saved_offer_id') ?? '' }}">
+                        <h4 class="bfc-step"><span class="bfc-step-num">1</span> Who is selling?</h4>
                     <div class="row">
                         <div class="col-md-3">
                             <div class="form-group">
@@ -456,9 +473,9 @@ HTML;
                     </details>
 
                     <hr>
-                    <h4>Items brought in</h4>
+                    <h4 class="bfc-step"><span class="bfc-step-num">2</span> What are they selling?</h4>
                     <div id="bfc_items_gate_hint" class="bfc-items-gate-hint" style="display:none;">
-                        <i class="fa fa-lock"></i> Enter the seller first — pick an existing account, or fill in the walk-in seller's first name and phone above. Items unlock once the seller is identified.
+                        <i class="fa fa-lock"></i> Fill in the seller first (pick their account, or type a first name and phone). Then you can add items.
                     </div>
                     <div class="table-responsive">
                         <table class="table table-bordered" id="offer_lines_table">
@@ -523,13 +540,14 @@ HTML;
                          from the suggestion). Blank a field to fall back to the auto
                          suggestion on the next Calculate. --}}
                     <div class="bfc-running">
-                        <span class="bfc-running-note"><i class="fa fa-eye-slash"></i> Standard multiplier is automatic (hidden) · grayed cells don't apply to that item type</span>
+                        <span class="bfc-running-note">Gray boxes don't apply to that item type.</span>
                         <span class="bfc-running-figs">
-                            <span>Running total <strong id="bfc_running_total">$0.00</strong></span>
-                            <span>Final offer · 95% <strong id="bfc_running_final">$0.00</strong></span>
+                            <span>Items value <strong id="bfc_running_total">$0.00</strong></span>
+                            <span>Most you can pay (cash) <strong id="bfc_running_final">$0.00</strong></span>
                         </span>
                     </div>
-                    <h4>Negotiation offers <small class="text-muted">— auto-filled from the items above. Open at row 1 and work down; <strong style="color:#8a6d00;">row 3 (Final) is the price actually paid and recorded.</strong> Type over any figure to use a negotiated number.</small></h4>
+                    <h4 class="bfc-step"><span class="bfc-step-num">3</span> Make your offer</h4>
+                    <p class="bfc-step-help">Start with row 1. Only go up if they say no. <strong>Row 3 is the most you can pay.</strong></p>
                     @php
                         $offerStartingCash = data_get($calc, 'starting_offer_cash');
                         $offerStartingCredit = data_get($calc, 'starting_offer_credit');
@@ -551,17 +569,17 @@ HTML;
                         </thead>
                         <tbody>
                             <tr>
-                                <th class="bfc-offer-rowlabel">1. Opening offer <small class="text-muted" style="font-weight:400;">(start low)</small></th>
+                                <th class="bfc-offer-rowlabel">1. Opening offer <small class="text-muted" style="font-weight:400;">say this first</small></th>
                                 <td>{!! Form::number('starting_offer_cash', $offerInput($offerStartingCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (50%)']) !!}</td>
                                 <td>{!! Form::number('starting_offer_credit', $offerInput($offerStartingCredit), ['class' => 'form-control bfc-offer-display', 'id' => 'bfc_starting_credit', 'step' => '0.01', 'min' => '0', 'readonly' => 'readonly', 'tabindex' => '-1']) !!}</td>
                             </tr>
                             <tr>
-                                <th class="bfc-offer-rowlabel">2. Counter offer <small class="text-muted" style="font-weight:400;">(if they push back)</small></th>
+                                <th class="bfc-offer-rowlabel">2. Counter offer <small class="text-muted" style="font-weight:400;">if they say no</small></th>
                                 <td>{!! Form::number('second_offer_cash', $offerInput($offerSecondCash), ['class' => 'form-control', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (75%)']) !!}</td>
                                 <td>{!! Form::number('second_offer_credit', $offerInput($offerSecondCredit), ['class' => 'form-control bfc-offer-display', 'id' => 'bfc_second_credit', 'step' => '0.01', 'min' => '0', 'readonly' => 'readonly', 'tabindex' => '-1']) !!}</td>
                             </tr>
                             <tr class="bfc-final-row">
-                                <th class="bfc-offer-rowlabel">3. Final price <small style="font-weight:600; color:#8a6d00;">← what you'll pay</small></th>
+                                <th class="bfc-offer-rowlabel">3. Final price <small style="font-weight:600; color:#8a6d00;">most you can pay</small></th>
                                 <td>
                                     {!! Form::number('final_offer_cash', $offerInput($offerFinalCash), ['class' => 'form-control bfc-final-edit', 'id' => 'bfc_final_cash', 'step' => '0.01', 'min' => '0', 'placeholder' => 'auto (95%)', 'data-auto' => $offerInput($offerFinalCash)]) !!}
                                     @if(!empty($calc) && $offerFinalCash !== null)
@@ -580,17 +598,17 @@ HTML;
                     @php
                         $bfcCreditBonus = app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'];
                     @endphp
-                    <p class="help-block small" style="margin-top:-4px;">Tip: these fill in automatically from the items above as you type. Type over the Cash figure to use a negotiated price (or blank it to snap back to the suggestion) — Credit always follows Cash at {{ rtrim(rtrim(number_format($bfcCreditBonus, 2), '0'), '.') }}x and can't be edited separately.</p>
+                    <p class="bfc-step-help">Store credit is always {{ rtrim(rtrim(number_format($bfcCreditBonus, 2), '0'), '.') }}x the cash offer.</p>
                     <div class="form-group">
-                        <label>Notes <span class="text-muted">(sealed items, rare finds, condition concerns)</span></label>
+                        <label>Notes <span class="text-muted">(optional: sealed items, rare finds, condition)</span></label>
                         {!! Form::textarea('notes', $input['notes'] ?? null, ['class' => 'form-control', 'rows' => 2]) !!}
                     </div>
 
                     <hr>
                     <div id="bfc_calc_error" class="alert alert-danger" style="display:none;"></div>
                     <div class="pos-action-row">
-                        <span class="text-muted small" style="margin-right:auto; align-self:center; max-width:520px;">The totals above are a live preview. Saving records this quote to History and opens the accept / reject step (compliance &amp; signature).</span>
-                        <button type="submit" class="btn btn-primary"><i class="fa fa-arrow-right"></i> Save quote &amp; continue</button>
+                        <span class="bfc-step-help" style="margin-right:auto; align-self:center; max-width:520px;">Next you'll enter what you paid and get the seller's signature.</span>
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fa fa-arrow-right"></i> Save and continue</button>
                     </div>
 
                     </form>
@@ -742,7 +760,7 @@ HTML;
                                     {{-- Sarah 2026-07-09: capture the amount actually handed over
                                          (cash / store credit / Zelle-Venmo) in one blank field. This is
                                          the number that gets recorded — it overrides the suggestions above. --}}
-                                    <h4>Final payment <small class="text-muted">— what the seller actually got; this is the amount recorded</small></h4>
+                                    <h4 class="bfc-step"><span class="bfc-step-num">4</span> What did you pay?</h4>
                                     <div class="row">
                                         <div class="col-md-4">
                                             <div class="form-group">
@@ -802,14 +820,14 @@ HTML;
                                         </div>
                                     @endif
                                     <hr style="margin:6px 0 14px;">
-                                    <h4>Override</h4>
-                                    <p class="text-muted small">If final paid differs from calculator suggested total for the selected payment method, explain briefly.</p>
+                                    <h4 class="bfc-step-sub">Paid a different amount?</h4>
+                                    <p class="bfc-step-help">Say why in one line.</p>
                                     <div class="form-group">
                                         <label>Override reason <span id="override_required_label" class="text-danger" style="display:none;">(required)</span></label>
                                         <textarea name="price_override_reason" class="form-control" rows="2" placeholder="e.g. Manager approved bump for sealed box set">{{ $input['price_override_reason'] ?? '' }}</textarea>
                                     </div>
 
-                                    <h4>Compliance <small class="text-danger">both required to accept</small></h4>
+                                    <h4 class="bfc-step"><span class="bfc-step-num">5</span> Seller checks both boxes and signs</h4>
                                     <div class="bfc-compliance-row">
                                         <label>
                                             <input type="checkbox" name="compliance_items_owned" value="1" class="bfc-compliance-cb"> Seller confirms the items are legally theirs and not stolen.
