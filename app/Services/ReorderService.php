@@ -701,14 +701,10 @@ class ReorderService
             return max(0, $sug - (int) $r['on_order']);
         }
         // 'sold': replace what left the bin, never more than the target.
-        $base = in_array('once', $r['why'], true) || in_array('used', $r['why'], true)
-            ? max(1, (int) $r['sold_since']) : (int) $r['sold_since'];
-        // Sold out earlier and never replaced (the Led Zeppelin case): it
-        // sells, nothing sold lately, and the ERP shows none left.
-        if ($base === 0 && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0
-            && (in_array('core', $r['why'], true) || $r['sold_ytd'] >= 3)) {
-            $base = max(1, $sug);
-        }
+        // Only what actually sold. "Bought once", "sells used" and sold-out
+        // titles are listed to look at, not auto-ordered: tested against
+        // Jon's last 3 orders (Sep 24 - Oct 7) he bought ~3% of those.
+        $base = (int) $r['sold_since'];
         return max(0, min($base, max($sug, 1)));
     }
 
@@ -944,9 +940,7 @@ class ReorderService
                 if (!in_array('used', $rows[$i]['why'], true)) {
                     $rows[$i]['why'][] = 'used';
                     $rows[$i]['used_note'] = $why;
-                    if ($rows[$i]['order_qty'] < 1 && !$rows[$i]['cant_order'] && ($rows[$i]['count'] ?? 0) == 0 && $rows[$i]['erp_stock'] <= 0) {
-                        $rows[$i]['order_qty'] = 1;
-                    }
+
                 }
                 continue;
             }
