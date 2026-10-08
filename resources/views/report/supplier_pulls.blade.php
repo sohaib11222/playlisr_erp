@@ -4,7 +4,7 @@
 @section('content')
 <div style="max-width:960px;margin:0 auto;padding:24px 16px 60px;color:#1F1B16;">
     <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;">Supplier price pulls</h1>
-    <p style="color:#6B6155;font-size:15px;">AMS refreshes on its own every Sunday at 11pm. These four suppliers block our server from logging in, so their prices are pulled in your browser while you're logged into their site. A Sunday 11pm job runs all four automatically if Chrome is open and you're logged in. To run one by hand: open the supplier's site, log in, then click its button in your bookmarks bar.</p>
+    <p style="color:#6B6155;font-size:15px;">AMS refreshes on its own every night at 11pm. These four suppliers block our server from logging in, so their prices are pulled in your browser while you're logged into their site. A nightly 11:15pm job runs all four automatically if Chrome is open and you're logged in. To run one by hand: open the supplier's site, log in, then click its button in your bookmarks bar.</p>
     <table style="width:100%;border-collapse:collapse;font-size:15px;margin-top:14px;">
         <tr><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Supplier</th><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Site to be on</th><th style="text-align:left;padding:8px;border-bottom:1px solid #E6DCCF;">Button (drag to bookmarks bar)</th></tr>
         @foreach ([['alliance','Alliance','https://webami.aent.com/music'],['secretly','Secretly','https://b2b.secretlydistribution.com/'],['redeye','Redeye','https://b2b.redeyeworldwide.com/best-sellers/catalog'],['monostereo','Monostereo','https://newb2b.monostereo1stop.com/search?q=093624967330']] as $s)
@@ -50,7 +50,7 @@
         monostereo: "if(location.host!=='newb2b.monostereo1stop.com')throw new Error('Open newb2b.monostereo1stop.com first');"
           + "const U=(await fetch(B+'/upcs?token='+T).then(r=>r.json())).upcs;let rows=[];"
           + "const one=async ids=>{const h=await fetch('/search?type=product&q='+encodeURIComponent(ids.join(' OR ')),{credentials:'same-origin'}).then(r=>r.text());if(/authentication\\/\\d+\\/login/.test(h))throw new Error('Monostereo logged you out');"
-          + "const t=new DOMParser().parseFromString(h,'text/html').body.innerText.replace(/\\s+/g,' ');for(const m of t.matchAll(/Sale price\\s*\\$([0-9.,]+)\\s+(\\d{8,14})\\s+Format\\s*:\\s*([A-Za-z0-9]+)/g))rows.push({upc:m[2],cost:m[1].replace(/,/g,''),format:m[3]});};"
+          + "const t=new DOMParser().parseFromString(h,'text/html').body.innerText.replace(/\\s+/g,' ');for(const m of t.matchAll(/Sale price\\s*\\$([0-9.,]+)\\s+(\\d{8,14})\\s+Format\\s*:\\s*([A-Za-z0-9]+)\\s+(Sold out|Pre-?order|[^$]{0,20})/g))rows.push({upc:m[2],cost:m[1].replace(/,/g,''),format:m[3],in_stock:!/sold out/i.test(m[4])});};"
           + "for(let i=0;i<U.length;i+=12){await Promise.all([0,3,6,9].map(o=>U.slice(i+o,i+o+3)).filter(x=>x.length).map(one));say('Monostereo: checked '+Math.min(U.length,i+12)+' of '+U.length);}"
           + "say('Monostereo: saving...');const n=await up('monostereo',rows);say('Monostereo done: '+n+' prices saved');"
     };

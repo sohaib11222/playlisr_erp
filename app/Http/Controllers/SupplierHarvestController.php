@@ -147,6 +147,7 @@ class SupplierHarvestController extends Controller
                 'format' => $fam === 'lp' ? 'LP' : ($fam === 'cd' ? 'CD' : ($fam === 'cassette' ? 'Cassette' : null)),
                 'cost' => round($cost, 2),
                 'qty' => isset($r['qty']) ? (int) $r['qty'] : null,
+                'in_stock' => array_key_exists('in_stock', $r) ? (bool) $r['in_stock'] : (isset($r['qty']) ? ((int) $r['qty'] > 0) : null),
                 'upc' => $k,
                 'url' => $supplier === 'alliance' ? self::ORIGIN . '/search?q=' . $k : (!empty($r['url']) ? (string) $r['url'] : null),
                 'checked_at' => date('c'),

@@ -221,16 +221,37 @@ class ProductController extends Controller
                             ->allSupplierPrices($business_id, $row->artist ?? null, $row->product ?? null, $row->category ?? null, $row->sku ?? null);
                     } catch (\Throwable $e) { $list = []; }
                     $byKey = [];
-                    foreach ($list as $p) { if ((float) ($p['cost'] ?? 0) > 0 && !isset($byKey[$p['supplier_key']])) $byKey[$p['supplier_key']] = $p; }
+                    foreach ($list as $p) {
+                        if ((float) ($p['cost'] ?? 0) <= 0 || isset($byKey[$p['supplier_key']])) continue;
+                        // Usable = not sold out at the supplier and checked in
+                        // the last 3 days (Sarah 10/8: prices change daily).
+                        $ts = !empty($p['checked_at']) ? strtotime((string) $p['checked_at']) : 0;
+                        $p['_stale'] = !$ts || $ts < time() - 3 * 86400;
+                        $p['_soldout'] = ($p['in_stock'] ?? null) === false;
+                        $p['_asof'] = $ts ? date('n/j', $ts) : '?';
+                        $byKey[$p['supplier_key']] = $p;
+                    }
+                    // Cheapest usable first; sold-out / stale ones after.
+                    uasort($byKey, function ($a, $b) {
+                        $ua = !$a['_stale'] && !$a['_soldout']; $ub = !$b['_stale'] && !$b['_soldout'];
+                        return $ua !== $ub ? ($ua ? -1 : 1) : ((float) $a['cost'] <=> (float) $b['cost']);
+                    });
                     $supplierPriceCache[$id] = $byKey;
                 }
                 $byKey = $supplierPriceCache[$id];
                 if ($key === null) { return $byKey; }
                 if (!isset($byKey[$key])) { return ''; }
                 $p = $byKey[$key];
-                $isBest = reset($byKey) && abs((float) reset($byKey)['cost'] - (float) $p['cost']) < 0.005;
+                $first = reset($byKey);
+                $isBest = $first && $first['supplier_key'] === $p['supplier_key'] && !$p['_stale'] && !$p['_soldout'];
                 $txt = '$' . number_format((float) $p['cost'], 2);
-                $html = $isBest ? '<b style="color:#0b3d1a;">' . $txt . '</b>' : $txt;
+                if ($p['_soldout']) {
+                    $html = '<span style="color:#9a9a9a;" title="Sold out at this supplier">' . $txt . ' <small>sold out</small></span>';
+                } elseif ($p['_stale']) {
+                    $html = '<span style="color:#9a9a9a;" title="Price last checked ' . e($p['_asof']) . '">' . $txt . ' <small>' . e($p['_asof']) . '</small></span>';
+                } else {
+                    $html = $isBest ? '<b style="color:#0b3d1a;">' . $txt . '</b>' : $txt;
+                }
                 return !empty($p['url']) ? '<a href="' . e($p['url']) . '" target="_blank" rel="noopener" style="color:inherit;">' . $html . '</a>' : $html;
             };
             // Per-store stock columns (Hollywood / Pico) next to the total.
@@ -866,8 +887,10 @@ class ProductController extends Controller
                 // once per row and shared by the columns.
                 ->addColumn('best_cost', function ($row) use ($supplierPricesFor) {
                     $p = $supplierPricesFor($row);
-                    if (!$p) { return '<span class="text-muted">—</span>'; }
-                    $best = reset($p);
+                    $best = $p ? reset($p) : null;
+                    if (!$best || $best['_stale'] || $best['_soldout']) {
+                        return $p ? '<span class="text-muted" title="Only sold-out or out-of-date prices">none current</span>' : '<span class="text-muted">—</span>';
+                    }
                     $margin = ((float) ($row->max_price ?? 0)) - (float) $best['cost'];
                     return '<div style="white-space:nowrap;font-weight:600;color:#0b3d1a;">$' . number_format((float) $best['cost'], 2)
                         . ' <span style="font-weight:400;color:#555;">' . e($best['supplier_label'] ?? $best['supplier_key']) . '</span></div>'

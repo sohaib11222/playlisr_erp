@@ -1284,6 +1284,7 @@ class InventoryCheckService
         }
         $datPath = storage_path('app/supplier-index-' . $business_id . '.ser');
         $sigPath = storage_path('app/supplier-index-' . $business_id . '.sig');
+        $sig = 'v2|' . $sig; // index shape changed 10/8 (in_stock, checked_at)
 
         if ($sig !== '' && is_file($datPath) && is_file($sigPath)
             && trim((string) @file_get_contents($sigPath)) === $sig) {
@@ -1312,6 +1313,9 @@ class InventoryCheckService
                     'upc' => $row['upc'] ?? null,
                     'format' => $row['format'] ?? null,
                     'url' => $row['url'] ?? null,
+                    // null = unknown (feeds that don't report stock)
+                    'in_stock' => array_key_exists('in_stock', $row) ? ($row['in_stock'] === null ? null : (bool) $row['in_stock']) : null,
+                    'checked_at' => $row['checked_at'] ?? ($feed['imported_at'] ?? null),
                     'artist_norm' => $this->normalizeMatchText((string) ($row['artist'] ?? '')),
                 ];
                 $u = $this->normalizeUpc($row['upc'] ?? null);
