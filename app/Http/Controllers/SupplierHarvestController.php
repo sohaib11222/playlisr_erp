@@ -53,7 +53,10 @@ class SupplierHarvestController extends Controller
 
     protected function cors($response)
     {
-        return $response->header('Access-Control-Allow-Origin', self::ORIGIN)
+        // Each supplier portal the pull runs from.
+        $allowed = [self::ORIGIN, 'https://b2b.secretlydistribution.com'];
+        $origin = request()->headers->get('Origin');
+        return $response->header('Access-Control-Allow-Origin', in_array($origin, $allowed, true) ? $origin : self::ORIGIN)
             ->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             ->header('Access-Control-Allow-Headers', 'Content-Type')
             ->header('Vary', 'Origin');
@@ -105,7 +108,7 @@ class SupplierHarvestController extends Controller
     {
         $biz = $this->businessForToken($request->query('token'));
         if (!$biz) return $this->cors(response()->json(['success' => false, 'msg' => 'Bad token'], 403));
-        if (!in_array($supplier, ['alliance'], true)) {
+        if (!in_array($supplier, ['alliance', 'secretly'], true)) {
             return $this->cors(response()->json(['success' => false, 'msg' => 'Unknown supplier'], 400));
         }
         $rows = json_decode((string) $request->getContent(), true);
@@ -135,15 +138,17 @@ class SupplierHarvestController extends Controller
             $cost = (float) preg_replace('/[^\d.]/', '', (string) ($r['cost'] ?? ''));
             if ($cost <= 0) continue;
             $p = $info[$k] ?? null;
-            $fam = $p ? $ica->formatFamily($p->cat) : null;
+            // The supplier's own artist/title/format when the pull sends them
+            // (Secretly's catalog does); otherwise ours.
+            $fam = !empty($r['format']) ? $ica->formatFamily((string) $r['format']) : ($p ? $ica->formatFamily($p->cat) : null);
             $clean[] = [
-                'artist' => $p && $p->artist && !preg_match('/^(n\/?a|-)$/i', $p->artist) ? $p->artist : null,
-                'title' => $p ? $p->name : null,
+                'artist' => !empty($r['artist']) ? (string) $r['artist'] : ($p && $p->artist && !preg_match('/^(n\/?a|-)$/i', $p->artist) ? $p->artist : null),
+                'title' => !empty($r['title']) ? (string) $r['title'] : ($p ? $p->name : null),
                 'format' => $fam === 'lp' ? 'LP' : ($fam === 'cd' ? 'CD' : ($fam === 'cassette' ? 'Cassette' : null)),
                 'cost' => round($cost, 2),
                 'qty' => isset($r['qty']) ? (int) $r['qty'] : null,
                 'upc' => $k,
-                'url' => self::ORIGIN . '/search?q=' . $k,
+                'url' => $supplier === 'alliance' ? self::ORIGIN . '/search?q=' . $k : null,
             ];
         }
 
