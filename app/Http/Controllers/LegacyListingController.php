@@ -157,9 +157,24 @@ class LegacyListingController extends Controller
         }
         $business_id = $request->session()->get('user.business_id');
         // Re-run the same rules at apply time; only no-stock rows are retired.
+        // only_with_twin: just the ones with another active listing of the
+        // same album + format + condition (Sarah 10/7: those first).
+        $onlyTwin = (bool) $request->input('only_with_twin', false);
+        $all = $this->candidates($business_id)->get();
+        $twins = [];
+        if ($onlyTwin) {
+            $wantKeys = []; $skip = [];
+            foreach ($all as $r) {
+                $wantKeys[$this->nameKey($r->name) . '|' . $this->formatFamily($r->category)] = true;
+                $skip[(int) $r->id] = true;
+            }
+            $twins = $this->twinIndex($business_id, $wantKeys, $skip);
+        }
         $ids = [];
-        foreach ($this->candidates($business_id)->get() as $r) {
-            if ((float) $r->stock <= 0) { $ids[] = (int) $r->id; }
+        foreach ($all as $r) {
+            if ((float) $r->stock > 0) { continue; }
+            if ($onlyTwin && empty($twins[$this->nameKey($r->name) . '|' . $this->formatFamily($r->category)])) { continue; }
+            $ids[] = (int) $r->id;
         }
         if (empty($ids)) {
             return response()->json(['success' => true, 'retired' => 0]);
@@ -180,7 +195,7 @@ class LegacyListingController extends Controller
                     'action' => 'legacy-listing-retire',
                     'user_id' => auth()->id(),
                     'business_id' => $business_id,
-                    'source_name' => $done . ' old setup listing(s) with cost x1.25 pricing, made-up SKU, no sales, no stock',
+                    'source_name' => $done . ' old setup listing(s) with cost x1.25 pricing, made-up SKU, no sales, no stock' . ($onlyTwin ? ', that have a real duplicate listing' : ''),
                     'target_name' => 'retired (is_inactive = 1)',
                     'rows' => array_map(function ($id) { return ['id' => $id]; }, $ids),
                 ], JSON_PRETTY_PRINT)

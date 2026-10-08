@@ -36,7 +36,8 @@
                 <tbody id="lcRetireRows"></tbody>
             </table></div>
             <div style="margin-top:12px;">
-                <button class="lc-btn lc-btn-primary" id="lcApply" type="button">Retire these</button>
+                <button class="lc-btn lc-btn-primary" id="lcApplyTwin" type="button">Retire only the ones with a real duplicate</button>
+                <button class="lc-btn lc-btn-ghost" id="lcApply" type="button">Retire all of these</button>
                 <span class="lc-note" id="lcApplyNote"></span>
             </div>
         </div>
@@ -86,15 +87,17 @@
             document.getElementById('lcResults').style.display = '';
         }).catch(function () { scanBtn.disabled = false; document.getElementById('lcScanNote').textContent = 'Check failed.'; });
     });
-    applyBtn.addEventListener('click', function () {
-        applyBtn.disabled = true;
+    function retire(onlyTwin) {
+        applyBtn.disabled = true; document.getElementById('lcApplyTwin').disabled = true;
         document.getElementById('lcApplyNote').textContent = 'Retiring...';
-        post('/products/legacy-cleanup/apply').then(function (j) {
+        fetch('/products/legacy-cleanup/apply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ only_with_twin: onlyTwin ? 1 : 0 }) }).then(function (r) { return r.json(); }).then(function (j) {
             document.getElementById('lcApplyNote').textContent = j.success
                 ? ('Retired ' + j.retired.toLocaleString() + '. Undo any time at Admin Action History.')
                 : (j.msg || 'Retire failed, nothing changed.');
-        }).catch(function () { applyBtn.disabled = false; document.getElementById('lcApplyNote').textContent = 'Retire failed.'; });
-    });
+        }).catch(function () { applyBtn.disabled = false; document.getElementById('lcApplyTwin').disabled = false; document.getElementById('lcApplyNote').textContent = 'Retire failed.'; });
+    }
+    applyBtn.addEventListener('click', function () { retire(false); });
+    document.getElementById('lcApplyTwin').addEventListener('click', function () { retire(true); });
 })();
 </script>
 @endsection
