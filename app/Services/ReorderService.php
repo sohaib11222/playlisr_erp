@@ -127,6 +127,70 @@ class ReorderService
         return [$matched, $unmatched];
     }
 
+    /**
+     * Make the ERP match a bin count (Sarah 10/9: "make it update the erp
+     * stock"). Same as Products > Set Current Stock: consolidates duplicate
+     * stock rows, logs "stock_changed before -> after" to the activity log,
+     * and pushes the new quantity to the website. Only for a single product
+     * with one variation: a row that combines several ERP entries for an
+     * album is left alone, since those can be different pressings.
+     *
+     * @return array{updated:bool, before:?float, after:?int, note:string}
+     */
+    public function applyCountToErp(int $business_id, int $locationId, int $productId, int $qty): array
+    {
+        $product = \App\Product::where('business_id', $business_id)->where('id', $productId)->first();
+        if (!$product) return ['updated' => false, 'before' => null, 'after' => null, 'note' => 'product not found'];
+        if (empty($product->enable_stock)) return ['updated' => false, 'before' => null, 'after' => null, 'note' => 'stock tracking is off for this product'];
+        $variations = \App\Variation::where('product_id', $productId)->whereNull('deleted_at')->get();
+        if ($variations->count() !== 1) return ['updated' => false, 'before' => null, 'after' => null, 'note' => 'product has several variations'];
+        $variation = $variations->first();
+        $qty = max(0, $qty);
+
+        $before = 0.0;
+        DB::beginTransaction();
+        try {
+            $existing = \App\VariationLocationDetails::where('variation_id', $variation->id)
+                ->where('location_id', $locationId)->orderBy('id')->get();
+            $before = (float) $existing->sum('qty_available');
+            if ((int) round($before) === $qty) {
+                DB::rollBack();
+                return ['updated' => false, 'before' => $before, 'after' => $qty, 'note' => 'already matches'];
+            }
+            if ($existing->count() > 1) {
+                \App\VariationLocationDetails::where('variation_id', $variation->id)->where('location_id', $locationId)
+                    ->where('id', '!=', $existing->first()->id)->delete();
+            }
+            \App\VariationLocationDetails::updateOrCreate(
+                ['variation_id' => $variation->id, 'location_id' => $locationId],
+                ['product_id' => $productId, 'product_variation_id' => $variation->product_variation_id, 'qty_available' => $qty]
+            );
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Illuminate\Support\Facades\Log::error('Reorder count -> ERP stock failed: ' . $e->getMessage());
+            return ['updated' => false, 'before' => $before, 'after' => null, 'note' => 'could not save'];
+        }
+
+        $loc = \App\BusinessLocation::find($locationId);
+        try {
+            $log = activity()->performedOn($product)->causedBy(auth()->user())
+                ->withProperties(['update_note' => $product->name . ' - Weekly Reorder bin count: '
+                    . ($loc ? $loc->name : 'location ' . $locationId) . ': ' . $before . ' -> ' . $qty])
+                ->log('stock_changed');
+            $log->business_id = $business_id;
+            $log->save();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Reorder count log failed: ' . $e->getMessage());
+        }
+        try {
+            (new NivessaStockNotifier())->push([$productId]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Reorder count website push failed: ' . $e->getMessage());
+        }
+        return ['updated' => true, 'before' => $before, 'after' => $qty, 'note' => ''];
+    }
+
     /** Mark this week's order as placed. Lines: [{product_id, upc, qty, title}]. */
     public function markOrdered(int $business_id, int $locationId, string $format, array $lines, string $by, string $note = ''): array
     {

@@ -236,9 +236,21 @@ class ReorderController extends Controller
         $pid = (int) $request->input('product_id');
         $raw = trim((string) $request->input('qty'));
         if (!$pid) return response()->json(['ok' => false], 422);
-        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '',
-            array_map('intval', array_filter(explode(',', (string) $request->input('product_ids', '')))));
-        return response()->json(['ok' => true]);
+        $members = array_map('intval', array_filter(explode(',', (string) $request->input('product_ids', ''))));
+        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '', $members);
+
+        // Also make the ERP stock match the count (single-entry rows only).
+        $erp = ['updated' => false, 'note' => ''];
+        if ($raw !== '') {
+            if (count(array_unique(array_merge([$pid], $members))) > 1) {
+                $erp['note'] = 'combined entries, ERP not changed';
+            } elseif (!auth()->user()->can('product.update')) {
+                $erp['note'] = 'no permission to change ERP stock';
+            } else {
+                $erp = $this->svc->applyCountToErp($business_id, $locationId, $pid, (int) $raw);
+            }
+        }
+        return response()->json(['ok' => true, 'erp' => $erp]);
     }
 
     public function importCounts(Request $request)

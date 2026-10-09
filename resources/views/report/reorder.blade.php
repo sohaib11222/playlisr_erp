@@ -109,7 +109,7 @@
                 <div class="box-body">
                     <ol class="ro-steps">
                         <li>Pick the store and format above. The list starts from what sold since the last order.</li>
-                        <li>Walk the bins in genre order. Type what's actually there in <b>Counted</b>. It saves as you go and <b>Order</b> updates.</li>
+                        <li>Walk the bins in genre order. Type what's actually there in <b>Counted</b>. It saves as you go, fixes the ERP stock to match, and <b>Order</b> updates.</li>
                         <li>Also count the <b>Always stock</b> and <b>Missing?</b> titles. They should always be in the bin, even if nothing sold.</li>
                         <li>At the bottom, each distributor gets its own list with the titles it's cheapest on. Copy each list into that distributor's order.</li>
                         <li>Click <b>Mark as ordered</b>. Next week starts from here, and these copies show as on order.</li>
@@ -193,7 +193,7 @@
                             <td class="n">{{ $r['avg_days_to_sell'] !== null ? $r['avg_days_to_sell'] : '' }}</td>
                             <td>{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
                                 @if(in_array('overdue', $r['why']))<div class="ro-muted text-danger">{{ $r['days_since_sale'] }} days ago</div>@endif</td>
-                            <td class="n">{{ $r['erp_stock'] }}</td>
+                            <td class="n ro-erp">{{ $r['erp_stock'] }}</td>
                             <td>
                                 @if($r['product_id'])
                                     <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
@@ -494,7 +494,17 @@
             var saved = tr.querySelector('.ro-saved');
             saved.textContent = '...';
             $.post('/reports/reorder/count', $.extend({ _token: CSRF, product_id: tr.dataset.pid, product_ids: tr.dataset.pids, qty: e.target.value }, Q))
-                .done(function () { saved.textContent = 'saved'; })
+                .done(function (res) {
+                    var erp = res && res.erp ? res.erp : {};
+                    if (erp.updated) {
+                        saved.textContent = 'saved, ERP now ' + erp.after;
+                        tr.dataset.erp = erp.after;
+                        var cell = tr.querySelector('td.ro-erp');
+                        if (cell) cell.textContent = erp.after;
+                    } else {
+                        saved.textContent = erp.note && erp.note !== 'already matches' ? 'saved (' + erp.note + ')' : 'saved';
+                    }
+                })
                 .fail(function () { saved.textContent = 'not saved'; saved.style.color = '#c62828'; });
         }
         // Just this row + the totals; the table itself doesn't move.
