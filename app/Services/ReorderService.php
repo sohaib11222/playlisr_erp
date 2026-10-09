@@ -785,6 +785,12 @@ class ReorderService
         $r['best_cost'] = $best ? round((float) $best['cost'], 2) : null;
         $r['ams_cost'] = $ams ? round((float) $ams['cost'], 2) : null;
         $r['supplier_upc'] = $r['upc'] ?: ($best['upc'] ?? ($ams['upc'] ?? null));
+        // Never stocked sealed, but a distributor carries it (matched by
+        // artist + title): orderable after all.
+        if ($r['cant_order'] === 'not at a distributor' && $best && $r['supplier_upc']) {
+            $r['cant_order'] = null;
+            $r['order_qty'] = $this->orderQty($r, $s['blank_count']);
+        }
         if (!$r['upc'] && $r['supplier_upc'] && $r['cant_order'] === 'no barcode') {
             $r['cant_order'] = null;
             $r['order_qty'] = $this->orderQty($r, $s['blank_count']);
