@@ -755,6 +755,35 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant/ume-spotlights-bucket', 'InventoryCheckController@umeSpotlightsBucket');
     Route::get('/reports/inventory-check-assistant/supplier-diagnostics', 'InventoryCheckController@supplierDiagnostics');
     Route::get('/reports/inventory-check-assistant/supplier-coverage', 'InventoryCheckController@supplierCoverage');
+    // Shelf counts (Weekly Reorder bin counts) vs ERP stock (Sarah 10/9:
+    // "clarissa does it, we did it today"). ERP at count time = stock now
+    // + what that store sold since the count. Read-only.
+    Route::get('/reports/count-vs-erp', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $since = (string) $request->query('since', now()->toDateString());
+        $state = app(\App\Services\ReorderService::class)->loadState($biz);
+        $locNames = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id')->all();
+        $rows = []; $by = [];
+        foreach ($state['counts'] as $key => $c) {
+            if (substr((string) ($c['at'] ?? ''), 0, 10) < $since) continue;
+            [$loc, $pid] = array_map('intval', explode(':', $key));
+            $now = (float) \DB::table('variation_location_details')->where('product_id', $pid)->where('location_id', $loc)->sum('qty_available');
+            $sold = (float) \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)->where('l.product_id', $pid)
+                ->where('t.transaction_date', '>=', $c['at'])->sum('l.quantity');
+            $erp = $now + $sold;
+            $name = \DB::table('products')->where('id', $pid)->value('name');
+            $rows[] = ['store' => $locNames[$loc] ?? $loc, 'product_id' => $pid, 'name' => $name, 'counted' => (int) $c['qty'], 'erp' => $erp, 'diff' => $erp - (int) $c['qty'], 'at' => $c['at'], 'by' => $c['by'] ?? null];
+            $by[$c['by'] ?? '?'] = ($by[$c['by'] ?? '?'] ?? 0) + 1;
+        }
+        $n = count($rows);
+        $right = count(array_filter($rows, function ($r) { return abs($r['diff']) < 0.01; }));
+        $high = array_filter($rows, function ($r) { return $r['diff'] > 0; });
+        usort($rows, function ($a, $b) { return abs($b['diff']) <=> abs($a['diff']); });
+        return response()->json(['since' => $since, 'counted' => $n, 'erp_right' => $right, 'erp_right_pct' => $n ? round(100 * $right / $n) : null,
+            'erp_too_high' => count($high), 'extra_copies_in_erp' => array_sum(array_column($high, 'diff')),
+            'erp_too_low' => $n - $right - count($high), 'counted_by' => $by, 'biggest' => array_slice($rows, 0, 25)]);
+    });
     // Which distributor is cheapest (Sarah 10/8): same barcode, head to head.
     Route::get('/reports/inventory-check-assistant/supplier-compare', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
