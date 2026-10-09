@@ -153,6 +153,7 @@
                             <th data-sort="onorder" title="Already ordered, not here yet">On the way <span class="ro-arrow"></span></th>
                             <th data-sort="order">Order <span class="ro-arrow"></span></th>
                             <th data-sort="cost">Cheapest <span class="ro-arrow"></span></th>
+                            <th>Other prices</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -203,7 +204,9 @@
                             </td>
                             <td class="n">{{ $r['on_order'] ?: '' }}</td>
                             <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
-                            <td>@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>@endif</td>
+                            <td>@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>
+                                <div class="ro-muted" style="color:{{ ($r['best_in_stock'] ?? null) === true ? '#2e7d32' : '#999' }}">{{ ($r['best_in_stock'] ?? null) === true ? 'in stock' : 'stock not known' }}@if(!empty($r['best_checked'])), {{ \Carbon\Carbon::parse($r['best_checked'])->format('M j') }}@endif</div>@endif</td>
+                            <td style="font-size:12px; white-space:nowrap;">@foreach($r['other_prices'] ?? [] as $op)<div>${{ number_format($op['cost'], 2) }} {{ $op['supplier'] }}@if($op['in_stock'] === false) <span class="text-danger">sold out</span>@endif</div>@endforeach</td>
                         </tr>
                     @endforeach
                     </tbody>
@@ -405,7 +408,7 @@
             if (show && sortKey === 'genre' && d.genre !== lastGenre) {
                 var g = document.createElement('tr');
                 g.className = 'ro-genre';
-                g.innerHTML = '<td colspan="11"></td>';
+                g.innerHTML = '<td colspan="12"></td>';
                 g.firstChild.textContent = d.genre;
                 tr.parentNode.insertBefore(g, tr);
                 lastGenre = d.genre;

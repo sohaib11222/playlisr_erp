@@ -768,6 +768,19 @@ class ReorderService
             if ($best === null && ($p['in_stock'] ?? null) !== false) $best = $p;
         }
         $best = $best ?: ($prices[0] ?? null);
+        $r['best_in_stock'] = $best ? ($best['in_stock'] ?? null) : null;
+        $r['best_checked'] = $best ? substr((string) ($best['checked_at'] ?? ''), 0, 10) : null;
+        // Every other distributor's price, cheapest first, for side-by-side checking.
+        $r['other_prices'] = [];
+        foreach ($prices as $p) {
+            if ($best && $p === $best) continue;
+            $r['other_prices'][] = [
+                'supplier' => $p['supplier_label'] ?? $p['supplier_key'],
+                'cost' => round((float) $p['cost'], 2),
+                'in_stock' => $p['in_stock'] ?? null,
+                'checked' => substr((string) ($p['checked_at'] ?? ''), 0, 10),
+            ];
+        }
         $r['best_supplier'] = $best ? ($best['supplier_label'] ?? $best['supplier_key']) : null;
         $r['best_cost'] = $best ? round((float) $best['cost'], 2) : null;
         $r['ams_cost'] = $ams ? round((float) $ams['cost'], 2) : null;
