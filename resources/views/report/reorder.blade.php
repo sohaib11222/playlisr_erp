@@ -204,6 +204,11 @@
         </div>
     </div>
 
+            @if(!$budget)
+            <div class="box box-solid"><div class="box-body ro-muted" style="font-size:13px;">
+                No purchasing budget for this week. It comes from the cash-flow sheet: upload this quarter's 13-week sheet on the Cash Flow report and it shows up here and on Inventory Check.
+            </div></div>
+            @endif
             @if($budget)
             <div class="box box-solid">
                 <div class="box-body" style="font-size:15px;">

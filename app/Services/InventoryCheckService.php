@@ -128,7 +128,7 @@ class InventoryCheckService
 
     public function currentPurchaseBudget(int $business_id, $permittedLocations): ?array
     {
-        $schedule = $this->purchaseBudgetSchedule();
+        $schedule = array_merge($this->purchaseBudgetSchedule(), $this->cashFlowPurchaseWeeks($business_id));
         $today = Carbon::now()->format('Y-m-d');
         $week = null;
         foreach ($schedule as $w) {
@@ -728,6 +728,32 @@ class InventoryCheckService
      * to reach into the reports controller. Keep in sync when the cash
      * flow plan rolls forward.
      */
+    /**
+     * Weeks from the cash-flow sheet uploaded on /reports/cash-flow (Sarah:
+     * "it's based on cash flow"): weekly purchase budget = the COST OF GOODS
+     * lines for that week. Used once the hard-coded Q3 list below runs out.
+     */
+    private function cashFlowPurchaseWeeks(int $business_id): array
+    {
+        $path = storage_path('app/cashflow-budget-' . $business_id . '.json');
+        if (!is_file($path)) return [];
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data) || empty($data['weeks'])) return [];
+        $cogs = [];
+        foreach ($data['sections'] ?? [] as $sec) {
+            if (($sec['key'] ?? '') === 'cogs') $cogs = $sec['items'] ?? [];
+        }
+        $out = [];
+        foreach ($data['weeks'] as $i => $w) {
+            if (empty($w['start']) || empty($w['end']) || $w['start'] <= '2026-08-16') continue;
+            $sum = 0.0;
+            foreach ($cogs as $item) $sum += abs((float) ($item['budget'][$i] ?? 0));
+            if ($sum <= 0) continue;
+            $out[] = ['week_no' => $i + 1, 'start' => substr($w['start'], 0, 10), 'end' => substr($w['end'], 0, 10), 'budget' => round($sum)];
+        }
+        return $out;
+    }
+
     private function purchaseBudgetSchedule(): array
     {
         return [
