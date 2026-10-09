@@ -24,8 +24,16 @@
     table.ro-table th:hover { background:#e8e8e8; }
     table.ro-table th .ro-arrow { color:#999; font-size:11px; }
     table.ro-table td { vertical-align:middle !important; padding:6px 5px !important; }
-    table.ro-table td:first-child { min-width:200px; word-break:break-word; }
-    .ro-wrap { max-height:75vh; overflow-y:auto; overflow-x:hidden; }
+    table.ro-table td:first-child { min-width:150px; word-break:break-word; }
+    /* Never cut columns off on a smaller laptop: scroll only if it truly can't fit. */
+    .ro-wrap { max-height:75vh; overflow:auto; }
+    @media (max-width: 1400px) {
+        table.ro-table { font-size:12px; }
+        table.ro-table td { padding:4px 3px !important; }
+        table.ro-table th { font-size:11px; padding:4px 3px !important; }
+        .ro-num { width:42px; }
+        .ro-tag { font-size:10px; padding:0 5px; }
+    }
     table.ro-table td.n { text-align:center; }
     table.ro-table .ro-artist { font-weight:bold; }
     table.ro-table .ro-title { color:#333; }
