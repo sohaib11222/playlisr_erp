@@ -1231,9 +1231,10 @@ class CashRegisterController extends Controller
     }
 
     /**
-     * Render a shift note as Slack mrkdwn, mirroring how staff already
-     * write them in #shift-notes (employee · store, shift window, sales,
-     * what they put out, then their free-text note).
+     * Render a shift note as Slack mrkdwn in the short, scannable format
+     * Sarah signed off on 2026-10-08: one bold header line, then one
+     * emoji-led line per stat with the headline number in bold, then the
+     * cashier's free-text note.
      */
     private function formatShiftNoteForSlack(array $payload): string
     {
@@ -1241,66 +1242,49 @@ class CashRegisterController extends Controller
         $tz = config('app.timezone');
         $start = \Carbon::parse($payload['shift_start'])->setTimezone($tz);
         $end = \Carbon::parse($payload['shift_end'])->setTimezone($tz);
+        $money = function ($v) {
+            return '$' . number_format((float) $v, 0);
+        };
 
-        $lines = [];
-        $lines[] = '*' . ($payload['employee'] ?: 'Cashier') . '*'
-            . (!empty($payload['location']) ? ' — ' . $payload['location'] : '');
-        $lines[] = $start->format('n/j, g:i A') . ' → ' . $end->format('g:i A');
-        // Skip the Sales line entirely when there's nothing to report (e.g.
-        // pricing/fulfillment staff who never ring a sale) so their note
-        // stays clean. Cashier shifts always have sales, so this is a no-op
-        // for them.
+        // Header: first name · Store · Thu 10/8, 2:33 to 6:36 PM
+        $first = trim(explode(' ', trim((string) ($payload['employee'] ?? '')))[0] ?? '');
+        $head = [$first !== '' ? $first : 'Cashier'];
+        if (!empty($payload['location'])) {
+            $head[] = ucwords((string) $payload['location']);
+        }
+        $head[] = $start->format('D n/j, g:i')
+            . ($start->format('A') !== $end->format('A') ? ' ' . $start->format('A') : '')
+            . ' to ' . $end->format('g:i A');
+        $lines = ['*' . implode(' · ', $head) . '*', ''];
+
+        // Skip Sales entirely for staff who never ring a sale.
         if ((float) ($s['sales'] ?? 0) > 0 || !empty($s['transactions_count'])) {
             $txns = (int) ($s['transactions_count'] ?? 0);
             $sales = (float) ($s['sales'] ?? 0);
-            $lines[] = 'Sales: $' . number_format($sales, 2)
+            $lines[] = ':moneybag: Sold *' . $money($sales) . '*'
                 . ($txns > 0
-                    ? ' · ' . $txns . ' transaction' . ($txns == 1 ? '' : 's')
-                        // Average spend per transaction — what the average
-                        // customer rang up this shift.
-                        . ' · $' . number_format($sales / $txns, 2) . '/txn avg'
+                    ? ' (' . $txns . ' sale' . ($txns == 1 ? '' : 's')
+                        . ' · $' . number_format($sales / $txns, 2) . ' avg)'
                     : '');
         }
 
-        // New customer accounts opened this shift (walk-in signups + buy-desk
-        // sellers). Surfaced only when non-zero so quiet shifts stay clean.
-        if (!empty($s['customer_accounts_created'])) {
-            $n = (int) $s['customer_accounts_created'];
-            $lines[] = 'New customer' . ($n == 1 ? '' : 's') . ': ' . $n;
-        }
-
-        // Buy-from-customer purchases: count, total paid out, and average paid
-        // per purchase. Only shown when the buy desk actually bought something.
-        if (!empty($s['buys_count'])) {
-            $bc = (int) $s['buys_count'];
-            $ba = (float) ($s['buys_amount'] ?? 0);
-            $lines[] = 'Bought in: ' . $bc . ' purchase' . ($bc == 1 ? '' : 's')
-                . ' · $' . number_format($ba, 2) . ' paid out'
-                . ' · $' . number_format($ba / $bc, 2) . '/purchase avg';
-        }
-
         $cats = $s['labels_categories'] ?? [];
-        if (!empty($cats)) {
-            // Roll the long per-subgenre breakdown up to the top-level format
-            // (the part before the first "›"), e.g. "Sealed Vinyl › Pop" and
-            // "Sealed Vinyl › Rock" both fold into "Sealed Vinyl". Keeps every
-            // item counted but collapses 40+ entries into a few readable groups.
+        $labeled = (int) ($s['labels_printed_count'] ?? 0);
+        if (!empty($cats) || $labeled > 0) {
+            // Roll "Vinyl - Sealed › Pop" up to its format ("Vinyl - Sealed")
+            // and tally genres across formats.
             $groups = [];
-            $genres = [];     // count per subgenre, aggregated across formats
-            $genreLabel = []; // canonical display for each lowercased genre
+            $genres = [];
+            $genreLabel = [];
             foreach ($cats as $name => $cnt) {
                 $bits = preg_split('/\s*›\s*/u', (string) $name);
                 $format = trim($bits[0]);
-                if ($format === '') {
-                    $format = 'Uncategorized';
+                if ($format !== '') {
+                    $groups[$format] = ($groups[$format] ?? 0) + (int) $cnt;
                 }
-                $groups[$format] = ($groups[$format] ?? 0) + (int) $cnt;
-
                 $genre = isset($bits[1]) ? trim($bits[1]) : '';
                 if ($genre !== '') {
                     $key = mb_strtolower($genre);
-                    // $cats is arsort'd, so the first display we see for a
-                    // genre is its highest-count casing — keep that.
                     if (!isset($genreLabel[$key])) {
                         $genreLabel[$key] = $genre;
                     }
@@ -1309,63 +1293,81 @@ class CashRegisterController extends Controller
             }
             arsort($groups);
             arsort($genres);
-            $parts = [];
-            foreach ($groups as $format => $cnt) {
-                $parts[] = $cnt . ' ' . $format;
+
+            $count = $labeled > 0 ? $labeled : array_sum($groups);
+            $extra = [];
+            $value = (float) ($s['labels_value'] ?? 0);
+            if ($value > 0) {
+                $extra[] = $money($value) . ' worth';
             }
-            // Surface the top few genres so the note keeps a sense of what was
-            // put out (e.g. "mostly Pop, Hip-Hop, Pop (New)").
+            $detail = [];
+            if (!empty($groups)) {
+                // "Vinyl - Sealed" -> "sealed vinyl", "CD - Used" -> "used CD"
+                $top = (string) array_key_first($groups);
+                if (preg_match('/^(.+?)\s*-\s*(Sealed|Used|New)$/i', $top, $m)) {
+                    $fmt = strtoupper($m[1]) === $m[1] ? $m[1] : mb_strtolower($m[1]);
+                    $top = mb_strtolower($m[2]) . ' ' . $fmt;
+                } elseif (strtoupper($top) !== $top) {
+                    $top = mb_strtolower($top);
+                }
+                $detail[] = 'mostly ' . $top;
+            }
             $topGenres = [];
             foreach (array_slice($genres, 0, 3, true) as $key => $cnt) {
                 $topGenres[] = $genreLabel[$key];
             }
-            $value = (float) ($s['labels_value'] ?? 0);
-            $vSealed = (float) ($s['labels_value_sealed'] ?? 0);
-            $vUsed = (float) ($s['labels_value_used'] ?? 0);
-            // Only show the sealed/used split once the run actually carries it
-            // (runs logged before 2026-07-06 have neither, so the parts sum to 0).
-            $split = ($vSealed + $vUsed) > 0
-                ? ' ($' . number_format($vUsed, 2) . ' used, $' . number_format($vSealed, 2) . ' sealed)'
-                : '';
-            $lines[] = 'Put out: ' . implode(', ', $parts)
-                . ' (' . (int) ($s['labels_printed_count'] ?? 0) . ' labeled'
-                . ($value > 0 ? ', $' . number_format($value, 2) . ' value' : '') . ')'
-                . $split
-                . (!empty($topGenres) ? ' — mostly ' . implode(', ', $topGenres) : '');
-        } elseif (!empty($s['labels_printed_count'])) {
-            $lines[] = 'Labels printed: ' . (int) $s['labels_printed_count'];
+            if (!empty($topGenres)) {
+                $detail[] = implode(', ', $topGenres);
+            }
+            if (!empty($detail)) {
+                $extra[] = implode(' · ', $detail);
+            }
+            $lines[] = ':package: Put out *' . $count . ' item' . ($count == 1 ? '' : 's') . '*'
+                . (!empty($extra) ? ' (' . implode(', ', $extra) . ')' : '');
         }
 
-        $added = [];
-        if (!empty($s['mass_add_count'])) {
-            $added[] = $s['mass_add_count'] . ' mass-added';
+        if (!empty($s['buys_count'])) {
+            $bc = (int) $s['buys_count'];
+            $lines[] = ':shopping_trolley: Bought in *' . $bc . ' purchase' . ($bc == 1 ? '' : 's') . '*'
+                . ' (' . $money($s['buys_amount'] ?? 0) . ' paid out)';
         }
-        if (!empty($s['purchase_add_count'])) {
-            $added[] = $s['purchase_add_count'] . ' purchased';
+
+        $mass = (int) ($s['mass_add_count'] ?? 0);
+        $bought = (int) ($s['purchase_add_count'] ?? 0);
+        if ($mass + $bought > 0) {
+            $how = [];
+            if ($mass > 0) {
+                $how[] = $mass . ' mass-added';
+            }
+            if ($bought > 0) {
+                $how[] = $bought . ' purchased';
+            }
+            $n = $mass + $bought;
+            $lines[] = ':memo: Entered *' . $n . ' new item' . ($n == 1 ? '' : 's') . '* in the ERP'
+                . ' (' . implode(' · ', $how) . ')';
         }
-        if (!empty($added)) {
-            $lines[] = 'Items entered: ' . implode(' · ', $added);
+
+        if (!empty($s['customer_accounts_created'])) {
+            $n = (int) $s['customer_accounts_created'];
+            $lines[] = ':bust_in_silhouette: Signed up *' . $n . ' new customer' . ($n == 1 ? '' : 's') . '*';
         }
 
         $fulfil = [];
         if (!empty($s['packages_picked_count'])) {
-            $fulfil[] = 'picked ' . $s['packages_picked_count'];
+            $fulfil[] = 'picked *' . (int) $s['packages_picked_count'] . '*';
         }
         if (!empty($s['packages_shipped_count'])) {
-            $fulfil[] = 'shipped ' . $s['packages_shipped_count'];
+            $fulfil[] = 'shipped *' . (int) $s['packages_shipped_count'] . '*';
         }
         if (!empty($fulfil)) {
-            $lines[] = ucfirst(implode(', ', $fulfil));
+            $lines[] = ':truck: ' . ucfirst(implode(', ', $fulfil)) . ' packages';
         }
 
-        // Always state tasks explicitly — "none" is meaningful here (it tells
-        // a manager the close-register checklist was skipped, not that there
-        // was nothing due) — but only mention projects when something actually
-        // happened, since most shifts have no project activity at all.
+        // Always state tasks: "none" tells a manager the checklist was skipped.
         $tasksCompleted = $s['tasks_completed'] ?? [];
-        $lines[] = empty($tasksCompleted)
+        $lines[] = ':white_check_mark: ' . (empty($tasksCompleted)
             ? 'Tasks completed: none'
-            : 'Tasks completed (' . count($tasksCompleted) . '): ' . implode(', ', $tasksCompleted);
+            : 'Tasks completed (' . count($tasksCompleted) . '): ' . implode(', ', $tasksCompleted));
 
         $projectBits = [];
         if (!empty($s['projects_completed'])) {
@@ -1378,7 +1380,7 @@ class CashRegisterController extends Controller
             $projectBits[] = 'joined ' . implode(', ', $s['projects_joined']);
         }
         if (!empty($projectBits)) {
-            $lines[] = 'Projects: ' . implode(' · ', $projectBits);
+            $lines[] = ':clipboard: Projects: ' . implode(' · ', $projectBits);
         }
 
         $note = trim((string) ($payload['note'] ?? ''));
