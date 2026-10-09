@@ -1267,9 +1267,14 @@ class InventoryCheckService
         // Same format only: an LP never takes a CD's price or vice versa.
         foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
             if ($tKey === '') continue;
+            // No artist on either side = no name match. "GREATEST HITS" with a
+            // blank artist took another band's RedEye price (Foo Fighters 2LP
+            // showed $16.65 vs $26 everywhere else, Sarah 10/9). Barcode only.
+            if (trim((string) $aNorm) === '') continue;
             foreach ($index['byTitle'][$tKey] ?? [] as $i) {
                 $e = $compact[$i];
                 if (isset($byBarcode[$e['supplier_key']])) continue;
+                if (trim((string) ($e['artist_norm'] ?? '')) === '') continue;
                 if (!$this->artistMatches($aNorm, $e['artist_norm'] ?? '')) continue;
                 $got = $this->formatFamily($e['format'] ?? null);
                 if ($want === null || $got === null || $want !== $got) continue;
