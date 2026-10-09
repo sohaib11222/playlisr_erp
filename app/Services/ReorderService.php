@@ -814,6 +814,11 @@ class ReorderService
         // titles are listed to look at, not auto-ordered: tested against
         // Jon's last 3 orders (Sep 24 - Oct 7) he bought ~3% of those.
         $base = (int) $r['sold_since'];
+        // Used copies selling fast -> buy 1 sealed when we have none. The one
+        // extra rule Jon agreed with in the backtest (~40% vs ~3-7% for others).
+        if ($base === 0 && in_array('used', $r['why'], true) && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0) {
+            $base = 1;
+        }
         if ($base === 0 && $this->autoExtra && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0
             && array_intersect($this->autoExtra, $r['why'])) {
             $base = max(1, $sug);
@@ -1071,6 +1076,9 @@ class ReorderService
                 if (!in_array('used', $rows[$i]['why'], true)) {
                     $rows[$i]['why'][] = 'used';
                     $rows[$i]['used_note'] = $why;
+                    if (!$rows[$i]['cant_order'] && $rows[$i]['count'] === null) {
+                        $rows[$i]['order_qty'] = max($rows[$i]['order_qty'], $this->orderQty($rows[$i], $s['blank_count']));
+                    }
 
                 }
                 continue;

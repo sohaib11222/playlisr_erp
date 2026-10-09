@@ -205,7 +205,7 @@
                             <td class="n">{{ $r['on_order'] ?: '' }}</td>
                             <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
                             <td>@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>
-                                <div class="ro-muted" style="color:{{ ($r['best_in_stock'] ?? null) === true ? '#2e7d32' : '#999' }}">{{ ($r['best_in_stock'] ?? null) === true ? 'in stock' : 'stock not known' }}@if(!empty($r['best_checked'])), {{ \Carbon\Carbon::parse($r['best_checked'])->format('M j') }}@endif</div>@endif</td>
+                                <div class="ro-muted" style="color:{{ ($r['best_in_stock'] ?? null) === true ? '#2e7d32' : '#999' }}">{{ ($r['best_in_stock'] ?? null) === true ? 'in stock' : 'stock not checked yet' }}@if(!empty($r['best_checked'])), {{ \Carbon\Carbon::parse($r['best_checked'])->format('M j') }}@endif</div>@endif</td>
                             <td style="font-size:12px; white-space:nowrap;">@foreach($r['other_prices'] ?? [] as $op)<div>${{ number_format($op['cost'], 2) }} {{ $op['supplier'] }}@if($op['in_stock'] === false) <span class="text-danger">sold out</span>@endif</div>@endforeach</td>
                         </tr>
                     @endforeach
@@ -339,6 +339,7 @@
         if (BLANK === 'erp') return Math.max(0, sug - Math.max(0, +d.erp) - onord);
         if (BLANK === 'zero') return Math.max(0, sug - onord);
         var base = +d.since;
+        if (base === 0 && /\bused\b/.test(d.why) && +d.erp <= 0 && +d.onorder === 0) base = 1;
         return Math.max(0, Math.min(base, Math.max(sug, 1)));
     }
 
