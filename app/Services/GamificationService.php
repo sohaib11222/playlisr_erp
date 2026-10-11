@@ -707,7 +707,31 @@ class GamificationService
         $dowBucket = $this->dowBucketForToday();
 
         if ($taskKey === 'sales_total') {
-            return $this->salesPeerStats($businessId, $shift['location_id'] ?? null, $hour, $dowBucket, $rangeStart, $rangeEnd);
+            // Average the store's per-hour pace across EVERY hour the shift
+            // covers, not just the start hour. Anchoring to the start hour
+            // and multiplying by shift length extrapolated the weekend peak
+            // (e.g. 1-2pm) across the whole shift, so a cashier's personal
+            // goal could exceed the whole store's daily goal (Alec 2026-10-11).
+            // Hours with no sales history count as $0, so the goal sums to
+            // the store's typical in-store revenue for this shift window.
+            $expected = max(1.0, $this->expectedShiftHours($shift));
+            $span = (int) ceil($expected);
+            $sum = 0.0;
+            $top = null;
+            $any = false;
+            for ($h = $hour; $h < min(24, $hour + $span); $h++) {
+                $s = $this->salesPeerStats($businessId, $shift['location_id'] ?? null, $h, $dowBucket, $rangeStart, $rangeEnd);
+                if ($s['avg'] !== null) {
+                    // Last hour may be partial (e.g. 3.33h shift).
+                    $weight = min(1.0, $expected - ($h - $hour));
+                    $sum += $s['avg'] * $weight;
+                    $any = true;
+                }
+                if ($h === $hour) {
+                    $top = $s['top'];
+                }
+            }
+            return ['avg' => $any ? $sum / $expected : null, 'top' => $top];
         }
 
         if ($taskKey === 'avg_ticket') {
