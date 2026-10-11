@@ -69,6 +69,9 @@ class BuyOfferCalculatorService
                 'dvd_used' => ['label' => 'DVD Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'no_grading' => true],
                 'dvd_sealed' => ['label' => 'DVD Sealed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
                 'dvd_criterion_used' => ['label' => 'DVD Criterion Used', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
+                'dvd_music_used' => ['label' => 'DVD Music Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
+                'dvd_horror_used' => ['label' => 'DVD Horror Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'no_grading' => true],
+                'dvd_scifi_used' => ['label' => 'DVD Sci-Fi Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
                 'bluray_used' => ['label' => 'Blu-ray Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
                 'bluray_sealed' => ['label' => 'Blu-ray Sealed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
                 '4k_used' => ['label' => '4K Used', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'no_grading' => true],
@@ -317,7 +320,7 @@ class BuyOfferCalculatorService
                 $formats['equipment'] += $qty;
             } elseif (strpos($t, 'cassette_') === 0) {
                 $formats['cassette'] += $qty;
-            } elseif ($t === 'dvd_used' || $t === 'dvd_sealed' || $t === 'dvd_criterion_used') {
+            } elseif (in_array($t, ['dvd_used', 'dvd_sealed', 'dvd_criterion_used', 'dvd_music_used', 'dvd_horror_used', 'dvd_scifi_used'], true)) {
                 $formats['dvd'] += $qty;
             } elseif (strpos($t, 'bluray_') === 0 || $t === '4k_used') {
                 $formats['bluray'] += $qty;
