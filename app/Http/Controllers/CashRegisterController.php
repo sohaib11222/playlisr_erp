@@ -1571,6 +1571,18 @@ class CashRegisterController extends Controller
                 }
             }
 
+            // Change run (Sarah 2026-10-11): when the close count shows the
+            // drawer low on $1s or $5s, tell #shift-notes that a manager
+            // should take $100-$150 to the bank for change. Max once a
+            // week per store. Isolated so it can never break the close.
+            if ($openRegister && is_array($closeDenoms)) {
+                try {
+                    $this->maybePostChangeRun($openRegister, $closeDenoms);
+                } catch (\Throwable $ex) {
+                    \Log::warning('maybePostChangeRun failed: ' . $ex->getMessage());
+                }
+            }
+
             $output = ['success' => 1,
                             'msg' => __('cash_register.close_success')
                         ];
@@ -1582,6 +1594,62 @@ class CashRegisterController extends Controller
         }
 
         return redirect()->back()->with('status', $output);
+    }
+
+    const CHANGE_MIN_ONES = 20;
+    const CHANGE_MIN_FIVES = 10;
+
+    /**
+     * Post a "time for a change run" line to #shift-notes when the drawer
+     * closes with fewer than CHANGE_MIN_ONES $1s or CHANGE_MIN_FIVES $5s.
+     * Throttled to once every 7 days per store via a small JSON file.
+     */
+    private function maybePostChangeRun($register, array $denoms): void
+    {
+        $ones = max(0, (int) ($denoms['1'] ?? $denoms[1] ?? 0));
+        $fives = max(0, (int) ($denoms['5'] ?? $denoms[5] ?? 0));
+        if ($ones >= self::CHANGE_MIN_ONES && $fives >= self::CHANGE_MIN_FIVES) {
+            return;
+        }
+
+        $location = BusinessLocation::find($register->location_id);
+        $store = $location->name ?? 'Store';
+        $key = (string) $register->location_id;
+
+        $file = storage_path('app/change-run/last.json');
+        $last = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
+        if (!empty($last[$key]) && \Carbon::parse($last[$key])->gt(\Carbon::now()->subDays(7))) {
+            return;
+        }
+
+        $webhook = $this->shiftNotesWebhook();
+        if ($webhook === '') {
+            return;
+        }
+        $text = "*Change run needed at {$store}.* The drawer closed with {$ones} \$1s and {$fives} \$5s. "
+            . "Manager: this week, take \$100 to \$150 from the drawer to the bank and bring back the same amount in \$1s and \$5s.";
+
+        $ch = curl_init($webhook);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
+            CURLOPT_TIMEOUT => 4,
+            CURLOPT_CONNECTTIMEOUT => 3,
+        ]);
+        curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code < 200 || $code >= 300) {
+            return;
+        }
+
+        $last[$key] = \Carbon::now()->toDateTimeString();
+        if (!is_dir(dirname($file))) {
+            @mkdir(dirname($file), 0775, true);
+        }
+        file_put_contents($file, json_encode($last, JSON_PRETTY_PRINT));
     }
 
     /** Store key ('pico'/'hollywood') for a business location id, or null if it doesn't match either. */
