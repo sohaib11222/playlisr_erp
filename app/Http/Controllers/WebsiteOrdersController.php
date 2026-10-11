@@ -422,22 +422,38 @@ class WebsiteOrdersController extends Controller
             return redirect()->route('website-orders.index')->with('error', 'Tick at least one item to cancel.');
         }
 
+        // The cancel runs the refund (up to 3 Stripe calls), the customer
+        // email and the warehouse sync before answering, so 10s wasn't
+        // enough: staff saw "could not reach" after the refund had gone
+        // through. Retrying is safe (the website won't refund twice).
         $resp = $this->websiteApi('POST', "/erp/orders/{$id}/cancel", [
             'itemIds' => $itemIds,
             'reason' => $reason,
             'note' => $note !== '' ? $note : null,
             'cancelledBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
             'notifyCustomer' => true,
-        ]);
+        ], 45);
 
         if ($resp === null) {
             return redirect()->route('website-orders.index')->with('error', 'Could not reach the website to cancel the order.');
+        }
+        if (!empty($resp['timedOut'])) {
+            return redirect()->route('website-orders.index')->with('error', 'The website took too long to answer, so the cancel may have gone through. Reload the page and check the order. If it still shows, press Cancel order again; it will not refund twice.');
         }
         if (($resp['success'] ?? false) !== true) {
             return redirect()->route('website-orders.index')->with('error', $resp['message'] ?? 'Cancellation failed.');
         }
 
-        return redirect()->route('website-orders.index')->with('status', ($resp['message'] ?? 'Order cancelled.') . ' The customer has been emailed and #shipping has the refund status.');
+        // Say what happened to the money, not just "cancelled".
+        $refundLine = (string) ($resp['refundSummary'] ?? '');
+        $refundReason = (string) ($resp['refund']['reason'] ?? '');
+        $message = ($resp['message'] ?? 'Order cancelled.') . ($refundLine !== '' ? ' ' . $refundLine : '');
+        if (empty($resp['alreadyCancelled'])) {
+            $message .= ' The customer has been emailed.';
+        }
+        $needsAttention = $refundReason !== '' && !in_array($refundReason, ['ok', 'not_charged', 'free_order', 'already_refunded'], true);
+
+        return redirect()->route('website-orders.index')->with($needsAttention ? 'error' : 'status', $message);
     }
 
     /** Same resolution as EventsController's — config, env, .env on disk, then the UI-set store file. */
@@ -505,7 +521,7 @@ class WebsiteOrdersController extends Controller
      * website" regardless of what actually went wrong (bad key, network
      * failure, or the endpoint itself erroring with a non-JSON body).
      */
-    protected function websiteApi(string $method, string $path, array $body = null): ?array
+    protected function websiteApi(string $method, string $path, array $body = null, int $timeout = 10): ?array
     {
         $key = $this->erpApiKey();
         if ($key === '') {
@@ -516,7 +532,7 @@ class WebsiteOrdersController extends Controller
             $headers = ['Accept: application/json', 'x-erp-key: ' . $key];
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_TIMEOUT        => $timeout,
                 CURLOPT_CUSTOMREQUEST  => $method,
             ]);
             if ($body !== null) {
@@ -527,7 +543,11 @@ class WebsiteOrdersController extends Controller
             $raw = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlErr = curl_error($ch);
+            $curlErrNo = curl_errno($ch);
             curl_close($ch);
+            if ($raw === false && $curlErrNo === CURLE_OPERATION_TIMEDOUT) {
+                return ['success' => false, 'timedOut' => true, 'message' => 'The website took too long to answer.'];
+            }
             if ($raw === false) {
                 return ['success' => false, 'message' => 'Could not reach the website' . ($curlErr !== '' ? " (curl: {$curlErr})" : '') . '.'];
             }

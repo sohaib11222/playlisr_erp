@@ -521,10 +521,23 @@
           alert('Tick at least one item to cancel.');
           return false;
         }
-        var whole = !boxes.length || picked.length === open.length;
-        return confirm(whole
+        // Same rule as the website: it's only a whole-order cancel when
+        // nothing else is left, and a gift card line counts as left (it is
+        // never cancelled or refunded here).
+        var active = parseInt(form.dataset.active || '0', 10);
+        var giftLeft = parseInt(form.dataset.giftLeft || '0', 10);
+        var whole = !boxes.length || picked.length === active;
+        var ok = confirm(whole
           ? 'Cancel the whole order, refund the customer and email them? This can\'t be undone from here.'
-          : 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The rest of the order still goes out.');
+          : (picked.length === open.length && giftLeft
+              ? 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The gift card on this order is not refunded and stays active.'
+              : 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The rest of the order still goes out.'));
+        if (ok) {
+          // One submit only: a second click used to send a second cancel.
+          var btn = form.querySelector('button[type="submit"]');
+          if (btn) { btn.disabled = true; btn.textContent = 'Cancelling...'; }
+        }
+        return ok;
       }
       function woOpenCancel(orderId, btn) {
         var form = document.getElementById('wo-cancel-form');
@@ -539,6 +552,10 @@
           try { lines = JSON.parse((b && b.getAttribute('data-lines')) || '[]'); } catch (e) {}
         }
         document.getElementById('wo-cancel-item-select').value = lines.length ? '1' : '0';
+        form.dataset.active = String(lines.filter(function (l) { return !l.cancelled; }).length);
+        form.dataset.giftLeft = String(lines.filter(function (l) { return !l.cancelled && l.gift; }).length);
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Cancel order'; }
         lines.forEach(function (l) {
           var row = document.createElement('label');
           row.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;font-weight:400;margin:0;';
