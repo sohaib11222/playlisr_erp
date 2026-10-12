@@ -1600,12 +1600,6 @@ class CashRegisterController extends Controller
     // (Sarah 2026-10-11): face value => minimum bill count.
     const CHANGE_MINIMUMS = [1 => 3, 5 => 1, 10 => 1];
 
-    // Who gets the change-run task per store (they can reassign it).
-    const CHANGE_RUN_OWNERS = [
-        'pico'      => ['Zakary', 'Heimlich'],
-        'hollywood' => ['Luis', 'Casanova'],
-    ];
-
     /**
      * When the close count shows the drawer low on $1s, $5s AND $10s and
      * the cashier ticked "Low on coins",
@@ -1626,75 +1620,22 @@ class CashRegisterController extends Controller
             }
         }
 
-        $storeKey = $this->storeKeyForLocation($register->location_id);
-        if (!$storeKey) {
+        $storeKey = \App\Utils\ChangeRunUtil::storeKey($register->location_id);
+        if (!$storeKey || \App\Utils\ChangeRunUtil::ranThisWeek($register->business_id, $storeKey)) {
             return;
         }
         $storeLabel = $storeKey === 'pico' ? 'Pico' : 'Hollywood';
 
-        $file = storage_path('app/change-run/last.json');
-        $last = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
-        if (!empty($last[$storeKey]) && \Carbon::parse($last[$storeKey])->gt(\Carbon::now()->subDays(7))) {
-            return;
-        }
-
-        [$first, $lastName] = self::CHANGE_RUN_OWNERS[$storeKey];
-        $owner = \App\User::where('business_id', $register->business_id)
-            ->where('first_name', 'like', $first . '%')
-            ->where('last_name', 'like', $lastName . '%')
-            ->where('status', 'active')
-            ->first();
-
         $countLine = "The drawer closed with {$counts[1]} \$1s, {$counts[5]} \$5s and {$counts[10]} \$10s, and is low on coins.";
-        $description = $countLine . "\n\n"
-            . "Take \$100 from the drawer to the bank and ask for:\n"
-            . "- \$20 in \$1s (20 bills)\n"
-            . "- \$20 in \$5s (4 bills)\n"
-            . "- \$20 in \$10s (2 bills)\n"
-            . "- \$20 in \$20s (1 bill)\n"
-            . "- \$20 in coins: 1 roll of quarters (\$10), 1 roll of dimes (\$5), 2 rolls of nickels (\$4), 2 rolls of pennies (\$1)\n\n"
-            . "Put it all back in the drawer. You can reassign this task to someone else in the store.";
-
-        $today = \Carbon::now()->toDateString();
-        $data = [
-            'business_id' => $register->business_id,
-            'title' => 'Change run: \$100 to the bank for small bills',
-            'description' => $description,
-            'start_date' => $today,
-            'end_date' => \Carbon::now()->addDays(7)->toDateString(),
-            'task_type' => 'weekly',
-            'repeat_daily' => false,
-            'repeat_weekly' => false,
-            'store' => $storeKey,
-            'priority' => 'high',
-            'requires_photo' => false,
-            'status' => 'not_started',
-            'created_by' => $owner->id ?? $register->user_id,
-        ];
-        $task = \App\WeeklyTask::create($data);
-        if ($owner) {
-            $task->assignees()->sync([$owner->id]);
-            $taskUrl = action('TaskController@edit', $task->id);
-            \App\PendingAssignmentText::create([
-                'weekly_task_id' => $task->id,
-                'user_id' => $owner->id,
-                'message' => "New task assigned to you: \"{$task->title}\". {$taskUrl}",
-            ]);
-        }
-
-        $last[$storeKey] = \Carbon::now()->toDateTimeString();
-        if (!is_dir(dirname($file))) {
-            @mkdir(dirname($file), 0775, true);
-        }
-        file_put_contents($file, json_encode($last, JSON_PRETTY_PRINT));
+        $task = \App\Utils\ChangeRunUtil::createTask($register->business_id, $storeKey, $countLine, $register->user_id);
+        $owner = $task->owner;
 
         $webhook = $this->shiftNotesWebhook();
         if ($webhook === '') {
             return;
         }
         $who = $owner ? $owner->first_name : 'the manager';
-        $text = "*{$storeLabel} is low on change.* {$countLine} A change run task is assigned to {$who}: "
-            . action('TaskController@edit', $task->id);
+        $text = "*{$storeLabel} is low on change.* {$countLine} A change run is assigned to {$who} (POS menu > Change run).";
         try {
             $ch = curl_init($webhook);
             curl_setopt_array($ch, [

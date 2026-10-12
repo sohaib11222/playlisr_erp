@@ -789,7 +789,7 @@ class TaskController extends Controller
         if (stripos($task->title, 'Change run') !== 0 || !in_array($step, ['out', 'in'], true)) {
             abort(404);
         }
-        $back = redirect(action('TaskController@edit', $task->id));
+        $back = redirect()->back();
 
         $done = $task->notes->pluck('note')->all();
         $outDone = in_array(self::CHANGE_RUN_OUT_NOTE, $done, true);
@@ -798,14 +798,16 @@ class TaskController extends Controller
             return $back;
         }
 
+        // Log it on the tapping person's own open register when they have
+        // one at this store, else the store's most recently opened register.
         $locationIds = \App\BusinessLocation::where('business_id', $business_id)
             ->where('name', 'like', '%' . ($task->store === 'pico' ? 'pico' : 'holly') . '%')
             ->pluck('id');
-        $register = \App\CashRegister::where('business_id', $business_id)
+        $openAtStore = \App\CashRegister::where('business_id', $business_id)
             ->whereIn('location_id', $locationIds)
-            ->where('status', 'open')
-            ->latest('id')
-            ->first();
+            ->where('status', 'open');
+        $register = (clone $openAtStore)->where('user_id', auth()->id())->latest('id')->first()
+            ?: $openAtStore->latest('id')->first();
         if (!$register) {
             return $back->with('status', ['success' => false, 'msg' => 'No register is open at this store. Open a register first, then try again.']);
         }
@@ -834,6 +836,44 @@ class TaskController extends Controller
         return $back->with('status', ['success' => true, 'msg' => $step === 'out'
             ? 'Logged $100 out of the drawer. Tap "Put change in drawer" when you are back.'
             : 'Logged the change back in the drawer. Task complete.']);
+    }
+
+    /** POS menu > Change run: the store's open change run with its two buttons, or a request button. */
+    public function changeRunPage(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $register = \App\CashRegister::where('user_id', auth()->id())->where('status', 'open')->latest('id')->first();
+        $storeKey = $register ? \App\Utils\ChangeRunUtil::storeKey($register->location_id) : null;
+        $task = $storeKey ? \App\Utils\ChangeRunUtil::openTask($business_id, $storeKey) : null;
+        if ($task) {
+            $task->load('notes');
+        }
+        $notes = $task ? $task->notes->pluck('note')->all() : [];
+        return view('tasks.change_run', [
+            'register' => $register,
+            'storeKey' => $storeKey,
+            'task' => $task,
+            'outDone' => in_array(self::CHANGE_RUN_OUT_NOTE, $notes, true),
+            'ranThisWeek' => $storeKey ? \App\Utils\ChangeRunUtil::ranThisWeek($business_id, $storeKey) : false,
+            'bankList' => \App\Utils\ChangeRunUtil::BANK_LIST,
+        ]);
+    }
+
+    /** "Request change run" on the POS page: same task as the automatic one, max one a week. */
+    public function changeRunRequest(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $register = \App\CashRegister::where('user_id', auth()->id())->where('status', 'open')->latest('id')->first();
+        $storeKey = $register ? \App\Utils\ChangeRunUtil::storeKey($register->location_id) : null;
+        if (!$storeKey) {
+            return redirect()->back()->with('status', ['success' => false, 'msg' => 'Open your register first.']);
+        }
+        if (\App\Utils\ChangeRunUtil::ranThisWeek($business_id, $storeKey)) {
+            return redirect()->back()->with('status', ['success' => false, 'msg' => 'This store already had a change run this week.']);
+        }
+        $name = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name);
+        \App\Utils\ChangeRunUtil::createTask($business_id, $storeKey, "Requested by {$name} from the POS.", auth()->id());
+        return redirect()->back()->with('status', ['success' => true, 'msg' => 'Change run requested.']);
     }
 
     public function addNote($id, Request $request)

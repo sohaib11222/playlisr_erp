@@ -157,6 +157,11 @@
           </li>
           @endcan
           <li>
+            <a href="{{ url('/change-run') }}">
+              <i class="fas fa-money-bill-alt text-success" aria-hidden="true"></i>&nbsp; Change run
+            </a>
+          </li>
+          <li>
             <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}">
               <i class="fa fa-backward text-info" aria-hidden="true"></i>&nbsp; Back to Home
             </a>

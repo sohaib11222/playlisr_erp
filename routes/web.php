@@ -982,6 +982,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/tasks/{id}/status', 'TaskController@updateStatus')->name('tasks.update-status');
     Route::post('/tasks/{id}/notes', 'TaskController@addNote')->name('tasks.add-note');
     Route::post('/tasks/{id}/change-run/{step}', 'TaskController@changeRun')->name('tasks.change-run');
+    Route::get('/change-run', 'TaskController@changeRunPage')->name('change-run');
+    Route::post('/change-run/request', 'TaskController@changeRunRequest')->name('change-run.request');
     Route::delete('/tasks/{id}', 'TaskController@destroy')->name('tasks.destroy');
 
     // Sourcing — categories we actively hunt for (toys, comics, cards, etc.)

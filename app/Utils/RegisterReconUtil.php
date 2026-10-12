@@ -372,10 +372,10 @@ class RegisterReconUtil
 
         // 3) Drawer counts + registers that were never counted.
         $drawerNotes = self::drawerNotes();
-        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date)) as $f) {
+        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date), self::changeRunFlags($business_id, $date)) as $f) {
             $k = $storeKey($f['location_id']);
             $f['note_key'] = self::drawerNoteKey($date, $stores[$k]['name'], $f['kind'], (string) ($f['ask'] ?? ''));
-            $f['note'] = $drawerNotes[$f['note_key']] ?? null;
+            $f['note'] = $f['note'] ?? ($drawerNotes[$f['note_key']] ?? null);
             $stores[$k]['items'][] = $f;
         }
 
@@ -444,6 +444,44 @@ class RegisterReconUtil
                 'ask'    => $pName . ' / ' . $nName,
                 'note'   => null,
                 'amount' => abs($gap),
+            ];
+        }
+        return $flags;
+    }
+
+    /**
+     * Change runs (Sarah 2026-10-11): $100 taken from a drawer to the bank
+     * for change on $date. A finished run shows as explained ("change put
+     * back 4:05pm"); one with no change back in yet is flagged. The cash
+     * itself is already in each register's expected cash (change_run rows).
+     */
+    public static function changeRunFlags(int $business_id, string $date): array
+    {
+        $rows = \DB::table('cash_register_transactions as c')
+            ->join('cash_registers as cr', 'cr.id', '=', 'c.cash_register_id')
+            ->where('cr.business_id', $business_id)
+            ->where('c.transaction_type', 'change_run')
+            ->where('c.type', 'debit')
+            ->whereDate('c.created_at', $date)
+            ->get(['c.transaction_id', 'c.amount', 'c.created_at', 'cr.location_id']);
+        $flags = [];
+        foreach ($rows as $r) {
+            $back = \DB::table('cash_register_transactions')
+                ->where('transaction_type', 'change_run')->where('type', 'credit')
+                ->where('transaction_id', $r->transaction_id)->value('created_at');
+            $outNote = \DB::table('task_notes as n')->leftJoin('users as u', 'u.id', '=', 'n.user_id')
+                ->where('n.weekly_task_id', $r->transaction_id)->where('n.note', 'like', 'Took $100%')
+                ->value('u.first_name');
+            $who = ucfirst(strtolower(trim((string) $outNote))) ?: '?';
+            $flags[] = [
+                'location_id' => $r->location_id,
+                'kind'   => 'changerun',
+                'detail' => 'change run: $' . number_format((float) $r->amount, 0) . ' taken to the bank '
+                    . \Carbon\Carbon::parse($r->created_at)->format('g:ia')
+                    . ($back ? '' : ', change not put back in the drawer yet'),
+                'ask'    => $who,
+                'note'   => $back ? 'change put back in the drawer ' . \Carbon\Carbon::parse($back)->format('g:ia') : null,
+                'amount' => (float) $r->amount,
             ];
         }
         return $flags;
@@ -586,7 +624,7 @@ class RegisterReconUtil
     /** A drawer/handover flag someone already answered. */
     public static function isExplained(array $it): bool
     {
-        return in_array($it['kind'] ?? '', ['drawer', 'handover'], true) && !empty($it['note']);
+        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun'], true) && !empty($it['note']);
     }
 
     public static function shortRows(array $s): array
@@ -624,7 +662,7 @@ class RegisterReconUtil
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
-            foreach (['drawer', 'handover'] as $k) {
+            foreach (['drawer', 'handover', 'changerun'] as $k) {
                 foreach ($kinds[$k] ?? [] as $it) {
                     $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
                 }
