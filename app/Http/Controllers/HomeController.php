@@ -1552,6 +1552,8 @@ class HomeController extends Controller
             $r->avg_sell_days = (float) $r->avg_sell_days;
             $r->units = (int) $r->units;
             $r->revenue = (float) $r->revenue;
+            // Avg sale price per unit sold in this window.
+            $r->avg_price = $r->units > 0 ? $r->revenue / $r->units : 0;
             // Profit per $1 invested per day = Σ(sale − cost) ÷ Σ(cost × days
             // held): each purchase dollar is weighted by how long it sat on
             // the shelf. Same-day flips count as 1 day. Null when there's no
