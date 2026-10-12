@@ -238,6 +238,10 @@
                     ${{ number_format($budget['new']['spent']) }} spent of ${{ number_format($budget['new']['budget']) }},
                     <b style="color:{{ $budget['new']['remaining'] < 0 ? '#c62828' : '#2e7d32' }}">${{ number_format($budget['new']['remaining']) }} left</b>.
                     This order: <b id="ro-order-cost">$0</b>, which leaves <b id="ro-after">${{ number_format($budget['new']['remaining']) }}</b>.
+                    <div class="ro-muted" style="font-size:12px; margin-top:6px;">
+                        How the budget is set (Sabina's method): the weekly purchasing budget is the average of what we actually spent on inventory per week over the previous 2 months, from the cash-flow statement (Aug $50,981 + Sep $42,344 over 61 days = $10,700 a week, all stores).
+                        Hollywood gets 75% ($8,025) and Pico 25% ($2,675). Each store's budget is 65% new / 35% used, and this box shows the new part.
+                    </div>
                 </div>
             </div>
             @endif
