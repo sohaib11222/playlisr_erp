@@ -770,6 +770,22 @@ class InventoryCheckService
             ['week_no' => 11, 'start' => '2026-07-27', 'end' => '2026-08-02', 'budget' => 15000],
             ['week_no' => 12, 'start' => '2026-08-03', 'end' => '2026-08-09', 'budget' => 15000],
             ['week_no' => 13, 'start' => '2026-08-10', 'end' => '2026-08-16', 'budget' => 15000],
+            // Q4 (Sarah 10/11, "based on Sabina's 13 week"): inventory spend from
+            // the 3-entity cash-flow statement averaged $47,275/mo Jul-Sep
+            // (48,501 / 50,981 / 42,344) = ~$10,900/week. Edit here to change.
+            ['week_no' => 1,  'start' => '2026-10-12', 'end' => '2026-10-18', 'budget' => 10900],
+            ['week_no' => 2,  'start' => '2026-10-19', 'end' => '2026-10-25', 'budget' => 10900],
+            ['week_no' => 3,  'start' => '2026-10-26', 'end' => '2026-11-01', 'budget' => 10900],
+            ['week_no' => 4,  'start' => '2026-11-02', 'end' => '2026-11-08', 'budget' => 10900],
+            ['week_no' => 5,  'start' => '2026-11-09', 'end' => '2026-11-15', 'budget' => 10900],
+            ['week_no' => 6,  'start' => '2026-11-16', 'end' => '2026-11-22', 'budget' => 10900],
+            ['week_no' => 7,  'start' => '2026-11-23', 'end' => '2026-11-29', 'budget' => 10900],
+            ['week_no' => 8,  'start' => '2026-11-30', 'end' => '2026-12-06', 'budget' => 10900],
+            ['week_no' => 9,  'start' => '2026-12-07', 'end' => '2026-12-13', 'budget' => 10900],
+            ['week_no' => 10,  'start' => '2026-12-14', 'end' => '2026-12-20', 'budget' => 10900],
+            ['week_no' => 11,  'start' => '2026-12-21', 'end' => '2026-12-27', 'budget' => 10900],
+            ['week_no' => 12,  'start' => '2026-12-28', 'end' => '2027-01-03', 'budget' => 10900],
+            ['week_no' => 13,  'start' => '2027-01-04', 'end' => '2027-01-10', 'budget' => 10900],
         ];
     }
 
