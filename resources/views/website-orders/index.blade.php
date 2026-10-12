@@ -286,7 +286,11 @@
                     <span class="wo-fm-pill shipping">Shipping</span>
                   @endif
                 </td>
-                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
+                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
+                    <div style="font-size:11px;font-weight:600;color:{{ ($o['pick_progress']['picked'] ?? 0) >= ($o['pick_progress']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $o['pick_progress']['picked'] ?? 0 }}/{{ $o['pick_progress']['total'] ?? 0 }}</div>
+                  @endif
+                </td>
                 <td class="wo-placed">{{ $placed }}</td>
                 <td>
                   <div class="wo-row-actions">
@@ -480,7 +484,11 @@
                       <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif</div>
                     @endforeach
                   </td>
-                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
+                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
+                    @if(!empty($d['pick']))
+                      <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
+                    @endif
+                  </td>
                   <td class="wo-placed">{{ !empty($d['order_date']) ? date('M j, Y g:ia', strtotime($d['order_date'])) : '' }}</td>
                   <td>
                     <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
