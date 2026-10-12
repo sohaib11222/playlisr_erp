@@ -69,6 +69,14 @@ class RsdOrderController extends Controller
         $state = $this->loadState($biz);
         [$reqRows, $asOf] = $this->requests($state);
         $ica = app(InventoryCheckService::class);
+        if ($request->filled('feed_search')) {
+            $feeds = [];
+            foreach ($ica->knownSuppliers() as $k => $m) {
+                $f = $ica->loadSupplierFeed($biz, $k);
+                $feeds[$k] = ['rows' => count((array) ($f['rows'] ?? [])), 'imported_at' => $f['imported_at'] ?? ($f['fetched_at'] ?? null)];
+            }
+            return response()->json(['feeds' => $feeds, 'hits' => $ica->searchSupplierFeeds($biz, (string) $request->input('feed_search'))]);
+        }
         $suppliers = [];
         foreach ($ica->knownSuppliers() as $k => $meta) $suppliers[$k] = $meta['label'] ?? $k;
 

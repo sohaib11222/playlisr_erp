@@ -1582,6 +1582,20 @@ class InventoryCheckService
         return ['upcs' => array_values($found), 'prices' => $prices];
     }
 
+    /** Feed rows whose artist/title contain $needle (RSD order debug). */
+    public function searchSupplierFeeds(int $business_id, string $needle, int $limit = 60): array
+    {
+        $index = $this->supplierIndex($business_id);
+        $n = $this->normalizeMatchText($needle);
+        $out = [];
+        foreach ($index['compact'] as $e) {
+            if (strpos(($e['artist_norm'] ?? '') . ' ' . $this->normalizeMatchText((string) ($e['title'] ?? '')), $n) === false) continue;
+            $out[] = $e;
+            if (count($out) >= $limit) break;
+        }
+        return $out;
+    }
+
     /** [[artistNorm, titleKey], ...] for a product, same keys the supplier matcher uses. */
     public function albumKeys(?string $artist, ?string $title): array
     {
