@@ -62,7 +62,7 @@
                 </div>
             </div>
             <p style="margin:10px 0 0; font-size:15px;">
-                <b>{{ $totalQty }}</b> copies of <b>{{ count(array_filter($rows, function ($r) { return $r['qty'] > 0; })) }}</b> albums for {{ $storeName }}@if($pricedQty), {{ $money($totalCost) }} for the ones with a price@endif.
+                <b>{{ $totalQty }}</b> copies of <b>{{ count(array_filter($rows, function ($r) { return $r['qty'] > 0; })) }}</b> albums for {{ $storeName }}@if($pricedQty), {{ $money($totalCost) }} for the ones with a price @endif.
             </p>
         </div>
     </div>
