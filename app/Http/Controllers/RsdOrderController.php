@@ -115,8 +115,13 @@ class RsdOrderController extends Controller
                 if ($e['in_stock'] === false && $isRsd === false) continue;
                 if (!$best || $e['cost'] < $best['cost']) $best = $e;
             }
-            $qty = $state['qty'][$store][$key] ?? null;
-            $suggested = self::suggested($requested);
+            $carts = [];
+            foreach (['hollywood' => (int) $hw, 'pico' => (int) $pico] as $st => $req) {
+                $q = $state['qty'][$st][$key] ?? null;
+                $sug = self::suggested($req);
+                $carts[$st] = ['requested' => $req, 'suggested' => $sug, 'qty' => $q === null ? $sug : (int) $q,
+                    'edited' => $q !== null, 'ordered' => $state['ordered'][$st][$key] ?? null];
+            }
             $rows[] = [
                 'key' => $key,
                 'title' => trim(preg_replace('/\s*\((RSD|NOT RSD - REGULAR RELEASE)\)\s*$/i', '', $title)),
@@ -124,38 +129,37 @@ class RsdOrderController extends Controller
                 'is_rsd' => $isRsd,
                 'hw' => (int) $hw,
                 'pico' => (int) $pico,
-                'mine' => $mine,
-                'none' => $none,
-                'other' => $other,
-                'requested' => $requested,
-                'suggested' => $suggested,
-                'qty' => $qty === null ? $suggested : (int) $qty,
-                'qty_edited' => $qty !== null,
+                'carts' => $carts,
                 'upcs' => $p['upcs'],
                 'prices' => $p['prices'],
                 'best' => $best,
-                'ordered' => $state['ordered'][$store][$key] ?? null,
             ];
         }
         usort($rows, function ($a, $b) {
-            return [$b['requested'], $b['hw'] + $b['pico'] + $b['none'], $a['artist']] <=> [$a['requested'], $a['hw'] + $a['pico'] + $a['none'], $b['artist']];
+            return [$b['hw'] + $b['pico'], $a['artist']] <=> [$a['hw'] + $a['pico'], $b['artist']];
         });
 
-        // Per-distributor lists: each title goes to its cheapest distributor.
-        $byDist = [];
-        $unpriced = [];
-        foreach ($rows as $r) {
-            if ($r['qty'] <= 0) continue;
-            if ($r['best']) {
-                $byDist[$r['best']['supplier_key']][] = $r;
-            } else {
-                $unpriced[] = $r;
+        // One cart per store, split by distributor: each title goes to its cheapest one.
+        $carts = [];
+        foreach (array_keys(self::STORES) as $st) {
+            $carts[$st] = ['byDist' => [], 'unpriced' => [], 'qty' => 0, 'cost' => 0.0];
+            foreach ($rows as $r) {
+                $q = $r['carts'][$st]['qty'];
+                if ($q <= 0) continue;
+                $line = $r + ['qty' => $q];
+                $carts[$st]['qty'] += $q;
+                if ($r['best']) {
+                    $carts[$st]['byDist'][$r['best']['supplier_key']][] = $line;
+                    $carts[$st]['cost'] += $q * $r['best']['cost'];
+                } else {
+                    $carts[$st]['unpriced'][] = $line;
+                }
             }
         }
 
         $locationId = null;
         foreach (\App\BusinessLocation::forDropdown($biz, false)->toArray() as $id => $name) {
-            if (stripos($name, $store === 'pico' ? 'pico' : 'hollywood') !== false) $locationId = $id;
+            if (stripos($name, 'hollywood') !== false) $locationId = $id;
         }
 
         return view('report.rsd_order', [
@@ -164,8 +168,7 @@ class RsdOrderController extends Controller
             'stores' => self::STORES,
             'rows' => $rows,
             'suppliers' => $suppliers,
-            'byDist' => $byDist,
-            'unpriced' => $unpriced,
+            'carts' => $carts,
             'asOf' => $asOf,
             'event' => config('rsd_order.event'),
             'eventDate' => config('rsd_order.event_date'),
