@@ -774,6 +774,7 @@ class TaskController extends Controller
      */
     const CHANGE_RUN_OUT_NOTE = 'Took $100 from the drawer to the bank.';
     const CHANGE_RUN_IN_NOTE = 'Put $100 in change back in the drawer.';
+    const CHANGE_RUN_FOLLOWUP_TITLE = 'Put the change in the drawer';
 
     /**
      * Change-run task buttons (Sarah 2026-10-11). "out" logs $100 cash
@@ -837,9 +838,39 @@ class TaskController extends Controller
                 'user_id' => auth()->id(),
                 'note' => $step === 'out' ? self::CHANGE_RUN_OUT_NOTE : self::CHANGE_RUN_IN_NOTE,
             ]);
+            if ($step === 'out') {
+                // Follow-up task for whoever took the cash, so "put the change
+                // in the drawer" sits in their open tasks (and the close-register
+                // reminder) until it's done (Sarah 2026-10-11).
+                $followUp = WeeklyTask::create([
+                    'business_id' => $task->business_id,
+                    'title' => self::CHANGE_RUN_FOLLOWUP_TITLE,
+                    'description' => "You took \$100 to the bank for change. When the change is in the drawer, tap \"2. Put change in drawer\" on the POS screen: menu button (top right) > Change run.",
+                    'start_date' => now()->toDateString(),
+                    'end_date' => now()->toDateString(),
+                    'task_type' => 'daily',
+                    'repeat_daily' => false,
+                    'repeat_weekly' => false,
+                    'store' => $task->store,
+                    'priority' => 'high',
+                    'requires_photo' => false,
+                    'status' => 'not_started',
+                    'created_by' => auth()->id(),
+                ]);
+                $followUp->assignees()->sync([auth()->id()]);
+            }
             if ($step === 'in') {
                 $this->applyStatusTransition($task, 'complete', false);
                 $task->save();
+                $open = WeeklyTask::where('business_id', $task->business_id)
+                    ->where('store', $task->store)
+                    ->where('title', self::CHANGE_RUN_FOLLOWUP_TITLE)
+                    ->where('status', '!=', 'complete')
+                    ->get();
+                foreach ($open as $f) {
+                    $this->applyStatusTransition($f, 'complete', false);
+                    $f->save();
+                }
             }
             return true;
         });
