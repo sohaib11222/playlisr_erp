@@ -90,6 +90,14 @@ class SupplierHarvestController extends Controller
                     $seen[$d] = true;
                 }
             });
+        // RSD order page UPCs (typed in there) so the browser pulls price them too.
+        $rsd = is_file(storage_path('app/rsd-order-' . $biz . '.json'))
+            ? json_decode((string) file_get_contents(storage_path('app/rsd-order-' . $biz . '.json')), true) : [];
+        foreach ((array) ($rsd['upc'] ?? []) as $u) {
+            $d = preg_replace('/\D+/', '', (string) $u);
+            if (strlen($d) === 11) $d = '0' . $d;
+            if (strlen($d) >= 12 && strlen($d) <= 13) $seen[$d] = true;
+        }
         return $this->cors(response()->json(['success' => true, 'upcs' => array_keys($seen)]));
     }
 

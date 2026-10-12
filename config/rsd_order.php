@@ -1,0 +1,57 @@
+<?php
+
+// RSD Black Friday 2026 order page (/reports/rsd-order). Starting snapshot of
+// the customer request sheet ("RSD Black Friday 2026: Customer Requests",
+// tab "Nivessa RSD Order", visible table B:F = Instagram + DMs + Quo + website)
+// as of 2026-10-12. Newer counts are pasted on the page and kept in
+// storage/app/rsd-order-{biz}.json, which wins over this list.
+return [
+    'event' => 'RSD Black Friday 2026',
+    'event_date' => '2026-11-27',
+    'sheet_url' => 'https://docs.google.com/spreadsheets/d/1gvUfWCewRcxV7fzOlrE2VqgyTTvn-3BJ1VSICU1ULJk/edit',
+    'requests_as_of' => '2026-10-12',
+    // [title, artist, hollywood, pico, no store]
+    'requests' => [
+        ['3121 LAS VEGAS LIVE (3 X LP) (RSD)', 'PRINCE', 3, 2, 0],
+        ['DAY AND NIGHT (CONTINUED) (2 X LP) (RSD)', 'JEPSEN,CARLY RAE', 2, 2, 0],
+        ['DRAW YOU OUT (7" SINGLE) (RSD)', 'KAHAN,NOAH', 1, 3, 0],
+        ['THE LAST OF THE BUGS (12" VINYL EP) (RSD)', 'KAHAN,NOAH', 1, 3, 0],
+        ['SUPER SELECTION (LP) (RSD)', 'TAKANAKA,MASAYOSHI', 2, 2, 0],
+        ['SUPER TAKANAKA LIVE (LP) (RSD)', 'TAKANAKA,MASAYOSHI', 2, 2, 0],
+        ['TAKANAKA (LP) (RSD)', 'TAKANAKA,MASAYOSHI', 2, 2, 0],
+        ['GREENGREEN PLAYEXTENDED (VINYL RSD VER.) (LP) (RSD)', 'CORTIS', 1, 1, 1],
+        ['IN ANOTHER LIFE (VINYL) (RSD)', 'SOMBR', 1, 2, 0],
+        ['SHINOLA, VOL. 2 (2 X LP) (RSD)', 'WEEN', 1, 2, 0],
+        ["THE LIFE OF PI'ERRE 4 (LP) (RSD)", "BOURNE,PI'ERRE", 1, 1, 0],
+        ['CAROUSEL BALLROOM, SAN FRANCISCO, CA, 2/14/68 (LIVE) (4 X LP) (RSD)', 'GRATEFUL DEAD', 0, 2, 0],
+        ['ON A BACK PORCH VOL. 4 (LP) (RSD)', 'GRATEFUL DEAD', 0, 2, 0],
+        ['KATSEYE: THE DANCE BREAKS (12" VINYL) (RSD)', 'KATSEYE', 1, 1, 0],
+        ['SKELETONS BANDAIDS ALWAYS TRILOGY (VINYL) (RSD)', 'KESHI', 1, 1, 0],
+        ['REMEMBER MY SONG (LP) (RSD)', 'SIFFRE,LABI', 0, 2, 0],
+        ['KONNAKOL (DELUXE EDITION) (2 X LP) (RSD)', 'ZAYN', 1, 1, 0],
+        ["PAC'S LIFE (20TH ANNIVERSARY SPECIAL EDITION) (2 X LP) (RSD)", '2PAC', 1, 0, 0],
+        ['BLACK IS THE NEW BLACK (VINYL) (RSD)', 'AMOS,TORI', 1, 0, 0],
+        ['HONKEY KONG (15TH ANNIVERSARY REISSUE) (2 X LP) (RSD)', 'APATHY', 1, 0, 0],
+        ['COSMIC (LP) (RSD)', 'BAZZI', 1, 0, 0],
+        ['UNDER THE SKIN (LP) (RSD)', 'BUCKINGHAM,LINDSEY', 1, 0, 0],
+        ['SPECIAL PRESENTATION (LP) (RSD)', 'CZARFACE', 0, 1, 0],
+        ['BLACK CLASSICAL MUSIC (VINYL) (NOT RSD - REGULAR RELEASE)', 'DAYES,YUSSEF', 0, 1, 0],
+        ['CHRISTMAS & CHILL (VINYL) (NOT RSD - REGULAR RELEASE)', 'GRANDE,ARIANA', 1, 0, 0],
+        ['GEORGE HARRISON (ZOETROPE) (LP) (RSD)', 'HARRISON,GEORGE', 1, 0, 0],
+        ['THIRTY THREE & 1/3 (ZOETROPE) (LP) (RSD)', 'HARRISON,GEORGE', 1, 0, 0],
+        ['LIFE AFTER LOVE, PART 1 & ACT 2 (LP) (RSD)', 'MONET,VICTORIA', 1, 0, 0],
+        ["DECADE OF DECADENCE '81 - '91 (2 X LP) (RSD)", 'MOTLEY CRUE', 1, 0, 0],
+        ['PERFECT TIMING (2 X LP) (RSD)', 'NAV/METRO BOOMIN', 0, 1, 0],
+        ['CANDY GIRL (LP) (RSD)', 'NEW EDITION', 1, 0, 0],
+        ['BELLA DONNA (LP) (RSD)', 'NICKS,STEVIE', 1, 0, 0],
+        ["AMERIKA'S NEXT TOP PARTY (EXTENDED CUT) (VINYL) (RSD)", 'PARTYOF2', 0, 1, 0],
+        ['ISLAND IN THE SUN (LP) (RSD)', 'SHWAYZE AND CISCO ADLER', 1, 0, 0],
+        ['SONGS FROM THE EARTH (LP) (RSD)', 'SON OF SAM', 0, 1, 0],
+        ['BREAK THE CYCLE (25TH ANNIVERSARY LIVE) (LP) (RSD)', 'STAIND', 0, 1, 0],
+        ['THE MONKEES SESSIONS (LP) (RSD)', 'THE MONKEES', 1, 0, 0],
+        ['EP001 & EP002 (LP) (RSD)', 'THENEWNO2 (DHANI HARRISON)', 1, 0, 0],
+        ['LIVE AT KEXP SEATTLE (LP) (RSD)', 'THEY MIGHT BE GIANTS', 0, 1, 0],
+        ['FOUR CLASSIC ALBUMS (CD) (RSD)', 'TV GIRL', 0, 1, 0],
+        ['JAZZ DISPENSARY: COSMIC NUGGETS (7 VINYL BOX SET) (RSD)', 'VARIOUS ARTISTS', 0, 1, 0],
+    ],
+];

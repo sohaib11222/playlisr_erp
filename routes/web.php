@@ -738,6 +738,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     // Weekly Reorder (Jon's spreadsheet process as one page, Sarah 2026-10-08)
     Route::get('/reports/reorder', 'ReorderController@index');
+    Route::get('/reports/rsd-order', 'RsdOrderController@index');
+    Route::post('/reports/rsd-order/qty', 'RsdOrderController@saveQty');
+    Route::post('/reports/rsd-order/ordered', 'RsdOrderController@markOrdered');
+    Route::post('/reports/rsd-order/requests', 'RsdOrderController@pasteRequests');
     Route::get('/reports/reorder/csv', 'ReorderController@csv');
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');

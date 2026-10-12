@@ -1534,6 +1534,54 @@ class InventoryCheckService
         return array_values($out);
     }
 
+    /**
+     * Distributor prices for one Record Store Day title (RSD order page).
+     * A plain title match would also hit the regular pressing ("TAKANAKA (LP)"
+     * matches the normal Takanaka LP), so only feed rows whose title says
+     * RSD count as the release; their barcodes then price it at every
+     * distributor (Alliance/Secretly/Monostereo feeds are barcode-only).
+     * $rsd=false (a regular release on the request sheet) = normal matcher.
+     *
+     * @return array{upcs: string[], prices: array<string, array>}
+     */
+    public function rsdPrices(int $business_id, ?string $artist, ?string $title, ?string $format, array $upcs = [], bool $rsd = true): array
+    {
+        if (!$rsd) {
+            $rows = $this->allSupplierPrices($business_id, $artist, $title, $format, $upcs[0] ?? null);
+            $prices = [];
+            foreach ($rows as $r) $prices[$r['supplier_key']] = $r;
+            return ['upcs' => array_values(array_filter(array_unique(array_map(function ($r) { return preg_replace('/\D+/', '', (string) ($r['upc'] ?? '')); }, $rows)))), 'prices' => $prices];
+        }
+        $index = $this->supplierIndex($business_id);
+        $want = $this->formatFamily($format);
+        $found = [];
+        foreach ($upcs as $u) {
+            $n = $this->normalizeUpc($u);
+            if ($n !== '') $found[$n] = preg_replace('/\D+/', '', (string) $u);
+        }
+        foreach ($this->titleKeyCandidates($artist, $title) as [$aNorm, $tKey]) {
+            if ($tKey === '' || trim((string) $aNorm) === '') continue;
+            foreach ($index['byTitle'][$tKey] ?? [] as $i) {
+                $e = $index['compact'][$i];
+                if (!preg_match('/\bRSD\b|record store day/i', (string) ($e['title'] ?? ''))) continue;
+                if (trim((string) ($e['artist_norm'] ?? '')) === '' || !$this->artistMatches($aNorm, $e['artist_norm'])) continue;
+                $got = $this->formatFamily($e['format'] ?? null) ?? $this->formatFamily($e['title'] ?? null);
+                if ($want !== null && $got !== null && $want !== $got) continue;
+                $n = $this->normalizeUpc($e['upc'] ?? null);
+                if ($n !== '') $found[$n] = preg_replace('/\D+/', '', (string) $e['upc']);
+            }
+        }
+        $prices = [];
+        foreach ($found as $n => $_) {
+            foreach ($index['byUpc'][$n] ?? [] as $i) {
+                $e = $index['compact'][$i];
+                $k = $e['supplier_key'];
+                if (!isset($prices[$k]) || $e['cost'] < $prices[$k]['cost']) $prices[$k] = $e;
+            }
+        }
+        return ['upcs' => array_values($found), 'prices' => $prices];
+    }
+
     /** [[artistNorm, titleKey], ...] for a product, same keys the supplier matcher uses. */
     public function albumKeys(?string $artist, ?string $title): array
     {
