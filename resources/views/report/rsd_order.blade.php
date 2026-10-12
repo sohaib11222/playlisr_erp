@@ -94,7 +94,7 @@
                         </td>
                         <td class="n {{ $store === 'hollywood' ? 'here' : '' }}"><input type="number" min="0" class="rsd-num rsd-req" data-field="hollywood" value="{{ $r['hw'] }}"></td>
                         <td class="n {{ $store === 'pico' ? 'here' : '' }}"><input type="number" min="0" class="rsd-num rsd-req" data-field="pico" value="{{ $r['pico'] }}">
-                            @if($r['none'])<div class="rsd-muted">+{{ $r['none'] }} no store</div>@endif</td>
+</td>
                         <td class="n here">
                             <input type="number" min="0" class="form-control input-sm rsd-num rsd-qty" value="{{ $r['qty'] }}" data-suggested="{{ $r['suggested'] }}">
                         </td>
@@ -125,7 +125,6 @@
                     <select name="where" class="form-control">
                         <option value="hollywood" @if($store === 'hollywood') selected @endif>Hollywood</option>
                         <option value="pico" @if($store === 'pico') selected @endif>Pico</option>
-                        <option value="none">No store given</option>
                     </select>
                 </div>
                 <div class="form-group"><label><input type="checkbox" name="regular" value="1"> Not an RSD title</label></div>

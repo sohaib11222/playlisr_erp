@@ -83,10 +83,13 @@ class RsdOrderController extends Controller
         $rows = [];
         foreach ($reqRows as $r) {
             [$title, $artist, $hw, $pico, $none] = array_pad(array_values($r), 5, 0);
+            // Sarah 10/12: a request with no store goes to Hollywood.
+            $hw = (int) $hw + (int) $none;
+            $none = 0;
             $mine = $store === 'hollywood' ? (int) $hw : (int) $pico;
             $other = $store === 'hollywood' ? (int) $pico : (int) $hw;
             $none = (int) $none;
-            $requested = $mine + $none; // no-store requests count at both stores
+            $requested = $mine;
             if ((int) $hw + (int) $pico + $none <= 0) continue;
             $key = self::key($artist, $title);
             $isRsd = stripos($title, 'NOT RSD') === false;
@@ -185,6 +188,7 @@ class RsdOrderController extends Controller
             if (self::key($r[1], $r[0]) !== $key) continue;
             if ($col === null) return response()->json(['success' => false, 'msg' => 'Unknown column']);
             $r[$col] = $val;
+            if ($col === 2) $r[4] = 0; // the Hollywood box already includes no-store requests
             $rows[$i] = $r;
             $found = true;
         }
@@ -208,7 +212,7 @@ class RsdOrderController extends Controller
         if ($request->input('regular')) $title .= ' (NOT RSD - REGULAR RELEASE)';
         $state = $this->loadState($biz);
         [$rows] = $this->requests($state);
-        $col = ['hollywood' => 2, 'pico' => 3][$where] ?? 4;
+        $col = ['hollywood' => 2, 'pico' => 3][$where] ?? 2;
         $key = self::key($artist, $title);
         $hit = false;
         foreach ($rows as $i => $r) {
