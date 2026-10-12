@@ -321,4 +321,63 @@ class RsdOrderController extends Controller
         return redirect()->action('RsdOrderController@index', ['store' => $store])
             ->with('status', ['success' => 1, 'msg' => count($rows) . ' requested titles loaded.']);
     }
+
+    /**
+     * LA regulars for the RSD eblast (Sarah 10/12): customers with an email
+     * who bought in one of our stores 2+ times in the last 12 months. In-store
+     * buyers are local by definition; anyone whose saved zip is outside LA
+     * County (900-918, 935) is dropped. ?format=csv downloads the Brevo import.
+     */
+    public function laRegulars(Request $request)
+    {
+        if (!auth()->user()->can('customer.view')) abort(403);
+        $biz = (int) $request->session()->get('user.business_id');
+        $min = max(1, (int) $request->input('min', 2));
+        $since = now()->subMonths((int) $request->input('months', 12))->toDateString();
+        $locs = \App\BusinessLocation::where('business_id', $biz)->pluck('name', 'id')->toArray();
+        $storeLocs = array_keys(array_filter($locs, function ($n) { return stripos($n, 'hollywood') !== false || stripos($n, 'pico') !== false; }));
+        $picoLocs = array_map('intval', array_keys(array_filter($locs, function ($n) { return stripos($n, 'pico') !== false; })));
+        $rows = \DB::table('transactions as t')
+            ->join('contacts as c', 'c.id', '=', 't.contact_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', $since)
+            ->whereIn('t.location_id', $storeLocs)
+            ->where('c.is_default', 0)
+            ->whereNotNull('c.email')->where('c.email', 'like', '%@%.%')
+            ->where('c.email', 'not like', '%@nivessa.com')
+            ->where('c.name', 'not like', '%website%')->where('c.name', 'not like', '%walk%in%')
+            ->groupBy('c.id', 'c.email', 'c.first_name', 'c.last_name', 'c.name', 'c.zip_code')
+            ->havingRaw('COUNT(DISTINCT t.id) >= ?', [$min])
+            ->select('c.id', 'c.email', 'c.first_name', 'c.last_name', 'c.name', 'c.zip_code',
+                \DB::raw('COUNT(DISTINCT t.id) as purchases'), \DB::raw('MAX(t.transaction_date) as last_purchase'),
+                \DB::raw('SUM(t.final_total) as spent'),
+                \DB::raw('SUM(t.location_id IN (' . implode(',', $picoLocs ?: [0]) . ')) as pico_visits'))
+            ->orderByDesc('purchases')->get();
+        $out = [];
+        $seen = [];
+        foreach ($rows as $r) {
+            $email = strtolower(trim($r->email));
+            if (isset($seen[$email]) || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+            $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
+            if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+            $seen[$email] = true;
+            $first = trim((string) $r->first_name);
+            if ($first === '') $first = explode(' ', trim((string) $r->name))[0] ?? '';
+            $out[] = ['EMAIL' => $email, 'FIRSTNAME' => ucfirst(strtolower($first)), 'LASTNAME' => trim((string) $r->last_name),
+                'PURCHASES' => (int) $r->purchases, 'LAST_PURCHASE' => substr((string) $r->last_purchase, 0, 10),
+                'SPENT' => round((float) $r->spent, 2), 'STORE' => ((int) $r->pico_visits * 2 > (int) $r->purchases) ? 'Pico' : 'Hollywood'];
+        }
+        if ($request->input('format') === 'csv') {
+            return response()->streamDownload(function () use ($out) {
+                $f = fopen('php://output', 'w');
+                fputcsv($f, ['EMAIL', 'FIRSTNAME', 'LASTNAME', 'PURCHASES', 'LAST_PURCHASE', 'STORE']);
+                foreach ($out as $o) fputcsv($f, [$o['EMAIL'], $o['FIRSTNAME'], $o['LASTNAME'], $o['PURCHASES'], $o['LAST_PURCHASE'], $o['STORE']]);
+                fclose($f);
+            }, 'la-regulars-' . now()->format('Y-m-d') . '.csv');
+        }
+        $by = [];
+        foreach ($out as $o) { $b = $o['PURCHASES'] >= 10 ? '10+' : ($o['PURCHASES'] >= 5 ? '5-9' : ($o['PURCHASES'] >= 3 ? '3-4' : '2')); $by[$b] = ($by[$b] ?? 0) + 1; }
+        return response()->json(['since' => $since, 'min_purchases' => $min, 'count' => count($out), 'by_purchases' => $by,
+            'by_store' => array_count_values(array_column($out, 'STORE')), 'sample' => array_map(function ($o) { return ['purchases' => $o['PURCHASES'], 'last' => $o['LAST_PURCHASE'], 'store' => $o['STORE']]; }, array_slice($out, 0, 5))]);
+    }
 }

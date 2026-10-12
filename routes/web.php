@@ -747,6 +747,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/rsd-order/request', 'RsdOrderController@saveRequest');
     Route::post('/reports/rsd-order/add', 'RsdOrderController@addRequest');
     Route::post('/reports/rsd-order/prices', 'RsdOrderController@savePrices');
+    Route::get('/reports/rsd-order/la-regulars', 'RsdOrderController@laRegulars');
     Route::get('/reports/reorder/csv', 'ReorderController@csv');
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
