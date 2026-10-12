@@ -140,6 +140,9 @@ class InventoryCheckService
         if (!$week) {
             return null;
         }
+        if ($week['budget'] === null) {
+            $week['budget'] = $this->salesBasedWeeklyBudget($business_id, $week['start']);
+        }
 
         // NEW spend now counts distributor orders at the OPEN 'ordered' stage
         // only — see the $newRows classification loop below. (Sarah 2026-07-19,
@@ -728,6 +731,27 @@ class InventoryCheckService
      * to reach into the reports controller. Keep in sync when the cash
      * flow plan rolls forward.
      */
+    /** Sabina's ratio: purchases = 53% of revenue (her 13-week plan, May-Aug 2026). */
+    const SABINA_PURCHASE_RATIO = 0.53;
+
+    /** 53% of average weekly store sales (ex tax, Hollywood + Pico, no Whatnot or warehouse) over the 4 weeks before $weekStart. */
+    public function salesBasedWeeklyBudget(int $business_id, string $weekStart): int
+    {
+        $end = Carbon::parse($weekStart)->startOfDay();
+        $start = $end->copy()->subDays(28);
+        $sales = (float) DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')->where('status', 'final')
+            ->where('transaction_date', '>=', $start->toDateTimeString())
+            ->where('transaction_date', '<', $end->toDateTimeString())
+            ->where(function ($q) { $q->whereNull('source')->orWhere('source', 'not like', '%whatnot%'); })
+            // Store floors only, like the LFL report (warehouse/online excluded).
+            ->whereNotIn('location_id', DB::table('business_locations')->where('business_id', $business_id)
+                ->where('name', 'like', '%warehouse%')->pluck('id')->all() ?: [0])
+            ->sum('total_before_tax');
+        return (int) (round($sales / 4 * self::SABINA_PURCHASE_RATIO / 100) * 100);
+    }
+
     /**
      * Weeks from the cash-flow sheet uploaded on /reports/cash-flow (Sarah:
      * "it's based on cash flow"): weekly purchase budget = the COST OF GOODS
@@ -770,22 +794,23 @@ class InventoryCheckService
             ['week_no' => 11, 'start' => '2026-07-27', 'end' => '2026-08-02', 'budget' => 15000],
             ['week_no' => 12, 'start' => '2026-08-03', 'end' => '2026-08-09', 'budget' => 15000],
             ['week_no' => 13, 'start' => '2026-08-10', 'end' => '2026-08-16', 'budget' => 15000],
-            // Q4 (Sarah 10/11, "based on Sabina's 13 week"): inventory spend from
-            // the 3-entity cash-flow statement averaged $47,275/mo Jul-Sep
-            // (48,501 / 50,981 / 42,344) = ~$10,900/week. Edit here to change.
-            ['week_no' => 1,  'start' => '2026-10-12', 'end' => '2026-10-18', 'budget' => 10900],
-            ['week_no' => 2,  'start' => '2026-10-19', 'end' => '2026-10-25', 'budget' => 10900],
-            ['week_no' => 3,  'start' => '2026-10-26', 'end' => '2026-11-01', 'budget' => 10900],
-            ['week_no' => 4,  'start' => '2026-11-02', 'end' => '2026-11-08', 'budget' => 10900],
-            ['week_no' => 5,  'start' => '2026-11-09', 'end' => '2026-11-15', 'budget' => 10900],
-            ['week_no' => 6,  'start' => '2026-11-16', 'end' => '2026-11-22', 'budget' => 10900],
-            ['week_no' => 7,  'start' => '2026-11-23', 'end' => '2026-11-29', 'budget' => 10900],
-            ['week_no' => 8,  'start' => '2026-11-30', 'end' => '2026-12-06', 'budget' => 10900],
-            ['week_no' => 9,  'start' => '2026-12-07', 'end' => '2026-12-13', 'budget' => 10900],
-            ['week_no' => 10,  'start' => '2026-12-14', 'end' => '2026-12-20', 'budget' => 10900],
-            ['week_no' => 11,  'start' => '2026-12-21', 'end' => '2026-12-27', 'budget' => 10900],
-            ['week_no' => 12,  'start' => '2026-12-28', 'end' => '2027-01-03', 'budget' => 10900],
-            ['week_no' => 13,  'start' => '2027-01-04', 'end' => '2027-01-10', 'budget' => 10900],
+            // Q4 (Sarah 10/11): "go by the same numbers Sabina did". Her 13-week
+            // plan (May 18 - Aug 16) bought 155,676 against 293,222 forecast
+            // revenue = 53%. budget null = 53% of the average weekly store sales
+            // (ex tax) over the 4 weeks before that week, so busy weeks get more.
+            ['week_no' => 1,  'start' => '2026-10-12', 'end' => '2026-10-18', 'budget' => null],
+            ['week_no' => 2,  'start' => '2026-10-19', 'end' => '2026-10-25', 'budget' => null],
+            ['week_no' => 3,  'start' => '2026-10-26', 'end' => '2026-11-01', 'budget' => null],
+            ['week_no' => 4,  'start' => '2026-11-02', 'end' => '2026-11-08', 'budget' => null],
+            ['week_no' => 5,  'start' => '2026-11-09', 'end' => '2026-11-15', 'budget' => null],
+            ['week_no' => 6,  'start' => '2026-11-16', 'end' => '2026-11-22', 'budget' => null],
+            ['week_no' => 7,  'start' => '2026-11-23', 'end' => '2026-11-29', 'budget' => null],
+            ['week_no' => 8,  'start' => '2026-11-30', 'end' => '2026-12-06', 'budget' => null],
+            ['week_no' => 9,  'start' => '2026-12-07', 'end' => '2026-12-13', 'budget' => null],
+            ['week_no' => 10,  'start' => '2026-12-14', 'end' => '2026-12-20', 'budget' => null],
+            ['week_no' => 11,  'start' => '2026-12-21', 'end' => '2026-12-27', 'budget' => null],
+            ['week_no' => 12,  'start' => '2026-12-28', 'end' => '2027-01-03', 'budget' => null],
+            ['week_no' => 13,  'start' => '2027-01-04', 'end' => '2027-01-10', 'budget' => null],
         ];
     }
 
