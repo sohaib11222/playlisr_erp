@@ -225,7 +225,7 @@
             <h3 style="margin-top:0">&ldquo;Do you buy records?&rdquo; / selling a collection <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, open until {{ $ppHwClose }} today, and Pico is at 5770 W Pico Blvd, open until {{ $ppPicoClose }} today.</span>
+                <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, Los Angeles, CA 90028, open until {{ $ppHwClose }} today, and Pico is at 5770 W Pico Blvd, Los Angeles, CA 90019, open until {{ $ppPicoClose }} today.</span>
             </div>
             <div class="qa">
                 <p class="q">Big collection (10+ boxes)</p>
@@ -264,15 +264,15 @@
                 <span class="say">Yes, we're open until {{ $ppHwClose }} today in Hollywood and {{ $ppPicoClose }} at Pico. Come by!</span>
             </div>
             <div class="qa">
-                <p class="q">&ldquo;Where are you?&rdquo;</p>
-                <span class="say">Hollywood is at 6434 Hollywood Blvd and Pico is at 5770 W Pico Blvd. See you there!</span>
+                <p class="q">&ldquo;Where are you located?&rdquo;</p>
+                <span class="say">Hollywood is at 6434 Hollywood Blvd, Los Angeles, CA 90028 and Pico is at 5770 W Pico Blvd, Los Angeles, CA 90019. See you soon!</span>
             </div>
         </div>
         <div class="card" id="events" style="margin-top:14px">
             <h3 style="margin-top:0">Events, performing, renting the space <span class="prio low">Quick</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">We'd love to host you! You can book at <a href='https://nivessa.com/venues' target='_blank' rel='noopener'>nivessa.com/venues</a>.</span>
+                <span class="say">We'd love to host your event! You can book a time at <a href='https://nivessa.com/venues' target='_blank' rel='noopener'>nivessa.com/venues</a>.</span>
             </div>
         </div>
         <div class="card" id="lost" style="margin-top:14px">
