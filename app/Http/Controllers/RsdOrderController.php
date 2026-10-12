@@ -355,6 +355,19 @@ class RsdOrderController extends Controller
             ->orderByDesc('purchases')->get();
         $out = [];
         $seen = [];
+        // Clover (where cashiers ring in-store sales) customers: the rewards
+        // sync keeps lifetime_purchases + last_purchase_date on the contact.
+        $minSpent = (float) $request->input('min_spent', 75);
+        $clover = \DB::table('contacts as c')
+            ->where('c.business_id', $biz)->whereNotNull('c.clover_customer_id')
+            ->where('c.is_default', 0)
+            ->whereNotNull('c.email')->where('c.email', 'like', '%@%.%')->where('c.email', 'not like', '%@nivessa.com')
+            ->where('c.last_purchase_date', '>=', $since)
+            ->where('c.lifetime_purchases', '>=', $minSpent)
+            ->select('c.id', 'c.email', 'c.first_name', 'c.last_name', 'c.name', 'c.zip_code',
+                \DB::raw('0 as purchases'), 'c.last_purchase_date as last_purchase', 'c.lifetime_purchases as spent', \DB::raw('0 as pico_visits'))
+            ->orderByDesc('c.lifetime_purchases')->get();
+        $rows = $rows->concat($clover);
         foreach ($rows as $r) {
             $email = strtolower(trim($r->email));
             if (isset($seen[$email]) || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
@@ -375,8 +388,8 @@ class RsdOrderController extends Controller
                 fclose($f);
             }, 'la-regulars-' . now()->format('Y-m-d') . '.csv');
         }
-        $by = [];
-        foreach ($out as $o) { $b = $o['PURCHASES'] >= 10 ? '10+' : ($o['PURCHASES'] >= 5 ? '5-9' : ($o['PURCHASES'] >= 3 ? '3-4' : '2')); $by[$b] = ($by[$b] ?? 0) + 1; }
+        $by = ['clover_spent_75_150' => 0, 'clover_spent_150_300' => 0, 'clover_spent_300_plus' => 0];
+        foreach ($out as $o) { if ($o['PURCHASES'] === 0) { $k = $o['SPENT'] >= 300 ? 'clover_spent_300_plus' : ($o['SPENT'] >= 150 ? 'clover_spent_150_300' : 'clover_spent_75_150'); $by[$k]++; continue; } $b = $o['PURCHASES'] >= 10 ? '10+' : ($o['PURCHASES'] >= 5 ? '5-9' : ($o['PURCHASES'] >= 3 ? '3-4' : '2')); $by[$b] = ($by[$b] ?? 0) + 1; }
         return response()->json(['since' => $since, 'min_purchases' => $min, 'count' => count($out), 'by_purchases' => $by,
             'by_store' => array_count_values(array_column($out, 'STORE')), 'sample' => array_map(function ($o) { return ['purchases' => $o['PURCHASES'], 'last' => $o['LAST_PURCHASE'], 'store' => $o['STORE']]; }, array_slice($out, 0, 5))]);
     }
