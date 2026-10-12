@@ -125,13 +125,13 @@ class Kernel extends ConsoleKernel
         // (import_source, import_external_id) so re-runs upsert without
         // duplicating. Same buttons live at /admin/channel-sales-sync for
         // manual/backfill runs. Sarah 2026-06-19.
-        // Nick's Clover clock-in at Hollywood -> #shipping "what to ship"
-        // update (Sarah, 2026-10-12). Runs every 5 min but only calls Clover
-        // around his scheduled Sling shift starts (see ShippingClockInWindow);
-        // read-only, posts once per day.
-        $schedule->command('shipping:clock-in-watch')
+        // Daily shipping summary to #shipping + Sarah's DM, 15 min after
+        // Nick's Sling shift ends (9 AM on his days off); his End Shift
+        // posts it sooner. Reads sling_shifts only; the website posts once
+        // per day (Sarah, 2026-10-12).
+        $schedule->command('shipping:summary-watch')
             ->everyFiveMinutes()
-            ->between('4:30', '23:59')
+            ->between('8:55', '23:59')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(10);
 

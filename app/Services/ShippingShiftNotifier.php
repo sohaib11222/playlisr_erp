@@ -19,40 +19,38 @@ class ShippingShiftNotifier
         return $first === 'nick';
     }
 
-    /** @param string $event "in" or "out" */
-    public static function send(string $event, string $employee, string $store, $start, $end = null): bool
+    /**
+     * Ask the website to post the shipping summary (everything since the
+     * previous post) to #shipping + Sarah's DM. The website posts once per
+     * LA day, so calling this again is harmless.
+     * @return array|null decoded response
+     */
+    public static function postSummary(string $trigger): ?array
     {
         try {
             $key = self::erpApiKey();
             if ($key === '') {
-                return false;
+                return null;
             }
-            $body = json_encode([
-                'event' => $event,
-                'employee' => $employee,
-                'store' => $store,
-                'start' => \Carbon::parse($start)->toIso8601String(),
-                'end' => $end ? \Carbon::parse($end)->toIso8601String() : null,
-            ]);
-            $ch = curl_init(self::baseUrl() . '/erp/shipping-shift');
+            $ch = curl_init(self::baseUrl() . '/erp/shipping-summary/post');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_POSTFIELDS => json_encode(['trigger' => $trigger]),
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'x-erp-key: ' . $key],
-                CURLOPT_TIMEOUT => 20,
+                CURLOPT_TIMEOUT => 40,
             ]);
             $raw = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             if ($code !== 200) {
-                \Log::warning('Shipping shift post failed: HTTP ' . $code . ' ' . substr((string) $raw, 0, 200));
-                return false;
+                \Log::warning('Shipping summary post failed: HTTP ' . $code . ' ' . substr((string) $raw, 0, 200));
+                return null;
             }
-            return true;
+            return json_decode((string) $raw, true);
         } catch (\Throwable $e) {
-            \Log::warning('Shipping shift post failed: ' . $e->getMessage());
-            return false;
+            \Log::warning('Shipping summary post failed: ' . $e->getMessage());
+            return null;
         }
     }
 

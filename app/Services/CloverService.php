@@ -537,48 +537,6 @@ class CloverService
     }
 
     /**
-     * Recent time-clock shifts (clock in/out) with the employee expanded.
-     * Read-only. Used to post Nick's clock-in to #shipping. Returns [] on any
-     * failure (e.g. the app has no Employees permission) so callers never break.
-     */
-    public function getRecentShifts($sinceMs, $limit = 50): array
-    {
-        try {
-            if (!$this->isConfigured()) {
-                return [];
-            }
-            $clover = $this->getClover();
-            $merchantId = $clover['merchant_id'] ?? '';
-            if ($merchantId === '') {
-                return [];
-            }
-            $base = $this->getBaseUrl() . '/v3/merchants/' . $merchantId . '/shifts?expand=employee&limit=' . (int) $limit;
-            foreach (['in_time', 'inTime'] as $field) {
-                $ch = curl_init($base . '&filter=' . rawurlencode($field . '>=' . (int) $sinceMs));
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_HTTPHEADER     => $this->getApiHeaders(),
-                    CURLOPT_TIMEOUT        => 15,
-                ]);
-                $raw = curl_exec($ch);
-                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-                if ($code === 200) {
-                    $data = json_decode((string) $raw, true);
-                    return is_array($data['elements'] ?? null) ? $data['elements'] : [];
-                }
-                if ($code !== 400) {
-                    \Log::info('Clover shifts: HTTP ' . $code);
-                    return [];
-                }
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('Clover shifts failed: ' . $e->getMessage());
-        }
-        return [];
-    }
-
-    /**
      * Pull payments from Clover for a given date range.
      *
      * Clover's /v3/merchants/{mid}/payments endpoint returns payments with

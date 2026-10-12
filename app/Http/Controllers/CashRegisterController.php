@@ -822,11 +822,11 @@ class CashRegisterController extends Controller
         $posted = $this->postShiftNoteToSlack($payload);
         $payload['posted_to_slack'] = $posted;
 
-        // Nick (shipping): also post "shipped this shift / still waiting" to
-        // #shipping (Sarah, 2026-10-12). Runs after the shift note; any
-        // failure is logged and ignored.
+        // Nick (shipping): his End Shift posts the daily shipping summary to
+        // #shipping + Sarah's DM (Sarah, 2026-10-12). Runs after the shift
+        // note; once per day on the website side; failures logged, ignored.
         if (\App\Services\ShippingShiftNotifier::isShippingStaff($user)) {
-            \App\Services\ShippingShiftNotifier::send('out', $this->cashierDisplayName($user), 'Hollywood', $start, $end);
+            \App\Services\ShippingShiftNotifier::postSummary('end_shift');
         }
 
         // Durable record (no migration), same folder as register closes.
