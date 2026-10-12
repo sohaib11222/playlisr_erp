@@ -189,11 +189,16 @@
             <div class="qa">
                 <p class="q">First reply</p>
                 <span class="say">Looking this up for you!</span>
-                <p class="note">The ERP isn't fully accurate yet, so don't answer from the screen alone. Check <a href='https://nivessa.com' target='_blank' rel='noopener'>nivessa.com</a> and the ERP, then have the person on shift look at the shelf (see section 3).</p>
+                <p class="note">First check the ERP, then have the person on shift confirm it's on the shelf, at both stores. If one store doesn't have it, the other one might. If it's only in the warehouse, only Nick can confirm it.</p>
             </div>
             <div class="qa">
                 <p class="q">We have it</p>
                 <span class="say">Yes, we have [title] at [store] for $[price]! Want us to hold it under your name?</span>
+            </div>
+            <div class="qa">
+                <p class="q">Only in the warehouse</p>
+                <span class="say">Our shipping guy is out for the day and needs to check the warehouse for it. He'll be in tomorrow morning and we'll let you know!</span>
+                <p class="note">Message Nick so he checks first thing, then text the customer his answer.</p>
             </div>
             <div class="qa">
                 <p class="q">We don't have it</p>
