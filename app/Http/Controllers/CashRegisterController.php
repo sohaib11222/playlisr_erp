@@ -1598,7 +1598,7 @@ class CashRegisterController extends Controller
 
     // A drawer is "low on change" only when it is low on ALL of these
     // (Sarah 2026-10-11): face value => minimum bill count.
-    const CHANGE_MINIMUMS = [1 => 5, 5 => 3, 10 => 2];
+    const CHANGE_MINIMUMS = [1 => 3, 5 => 1, 10 => 1];
 
     // Who gets the change-run task per store (they can reassign it).
     const CHANGE_RUN_OWNERS = [
