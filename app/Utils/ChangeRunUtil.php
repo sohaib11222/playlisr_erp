@@ -66,11 +66,8 @@ class ChangeRunUtil
             ->where('status', 'active')
             ->first();
 
-        $description = $reason . "\n\nTake \$100 from the drawer to the bank and ask for:\n- "
-            . implode("\n- ", self::BANK_LIST)
-            . "\n\nChange run page: " . url('/change-run')
-            . "\n\nOn the POS screen, tap the menu button (top right) > Change run. Tap \"1. Took \$100 to bank\" when you leave with the \$100, and \"2. Put change in drawer\" after the change is in the drawer. That way the register recon shows the change run and the \$100 doesn't look missing."
-            . "\n\nYou can reassign this task to someone else in the store.";
+        $description = "The drawer is low on bills & coins. Please take \$100 from the drawer to the bank and ask for \$20 in \$1s, \$20 in \$5s, \$20 in \$10s, \$20 in \$20s, and \$20 in coins (1 roll quarters, 1 roll dimes, 2 rolls nickels, 2 rolls pennies)."
+            . "\n\nChange run page: " . url('/change-run');
 
         $task = \App\WeeklyTask::create([
             'business_id' => $business_id,

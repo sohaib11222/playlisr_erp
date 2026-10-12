@@ -14,8 +14,7 @@
     @if(!$register || !$storeKey)
         <p>Open your register first, then come back here.</p>
     @elseif($task)
-        <p style="white-space:pre-line;">{{ \Illuminate\Support\Str::before($task->description, "\n\nTake") }}</p>
-        <p><strong>Take $100 from the drawer to the bank and ask for:</strong></p>
+        <p>The drawer is low on bills &amp; coins. Please take $100 from the drawer to the bank and ask for:</p>
         <ul>
             @foreach($bankList as $line)
                 <li>{{ $line }}</li>
