@@ -1678,6 +1678,16 @@ HTML,
     <li><strong>Shrink stays low</strong> because the floor is watched, the team greets everyone, and suspicious situations get handled early. Train it, model it, and address theft head-on.</li>
 </ul>
 
+<h3>Change runs (getting small bills and coins)</h3>
+<p>When a drawer is nearly out of change, the ERP gives you a <strong>Change run</strong> task (Zak at Pico, Luis at Hollywood), at most once a week. You can hand it to someone else in the store. You can also start one yourself from the POS if the drawer is running out.</p>
+<ol>
+    <li>On the POS screen, tap the <strong>menu button (top right) &gt; Change run</strong>. Your register must be open.</li>
+    <li>Take <strong>$100</strong> from the drawer and tap <strong>1. Took $100 to bank</strong>.</li>
+    <li>At the bank ask for: $20 in $1s, $20 in $5s, $20 in $10s, $20 in $20s, and $20 in coins (1 roll of quarters, 1 roll of dimes, 2 rolls of nickels, 2 rolls of pennies).</li>
+    <li>Put it all in the drawer and tap <strong>2. Put change in drawer</strong>. That completes the task.</li>
+</ol>
+<p>Always tap both buttons. They log the $100 in the register, so the daily recon shows the change run and the drawer doesn't look $100 under. If the $100 goes out and the change isn't logged back in, the recon flags it every day until it is. Never take the $100 from the safe.</p>
+
 <hr>
 
 <h2>10. Safety and suspicious situations</h2>

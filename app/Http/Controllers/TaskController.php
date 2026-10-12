@@ -812,7 +812,17 @@ class TaskController extends Controller
             return $back->with('status', ['success' => false, 'msg' => 'No register is open at this store. Open a register first, then try again.']);
         }
 
-        \DB::transaction(function () use ($task, $register, $step) {
+        $logged = \DB::transaction(function () use ($task, $register, $step) {
+            // Re-check under a row lock so a double tap can't log twice.
+            \App\WeeklyTask::where('id', $task->id)->lockForUpdate()->first();
+            $already = \DB::table('cash_register_transactions')
+                ->where('transaction_type', 'change_run')
+                ->where('transaction_id', $task->id)
+                ->where('type', $step === 'out' ? 'debit' : 'credit')
+                ->exists();
+            if ($already) {
+                return false;
+            }
             \DB::table('cash_register_transactions')->insert([
                 'cash_register_id' => $register->id,
                 'amount' => 100,
@@ -831,7 +841,11 @@ class TaskController extends Controller
                 $this->applyStatusTransition($task, 'complete', false);
                 $task->save();
             }
+            return true;
         });
+        if (!$logged) {
+            return $back;
+        }
 
         return $back->with('status', ['success' => true, 'msg' => $step === 'out'
             ? 'Logged $100 out of the drawer. Tap "Put change in drawer" when you are back.'

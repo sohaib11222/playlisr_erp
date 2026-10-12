@@ -462,13 +462,24 @@ class RegisterReconUtil
             ->where('cr.business_id', $business_id)
             ->where('c.transaction_type', 'change_run')
             ->where('c.type', 'debit')
-            ->whereDate('c.created_at', $date)
+            ->whereDate('c.created_at', '<=', $date)
+            ->whereDate('c.created_at', '>=', \Carbon\Carbon::parse($date)->subDays(30)->toDateString())
             ->get(['c.transaction_id', 'c.amount', 'c.created_at', 'cr.location_id']);
         $flags = [];
+        $endOfDay = \Carbon\Carbon::parse($date)->endOfDay();
         foreach ($rows as $r) {
             $back = \DB::table('cash_register_transactions')
                 ->where('transaction_type', 'change_run')->where('type', 'credit')
                 ->where('transaction_id', $r->transaction_id)->value('created_at');
+            $outDay = \Carbon\Carbon::parse($r->created_at)->toDateString();
+            // Earlier days only matter while the change still isn't back
+            // by the end of $date - then it's flagged every day until it is.
+            if ($outDay !== $date && $back && \Carbon\Carbon::parse($back)->lte($endOfDay)) {
+                continue;
+            }
+            if ($back && \Carbon\Carbon::parse($back)->gt($endOfDay)) {
+                $back = null;
+            }
             $outNote = \DB::table('task_notes as n')->leftJoin('users as u', 'u.id', '=', 'n.user_id')
                 ->where('n.weekly_task_id', $r->transaction_id)->where('n.note', 'like', 'Took $100%')
                 ->value('u.first_name');
@@ -477,7 +488,7 @@ class RegisterReconUtil
                 'location_id' => $r->location_id,
                 'kind'   => 'changerun',
                 'detail' => 'change run: $' . number_format((float) $r->amount, 0) . ' taken to the bank '
-                    . \Carbon\Carbon::parse($r->created_at)->format('g:ia')
+                    . \Carbon\Carbon::parse($r->created_at)->format($outDay === $date ? 'g:ia' : 'D n/j g:ia')
                     . ($back ? '' : ', change not put back in the drawer yet'),
                 'ask'    => $who,
                 'note'   => $back ? 'change put back in the drawer ' . \Carbon\Carbon::parse($back)->format('g:ia') : null,
