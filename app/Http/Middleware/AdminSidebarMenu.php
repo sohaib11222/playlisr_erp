@@ -85,6 +85,16 @@ class AdminSidebarMenu
                 )->order(15);
             }
 
+            //Inventory Count — shortcut to the reorder report, where staff
+            //enter shelf counts per section. Same staff gate as above.
+            if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
+                $menu->url(
+                    action('ReorderController@index'),
+                    'Inventory Count',
+                    ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'reorder']
+                )->order(15);
+            }
+
             //Tasks & Projects — team-wide daily + weekly tasks + longer-running
             //projects with contributor credit. Open to every employee, no
             //permission gate (mirrors Customer Wants' convention).
