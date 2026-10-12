@@ -1648,11 +1648,11 @@ class CashRegisterController extends Controller
         $countLine = "The drawer closed with {$counts[1]} \$1s, {$counts[5]} \$5s and {$counts[10]} \$10s, and is low on coins.";
         $description = $countLine . "\n\n"
             . "Take \$100 from the drawer to the bank and ask for:\n"
-            . "- \$25 in \$1s (25 bills)\n"
-            . "- \$25 in \$5s (5 bills)\n"
+            . "- \$20 in \$1s (20 bills)\n"
+            . "- \$20 in \$5s (4 bills)\n"
             . "- \$20 in \$10s (2 bills)\n"
             . "- \$20 in \$20s (1 bill)\n"
-            . "- \$10 in coins (1 roll of quarters)\n\n"
+            . "- \$20 in coins: 1 roll of quarters (\$10), 1 roll of dimes (\$5), 2 rolls of nickels (\$4), 2 rolls of pennies (\$1)\n\n"
             . "Put it all back in the drawer. You can reassign this task to someone else in the store.";
 
         $today = \Carbon::now()->toDateString();
