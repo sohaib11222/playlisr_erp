@@ -125,6 +125,14 @@ class Kernel extends ConsoleKernel
         // (import_source, import_external_id) so re-runs upsert without
         // duplicating. Same buttons live at /admin/channel-sales-sync for
         // manual/backfill runs. Sarah 2026-06-19.
+        // Nick's Clover clock-in at Hollywood -> #shipping "what to ship"
+        // update (Sarah, 2026-10-12). Read-only Clover call, posts once per shift.
+        $schedule->command('shipping:clock-in-watch')
+            ->everyFiveMinutes()
+            ->between('8:00', '23:59')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(10);
+
         $schedule->command('nivessa:sync-web-sales --days=14 --commit')
             ->dailyAt('06:00')
             ->timezone('America/Los_Angeles')
