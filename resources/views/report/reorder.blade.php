@@ -42,7 +42,7 @@
     .ro-settings .ro-num { display:inline-block; }
     .ro-tool h4 { font-size:15px; margin:14px 0 6px; }
     tr.ro-genre td { background:#eef3f8; font-weight:bold; font-size:14px; }
-    .ro-num { width:50px; text-align:right; padding:2px 4px; }
+    .ro-num { width:56px; font-size:15px; font-weight:bold; text-align:right; padding:2px 4px; }
     .ro-order { font-weight:bold; }
     tr.ro-zero .ro-order { color:#999; font-weight:normal; }
     tr.ro-cant { opacity:.6; }
@@ -143,15 +143,15 @@
                     <thead>
                         <tr>
                             <th data-sort="album">Album <span class="ro-arrow"></span></th>
+                            <th data-sort="count" title="Type what's actually in the bin">Counted (in bin) <span class="ro-arrow"></span></th>
+                            <th data-sort="order">Order <span class="ro-arrow"></span></th>
                             <th data-sort="why">Why <span class="ro-arrow"></span></th>
                             <th data-sort="since" title="Copies sold since the last order">Sold since last order <span class="ro-arrow"></span></th>
                             <th data-sort="ytd">Sold this year <span class="ro-arrow"></span></th>
                             <th data-sort="days" title="Average days from when we bought it to when it sold">Days to sell <span class="ro-arrow"></span></th>
                             <th data-sort="last">Last sold <span class="ro-arrow"></span></th>
                             <th data-sort="erp" title="What the ERP thinks is in the store">ERP says <span class="ro-arrow"></span></th>
-                            <th data-sort="count" title="Type what's actually in the bin">Counted <span class="ro-arrow"></span></th>
                             <th data-sort="onorder" title="Already ordered, not here yet">On the way <span class="ro-arrow"></span></th>
-                            <th data-sort="order">Order <span class="ro-arrow"></span></th>
                             <th data-sort="cost">Cheapest <span class="ro-arrow"></span></th>
                             <th>Other prices</th>
                         </tr>
@@ -186,6 +186,14 @@
                                     @if($r['used_note']) <div>{{ $r['used_note'] }}</div>@endif
                                 </div>
                             </td>
+                            <td>
+                                @if($r['product_id'])
+                                    <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
+                                        title="{{ $r['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($r['count_at'])->format('M j') . ($r['count_raw'] != $r['count'] ? ' as ' . $r['count_raw'] . ', minus sales since' : '') : '' }}">
+                                    <span class="ro-saved"></span>
+                                @endif
+                            </td>
+                            <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
                             <td>@foreach($r['why'] as $w)<span class="ro-tag" style="background:{{ $whyColors[$w] ?? '#777' }}" title="{{ $whyLabels[$w] ?? $w }}">{{ $whyShort[$w] ?? $w }}</span> @endforeach</td>
                             <td class="n">{{ $r['sold_since'] ?: '' }}</td>
                             <td class="n">{{ $r['sold_ytd'] ?: '' }}
@@ -195,15 +203,7 @@
                             <td>{{ $r['last_sold'] ? \Carbon\Carbon::parse($r['last_sold'])->format('M j') : '' }}
                                 @if(in_array('overdue', $r['why']))<div class="ro-muted text-danger">{{ $r['days_since_sale'] }} days ago</div>@endif</td>
                             <td class="n ro-erp">{{ $r['erp_stock'] }}</td>
-                            <td>
-                                @if($r['product_id'])
-                                    <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
-                                        title="{{ $r['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($r['count_at'])->format('M j') . ($r['count_raw'] != $r['count'] ? ' as ' . $r['count_raw'] . ', minus sales since' : '') : '' }}">
-                                    <span class="ro-saved"></span>
-                                @endif
-                            </td>
                             <td class="n">{{ $r['on_order'] ?: '' }}</td>
-                            <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
                             <td>@if($r['best_cost'])${{ number_format($r['best_cost'], 2) }}<div class="ro-muted">{{ $r['best_supplier'] }}</div>
                                 <div class="ro-muted" style="color:{{ ($r['best_in_stock'] ?? null) === true ? '#2e7d32' : '#999' }}">{{ ($r['best_in_stock'] ?? null) === true ? 'in stock' : 'stock not checked yet' }}@if(!empty($r['best_checked'])), {{ \Carbon\Carbon::parse($r['best_checked'])->format('M j') }}@endif</div>@endif</td>
                             <td style="font-size:12px; white-space:nowrap;">@foreach($r['other_prices'] ?? [] as $op)<div>${{ number_format($op['cost'], 2) }} {{ $op['supplier'] }}@if($op['in_stock'] === false) <span class="text-danger">sold out</span>@endif</div>@endforeach</td>
