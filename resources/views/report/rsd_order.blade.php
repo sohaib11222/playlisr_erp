@@ -15,42 +15,58 @@
     $cols = array_intersect_key($suppliers, $usedSuppliers + ['ams' => true, 'alliance' => true]);
 @endphp
 <style>
-    .rsd-tabs a { display:inline-block; padding:6px 16px; border:1px solid #ccc; border-radius:16px; margin-right:6px; color:#333; }
-    .rsd-tabs a.active { background:#333; color:#fff; border-color:#333; }
+    .ro-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+    .ro-bar .form-group { margin:0; }
     table.rsd-table { width:100%; font-size:14px; }
-    table.rsd-table th { background:#f4f4f4; font-size:12px; vertical-align:bottom !important; position:sticky; top:0; z-index:1; }
+    table.rsd-table th { background:#f4f4f4; font-size:12px; line-height:1.2; vertical-align:bottom !important; position:sticky; top:0; z-index:1; }
     table.rsd-table td { vertical-align:middle !important; padding:6px 5px !important; }
-    table.rsd-table td.n { text-align:center; }
+    table.rsd-table td.n, table.rsd-table th.n { text-align:center; }
+    table.rsd-table th.here { background:#e3f2fd; }
+    table.rsd-table td.here { background:#f3f9ff; }
     .rsd-artist { font-weight:bold; }
-    .rsd-qty { width:56px; text-align:center; }
+    .rsd-num { width:56px; text-align:center; display:inline-block; }
     .rsd-upc { width:120px; font-size:12px; }
-    .rsd-best { background:#e8f5e9; font-weight:bold; }
-    .rsd-out { color:#999; text-decoration:line-through; }
     .rsd-muted { color:#888; font-size:12px; }
     .rsd-tag { display:inline-block; font-size:11px; border-radius:9px; padding:0 7px; color:#fff; background:#757575; }
-    .rsd-wrap { max-height:70vh; overflow:auto; }
+    .rsd-wrap { max-height:75vh; overflow:auto; }
     .rsd-list { font-family:monospace; font-size:13px; width:100%; }
-    tr.rsd-ordered td { background:#f1f8e9; }
+    tr.rsd-ordered td { background:#f1f8e9 !important; }
+    tr.rsd-none td { color:#999; }
 </style>
 <section class="content-header">
     <h1>RSD Order: {{ $storeName }} <small>{{ $event }} (Fri {{ \Carbon\Carbon::parse($eventDate)->format('M j') }})</small></h1>
 </section>
 <section class="content">
-    <div class="rsd-tabs" style="margin-bottom:12px;">
-        @foreach($stores as $k => $label)
-            <a href="{{ action('RsdOrderController@index', ['store' => $k]) }}" class="{{ $k === $store ? 'active' : '' }}">{{ $label }}</a>
-        @endforeach
-    </div>
-
     <div class="box box-solid">
         <div class="box-body">
-            <p style="margin:0 0 6px;">
-                Built from the <a href="{{ $sheetUrl }}" target="_blank" rel="noopener">customer request sheet</a> (Instagram comments, DMs, Quo texts and the website form), counts as of {{ $asOf ? \Carbon\Carbon::parse($asOf)->format('M j') : 'unknown' }}.
-                Order qty = what customers asked for at this store plus half again (at least 1 extra). Requests with no store count at both stores. Change any qty and it saves.
+            <div class="ro-bar">
+                <div class="form-group">
+                    <label>Store</label>
+                    <select class="form-control" onchange="location.href=this.value">
+                        @foreach($stores as $k => $label)
+                            <option value="{{ action('RsdOrderController@index', ['store' => $k]) }}" @if($k === $store) selected @endif>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Format</label>
+                    <select class="form-control" onchange="location.href=this.value">
+                        <option value="{{ action('ReorderController@index', ['location_id' => $locationId, 'format' => 'vinyl']) }}">Sealed vinyl</option>
+                        <option value="{{ action('ReorderController@index', ['location_id' => $locationId, 'format' => 'cd']) }}">Sealed CDs</option>
+                        <option value="{{ action('ReorderController@index', ['location_id' => $locationId, 'format' => 'cassette']) }}">Sealed cassettes</option>
+                        <option value="{{ action('ReorderController@index', ['location_id' => $locationId, 'format' => 'other']) }}">Everything else (apparel, toys, books...)</option>
+                        <option value="" selected>RSD Black Friday order</option>
+                    </select>
+                </div>
+            </div>
+            <p style="margin:10px 0 4px;">
+                Customer requests from Instagram, DMs, Quo texts and the website form, last updated {{ $asOf ? \Carbon\Carbon::parse($asOf)->format('M j') : 'unknown' }}.
+                Anyone can change a request count, an order qty or a UPC right in the table and it saves.
+                Order = requests at {{ $storeName }} plus half again (at least 1 extra); requests with no store count at both stores.
             </p>
             <p style="margin:0;">
-                <strong>{{ count($rows) }}</strong> titles, <strong>{{ $totalQty }}</strong> copies.
-                Cheapest-price total {{ $money($totalCost) }}@if($pricedQty < $totalQty) for {{ $pricedQty }} priced copies ({{ $totalQty - $pricedQty }} copies have no distributor price yet)@endif.
+                <b>{{ count(array_filter($rows, function ($r) { return $r['qty'] > 0; })) }}</b> titles, <b>{{ $totalQty }}</b> copies for {{ $storeName }}.
+                Cheapest total {{ $money($totalCost) }}@if($pricedQty < $totalQty) <span class="rsd-muted">({{ $totalQty - $pricedQty }} copies have no distributor price yet)</span>@endif.
             </p>
         </div>
     </div>
@@ -61,19 +77,19 @@
                 <thead>
                     <tr>
                         <th>Album</th>
-                        <th class="n">Asked for here</th>
-                        <th class="n">Order qty</th>
-                        @foreach($cols as $k => $label)
-                            <th class="n">{{ $label }}</th>
-                        @endforeach
-                        <th class="n">Cheapest</th>
-                        <th class="n">Line total</th>
+                        <th class="n {{ $store === 'hollywood' ? 'here' : '' }}">Hollywood requests</th>
+                        <th class="n {{ $store === 'pico' ? 'here' : '' }}">Pico requests</th>
+                        <th class="n">No store</th>
+                        <th class="n here">Order ({{ $storeName }})</th>
+                        <th>Best price</th>
+                        <th>Other prices</th>
                         <th>UPC</th>
                     </tr>
                 </thead>
                 <tbody>
                 @foreach($rows as $r)
-                    <tr data-key="{{ $r['key'] }}" class="{{ $r['ordered'] ? 'rsd-ordered' : '' }}">
+                    @php $others = array_filter($r['prices'], function ($e) use ($r) { return !$r['best'] || $e['supplier_key'] !== $r['best']['supplier_key']; }); @endphp
+                    <tr data-key="{{ $r['key'] }}" class="{{ $r['ordered'] ? 'rsd-ordered' : '' }} {{ $r['requested'] ? '' : 'rsd-none' }}">
                         <td>
                             <span class="rsd-artist">{{ $r['artist'] }}</span><br>{{ $r['title'] }}
                             @if(!$r['is_rsd']) <span class="rsd-tag">Regular release</span> @endif
@@ -81,37 +97,49 @@
                                 <div class="rsd-muted">Ordered {{ $r['ordered']['qty'] ?: '' }} from {{ $suppliers[$r['ordered']['supplier']] ?? $r['ordered']['supplier'] }} on {{ \Carbon\Carbon::parse($r['ordered']['at'])->format('M j') }}</div>
                             @endif
                         </td>
-                        <td class="n">
-                            {{ $r['requested'] }}
-                            @if($r['none'])<div class="rsd-muted">incl. {{ $r['none'] }} no store</div>@endif
-                            @if($r['other'])<div class="rsd-muted">{{ $r['other'] }} at other store</div>@endif
+                        <td class="n {{ $store === 'hollywood' ? 'here' : '' }}"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="hollywood" value="{{ $r['hw'] }}"></td>
+                        <td class="n {{ $store === 'pico' ? 'here' : '' }}"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="pico" value="{{ $r['pico'] }}"></td>
+                        <td class="n"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="none" value="{{ $r['none'] }}"></td>
+                        <td class="n here">
+                            <input type="number" min="0" class="form-control input-sm rsd-num rsd-qty" value="{{ $r['qty'] }}" data-suggested="{{ $r['suggested'] }}">
+                            @if($r['qty_edited'])<div class="rsd-muted">suggested {{ $r['suggested'] }}</div>@endif
                         </td>
-                        <td class="n">
-                            <input type="number" min="0" class="form-control input-sm rsd-qty" value="{{ $r['qty'] }}" data-suggested="{{ $r['suggested'] }}">
-                            <div class="rsd-muted">{{ $r['qty_edited'] ? 'suggested ' . $r['suggested'] : '' }}</div>
-                        </td>
-                        @foreach($cols as $k => $label)
-                            @php $e = $r['prices'][$k] ?? null; @endphp
-                            <td class="n {{ $e && $r['best'] && $r['best']['supplier_key'] === $k ? 'rsd-best' : '' }}">
-                                @if($e)
-                                    <span class="{{ $e['in_stock'] === false ? 'rsd-out' : '' }}">
-                                        @if(!empty($e['url']))<a href="{{ $e['url'] }}" target="_blank" rel="noopener">{{ $money($e['cost']) }}</a>@else{{ $money($e['cost']) }}@endif
-                                    </span>
-                                    @if($e['in_stock'] === false)<div class="rsd-muted">sold out</div>@endif
-                                @else
-                                    <span class="rsd-muted">-</span>
-                                @endif
-                            </td>
-                        @endforeach
-                        <td class="n">{{ $r['best'] ? $r['best']['supplier_label'] : '' }}</td>
-                        <td class="n">{{ $r['best'] ? $money($r['qty'] * $r['best']['cost']) : '' }}</td>
                         <td>
-                            <input type="text" class="form-control input-sm rsd-upc" value="{{ implode(', ', $r['upcs']) }}" placeholder="add UPC">
+                            @if($r['best'])
+                                {{ $money($r['best']['cost']) }}<div class="rsd-muted">{{ $r['best']['supplier_label'] }}</div>
+                                <div class="rsd-muted" style="color:{{ $r['best']['in_stock'] === true ? '#2e7d32' : '#999' }}">{{ $r['best']['in_stock'] === true ? 'in stock' : 'stock not checked yet' }}@if(!empty($r['best']['checked_at'])), {{ \Carbon\Carbon::parse($r['best']['checked_at'])->format('M j') }}@endif</div>
+                            @else
+                                <span class="rsd-muted">no distributor lists it yet</span>
+                            @endif
                         </td>
+                        <td style="font-size:12px; white-space:nowrap;">@foreach($others as $op)<div>{{ $money($op['cost']) }} {{ $op['supplier_label'] }}@if($op['in_stock'] === false) <span class="text-danger">sold out</span>@endif</div>@endforeach</td>
+                        <td><input type="text" class="form-control input-sm rsd-upc" value="{{ implode(', ', $r['upcs']) }}" placeholder="add UPC"></td>
                     </tr>
                 @endforeach
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div class="box box-solid">
+        <div class="box-header with-border"><b>Add a customer request</b></div>
+        <div class="box-body">
+            <form method="POST" action="{{ action('RsdOrderController@addRequest') }}" class="ro-bar">
+                @csrf
+                <input type="hidden" name="store" value="{{ $store }}">
+                <div class="form-group"><label>Artist</label><input name="artist" class="form-control" placeholder="Artist"></div>
+                <div class="form-group"><label>Title</label><input name="title" class="form-control" placeholder="Title"></div>
+                <div class="form-group"><label>Store</label>
+                    <select name="where" class="form-control">
+                        <option value="hollywood" @if($store === 'hollywood') selected @endif>Hollywood</option>
+                        <option value="pico" @if($store === 'pico') selected @endif>Pico</option>
+                        <option value="none">No store given</option>
+                    </select>
+                </div>
+                <div class="form-group"><label><input type="checkbox" name="regular" value="1"> Not an RSD title</label></div>
+                <div class="form-group"><button type="submit" class="btn btn-primary">Add</button></div>
+            </form>
+            <p class="rsd-muted" style="margin:6px 0 0;">Same artist and title as a row above adds 1 to that row.</p>
         </div>
     </div>
 
@@ -153,7 +181,7 @@
     </div>
 
     <div class="box box-solid">
-        <div class="box-header with-border"><strong>Update the request counts</strong></div>
+        <div class="box-header with-border"><b>Or replace all counts from the Google Sheet</b></div>
         <div class="box-body">
             <form method="POST" action="{{ action('RsdOrderController@pasteRequests') }}">
                 @csrf
@@ -177,6 +205,14 @@
         return $.post(url, data);
     }
     var timers = {};
+    $('#rsd-table').on('change', '.rsd-req', function () {
+        var el = $(this);
+        post(@json(action('RsdOrderController@saveRequest')), { key: el.closest('tr').data('key'), field: el.data('field'), value: el.val() })
+            .done(function (r) {
+                if (r && r.success) { toastr.success('Saved'); setTimeout(function () { location.reload(); }, 600); }
+                else toastr.error((r && r.msg) || 'Not saved');
+            }).fail(function () { toastr.error('Not saved'); });
+    });
     $('#rsd-table').on('change', '.rsd-qty, .rsd-upc', function () {
         var tr = $(this).closest('tr'), key = tr.data('key');
         var qty = tr.find('.rsd-qty').val(), sug = tr.find('.rsd-qty').data('suggested');

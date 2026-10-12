@@ -79,7 +79,7 @@ class RsdOrderController extends Controller
             $other = $store === 'hollywood' ? (int) $pico : (int) $hw;
             $none = (int) $none;
             $requested = $mine + $none; // no-store requests count at both stores
-            if ($requested <= 0) continue;
+            if ((int) $hw + (int) $pico + $none <= 0) continue;
             $key = self::key($artist, $title);
             $isRsd = stripos($title, 'NOT RSD') === false;
             $format = preg_match('/\(CD\)|\bCD\b/i', $title) ? 'CD' : 'LP';
@@ -97,6 +97,8 @@ class RsdOrderController extends Controller
                 'title' => trim(preg_replace('/\s*\((RSD|NOT RSD - REGULAR RELEASE)\)\s*$/i', '', $title)),
                 'artist' => $artist,
                 'is_rsd' => $isRsd,
+                'hw' => (int) $hw,
+                'pico' => (int) $pico,
                 'mine' => $mine,
                 'none' => $none,
                 'other' => $other,
@@ -111,7 +113,7 @@ class RsdOrderController extends Controller
             ];
         }
         usort($rows, function ($a, $b) {
-            return [$b['requested'], $a['artist']] <=> [$a['requested'], $b['artist']];
+            return [$b['requested'], $b['hw'] + $b['pico'] + $b['none'], $a['artist']] <=> [$a['requested'], $a['hw'] + $a['pico'] + $a['none'], $b['artist']];
         });
 
         // Per-distributor lists: each title goes to its cheapest distributor.
@@ -126,7 +128,13 @@ class RsdOrderController extends Controller
             }
         }
 
+        $locationId = null;
+        foreach (\App\BusinessLocation::forDropdown($biz, false)->toArray() as $id => $name) {
+            if (stripos($name, $store === 'pico' ? 'pico' : 'hollywood') !== false) $locationId = $id;
+        }
+
         return view('report.rsd_order', [
+            'locationId' => $locationId,
             'store' => $store,
             'stores' => self::STORES,
             'rows' => $rows,
@@ -138,6 +146,62 @@ class RsdOrderController extends Controller
             'eventDate' => config('rsd_order.event_date'),
             'sheetUrl' => config('rsd_order.sheet_url'),
         ]);
+    }
+
+    /** Staff edit request counts right on the page (Sarah 10/12: "we can all update this"). */
+    public function saveRequest(Request $request)
+    {
+        $biz = (int) $request->session()->get('user.business_id');
+        $state = $this->loadState($biz);
+        [$rows] = $this->requests($state);
+        $col = ['hollywood' => 2, 'pico' => 3, 'none' => 4][(string) $request->input('field')] ?? null;
+        $key = (string) $request->input('key');
+        $val = max(0, min(500, (int) $request->input('value')));
+        $found = false;
+        foreach ($rows as $i => $r) {
+            $r = array_values($r);
+            if (self::key($r[1], $r[0]) !== $key) continue;
+            if ($col === null) return response()->json(['success' => false, 'msg' => 'Unknown column']);
+            $r[$col] = $val;
+            $rows[$i] = $r;
+            $found = true;
+        }
+        if (!$found) return response()->json(['success' => false, 'msg' => 'Title not found']);
+        $state['requests'] = ['rows' => array_values($rows), 'as_of' => now()->toDateString()];
+        $this->saveState($biz, $state);
+        return response()->json(['success' => true]);
+    }
+
+    public function addRequest(Request $request)
+    {
+        $biz = (int) $request->session()->get('user.business_id');
+        $artist = mb_strtoupper(trim((string) $request->input('artist')));
+        $title = mb_strtoupper(trim((string) $request->input('title')));
+        $where = (string) $request->input('where');
+        $store = $this->store($request);
+        if ($artist === '' || $title === '') {
+            return redirect()->action('RsdOrderController@index', ['store' => $store])
+                ->with('status', ['success' => 0, 'msg' => 'Type the artist and the title.']);
+        }
+        if ($request->input('regular')) $title .= ' (NOT RSD - REGULAR RELEASE)';
+        $state = $this->loadState($biz);
+        [$rows] = $this->requests($state);
+        $col = ['hollywood' => 2, 'pico' => 3][$where] ?? 4;
+        $key = self::key($artist, $title);
+        $hit = false;
+        foreach ($rows as $i => $r) {
+            $r = array_values($r);
+            if (self::key($r[1], $r[0]) === $key) { $r[$col] = (int) $r[$col] + 1; $rows[$i] = $r; $hit = true; }
+        }
+        if (!$hit) {
+            $row = [$title, $artist, 0, 0, 0];
+            $row[$col] = 1;
+            $rows[] = $row;
+        }
+        $state['requests'] = ['rows' => array_values($rows), 'as_of' => now()->toDateString()];
+        $this->saveState($biz, $state);
+        return redirect()->action('RsdOrderController@index', ['store' => $store])
+            ->with('status', ['success' => 1, 'msg' => 'Request added.']);
     }
 
     public function saveQty(Request $request)

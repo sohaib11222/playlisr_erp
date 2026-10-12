@@ -44,6 +44,11 @@ class ReorderController extends Controller
 
     public function index(Request $request)
     {
+        if ($request->input('format') === 'rsd') {
+            $locs = BusinessLocation::forDropdown($request->session()->get('user.business_id'), false)->toArray();
+            $name = (string) ($locs[(int) $request->input('location_id')] ?? '');
+            return redirect()->action('RsdOrderController@index', ['store' => stripos($name, 'pico') !== false ? 'pico' : 'hollywood']);
+        }
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
         if ($format === 'other') {
             $other = $locationId ? $this->svc->otherAreas($business_id, $locationId) : [];
