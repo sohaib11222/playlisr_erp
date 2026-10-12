@@ -68,6 +68,7 @@ class ChangeRunUtil
 
         $description = $reason . "\n\nTake \$100 from the drawer to the bank and ask for:\n- "
             . implode("\n- ", self::BANK_LIST)
+            . "\n\nChange run page: " . url('/change-run')
             . "\n\nOn the POS screen, tap the menu button (top right) > Change run. Tap \"1. Took \$100 to bank\" when you leave with the \$100, and \"2. Put change in drawer\" after the change is in the drawer. That way the register recon shows the change run and the \$100 doesn't look missing."
             . "\n\nYou can reassign this task to someone else in the store.";
 

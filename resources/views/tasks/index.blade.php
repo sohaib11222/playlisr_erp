@@ -134,6 +134,9 @@
                                         @if($t->project_id && $t->project)
                                             <a href="{{ action('ProjectController@edit', $t->project_id) }}" class="as-pill as-tag as-hide-sm" style="text-decoration:none;" title="Project"><i class="fa fa-list-ul"></i> {{ \Illuminate\Support\Str::limit($t->project->title, 24) }}</a>
                                         @endif
+                                        @if(stripos($t->title, 'Change run') === 0 || $t->title === \App\Http\Controllers\TaskController::CHANGE_RUN_FOLLOWUP_TITLE)
+                                            <a href="{{ url('/change-run') }}" class="as-pill as-tag" style="text-decoration:none;"><i class="fa fa-external-link"></i> Open change run</a>
+                                        @endif
                                         <button type="button" class="as-note-btn" data-toggle-detail="d{{ $t->id }}" title="Notes and details"><i class="fa fa-comment-o"></i>@if($t->notes->count()) {{ $t->notes->count() }}@endif</button>
                                     </div>
                                     @if($t->description)

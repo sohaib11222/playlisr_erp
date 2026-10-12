@@ -845,7 +845,7 @@ class TaskController extends Controller
                 $followUp = WeeklyTask::create([
                     'business_id' => $task->business_id,
                     'title' => self::CHANGE_RUN_FOLLOWUP_TITLE,
-                    'description' => "Change run in progress. Once the change is in the drawer, tap \"2. Put change in drawer\" on the POS screen: menu button (top right) > Change run.",
+                    'description' => "Change run in progress. Once the change is in the drawer, tap \"2. Put change in drawer\" on the POS screen: menu button (top right) > Change run. Change run page: " . url('/change-run'),
                     'start_date' => now()->toDateString(),
                     'end_date' => now()->toDateString(),
                     'task_type' => 'daily',

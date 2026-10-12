@@ -21,13 +21,18 @@
     @php($currentStatus = old('status', $task->status))
     @php($selectedAssignees = old('assignees', $task->assignees->pluck('id')->all()))
 
+    @if($task->title === \App\Http\Controllers\TaskController::CHANGE_RUN_FOLLOWUP_TITLE)
+        <div class="as-task-card" style="margin-bottom:12px; padding:14px 16px;">
+            <a href="{{ url('/change-run') }}" class="btn btn-success btn-lg">Open change run</a>
+        </div>
+    @endif
     @if(stripos($task->title, 'Change run') === 0)
         {{-- Change run (Sarah 2026-10-11): log the $100 out and the change back in on the store's open register so the recon matches. --}}
         @php($crNotes = $task->notes->pluck('note')->all())
         @php($crOut = in_array(\App\Http\Controllers\TaskController::CHANGE_RUN_OUT_NOTE, $crNotes, true))
         @php($crIn = in_array(\App\Http\Controllers\TaskController::CHANGE_RUN_IN_NOTE, $crNotes, true))
         <div class="as-task-card" style="margin-bottom:12px; padding:14px 16px;">
-            <strong>Log it in the register</strong>
+            <strong>Log it in the register</strong> <a href="{{ url('/change-run') }}" style="margin-left:8px;">Open change run</a>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
                 <form method="POST" action="{{ action('TaskController@changeRun', [$task->id, 'out']) }}">
                     @csrf

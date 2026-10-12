@@ -1572,7 +1572,7 @@ class CashRegisterController extends Controller
             }
 
             // Change run (Sarah 2026-10-11): when the close count shows the
-            // drawer low on $1s, $5s, $10s and coins, assign the store manager a
+            // drawer low on $1s, $5s and coins, assign the store manager a
             // change-run task. Max once a week per store. Isolated so it
             // can never break the close.
             if ($openRegister && is_array($closeDenoms)) {
@@ -1598,10 +1598,10 @@ class CashRegisterController extends Controller
 
     // A drawer is "low on change" only when it is low on ALL of these
     // (Sarah 2026-10-11): face value => minimum bill count.
-    const CHANGE_MINIMUMS = [1 => 3, 5 => 1, 10 => 1];
+    const CHANGE_MINIMUMS = [1 => 10, 5 => 4];
 
     /**
-     * When the close count shows the drawer low on $1s, $5s AND $10s and
+     * When the close count shows the drawer low on $1s AND $5s and
      * the cashier ticked "Low on coins",
      * create a "Change run" task for the store manager (Zak at Pico, Luis
      * at Hollywood) with the $100 bank breakdown, and note it in
@@ -1626,7 +1626,7 @@ class CashRegisterController extends Controller
         }
         $storeLabel = $storeKey === 'pico' ? 'Pico' : 'Hollywood';
 
-        $countLine = "The drawer closed with {$counts[1]} \$1s, {$counts[5]} \$5s and {$counts[10]} \$10s, and is low on coins.";
+        $countLine = "The drawer closed with {$counts[1]} \$1s and {$counts[5]} \$5s, and is low on coins.";
         $task = \App\Utils\ChangeRunUtil::createTask($register->business_id, $storeKey, $countLine, $register->user_id);
         $owner = $task->owner;
 
