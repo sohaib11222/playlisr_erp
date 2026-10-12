@@ -135,6 +135,79 @@ class NivessaGiftCardController extends Controller
     }
 
     /**
+     * POST /api/v1/nivessa-web/gift-cards/credit
+     * Body: { "card_number": "GC123456", "amount": 12.50, "reference": "cxl-<order>-..." }
+     *
+     * Puts money back on a card when a website order paid with it is
+     * cancelled. `reference` is required and works as an idempotency key:
+     * the same reference twice credits once (the website retries a failed
+     * cancel with the same reference). A card emptied by the original order
+     * ('used') becomes active again.
+     */
+    public function credit(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'card_number' => 'required|string|max:64',
+            'amount'      => 'required|numeric|min:0.01',
+            'reference'   => 'required|string|max:255',
+        ]);
+
+        $amount = round((float) $data['amount'], 2);
+        $marker = "credited {$amount} ref={$data['reference']}";
+
+        try {
+            $result = DB::transaction(function () use ($data, $amount, $marker) {
+                $card = GiftCard::where('business_id', $this->businessId())
+                    ->where('card_number', $data['card_number'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$card) {
+                    return ['error' => 'not_found', 'status' => 404];
+                }
+                // Same reference already credited: report it, don't credit again.
+                if (preg_match('/credited [0-9.]+ ref=' . preg_quote($data['reference'], '/') . '$/m', (string) ($card->notes ?? ''))) {
+                    return [
+                        'card_number'       => $card->card_number,
+                        'credited'          => $amount,
+                        'remaining_balance' => (float) $card->balance,
+                        'status'            => $card->status,
+                        'already'           => true,
+                    ];
+                }
+
+                $card->balance = round((float) $card->balance + $amount, 2);
+                if ($card->status === 'used' && $card->balance > 0) {
+                    $card->status = 'active';
+                }
+                $stamp = now()->toDateTimeString();
+                $card->notes = trim(($card->notes ?? '') . "\n[{$stamp}] {$marker}");
+                $card->save();
+
+                return [
+                    'card_number'       => $card->card_number,
+                    'credited'          => $amount,
+                    'remaining_balance' => (float) $card->balance,
+                    'status'            => $card->status,
+                ];
+            });
+        } catch (\Throwable $e) {
+            Log::error('nivessa_web gift-card credit failed', [
+                'card_number' => $data['card_number'],
+                'amount'      => $amount,
+                'error'       => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'error' => 'server_error'], 500);
+        }
+
+        if (isset($result['error'])) {
+            return response()->json(['success' => false, 'error' => $result['error']], $result['status']);
+        }
+
+        return response()->json(array_merge(['success' => true], $result));
+    }
+
+    /**
      * POST /api/v1/nivessa-web/gift-cards/issue
      * Body: {
      *   "initial_value": 100.00,

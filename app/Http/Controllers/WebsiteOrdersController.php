@@ -456,6 +456,37 @@ class WebsiteOrdersController extends Controller
         return redirect()->route('website-orders.index')->with($needsAttention ? 'error' : 'status', $message);
     }
 
+    /**
+     * Read-only preview of the daily #shipping summary plus the check for
+     * refunds made straight in Stripe (nothing is posted or saved).
+     * ?pi=<Stripe payment intent> checks one payment, ?days= the window.
+     */
+    public function shippingSummaryPreview(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $query = http_build_query(array_filter([
+            'pi' => preg_replace('/[^A-Za-z0-9_]/', '', (string) $request->query('pi', '')),
+            'days' => (int) $request->query('days', 0) ?: null,
+        ]));
+        $resp = $this->websiteApi('GET', '/erp/shipping-summary/preview' . ($query !== '' ? "?{$query}" : ''), null, 45);
+        if (($resp['success'] ?? false) !== true) {
+            return response('Preview failed: ' . ($resp['message'] ?? 'unknown error'), 502)->header('Content-Type', 'text/plain; charset=utf-8');
+        }
+        $out = "WHAT WOULD BE POSTED TO #shipping (preview, nothing sent)\n\n" . ($resp['summary'] ?? '') . "\n\n";
+        $out .= "REFUNDS IN STRIPE (preview, nothing recorded)\n";
+        foreach (($resp['refunds'] ?? []) as $r) {
+            $out .= sprintf("%s  $%0.2f  %s  order #%s  %s  -> %s\n",
+                substr((string) ($r['created'] ?? ''), 0, 10), (float) ($r['amount'] ?? 0), $r['payment_intent'] ?? '',
+                $r['order'] ?? '-', $r['customer'] ?? '', $r['result'] ?? '');
+        }
+        if (empty($resp['refunds'])) {
+            $out .= "(none)\n";
+        }
+        return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
+    }
+
     /** Same resolution as EventsController's — config, env, .env on disk, then the UI-set store file. */
     protected function erpApiKey(): string
     {
