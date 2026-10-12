@@ -15,6 +15,7 @@
         </tr>
         @endforeach
     </table>
+    <p id="sp-status" style="font-weight:600;margin-top:12px;"></p>
     <p style="color:#6B6155;font-size:13px;margin-top:14px;">Keep these buttons private: they can write supplier prices into the ERP.</p>
 </div>
 @endsection
@@ -54,6 +55,43 @@
           + "for(let i=0;i<U.length;i+=12){await Promise.all([0,3,6,9].map(o=>U.slice(i+o,i+o+3)).filter(x=>x.length).map(one));say('Monostereo: checked '+Math.min(U.length,i+12)+' of '+U.length);}"
           + "say('Monostereo: saving...');const n=await up('monostereo',rows);say('Monostereo done: '+n+' prices saved');"
     };
+    // No-bookmark relay (Sarah 10/11: "i do not want bookmarks"): this page
+    // opens the supplier site in a window and does the ERP side (barcode list
+    // + saving prices) for whatever script runs on that site, via
+    // postMessage. The private key never leaves this page.
+    var SITES = {
+        'https://webami.aent.com': 'alliance',
+        'https://b2b.secretlydistribution.com': 'secretly',
+        'https://b2b.redeyeworldwide.com': 'redeye',
+        'https://newb2b.monostereo1stop.com': 'monostereo'
+    };
+    window.__spWins = [];
+    window.addEventListener('message', function (e) {
+        var sup = SITES[e.origin];
+        var d = e.data || {};
+        if (!sup || !e.source || !d.nivessa) return;
+        var reply = function (msg) { msg.nivessa = 1; msg.id = d.id; e.source.postMessage(msg, e.origin); };
+        if (d.t === 'upcs' || d.t === 'redeye-ids') {
+            fetch(B + '/' + d.t + '?token=' + T).then(function (r) { return r.json(); })
+                .then(function (j) { reply({ t: d.t, data: j }); })
+                .catch(function (err) { reply({ t: 'error', msg: String(err) }); });
+        } else if (d.t === 'up') {
+            fetch(B + '/upload/' + sup + '?token=' + T, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(d.rows || []) })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { reply({ t: 'saved', data: j }); })
+                .catch(function (err) { reply({ t: 'error', msg: String(err) }); });
+        } else if (d.t === 'status') {
+            var el = document.getElementById('sp-status');
+            if (el) el.textContent = d.msg;
+        }
+    });
+    document.querySelectorAll('.sp-site').forEach(function (a) {
+        a.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            window.__spWins.push(window.open(a.href, 'nivessa-pull-' + a.getAttribute('data-key')));
+        });
+    });
+
     document.querySelectorAll('.sp-pull').forEach(function (a) {
         var code = "(async()=>{" + head + "try{" + bodies[a.getAttribute('data-key')] + "}catch(e){box.style.background='#B71C1C';box.style.color='#fff';say('Stopped: '+e.message);}})();";
         a.setAttribute('href', 'javascript:' + encodeURIComponent(code));
