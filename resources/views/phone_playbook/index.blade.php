@@ -301,11 +301,10 @@
     </section>
 
     <section id="store">
-        <div class="sec-head"><span class="sec-num">3</span><h2>When you need an answer from the store staff</h2></div>
+        <div class="sec-head"><span class="sec-num">3</span><h2>When you need to reach the store</h2></div>
         <ol class="flow">
-            <li><strong>Tell the customer you're checking.</strong><span class="sub">&ldquo;Checking with the store for you now, I'll text you back within the hour.&rdquo;</span></li>
-            <li><strong>Call the person on shift at that store.</strong><span class="sub">Find who's working in Sling and call their cell. Staff are busy and often don't see Slack, so call. Only call people who are on shift.</span></li>
-            <li><strong>Save up questions.</strong><span class="sub">If you have a few, make one call an hour with the whole list so the store isn't interrupted all day.</span></li>
+            <li><strong>Tell the customer you're checking.</strong><span class="sub">&ldquo;Checking with the staff at the store for you.&rdquo;</span></li>
+            <li><strong>Message or call the person on shift at that store.</strong><span class="sub">Find who's working in Sling and call their cell. Staff are busy and often don't see Slack, so calls are good. Only call people who are working on shift.</span></li>
             <li><strong>Text the customer the answer the same day.</strong></li>
         </ol>
     </section>
@@ -325,8 +324,10 @@
             <div class="cell no">Please let us know what is it about?</div>
             <div class="cell yes">Awesome, see you soon!</div>
             <div class="cell no">Great, most welcome.</div>
+            <div class="cell yes">Your email</div>
+            <div class="cell no">Your email ID</div>
             <div class="cell yes">Their name, or nothing</div>
-            <div class="cell no">Buddy, bro, boss, brother, &ldquo;email ID&rdquo;</div>
+            <div class="cell no">Buddy, bro, boss, brother</div>
         </div>
     </section>
 
