@@ -514,6 +514,7 @@ class WebsiteOrdersController extends Controller
         $query = http_build_query(array_filter([
             'pi' => preg_replace('/[^A-Za-z0-9_]/', '', (string) $request->query('pi', '')),
             'days' => (int) $request->query('days', 0) ?: null,
+            'redate' => $request->query('redate') === '1' ? '1' : null,
         ]));
         $resp = $this->websiteApi('GET', '/erp/shipping-summary/preview' . ($query !== '' ? "?{$query}" : ''), null, 45);
         if (($resp['success'] ?? false) !== true) {
