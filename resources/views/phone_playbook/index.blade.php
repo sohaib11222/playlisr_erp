@@ -167,278 +167,150 @@
 
     <header class="pp-header">
         <p class="pp-eyebrow">Nivessa Records</p>
-        <h1>A Guide to Answering the Phone &amp; Texts</h1>
+        <h1>Answering Phones &amp; Texts</h1>
     </header>
 
-    {{-- router --}}
-    <nav class="pp-tree" aria-label="Jump to the right script">
-        <div class="tree-head">
-            <h2>Start here &mdash; what is the question?</h2>
-            <p>Handle high-priority questions first.</p>
-        </div>
-        <div class="tree-grid">
-            <a class="branch-card high" href="#record">
-                <span class="prio high">High priority</span>
-                <span class="bc-q">&ldquo;Do you have this record?&rdquo;</span>
-                <span class="bc-go">Find &amp; confirm it &rarr;</span>
-            </a>
-            <a class="branch-card high" href="#buying">
-                <span class="prio high">High priority</span>
-                <span class="bc-q">&ldquo;Do you buy records? / I want to sell&rdquo;</span>
-                <span class="bc-go">Get them a quote &rarr;</span>
-            </a>
-            <a class="branch-card high" href="#partnerships">
-                <span class="prio high">High priority</span>
-                <span class="bc-q">Partnership with a big brand or label</span>
-                <span class="bc-go">Route to Sarah &rarr;</span>
-            </a>
-            <a class="branch-card low" href="#hours">
-                <span class="prio low">Quick</span>
-                <span class="bc-q">Hours &middot; open today? &middot; where are you located?</span>
-                <span class="bc-go">Hours &amp; locations &rarr;</span>
-            </a>
-            <a class="branch-card low" href="#shipping">
-                <span class="prio low">Quick</span>
-                <span class="bc-q">Do you ship? &middot; where's my order?</span>
-                <span class="bc-go">Orders &amp; shipping &rarr;</span>
-            </a>
-            <a class="branch-card low" href="#events">
-                <span class="prio low">Quick</span>
-                <span class="bc-q">Events &middot; perform &middot; rent the venue</span>
-                <span class="bc-go">Events &rarr;</span>
-            </a>
-            <a class="branch-card low" href="#hiring">
-                <span class="prio low">Quick</span>
-                <span class="bc-q">Are you hiring?</span>
-                <span class="bc-go">Careers &rarr;</span>
-            </a>
-        </div>
-        <p class="tree-foot">Not sure? Say &ldquo;Checking in with the cashiers at the store&hellip;&rdquo; and please give them a real answer &mdash; not &ldquo;let me see&rdquo; with no reply after that.</p>
-    </nav>
-
-    {{-- 1 --}}
-    <section id="tone">
-        <div class="sec-head"><span class="sec-num">1</span><h2>How to talk on the phone</h2></div>
-
-        <div class="script">
-            <div class="label">Standard greeting</div>
-            <p class="say">Thanks for calling Nivessa Records! How can I help you?</p>
-            <div class="label" style="margin-top:10px">Opening a text back</div>
-            <p class="say">Hi! Thanks for reaching out to Nivessa Records. What are you looking for?</p>
-        </div>
-        <div class="word-swap">
-            <div class="h yes">What we say</div>
-            <div class="h no">What we don't say</div>
-            <div class="cell yes">Their name if you have it, otherwise just talk to them</div>
-            <div class="cell no"><s>Buddy</s>, bro, pal, boss, my friend, brother</div>
-            <div class="cell yes">Sure, what can I help you find?</div>
-            <div class="cell no">Yeah&hellip; what do you want?</div>
-            <div class="cell yes">We don't have that 1 here &mdash; but I am checking our other store and warehouse.</div>
-            <div class="cell no">We don't have it. (and stop)</div>
-            <div class="cell yes">Looking this up for you!</div>
-            <div class="cell no">Hold on.</div>
-            <div class="cell yes">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in?</div>
-            <div class="cell no">We will be selling them now, to whom who preorder.</div>
-            <div class="cell yes">Awesome &mdash; see you soon!</div>
-            <div class="cell no">Great, most welcome.</div>
-            <div class="cell yes">One sec, checking in with our cashiers now.</div>
-            <div class="cell no">Let us check and we will get back to you.</div>
-        </div>
-
-        <div class="callout"><strong>Never call a customer &ldquo;buddy,&rdquo; &ldquo;bro,&rdquo; or &ldquo;brother.&rdquo;</strong></div>
-    </section>
-
-    {{-- 2 --}}
-    <section id="record">
-        <div class="sec-head"><span class="sec-num">2</span><h2>Do you have this record?</h2><span class="prio high">High priority</span></div>
-
+    {{-- Rewritten 10/12 for new staff (Insha): one job, one card per question, Oct hours. --}}
+    <section id="job">
+        <div class="sec-head"><span class="sec-num">1</span><h2>Your job</h2></div>
         <ol class="flow">
-            <li><strong>Check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP first.</strong><span class="sub">Search by artist. If we don't have the exact title/format, offer other titles or another format, and say we're checking our other locations.</span></li>
-            <li><strong>Have an employee lay eyes on it.</strong><span class="sub">DM whoever's on shift there to confirm it's really on the shelf. No answer? Call or text their cell &mdash; on-shift only, and only during business hours.</span></li>
-            <li><strong>Not at one store? Check the other store and the warehouse.</strong></li>
-            <li><strong>Fix the ERP if the total in stock is wrong.</strong><span class="sub">Update the true inventory so the next person isn't misled.</span></li>
-            <li><strong>Give a real answer.</strong><span class="sub">A clear yes, or a no with an alternative (another format, pressing, or a special order). Never a flat &ldquo;nope.&rdquo;</span></li>
+            <li><strong>Reply fast and warm.</strong><span class="sub">Calls: &ldquo;Thanks for calling Nivessa Records! How can I help you?&rdquo; Texts: &ldquo;Hi! Thanks for reaching out to Nivessa Records. What are you looking for?&rdquo;</span></li>
+            <li><strong>Give a real answer the same day.</strong><span class="sub">If you don't know, say you're checking, then come back with the answer. Never leave a customer without a reply.</span></li>
+            <li><strong>Invite them in.</strong><span class="sub">End with a reason to visit or buy: &ldquo;Want us to hold it for you?&rdquo; or &ldquo;See you soon!&rdquo;</span></li>
         </ol>
-
-        <div class="script">
-            <div class="label">While you check</div>
-            <p class="say">Looking this up for you!</p>
-            <div class="label" style="margin-top:14px">Not here right now</div>
-            <p class="say">We don't have that one here, but we may have it at our other store or the warehouse - checking!</p>
-            <div class="label" style="margin-top:10px">The &ldquo;no, but&hellip;&rdquo;</div>
-            <p class="say">We don't have that on CD right now, but we do have it on vinyl - are you interested? Or do you want us to order the CD for you? I can check if our distributor has it.</p>
-            <div class="label" style="margin-top:10px">They were told it's set aside for them</div>
-            <p class="say">You're all set &mdash; it's at the front desk with your name on it. See you soon!</p>
-            <div class="label" style="margin-top:14px">New release tonight / preorders</div>
-            <p class="say">Yes! We're selling them tonight to everyone who preordered &mdash; did you get your preorder in? If so, you're all set to grab it today.</p>
-        </div>
-
-        <div class="callout"><strong>Look it up, then offer an alternative.</strong> Open the ERP first &mdash; never &ldquo;we'll get back to you.&rdquo; Before saying no, check every format for that artist and their other titles. A &ldquo;no&rdquo; with an option beats a flat &ldquo;no.&rdquo;</div>
     </section>
 
-    {{-- 3 --}}
-    <section id="buying">
-        <div class="sec-head"><span class="sec-num">3</span><h2>Do you buy records? / Selling a collection</h2><span class="prio high">High priority</span></div>
+    <section id="questions">
+        <div class="sec-head"><span class="sec-num">2</span><h2>What do they want?</h2></div>
+        <p class="lede">Find the question, send the reply (change the parts in [brackets]), then do what the note says.</p>
 
-        <div class="script">
-            <div class="label">Do you buy records?</div>
-            <p class="say">Yes! Please bring your collection into either store and we'll give you a fair quote. Do you need the address?</p>
-            <div class="label" style="margin-top:12px">Big collection</div>
-            <p class="say">No appointment needed &mdash; just bring it by either store. For a large estate collection, 10 boxes or more, we may be able to arrange a house pickup depending on what you have. Please share some details about what you have (genres, collection size, some titles) and a Nivessa buyer will reach out to you.</p>
-        </div>
-
-        <div class="callout"><strong>Pass it to Jon.</strong> Get format, quantity, a few titles, photos, and their number. Never quote a price over the phone.</div>
-    </section>
-
-    {{-- 4 --}}
-    <section id="partnerships">
-        <div class="sec-head"><span class="sec-num">4</span><h2>Brand &amp; label partnerships</h2><span class="prio high">High priority</span></div>
-        <p class="lede">Big label or brand &mdash; Warner, Universal, Sony, Puma, Lego. Route to Sarah.</p>
-
-        <div class="script">
-            <div class="label">Routing to Sarah</div>
-            <p class="say">Sounds exciting! I'll forward this to Sarah &mdash; she manages our brand partnerships.</p>
-        </div>
-
-        <div class="callout"><strong>Give Sarah's email only:</strong> <a href="mailto:sarah@nivessa.com">sarah@nivessa.com</a>. Get the company and contact name &mdash; don't discuss terms yourself.</div>
-    </section>
-
-    {{-- 5 --}}
-    <section id="quick">
-        <div class="sec-head"><span class="sec-num">5</span><h2>Quick answers</h2><span class="prio low">Quick &mdash; under a minute</span></div>
-
-        <div class="card" id="hours">
-            <h3 style="margin-top:0">Hours &amp; locations</h3>
-            <div class="facts">
-                <div class="frow"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 9:30am&ndash;11pm &middot; Fri &amp; Sat 9:30am&ndash;1am &middot; Sun 9am&ndash;11pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
-                <div class="frow"><span class="store">Pico</span><span class="val">Sun&ndash;Wed 10am&ndash;7pm &middot; Thu&ndash;Sat 10am&ndash;8pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
+        <div class="card" id="record" style="margin-top:14px">
+            <h3 style="margin-top:0">&ldquo;Do you have this record?&rdquo; <span class="prio high">Most important</span></h3>
+            <div class="qa">
+                <p class="q">First reply</p>
+                <span class="say">Looking this up for you!</span>
+                <p class="note">The ERP isn't fully accurate yet, so don't answer from the screen alone. Check <a href='https://nivessa.com' target='_blank' rel='noopener'>nivessa.com</a> and the ERP, then have the person on shift look at the shelf (see section 3).</p>
             </div>
             <div class="qa">
-                <p class="q">&ldquo;What are your hours?&rdquo;</p>
-                <span class="say">Hey! We're open every day. Hollywood: 9:30am&ndash;11pm Mon&ndash;Thu, til 1am Fri &amp; Sat, and 9am&ndash;11pm Sundays. Pico: 10am&ndash;7pm, and til 8pm Thursday&ndash;Saturday.</span>
+                <p class="q">We have it</p>
+                <span class="say">Yes, we have [title] at [store] for $[price]! Want us to hold it under your name?</span>
+            </div>
+            <div class="qa">
+                <p class="q">We don't have it</p>
+                <span class="say">We don't have that one right now, but we have [other format / other title by the artist]. Want me to check if we can order it for you?</span>
+                <p class="note">Check every format and the other store before saying no. Never a flat &ldquo;no.&rdquo;</p>
+            </div>
+        </div>
+        <div class="card" id="buying" style="margin-top:14px">
+            <h3 style="margin-top:0">&ldquo;Do you buy records?&rdquo; / selling a collection <span class="prio high">Most important</span></h3>
+            <div class="qa">
+                <p class="q">Reply</p>
+                <span class="say">Yes! Come by Hollywood or Pico anytime and we'll give you a quote on the spot, no appointment needed.</span>
+            </div>
+            <div class="qa">
+                <p class="q">Big collection (10+ boxes)</p>
+                <span class="say">That sounds great! Can you send a few photos and tell me roughly how many and what kinds of music? Our buyer will reach out to you.</span>
+                <p class="note">Get photos, a rough count and their name, then send it to Jon the same day. Never quote a price yourself.</p>
+            </div>
+        </div>
+        <div class="card" id="order" style="margin-top:14px">
+            <h3 style="margin-top:0">&ldquo;Where's my order?&rdquo; <span class="prio high">Most important</span></h3>
+            <div class="qa">
+                <p class="q">Reply</p>
+                <span class="say">Sorry for the wait! What's your name or order number? I'll check on it right now.</span>
+                <p class="note">Look it up in the ERP Orders page or ask Nick, then text them the real status the same day.</p>
+            </div>
+            <div class="qa">
+                <p class="q">&ldquo;Do you ship?&rdquo;</p>
+                <span class="say">Yes, we ship worldwide! You can order at <a href='https://nivessa.com' target='_blank' rel='noopener'>nivessa.com</a>.</span>
+            </div>
+        </div>
+        <div class="card" id="upset" style="margin-top:14px">
+            <h3 style="margin-top:0">Upset customer <span class="prio high">Most important</span></h3>
+            <div class="qa">
+                <p class="q">Reply right away</p>
+                <span class="say">I'm so sorry about this, [name]. I want to fix it. Can you tell me what happened? I'll get back to you by [time].</span>
+                <p class="note">Don't argue or make excuses. If you can't fix it, message Sarah the same day.</p>
+            </div>
+        </div>
+        <div class="card" id="hours" style="margin-top:14px">
+            <h3 style="margin-top:0">Hours &amp; locations <span class="prio low">Quick</span></h3>
+            <div class="facts">
+                <div class="frow"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 10am&ndash;11pm &middot; Fri &amp; Sat 10am&ndash;1am &middot; Sun 9am&ndash;11pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
+                <div class="frow"><span class="store">Pico</span><span class="val">Mon &amp; Tue 11am&ndash;7pm &middot; Wed 11am&ndash;6pm &middot; Thu &amp; Fri 11am&ndash;8pm &middot; Sat &amp; Sun 10am&ndash;8pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Are you open today?&rdquo;</p>
-                <span class="say">Yes, we're open til x pm today &mdash; come visit :)</span>
+                <span class="say">Yes! We're open until [time] today. Come visit!</span>
+                <p class="note">Look up today's closing time above.</p>
             </div>
             <div class="qa">
-                <p class="q">&ldquo;Where are you located?&rdquo;</p>
-                <span class="say"><a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">Hollywood: 6434 Hollywood Blvd, Los Angeles, CA 90028</a>. <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">Pico: 5770 W Pico Blvd, Los Angeles, CA 90019</a>. See you there!</span>
-                <p class="note">Maps and directions: <a href="https://nivessa.com/locations" target="_blank" rel="noopener">nivessa.com/locations</a></p>
+                <p class="q">&ldquo;Where are you?&rdquo;</p>
+                <span class="say">Hollywood is at 6434 Hollywood Blvd and Pico is at 5770 W Pico Blvd. See you there!</span>
             </div>
         </div>
-
-        <div class="card" id="shipping" style="margin-top:14px">
-            <h3 style="margin-top:0">Online orders &amp; shipping</h3>
-            <div class="qa">
-                <p class="q">&ldquo;Do you ship?&rdquo;</p>
-                <span class="say">Yes, we ship worldwide! You can order through <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a>.</span>
-            </div>
-            <div class="qa">
-                <p class="q">&ldquo;How long does shipping take?&rdquo;</p>
-                <span class="say">Most orders go out within 1&ndash;3 business days. Delivery time depends on size and where you are, but we send tracking as soon as it ships.</span>
-            </div>
-            <div class="qa">
-                <p class="q">&ldquo;Where's my order?&rdquo;</p>
-                <span class="say">What's your name and order number? Our shipping team will look it up and reach out to you.</span>
-                <p class="note">Take name + order number and pass it to the shipping team.</p>
-            </div>
-        </div>
-
         <div class="card" id="events" style="margin-top:14px">
-            <h3 style="margin-top:0">Events &amp; venue</h3>
+            <h3 style="margin-top:0">Events, performing, renting the space <span class="prio low">Quick</span></h3>
             <div class="qa">
-                <p class="q">&ldquo;How do I perform / book a show?&rdquo;</p>
-                <span class="say">Excited to host your event! You can book it at: <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
-            </div>
-            <div class="qa">
-                <p class="q">&ldquo;Can I rent the space?&rdquo;</p>
-                <span class="say">Yes, you can book the space at <a href="https://nivessa.com/venues" target="_blank" rel="noopener">nivessa.com/venues</a>.</span>
+                <p class="q">Reply</p>
+                <span class="say">We'd love to host you! You can book at <a href='https://nivessa.com/venues' target='_blank' rel='noopener'>nivessa.com/venues</a>.</span>
             </div>
         </div>
-
-        <div class="card" id="hiring" style="margin-top:14px">
-            <h3 style="margin-top:0">Hiring</h3>
-            <div class="qa">
-                <p class="q">&ldquo;Are you hiring?&rdquo;</p>
-                <span class="say">Check out <a href="https://nivessa.com/careers" target="_blank" rel="noopener">nivessa.com/careers</a> and you can apply there.</span>
-            </div>
-            <div class="qa">
-                <p class="q">&ldquo;I applied but no one replied.&rdquo;</p>
-                <span class="say">If there's a good fit you will hear back from us.</span>
-            </div>
-        </div>
-
         <div class="card" id="lost" style="margin-top:14px">
-            <h3 style="margin-top:0">Lost &amp; found</h3>
+            <h3 style="margin-top:0">Left something at the store <span class="prio low">Quick</span></h3>
             <div class="qa">
-                <p class="q">&ldquo;I think I left something in the store &mdash; can you find it?&rdquo;</p>
-                <span class="say">Yes sure, I'll check in with the cashier and let you know if we found it!</span>
-                <p class="note">Get exactly what and where (e.g. black headphones, front-left corner), have a cashier look and safeguard it, then follow up.</p>
+                <p class="q">Reply</p>
+                <span class="say">Sure, I'll ask the store to look for it! What is it and about where did you leave it?</span>
+                <p class="note">Call the person on shift, then text the customer back either way.</p>
+            </div>
+        </div>
+        <div class="card" id="hiring" style="margin-top:14px">
+            <h3 style="margin-top:0">&ldquo;Are you hiring?&rdquo; <span class="prio low">Quick</span></h3>
+            <div class="qa">
+                <p class="q">Reply</p>
+                <span class="say">Thanks for your interest! You can see open roles and apply at <a href='https://nivessa.com/careers' target='_blank' rel='noopener'>nivessa.com/careers</a>.</span>
+                <p class="note">Most of these already get an automatic text.</p>
+            </div>
+        </div>
+        <div class="card" id="brands" style="margin-top:14px">
+            <h3 style="margin-top:0">Big brand or label wants to partner <span class="prio low">Quick</span></h3>
+            <div class="qa">
+                <p class="q">Reply</p>
+                <span class="say">Sounds exciting! I'll pass this to Sarah, who handles our partnerships. Can you send your name and company to sarah@nivessa.com?</span>
             </div>
         </div>
     </section>
 
-    {{-- 6 --}}
-    <section id="visit">
-        <div class="sec-head"><span class="sec-num">6</span><h2>Turn every call into a visit</h2></div>
-
-        <div class="branch">
-            <div class="brow"><div class="cond">Record's in stock</div><div class="arrow">&rarr;</div><div class="act">&ldquo;We have it! Want to place a pickup order?&rdquo;</div></div>
-            <div class="brow"><div class="cond">We don't have that title</div><div class="arrow">&rarr;</div><div class="act">Check all formats for that artist, and their other titles, before saying no.</div></div>
-            <div class="brow"><div class="cond">Just a quick question</div><div class="arrow">&rarr;</div><div class="act">Answer it, then: &ldquo;See you soon :)&rdquo;</div></div>
-        </div>
-
-        <div class="callout"><strong>This one counts.</strong> There's a reward being set up for getting people through the door &mdash; keep track of who you bring in. (Ask Sarah for details.)</div>
-    </section>
-
-    {{-- 7 --}}
-    <section id="coworker">
-        <div class="sec-head"><span class="sec-num">7</span><h2>Reaching a coworker</h2></div>
-
+    <section id="store">
+        <div class="sec-head"><span class="sec-num">3</span><h2>When you need the store</h2></div>
         <ol class="flow">
-            <li><strong>Check they're on shift.</strong><span class="sub">Only contact people who are working right now. Never message or call someone off their shift &mdash; find who's on shift instead.</span></li>
-            <li><strong>DM them on Slack; no answer, call or text their cell.</strong></li>
-            <li><strong>Take a message.</strong><span class="sub">Collect the customer's name, number, and what they need, and give them a callback time &mdash; then make sure it happens. You can say: &ldquo;It appears to be busy in the store right now, I didn't get an answer yet but I'll call you back within the hour with an update.&rdquo; Then actually update them, and get a hold of the cashier.</span></li>
+            <li><strong>Tell the customer you're checking.</strong><span class="sub">&ldquo;Checking with the store for you now, I'll text you back within the hour.&rdquo;</span></li>
+            <li><strong>Call the person on shift at that store.</strong><span class="sub">Find who's working in Sling and call their cell. Staff are busy and often don't see Slack, so call. Only call people who are on shift.</span></li>
+            <li><strong>Save up questions.</strong><span class="sub">If you have a few, make one call an hour with the whole list so the store isn't interrupted all day.</span></li>
+            <li><strong>Text the customer the answer the same day.</strong></li>
         </ol>
     </section>
 
-    {{-- 8 --}}
-    <section id="reference">
-        <div class="sec-head"><span class="sec-num">8</span><h2>Quick reference</h2></div>
-        <div class="dd">
-            <div class="col do">
-                <h4>Always do</h4>
-                <ul>
-                    <li>Answer warm: &ldquo;Thanks for calling Nivessa Records!&rdquo;</li>
-                    <li>Handle high-priority calls (records, buying) with full effort</li>
-                    <li>Keep quick calls short and friendly</li>
-                    <li>For records: check <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> and the ERP, then confirm it's on the shelf</li>
-                    <li>Not at one store? Check the other and the warehouse</li>
-                    <li>Update the ERP when the count is wrong</li>
-                    <li>Always end with a yes, or a no plus an alternative</li>
-                    <li>Point people to <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> when it answers them</li>
-                    <li>Not sure? &ldquo;Checking in with the cashiers at the store&hellip;&rdquo;</li>
-                    <li>Invite every caller into the store</li>
-                </ul>
-            </div>
-            <div class="col dont">
-                <h4>Never do</h4>
-                <ul>
-                    <li>Call a customer &ldquo;buddy,&rdquo; &ldquo;bro,&rdquo; or &ldquo;boss&rdquo;</li>
-                    <li>Promise a record no one has physically seen</li>
-                    <li>Say &ldquo;we don't have it&rdquo; before checking the other store + warehouse</li>
-                    <li>Give a flat &ldquo;no&rdquo; with no alternative</li>
-                    <li>Quote a price on a collection over the phone</li>
-                    <li>Guess at an answer &mdash; find out for sure instead</li>
-                    <li>Leave someone with no direct reply</li>
-                    <li>Contact a coworker who's off the clock</li>
-                </ul>
-            </div>
+    <section id="words">
+        <div class="sec-head"><span class="sec-num">4</span><h2>Words to use</h2></div>
+        <div class="word-swap">
+            <div class="h yes">Say</div>
+            <div class="h no">Don't say</div>
+            <div class="cell yes">Happy to help! What are you looking for? I'll check for you.</div>
+            <div class="cell no">Please email us at hello@nivessa.com</div>
+            <div class="cell yes">Come by anytime and we'll give you a quote on the spot!</div>
+            <div class="cell no">Please bring it to either store and we will provide you with a quote.</div>
+            <div class="cell yes">So sorry, that one sold out. Can I find something similar for you?</div>
+            <div class="cell no">We issued you a full refund. (and nothing else)</div>
+            <div class="cell yes">Hi, sorry we missed you! How can we help?</div>
+            <div class="cell no">Please let us know what is it about?</div>
+            <div class="cell yes">Awesome, see you soon!</div>
+            <div class="cell no">Great, most welcome.</div>
+            <div class="cell yes">Their name, or nothing</div>
+            <div class="cell no">Buddy, bro, boss, brother, &ldquo;email ID&rdquo;</div>
         </div>
     </section>
 
-    <div class="pp-foot">Nivessa Records front-of-house phone guide &middot; Hollywood &amp; Pico &middot; <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a> &middot; Keep at the counter.</div>
-
+    <div class="pp-foot">Nivessa Records &middot; Hollywood &amp; Pico &middot; <a href="https://nivessa.com" target="_blank" rel="noopener">nivessa.com</a></div>
 </div>
 @endsection
