@@ -1598,7 +1598,7 @@ class CashRegisterController extends Controller
 
     // A drawer is "low on change" only when it is low on ALL of these
     // (Sarah 2026-10-11): face value => minimum bill count.
-    const CHANGE_MINIMUMS = [1 => 10, 5 => 4];
+    const CHANGE_MINIMUMS = [1 => 5, 5 => 2];
 
     /**
      * When the close count shows the drawer low on $1s AND $5s and
