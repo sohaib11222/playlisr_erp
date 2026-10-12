@@ -295,13 +295,13 @@
             <h3 style="margin-top:0">Big brand or label wants to partner <span class="prio low">Quick</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Sounds exciting! I'll pass this to Sarah, who handles our partnerships. Can you send your name and company to sarah@nivessa.com?</span>
+                <span class="say">Sounds exciting! I'll pass this along to Sarah, who handles our partnerships.</span>
             </div>
         </div>
     </section>
 
     <section id="store">
-        <div class="sec-head"><span class="sec-num">3</span><h2>When you need the store</h2></div>
+        <div class="sec-head"><span class="sec-num">3</span><h2>When you need an answer from the store staff</h2></div>
         <ol class="flow">
             <li><strong>Tell the customer you're checking.</strong><span class="sub">&ldquo;Checking with the store for you now, I'll text you back within the hour.&rdquo;</span></li>
             <li><strong>Call the person on shift at that store.</strong><span class="sub">Find who's working in Sling and call their cell. Staff are busy and often don't see Slack, so call. Only call people who are on shift.</span></li>
