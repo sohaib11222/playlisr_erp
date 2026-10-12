@@ -279,7 +279,7 @@
             <h3 style="margin-top:0">Left something at the store <span class="prio low">Quick</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Sure, I'll ask the store to look for it! What is it and about where did you leave it?</span>
+                <span class="say">Sure, I'll ask someone at the store to look for it! What is it and about where did you leave it?</span>
                 <p class="note">Call the person on shift, then text the customer back either way.</p>
             </div>
         </div>
@@ -287,7 +287,7 @@
             <h3 style="margin-top:0">&ldquo;Are you hiring?&rdquo; <span class="prio low">Quick</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Thanks for your interest! You can see open roles and apply at <a href='https://nivessa.com/careers' target='_blank' rel='noopener'>nivessa.com/careers</a>.</span>
+                <span class="say"><a href='https://nivessa.com/careers' target='_blank' rel='noopener'>nivessa.com/careers</a></span>
                 <p class="note">Most of these already get an automatic text.</p>
             </div>
         </div>
