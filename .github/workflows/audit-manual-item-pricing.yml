@@ -1,0 +1,62 @@
+# READ-ONLY: manual POS items (no product_id) priced by hand vs by a
+# Manual Item Price Rule, by employee and category/sub-category.
+# See app/Console/Commands/AuditManualItemPricing.php.
+#
+# No writes.
+#
+# Reuses the same SSH secrets as Deploy production:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, (optional DEPLOY_PORT)
+
+name: Nivessa · audit manual item pricing (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Look back this many days'
+        required: false
+        default: '90'
+
+concurrency:
+  group: nivessa-audit-manual-item-pricing
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Run over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DAYS: ${{ github.event.inputs.days }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          envs: DAYS
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            php artisan nivessa:audit-manual-item-pricing --days="${DAYS:-90}"
