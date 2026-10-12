@@ -4,6 +4,8 @@
 @section('content')
 @php
     $storeName = $stores[$store];
+    $distColor = ['ams' => '#1565c0', 'alliance' => '#c62828', 'redeye' => '#2e7d32', 'secretly' => '#6a1b9a', 'matador' => '#ef6c00', 'monostereo' => '#00838f', 'deejay' => '#5d4037'];
+    $dist = function ($key, $label) use ($distColor) { return '<span style="color:' . ($distColor[$key] ?? '#555') . ';font-weight:600">' . e($label) . '</span>'; };
     $money = function ($v) { return $v === null ? '' : '$' . number_format((float) $v, 2); };
     $totalQty = 0; $totalCost = 0; $pricedQty = 0;
     foreach ($rows as $r) {
@@ -100,8 +102,8 @@
                         </td>
                         <td>
                             @if($r['best'])
-                                <b>{{ $money($r['best']['cost']) }}</b> {{ $r['best']['supplier_label'] }}
-                                @foreach($others as $op)<div class="rsd-muted">{{ $money($op['cost']) }} {{ $op['supplier_label'] }}@if($op['in_stock'] === false) (sold out)@endif</div>@endforeach
+                                <b>{{ $money($r['best']['cost']) }}</b> {!! $dist($r['best']['supplier_key'], $r['best']['supplier_label']) !!}
+                                @foreach($others as $op)<div class="rsd-muted">{{ $money($op['cost']) }} {!! $dist($op['supplier_key'], $op['supplier_label']) !!} @if($op['in_stock'] === false) (sold out)@endif</div>@endforeach
                             @else
                                 <span class="rsd-muted">not listed yet</span>
                             @endif
@@ -141,7 +143,7 @@
             @php $sum = 0; foreach ($list as $r) $sum += $r['qty'] * $r['prices'][$k]['cost']; @endphp
             <div class="col-md-6">
                 <div class="box box-solid">
-                    <div class="box-header with-border"><strong>{{ $suppliers[$k] ?? $k }}</strong>: {{ count($list) }} titles, {{ array_sum(array_column($list, 'qty')) }} copies, {{ $money($sum) }}</div>
+                    <div class="box-header with-border"><strong>{!! $dist($k, $suppliers[$k] ?? $k) !!}</strong>: {{ count($list) }} titles, {{ array_sum(array_column($list, 'qty')) }} copies, {{ $money($sum) }}</div>
                     <div class="box-body">
 <textarea class="rsd-list" rows="{{ min(14, count($list) + 1) }}" readonly>@foreach($list as $r){{ $r['upcs'][0] ?? '' }}	{{ $r['qty'] }}	{{ $r['artist'] }} - {{ $r['title'] }}
 @endforeach</textarea>
