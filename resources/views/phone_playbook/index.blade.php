@@ -163,6 +163,20 @@
 .pp-shell .pp-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--d-line); font-size: 12.5px; color: var(--d-ink-3); }
 </style>
 
+@php
+    // Oct 2026 hours. Index 0 = Sunday. Shown as today's hours only (Sarah 10/12).
+    $ppHours = [
+        'hollywood' => ['9am–11pm', '10am–11pm', '10am–11pm', '10am–11pm', '10am–11pm', '10am–1am', '10am–1am'],
+        'pico'      => ['10am–8pm', '11am–7pm', '11am–7pm', '11am–6pm', '11am–8pm', '11am–8pm', '10am–8pm'],
+    ];
+    $ppNow = \Carbon\Carbon::now('America/Los_Angeles');
+    $ppDow = $ppNow->dayOfWeek;
+    $ppHw = $ppHours['hollywood'][$ppDow];
+    $ppPico = $ppHours['pico'][$ppDow];
+    $ppHwClose = explode('–', $ppHw)[1];
+    $ppPicoClose = explode('–', $ppPico)[1];
+    $ppDay = $ppNow->format('l');
+@endphp
 <div class="pp-shell">
 
     <header class="pp-header">
@@ -211,8 +225,7 @@
             <h3 style="margin-top:0">&ldquo;Do you buy records?&rdquo; / selling a collection <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, open until [time] today, and Pico is at 5770 W Pico Blvd, open until [time] today.</span>
-                <p class="note">Today's closing times are in the Hours card below.</p>
+                <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, open until {{ $ppHwClose }} today, and Pico is at 5770 W Pico Blvd, open until {{ $ppPicoClose }} today.</span>
             </div>
             <div class="qa">
                 <p class="q">Big collection (10+ boxes)</p>
@@ -243,13 +256,12 @@
         <div class="card" id="hours" style="margin-top:14px">
             <h3 style="margin-top:0">Hours &amp; locations <span class="prio low">Quick</span></h3>
             <div class="facts">
-                <div class="frow"><span class="store">Hollywood</span><span class="val">Mon&ndash;Thu 10am&ndash;11pm &middot; Fri &amp; Sat 10am&ndash;1am &middot; Sun 9am&ndash;11pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=6434+Hollywood+Blvd+Los+Angeles+CA+90028" target="_blank" rel="noopener">6434 Hollywood Blvd, Los Angeles, CA 90028</a></span></div>
-                <div class="frow"><span class="store">Pico</span><span class="val">Mon &amp; Tue 11am&ndash;7pm &middot; Wed 11am&ndash;6pm &middot; Thu &amp; Fri 11am&ndash;8pm &middot; Sat &amp; Sun 10am&ndash;8pm &middot; <a href="https://www.google.com/maps/search/?api=1&amp;query=5770+W+Pico+Blvd+Los+Angeles+CA+90019" target="_blank" rel="noopener">5770 W Pico Blvd, Los Angeles, CA 90019</a></span></div>
+                <div class="frow"><span class="store">Today ({{ $ppDay }})</span><span class="val">Hollywood {{ $ppHw }} &middot; Pico {{ $ppPico }}</span></div>
+                <div class="frow"><span class="store">Addresses</span><span class="val">Hollywood: 6434 Hollywood Blvd, Los Angeles, CA 90028 &middot; Pico: 5770 W Pico Blvd, Los Angeles, CA 90019</span></div>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Are you open today?&rdquo;</p>
-                <span class="say">Yes! We're open until [time] today. Come visit!</span>
-                <p class="note">Look up today's closing time above.</p>
+                <span class="say">Yes, we're open until {{ $ppHwClose }} today in Hollywood and {{ $ppPicoClose }} at Pico. Come by!</span>
             </div>
             <div class="qa">
                 <p class="q">&ldquo;Where are you?&rdquo;</p>
