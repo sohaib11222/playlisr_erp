@@ -772,6 +772,70 @@ class TaskController extends Controller
      * form, so leaving a note never requires touching/resubmitting the
      * rest of the task's fields.
      */
+    const CHANGE_RUN_OUT_NOTE = 'Took $100 from the drawer to the bank.';
+    const CHANGE_RUN_IN_NOTE = 'Put $100 in change back in the drawer.';
+
+    /**
+     * Change-run task buttons (Sarah 2026-10-11). "out" logs $100 cash
+     * leaving the store's open register, "in" logs the $100 of change going
+     * back in and completes the task. Both write cash_register_transactions
+     * rows, so the register recon's expected cash moves with them and a
+     * close in between doesn't read as a drawer coming in $100 under.
+     */
+    public function changeRun($id, $step, Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $task = WeeklyTask::with('notes')->where('business_id', $business_id)->findOrFail($id);
+        if (stripos($task->title, 'Change run') !== 0 || !in_array($step, ['out', 'in'], true)) {
+            abort(404);
+        }
+        $back = redirect(action('TaskController@edit', $task->id));
+
+        $done = $task->notes->pluck('note')->all();
+        $outDone = in_array(self::CHANGE_RUN_OUT_NOTE, $done, true);
+        $inDone = in_array(self::CHANGE_RUN_IN_NOTE, $done, true);
+        if (($step === 'out' && $outDone) || ($step === 'in' && ($inDone || !$outDone))) {
+            return $back;
+        }
+
+        $locationIds = \App\BusinessLocation::where('business_id', $business_id)
+            ->where('name', 'like', '%' . ($task->store === 'pico' ? 'pico' : 'holly') . '%')
+            ->pluck('id');
+        $register = \App\CashRegister::where('business_id', $business_id)
+            ->whereIn('location_id', $locationIds)
+            ->where('status', 'open')
+            ->latest('id')
+            ->first();
+        if (!$register) {
+            return $back->with('status', ['success' => false, 'msg' => 'No register is open at this store. Open a register first, then try again.']);
+        }
+
+        \DB::transaction(function () use ($task, $register, $step) {
+            \DB::table('cash_register_transactions')->insert([
+                'cash_register_id' => $register->id,
+                'amount' => 100,
+                'pay_method' => 'cash',
+                'type' => $step === 'out' ? 'debit' : 'credit',
+                'transaction_type' => 'change_run',
+                'transaction_id' => $task->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $task->notes()->create([
+                'user_id' => auth()->id(),
+                'note' => $step === 'out' ? self::CHANGE_RUN_OUT_NOTE : self::CHANGE_RUN_IN_NOTE,
+            ]);
+            if ($step === 'in') {
+                $this->applyStatusTransition($task, 'complete', false);
+                $task->save();
+            }
+        });
+
+        return $back->with('status', ['success' => true, 'msg' => $step === 'out'
+            ? 'Logged $100 out of the drawer. Tap "Put change in drawer" when you are back.'
+            : 'Logged the change back in the drawer. Task complete.']);
+    }
+
     public function addNote($id, Request $request)
     {
         $business_id = $request->session()->get('user.business_id');

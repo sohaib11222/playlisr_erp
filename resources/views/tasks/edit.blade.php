@@ -21,6 +21,26 @@
     @php($currentStatus = old('status', $task->status))
     @php($selectedAssignees = old('assignees', $task->assignees->pluck('id')->all()))
 
+    @if(stripos($task->title, 'Change run') === 0)
+        {{-- Change run (Sarah 2026-10-11): log the $100 out and the change back in on the store's open register so the recon matches. --}}
+        @php($crNotes = $task->notes->pluck('note')->all())
+        @php($crOut = in_array(\App\Http\Controllers\TaskController::CHANGE_RUN_OUT_NOTE, $crNotes, true))
+        @php($crIn = in_array(\App\Http\Controllers\TaskController::CHANGE_RUN_IN_NOTE, $crNotes, true))
+        <div class="as-task-card" style="margin-bottom:12px; padding:14px 16px;">
+            <strong>Log it in the register</strong>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <form method="POST" action="{{ action('TaskController@changeRun', [$task->id, 'out']) }}">
+                    @csrf
+                    <button type="submit" class="btn btn-primary" {{ $crOut ? 'disabled' : '' }}>1. Took $100 to bank</button>
+                </form>
+                <form method="POST" action="{{ action('TaskController@changeRun', [$task->id, 'in']) }}">
+                    @csrf
+                    <button type="submit" class="btn btn-success" {{ (!$crOut || $crIn) ? 'disabled' : '' }}>2. Put change in drawer</button>
+                </form>
+            </div>
+        </div>
+    @endif
+
     <div class="as-task-card">
         <form method="POST" action="{{ action('TaskController@update', $task->id) }}" id="asTaskForm">
             @csrf
