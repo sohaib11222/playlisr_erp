@@ -126,7 +126,7 @@
                     <div class="box-body">
 <textarea class="rsd-list" rows="{{ min(14, count($list) + 1) }}" readonly>@foreach($list as $r){{ $r['upcs'][0] ?? '' }}	{{ $r['qty'] }}	{{ $r['artist'] }} - {{ $r['title'] }}
 @endforeach</textarea>
-                        <button type="button" class="btn btn-sm btn-default rsd-mark" data-supplier="{{ $k }}" data-keys='@json(array_column($list, 'key'))' data-qtys='@json(array_combine(array_column($list, 'key'), array_column($list, 'qty')))'>Mark as ordered</button>
+                        <button type="button" class="btn btn-sm btn-default rsd-mark" data-supplier="{{ $k }}" data-keys="{{ json_encode(array_column($list, 'key')) }}" data-qtys="{{ json_encode((object) array_combine(array_column($list, 'key'), array_column($list, 'qty'))) }}">Mark as ordered</button>
                     </div>
                 </div>
             </div>
@@ -144,7 +144,7 @@
                             <select class="form-control input-sm rsd-unpriced-supplier" style="display:inline-block;width:auto;">
                                 @foreach($suppliers as $k => $label)<option value="{{ $k }}">{{ $label }}</option>@endforeach
                             </select>
-                            <button type="button" class="btn btn-sm btn-default rsd-mark" data-supplier="" data-keys='@json(array_column($unpriced, 'key'))' data-qtys='@json(array_combine(array_column($unpriced, 'key'), array_column($unpriced, 'qty')))'>Mark as ordered</button>
+                            <button type="button" class="btn btn-sm btn-default rsd-mark" data-supplier="" data-keys="{{ json_encode(array_column($unpriced, 'key')) }}" data-qtys="{{ json_encode((object) array_combine(array_column($unpriced, 'key'), array_column($unpriced, 'qty'))) }}">Mark as ordered</button>
                         </div>
                     </div>
                 </div>
