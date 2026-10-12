@@ -4,10 +4,10 @@
      render identically. --}}
 @if(count($rows))
     {{-- Headers with data-sort re-order the rows client-side (see fsgSortRows in home/index.blade.php). --}}
-    <div class="fsg-row fsg-head"><div></div><div class="fsg-sort" data-sort="genre">Genre</div><div></div><div class="fsg-sort" data-sort="days" style="text-align:right;">Days</div><div class="fsg-sort" data-sort="ppd" style="text-align:right;" title="Σ(sale − cost) ÷ Σ(cost × days held), in cents">Profit / $1 / day</div><div class="fsg-sort" data-sort="stock" style="text-align:right;">In stock</div><div></div></div>
+    <div class="fsg-row fsg-head"><div></div><div class="fsg-sort" data-sort="genre">Genre</div><div></div><div class="fsg-sort" data-sort="days" style="text-align:right;">Days</div><div class="fsg-sort" data-sort="price" style="text-align:right;" title="Revenue ÷ units sold">Avg price</div><div class="fsg-sort" data-sort="ppd" style="text-align:right;" title="Σ(sale − cost) ÷ Σ(cost × days held), in cents">Profit / $1 / day</div><div class="fsg-sort" data-sort="stock" style="text-align:right;">In stock</div><div></div></div>
 @endif
 @forelse($rows as $idx => $r)
-    <div class="fsg-row fsg-clickable" data-genre="{{ $r->genre }}" data-category="{{ $r->category ?? '' }}" data-days="{{ $r->avg_sell_days }}" data-ppd="{{ $r->profit_per_dollar_day }}" data-stock="{{ $r->in_stock }}" title="See what sold">
+    <div class="fsg-row fsg-clickable" data-genre="{{ $r->genre }}" data-category="{{ $r->category ?? '' }}" data-days="{{ $r->avg_sell_days }}" data-price="{{ $r->avg_price }}" data-ppd="{{ $r->profit_per_dollar_day }}" data-stock="{{ $r->in_stock }}" title="See what sold">
         <div class="fsg-rank">{{ $idx + 1 }}</div>
         <div>
             <p class="fsg-label">{{ $r->genre }}@if($r->category)<span class="fsg-cat">{{ $r->category }}</span>@endif<span class="fsg-sub-num">{{ number_format($r->units) }} units · ${{ number_format($r->revenue, 0) }}</span></p>
@@ -16,6 +16,7 @@
         <div class="fsg-days">
             <span class="fsg-days-num">{{ number_format($r->avg_sell_days, 1) }}</span><span class="fsg-days-unit">d</span>
         </div>
+        <div class="fsg-price">${{ number_format($r->avg_price, 2) }}</div>
         @if(is_null($r->profit_per_dollar_day))
             <div class="fsg-ppd none" title="No purchase cost recorded">—</div>
         @else
