@@ -17,7 +17,9 @@
 <style>
     .ro-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
     .ro-bar .form-group { margin:0; }
-    table.rsd-table { width:100%; font-size:14px; }
+    table.rsd-table { width:auto; max-width:100%; font-size:14px; }
+    table.rsd-table td:first-child { width:300px; max-width:300px; }
+    table.rsd-table th.n, table.rsd-table td.n { width:120px; }
     table.rsd-table th { background:#f4f4f4; font-size:12px; line-height:1.2; vertical-align:bottom !important; position:sticky; top:0; z-index:1; }
     table.rsd-table td { vertical-align:middle !important; padding:6px 5px !important; }
     table.rsd-table td.n, table.rsd-table th.n { text-align:center; }
@@ -73,8 +75,8 @@
                 <thead>
                     <tr>
                         <th>Album</th>
-                        <th class="n {{ $store === 'hollywood' ? 'here' : '' }}">Customers asking (Hollywood)</th>
-                        <th class="n {{ $store === 'pico' ? 'here' : '' }}">Customers asking (Pico)</th>
+                        <th class="n {{ $store === 'hollywood' ? 'here' : '' }}">Customer requests (Hollywood)</th>
+                        <th class="n {{ $store === 'pico' ? 'here' : '' }}">Customer requests (Pico)</th>
                         <th class="n here">We order</th>
                         <th>Cheapest price</th>
                     </tr>
