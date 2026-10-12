@@ -236,7 +236,7 @@
             <h3 style="margin-top:0">Upset customer <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply right away</p>
-                <span class="say">I'm so sorry about this, [name]. I want to fix it. Can you tell me what happened? I'll get back to you by [time].</span>
+                <span class="say">So sorry about the hassle, I'm here to help. Can you tell me what happened?</span>
                 <p class="note">Don't argue or make excuses. If you can't fix it, message Sarah the same day.</p>
             </div>
         </div>
