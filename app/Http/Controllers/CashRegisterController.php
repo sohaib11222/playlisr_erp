@@ -1012,6 +1012,12 @@ class CashRegisterController extends Controller
         foreach ($label_rows as $props) {
             $d = json_decode($props, true) ?: [];
             $labels_printed_count += (int) ($d['qty'] ?? 0);
+            // Runs logged before the LabelsController price guard can carry a
+            // barcode-as-price item ($8.7 trillion on 10/11); drop their value.
+            if ((float) ($d['value'] ?? 0) > 100000 * max(1, (int) ($d['qty'] ?? 0))
+                || (float) ($d['value_used'] ?? 0) > 100000 * max(1, (int) ($d['qty'] ?? 0))) {
+                $d['value'] = $d['value_sealed'] = $d['value_used'] = 0;
+            }
             $labels_value += (float) ($d['value'] ?? 0);
             // Sealed/used split is only on runs logged after 2026-07-06; older
             // rows lack the keys, so these sums cover just the split-aware runs.

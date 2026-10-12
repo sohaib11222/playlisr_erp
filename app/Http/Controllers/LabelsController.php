@@ -249,6 +249,9 @@ class LabelsController extends Controller
             foreach ($product_details_page_wise as $page_products) {
                 foreach ($page_products as $pd) {
                     $price = (float) ($pd->sell_price_inc_tax ?? 0);
+                    // A barcode typed into the price field ($8.7 trillion CD on
+                    // 10/11) must not blow up the shift-notes total.
+                    if ($price > 100000) { $price = 0.0; }
                     $label_value += $price;
                     $cat = trim((string) ($pd->category ?? '')) ?: 'Uncategorized';
                     $sub = trim((string) ($pd->sub_category ?? ''));
