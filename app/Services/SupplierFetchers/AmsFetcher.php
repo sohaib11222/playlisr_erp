@@ -92,6 +92,17 @@ class AmsFetcher extends AbstractHttpFetcher
         // records never got an AMS price.
         $rows = [];
         $have = [];
+
+        // 4b) AMS's Record Store Day order lists (Sarah 10/12): RSD titles
+        // aren't in the regular /Search/Vinyl walk, so the RSD order page had
+        // no prices. Each list is a catalogue code from Ken's RSD email
+        // (search?cataloguecode=...). Small (~200 titles), so walk it first.
+        foreach (array_filter(array_map('trim', explode(',', (string) env('AMS_RSD_LISTS', 'LSTRSDBF26')))) as $code) {
+            $base = 'https://www.allmediasupply.com/search?cataloguecode=' . rawurlencode($code) . '&ipp=' . $ipp;
+            foreach ($this->walkCatalog('Vinyl', 'LP', 10, $ipp, $startedAt, '', $base) as $row) {
+                $rows[] = $row;
+            }
+        }
         // Also skip barcodes already priced in a previous run's feed so each
         // run advances into new territory instead of re-pulling the same items.
         try {
@@ -371,12 +382,12 @@ class AmsFetcher extends AbstractHttpFetcher
      *
      * @return array<int, array<string,mixed>>
      */
-    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp, float $startedAt = 0.0, string $sort = 'SalesRank'): array
+    protected function walkCatalog(string $path, string $defaultFormat, int $maxPages, int $ipp, float $startedAt = 0.0, string $sort = 'SalesRank', ?string $baseOverride = null): array
     {
         // sort='' → no sort param → AMS's full default catalog listing
         // (used by --full to reach titles the SalesRank top-list omits).
-        $base = 'https://www.allmediasupply.com/Search/' . $path . '?ipp=' . $ipp
-            . ($sort !== '' ? '&sort=' . rawurlencode($sort) : '');
+        $base = $baseOverride ?? ('https://www.allmediasupply.com/Search/' . $path . '?ipp=' . $ipp
+            . ($sort !== '' ? '&sort=' . rawurlencode($sort) : ''));
         $rows = [];
         $seenEans = [];
         $pageParam = null; // locked once a spelling is proven to advance

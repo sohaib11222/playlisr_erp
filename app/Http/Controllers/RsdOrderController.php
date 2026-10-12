@@ -92,7 +92,21 @@ class RsdOrderController extends Controller
             $isRsd = stripos($title, 'NOT RSD') === false;
             $format = preg_match('/\(CD\)|\bCD\b/i', $title) ? 'CD' : 'LP';
             $upcs = array_filter([(string) ($state['upc'][$key] ?? '')]);
-            $p = $ica->rsdPrices($biz, $artist, $title, $format, $upcs, $isRsd);
+            $saved = (array) ($state['prices'][$key] ?? []);
+            foreach ($saved as $sv) if (!empty($sv['upc'])) $upcs[] = $sv['upc'];
+            $p = $ica->rsdPrices($biz, $artist, $title, $format, array_values(array_unique($upcs)), $isRsd);
+            // Prices pulled live from a distributor site for this page win
+            // until the nightly feed has a newer one.
+            foreach ($saved as $k => $sv) {
+                $cur = $p['prices'][$k] ?? null;
+                if ($cur && strtotime((string) ($cur['checked_at'] ?? '')) > strtotime((string) ($sv['checked_at'] ?? ''))) continue;
+                if ((float) ($sv['cost'] ?? 0) <= 0 && empty($sv['gone'])) continue;
+                $p['prices'][$k] = ['supplier_key' => $k, 'supplier_label' => $suppliers[$k] ?? $k, 'cost' => (float) $sv['cost'],
+                    'upc' => $sv['upc'] ?? null, 'in_stock' => !empty($sv['gone']) ? false : null, 'url' => $sv['url'] ?? null,
+                    'checked_at' => $sv['checked_at'] ?? null, 'title' => $sv['title'] ?? null];
+                if (!empty($sv['gone']) && (float) $sv['cost'] <= 0) unset($p['prices'][$k]);
+                if (!empty($sv['upc']) && !in_array($sv['upc'], $p['upcs'], true)) $p['upcs'][] = $sv['upc'];
+            }
             $best = null;
             foreach ($p['prices'] as $k => $e) {
                 if ($e['in_stock'] === false && $isRsd === false) continue;
@@ -210,6 +224,27 @@ class RsdOrderController extends Controller
         $this->saveState($biz, $state);
         return redirect()->action('RsdOrderController@index', ['store' => $store])
             ->with('status', ['success' => 1, 'msg' => 'Request added.']);
+    }
+
+    /** Live distributor prices for RSD titles, posted from the browser: [{key, supplier, upc, cost, gone, title}]. */
+    public function savePrices(Request $request)
+    {
+        $biz = (int) $request->session()->get('user.business_id');
+        $state = $this->loadState($biz);
+        $n = 0;
+        foreach ((array) $request->input('items', []) as $it) {
+            $key = preg_replace('/[^a-f0-9]/', '', (string) ($it['key'] ?? ''));
+            $sup = preg_replace('/[^a-z]/', '', (string) ($it['supplier'] ?? ''));
+            if ($key === '' || $sup === '') continue;
+            $upc = preg_replace('/\D+/', '', (string) ($it['upc'] ?? ''));
+            $state['prices'][$key][$sup] = ['upc' => $upc, 'cost' => round((float) ($it['cost'] ?? 0), 2), 'gone' => !empty($it['gone']),
+                'title' => mb_substr((string) ($it['title'] ?? ''), 0, 120), 'url' => $sup === 'ams' && $upc ? 'https://www.allmediasupply.com/Product/x/x/' . $upc : null,
+                'checked_at' => now()->toIso8601String()];
+            if ($upc !== '' && empty($state['upc'][$key])) $state['upc'][$key] = $upc;
+            $n++;
+        }
+        $this->saveState($biz, $state);
+        return response()->json(['success' => true, 'saved' => $n]);
     }
 
     public function saveQty(Request $request)
