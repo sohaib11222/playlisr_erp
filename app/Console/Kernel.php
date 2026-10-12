@@ -126,10 +126,12 @@ class Kernel extends ConsoleKernel
         // duplicating. Same buttons live at /admin/channel-sales-sync for
         // manual/backfill runs. Sarah 2026-06-19.
         // Nick's Clover clock-in at Hollywood -> #shipping "what to ship"
-        // update (Sarah, 2026-10-12). Read-only Clover call, posts once per shift.
+        // update (Sarah, 2026-10-12). Runs every 5 min but only calls Clover
+        // around his scheduled Sling shift starts (see ShippingClockInWindow);
+        // read-only, posts once per day.
         $schedule->command('shipping:clock-in-watch')
             ->everyFiveMinutes()
-            ->between('8:00', '23:59')
+            ->between('4:30', '23:59')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(10);
 
