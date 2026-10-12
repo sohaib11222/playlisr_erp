@@ -151,7 +151,22 @@ class WebsiteOrdersController extends Controller
             usort($orders, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
         }
 
+        // Discogs orders waiting to ship sit on the To Ship tab too, so Nick
+        // marks everything shipped in one place (Sarah, 2026-10-12).
+        $discogsToShip = [];
+        $discogsError = null;
+        if ($activeTab === 'to_ship') {
+            $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
+            if (($d['success'] ?? false) === true) {
+                $discogsToShip = $d['data'] ?? [];
+            } else {
+                $discogsError = 'Could not load Discogs orders: ' . ($d['message'] ?? 'unknown error');
+            }
+        }
+
         return view('website-orders.index', [
+            'discogsToShip' => $discogsToShip,
+            'discogsError' => $discogsError,
             'orders' => $orders,
             'bridgeError' => $bridgeError,
             'bridgeErrorMessage' => $bridgeErrorMessage,
@@ -261,6 +276,36 @@ class WebsiteOrdersController extends Controller
                 'remindedVia' => $o['pickup_reminded_via'] ?? null,
             ];
         }, $rows);
+    }
+
+    /**
+     * Mark a Discogs order shipped (status on Discogs + tracking number sent
+     * to the buyer). The website only records it once Discogs accepts it.
+     */
+    public function shipDiscogs(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $back = redirect()->route('website-orders.index', ['tab' => 'to_ship']);
+        if (!preg_match('/^[0-9]+-[0-9]+$/', $id)) {
+            return $back->with('error', 'That is not a Discogs order id.');
+        }
+        $tracking = trim((string) $request->input('tracking_number'));
+        if ($tracking === '') {
+            return $back->with('error', 'Enter a tracking number for Discogs order ' . $id . '.');
+        }
+        $resp = $this->websiteApi('POST', "/erp/discogs/orders/{$id}/ship", [
+            'trackingNumber' => $tracking,
+            'changedBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
+        ], 30);
+        if (!empty($resp['timedOut'])) {
+            return $back->with('error', 'Discogs took too long to answer for order ' . $id . '. Reload in a minute to check; pressing it again will not mark it twice.');
+        }
+        if (($resp['success'] ?? false) !== true) {
+            return $back->with('error', 'Discogs order ' . $id . ' was not marked shipped: ' . ($resp['message'] ?? 'unknown error'));
+        }
+        return $back->with('status', 'Discogs order ' . $id . ' marked shipped. The buyer got the tracking number on Discogs.');
     }
 
     public function updateStatus(Request $request, string $id)

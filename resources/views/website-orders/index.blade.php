@@ -443,6 +443,63 @@
       </div>
     @endif
 
+    @if($activeTab === 'to_ship')
+      {{-- Discogs orders to ship (Sarah, 2026-10-12): marked shipped here, which
+           sets Shipped on Discogs and sends the buyer the tracking number. --}}
+      <h3 style="margin:22px 0 10px;font-size:16px;font-weight:700;color:#111827;">
+        <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
+        Discogs orders to ship ({{ count($discogsToShip ?? []) }})
+      </h3>
+      @if(!empty($discogsError))
+        <div class="alert-err">{{ $discogsError }}</div>
+      @elseif(empty($discogsToShip))
+        <div class="ev-card"><div class="empty">No Discogs orders waiting to ship.</div></div>
+      @else
+        <div class="wo-card">
+          <div style="overflow-x:auto;">
+          <table class="wo-tbl">
+            <thead><tr>
+              <th>Discogs order</th>
+              <th>Buyer</th>
+              <th>Items (bin)</th>
+              <th>Total</th>
+              <th>Ordered</th>
+              <th style="width:230px;">Mark shipped</th>
+            </tr></thead>
+            <tbody>
+              @foreach($discogsToShip as $d)
+                <tr class="wo-row">
+                  <td>
+                    <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
+                    <div><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">{{ $d['id'] }}</a></div>
+                    <div style="font-size:11px;color:#6b7280;">{{ $d['status'] ?? '' }}</div>
+                  </td>
+                  <td>{{ $d['buyer'] ?? '' }}</td>
+                  <td style="font-size:13px;">
+                    @foreach(($d['items'] ?? []) as $it)
+                      <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif</div>
+                    @endforeach
+                  </td>
+                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
+                  <td class="wo-placed">{{ !empty($d['order_date']) ? date('M j, Y g:ia', strtotime($d['order_date'])) : '' }}</td>
+                  <td>
+                    <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
+                          onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking...';">
+                      {{ csrf_field() }}
+                      <input type="text" name="tracking_number" required placeholder="Tracking number"
+                             style="width:100%;font-size:13px;padding:7px 9px;border:1px solid #d1d5db;border-radius:7px;box-sizing:border-box;margin-bottom:6px;">
+                      <button type="submit" class="wo-btn wo-btn-primary">Mark shipped</button>
+                    </form>
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+          </div>
+        </div>
+      @endif
+    @endif
+
     {{-- Shared "Update status" dialog — one dialog reused for every row, retargeted by
          woOpenStatus() rather than one dialog per order (keeps the DOM small). --}}
     <dialog id="wo-status-dialog" class="wo-dialog">
