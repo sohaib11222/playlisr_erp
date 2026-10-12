@@ -211,11 +211,12 @@
             <h3 style="margin-top:0">&ldquo;Do you buy records?&rdquo; / selling a collection <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Yes! Come by Hollywood or Pico anytime and we'll give you a quote on the spot, no appointment needed.</span>
+                <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, open until [time] today, and Pico is at 5770 W Pico Blvd, open until [time] today.</span>
+                <p class="note">Today's closing times are in the Hours card below.</p>
             </div>
             <div class="qa">
                 <p class="q">Big collection (10+ boxes)</p>
-                <span class="say">That sounds great! Can you send a few photos and tell me roughly how many and what kinds of music? Our buyer will reach out to you.</span>
+                <span class="say">That sounds great! Can you send a few photos and tell me roughly how many and what type of music? I will have someone from the store reach out to you.</span>
                 <p class="note">Get photos, a rough count and their name, then send it to Jon the same day. Never quote a price yourself.</p>
             </div>
         </div>
