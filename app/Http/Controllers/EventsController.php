@@ -1400,6 +1400,31 @@ class EventsController extends Controller
     }
 
     /**
+     * RSD Requests — what customers asked us to order for a Record Store Day
+     * drop, submitted on the website's RSD landing page (/rsd-black-friday).
+     * Read over the website bridge (/api/v1/erp/rsd-requests); one row per
+     * title with Hollywood / Pico / total counts, plus the raw request list.
+     */
+    public function rsdRequests(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $event = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $request->query('event', 'rsd-bf-2026'))) ?: 'rsd-bf-2026';
+        $resp = $this->websiteApi('GET', '/erp/rsd-requests?event=' . rawurlencode($event));
+        $data = is_array($resp['data'] ?? null) ? $resp['data'] : [];
+
+        return view('events.rsd_requests', [
+            'event'     => $event,
+            'reachable' => $resp !== null,
+            'keySet'    => $this->erpApiKey() !== '',
+            'count'     => (int) ($data['count'] ?? 0),
+            'titles'    => $data['titles'] ?? [],
+            'requests'  => $data['requests'] ?? [],
+        ]);
+    }
+
+    /**
      * Call the website bridge (/api/v1/erp/*) with the shared key. Returns the
      * decoded JSON array on success, or null on failure (unreachable / non-2xx).
      */

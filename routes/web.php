@@ -611,6 +611,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Per-event sales summary for the accountant: attendees + preorder interest
     // + day-of on-the-spot POS sales of the featured record (units + revenue).
     Route::get('/events-sales-report', 'EventsController@salesReport')->name('events.salesReport');
+    // RSD "what should we order" requests from the website's RSD landing page.
+    Route::get('/rsd-requests', 'EventsController@rsdRequests')->name('events.rsdRequests');
     Route::get('/events-sales-report/export', 'EventsController@salesReportExport')->name('events.salesReportExport');
     Route::post('/events-preorders/event/{preorderId}/pickup', 'EventsController@overviewMarkEventPickedUp')->name('events.overviewEventPickup');
     Route::post('/events-preorders/event/{preorderId}/ready', 'EventsController@overviewMarkEventReady')->name('events.overviewEventReady');
