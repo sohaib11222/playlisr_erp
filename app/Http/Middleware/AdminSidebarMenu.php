@@ -159,6 +159,11 @@ class AdminSidebarMenu
                             ['icon' => 'fa fas fa-music', 'active' => request()->segment(1) == 'events']
                         );
                         $sub->url(
+                            route('events.rsdRequests'),
+                            'RSD Requests',
+                            ['icon' => 'fa fas fa-compact-disc', 'active' => request()->segment(1) == 'rsd-requests']
+                        );
+                        $sub->url(
                             route('email-templates.index'),
                             'Email Templates',
                             ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
