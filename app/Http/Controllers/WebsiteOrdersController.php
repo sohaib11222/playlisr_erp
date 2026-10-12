@@ -605,6 +605,12 @@ class WebsiteOrdersController extends Controller
      * website" regardless of what actually went wrong (bad key, network
      * failure, or the endpoint itself erroring with a non-JSON body).
      */
+    /** Read-only bridge GET for other ERP pages (RSD eblast list). */
+    public function bridgeGet(string $path, int $timeout = 20): ?array
+    {
+        return $this->websiteApi('GET', $path, null, $timeout);
+    }
+
     protected function websiteApi(string $method, string $path, array $body = null, int $timeout = 10): ?array
     {
         $key = $this->erpApiKey();

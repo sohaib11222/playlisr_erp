@@ -368,6 +368,22 @@ class RsdOrderController extends Controller
                 \DB::raw('0 as purchases'), 'c.last_purchase_date as last_purchase', 'c.lifetime_purchases as spent', \DB::raw('0 as pico_visits'))
             ->orderByDesc('c.lifetime_purchases')->get();
         $rows = $rows->concat($clover);
+        // Website buyers who picked up in store or ship to LA County.
+        $webCount = null;
+        try {
+            $web = app(\App\Http\Controllers\WebsiteOrdersController::class)
+                ->bridgeGet('/erp/la-regulars?months=' . (int) $request->input('months', 12) . '&min=' . $min);
+            $webRows = (array) ($web['data'] ?? []);
+            $webCount = !empty($web['success']) ? count($webRows) : ('error: ' . ($web['message'] ?? 'unknown'));
+            foreach ($webRows as $w) {
+                $parts = preg_split('/\s+/', trim((string) ($w['name'] ?? '')), 2);
+                $rows->push((object) ['id' => 0, 'email' => $w['email'] ?? '', 'first_name' => $parts[0] ?? '', 'last_name' => $parts[1] ?? '',
+                    'name' => $w['name'] ?? '', 'zip_code' => '', 'purchases' => (int) ($w['orders'] ?? 0),
+                    'last_purchase' => $w['last_order'] ?? '', 'spent' => 0, 'pico_visits' => (int) ($w['pico_orders'] ?? 0)]);
+            }
+        } catch (\Throwable $e) {
+            $webCount = 'error: ' . $e->getMessage();
+        }
         foreach ($rows as $r) {
             $email = strtolower(trim($r->email));
             if (isset($seen[$email]) || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
@@ -390,7 +406,7 @@ class RsdOrderController extends Controller
         }
         $by = ['clover_spent_75_150' => 0, 'clover_spent_150_300' => 0, 'clover_spent_300_plus' => 0];
         foreach ($out as $o) { if ($o['PURCHASES'] === 0) { $k = $o['SPENT'] >= 300 ? 'clover_spent_300_plus' : ($o['SPENT'] >= 150 ? 'clover_spent_150_300' : 'clover_spent_75_150'); $by[$k]++; continue; } $b = $o['PURCHASES'] >= 10 ? '10+' : ($o['PURCHASES'] >= 5 ? '5-9' : ($o['PURCHASES'] >= 3 ? '3-4' : '2')); $by[$b] = ($by[$b] ?? 0) + 1; }
-        return response()->json(['since' => $since, 'min_purchases' => $min, 'count' => count($out), 'by_purchases' => $by,
+        return response()->json(['since' => $since, 'min_purchases' => $min, 'count' => count($out), 'website_buyers' => $webCount, 'by_purchases' => $by,
             'by_store' => array_count_values(array_column($out, 'STORE')), 'sample' => array_map(function ($o) { return ['purchases' => $o['PURCHASES'], 'last' => $o['LAST_PURCHASE'], 'store' => $o['STORE']]; }, array_slice($out, 0, 5))]);
     }
 }
