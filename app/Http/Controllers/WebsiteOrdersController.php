@@ -159,6 +159,13 @@ class WebsiteOrdersController extends Controller
             $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
             if (($d['success'] ?? false) === true) {
                 $discogsToShip = $d['data'] ?? [];
+                // Slack links filter to one order with ?q=<discogs id>.
+                if ($search !== '') {
+                    $needle = strtolower($search);
+                    $discogsToShip = array_values(array_filter($discogsToShip, function ($o) use ($needle) {
+                        return strpos(strtolower(($o['id'] ?? '') . ' ' . ($o['buyer'] ?? '')), $needle) !== false;
+                    }));
+                }
             } else {
                 $discogsError = 'Could not load Discogs orders: ' . ($d['message'] ?? 'unknown error');
             }
