@@ -193,7 +193,8 @@
             </div>
             <div class="qa">
                 <p class="q">We have it</p>
-                <span class="say">Yes, we have [title] at [store] for $[price]! Want us to hold it under your name?</span>
+                <span class="say">Yes, we have [title] at [store] for $[price]! Would you like us to hold it under your name?</span>
+                <p class="note">If yes, tell the front desk person to put it in the hold bin, and add a pickup request in the ERP: <a href="/customer-pickups/create" target="_blank" rel="noopener">add pickup request</a>.</p>
             </div>
             <div class="qa">
                 <p class="q">Only in the warehouse</p>
