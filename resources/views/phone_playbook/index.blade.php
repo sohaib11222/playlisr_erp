@@ -217,14 +217,14 @@
             <div class="qa">
                 <p class="q">Big collection (10+ boxes)</p>
                 <span class="say">That sounds great! Can you send a few photos and tell me roughly how many and what type of music? I will have someone from the store reach out to you.</span>
-                <p class="note">Get photos, a rough count and their name, then send it to Jon the same day. Never quote a price yourself.</p>
+                <p class="note">Get photos, a rough count and their name, then alert Jon the same day to see if he's interested. Never quote a price yourself.</p>
             </div>
         </div>
         <div class="card" id="order" style="margin-top:14px">
             <h3 style="margin-top:0">&ldquo;Where's my order?&rdquo; <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">Sorry for the wait! What's your name or order number? I'll check on it right now.</span>
+                <span class="say">What's your name or order number? I'll check on it right now.</span>
                 <p class="note">Look it up in the ERP Orders page or ask Nick, then text them the real status the same day.</p>
             </div>
             <div class="qa">
