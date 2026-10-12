@@ -175,7 +175,7 @@
         <div class="sec-head"><span class="sec-num">1</span><h2>Your job</h2></div>
         <ol class="flow">
             <li><strong>Reply fast and warm.</strong><span class="sub">Calls: &ldquo;Thanks for calling Nivessa Records! How can I help you?&rdquo; Texts: &ldquo;Hi! Thanks for reaching out to Nivessa Records. What are you looking for?&rdquo;</span></li>
-            <li><strong>Give a real answer the same day.</strong><span class="sub">If you don't know, say you're checking, then come back with the answer. Never leave a customer without a reply.</span></li>
+            <li><strong>Please provide a direct answer the same day.</strong><span class="sub">If you don't know it, say you're checking in with the staff at the store and then come back with the answer. Please do not leave a customer without a reply.</span></li>
             <li><strong>Invite them in.</strong><span class="sub">End with a reason to visit or buy: &ldquo;Want us to hold it for you?&rdquo; or &ldquo;See you soon!&rdquo;</span></li>
         </ol>
     </section>
