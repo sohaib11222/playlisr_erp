@@ -395,6 +395,10 @@
 					<span class="cr-denom-total" id="cr_denom_total">$0.00</span>
 				</div>
 				{!! Form::hidden('closing_amount', 0, ['id' => 'cr_closing_amount']) !!}
+				{{-- Coins aren't counted above; this feeds the change-run task (Sarah 2026-10-11). --}}
+				<label class="cr-hero-hint" style="display:block; margin-top:8px; font-weight:600;">
+					<input type="checkbox" name="low_on_coins" value="1"> Low on coins
+				</label>
 
 				<script>
 				/* Live-sum the bill counts into the hidden closing_amount, then

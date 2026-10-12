@@ -1572,12 +1572,12 @@ class CashRegisterController extends Controller
             }
 
             // Change run (Sarah 2026-10-11): when the close count shows the
-            // drawer low on $1s or $5s, tell #shift-notes that a manager
-            // should take $100-$150 to the bank for change. Max once a
-            // week per store. Isolated so it can never break the close.
+            // drawer low on $1s, $5s, $10s and coins, assign the store manager a
+            // change-run task. Max once a week per store. Isolated so it
+            // can never break the close.
             if ($openRegister && is_array($closeDenoms)) {
                 try {
-                    $this->maybePostChangeRun($openRegister, $closeDenoms);
+                    $this->maybePostChangeRun($openRegister, $closeDenoms, !empty($request->input('low_on_coins')));
                 } catch (\Throwable $ex) {
                     \Log::warning('maybePostChangeRun failed: ' . $ex->getMessage());
                 }
@@ -1596,60 +1596,120 @@ class CashRegisterController extends Controller
         return redirect()->back()->with('status', $output);
     }
 
-    const CHANGE_MIN_ONES = 20;
-    const CHANGE_MIN_FIVES = 10;
+    // A drawer is "low on change" only when it is low on ALL of these
+    // (Sarah 2026-10-11): face value => minimum bill count.
+    const CHANGE_MINIMUMS = [1 => 20, 5 => 10, 10 => 5];
+
+    // Who gets the change-run task per store (they can reassign it).
+    const CHANGE_RUN_OWNERS = [
+        'pico'      => ['Zakary', 'Heimlich'],
+        'hollywood' => ['Luis', 'Casanova'],
+    ];
 
     /**
-     * Post a "time for a change run" line to #shift-notes when the drawer
-     * closes with fewer than CHANGE_MIN_ONES $1s or CHANGE_MIN_FIVES $5s.
-     * Throttled to once every 7 days per store via a small JSON file.
+     * When the close count shows the drawer low on $1s, $5s AND $10s and
+     * the cashier ticked "Low on coins",
+     * create a "Change run" task for the store manager (Zak at Pico, Luis
+     * at Hollywood) with the $100 bank breakdown, and note it in
+     * #shift-notes. Max once every 7 days per store.
      */
-    private function maybePostChangeRun($register, array $denoms): void
+    private function maybePostChangeRun($register, array $denoms, bool $lowOnCoins): void
     {
-        $ones = max(0, (int) ($denoms['1'] ?? $denoms[1] ?? 0));
-        $fives = max(0, (int) ($denoms['5'] ?? $denoms[5] ?? 0));
-        if ($ones >= self::CHANGE_MIN_ONES && $fives >= self::CHANGE_MIN_FIVES) {
+        if (!$lowOnCoins) {
             return;
         }
+        $counts = [];
+        foreach (self::CHANGE_MINIMUMS as $face => $min) {
+            $counts[$face] = max(0, (int) ($denoms[(string) $face] ?? $denoms[$face] ?? 0));
+            if ($counts[$face] >= $min) {
+                return;
+            }
+        }
 
-        $location = BusinessLocation::find($register->location_id);
-        $store = $location->name ?? 'Store';
-        $key = (string) $register->location_id;
+        $storeKey = $this->storeKeyForLocation($register->location_id);
+        if (!$storeKey) {
+            return;
+        }
+        $storeLabel = $storeKey === 'pico' ? 'Pico' : 'Hollywood';
 
         $file = storage_path('app/change-run/last.json');
         $last = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
-        if (!empty($last[$key]) && \Carbon::parse($last[$key])->gt(\Carbon::now()->subDays(7))) {
+        if (!empty($last[$storeKey]) && \Carbon::parse($last[$storeKey])->gt(\Carbon::now()->subDays(7))) {
             return;
         }
+
+        [$first, $lastName] = self::CHANGE_RUN_OWNERS[$storeKey];
+        $owner = \App\User::where('business_id', $register->business_id)
+            ->where('first_name', 'like', $first . '%')
+            ->where('last_name', 'like', $lastName . '%')
+            ->where('status', 'active')
+            ->first();
+
+        $countLine = "The drawer closed with {$counts[1]} \$1s, {$counts[5]} \$5s and {$counts[10]} \$10s, and is low on coins.";
+        $description = $countLine . "\n\n"
+            . "Take \$100 from the drawer to the bank and ask for:\n"
+            . "- \$25 in \$1s (25 bills)\n"
+            . "- \$25 in \$5s (5 bills)\n"
+            . "- \$20 in \$10s (2 bills)\n"
+            . "- \$20 in \$20s (1 bill)\n"
+            . "- \$10 in coins (1 roll of quarters)\n\n"
+            . "Put it all back in the drawer. You can reassign this task to someone else in the store.";
+
+        $today = \Carbon::now()->toDateString();
+        $data = [
+            'business_id' => $register->business_id,
+            'title' => 'Change run: \$100 to the bank for small bills',
+            'description' => $description,
+            'start_date' => $today,
+            'end_date' => \Carbon::now()->addDays(7)->toDateString(),
+            'task_type' => 'weekly',
+            'repeat_daily' => false,
+            'repeat_weekly' => false,
+            'store' => $storeKey,
+            'priority' => 'high',
+            'requires_photo' => false,
+            'status' => 'not_started',
+            'created_by' => $owner->id ?? $register->user_id,
+        ];
+        $task = \App\WeeklyTask::create($data);
+        if ($owner) {
+            $task->assignees()->sync([$owner->id]);
+            $taskUrl = action('TaskController@edit', $task->id);
+            \App\PendingAssignmentText::create([
+                'weekly_task_id' => $task->id,
+                'user_id' => $owner->id,
+                'message' => "New task assigned to you: \"{$task->title}\". {$taskUrl}",
+            ]);
+        }
+
+        $last[$storeKey] = \Carbon::now()->toDateTimeString();
+        if (!is_dir(dirname($file))) {
+            @mkdir(dirname($file), 0775, true);
+        }
+        file_put_contents($file, json_encode($last, JSON_PRETTY_PRINT));
 
         $webhook = $this->shiftNotesWebhook();
         if ($webhook === '') {
             return;
         }
-        $text = "*Change run needed at {$store}.* The drawer closed with {$ones} \$1s and {$fives} \$5s. "
-            . "Manager: this week, take \$100 to \$150 from the drawer to the bank and bring back the same amount in \$1s and \$5s.";
-
-        $ch = curl_init($webhook);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
-            CURLOPT_TIMEOUT => 4,
-            CURLOPT_CONNECTTIMEOUT => 3,
-        ]);
-        curl_exec($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($code < 200 || $code >= 300) {
-            return;
+        $who = $owner ? $owner->first_name : 'the manager';
+        $text = "*{$storeLabel} is low on change.* {$countLine} A change run task is assigned to {$who}: "
+            . action('TaskController@edit', $task->id);
+        try {
+            $ch = curl_init($webhook);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => json_encode(['text' => $text]),
+                CURLOPT_TIMEOUT => 4,
+                CURLOPT_CONNECTTIMEOUT => 3,
+            ]);
+            curl_exec($ch);
+            curl_close($ch);
+        } catch (\Throwable $e) {
+            \Log::warning('change run Slack post failed: ' . $e->getMessage());
         }
-
-        $last[$key] = \Carbon::now()->toDateTimeString();
-        if (!is_dir(dirname($file))) {
-            @mkdir(dirname($file), 0775, true);
-        }
-        file_put_contents($file, json_encode($last, JSON_PRETTY_PRINT));
     }
 
     /** Store key ('pico'/'hollywood') for a business location id, or null if it doesn't match either. */
