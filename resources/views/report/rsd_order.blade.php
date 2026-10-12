@@ -25,6 +25,8 @@
     table.rsd-table td.here { background:#f3f9ff; }
     .rsd-artist { font-weight:bold; }
     .rsd-num { width:56px; text-align:center; display:inline-block; }
+    .rsd-req { border:1px solid transparent; background:transparent; font-size:15px; }
+    .rsd-req:hover, .rsd-req:focus { border-color:#ccc; background:#fff; }
     .rsd-upc { width:120px; font-size:12px; }
     .rsd-muted { color:#888; font-size:12px; }
     .rsd-tag { display:inline-block; font-size:11px; border-radius:9px; padding:0 7px; color:#fff; background:#757575; }
@@ -59,14 +61,8 @@
                     </select>
                 </div>
             </div>
-            <p style="margin:10px 0 4px;">
-                Customer requests from Instagram, DMs, Quo texts and the website form, last updated {{ $asOf ? \Carbon\Carbon::parse($asOf)->format('M j') : 'unknown' }}.
-                Anyone can change a request count, an order qty or a UPC right in the table and it saves.
-                Order = requests at {{ $storeName }} plus half again (at least 1 extra); requests with no store count at both stores.
-            </p>
-            <p style="margin:0;">
-                <b>{{ count(array_filter($rows, function ($r) { return $r['qty'] > 0; })) }}</b> titles, <b>{{ $totalQty }}</b> copies for {{ $storeName }}.
-                Cheapest total {{ $money($totalCost) }}@if($pricedQty < $totalQty) <span class="rsd-muted">({{ $totalQty - $pricedQty }} copies have no distributor price yet)</span>@endif.
+            <p style="margin:10px 0 0; font-size:15px;">
+                <b>{{ $totalQty }}</b> copies of <b>{{ count(array_filter($rows, function ($r) { return $r['qty'] > 0; })) }}</b> albums for {{ $storeName }}@if($pricedQty), {{ $money($totalCost) }} for the ones with a price@endif.
             </p>
         </div>
     </div>
@@ -77,13 +73,10 @@
                 <thead>
                     <tr>
                         <th>Album</th>
-                        <th class="n {{ $store === 'hollywood' ? 'here' : '' }}">Hollywood requests</th>
-                        <th class="n {{ $store === 'pico' ? 'here' : '' }}">Pico requests</th>
-                        <th class="n">No store</th>
-                        <th class="n here">Order ({{ $storeName }})</th>
-                        <th>Best price</th>
-                        <th>Other prices</th>
-                        <th>UPC</th>
+                        <th class="n {{ $store === 'hollywood' ? 'here' : '' }}">Customers asking (Hollywood)</th>
+                        <th class="n {{ $store === 'pico' ? 'here' : '' }}">Customers asking (Pico)</th>
+                        <th class="n here">We order</th>
+                        <th>Cheapest price</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -97,23 +90,20 @@
                                 <div class="rsd-muted">Ordered {{ $r['ordered']['qty'] ?: '' }} from {{ $suppliers[$r['ordered']['supplier']] ?? $r['ordered']['supplier'] }} on {{ \Carbon\Carbon::parse($r['ordered']['at'])->format('M j') }}</div>
                             @endif
                         </td>
-                        <td class="n {{ $store === 'hollywood' ? 'here' : '' }}"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="hollywood" value="{{ $r['hw'] }}"></td>
-                        <td class="n {{ $store === 'pico' ? 'here' : '' }}"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="pico" value="{{ $r['pico'] }}"></td>
-                        <td class="n"><input type="number" min="0" class="form-control input-sm rsd-num rsd-req" data-field="none" value="{{ $r['none'] }}"></td>
+                        <td class="n {{ $store === 'hollywood' ? 'here' : '' }}"><input type="number" min="0" class="rsd-num rsd-req" data-field="hollywood" value="{{ $r['hw'] }}"></td>
+                        <td class="n {{ $store === 'pico' ? 'here' : '' }}"><input type="number" min="0" class="rsd-num rsd-req" data-field="pico" value="{{ $r['pico'] }}">
+                            @if($r['none'])<div class="rsd-muted">+{{ $r['none'] }} no store</div>@endif</td>
                         <td class="n here">
                             <input type="number" min="0" class="form-control input-sm rsd-num rsd-qty" value="{{ $r['qty'] }}" data-suggested="{{ $r['suggested'] }}">
-                            @if($r['qty_edited'])<div class="rsd-muted">suggested {{ $r['suggested'] }}</div>@endif
                         </td>
                         <td>
                             @if($r['best'])
-                                {{ $money($r['best']['cost']) }}<div class="rsd-muted">{{ $r['best']['supplier_label'] }}</div>
-                                <div class="rsd-muted" style="color:{{ $r['best']['in_stock'] === true ? '#2e7d32' : '#999' }}">{{ $r['best']['in_stock'] === true ? 'in stock' : 'stock not checked yet' }}@if(!empty($r['best']['checked_at'])), {{ \Carbon\Carbon::parse($r['best']['checked_at'])->format('M j') }}@endif</div>
+                                <b>{{ $money($r['best']['cost']) }}</b> {{ $r['best']['supplier_label'] }}
+                                @foreach($others as $op)<div class="rsd-muted">{{ $money($op['cost']) }} {{ $op['supplier_label'] }}@if($op['in_stock'] === false) (sold out)@endif</div>@endforeach
                             @else
-                                <span class="rsd-muted">no distributor lists it yet</span>
+                                <span class="rsd-muted">not listed yet</span>
                             @endif
                         </td>
-                        <td style="font-size:12px; white-space:nowrap;">@foreach($others as $op)<div>{{ $money($op['cost']) }} {{ $op['supplier_label'] }}@if($op['in_stock'] === false) <span class="text-danger">sold out</span>@endif</div>@endforeach</td>
-                        <td><input type="text" class="form-control input-sm rsd-upc" value="{{ implode(', ', $r['upcs']) }}" placeholder="add UPC"></td>
                     </tr>
                 @endforeach
                 </tbody>
@@ -143,8 +133,8 @@
         </div>
     </div>
 
-    <h3>Order lists by distributor ({{ $storeName }})</h3>
-    <p class="rsd-muted">Each title goes to its cheapest distributor. Copy a list into the distributor's order form, then click Mark as ordered.</p>
+    <h3>Order lists ({{ $storeName }})</h3>
+    
     <div class="row">
         @foreach($byDist as $k => $list)
             @php $sum = 0; foreach ($list as $r) $sum += $r['qty'] * $r['prices'][$k]['cost']; @endphp
@@ -162,10 +152,9 @@
         @if(!empty($unpriced))
             <div class="col-md-6">
                 <div class="box box-solid">
-                    <div class="box-header with-border"><strong>No distributor price yet</strong>: {{ count($unpriced) }} titles, {{ array_sum(array_column($unpriced, 'qty')) }} copies</div>
+                    <div class="box-header with-border"><strong>No price yet</strong>: {{ count($unpriced) }} titles, {{ array_sum(array_column($unpriced, 'qty')) }} copies</div>
                     <div class="box-body">
-                        <p class="rsd-muted" style="margin-top:0;">Not listed in any distributor feed yet. Add the UPC in the table once you have it and the next nightly price pull fills in every distributor. AMS is the usual place for these.</p>
-<textarea class="rsd-list" rows="{{ min(14, count($unpriced) + 1) }}" readonly>@foreach($unpriced as $r){{ $r['qty'] }}	{{ $r['artist'] }} - {{ $r['title'] }}
+                        <textarea class="rsd-list" rows="{{ min(14, count($unpriced) + 1) }}" readonly>@foreach($unpriced as $r){{ $r['qty'] }}	{{ $r['artist'] }} - {{ $r['title'] }}
 @endforeach</textarea>
                         <div style="margin-top:6px;">
                             Mark as ordered from
@@ -180,18 +169,6 @@
         @endif
     </div>
 
-    <div class="box box-solid">
-        <div class="box-header with-border"><b>Or replace all counts from the Google Sheet</b></div>
-        <div class="box-body">
-            <form method="POST" action="{{ action('RsdOrderController@pasteRequests') }}">
-                @csrf
-                <input type="hidden" name="store" value="{{ $store }}">
-                <p class="rsd-muted" style="margin-top:0;">In the request sheet, select the table from the first Title down to the last row (columns Title, Artist, HW, PICO, NO STORE), copy, paste here, Save. Both store pages update.</p>
-                <textarea name="paste" class="form-control" rows="4"></textarea>
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top:6px;">Save counts</button>
-            </form>
-        </div>
-    </div>
 </section>
 @endsection
 
@@ -213,15 +190,14 @@
                 else toastr.error((r && r.msg) || 'Not saved');
             }).fail(function () { toastr.error('Not saved'); });
     });
-    $('#rsd-table').on('change', '.rsd-qty, .rsd-upc', function () {
+    $('#rsd-table').on('change', '.rsd-qty', function () {
         var tr = $(this).closest('tr'), key = tr.data('key');
         var qty = tr.find('.rsd-qty').val(), sug = tr.find('.rsd-qty').data('suggested');
         clearTimeout(timers[key]);
         timers[key] = setTimeout(function () {
             post(@json(action('RsdOrderController@saveQty')), {
                 key: key,
-                qty: String(qty) === String(sug) ? '' : qty,
-                upc: tr.find('.rsd-upc').val().split(',')[0].trim()
+                qty: String(qty) === String(sug) ? '' : qty
             }).done(function (r) {
                 if (r && r.success) toastr.success('Saved'); else toastr.error((r && r.msg) || 'Not saved');
             }).fail(function () { toastr.error('Not saved'); });
