@@ -41,8 +41,8 @@
             </form>
             <ol style="margin:12px 0 0; padding-left:22px; font-size:15px; line-height:1.55;">
                 <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed (like Clarissa's sheet): Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
-                <li>Count each series in the bins and type the total in <b>Counted</b>. It saves by itself.</li>
-                <li><b>Order</b> = enough for 4 weeks at the current pace, minus what you counted (or minus the ERP count if you haven't counted yet).</li>
+                <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
+                <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
             </ol>
         </div>
     </div>
