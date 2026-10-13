@@ -305,8 +305,14 @@ class ReorderController extends Controller
         if (empty($lines)) {
             return response()->json(['ok' => false, 'msg' => 'Nothing to order.'], 422);
         }
+        // Backdate when the order went in earlier than the click (admins only).
+        $at = null;
+        if ($request->filled('at') && auth()->user()->can('business_settings.access')
+            && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $request->input('at'))) {
+            $at = $request->input('at');
+        }
         $order = $this->svc->markOrdered($business_id, $locationId, $format, $lines, auth()->user()->first_name ?? '',
-            mb_substr((string) $request->input('note', ''), 0, 200));
+            mb_substr((string) $request->input('note', ''), 0, 200), $at);
         return response()->json(['ok' => true, 'id' => $order['id']]);
     }
 

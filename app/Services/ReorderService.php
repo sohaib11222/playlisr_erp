@@ -192,14 +192,14 @@ class ReorderService
     }
 
     /** Mark this week's order as placed. Lines: [{product_id, upc, qty, title}]. */
-    public function markOrdered(int $business_id, int $locationId, string $format, array $lines, string $by, string $note = ''): array
+    public function markOrdered(int $business_id, int $locationId, string $format, array $lines, string $by, string $note = '', ?string $at = null): array
     {
         $state = $this->loadState($business_id);
         $order = [
             'id' => substr(md5(uniqid('', true)), 0, 10),
             'location_id' => $locationId,
             'format' => $format,
-            'at' => now()->toDateTimeString(),
+            'at' => $at ?: now()->toDateTimeString(),
             'by' => $by,
             'note' => $note,
             'lines' => array_values($lines),
