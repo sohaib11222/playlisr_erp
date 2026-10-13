@@ -336,6 +336,25 @@ class RsdOrderController extends Controller
         $since = now()->subMonths((int) $request->input('months', 12))->toDateString();
         $locs = \App\BusinessLocation::where('business_id', $biz)->pluck('name', 'id')->toArray();
         if ($request->input('mode') === 'top') return $this->topSpenders($request, $biz);
+        if ($request->input('mode') === 'clover') {
+            // In-store customers who gave an email at the Clover register, newest first.
+            $staff = array_flip(array_filter(array_map(function ($e) { return strtolower(trim((string) $e)); },
+                \DB::table('users')->where('business_id', $biz)->pluck('email')->toArray())));
+            $emails = [];
+            $rows = \DB::table('contacts')->where('business_id', $biz)->where('is_default', 0)->whereNotNull('clover_customer_id')
+                ->whereNotNull('email')->where('email', 'like', '%@%.%')
+                ->orderByRaw('COALESCE(last_purchase_date, clover_synced_at, created_at) DESC')
+                ->select('email', 'zip_code', 'loyalty_points', 'visit_count')->get();
+            foreach ($rows as $r) {
+                $e = strtolower(trim($r->email));
+                if (!filter_var($e, FILTER_VALIDATE_EMAIL) || isset($staff[$e]) || isset($emails[$e])) continue;
+                if (preg_match('/nivessa|hedvat|^test@|example\./', $e) || !preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $e)) continue;
+                $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
+                if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+                $emails[$e] = true;
+            }
+            return response(count($emails) . "\n" . implode("\n", array_keys($emails)), 200, ['Content-Type' => 'text/plain']);
+        }
         if ($request->input('mode') === 'stats') {
             $base = function () use ($biz) { return \DB::table('contacts')->where('business_id', $biz)->whereNotNull('email')->where('email', 'like', '%@%.%'); };
             $cols = \Schema::getColumnListing('contacts');
