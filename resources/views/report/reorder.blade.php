@@ -6,7 +6,7 @@
     $whyLabels = app(\App\Http\Controllers\ReorderController::class)->whyLabels();
     $whyShort = ['sold' => 'Sold', 'core' => 'Always stock', 'overdue' => 'Missing?', 'once' => 'Sold fast once', 'used' => 'Sells used', 'other' => 'Sold this year', 'lastyear' => 'Sold last year', 'otherstore' => 'Other store'];
     $whyColors = ['sold' => '#2e7d32', 'core' => '#1565c0', 'overdue' => '#c62828', 'once' => '#6a1b9a', 'used' => '#ef6c00', 'other' => '#757575', 'lastyear' => '#00838f', 'otherstore' => '#5d4037'];
-    $genres = collect($rows)->pluck('genre')->unique()->values();
+    $genres = collect($rows)->pluck('genre')->unique()->sort()->values();
     $q = ['location_id' => $locationId, 'format' => $format];
 @endphp
 <style>
@@ -122,10 +122,27 @@
 
     <div class="box box-solid">
         <div class="box-body">
+            @if(!empty($section))
+                <div class="alert alert-info" style="font-size:15px; margin-bottom:10px;">
+                    <b>Counting the whole {{ $section }} section.</b> Every title the ERP thinks is in these bins is listed, A to Z. Type what's really there in <b>Counted</b> (0 if it's not there).
+                    <div id="ro-count-progress" style="margin-top:6px; font-weight:bold;"></div>
+                    <a href="{{ action('ReorderController@index', $q) }}">Done, back to the order list</a>
+                </div>
+            @else
             <div class="ro-chips" id="ro-chips">
                 <span class="ro-chip active" data-f="order">To order</span>
                 <span class="ro-chip" data-f="all">Show everything</span>
+                <form method="GET" action="{{ action('ReorderController@index') }}" style="display:inline-flex; gap:6px; margin-left:12px; align-items:center;">
+                    <input type="hidden" name="location_id" value="{{ $locationId }}">
+                    <input type="hidden" name="format" value="{{ $format }}">
+                    <span>Count a whole section:</span>
+                    <select name="section" class="form-control input-sm" style="width:auto;" onchange="if (this.value) this.form.submit()">
+                        <option value="">pick one</option>
+                        @foreach($genres as $g)<option>{{ $g }}</option>@endforeach
+                    </select>
+                </form>
             </div>
+            @endif
             <div class="ro-bar" style="margin-bottom:8px;">
                 <select id="ro-genre" class="form-control" style="width:auto;">
                     <option value="">All genres</option>
@@ -323,7 +340,8 @@
     var BLANK = @json($settings['blank_count']);
     var BUDGET_LEFT = {{ $budget ? (float) $budget['new']['remaining'] : 0 }};
     var Q = @json($q);
-    var filter = 'order';
+    var SECTION = @json($section ?? null);
+    var filter = SECTION ? 'all' : 'order';
     var sortKey = 'genre', sortDir = 1;
     var tbody = document.querySelector('#ro-table tbody');
     var rows = Array.prototype.slice.call(document.querySelectorAll('#ro-table tr.ro-row'));
@@ -474,7 +492,7 @@
             Math.round(cost).toLocaleString() + ' at the best price.';
     }
 
-    document.getElementById('ro-chips').addEventListener('click', function (e) {
+    if (document.getElementById('ro-chips')) document.getElementById('ro-chips').addEventListener('click', function (e) {
         var chip = e.target.closest('.ro-chip');
         if (!chip) return;
         document.querySelectorAll('.ro-chip').forEach(function (c) { c.classList.remove('active'); });
@@ -539,6 +557,26 @@
             .fail(function () { btn.disabled = false; toastr.error('Could not save the order.'); });
     });
 
+    if (SECTION) {
+        // Only this section, A to Z, and a running count.
+        document.getElementById('ro-genre').value = SECTION;
+        sortKey = 'album'; sortDir = 1;
+        var countProgress = function () {
+            var mine = rows.filter(function (tr) { return tr.dataset.genre === SECTION; });
+            var counted = 0, erp = 0, have = 0, missing = 0;
+            mine.forEach(function (tr) {
+                var c = tr.querySelector('.ro-count');
+                var e = Math.max(0, +tr.dataset.erp);
+                erp += e;
+                if (c && c.value !== '') { counted++; have += +c.value; missing += Math.max(0, e - +c.value); }
+            });
+            var el = document.getElementById('ro-count-progress');
+            if (el) el.textContent = 'Counted ' + counted + ' of ' + mine.length + ' titles. The ERP said ' + erp + ' copies, you found ' + have +
+                (missing ? '. Missing so far: ' + missing + ' copies (sold out, misfiled or stolen).' : '.');
+        };
+        document.getElementById('ro-table').addEventListener('change', function () { setTimeout(countProgress, 50); });
+        countProgress();
+    }
     render();
 })();
 </script>

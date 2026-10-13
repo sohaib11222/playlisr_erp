@@ -69,7 +69,10 @@ class ReorderController extends Controller
                 'storeName' => $locations[$locationId] ?? '',
             ]);
         }
+        $section = trim((string) $request->input('section', ''));
+        if ($section !== '') $this->svc->countSection = mb_substr($section, 0, 60);
         $data = $locationId ? $this->svc->build($business_id, $locationId, $format, $since) : ['rows' => []];
+        $data['section'] = $section !== '' ? $section : null;
 
         // This store's "new stock" slice of the weekly purchasing budget
         // (same numbers as the Inventory Check banner).

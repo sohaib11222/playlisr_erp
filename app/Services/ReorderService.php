@@ -325,6 +325,9 @@ class ReorderService
         return $this->asOf ? $this->asOf->copy()->setTime(23, 59, 59) : Carbon::now();
     }
 
+    /** Section count mode: also list every in-stock title in this genre (Sarah 10/13). */
+    public $countSection = null;
+
     public function build(int $business_id, int $locationId, string $format, ?string $since = null, ?string $asOf = null): array
     {
         $this->asOf = $asOf ? Carbon::parse($asOf)->startOfDay() : null;
@@ -471,6 +474,26 @@ class ReorderService
         $pids = array_keys($agg);
         foreach ($lastYear as $pid => $q) if ($q >= 2) $pids[] = $pid;
         foreach ($otherStore as $pid => $q) if ($q >= 2) $pids[] = $pid;
+        // Counting a whole section: every title the ERP thinks is in those bins,
+        // not just what sold, so missing/stolen/misfiled copies show up.
+        if ($this->countSection) {
+            $want = $this->genre($this->countSection);
+            $subIds = [];
+            foreach (Category::where('business_id', $business_id)->get(['id', 'name']) as $c) {
+                if ($this->genre($c->name) === $want) $subIds[] = (int) $c->id;
+            }
+            $q = DB::table('products as p')
+                ->join('variations as v', 'v.product_id', '=', 'p.id')
+                ->join('variation_location_details as vld', 'vld.variation_id', '=', 'v.id')
+                ->where('p.business_id', $business_id)->whereIn('p.category_id', $sealedCats ?: [0])
+                ->where('vld.location_id', $locationId)->where('vld.qty_available', '>', 0);
+            if ($want === 'No genre') {
+                $q->where(function ($w) { $w->whereNull('p.sub_category_id')->orWhere('p.sub_category_id', 0); });
+            } else {
+                $q->whereIn('p.sub_category_id', $subIds ?: [0]);
+            }
+            foreach ($q->distinct()->pluck('p.id') as $pid) $pids[] = (int) $pid;
+        }
         foreach ($locClass as $pid => $cls) {
             if ($cls === 'A') $pids[] = (int) $pid;
         }
