@@ -47,52 +47,86 @@
         </div>
     </div>
 
-    @foreach(['comics' => 'Comics', 'magazines' => 'Magazines'] as $type => $label)
+    @php
+        $publishers = [
+            'MARVEL' => ['Spider-Man', 'X-Men', 'Wolverine', 'Hulk', 'Avengers & solo heroes', 'Deadpool', 'Daredevil', 'Punisher', 'Fantastic Four', 'Doom', 'Silver Surfer / What If', 'Ghost Rider', 'Werewolf by Night', 'Conan'],
+            'DC' => ['Batman', 'Superman', 'Flash', 'Justice League / DC', 'Wonder Woman', 'Green Lantern', 'Sandman / Vertigo'],
+            'IMAGE' => ['Spawn'],
+            'INDIE / LICENSED' => ['Star Wars / Star Trek', 'Godzilla', 'Cartoon & kids', 'Predator / Aliens'],
+            'MANGA / POKEMON' => ['Pokemon', 'Manga'],
+            'UNIDENTIFIED' => ['Other comics'],
+        ];
+        $speedRank = ['Fast' => 0, 'Staple' => 1, 'Mid' => 2, 'No data' => 3];
+        $sortFams = function ($rows) use ($speedRank) {
+            usort($rows, function ($a, $b) use ($speedRank) {
+                return [$speedRank[$a['speed']] ?? 9, $a['days_to_sell'] ?? 999] <=> [$speedRank[$b['speed']] ?? 9, $b['days_to_sell'] ?? 999];
+            });
+            return $rows;
+        };
+        $sections = ['comics' => [], 'magazines' => ['MAGAZINES' => $sortFams($data['magazines'])]];
+        $byFam = [];
+        foreach ($data['comics'] as $f) $byFam[$f['family']] = $f;
+        foreach ($publishers as $pub => $fams) {
+            $rows = [];
+            foreach ($fams as $fam) if (isset($byFam[$fam])) { $rows[] = $byFam[$fam]; unset($byFam[$fam]); }
+            if ($rows) $sections['comics'][$pub] = $sortFams($rows);
+        }
+        if ($byFam) $sections['comics']['OTHER'] = $sortFams(array_values($byFam));
+    @endphp
+
+    @foreach(['comics' => 'Comic Books to Order', 'magazines' => 'Magazines to Order'] as $type => $label)
         <div class="box box-solid">
-            <div class="box-header with-border"><h3 class="box-title">{{ $label }} <small id="rc-total-{{ $type }}"></small></h3></div>
+            <div class="box-header with-border">
+                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4. <span id="rc-total-{{ $type }}"></span></small></h3>
+            </div>
             <div class="box-body table-responsive">
                 <table class="table table-bordered table-condensed rc" data-type="{{ $type }}">
                     <thead>
                         <tr>
-                            <th>Series</th>
-                            <th>Counted</th>
-                            <th>Order</th>
-                            <th>Speed</th>
-                            <th class="text-right" title="Average days from when we bought it to when it sold">Days to sell</th>
-                            <th class="text-right" title="Fastest / slowest sale, in days">Fastest / slowest</th>
-                            <th class="text-right">Sold, 90 days</th>
-                            <th class="text-right" title="Scanned + typed in by hand at the register">Sold this year</th>
-                            <th class="text-right">Sales this year</th>
-                            <th class="text-right">Per week</th>
-                            <th class="text-right">Avg price</th>
-                            <th class="text-right">Avg cost</th>
-                            <th>Last sold</th>
+                            <th>Family / Series</th>
+                            <th>Velocity Tier</th>
+                            <th class="text-right" title="Average days from when we bought it to when it sold">Avg Days to Sell</th>
+                            <th class="text-right" title="Sales we can track from purchase to sale (scanned)">Sales With a Purchase Date</th>
+                            <th class="text-right">Fastest (days)</th>
+                            <th class="text-right">Slowest (days)</th>
+                            <th class="text-right">Copies Sold</th>
+                            <th class="text-right" title="Typed in by hand at the register">Manual Sales</th>
+                            <th class="text-right">Sales ($)</th>
+                            <th class="text-right">Avg Price</th>
+                            <th class="text-right">Avg Cost</th>
+                            <th>Best Sellers / Examples</th>
+                            <th class="text-right">Sold per Week</th>
                             <th class="text-right">ERP says</th>
-                            <th>Best sellers</th>
+                            <th style="background:#fff7d6;">Qty in Stock</th>
+                            <th style="background:#fff7d6;"># to Order</th>
                         </tr>
                     </thead>
                     <tbody>
-                    @forelse($data[$type] as $f)
+                    @forelse($sections[$type] as $pub => $rows)
+                        <tr class="rc-section"><td colspan="16" style="background:#eef3f8; font-weight:bold;">{{ $pub }}</td></tr>
+                        @foreach($rows as $f)
                         <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ $f['target'] }}" data-erp="{{ $f['stock'] }}">
                             <td><b>{{ $f['family'] }}</b></td>
-                            <td><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
-                                title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
-                            <td class="rc-order">{{ $f['order'] }}</td>
                             <td>{{ $f['speed'] }}</td>
                             <td class="text-right">{{ $f['days_to_sell'] }}</td>
-                            <td class="text-right">@if($f['fastest'] !== null){{ $f['fastest'] }} / {{ $f['slowest'] }}@endif</td>
-                            <td class="text-right">{{ $f['sold'] + 0 }}</td>
-                            <td class="text-right">{{ $f['sold_ytd'] + 0 }}@if($f['manual_ytd'] > 0)<div class="ro-muted">{{ $f['manual_ytd'] + 0 }} typed in</div>@endif</td>
-                            <td class="text-right">${{ number_format($f['revenue_ytd']) }}</td>
-                            <td class="text-right">{{ $f['per_week'] }}</td>
+                            <td class="text-right">{{ $f['scanned'] + 0 }}</td>
+                            <td class="text-right">{{ $f['fastest'] }}</td>
+                            <td class="text-right">{{ $f['slowest'] }}</td>
+                            <td class="text-right">{{ $f['sold_ytd'] + 0 }}</td>
+                            <td class="text-right">{{ $f['manual_ytd'] + 0 }}</td>
+                            <td class="text-right">${{ number_format($f['revenue_ytd'], 2) }}</td>
                             <td class="text-right">@if($f['avg_price'])${{ number_format($f['avg_price'], 2) }}@endif</td>
                             <td class="text-right">@if($f['avg_cost'] !== null)${{ number_format($f['avg_cost'], 2) }}@endif</td>
-                            <td>@if($f['last']){{ \Carbon\Carbon::parse($f['last'])->format('M j') }}@if($f['days_since'] !== null && $f['days_since'] > 30) <span class="ro-muted">({{ $f['days_since'] }} days)</span>@endif @endif</td>
-                            <td class="text-right">{{ $f['stock'] }}</td>
                             <td class="ro-muted">{{ $f['examples'] }}</td>
+                            <td class="text-right">{{ $f['per_week'] }}</td>
+                            <td class="text-right">{{ $f['stock'] }}</td>
+                            <td style="background:#fffbea;"><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
+                                title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
+                            <td class="rc-order" style="background:#fffbea;">{{ $f['order'] }}</td>
                         </tr>
+                        @endforeach
                     @empty
-                        <tr><td colspan="15" class="text-muted">Nothing sold in the last 90 days.</td></tr>
+                        <tr><td colspan="16" class="text-muted">Nothing sold this year.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
