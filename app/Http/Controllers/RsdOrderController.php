@@ -454,7 +454,7 @@ class RsdOrderController extends Controller
         foreach ($rows as $r) {
             $email = strtolower(trim($r->email));
             if (!filter_var($email, FILTER_VALIDATE_EMAIL) || isset($staff[$email]) || isset($exclude[$email]) || isset($out[$email])) { $drop['invalid_staff_dupe']++; continue; }
-            if (preg_match('/nivessa|hedvat|^test@|example\./', $email)) { $drop['test']++; continue; }
+            if (preg_match('/nivessa|hedvat|^test@|example\./', $email)) { $drop['test']++; if (count($drop['test_samples'] ?? []) < 8) $drop['test_samples'][] = preg_replace('/^[^@]{0,3}[^@]*@/', '***@', $email); continue; }
             if (!preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $email)) { $drop['tld']++; continue; }
             if (stripos((string) $r->name, 'website') !== false || stripos((string) $r->name, 'walk') !== false) { $drop['name']++; continue; }
             $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
