@@ -398,6 +398,56 @@ class ReorderService
             $agg[$pid] = $a;
         }
 
+        // Manual items: sales rung at the register with a typed-in name instead
+        // of a scanned product. Count them toward the matching album when we
+        // have it; otherwise list them so they still get reordered (Sarah 10/13).
+        $manualUnmatched = [];
+        $manual = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.location_id', $locationId)
+            ->where('t.transaction_date', '>=', $yearStart->toDateTimeString())
+            ->where('t.transaction_date', '<=', $this->now()->toDateTimeString())
+            ->where(function ($w) { $w->whereNull('tsl.product_id')->orWhere('tsl.product_id', 0); })
+            ->whereNotNull('tsl.product_name')
+            ->whereIn('tsl.category_id', $sealedCats ?: [0])
+            ->groupBy('tsl.product_name', 'tsl.product_artist', DB::raw('DATE(t.transaction_date)'))
+            ->select('tsl.product_name as name', 'tsl.product_artist as artist', DB::raw('DATE(t.transaction_date) as d'),
+                DB::raw('MAX(t.transaction_date) as last_at'), DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'))
+            ->get();
+        if ($manual->count()) {
+            $keyToPid = [];
+            foreach (DB::table('products')->where('business_id', $business_id)->whereIn('category_id', $sealedCats ?: [0])
+                ->select('id', 'name', 'product_custom_field1 as artist')->get() as $p) {
+                foreach ([$this->albumKey($p->artist, $p->name), $this->albumKey(null, $p->name)] as $k) {
+                    if ($k !== '' && strpos($k, '|') > 0 && !isset($keyToPid[$k])) $keyToPid[$k] = (int) $p->id;
+                }
+            }
+            foreach ($manual as $r) {
+                $q = (float) $r->qty;
+                if ($q <= 0) continue;
+                $k1 = $this->albumKey($r->artist, $r->name);
+                $k2 = $this->albumKey(null, $r->name);
+                $pid = $keyToPid[$k1] ?? ($keyToPid[$k2] ?? null);
+                $isSince = $r->last_at >= $sinceDate->toDateTimeString();
+                if ($pid) {
+                    $a = $agg[$pid] ?? ['ytd' => 0, 'd10' => 0, 'since' => 0, 'months' => [], 'dates' => [], 'last' => null];
+                } else {
+                    $mk = $k1 !== '' ? $k1 : mb_strtolower(trim($r->name));
+                    $a = $manualUnmatched[$mk] ?? ['ytd' => 0, 'd10' => 0, 'since' => 0, 'months' => [], 'dates' => [], 'last' => null,
+                        'name' => trim((string) $r->name), 'artist' => trim((string) $r->artist)];
+                }
+                $a['ytd'] += $q;
+                if ($r->d >= $tenAgo) $a['d10'] += $q;
+                if ($isSince) $a['since'] += $q;
+                $a['months'][substr($r->d, 0, 7)] = true;
+                $a['dates'][] = $r->d;
+                $a['daily'][$r->d] = ($a['daily'][$r->d] ?? 0) + $q;
+                if ($a['last'] === null || $r->d > $a['last']) $a['last'] = $r->d;
+                if ($pid) $agg[$pid] = $a; else $manualUnmatched[$mk] = $a;
+            }
+        }
+
         $abcData = $this->abc->load() ?: [];
         $locClass = $abcData['location_map'][$locationId] ?? $abcData['location_map'][(string) $locationId] ?? [];
         $abcxyz = $this->abc->loadAbcXyzMap();
@@ -575,6 +625,30 @@ class ReorderService
                 'used_note' => null,
                 'daily' => $a['daily'] ?? [],
             ], $business_id, $locationId, $state, $m->category_name);
+        }
+
+        // ---- manual-item titles we have no product for: still reorder what sold
+        foreach ($manualUnmatched as $m) {
+            if ($m['since'] <= 0 && $m['ytd'] < 2) continue;
+            $sug = max(1, (int) ceil(($m['ytd'] / $monthsElapsed) * $cover));
+            $rows[] = $this->finishRow([
+                'product_id' => null,
+                'product_ids' => [],
+                'genre' => 'No genre',
+                'artist' => $m['artist'],
+                'title' => $m['name'],
+                'upc' => null, 'sku' => null, 'grade' => '',
+                'why' => $m['since'] > 0 ? ['sold'] : ['other'],
+                'sold_since' => $m['since'], 'sold_10d' => $m['d10'], 'sold_ytd' => $m['ytd'], 'months_sold' => count($m['months']),
+                'sold_last_year' => 0, 'sold_other_store' => 0,
+                'avg_days_to_sell' => null, 'last_sold' => $m['last'],
+                'days_since_sale' => $m['last'] ? Carbon::parse($m['last'])->diffInDays($today) : null,
+                'erp_stock' => 0, 'on_order' => 0, 'suggested' => min($sug, (int) $s['max_line_qty']),
+                'cant_order' => 'not at a distributor',
+                'erp_cost' => null,
+                'used_note' => 'Rung as a manual item, no product in the ERP',
+                'daily' => [],
+            ], $business_id, $locationId, $state, 'Sealed ' . $label);
         }
 
         // ---- used titles selling fast -> buy sealed (title level)
