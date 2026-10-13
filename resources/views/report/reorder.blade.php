@@ -201,7 +201,10 @@
                                     @if($r['used_note']) <div>{{ $r['used_note'] }}</div>@endif
                                 </div>
                             </td>
-                            <td class="ro-muted" style="font-size:12px;">{{ $r['genre'] }}</td>
+                            <td style="font-size:12px;">@if(!empty($r['product_ids']) && !empty($genreOptions))<select class="ro-genre-edit" style="max-width:120px; font-size:12px;">
+                                    @if(!in_array($r['genre'], array_map(function ($g) { return mb_convert_case(mb_strtolower(trim($g)), MB_CASE_TITLE); }, $genreOptions)))<option value="" selected>{{ $r['genre'] }}</option>@endif
+                                    @foreach($genreOptions as $gid => $gname)<option value="{{ $gid }}" @if(mb_convert_case(mb_strtolower(trim($gname)), MB_CASE_TITLE) === $r['genre']) selected @endif>{{ $gname }}</option>@endforeach
+                                </select>@else<span class="ro-muted">{{ $r['genre'] }}</span>@endif</td>
                             <td>
                                 @if($r['product_id'])
                                     <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
@@ -514,6 +517,15 @@
     document.getElementById('ro-table').addEventListener('change', function (e) {
         var tr = e.target.closest('tr.ro-row');
         if (!tr) return;
+        if (e.target.classList.contains('ro-genre-edit')) {
+            var sel = e.target;
+            if (!sel.value) return;
+            sel.style.outline = '2px solid #ccc';
+            $.post('/reports/reorder/genre', { _token: CSRF, product_ids: tr.dataset.pids, sub_category_id: sel.value })
+                .done(function (res) { sel.style.outline = res && res.ok ? '2px solid #2e7d32' : '2px solid #c62828'; tr.dataset.genre = sel.options[sel.selectedIndex].text; })
+                .fail(function () { sel.style.outline = '2px solid #c62828'; });
+            return;
+        }
         tr.dataset.keep = '1';
         if (e.target.classList.contains('ro-count')) {
             tr.querySelector('.ro-order').value = calc(tr);

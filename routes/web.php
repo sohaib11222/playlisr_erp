@@ -759,6 +759,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
     Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
+    Route::post('/reports/reorder/genre', 'ReorderController@saveGenre');
     Route::post('/reports/reorder/auto-order', 'ReorderController@autoOrder');
     // Run the AMS auto "Mark as ordered" check now (admins), shows what it did.
     Route::get('/reports/reorder/sync-ams', function () {

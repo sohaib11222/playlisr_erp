@@ -73,6 +73,10 @@ class ReorderController extends Controller
         if ($section !== '') $this->svc->countSection = mb_substr($section, 0, 60);
         $data = $locationId ? $this->svc->build($business_id, $locationId, $format, $since) : ['rows' => []];
         $data['section'] = $section !== '' ? $section : null;
+        // Genre choices = sub-categories of this format's sealed category.
+        $sealedIds = array_keys($this->svc->categoryIds($business_id, 'sealed', $format));
+        $data['genreOptions'] = \App\Category::where('business_id', $business_id)->whereIn('parent_id', $sealedIds ?: [0])
+            ->orderBy('name')->pluck('name', 'id')->all();
 
         // This store's "new stock" slice of the weekly purchasing budget
         // (same numbers as the Inventory Check banner).
@@ -269,6 +273,30 @@ class ReorderController extends Controller
         }
         $n = $this->svc->recordAutoOrder($business_id, (int) $loc, $key, $at, $supplier . ' order #' . explode(':', $key)[1], $lines, $supplier);
         return response()->json(['ok' => true, 'recorded' => $n]);
+    }
+
+    /** Change a title's genre (sub-category) right from the reorder table. */
+    public function saveGenre(Request $request)
+    {
+        abort_unless(auth()->user()->can('product.update'), 403);
+        $business_id = $request->session()->get('user.business_id');
+        $sub = (int) $request->input('sub_category_id');
+        $cat = \App\Category::where('business_id', $business_id)->where('id', $sub)->first();
+        if (!$cat || !$cat->parent_id) return response()->json(['ok' => false, 'msg' => 'Unknown genre'], 422);
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->input('product_ids'))));
+        $n = 0;
+        foreach (\App\Product::where('business_id', $business_id)->whereIn('id', $ids ?: [0])->where('category_id', $cat->parent_id)->get() as $p) {
+            $old = optional(\App\Category::find($p->sub_category_id))->name;
+            $p->sub_category_id = $cat->id;
+            $p->save();
+            $n++;
+            try {
+                activity()->performedOn($p)->causedBy(auth()->user())
+                    ->withProperties(['update_note' => $p->name . ' - genre ' . ($old ?: 'none') . ' -> ' . $cat->name . ' (Weekly Reorder)'])
+                    ->log('edited');
+            } catch (\Throwable $e) {}
+        }
+        return response()->json(['ok' => $n > 0, 'updated' => $n]);
     }
 
     public function saveFamilyCount(Request $request)
