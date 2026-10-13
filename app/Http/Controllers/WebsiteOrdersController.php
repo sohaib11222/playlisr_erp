@@ -409,6 +409,28 @@ class WebsiteOrdersController extends Controller
         return redirect()->back()->with('status', $archived ? 'Order archived.' : 'Order restored.');
     }
 
+    /**
+     * "Listed 3/14/2025 (7 months)" for an item, so staff know how long it's
+     * been on the shelf and how hard to look (Sarah, 2026-10-13).
+     */
+    public static function listedLabel($date): ?string
+    {
+        $t = $date ? strtotime((string) $date) : false;
+        if (!$t) return null;
+        $days = (int) floor((time() - $t) / 86400);
+        if ($days < 0) $days = 0;
+        if ($days < 60) {
+            $age = $days . ' day' . ($days === 1 ? '' : 's');
+        } elseif ($days < 730) {
+            $m = (int) floor($days / 30.44);
+            $age = $m . ' month' . ($m === 1 ? '' : 's');
+        } else {
+            $y = (int) floor($days / 365.25);
+            $age = $y . ' year' . ($y === 1 ? '' : 's');
+        }
+        return 'Listed ' . date('n/j/Y', $t) . ' (' . $age . ')';
+    }
+
     protected static function isGiftCardOrder(array $order): bool
     {
         $items = $order['items'] ?? [];

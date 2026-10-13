@@ -403,6 +403,10 @@
                                       <a href="{{ url('/products/' . $erpProductId . '/edit') }}" target="_blank" rel="noopener" style="color:#4a6fa5;">ERP</a>
                                     @endif
                                   </div>
+                                  @php $listed = \App\Http\Controllers\WebsiteOrdersController::listedLabel($item['product_id']['posCreatedAt'] ?? ($item['product_id']['createdAt'] ?? null)); @endphp
+                                  @if($listed)
+                                    <div style="font-size:11px;color:#6b7280;">{{ $listed }}</div>
+                                  @endif
                                 @endif
                               </td>
                               <td>{{ $itemIsGift ? '—' : ($item['product_id']['artist'] ?? ($item['product_artist'] ?? '—')) }}</td>
@@ -486,7 +490,10 @@
                   <td>{{ $d['buyer'] ?? '' }}</td>
                   <td style="font-size:13px;">
                     @foreach(($d['items'] ?? []) as $it)
-                      <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif</div>
+                      <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif
+                        @php $dlisted = \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null); @endphp
+                        @if($dlisted)<div style="font-size:11px;color:#6b7280;">{{ $dlisted }}</div>@endif
+                      </div>
                     @endforeach
                   </td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
