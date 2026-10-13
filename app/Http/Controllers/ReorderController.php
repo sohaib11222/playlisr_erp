@@ -36,7 +36,7 @@ class ReorderController extends Controller
                 return stripos($n, 'hollywood') !== false;
             }, $locations)) ?: array_key_first($locations));
         }
-        $format = in_array($request->input('format'), ['cd', 'cassette', 'other'], true) ? $request->input('format') : 'vinyl';
+        $format = in_array($request->input('format'), ['cd', 'cassette', 'other', 'comics'], true) ? $request->input('format') : 'vinyl';
         $since = $request->input('since');
         $since = $since && preg_match('/^\d{4}-\d{2}-\d{2}$/', $since) ? $since : null;
         return [$business_id, $locations, $locationId, $format, $since];
@@ -50,6 +50,14 @@ class ReorderController extends Controller
             return redirect()->action('RsdOrderController@index', ['store' => stripos($name, 'pico') !== false ? 'pico' : 'hollywood']);
         }
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
+        if ($format === 'comics') {
+            return view('report.reorder_comics', [
+                'data' => $locationId ? $this->svc->comicsAndMagazines($business_id, $locationId, 4) : ['comics' => [], 'magazines' => []],
+                'locations' => $locations,
+                'locationId' => $locationId,
+                'storeName' => $locations[$locationId] ?? '',
+            ]);
+        }
         if ($format === 'other') {
             $other = $locationId ? $this->svc->otherAreas($business_id, $locationId) : [];
             return view('report.reorder_other', [
@@ -233,6 +241,16 @@ class ReorderController extends Controller
             'missed' => array_slice($missed, 0, 80),
             'page_only' => array_slice($extra, 0, 80),
         ]);
+    }
+
+    public function saveFamilyCount(Request $request)
+    {
+        [$business_id, , $locationId] = $this->params($request);
+        $key = mb_substr((string) $request->input('key'), 0, 80);
+        $raw = trim((string) $request->input('qty'));
+        if (!preg_match('/^(comics|magazines):/', $key)) return response()->json(['ok' => false], 422);
+        $this->svc->saveFamilyCount($business_id, $locationId, $key, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '');
+        return response()->json(['ok' => true]);
     }
 
     public function saveCount(Request $request)

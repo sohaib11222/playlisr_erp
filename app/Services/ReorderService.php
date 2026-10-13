@@ -548,6 +548,161 @@ class ReorderService
      * last 90 days, what the ERP thinks is on hand, and whether that stock
      * looks believable. Plus each category's top sellers.
      */
+    /** Comic series, same families as Clarissa's 10/12 order sheet. First match wins. */
+    const COMIC_FAMILIES = [
+        'Spider-Man' => 'spider|venom|carnage|miles morales',
+        'Batman' => 'batman|joker|gotham|robin|harley quinn|nightwing|catwoman',
+        'Superman' => 'superman|action comics|supergirl',
+        'X-Men' => 'x-men|xmen|x men|uncanny|beast|cyclops|storm|mutant',
+        'Wolverine' => 'wolverine|logan',
+        'Hulk' => 'hulk',
+        'Avengers & solo heroes' => 'avengers|captain america|iron man|thor\b|black panther|hawkeye|black widow|ant-man|captain marvel|moon knight|black knight',
+        'Deadpool' => 'deadpool',
+        'Daredevil' => 'daredevil',
+        'Punisher' => 'punisher',
+        'Fantastic Four' => 'fantastic four',
+        'Doom' => '\bdoom\b',
+        'Silver Surfer / What If' => 'silver surfer|galactus|what if',
+        'Ghost Rider' => 'ghost rider',
+        'Werewolf by Night' => 'werewolf',
+        'Conan' => 'conan',
+        'Flash' => 'flash',
+        'Justice League / DC' => 'justice league|aquaman|bloodsport|creature commandos|\bdc\b|teen titans|suicide squad',
+        'Wonder Woman' => 'wonder ?woman',
+        'Green Lantern' => 'green lantern',
+        'Sandman / Vertigo' => 'sandman|vertigo|animal man|deadman|ragman|hellblazer|swamp thing',
+        'Spawn' => 'spawn|violator',
+        'Star Wars / Star Trek' => 'star wars|star trek|aphra|empire strikes',
+        'Godzilla' => 'godzilla',
+        'Cartoon & kids' => 'looney|sonic|spongebob|bongo|simpsons|archie|scooby',
+        'Predator / Aliens' => 'predator|alien',
+        'Pokemon' => 'pokemon|pikachu',
+        'Manga' => 'manga|naruto|shonen|devilman|one piece|dragon ball|jojo|berserk|chainsaw',
+    ];
+
+    const MAGAZINE_FAMILIES = [
+        'Playboy' => 'playboy',
+        'Rolling Stone' => 'rolling stone',
+        'Mad' => '\bmad\b',
+        'National Geographic' => 'national geographic|nat geo',
+        'Sports Illustrated' => 'sports illustrated',
+        'Time / Life' => '\btime\b|\blife\b',
+        'Music magazines' => 'spin|billboard|kerrang|guitar|mojo|creem|vibe|the source|xxl|rap pages',
+    ];
+
+    protected function familyOf(string $name, array $families): ?string
+    {
+        $n = mb_strtolower($name);
+        foreach ($families as $fam => $re) {
+            if (preg_match('/' . $re . '/u', $n)) return $fam;
+        }
+        return null;
+    }
+
+    /**
+     * Comics + magazines by series (Sarah 10/13: put Clarissa's comics/mags
+     * order sheet on the reorder page). Comics live mostly in "Books" and are
+     * rung under loose names ("spiderman comic"), so group by name keywords.
+     * A Books item counts as a comic only if it matches a series, says
+     * "comic", or has an issue number (#12).
+     */
+    public function comicsAndMagazines(int $business_id, int $locationId, int $coverWeeks = 4): array
+    {
+        $cats = Category::where('business_id', $business_id)->where('category_type', 'product')->where('parent_id', 0)
+            ->where(function ($q) { $q->where('name', 'like', '%book%')->orWhere('name', 'like', '%comic%')->orWhere('name', 'like', '%magazine%'); })
+            ->pluck('name', 'id')->all();
+        if (empty($cats)) return ['comics' => [], 'magazines' => []];
+        $days = 90;
+        $start = Carbon::now()->subDays($days)->toDateTimeString();
+
+        $classify = function ($name, $catName) {
+            $isMag = stripos($catName, 'magazine') !== false;
+            if ($isMag) return ['magazines', $this->familyOf($name, self::MAGAZINE_FAMILIES) ?: 'Other magazines'];
+            $fam = $this->familyOf($name, self::COMIC_FAMILIES);
+            if ($fam) return ['comics', $fam];
+            if (stripos($catName, 'comic') !== false || preg_match('/comic|#\s*\d/i', $name)) return ['comics', 'Other comics'];
+            return [null, null]; // a regular book
+        };
+
+        $out = ['comics' => [], 'magazines' => []];
+        $bump = function ($type, $fam) use (&$out) {
+            if (!isset($out[$type][$fam])) {
+                $out[$type][$fam] = ['family' => $fam, 'sold' => 0, 'revenue' => 0, 'stock' => 0, 'titles' => [], 'last' => null];
+            }
+        };
+
+        $sales = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', $start)
+            ->whereIn('p.category_id', array_keys($cats))
+            ->groupBy('p.id')
+            ->select('p.name', 'p.category_id', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'), DB::raw('MAX(t.transaction_date) as last_at'))
+            ->get();
+        foreach ($sales as $r) {
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            if (!$type || (float) $r->qty <= 0) continue;
+            $bump($type, $fam);
+            $f = &$out[$type][$fam];
+            $f['sold'] += (float) $r->qty;
+            $f['revenue'] += (float) $r->rev;
+            $f['titles'][trim((string) $r->name)] = ($f['titles'][trim((string) $r->name)] ?? 0) + (float) $r->qty;
+            if ($r->last_at > $f['last']) $f['last'] = $r->last_at;
+            unset($f);
+        }
+
+        $stock = DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('vld.location_id', $locationId)->where('vld.qty_available', '>', 0)
+            ->where('p.business_id', $business_id)->whereIn('p.category_id', array_keys($cats))
+            ->groupBy('p.id')
+            ->select('p.name', 'p.category_id', DB::raw('SUM(vld.qty_available) as q'))
+            ->get();
+        foreach ($stock as $r) {
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            if (!$type) continue;
+            $bump($type, $fam);
+            $out[$type][$fam]['stock'] += (int) round((float) $r->q);
+        }
+
+        $state = $this->loadState($business_id);
+        foreach ($out as $type => &$fams) {
+            foreach ($fams as $fam => &$f) {
+                $f['per_week'] = round($f['sold'] / ($days / 7), 1);
+                $f['avg_price'] = $f['sold'] > 0 ? round($f['revenue'] / $f['sold'], 2) : null;
+                $f['target'] = (int) ceil($f['per_week'] * $coverWeeks);
+                $c = $state['family_counts'][$locationId][$type . ':' . $fam] ?? null;
+                $f['count'] = $c ? (int) $c['qty'] : null;
+                $f['count_at'] = $c['at'] ?? null;
+                $have = $f['count'] !== null ? $f['count'] : $f['stock'];
+                $f['order'] = max(0, $f['target'] - $have);
+                arsort($f['titles']);
+                $f['examples'] = implode('; ', array_slice(array_keys($f['titles']), 0, 4));
+                unset($f['titles']);
+            }
+            unset($f);
+            uasort($fams, function ($a, $b) { return $b['sold'] <=> $a['sold']; });
+            $fams = array_values($fams);
+        }
+        unset($fams);
+        return $out;
+    }
+
+    public function saveFamilyCount(int $business_id, int $locationId, string $key, ?int $qty, string $by): void
+    {
+        $state = $this->loadState($business_id);
+        if ($qty === null) {
+            unset($state['family_counts'][$locationId][$key]);
+        } else {
+            $state['family_counts'][$locationId][$key] = ['qty' => max(0, $qty), 'at' => now()->toDateTimeString(), 'by' => $by];
+        }
+        $this->saveState($business_id, $state);
+    }
+
     public function otherAreas(int $business_id, int $locationId): array
     {
         $start = Carbon::now()->subDays(90)->toDateTimeString();

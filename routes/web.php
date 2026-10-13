@@ -747,6 +747,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/marketing/email-lists/csv', 'EmailListsController@csv');
     Route::post('/marketing/email-lists/push-batch', 'EmailListsController@pushBatch');
     Route::post('/marketing/email-lists/check-batches', 'EmailListsController@checkBatches');
+    Route::post('/marketing/email-lists/refill-batches', 'EmailListsController@refillBatches');
     Route::post('/reports/rsd-order/qty', 'RsdOrderController@saveQty');
     Route::post('/reports/rsd-order/ordered', 'RsdOrderController@markOrdered');
     Route::post('/reports/rsd-order/requests', 'RsdOrderController@pasteRequests');
@@ -757,6 +758,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/reorder/csv', 'ReorderController@csv');
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
+    Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
     Route::post('/reports/reorder/import-counts', 'ReorderController@importCounts');
     Route::post('/reports/reorder/ordered', 'ReorderController@markOrdered');
     Route::post('/reports/reorder/orders/{id}/delete', 'ReorderController@deleteOrder');

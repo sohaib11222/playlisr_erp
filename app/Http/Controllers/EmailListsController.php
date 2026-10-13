@@ -197,7 +197,8 @@ class EmailListsController extends Controller
             $pick = [];
             $rows = \DB::table('contacts')->where('business_id', $biz)->where('is_default', 0)->whereNotNull('clover_customer_id')
                 ->whereNotNull('email')->where('email', 'like', '%@%.%')
-                ->orderByRaw('COALESCE(last_purchase_date, clover_synced_at, created_at) DESC')
+                // Top customers first (Sarah 10/13): most spent, then most visits, then most recent.
+                ->orderByRaw('GREATEST(COALESCE(lifetime_purchases,0), COALESCE(loyalty_points,0)) DESC, COALESCE(visit_count,0) DESC, COALESCE(last_purchase_date, clover_synced_at, created_at) DESC')
                 ->select('email', 'zip_code')->get();
             foreach ($rows as $r) {
                 $e = strtolower(trim($r->email));
@@ -256,6 +257,74 @@ class EmailListsController extends Controller
             }
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'msg' => $e->getMessage(), 'report' => $report]);
+        }
+        return response()->json(['success' => true, 'report' => $report]);
+    }
+
+    /**
+     * Re-fill the not-yet-sent batch lists in top-customer order: empties
+     * ?lists=18,19,20,21 and refills them, 299 each, from the ranked pool
+     * (people in other Brevo lists like #17 and unsubscribes excluded).
+     */
+    public function refillBatches(Request $request)
+    {
+        $biz = $this->guard();
+        $key = $this->apiKey($biz);
+        $ids = array_values(array_filter(array_map('intval', explode(',', (string) $request->input('lists')))));
+        $path = storage_path('app/brevo-batches-' . $biz . '.json');
+        $state = is_file($path) ? (json_decode((string) file_get_contents($path), true) ?: []) : [];
+        try {
+            $inTarget = [];
+            foreach ($ids as $id) {
+                for ($off = 0; $off < 5000; $off += 500) {
+                    $page = $this->brevo($key, '/contacts/lists/' . $id . '/contacts?limit=500&offset=' . $off);
+                    foreach ((array) ($page['contacts'] ?? []) as $c) $inTarget[strtolower((string) $c['email'])] = true;
+                    if (count((array) ($page['contacts'] ?? [])) < 500) break;
+                }
+            }
+            $exclude = [];
+            for ($off = 0; $off < 20000; $off += 1000) {
+                $page = $this->brevo($key, '/contacts?limit=1000&offset=' . $off);
+                foreach ((array) ($page['contacts'] ?? []) as $c) {
+                    $e = strtolower((string) ($c['email'] ?? ''));
+                    if (!isset($inTarget[$e]) || !empty($c['emailBlacklisted'])) $exclude[$e] = true; // already in another list (e.g. #17) or blocked
+                }
+                if (count((array) ($page['contacts'] ?? [])) < 1000) break;
+            }
+            foreach (\DB::table('email_subscribers')->where('business_id', $biz)->where('unsubscribed', 1)->pluck('email') as $u) $exclude[strtolower($u)] = true;
+            $staff = array_flip(array_filter(array_map(function ($e) { return strtolower(trim((string) $e)); },
+                \DB::table('users')->where('business_id', $biz)->pluck('email')->toArray())));
+            $need = 299 * count($ids);
+            $pick = [];
+            $rows = \DB::table('contacts')->where('business_id', $biz)->where('is_default', 0)->whereNotNull('clover_customer_id')
+                ->whereNotNull('email')->where('email', 'like', '%@%.%')
+                ->orderByRaw('GREATEST(COALESCE(lifetime_purchases,0), COALESCE(loyalty_points,0)) DESC, COALESCE(visit_count,0) DESC, COALESCE(last_purchase_date, clover_synced_at, created_at) DESC')
+                ->select('email', 'zip_code', 'lifetime_purchases', 'loyalty_points', 'visit_count')->get();
+            foreach ($rows as $r) {
+                $e = strtolower(trim($r->email));
+                if (isset($exclude[$e]) || isset($staff[$e]) || isset($pick[$e]) || !filter_var($e, FILTER_VALIDATE_EMAIL)) continue;
+                if (preg_match('/nivessa|hedvat|^test@|example\.|fahrul|zakscholefield|luis3pt/', $e) || !preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $e)) continue;
+                $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
+                if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+                $pick[$e] = max((float) $r->lifetime_purchases, (float) $r->loyalty_points) . '/' . (int) $r->visit_count;
+                if (count($pick) >= $need) break;
+            }
+            $emails = array_keys($pick);
+            $report = [];
+            foreach ($ids as $n => $id) {
+                $this->brevoSend($key, 'POST', '/contacts/lists/' . $id . '/contacts/remove', ['all' => true]);
+                $chunk = array_slice($emails, $n * 299, 299);
+                if ($chunk) {
+                    $this->brevoSend($key, 'POST', '/contacts/import', ['listIds' => [$id], 'updateExistingContacts' => false,
+                        'jsonBody' => array_map(function ($e) { return ['email' => $e]; }, $chunk)]);
+                }
+                $first = $chunk ? $pick[$chunk[0]] : null; $last = $chunk ? $pick[end($chunk)] : null;
+                $report[] = ['list' => $id, 'count' => count($chunk), 'top_spent_visits' => $first, 'bottom_spent_visits' => $last];
+            }
+            $state['used'] = array_values(array_unique(array_merge((array) ($state['used'] ?? []), $emails)));
+            file_put_contents($path, json_encode($state));
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
         }
         return response()->json(['success' => true, 'report' => $report]);
     }
