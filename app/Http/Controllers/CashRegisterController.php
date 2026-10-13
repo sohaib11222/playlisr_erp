@@ -822,6 +822,13 @@ class CashRegisterController extends Controller
         $posted = $this->postShiftNoteToSlack($payload);
         $payload['posted_to_slack'] = $posted;
 
+        // Time clock (Sarah 2026-10-13): End Shift also clocks you out.
+        try {
+            \App\Services\TimeClockService::clockOutFromHook($user->id, 'end_shift', $request);
+        } catch (\Throwable $ex) {
+            \Log::warning('time clock end-shift hook failed: ' . $ex->getMessage());
+        }
+
         // Nick (shipping): his End Shift posts the daily shipping summary to
         // #shipping + Sarah's DM (Sarah, 2026-10-12). Runs after the shift
         // note; once per day on the website side; failures logged, ignored.
@@ -1581,6 +1588,16 @@ class CashRegisterController extends Controller
                     $this->persistShiftNote($request, $openRegister, $user_id, $input['closing_note'] ?? null);
                 } catch (\Throwable $ex) {
                     \Log::warning('persistShiftNote failed: ' . $ex->getMessage());
+                }
+            }
+
+            // Time clock (Sarah 2026-10-13): closing the register ends the
+            // cashier's shift, so clock them out. Never breaks the close.
+            if ($openRegister) {
+                try {
+                    \App\Services\TimeClockService::clockOutFromHook($user_id, 'register_close', $request);
+                } catch (\Throwable $ex) {
+                    \Log::warning('time clock register-close hook failed: ' . $ex->getMessage());
                 }
             }
 

@@ -543,7 +543,7 @@ HTML,
 <h3>Pico — Opening Steps</h3>
 <ol>
     <li>Unlock the front door: turn the key <strong>left</strong> on the glass door, <strong>right</strong> on the metal door.</li>
-    <li>Clock in on Clover.</li>
+    <li>Clock in: on your phone open playlist.nivessa.com/clock (or the Nivessa Clock icon on your home screen) and tap Clock in. You can also use the Clock in button at the top of the ERP on the store computer.</li>
     <li>Turn on front lights, backroom lights, and flip the back-wall switch that powers the fans + record player.</li>
     <li>Turn on the computer. Put on good music.</li>
     <li>Set the A-frame out by the curb.</li>
@@ -1593,7 +1593,7 @@ HTML,
 <h3>Opening - Pico</h3>
 <ol>
     <li>Unlock the front door: turn the key <strong>left</strong> on the glass door, <strong>right</strong> on the metal door.</li>
-    <li>Clock in on Clover.</li>
+    <li>Clock in: on your phone open playlist.nivessa.com/clock (or the Nivessa Clock icon on your home screen) and tap Clock in. You can also use the Clock in button at the top of the ERP on the store computer.</li>
     <li>Turn on front lights, backroom lights, and the back-wall switch that powers the fans and record player.</li>
     <li>Turn on the computer. Put on good music.</li>
     <li>Set the A-frame out by the curb.</li>

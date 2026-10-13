@@ -125,6 +125,7 @@ class PayrollController extends Controller
             'freelancers'  => $freelancers,
             'freelancer_total' => $freelancerTotal,
             'imported_at'  => $hoursDoc['imported_at'] ?? null,
+            'hours_source' => $hoursDoc['source'] ?? 'clover',
             'row_count'    => count($rows),
             'unmatched'    => $this->unmatchedNames($people),
             'sling_ready'  => (new \App\Services\SlingClient())->isConfigured() || SlingShift::query()->exists(),
@@ -247,6 +248,97 @@ class PayrollController extends Controller
             . ' people.';
         if (!empty($parsed['skipped'])) {
             $msg .= ' Skipped ' . $parsed['skipped'] . ' unreadable row(s).';
+        }
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Load this period's hours from the ERP time clock (time_clock_punches)
+    // instead of a Clover paste (Sarah 2026-10-13). Produces the same row
+    // shape as parsePunches, so OT, late flags and the QB export work the
+    // same. Replaces this period's imported hours, like a re-import does.
+    public function loadErpHours(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $businessId = (int) $request->session()->get('user.business_id');
+
+        if (!\App\Services\TimeClockService::ready()) {
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'The ERP time clock is not set up yet (the migration has not run). Use the Clover import for now.']);
+        }
+
+        try {
+            $punches = DB::table('time_clock_punches as p')
+            ->leftJoin('users as u', 'u.id', '=', 'p.user_id')
+            ->leftJoin('business_locations as l', 'l.id', '=', 'p.location_id')
+            ->where('p.business_id', $businessId)
+            ->whereNull('p.voided_at')
+            ->where('p.clock_in_at', '>=', $start . ' 00:00:00')
+            ->where('p.clock_in_at', '<=', $end . ' 23:59:59')
+            ->orderBy('p.clock_in_at')
+            ->get(['p.*', 'u.first_name', 'u.last_name', 'l.name as location_name']);
+        } catch (\Throwable $e) {
+            \Log::warning('payroll load ERP hours failed: ' . $e->getMessage());
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'Could not read the ERP time clock. Use the Clover import for now.']);
+        }
+
+        $config = $this->loadConfig();
+        // ERP user id -> existing rate key, so hours land on the person's
+        // saved rate even when the rate entry was keyed off a Clover name.
+        $keyByUid = [];
+        foreach ($config['rates'] as $key => $rc) {
+            if (!empty($rc['user_id'])) { $keyByUid[(int) $rc['user_id']] = $key; }
+        }
+
+        $rows = [];
+        $missing = 0;
+        foreach ($punches as $p) {
+            if (!$p->clock_out_at) { $missing++; continue; }
+            $sec = strtotime($p->clock_out_at) - strtotime($p->clock_in_at);
+            if ($sec <= 0) { continue; }
+            $uid = (int) $p->user_id;
+            if (isset($keyByUid[$uid])) {
+                $rk = $keyByUid[$uid];
+                $name = $config['rates'][$rk]['display_name'] ?? trim($p->first_name . ' ' . $p->last_name);
+                // The row must land on that same rate key.
+                if ($this->nameKey($name) !== $rk) { $name = ucfirst($rk) . ' ' . trim((string) $p->last_name); }
+            } else {
+                $name = trim($p->first_name . ' ' . $p->last_name) ?: ('User ' . $uid);
+                $key = $this->nameKey($name);
+                if ($key !== '' && !isset($config['rates'][$key])) {
+                    $config['rates'][$key] = ['rate' => 0, 'user_id' => $uid, 'store' => (string) $p->location_name, 'display_name' => $name];
+                } elseif ($key !== '' && empty($config['rates'][$key]['user_id'])) {
+                    $config['rates'][$key]['user_id'] = $uid;
+                }
+            }
+            $rows[] = [
+                'name'     => $name,
+                'in'       => $p->clock_in_at,
+                'out'      => $p->clock_out_at,
+                'in_date'  => substr($p->clock_in_at, 0, 10),
+                'elapsed'  => round($sec / 3600, 4),
+                'location' => \App\Services\TimeClockService::shortStoreName((string) $p->location_name),
+                'comment'  => $p->edited ? 'edited in Timecards' : '',
+            ];
+        }
+
+        if (empty($rows)) {
+            $msg = 'No finished ERP clock-ins in this period yet.';
+            if ($missing) { $msg .= ' ' . $missing . ' punch(es) have no clock-out; fix them on Timecards.'; }
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => $msg]);
+        }
+
+        $this->saveConfig($config);
+        $this->saveHours($start, $end, [
+            'rows'        => $rows,
+            'source'      => 'erp_time_clock',
+            'imported_at' => now()->toDateTimeString(),
+            'imported_by' => $request->session()->get('user.id'),
+        ]);
+
+        $msg = 'Loaded ' . count($rows) . ' time clock punches for '
+            . count(array_unique(array_map(function ($r) { return $this->nameKey($r['name']); }, $rows))) . ' people.';
+        if ($missing) {
+            $msg .= ' Left out ' . $missing . ' punch(es) with no clock-out. Fix them on Timecards and load again.';
         }
         return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => $msg]);
     }

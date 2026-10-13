@@ -55,6 +55,12 @@
 
         <div class="m-8 pull-left mt-15 hidden-xs" style="color: #fff;"><strong>{{ @format_date('now') }}</strong></div>
 
+        {{-- Time clock (Sarah 2026-10-13): Clover Shifts is gone; staff clock
+             in at /clock (name + PIN on store computers, phones remembered). --}}
+        <a href="{{ url('/clock') }}" target="_blank" rel="noopener" title="Clock in or out" class="btn btn-flat pull-left m-8 btn-sm mt-10 btn-default">
+          <strong><i class="fas fa-clock"></i> &nbsp; Clock in</strong>
+        </a>
+
         {{-- End Shift pill for non-register duties (Discogs / Warehouse). Sits
              just left of the user menu so staff can post their close-out shift
              note on demand, not only when they sign out. Sarah 2026-06-25. --}}

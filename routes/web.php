@@ -97,6 +97,18 @@ Route::middleware(['setData'])->group(function () {
     Route::get('/buy-approval/{token}', 'BuyApprovalController@show')->name('buy-approval.show');
     Route::post('/buy-approval/{token}', 'BuyApprovalController@decide')->middleware('throttle:30,1')->name('buy-approval.decide');
     Route::get('/buy-approval/{token}/photo/{n}', 'BuyApprovalController@photo')->name('buy-approval.photo');
+
+    // Time clock (Sarah 2026-10-13): Clover's Shifts app is gone. Staff clock
+    // in at /clock with no ERP login: phones are remembered after a one-time
+    // name + PIN, store computers ask for name + PIN every time. Admin pages
+    // are in the auth group (/reports/timecards, /time-clock/settings).
+    Route::get('/clock', 'PhoneClockController@page');
+    Route::get('/clock/state', 'PhoneClockController@state');
+    Route::get('/clock/manifest.webmanifest', 'PhoneClockController@manifest');
+    // PIN guessing is limited in TimeClockService (per person + per client IP).
+    Route::post('/clock/pin', 'PhoneClockController@pin');
+    Route::post('/clock/computer', 'PhoneClockController@kiosk');
+    Route::post('/clock/punch', 'PhoneClockController@punch');
 });
 
 //Routes for authenticated users only
@@ -1448,6 +1460,20 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/payroll/hide', 'PayrollController@hide');
     Route::post('/payroll/unhide', 'PayrollController@unhide');
     Route::post('/payroll/save-run', 'PayrollController@saveRun');
+    Route::post('/payroll/load-erp-hours', 'PayrollController@loadErpHours');
+
+    // Time clock admin (Sarah 2026-10-13), admin-only in the controller.
+    Route::get('/reports/timecards', 'TimeClockController@timecards');
+    Route::get('/reports/timecards/export.csv', 'TimeClockController@exportCsv');
+    Route::post('/reports/timecards/save', 'TimeClockController@savePunch');
+    Route::post('/reports/timecards/void', 'TimeClockController@voidPunch');
+    Route::get('/time-clock/settings', 'TimeClockController@settingsPage');
+    Route::post('/time-clock/settings/stores', 'TimeClockController@saveStores');
+    Route::post('/time-clock/settings/allow-ip', 'TimeClockController@allowIp');
+    Route::post('/time-clock/settings/pin', 'TimeClockController@setPin');
+    Route::post('/time-clock/settings/pin/clear', 'TimeClockController@clearPin');
+    Route::post('/time-clock/settings/revoke', 'TimeClockController@revokeDevice');
+    Route::get('/time-clock/qr', 'TimeClockController@qrSheet');
 
     // One-shot cleanup: historical xlsx import wrote some transactions with
     // future dates (typos / no-year rows defaulting to 2026). Rewrites them

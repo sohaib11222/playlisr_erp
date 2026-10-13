@@ -110,8 +110,13 @@
     <input type="date" name="end" value="{{ $end }}" class="form-control input-sm" style="margin-right:12px;">
     <button class="btn btn-primary btn-sm" type="submit">Load</button>
     <span class="pull-right text-muted" style="font-size:12px;">
-      @if ($imported_at) {{ $row_count }} punches imported {{ \Carbon::parse($imported_at)->format('M j, g:ia') }} @else No hours imported yet — open “Import hours” below @endif
+      @if ($imported_at) {{ $row_count }} punches @if (($hours_source ?? '') === 'erp_time_clock') from the ERP time clock @endif loaded {{ \Carbon::parse($imported_at)->format('M j, g:ia') }} @else No hours loaded yet. Load them from the ERP time clock, or import from Clover below. @endif
     </span>
+  </form>
+  <form method="POST" action="{{ url('/payroll/load-erp-hours') }}" style="margin-top:10px;">
+    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+    <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-clock-o"></i> Load hours from ERP time clock</button>
+    <span class="text-muted" style="font-size:12px;margin-left:6px;">Uses this period's punches from <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>. Replaces any hours loaded for this period. Clover import below still works.</span>
   </form>
 </div></div>
 
@@ -183,7 +188,7 @@
             </td>
           </tr>
         @empty
-          <tr><td colspan="{{ $cols + 1 }}" class="text-center text-muted" style="padding:24px;">No hours imported for this period. Open “Import hours” below.</td></tr>
+          <tr><td colspan="{{ $cols + 1 }}" class="text-center text-muted" style="padding:24px;">No hours loaded for this period. Use “Load hours from ERP time clock” above, or import from Clover below.</td></tr>
         @endforelse
 
         @if ($can_see_rates && !empty($freelancers))
