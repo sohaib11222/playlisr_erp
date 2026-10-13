@@ -324,6 +324,14 @@
             <div class="cell no">We just gave you a call back, please let us know what is it about?</div>
             <div class="cell yes">Awesome, see you soon!</div>
             <div class="cell no">Great, most welcome.</div>
+            <div class="cell yes">Checking in with the staff at the store for you now</div>
+            <div class="cell no">Let us check and we will get back to you</div>
+            <div class="cell yes">Looking into this for you, I'll reach back out to you with an update</div>
+            <div class="cell no">Please give me some time</div>
+            <div class="cell yes">Could you send your full address so we can take a look?</div>
+            <div class="cell no">I need your complete physical address</div>
+            <div class="cell yes">Got it, thank you!</div>
+            <div class="cell no">Ok</div>
             <div class="cell yes">Your email</div>
             <div class="cell no">Your email ID</div>
             <div class="cell yes">Their name, or nothing</div>
