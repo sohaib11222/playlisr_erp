@@ -615,12 +615,13 @@ class ReorderService
         $days = 90;
         $start = Carbon::now()->subDays($days)->toDateTimeString();
 
-        $classify = function ($name, $catName) {
-            $isMag = stripos($catName, 'magazine') !== false;
+        $allCats = Category::where('business_id', $business_id)->pluck('name', 'id')->all();
+        $classify = function ($name, $catName, $subName = '') {
+            $isMag = stripos($catName, 'magazine') !== false || stripos($subName, 'magazine') !== false;
             if ($isMag) return ['magazines', $this->familyOf($name, self::MAGAZINE_FAMILIES) ?: 'Other magazines'];
             $fam = $this->familyOf($name, self::COMIC_FAMILIES);
             if ($fam) return ['comics', $fam];
-            if (stripos($catName, 'comic') !== false || preg_match('/comic|#\s*\d/i', $name)) return ['comics', 'Other comics'];
+            if (stripos($catName, 'comic') !== false || stripos($subName, 'comic') !== false || preg_match('/comic|#\s*\d/i', $name)) return ['comics', 'Other comics'];
             return [null, null]; // a regular book
         };
 
@@ -639,11 +640,14 @@ class ReorderService
             ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', $start)
             ->whereIn('p.category_id', array_keys($cats))
             ->groupBy('p.id')
-            ->select('p.name', 'p.category_id', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+            ->select('p.name', 'p.category_id', 'p.sub_category_id', DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
                 DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'), DB::raw('MAX(t.transaction_date) as last_at'))
             ->get();
+        // Manual items rung at the register (no product, name typed in): about
+        // half of comic sales (Clarissa's 10/12 sheet: 44 of 82 Spider-Man).
+        $sales = $sales->concat($this->manualLines($business_id, $locationId, array_keys($cats), $start, false));
         foreach ($sales as $r) {
-            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '', $allCats[$r->sub_category_id] ?? '');
             if (!$type || (float) $r->qty <= 0) continue;
             $bump($type, $fam);
             $f = &$out[$type][$fam];
@@ -663,13 +667,14 @@ class ReorderService
             ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', Carbon::now()->startOfYear()->toDateTimeString())
             ->whereIn('p.category_id', array_keys($cats))
             ->groupBy('p.id', DB::raw('DATE(t.transaction_date)'))
-            ->select('p.name', 'p.category_id', DB::raw('DATE(t.transaction_date) as d'),
+            ->select('p.name', 'p.category_id', 'p.sub_category_id', DB::raw('DATE(t.transaction_date) as d'),
                 DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
                 DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'))
             ->get();
+        $ytd = $ytd->concat($this->manualLines($business_id, $locationId, array_keys($cats), Carbon::now()->startOfYear()->toDateTimeString(), true));
         $dates = [];
         foreach ($ytd as $r) {
-            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '', $allCats[$r->sub_category_id] ?? '');
             if (!$type || (float) $r->qty <= 0) continue;
             $bump($type, $fam);
             $out[$type][$fam]['sold_ytd'] = ($out[$type][$fam]['sold_ytd'] ?? 0) + (float) $r->qty;
@@ -684,10 +689,10 @@ class ReorderService
             ->where('vld.location_id', $locationId)->where('vld.qty_available', '>', 0)
             ->where('p.business_id', $business_id)->whereIn('p.category_id', array_keys($cats))
             ->groupBy('p.id')
-            ->select('p.name', 'p.category_id', DB::raw('SUM(vld.qty_available) as q'))
+            ->select('p.name', 'p.category_id', 'p.sub_category_id', DB::raw('SUM(vld.qty_available) as q'))
             ->get();
         foreach ($stock as $r) {
-            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '', $allCats[$r->sub_category_id] ?? '');
             if (!$type) continue;
             $bump($type, $fam);
             $out[$type][$fam]['stock'] += (int) round((float) $r->q);
@@ -724,6 +729,29 @@ class ReorderService
         }
         unset($fams);
         return $out;
+    }
+
+    /** Manual sell lines (no product) in these categories, shaped like the product rows. */
+    protected function manualLines(int $business_id, int $locationId, array $catIds, string $start, bool $byDay)
+    {
+        $q = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', $start)
+            ->where(function ($w) { $w->whereNull('tsl.product_id')->orWhere('tsl.product_id', 0); })
+            ->whereNotNull('tsl.product_name')
+            ->whereIn('tsl.category_id', $catIds ?: [0]);
+        $sel = ['tsl.product_name as name', 'tsl.category_id', 'tsl.sub_category_id',
+            DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+            DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev')];
+        if ($byDay) {
+            $q->groupBy('tsl.product_name', 'tsl.category_id', 'tsl.sub_category_id', DB::raw('DATE(t.transaction_date)'));
+            $sel[] = DB::raw('DATE(t.transaction_date) as d');
+        } else {
+            $q->groupBy('tsl.product_name', 'tsl.category_id', 'tsl.sub_category_id');
+            $sel[] = DB::raw('MAX(t.transaction_date) as last_at');
+        }
+        return $q->select($sel)->get();
     }
 
     public function saveFamilyCount(int $business_id, int $locationId, string $key, ?int $qty, string $by): void
