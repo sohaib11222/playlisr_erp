@@ -42,7 +42,8 @@
   .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
   .wo-prod-with-img { display:flex; gap:10px; align-items:center; }
   .wo-prod-img { width:64px; height:64px; border-radius:8px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; flex-shrink:0; display:block; }
-  .wo-listed { font-size:13px; color:#374151; white-space:nowrap; }
+  .wo-listed { font-size:12.5px; color:#374151; line-height:1.35; min-width:96px; }
+  .wo-listed .t { display:block; color:#9ca3af; white-space:nowrap; }
   .wo-sort { color:inherit; text-decoration:none; white-space:nowrap; }
   .wo-sort:hover { text-decoration:underline; }
   .wo-sort-arrow { font-size:10px; margin-left:3px; color:#6b7280; }
@@ -84,7 +85,8 @@
   .wo-sla.over { color:#b91c1c; background:#fee2e2; border:1px solid #fecaca; }
   .wo-sla.pre { color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; font-weight:600; }
 
-  .wo-row-actions { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:6px; position:relative; }
+  .wo-row-actions { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:5px; position:relative; }
+  .wo-row-actions .wo-btn-primary { padding:0 9px; }
   .wo-row-actions form { margin:0; }
   .wo-row-actions .wo-btn { display:inline-flex; align-items:center; justify-content:center; width:auto; height:30px; padding:0 10px; font-size:12.5px; }
   .wo-more { position:relative; }
@@ -297,12 +299,12 @@
           <colgroup>
             <col style="width:15%">
             <col>
-            <col style="width:96px">
+            <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
             <col style="width:86px">
             <col style="width:92px">
-            <col style="width:204px">
+            <col style="width:236px">
           </colgroup>
           <thead><tr>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
@@ -393,7 +395,7 @@
                     <div class="wo-prod-more">+{{ $cancelLines->count() - 3 }} more</div>
                   @endif
                 </td>
-                <td class="wo-listed">{{ $rowListed ?? '' }}</td>
+                <td class="wo-listed">@php $lp = explode(' · ', (string) ($rowListed ?? ''), 2); @endphp{{ $lp[0] }}@if(!empty($lp[1]))<span class="t">{{ $lp[1] }}</span>@endif</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($paymentStatusFilter === 'all')
@@ -633,7 +635,7 @@
           <div class="wo-scroll">
           <table class="wo-tbl">
             <colgroup>
-              <col style="width:120px"><col style="width:14%"><col><col style="width:96px"><col style="width:86px"><col style="width:92px"><col style="width:220px">
+              <col style="width:120px"><col style="width:14%"><col><col style="width:108px"><col style="width:86px"><col style="width:92px"><col style="width:236px">
             </colgroup>
             <thead><tr>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Discogs order', 'key' => 'status'])</th>
@@ -667,7 +669,7 @@
                       </div>
                     @endforeach
                   </td>
-                  <td class="wo-listed">{{ $dListed ?? '' }}</td>
+                  <td class="wo-listed">@php $lp = explode(' · ', (string) ($dListed ?? ''), 2); @endphp{{ $lp[0] }}@if(!empty($lp[1]))<span class="t">{{ $lp[1] }}</span>@endif</td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
                     @if(!empty($d['pick']))
                       <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
