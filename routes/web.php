@@ -741,6 +741,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Weekly Reorder (Jon's spreadsheet process as one page, Sarah 2026-10-08)
     Route::get('/reports/reorder', 'ReorderController@index');
     Route::get('/reports/rsd-order', 'RsdOrderController@index');
+    Route::get('/marketing/email-lists', 'EmailListsController@index');
+    Route::post('/marketing/email-lists/key', 'EmailListsController@saveKey');
+    Route::match(['get', 'post'], '/marketing/email-lists/pull', 'EmailListsController@pull');
+    Route::get('/marketing/email-lists/csv', 'EmailListsController@csv');
     Route::post('/reports/rsd-order/qty', 'RsdOrderController@saveQty');
     Route::post('/reports/rsd-order/ordered', 'RsdOrderController@markOrdered');
     Route::post('/reports/rsd-order/requests', 'RsdOrderController@pasteRequests');

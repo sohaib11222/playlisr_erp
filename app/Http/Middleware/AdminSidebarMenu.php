@@ -95,6 +95,15 @@ class AdminSidebarMenu
                 )->order(15);
             }
 
+            //Email Lists: Brevo contacts saved in the ERP.
+            if (auth()->user()->can('customer.view')) {
+                $menu->url(
+                    action('EmailListsController@index'),
+                    'Email Lists',
+                    ['icon' => 'fa fas fa-envelope-open-text', 'active' => request()->segment(1) == 'marketing' && request()->segment(2) == 'email-lists']
+                )->order(15);
+            }
+
             //RSD Order: per-store Record Store Day order from customer requests.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
                 $menu->url(
