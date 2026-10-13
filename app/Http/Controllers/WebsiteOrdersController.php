@@ -188,7 +188,18 @@ class WebsiteOrdersController extends Controller
             }
         }
 
+        // Column sorting from the header links (?sort=listed&dir=asc), kept in
+        // the URL. All rows are on one page, so sort here (Sarah, 2026-10-13).
+        $sortKey = (string) $request->query('sort', '');
+        $sortDir = $request->query('dir') === 'desc' ? 'desc' : 'asc';
+        if ($sortKey !== '') {
+            $orders = self::sortRows($orders, $sortKey, $sortDir, false);
+            $discogsToShip = self::sortRows($discogsToShip, $sortKey, $sortDir, true);
+        }
+
         return view('website-orders.index', [
+            'sortKey' => $sortKey,
+            'sortDir' => $sortDir,
             'discogsToShip' => $discogsToShip,
             'discogsError' => $discogsError,
             'orders' => $orders,
@@ -413,6 +424,43 @@ class WebsiteOrdersController extends Controller
      * "Listed 3/14/2025 (7 months)" for an item, so staff know how long it's
      * been on the shelf and how hard to look (Sarah, 2026-10-13).
      */
+    /** Value a row is sorted by for a column (website orders or Discogs rows). */
+    public static function sortValue(array $o, string $key, bool $discogs)
+    {
+        $items = $o['items'] ?? [];
+        switch ($key) {
+            case 'buyer':
+                return strtolower($discogs ? ($o['buyer'] ?? '') : ($o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? ''))));
+            case 'product':
+                $first = $items[0] ?? [];
+                return strtolower($discogs ? ($first['name'] ?? '') : ($first['product_id']['name'] ?? ($first['product_name'] ?? '')));
+            case 'listed':
+                $dates = array_filter(array_map(function ($it) use ($discogs) {
+                    $d = $discogs ? ($it['listed_at'] ?? null) : ($it['product_id']['posCreatedAt'] ?? ($it['product_id']['createdAt'] ?? null));
+                    return $d ? strtotime($d) : null;
+                }, $items));
+                return $dates ? min($dates) : PHP_INT_MAX;
+            case 'status':
+                return strtolower($discogs ? ($o['status'] ?? '') : ($o['order_status'] ?? ''));
+            case 'fulfillment':
+                return strtolower($o['fulfillment_method'] ?? '');
+            case 'total':
+                return (float) ($discogs ? ($o['total'] ?? 0) : ($o['total_amount'] ?? 0));
+            case 'placed':
+                return strtotime($discogs ? ($o['order_date'] ?? '') : ($o['createdAt'] ?? '')) ?: 0;
+        }
+        return 0;
+    }
+
+    public static function sortRows(array $rows, string $key, string $dir, bool $discogs): array
+    {
+        usort($rows, function ($a, $b) use ($key, $dir, $discogs) {
+            $c = self::sortValue($a, $key, $discogs) <=> self::sortValue($b, $key, $discogs);
+            return $dir === 'desc' ? -$c : $c;
+        });
+        return $rows;
+    }
+
     /** "10/10/2024 · 2 years" for the Listed column. */
     public static function listedShort($date): ?string
     {

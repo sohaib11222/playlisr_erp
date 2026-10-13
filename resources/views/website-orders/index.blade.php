@@ -37,11 +37,12 @@
   .wo-tbl td { padding:16px 14px; font-size:14px; vertical-align:top; }
 
   .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
-  .wo-buyer-cell { display:flex; gap:10px; align-items:flex-start; }
-  .wo-thumbs { display:flex; gap:3px; flex-shrink:0; align-items:center; }
-  .wo-thumb { width:44px; height:44px; border-radius:6px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; display:block; }
-  .wo-thumb-more { font-size:12px; color:#6b7280; font-weight:600; padding-left:2px; }
+  .wo-prod-with-img { display:flex; gap:10px; align-items:center; }
+  .wo-prod-img { width:64px; height:64px; border-radius:8px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; flex-shrink:0; display:block; }
   .wo-listed { font-size:13px; color:#374151; white-space:nowrap; }
+  .wo-sort { color:inherit; text-decoration:none; white-space:nowrap; }
+  .wo-sort:hover { text-decoration:underline; }
+  .wo-sort-arrow { font-size:10px; margin-left:3px; color:#6b7280; }
   .wo-buyer-email { font-size:12.5px; color:#6b7280; margin-top:2px; }
 
   .wo-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap; }
@@ -69,8 +70,24 @@
   .wo-total { font-weight:600; color:#111827; }
   .wo-placed { font-size:13px; color:#6b7280; white-space:nowrap; }
 
-  .wo-row-actions { display:flex; flex-direction:column; gap:6px; width:132px; }
+  .wo-row-actions { display:flex; flex-direction:row; align-items:center; gap:6px; white-space:nowrap; position:relative; }
   .wo-row-actions form { margin:0; }
+  .wo-row-actions .wo-btn { display:inline-flex; align-items:center; justify-content:center; width:auto; height:30px; padding:0 10px; font-size:12.5px; }
+  .wo-more { position:relative; }
+  .wo-more-btn { width:30px !important; padding:0 !important; }
+  .wo-more-btn svg { width:16px; height:16px; fill:#374151; }
+  .wo-more-menu { display:none; position:fixed; z-index:1000; min-width:150px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; }
+  .wo-more.open .wo-more-menu { display:block; }
+  .wo-more-menu form { margin:0; }
+  .wo-more-item { display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; font-size:13px; color:#374151; border-radius:6px; cursor:pointer; }
+  .wo-more-item:hover { background:#f3f4f6; }
+  .wo-more-item.danger { color:#b91c1c; }
+  .wo-more-item.danger:hover { background:#fef2f2; }
+  .wo-row > td { padding-top:4px; padding-bottom:4px; vertical-align:middle; }
+  .wo-row .wo-prod-line { margin-bottom:4px; }
+  .wo-prod-name { color:#111827; text-decoration:none; }
+  .wo-prod-name:hover { color:#4a6fa5; text-decoration:underline; }
+  .wo-noerp { display:inline-block; margin-left:5px; padding:0 6px; border-radius:999px; background:#f3f4f6; color:#6b7280; font-size:10.5px; font-weight:600; vertical-align:1px; white-space:nowrap; }
   .wo-btn { display:block; width:100%; box-sizing:border-box; font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#374151; text-align:center; }
   .wo-btn:hover { background:#f9fafb; }
   .wo-btn-primary { background:#111827; color:#fff; border-color:#111827; }
@@ -220,23 +237,23 @@
         <div style="overflow-x:auto;">
         <table class="wo-tbl">
           <colgroup>
-            <col style="width:22%">
-            <col style="width:20%">
+            <col style="width:17%">
+            <col style="width:25%">
             <col style="width:11%">
             <col style="width:10%">
             <col style="width:10%">
             <col style="width:8%">
             <col style="width:10%">
-            <col style="width:160px">
+            <col style="width:212px">
           </colgroup>
           <thead><tr>
-            <th>Buyer</th>
-            <th>Product</th>
-            <th>Listed</th>
-            <th>Status</th>
-            <th>Fulfillment</th>
-            <th>Total</th>
-            <th>Placed</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
           </tr></thead>
           <tbody>
@@ -285,36 +302,30 @@
                 // Thumbnails (up to 3, then +N) and the oldest item's listed
                 // date for the row (Sarah, 2026-10-13).
                 $rowItems = collect($o['items'] ?? [])->filter(fn($it) => !(($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount']))))->values();
-                $rowThumbs = $rowItems->map(fn($it) => $it['product_id']['image'] ?? ($it['product_image'] ?? null));
                 $rowListedDates = $rowItems->map(fn($it) => $it['product_id']['posCreatedAt'] ?? ($it['product_id']['createdAt'] ?? null))->filter()->sort()->values();
                 $rowListed = \App\Http\Controllers\WebsiteOrdersController::listedShort($rowListedDates->first());
               @endphp
               <tr class="wo-row">
                 <td>
-                  <div class="wo-buyer-cell">
-                    <div class="wo-thumbs">
-                      @forelse($rowThumbs->take(3) as $thumb)
-                        @if($thumb)<img class="wo-thumb" src="{{ $thumb }}" alt="" loading="lazy">@else<div class="wo-thumb"></div>@endif
-                      @empty
-                        <div class="wo-thumb"></div>
-                      @endforelse
-                      @if($rowThumbs->count() > 3)<span class="wo-thumb-more">+{{ $rowThumbs->count() - 3 }}</span>@endif
-                    </div>
-                    <div>
-                      <div class="wo-buyer-name">{{ $customerName }}</div>
-                      <div class="wo-buyer-email">{{ $customerEmail }}</div>
-                    </div>
-                  </div>
+                  <div class="wo-buyer-name">{{ $customerName }}</div>
+                  <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
                 <td>
                   @foreach($cancelLines->take(3) as $line)
                     @php
-                      $lineArtist = $line['gift'] ? null : (($o['items'][$loop->index]['product_id']['artist'] ?? null) ?: ($o['items'][$loop->index]['product_artist'] ?? null));
+                      $lineItem = $o['items'][$loop->index] ?? [];
+                      $lineArtist = $line['gift'] ? null : (($lineItem['product_id']['artist'] ?? null) ?: ($lineItem['product_artist'] ?? null));
+                      $lineImg = $line['gift'] ? null : (($lineItem['product_id']['image'] ?? null) ?: ($lineItem['product_image'] ?? null));
+                      $lineErp = $line['gift'] ? null : ($lineItem['product_id']['posProductId'] ?? null);
                     @endphp
-                    <div class="wo-prod-line">
-                      @if($line['cancelled'])<s>@endif{{ $line['name'] }}@if($line['cancelled'])</s>@endif
-                      @if($line['qty'] > 1)<span class="wo-prod-qty">&times;{{ $line['qty'] }}</span>@endif
-                      @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                    <div class="wo-prod-line wo-prod-with-img">
+                      @if($lineImg)<img class="wo-prod-img" src="{{ $lineImg }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
+                      <div>
+                        @if($line['cancelled'])<s>@endif @if($lineErp)<a class="wo-prod-name" href="{{ url('/products/' . $lineErp . '/edit') }}" target="_blank" rel="noopener">{{ $line['name'] }}</a>@else{{ $line['name'] }}@endif @if($line['cancelled'])</s>@endif
+                        @if(!$line['gift'] && !$lineErp)<span class="wo-noerp">not in ERP</span>@endif
+                        @if($line['qty'] > 1)<span class="wo-prod-qty">&times;{{ $line['qty'] }}</span>@endif
+                        @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                      </div>
                     </div>
                   @endforeach
                   @if($cancelLines->count() > 3)
@@ -354,16 +365,21 @@
                       onclick="woOpenStatus('{{ $o['_id'] }}', '{{ $status }}', '{{ $o['tracking_number'] ?? '' }}')">Update status</button>
                     {{-- Toggles the details row right after this order's row (not by id:
                          two orders could end up with the same short id). --}}
-                    <button type="button" class="wo-btn" onclick="woToggleDetails(this)">View details</button>
-                    <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
-                          onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
-                      {{ csrf_field() }}
-                      <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
-                      <button type="submit" class="wo-btn" style="width:100%;">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
-                    </form>
-                    @if(!$isArchived)
-                      <button type="button" class="wo-btn wo-btn-danger" data-lines="{{ json_encode($cancelLines) }}" onclick="woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
-                    @endif
+                    <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
+                    <div class="wo-more">
+                      <button type="button" class="wo-btn wo-more-btn" title="More actions" aria-label="More actions" onclick="woToggleMore(this, event)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
+                      <div class="wo-more-menu">
+                        <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
+                              onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
+                          {{ csrf_field() }}
+                          <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
+                          <button type="submit" class="wo-more-item">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
+                        </form>
+                        @if(!$isArchived)
+                          <button type="button" class="wo-more-item danger" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
+                        @endif
+                      </div>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -429,7 +445,7 @@
                             <tr>
                               <td style="width:52px;">
                                 @if($itemIsGift)
-                                  <div style="width:44px;height:44px;border-radius:6px;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:16px;">&#127873;</div>
+                                  <div style="width:44px;height:44px;border-radius:6px;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#166534;">GC</div>
                                 @elseif($img)
                                   <img src="{{ $img }}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">
                                 @else
@@ -440,7 +456,7 @@
                                 @if($itemIsGift)
                                   <span style="color:#166534;font-weight:600;">Nivessa Gift Card - ${{ $item['gift_card_amount'] ?? $item['price'] ?? '' }}</span>
                                 @else
-                                  @if(!empty($item['cancelled']))<s>@endif{{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}@if(!empty($item['cancelled']))</s> <span class="wo-pill st-cancelled">Cancelled</span>@endif
+                                  @if(!empty($item['cancelled']))<s>@endif @if($erpProductId)<a class="wo-prod-name" href="{{ url('/products/' . $erpProductId . '/edit') }}" target="_blank" rel="noopener">{{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}</a>@else{{ $item['product_id']['name'] ?? ($item['product_name'] ?? 'Unknown item') }}<span class="wo-noerp">not in ERP</span>@endif @if(!empty($item['cancelled']))</s> <span class="wo-pill st-cancelled">Cancelled</span>@endif
                                   @if($isPreorder)
                                     <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:#f97316;color:#fff;font-size:10px;font-weight:700;">Preorder</span>
                                     @if($shipDate)
@@ -525,12 +541,12 @@
           <div style="overflow-x:auto;">
           <table class="wo-tbl">
             <thead><tr>
-              <th>Discogs order</th>
-              <th>Buyer</th>
-              <th>Items (bin)</th>
-              <th>Listed</th>
-              <th>Total</th>
-              <th>Ordered</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Discogs order', 'key' => 'status'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Items (bin)', 'key' => 'product'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Ordered', 'key' => 'placed'])</th>
               <th style="width:230px;">Mark shipped</th>
             </tr></thead>
             <tbody>
@@ -542,27 +558,17 @@
                     <div style="font-size:11px;color:#6b7280;">{{ $d['status'] ?? '' }}</div>
                   </td>
                   @php
-                    $dThumbs = collect($d['items'] ?? [])->map(fn($it) => $it['image'] ?? null);
                     $dListed = \App\Http\Controllers\WebsiteOrdersController::listedShort(collect($d['items'] ?? [])->map(fn($it) => $it['listed_at'] ?? null)->filter()->sort()->first());
                   @endphp
-                  <td>
-                    <div class="wo-buyer-cell">
-                      <div class="wo-thumbs">
-                        @forelse($dThumbs->take(3) as $thumb)
-                          @if($thumb)<img class="wo-thumb" src="{{ $thumb }}" alt="" loading="lazy">@else<div class="wo-thumb"></div>@endif
-                        @empty
-                          <div class="wo-thumb"></div>
-                        @endforelse
-                        @if($dThumbs->count() > 3)<span class="wo-thumb-more">+{{ $dThumbs->count() - 3 }}</span>@endif
-                      </div>
-                      <div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div>
-                    </div>
-                  </td>
+                  <td><div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div></td>
                   <td style="font-size:13px;">
                     @foreach(($d['items'] ?? []) as $it)
-                      <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif
+                      <div class="wo-prod-line wo-prod-with-img">
+                      @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
+                      <div>@if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif @if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif
                         @php $dlisted = \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null); @endphp
                         @if($dlisted && count($d['items'] ?? []) > 1)<div style="font-size:11px;color:#6b7280;">{{ $dlisted }}</div>@endif
+                      </div>
                       </div>
                     @endforeach
                   </td>
@@ -644,6 +650,26 @@
     </dialog>
 
     <script>
+      function woCloseMore() {
+        document.querySelectorAll('.wo-more.open').forEach(function (m) { m.classList.remove('open'); });
+      }
+      function woToggleMore(btn, ev) {
+        if (ev) ev.stopPropagation();
+        var box = btn.closest('.wo-more');
+        var wasOpen = box.classList.contains('open');
+        woCloseMore();
+        if (wasOpen) return;
+        box.classList.add('open');
+        // Fixed position so the table's overflow wrapper can't clip it.
+        var menu = box.querySelector('.wo-more-menu');
+        var r = btn.getBoundingClientRect();
+        menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+        var below = r.bottom + 4;
+        menu.style.top = (below + menu.offsetHeight > window.innerHeight ? Math.max(8, r.top - menu.offsetHeight - 4) : below) + 'px';
+      }
+      window.addEventListener('scroll', woCloseMore, true);
+      document.addEventListener('click', function (e) { if (!e.target.closest('.wo-more')) woCloseMore(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') woCloseMore(); });
       function woToggleDetails(btn) {
         var row = btn.closest('tr');
         var el = row ? row.nextElementSibling : null;
@@ -654,7 +680,7 @@
         if (!el) return;
         var hidden = el.style.display === 'none' || getComputedStyle(el).display === 'none';
         el.style.display = hidden ? 'table-row' : 'none';
-        btn.textContent = hidden ? 'Hide details' : 'View details';
+        btn.textContent = hidden ? 'Hide' : 'Details';
       }
       function woOpenStatus(orderId, currentStatus, currentTracking) {
         var form = document.getElementById('wo-status-form');
