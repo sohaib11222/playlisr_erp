@@ -654,6 +654,30 @@ class ReorderService
             unset($f);
         }
 
+        // This year: total sold, $, and the days things sold on (for speed).
+        $ytd = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+            ->where('t.location_id', $locationId)->where('t.transaction_date', '>=', Carbon::now()->startOfYear()->toDateTimeString())
+            ->whereIn('p.category_id', array_keys($cats))
+            ->groupBy('p.id', DB::raw('DATE(t.transaction_date)'))
+            ->select('p.name', 'p.category_id', DB::raw('DATE(t.transaction_date) as d'),
+                DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
+                DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev'))
+            ->get();
+        $dates = [];
+        foreach ($ytd as $r) {
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '');
+            if (!$type || (float) $r->qty <= 0) continue;
+            $bump($type, $fam);
+            $out[$type][$fam]['sold_ytd'] = ($out[$type][$fam]['sold_ytd'] ?? 0) + (float) $r->qty;
+            $out[$type][$fam]['revenue_ytd'] = ($out[$type][$fam]['revenue_ytd'] ?? 0) + (float) $r->rev;
+            $dates[$type][$fam][$r->d] = true;
+            if ($r->d > ($out[$type][$fam]['last'] ?? '')) $out[$type][$fam]['last'] = $r->d;
+        }
+
         $stock = DB::table('variation_location_details as vld')
             ->join('variations as v', 'v.id', '=', 'vld.variation_id')
             ->join('products as p', 'p.id', '=', 'v.product_id')
@@ -673,6 +697,16 @@ class ReorderService
         foreach ($out as $type => &$fams) {
             foreach ($fams as $fam => &$f) {
                 $f['per_week'] = round($f['sold'] / ($days / 7), 1);
+                $f['sold_ytd'] = $f['sold_ytd'] ?? 0;
+                $f['revenue_ytd'] = $f['revenue_ytd'] ?? 0;
+                // Speed like Clarissa's sheet: average days between sales this year.
+                $d = array_keys($dates[$type][$fam] ?? []);
+                sort($d);
+                $f['days_between'] = count($d) >= 2
+                    ? round(Carbon::parse($d[0])->diffInDays(Carbon::parse(end($d))) / (count($d) - 1), 1) : null;
+                $f['speed'] = $f['days_between'] === null ? 'No data'
+                    : ($f['days_between'] <= 15 ? 'Fast' : ($f['days_between'] <= 50 ? 'Staple' : 'Mid'));
+                $f['days_since'] = $f['last'] ? Carbon::parse($f['last'])->diffInDays(Carbon::today()) : null;
                 $f['avg_price'] = $f['sold'] > 0 ? round($f['revenue'] / $f['sold'], 2) : null;
                 $f['target'] = (int) ceil($f['per_week'] * $coverWeeks);
                 $c = $state['family_counts'][$locationId][$type . ':' . $fam] ?? null;

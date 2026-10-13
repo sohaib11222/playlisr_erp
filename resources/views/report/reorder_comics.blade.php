@@ -40,7 +40,7 @@
                 </div>
             </form>
             <ol style="margin:12px 0 0; padding-left:22px; font-size:15px; line-height:1.55;">
-                <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...), using the last 90 days of sales.</li>
+                <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed: Fast = sells about every 2 weeks or faster, Staple = every 2 to 7 weeks, Mid = slower.</li>
                 <li>Count each series in the bins and type the total in <b>Counted</b>. It saves by itself.</li>
                 <li><b>Order</b> = enough for 4 weeks at the current pace, minus what you counted (or minus the ERP count if you haven't counted yet).</li>
             </ol>
@@ -57,9 +57,14 @@
                             <th>Series</th>
                             <th>Counted</th>
                             <th>Order</th>
+                            <th>Speed</th>
+                            <th class="text-right" title="Average days between sales this year">Days between sales</th>
                             <th class="text-right">Sold, 90 days</th>
+                            <th class="text-right">Sold this year</th>
+                            <th class="text-right">Sales this year</th>
                             <th class="text-right">Per week</th>
                             <th class="text-right">Avg price</th>
+                            <th>Last sold</th>
                             <th class="text-right">ERP says</th>
                             <th>Best sellers</th>
                         </tr>
@@ -71,14 +76,19 @@
                             <td><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
                                 title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
                             <td class="rc-order">{{ $f['order'] }}</td>
+                            <td>{{ $f['speed'] }}</td>
+                            <td class="text-right">{{ $f['days_between'] }}</td>
                             <td class="text-right">{{ $f['sold'] + 0 }}</td>
+                            <td class="text-right">{{ $f['sold_ytd'] + 0 }}</td>
+                            <td class="text-right">${{ number_format($f['revenue_ytd']) }}</td>
                             <td class="text-right">{{ $f['per_week'] }}</td>
                             <td class="text-right">@if($f['avg_price'])${{ number_format($f['avg_price'], 2) }}@endif</td>
+                            <td>@if($f['last']){{ \Carbon\Carbon::parse($f['last'])->format('M j') }}@if($f['days_since'] !== null && $f['days_since'] > 30) <span class="ro-muted">({{ $f['days_since'] }} days)</span>@endif @endif</td>
                             <td class="text-right">{{ $f['stock'] }}</td>
                             <td class="ro-muted">{{ $f['examples'] }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-muted">Nothing sold in the last 90 days.</td></tr>
+                        <tr><td colspan="13" class="text-muted">Nothing sold in the last 90 days.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
