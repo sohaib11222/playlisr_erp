@@ -147,6 +147,9 @@
       @endif
     @endif
 
+    @if(!empty($summaryFilter))
+      <div class="wo-banner warn">Showing the orders from the #shipping summary link only. <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}">Show all</a></div>
+    @endif
     @if($activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
       <div class="wo-banner warn">These orders need to be packed and shipped — set status to Shipped and enter a tracking number.</div>
     @endif

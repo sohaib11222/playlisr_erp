@@ -73,6 +73,14 @@ class WebsiteOrdersController extends Controller
         $search = trim((string) $request->query('q', ''));
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
+        // Filters used by the #shipping summary links (Sarah, 2026-10-13):
+        // overdue=1 (5+ days old), only=website|discogs, shipped_since /
+        // cancelled_since (ISO time of the previous summary post).
+        $overdueOnly = $request->query('overdue') === '1';
+        $onlySource = (string) $request->query('only', '');
+        $shippedSince = strtotime((string) $request->query('shipped_since', '')) ?: 0;
+        $cancelledSince = strtotime((string) $request->query('cancelled_since', '')) ?: 0;
+        $overdueCutoff = time() - 5 * 86400;
 
         // payment_status is passed to the bridge itself (not just filtered
         // client-side after) so the 300-order window is filled with orders
@@ -132,7 +140,11 @@ class WebsiteOrdersController extends Controller
             }
         }
 
-        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo) {
+        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff) {
+            if ($onlySource === 'discogs') return false;
+            if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
+            if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
+            if ($cancelledSince && (strtotime($o['cancelled_at'] ?? '') ?: 0) < $cancelledSince) return false;
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
@@ -158,7 +170,12 @@ class WebsiteOrdersController extends Controller
         if ($activeTab === 'to_ship') {
             $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
             if (($d['success'] ?? false) === true) {
-                $discogsToShip = $d['data'] ?? [];
+                $discogsToShip = $onlySource === 'website' ? [] : ($d['data'] ?? []);
+                if ($overdueOnly) {
+                    $discogsToShip = array_values(array_filter($discogsToShip, function ($o) use ($overdueCutoff) {
+                        return (strtotime($o['order_date'] ?? '') ?: PHP_INT_MAX) <= $overdueCutoff;
+                    }));
+                }
                 // Slack links filter to one order with ?q=<discogs id>.
                 if ($search !== '') {
                     $needle = strtolower($search);
@@ -187,6 +204,7 @@ class WebsiteOrdersController extends Controller
             'search' => $search,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'summaryFilter' => $overdueOnly || $onlySource !== '' || $shippedSince || $cancelledSince,
             'pickupSlaOverdueHours' => self::PICKUP_SLA_OVERDUE_HOURS,
         ]);
     }
