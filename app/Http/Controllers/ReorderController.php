@@ -243,6 +243,31 @@ class ReorderController extends Controller
         ]);
     }
 
+    /**
+     * Record a distributor order found outside the ERP (the nightly Claude
+     * task reads RedEye confirmation emails from orders@ and posts here).
+     * Admins only; deduped by key, split by format like the AMS sync.
+     */
+    public function autoOrder(Request $request)
+    {
+        abort_unless(auth()->user()->can('business_settings.access'), 403);
+        $business_id = $request->session()->get('user.business_id');
+        $key = mb_substr((string) $request->input('key'), 0, 60);
+        $supplier = mb_substr((string) $request->input('supplier', 'Redeye'), 0, 30);
+        $at = (string) $request->input('at');
+        $store = $request->input('store') === 'pico' ? 'pico' : 'hollywood';
+        if (!preg_match('/^[a-z]+:\w+$/', $key) || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $at)) {
+            return response()->json(['ok' => false, 'msg' => 'need key like redeye:123 and at Y-m-d H:i'], 422);
+        }
+        $loc = \App\BusinessLocation::where('business_id', $business_id)->where('name', 'like', '%' . $store . '%')->value('id');
+        $lines = [];
+        foreach ((array) $request->input('lines', []) as $l) {
+            $lines[] = ['upc' => (string) ($l['upc'] ?? ''), 'qty' => (int) ($l['qty'] ?? 0), 'title' => (string) ($l['title'] ?? '')];
+        }
+        $n = $this->svc->recordAutoOrder($business_id, (int) $loc, $key, $at, $supplier . ' order #' . explode(':', $key)[1], $lines, $supplier);
+        return response()->json(['ok' => true, 'recorded' => $n]);
+    }
+
     public function saveFamilyCount(Request $request)
     {
         [$business_id, , $locationId] = $this->params($request);
