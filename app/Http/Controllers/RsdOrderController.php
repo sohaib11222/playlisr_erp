@@ -335,6 +335,7 @@ class RsdOrderController extends Controller
         $min = max(1, (int) $request->input('min', 2));
         $since = now()->subMonths((int) $request->input('months', 12))->toDateString();
         $locs = \App\BusinessLocation::where('business_id', $biz)->pluck('name', 'id')->toArray();
+        if ($request->input('mode') === 'top') return $this->topSpenders($request, $biz);
         $storeLocs = array_keys(array_filter($locs, function ($n) { return stripos($n, 'hollywood') !== false || stripos($n, 'pico') !== false; }));
         $picoLocs = array_map('intval', array_keys(array_filter($locs, function ($n) { return stripos($n, 'pico') !== false; })));
         $rows = \DB::table('transactions as t')
@@ -408,5 +409,53 @@ class RsdOrderController extends Controller
         foreach ($out as $o) { if ($o['PURCHASES'] === 0) { $k = $o['SPENT'] >= 300 ? 'clover_spent_300_plus' : ($o['SPENT'] >= 150 ? 'clover_spent_150_300' : 'clover_spent_75_150'); $by[$k]++; continue; } $b = $o['PURCHASES'] >= 10 ? '10+' : ($o['PURCHASES'] >= 5 ? '5-9' : ($o['PURCHASES'] >= 3 ? '3-4' : '2')); $by[$b] = ($by[$b] ?? 0) + 1; }
         return response()->json(['since' => $since, 'min_purchases' => $min, 'count' => count($out), 'website_buyers' => $webCount, 'by_purchases' => $by,
             'by_store' => array_count_values(array_column($out, 'STORE')), 'sample' => array_map(function ($o) { return ['purchases' => $o['PURCHASES'], 'last' => $o['LAST_PURCHASE'], 'store' => $o['STORE']]; }, array_slice($out, 0, 5))]);
+    }
+
+    /**
+     * ?mode=top: every ERP customer email ranked by what they've spent with
+     * us (ERP sales in the last N months + Clover lifetime purchases), LA
+     * County zip or none, non-US domains and staff removed. ?limit= caps it,
+     * ?exclude=a@b.com,c@d.com skips emails already on the Brevo list.
+     */
+    protected function topSpenders(Request $request, int $biz)
+    {
+        $since = now()->subMonths((int) $request->input('months', 36))->toDateString();
+        $limit = max(1, min(2000, (int) $request->input('limit', 300)));
+        $sales = \DB::table('transactions')->where('business_id', $biz)->where('type', 'sell')->where('status', 'final')
+            ->where('transaction_date', '>=', $since)->whereNotNull('contact_id')
+            ->groupBy('contact_id')
+            ->select('contact_id', \DB::raw('COUNT(*) as n'), \DB::raw('SUM(final_total) as spent'), \DB::raw('MAX(transaction_date) as last_at'));
+        $staff = array_flip(array_filter(array_map(function ($e) { return strtolower(trim((string) $e)); },
+            \DB::table('users')->where('business_id', $biz)->pluck('email')->toArray())));
+        $exclude = array_flip(array_filter(array_map('trim', explode(',', strtolower((string) $request->input('exclude', ''))))));
+        $rows = \DB::table('contacts as c')
+            ->leftJoinSub($sales, 's', 's.contact_id', '=', 'c.id')
+            ->where('c.business_id', $biz)->where('c.is_default', 0)
+            ->whereNotNull('c.email')->where('c.email', 'like', '%@%.%')
+            ->where(function ($q) { $q->where('s.n', '>', 0)->orWhere('c.lifetime_purchases', '>', 0); })
+            ->select('c.email', 'c.zip_code', 'c.name', \DB::raw('COALESCE(s.n,0) as n'), \DB::raw('COALESCE(s.spent,0) as spent'),
+                'c.lifetime_purchases', 's.last_at', 'c.last_purchase_date')
+            ->get();
+        $out = [];
+        foreach ($rows as $r) {
+            $email = strtolower(trim($r->email));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || isset($staff[$email]) || isset($exclude[$email]) || isset($out[$email])) continue;
+            if (preg_match('/nivessa|hedvat|^test@|example\./', $email)) continue;
+            if (!preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $email)) continue;
+            if (stripos((string) $r->name, 'website') !== false || stripos((string) $r->name, 'walk') !== false) continue;
+            $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
+            if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+            $out[$email] = ['email' => $email, 'spent' => round((float) $r->spent + (float) $r->lifetime_purchases, 2), 'orders' => (int) $r->n,
+                'last' => substr((string) max((string) $r->last_at, (string) $r->last_purchase_date), 0, 10)];
+        }
+        $out = array_values($out);
+        usort($out, function ($a, $b) { return $b['spent'] <=> $a['spent']; });
+        $total = count($out);
+        $out = array_slice($out, 0, $limit);
+        if ($request->input('format') === 'emails') {
+            return response(implode("\n", array_column($out, 'email')), 200, ['Content-Type' => 'text/plain']);
+        }
+        return response()->json(['since' => $since, 'eligible' => $total, 'returned' => count($out),
+            'spent_cutoff' => $out ? end($out)['spent'] : null, 'top_spent' => $out ? $out[0]['spent'] : null]);
     }
 }
