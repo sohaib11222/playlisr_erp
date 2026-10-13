@@ -184,6 +184,12 @@ class Kernel extends ConsoleKernel
         // QB sometimes change rows after their date, so we re-sync the
         // recent past every tick and rely on ref_no idempotency. Once a day
         // at 03:15 PST we widen to 60 days as a safety net.
+        // Weekly Reorder: AMS orders mark themselves as ordered (Sarah 10/13).
+        $schedule->command('reorder:sync-ams-orders')
+            ->cron('*/30 9-23 * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(25);
+
         $schedule->command('quickbooks:sync-expenses --days=14')
             ->cron('*/30 * * * *')
             ->timezone('America/Los_Angeles')

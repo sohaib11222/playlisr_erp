@@ -759,6 +759,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
     Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
+    // Run the AMS auto "Mark as ordered" check now (admins), shows what it did.
+    Route::get('/reports/reorder/sync-ams', function () {
+        abort_unless(auth()->user()->can('business_settings.access'), 403);
+        \Artisan::call('reorder:sync-ams-orders');
+        return response('<pre>' . e(\Artisan::output()) . '</pre>');
+    });
     Route::post('/reports/reorder/import-counts', 'ReorderController@importCounts');
     Route::post('/reports/reorder/ordered', 'ReorderController@markOrdered');
     Route::post('/reports/reorder/orders/{id}/delete', 'ReorderController@deleteOrder');

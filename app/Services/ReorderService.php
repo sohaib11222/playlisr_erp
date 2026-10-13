@@ -209,6 +209,57 @@ class ReorderService
         return $order;
     }
 
+    /**
+     * Record a distributor order found automatically (AMS web orders), split
+     * by format. Skips a format when someone already clicked Mark as ordered
+     * for that store + format within a day of it (no double "on the way").
+     * $lines: [{upc, qty, title}]. Returns how many orders were recorded.
+     */
+    public function recordAutoOrder(int $business_id, int $locationId, string $key, string $at, string $note, array $lines): int
+    {
+        $state = $this->loadState($business_id);
+        if (!empty($state['auto_orders'][$key])) return 0;
+
+        // UPC -> [product_id, format] for sealed music.
+        $fmtOf = [];
+        foreach (['vinyl', 'cd', 'cassette'] as $f) {
+            foreach (array_keys($this->categoryIds($business_id, 'sealed', $f)) as $cid) $fmtOf[$cid] = $f;
+        }
+        $byUpc = [];
+        foreach (DB::table('variations as v')->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $business_id)->whereNull('v.deleted_at')
+            ->whereIn('p.category_id', array_keys($fmtOf) ?: [0])
+            ->where('v.sub_sku', 'regexp', '[0-9]{11,14}')
+            ->select('p.id', 'p.category_id', 'v.sub_sku')->get() as $r) {
+            foreach (preg_split('/[\s,;|\/]+/', (string) $r->sub_sku) as $tok) {
+                if (preg_match('/^\d{11,14}$/', $tok)) $byUpc[ltrim($tok, '0')] = [(int) $r->id, $fmtOf[$r->category_id]];
+            }
+        }
+        $groups = [];
+        foreach ($lines as $l) {
+            $u = ltrim(preg_replace('/\D+/', '', (string) $l['upc']), '0');
+            if ($u === '' || (int) $l['qty'] < 1) continue;
+            [$pid, $fmt] = $byUpc[$u] ?? [null, null];
+            if (!$fmt) continue; // not sealed music we carry yet
+            $groups[$fmt][] = ['product_id' => $pid, 'upc' => $u, 'title' => mb_substr((string) $l['title'], 0, 200), 'qty' => (int) $l['qty'], 'supplier' => 'AMS'];
+        }
+        $n = 0;
+        $atC = Carbon::parse($at);
+        foreach ($groups as $fmt => $glines) {
+            $clicked = false;
+            foreach ($this->ordersFor($business_id, $locationId, $fmt) as $o) {
+                if (abs(Carbon::parse($o['at'])->diffInHours($atC, false)) <= 24 && strpos((string) ($o['by'] ?? ''), 'Auto') !== 0) $clicked = true;
+            }
+            if ($clicked) continue;
+            $this->markOrdered($business_id, $locationId, $fmt, $glines, 'Auto (AMS)', $note, $at);
+            $n++;
+        }
+        $state = $this->loadState($business_id);
+        $state['auto_orders'][$key] = now()->toDateTimeString();
+        $this->saveState($business_id, $state);
+        return $n;
+    }
+
     public function deleteOrder(int $business_id, string $orderId): void
     {
         $state = $this->loadState($business_id);
