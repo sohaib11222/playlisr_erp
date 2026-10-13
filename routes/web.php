@@ -745,6 +745,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/marketing/email-lists/key', 'EmailListsController@saveKey');
     Route::match(['get', 'post'], '/marketing/email-lists/pull', 'EmailListsController@pull');
     Route::get('/marketing/email-lists/csv', 'EmailListsController@csv');
+    Route::post('/marketing/email-lists/push-batch', 'EmailListsController@pushBatch');
     Route::post('/reports/rsd-order/qty', 'RsdOrderController@saveQty');
     Route::post('/reports/rsd-order/ordered', 'RsdOrderController@markOrdered');
     Route::post('/reports/rsd-order/requests', 'RsdOrderController@pasteRequests');

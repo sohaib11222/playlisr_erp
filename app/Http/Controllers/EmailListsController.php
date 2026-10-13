@@ -154,4 +154,70 @@ class EmailListsController extends Controller
             fclose($f);
         }, $name);
     }
+
+    protected function brevoSend(string $key, string $method, string $path, array $body): array
+    {
+        $ch = curl_init('https://api.brevo.com/v3' . $path);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_HTTPHEADER => ['accept: application/json', 'content-type: application/json', 'api-key: ' . $key]]);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $json = json_decode((string) $res, true);
+        if ($code >= 300) throw new \RuntimeException('Brevo said ' . $code . ': ' . substr((string) ($json['message'] ?? $res), 0, 200));
+        return is_array($json) ? $json : [];
+    }
+
+    /**
+     * Next batch for the free Brevo plan (300 emails/day): the newest Clover
+     * in-store customers not sent to yet go into a new Brevo list.
+     * Sidecar storage/app/brevo-batches-{biz}.json remembers who was used.
+     */
+    public function pushBatch(Request $request)
+    {
+        $biz = $this->guard();
+        $key = $this->apiKey($biz);
+        if ($key === '') return response()->json(['success' => false, 'msg' => 'No Brevo key saved']);
+        $count = max(1, min(300, (int) $request->input('count', 299)));
+        $path = storage_path('app/brevo-batches-' . $biz . '.json');
+        $state = is_file($path) ? (json_decode((string) file_get_contents($path), true) ?: []) : [];
+        $used = array_flip((array) ($state['used'] ?? []));
+        try {
+            // Everyone already in Brevo (e.g. LA Regulars #17) counts as used.
+            for ($off = 0; $off < 20000; $off += 1000) {
+                $page = $this->brevo($key, '/contacts?limit=1000&offset=' . $off);
+                foreach ((array) ($page['contacts'] ?? []) as $c) $used[strtolower((string) ($c['email'] ?? ''))] = true;
+                if (count((array) ($page['contacts'] ?? [])) < 1000) break;
+            }
+            $staff = array_flip(array_filter(array_map(function ($e) { return strtolower(trim((string) $e)); },
+                \DB::table('users')->where('business_id', $biz)->pluck('email')->toArray())));
+            $pick = [];
+            $rows = \DB::table('contacts')->where('business_id', $biz)->where('is_default', 0)->whereNotNull('clover_customer_id')
+                ->whereNotNull('email')->where('email', 'like', '%@%.%')
+                ->orderByRaw('COALESCE(last_purchase_date, clover_synced_at, created_at) DESC')
+                ->select('email', 'zip_code')->get();
+            foreach ($rows as $r) {
+                $e = strtolower(trim($r->email));
+                if (isset($used[$e]) || isset($staff[$e]) || isset($pick[$e]) || !filter_var($e, FILTER_VALIDATE_EMAIL)) continue;
+                if (preg_match('/nivessa|hedvat|^test@|example\.|fahrul|zakscholefield|luis3pt/', $e) || !preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $e)) continue;
+                $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
+                if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+                $pick[$e] = true;
+                if (count($pick) >= $count) break;
+            }
+            if (!$pick) return response()->json(['success' => false, 'msg' => 'No more customers left to send to']);
+            $n = count((array) ($state['batches'] ?? [])) + 2;
+            $list = $this->brevoSend($key, 'POST', '/contacts/lists', ['name' => 'In-store customers batch ' . $n . ' (' . now()->format('M j') . ')', 'folderId' => 1]);
+            $listId = (int) ($list['id'] ?? 0);
+            $this->brevoSend($key, 'POST', '/contacts/import', ['listIds' => [$listId], 'updateExistingContacts' => false,
+                'jsonBody' => array_map(function ($e) { return ['email' => $e]; }, array_keys($pick))]);
+            $state['used'] = array_values(array_unique(array_merge((array) ($state['used'] ?? []), array_keys($pick))));
+            $state['batches'][] = ['list_id' => $listId, 'count' => count($pick), 'at' => now()->toDateTimeString()];
+            file_put_contents($path, json_encode($state));
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'msg' => $e->getMessage()]);
+        }
+        return response()->json(['success' => true, 'list_id' => $listId, 'count' => count($pick), 'batch' => $n]);
+    }
 }
