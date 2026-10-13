@@ -226,6 +226,7 @@
             <div class="qa">
                 <p class="q">Reply</p>
                 <span class="say">Yes we do! Come by either store anytime and we'll give you a quote. Hollywood is at 6434 Hollywood Blvd, Los Angeles, CA 90028, open until {{ $ppHwClose }} today, and Pico is at 5770 W Pico Blvd, Los Angeles, CA 90019, open until {{ $ppPicoClose }} today.</span>
+                <p class="note">Small collections: send this reply once and that's it. We don't make house calls for a few records, and we don't text back and forth asking for photos or prices.</p>
             </div>
             <div class="qa">
                 <p class="q">Big collection (10+ boxes)</p>
@@ -243,6 +244,14 @@
             <div class="qa">
                 <p class="q">&ldquo;Do you ship?&rdquo;</p>
                 <span class="say">Yes, we ship worldwide! You can order at <a href='https://nivessa.com' target='_blank' rel='noopener'>nivessa.com</a>.</span>
+            </div>
+        </div>
+        <div class="card" id="refund" style="margin-top:14px">
+            <h3 style="margin-top:0">Refund or cancel an order <span class="prio high">Most important</span></h3>
+            <div class="qa">
+                <p class="q">Reply</p>
+                <span class="say">Looking into this for you, I'll reach back out to you with an update today.</span>
+                <p class="note">All refunds and cancellations must be approved by Jon. Never tell the customer yes or no until Jon approves. Saying yes and then no really upsets customers. Once Jon answers, text the customer the same day.</p>
             </div>
         </div>
         <div class="card" id="upset" style="margin-top:14px">
@@ -269,10 +278,11 @@
             </div>
         </div>
         <div class="card" id="events" style="margin-top:14px">
-            <h3 style="margin-top:0">Events, performing, renting the space <span class="prio low">Quick</span></h3>
+            <h3 style="margin-top:0">Events, performing, renting the space <span class="prio high">Most important</span></h3>
             <div class="qa">
                 <p class="q">Reply</p>
-                <span class="say">We'd love to host your event! You can book a time at <a href='https://nivessa.com/venues' target='_blank' rel='noopener'>nivessa.com/venues</a>.</span>
+                <span class="say">Hi [name], we'd love to host your event! We have turntables so people can listen before they pick their records, and you can come early to set up. I'll connect you with Sarah over email, she's in charge of our bigger events if you have any questions. You can also see our venues here: <a href='https://nivessa.com/venues' target='_blank' rel='noopener'>nivessa.com/venues</a></span>
+                <p class="note">Always reply personally and warmly, then send Sarah their name, email and what they want. Never just send a link.</p>
             </div>
         </div>
         <div class="card" id="lost" style="margin-top:14px">
@@ -332,6 +342,8 @@
             <div class="cell no">I need your complete physical address</div>
             <div class="cell yes">Got it, thank you!</div>
             <div class="cell no">Ok</div>
+            <div class="cell yes">We'd love to host your event! I'll connect you with Sarah over email.</div>
+            <div class="cell no">Please book our space here ref nivessa.com/events</div>
             <div class="cell yes">Your email</div>
             <div class="cell no">Your email ID</div>
             <div class="cell yes">Their name, or nothing</div>

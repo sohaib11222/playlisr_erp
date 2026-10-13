@@ -351,6 +351,15 @@ HTML,
 
 <h3>If a Customer Asks About Hiring</h3>
 <p>Yes, we're hiring. Direct them to <code>nivessa.com/careers</code> — someone will get back to them if there's a fit.</p>
+
+<h3>Phone and Text Rules</h3>
+<ul>
+    <li><strong>Refunds and cancellations must be approved by Jon.</strong> Never tell a customer yes or no on a refund until Jon approves it. Saying yes and then no makes us look like we don't know what we're doing, and it upsets the customer.</li>
+    <li><strong>No house calls for small collections, and no long back-and-forth texting to price them.</strong> Reply once: "Thanks for reaching out! Please bring them to either store and we'll give you a quote."</li>
+    <li><strong>Events and business inquiries get a warm, personal reply, then go to Sarah.</strong> Don't just send a link. Example: "Hi [name], we'd love to host your event! We have turntables so people can listen before they pick their records, and you can come early to set up. I'll connect you with Sarah over email, she's in charge of our bigger events. You can also see our venues here: nivessa.com/venues"</li>
+    <li><strong>Write so customers understand.</strong> Never use shorthand like "ref."</li>
+</ul>
+<p>Full scripts: <a href="/phone-playbook">Phone Playbook</a>.</p>
 HTML,
             ],
             [
