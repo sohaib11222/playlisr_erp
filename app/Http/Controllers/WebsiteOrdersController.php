@@ -413,6 +413,14 @@ class WebsiteOrdersController extends Controller
      * "Listed 3/14/2025 (7 months)" for an item, so staff know how long it's
      * been on the shelf and how hard to look (Sarah, 2026-10-13).
      */
+    /** "10/10/2024 · 2 years" for the Listed column. */
+    public static function listedShort($date): ?string
+    {
+        $label = self::listedLabel($date);
+        if (!$label) return null;
+        return preg_replace('/^Listed (\S+) \((.+)\)$/', '$1 · $2', $label);
+    }
+
     public static function listedLabel($date): ?string
     {
         $t = $date ? strtotime((string) $date) : false;

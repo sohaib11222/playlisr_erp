@@ -37,6 +37,11 @@
   .wo-tbl td { padding:16px 14px; font-size:14px; vertical-align:top; }
 
   .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
+  .wo-buyer-cell { display:flex; gap:10px; align-items:flex-start; }
+  .wo-thumbs { display:flex; gap:3px; flex-shrink:0; align-items:center; }
+  .wo-thumb { width:44px; height:44px; border-radius:6px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; display:block; }
+  .wo-thumb-more { font-size:12px; color:#6b7280; font-weight:600; padding-left:2px; }
+  .wo-listed { font-size:13px; color:#374151; white-space:nowrap; }
   .wo-buyer-email { font-size:12.5px; color:#6b7280; margin-top:2px; }
 
   .wo-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap; }
@@ -215,17 +220,19 @@
         <div style="overflow-x:auto;">
         <table class="wo-tbl">
           <colgroup>
-            <col style="width:18%">
             <col style="width:22%">
-            <col style="width:12%">
-            <col style="width:12%">
-            <col style="width:9%">
-            <col style="width:12%">
+            <col style="width:20%">
+            <col style="width:11%">
+            <col style="width:10%">
+            <col style="width:10%">
+            <col style="width:8%">
+            <col style="width:10%">
             <col style="width:160px">
           </colgroup>
           <thead><tr>
             <th>Buyer</th>
             <th>Product</th>
+            <th>Listed</th>
             <th>Status</th>
             <th>Fulfillment</th>
             <th>Total</th>
@@ -274,10 +281,30 @@
                   'gift' => ($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount'])),
                 ])->values();
               @endphp
+              @php
+                // Thumbnails (up to 3, then +N) and the oldest item's listed
+                // date for the row (Sarah, 2026-10-13).
+                $rowItems = collect($o['items'] ?? [])->filter(fn($it) => !(($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount']))))->values();
+                $rowThumbs = $rowItems->map(fn($it) => $it['product_id']['image'] ?? ($it['product_image'] ?? null));
+                $rowListedDates = $rowItems->map(fn($it) => $it['product_id']['posCreatedAt'] ?? ($it['product_id']['createdAt'] ?? null))->filter()->sort()->values();
+                $rowListed = \App\Http\Controllers\WebsiteOrdersController::listedShort($rowListedDates->first());
+              @endphp
               <tr class="wo-row">
                 <td>
-                  <div class="wo-buyer-name">{{ $customerName }}</div>
-                  <div class="wo-buyer-email">{{ $customerEmail }}</div>
+                  <div class="wo-buyer-cell">
+                    <div class="wo-thumbs">
+                      @forelse($rowThumbs->take(3) as $thumb)
+                        @if($thumb)<img class="wo-thumb" src="{{ $thumb }}" alt="" loading="lazy">@else<div class="wo-thumb"></div>@endif
+                      @empty
+                        <div class="wo-thumb"></div>
+                      @endforelse
+                      @if($rowThumbs->count() > 3)<span class="wo-thumb-more">+{{ $rowThumbs->count() - 3 }}</span>@endif
+                    </div>
+                    <div>
+                      <div class="wo-buyer-name">{{ $customerName }}</div>
+                      <div class="wo-buyer-email">{{ $customerEmail }}</div>
+                    </div>
+                  </div>
                 </td>
                 <td>
                   @foreach($cancelLines->take(3) as $line)
@@ -294,6 +321,7 @@
                     <div class="wo-prod-more">+{{ $cancelLines->count() - 3 }} more</div>
                   @endif
                 </td>
+                <td class="wo-listed">{{ $rowListed ?? '' }}</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($rowIsPreorder)
@@ -340,7 +368,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="7">
+                <td colspan="8">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
@@ -500,6 +528,7 @@
               <th>Discogs order</th>
               <th>Buyer</th>
               <th>Items (bin)</th>
+              <th>Listed</th>
               <th>Total</th>
               <th>Ordered</th>
               <th style="width:230px;">Mark shipped</th>
@@ -512,15 +541,32 @@
                     <div><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">{{ $d['id'] }}</a></div>
                     <div style="font-size:11px;color:#6b7280;">{{ $d['status'] ?? '' }}</div>
                   </td>
-                  <td>{{ $d['buyer'] ?? '' }}</td>
+                  @php
+                    $dThumbs = collect($d['items'] ?? [])->map(fn($it) => $it['image'] ?? null);
+                    $dListed = \App\Http\Controllers\WebsiteOrdersController::listedShort(collect($d['items'] ?? [])->map(fn($it) => $it['listed_at'] ?? null)->filter()->sort()->first());
+                  @endphp
+                  <td>
+                    <div class="wo-buyer-cell">
+                      <div class="wo-thumbs">
+                        @forelse($dThumbs->take(3) as $thumb)
+                          @if($thumb)<img class="wo-thumb" src="{{ $thumb }}" alt="" loading="lazy">@else<div class="wo-thumb"></div>@endif
+                        @empty
+                          <div class="wo-thumb"></div>
+                        @endforelse
+                        @if($dThumbs->count() > 3)<span class="wo-thumb-more">+{{ $dThumbs->count() - 3 }}</span>@endif
+                      </div>
+                      <div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div>
+                    </div>
+                  </td>
                   <td style="font-size:13px;">
                     @foreach(($d['items'] ?? []) as $it)
                       <div>{{ $it['name'] ?? 'Item' }}@if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif
                         @php $dlisted = \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null); @endphp
-                        @if($dlisted)<div style="font-size:11px;color:#6b7280;">{{ $dlisted }}</div>@endif
+                        @if($dlisted && count($d['items'] ?? []) > 1)<div style="font-size:11px;color:#6b7280;">{{ $dlisted }}</div>@endif
                       </div>
                     @endforeach
                   </td>
+                  <td class="wo-listed">{{ $dListed ?? '' }}</td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
                     @if(!empty($d['pick']))
                       <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
