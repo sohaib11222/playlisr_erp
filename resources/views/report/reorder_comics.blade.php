@@ -164,6 +164,52 @@
         });
     });
     totals();
+
+    // Click any column name to sort; click again to flip. "Back to sections" undoes it.
+    var tierRank = { 'Fast': 0, 'Staple': 1, 'Mid': 2, 'No data': 3 };
+    document.querySelectorAll('table.rc').forEach(function (table) {
+        var tbody = table.querySelector('tbody');
+        var original = Array.prototype.slice.call(tbody.children);
+        var dataRows = original.filter(function (tr) { return tr.dataset.key; });
+        var dir = {}, last = null;
+        var back = document.createElement('a');
+        back.href = '#'; back.textContent = 'Back to sections'; back.style.cssText = 'display:none; margin-left:10px; font-size:13px;';
+        table.parentNode.insertBefore(back, table);
+        back.addEventListener('click', function (e) {
+            e.preventDefault();
+            original.forEach(function (tr) { tr.style.display = ''; tbody.appendChild(tr); });
+            table.querySelectorAll('th .rc-arrow').forEach(function (a) { a.textContent = ''; });
+            back.style.display = 'none';
+        });
+        function val(tr, i) {
+            var td = tr.children[i];
+            var inp = td.querySelector('input');
+            var t = inp ? inp.value : td.textContent.trim();
+            if (t in tierRank) return tierRank[t];
+            var n = parseFloat(t.replace(/[$,]/g, ''));
+            return t === '' ? null : (isNaN(n) ? t.toLowerCase() : n);
+        }
+        table.querySelectorAll('thead th').forEach(function (th, i) {
+            th.style.cursor = 'pointer';
+            th.insertAdjacentHTML('beforeend', ' <span class="rc-arrow" style="color:#999;font-size:11px;"></span>');
+            th.addEventListener('click', function () {
+                dir[i] = last === i ? -(dir[i] || 1) : (i === 0 || i === 1 || i === 11 ? 1 : -1);
+                last = i;
+                var rows = dataRows.slice().sort(function (a, b) {
+                    var x = val(a, i), y = val(b, i);
+                    if (x === y) return 0;
+                    if (x === null) return 1;
+                    if (y === null) return -1;
+                    return (x < y ? -1 : 1) * dir[i];
+                });
+                original.forEach(function (tr) { if (!tr.dataset.key) tr.style.display = 'none'; });
+                rows.forEach(function (tr) { tbody.appendChild(tr); });
+                table.querySelectorAll('th .rc-arrow').forEach(function (a) { a.textContent = ''; });
+                th.querySelector('.rc-arrow').textContent = dir[i] === 1 ? '\u25B2' : '\u25BC';
+                back.style.display = '';
+            });
+        });
+    });
 })();
 </script>
 @endsection
