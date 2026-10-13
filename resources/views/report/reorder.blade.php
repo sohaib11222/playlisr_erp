@@ -110,23 +110,11 @@
                 <div class="box-header with-border"><h3 class="box-title" style="font-size:20px;">How to do the weekly order</h3></div>
                 <div class="box-body" style="font-size:15px; line-height:1.55;">
                     <ol class="ro-steps" style="padding-left:22px;">
-                        <li><b>Pick your store and Sealed vinyl or Sealed CDs</b> at the top. Leave "Sold since" alone, it fills in by itself.</li>
-                        <li><b>Take this page to the bins.</b> The list is in genre order, the same order as the bins.</li>
-                        <li><b>Count each title.</b> Type how many are in the bin in the <b>Counted (in bin)</b> box, then press Tab. It saves by itself (you'll see "saved") and fixes the ERP stock to match. The <b>Order</b> box then shows how many to buy.</li>
-                        <li><b>Titles marked "Always stock" or "Missing?" must be counted too</b>, even if they didn't sell. If one isn't in its bin, look for it in the wrong spot. If you can't find it, type 0.</li>
-                        <li><b>Change any Order number if you want.</b> Type 0 to skip a title.</li>
-                        <li><b>Scroll to the bottom when you're done.</b> Each distributor has its own list (only the titles it's cheapest on). Click <b>Copy</b>, open that distributor's site, and paste it into their bulk order box (AMS: Quick Order, Cut &amp; Paste). If a site has no bulk box, add the titles by barcode. <b>Don't check out.</b> Jon reviews the carts and buys.</li>
-                        <li><b>Come back and click Mark as ordered</b> (it asks you to click twice). Next week's list starts from here, and these copies show as "On the way".</li>
+                        <li><b>Pick your store and Sealed vinyl or Sealed CDs</b> at the top.</li>
+                        <li><b>Go through the list below.</b> These are the records to reorder, in bin order. Counting is optional: if a bin looks wrong, type what's there in <b>Counted</b> and the order fixes itself. If you skip it, we just order back what sold.</li>
+                        <li><b>At the bottom, copy each distributor's list into its site.</b> Don't check out, Jon reviews and buys. The ERP records the order by itself.</li>
                     </ol>
-                    <p style="margin:10px 0 4px;"><b>What the colored tags mean:</b></p>
-                    <ul style="margin:0 0 6px; padding-left:22px;">
-                        <li><b>Sold</b>: sold since the last order, so buy it back.</li>
-                        <li><b>Always stock</b>: a steady seller that should never run out.</li>
-                        <li><b>Missing?</b>: usually sells but hasn't lately. It may be misfiled, stolen or sold out.</li>
-                        <li><b>Sells used</b>: used copies sell fast, so we buy a new sealed copy.</li>
-                        <li><b>Sold fast once</b>, <b>Sold last year</b>, <b>Other store</b>: just so you know. They're only ordered if you count 0.</li>
-                    </ul>
-                    <p class="ro-muted" style="margin:8px 0 0;">Something look wrong (a price, a title in the wrong genre)? Tell Sarah. Sales are live from the register, distributor prices refresh every night at 11pm, and grades (like AX) update on the 1st of each month.</p>
+                    <p class="ro-muted" style="margin:8px 0 0;">Something look wrong? Tell Sarah.</p>
                 </div>
             </div>
         </div>
@@ -136,10 +124,7 @@
         <div class="box-body">
             <div class="ro-chips" id="ro-chips">
                 <span class="ro-chip active" data-f="order">To order</span>
-                @foreach($whyLabels as $k => $label)
-                    <span class="ro-chip" data-f="{{ $k }}">{{ $label }} <span class="ro-muted" data-count="{{ $k }}"></span></span>
-                @endforeach
-                <span class="ro-chip" data-f="all">Everything</span>
+                <span class="ro-chip" data-f="all">Show everything</span>
             </div>
             <div class="ro-bar" style="margin-bottom:8px;">
                 <select id="ro-genre" class="form-control" style="width:auto;">
