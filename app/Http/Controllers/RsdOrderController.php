@@ -336,6 +336,19 @@ class RsdOrderController extends Controller
         $since = now()->subMonths((int) $request->input('months', 12))->toDateString();
         $locs = \App\BusinessLocation::where('business_id', $biz)->pluck('name', 'id')->toArray();
         if ($request->input('mode') === 'top') return $this->topSpenders($request, $biz);
+        if ($request->input('mode') === 'stats') {
+            $base = function () use ($biz) { return \DB::table('contacts')->where('business_id', $biz)->whereNotNull('email')->where('email', 'like', '%@%.%'); };
+            $cols = \Schema::getColumnListing('contacts');
+            $out = ['with_email' => $base()->count(), 'by_type' => $base()->groupBy('type')->select('type', \DB::raw('count(*) as n'))->pluck('n', 'type'),
+                'with_clover_id' => $base()->whereNotNull('clover_customer_id')->count(),
+                'lifetime_gt0' => $base()->where('lifetime_purchases', '>', 0)->count(),
+                'loyalty_gt0' => $base()->where('loyalty_points', '>', 0)->count(),
+                'any_sell' => $base()->whereExists(function ($q) { $q->select(\DB::raw(1))->from('transactions as t')->whereRaw('t.contact_id = contacts.id')->where('t.type', 'sell'); })->count(),
+                'created_last_year' => $base()->where('created_at', '>=', now()->subYear())->count(),
+                'la_zip' => $base()->whereRaw("zip_code REGEXP '^(90[0-9]|91[0-8]|935)'")->count(),
+                'columns' => array_values(array_filter($cols, function ($c) { return preg_match('/source|added|origin|clover|loyal|tier|visit|purchase|city|zip|marketing|subscri|opt/i', $c); }))];
+            return response()->json($out);
+        }
         $storeLocs = array_keys(array_filter($locs, function ($n) { return stripos($n, 'hollywood') !== false || stripos($n, 'pico') !== false; }));
         $picoLocs = array_map('intval', array_keys(array_filter($locs, function ($n) { return stripos($n, 'pico') !== false; })));
         $rows = \DB::table('transactions as t')
