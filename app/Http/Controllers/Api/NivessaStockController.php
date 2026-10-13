@@ -98,6 +98,60 @@ class NivessaStockController extends Controller
         ]);
     }
 
+    /**
+     * POST /api/v1/nivessa-web/products/find
+     * { items: [{ listing_id, release_id, sku, title }] }  (read-only)
+     * Finds the ERP product for each Discogs order item: discogs_listing_id,
+     * then SKU (listing id / DISCOGS-<listing id>), then discogs_release_id
+     * (prefer a copy in stock), then an exact unique name.
+     */
+    public function find(Request $request): JsonResponse
+    {
+        $items = array_slice((array) $request->input('items', []), 0, 50);
+        $bid = $this->businessId();
+        $stockOf = function ($productId) {
+            return (float) DB::table('variation_location_details as vld')
+                ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->where('v.product_id', $productId)->sum('vld.qty_available');
+        };
+        $out = [];
+        foreach ($items as $it) {
+            $listing = trim((string) ($it['listing_id'] ?? ''));
+            $release = trim((string) ($it['release_id'] ?? ''));
+            $sku = trim((string) ($it['sku'] ?? ''));
+            $title = trim((string) ($it['title'] ?? ''));
+            $found = null;
+            $by = null;
+            if ($listing !== '' && \Schema::hasColumn('products', 'discogs_listing_id')) {
+                $found = Product::where('business_id', $bid)->where('discogs_listing_id', $listing)->first();
+                $by = $found ? 'discogs_listing_id' : null;
+            }
+            if (!$found) {
+                $skus = array_values(array_filter([$sku, $listing, $listing !== '' ? 'DISCOGS-' . $listing : '']));
+                if ($skus) {
+                    $found = Product::where('business_id', $bid)->whereIn('sku', $skus)->first();
+                    $by = $found ? 'sku' : null;
+                }
+            }
+            if (!$found && $release !== '' && \Schema::hasColumn('products', 'discogs_release_id')) {
+                $cands = Product::where('business_id', $bid)->where('discogs_release_id', $release)->get();
+                foreach ($cands as $c) {
+                    if ($stockOf($c->id) > 0) { $found = $c; break; }
+                }
+                if (!$found && $cands->count()) $found = $cands->first();
+                $by = $found ? 'discogs_release_id' : null;
+            }
+            if (!$found && $title !== '') {
+                $cands = Product::where('business_id', $bid)->where('name', $title)->limit(2)->get();
+                if ($cands->count() === 1) { $found = $cands->first(); $by = 'name'; }
+            }
+            $out[] = $found
+                ? ['product_id' => (int) $found->id, 'name' => $found->name, 'sku' => $found->sku, 'stock' => $stockOf($found->id), 'matched_by' => $by]
+                : null;
+        }
+        return response()->json(['success' => true, 'matches' => $out]);
+    }
+
     /** POST /api/v1/nivessa-web/products/stock  { product_ids: [] } -> current ERP stock (read-only) */
     public function stock(Request $request): JsonResponse
     {
