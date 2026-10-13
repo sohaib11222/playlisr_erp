@@ -64,6 +64,9 @@
   .wo-fm-pill.shipping { background:#e0f2fe; color:#0369a1; }
   .wo-fm-pill.pickup { background:#f3e8ff; color:#6d28d9; }
   .wo-fm-pill.digital { background:#dcfce7; color:#166534; }
+  .wo-fm-pill.both-sep { background:#fef3c7; color:#92400e; margin-top:4px; }
+  .wo-fm-pill.both-comb { background:#ffedd5; color:#9a3412; margin-top:4px; }
+  .wo-shipfrom { font-size:11px; color:#6b7280; margin-top:3px; }
 
   .wo-prod-line { font-size:13.5px; color:#111827; line-height:1.35; margin-bottom:6px; word-break:break-word; }
   .wo-prod-line:last-child { margin-bottom:0; }
@@ -418,6 +421,23 @@
                     <span class="wo-fm-pill pickup" @if(!\App\Http\Controllers\WebsiteOrdersController::knownPickupLocation($o)) style="background:#fee2e2;color:#991b1b;" @endif>Pickup ({{ \App\Http\Controllers\WebsiteOrdersController::pickupLocationLabel($o) }})</span>
                   @else
                     <span class="wo-fm-pill shipping">Shipping</span>
+                    @php
+                      // Two store carts: which store(s) this order ships from.
+                      $woShipStores = collect($o['items'] ?? [])
+                        ->filter(function ($it) { return empty($it['is_gift_card']) && !empty($it['ship_from']); })
+                        ->pluck('ship_from')->unique()->values();
+                    @endphp
+                    @if(!empty($o['ships_from_both_stores']))
+                      <div>
+                        @if(($o['ship_mode'] ?? null) === 'combine')
+                          <span class="wo-fm-pill both-comb" title="Customer chose one package: bring everything to one store, ship together">Both stores: combine into 1 package</span>
+                        @else
+                          <span class="wo-fm-pill both-sep" title="Customer chose separate packages: each store ships its own part">Both stores: ship separately</span>
+                        @endif
+                      </div>
+                    @elseif($woShipStores->count() === 1)
+                      <div class="wo-shipfrom">Ships from {{ $woShipStores->first() === 'pico' ? 'Pico' : 'Hollywood' }}</div>
+                    @endif
                   @endif
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
