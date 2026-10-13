@@ -150,7 +150,7 @@ class WebsiteOrdersController extends Controller
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
             if ($search !== '') {
                 $needle = strtolower($search);
-                $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? ''));
+                $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
                 if (strpos($hay, $needle) === false) return false;
             }
             $createdAt = strtotime($o['createdAt'] ?? '') ?: 0;
@@ -280,7 +280,7 @@ class WebsiteOrdersController extends Controller
 
             return [
                 'id'          => $o['_id'] ?? '',
-                'customer'    => $o['user_id']['name'] ?? 'Guest',
+                'customer'    => $o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest')),
                 'email'       => $o['user_id']['email'] ?? '',
                 'phone'       => $o['contactNumber'] ?? '',
                 'items'       => array_map(fn($i) => $i['label'], $items),

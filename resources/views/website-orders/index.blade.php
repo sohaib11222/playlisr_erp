@@ -230,7 +230,9 @@
                 $isGift = collect($o['items'] ?? [])->isNotEmpty() && collect($o['items'] ?? [])->every(fn($it) =>
                   ($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount']))
                 );
-                $customerName = $o['user_id']['name'] ?? 'Guest';
+                // Real name (looked up from the payment when the checkout name
+                // was a username), then the shipping name, then the account.
+                $customerName = $o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest'));
                 $customerEmail = $o['user_id']['email'] ?? '';
                 $placed = !empty($o['createdAt']) ? date('M j, Y g:ia', strtotime($o['createdAt'])) : '—';
                 $isArchived = !empty($o['archived']);
