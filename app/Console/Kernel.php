@@ -186,7 +186,7 @@ class Kernel extends ConsoleKernel
         // at 03:15 PST we widen to 60 days as a safety net.
         // Weekly Reorder: AMS orders mark themselves as ordered (Sarah 10/13).
         $schedule->command('reorder:sync-ams-orders')
-            ->cron('*/30 9-23 * * *')
+            ->dailyAt('22:30')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(25);
 
