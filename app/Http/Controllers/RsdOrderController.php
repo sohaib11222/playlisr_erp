@@ -450,14 +450,15 @@ class RsdOrderController extends Controller
                 'c.lifetime_purchases', 'c.loyalty_points', 'c.visit_count', 's.last_at', 'c.last_purchase_date')
             ->get();
         $out = [];
+        $drop = ['rows' => count($rows), 'invalid_staff_dupe' => 0, 'test' => 0, 'tld' => 0, 'name' => 0, 'zip' => 0];
         foreach ($rows as $r) {
             $email = strtolower(trim($r->email));
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || isset($staff[$email]) || isset($exclude[$email]) || isset($out[$email])) continue;
-            if (preg_match('/nivessa|hedvat|^test@|example\./', $email)) continue;
-            if (!preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $email)) continue;
-            if (stripos((string) $r->name, 'website') !== false || stripos((string) $r->name, 'walk') !== false) continue;
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || isset($staff[$email]) || isset($exclude[$email]) || isset($out[$email])) { $drop['invalid_staff_dupe']++; continue; }
+            if (preg_match('/nivessa|hedvat|^test@|example\./', $email)) { $drop['test']++; continue; }
+            if (!preg_match('/\.(com|net|org|edu|us|io|me|co)$/', $email)) { $drop['tld']++; continue; }
+            if (stripos((string) $r->name, 'website') !== false || stripos((string) $r->name, 'walk') !== false) { $drop['name']++; continue; }
             $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
-            if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
+            if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) { $drop['zip']++; continue; }
             // Clover rewards points track in-store spend (~1 pt per $1); visits break ties.
             $score = max((float) $r->spent + (float) $r->lifetime_purchases, (float) $r->loyalty_points) + 5 * (int) $r->visit_count;
             $out[$email] = ['email' => $email, 'spent' => round($score, 2), 'orders' => (int) $r->n + (int) $r->visit_count,
@@ -470,7 +471,7 @@ class RsdOrderController extends Controller
         if ($request->input('format') === 'emails') {
             return response(implode("\n", array_column($out, 'email')), 200, ['Content-Type' => 'text/plain']);
         }
-        return response()->json(['since' => $since, 'eligible' => $total, 'returned' => count($out),
+        return response()->json(['drop' => $drop, 'since' => $since, 'eligible' => $total, 'returned' => count($out),
             'spent_cutoff' => $out ? end($out)['spent'] : null, 'top_spent' => $out ? $out[0]['spent'] : null]);
     }
 }
