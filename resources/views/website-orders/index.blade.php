@@ -55,6 +55,12 @@
   .wo-fm-pill.pickup { background:#f3e8ff; color:#6d28d9; }
   .wo-fm-pill.digital { background:#dcfce7; color:#166534; }
 
+  .wo-prod-line { font-size:13.5px; color:#111827; line-height:1.35; margin-bottom:6px; word-break:break-word; }
+  .wo-prod-line:last-child { margin-bottom:0; }
+  .wo-prod-qty { margin-left:4px; font-size:12px; font-weight:700; color:#6b7280; }
+  .wo-prod-artist { font-size:12px; color:#6b7280; }
+  .wo-prod-more { font-size:12px; color:#6b7280; margin-top:4px; }
+
   .wo-total { font-weight:600; color:#111827; }
   .wo-placed { font-size:13px; color:#6b7280; white-space:nowrap; }
 
@@ -209,15 +215,17 @@
         <div style="overflow-x:auto;">
         <table class="wo-tbl">
           <colgroup>
-            <col style="width:26%">
-            <col style="width:13%">
-            <col style="width:15%">
-            <col style="width:10%">
-            <col style="width:16%">
+            <col style="width:18%">
+            <col style="width:22%">
+            <col style="width:12%">
+            <col style="width:12%">
+            <col style="width:9%">
+            <col style="width:12%">
             <col style="width:160px">
           </colgroup>
           <thead><tr>
             <th>Buyer</th>
+            <th>Product</th>
             <th>Status</th>
             <th>Fulfillment</th>
             <th>Total</th>
@@ -272,6 +280,21 @@
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
                 <td>
+                  @foreach($cancelLines->take(3) as $line)
+                    @php
+                      $lineArtist = $line['gift'] ? null : (($o['items'][$loop->index]['product_id']['artist'] ?? null) ?: ($o['items'][$loop->index]['product_artist'] ?? null));
+                    @endphp
+                    <div class="wo-prod-line">
+                      @if($line['cancelled'])<s>@endif{{ $line['name'] }}@if($line['cancelled'])</s>@endif
+                      @if($line['qty'] > 1)<span class="wo-prod-qty">&times;{{ $line['qty'] }}</span>@endif
+                      @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                    </div>
+                  @endforeach
+                  @if($cancelLines->count() > 3)
+                    <div class="wo-prod-more">+{{ $cancelLines->count() - 3 }} more</div>
+                  @endif
+                </td>
+                <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($rowIsPreorder)
                     <div style="margin-top:6px;">
@@ -317,7 +340,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="6">
+                <td colspan="7">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
