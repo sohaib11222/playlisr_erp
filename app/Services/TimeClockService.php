@@ -33,9 +33,9 @@ class TimeClockService
     // A punch still open after this many hours is a missed clock-out, not
     // "currently clocked in".
     const OPEN_MAX_HOURS = 18;
-    const PIN_MAX_FAILS = 5;
     const PIN_LOCK_MINUTES = 15;
-    const IP_MAX_FAILS = 25;
+    const IP_MAX_FAILS = 15;
+    const GLOBAL_MAX_FAILS = 60;
     const DEFAULT_RADIUS_M = 200;
     // Credit the phone's reported accuracy up to this much when checking the
     // radius, so a fuzzy indoor fix at the counter still counts.
@@ -425,11 +425,64 @@ class TimeClockService
     }
 
     // ---- PINs ------------------------------------------------------------
+    //
+    // PIN only, like Clover (Sarah 2026-10-13): the PIN alone says who it is,
+    // so PINs are unique per person. Stored as an HMAC with the app key
+    // ("h1:<hex>") so the person can be found by PIN; a leaked table is no
+    // use without the key. Older bcrypt PINs still work and are upgraded on
+    // first use.
+
+    public static function pinDigest(string $pin): string
+    {
+        return 'h1:' . hash_hmac('sha256', 'time-clock-pin|' . $pin, (string) config('app.key'));
+    }
+
+    /** User id holding this PIN (other than $exceptUserId), or null. */
+    public static function pinOwner(int $businessId, string $pin, int $exceptUserId = 0): ?int
+    {
+        $digest = self::pinDigest($pin);
+        $uid = DB::table('time_clock_pins')->where('business_id', $businessId)->where('pin_hash', $digest)
+            ->where('user_id', '!=', $exceptUserId)->value('user_id');
+        if ($uid) {
+            return (int) $uid;
+        }
+        foreach (DB::table('time_clock_pins')->where('business_id', $businessId)->where('pin_hash', 'not like', 'h1:%')
+            ->where('user_id', '!=', $exceptUserId)->get(['user_id', 'pin_hash']) as $r) {
+            try {
+                if (Hash::check($pin, $r->pin_hash)) {
+                    return (int) $r->user_id;
+                }
+            } catch (\Throwable $e) {
+                // not a bcrypt hash
+            }
+        }
+        return null;
+    }
+
+    /** A random 4-digit PIN nobody else has (and not an obvious one). */
+    public static function uniqueRandomPin(int $businessId, int $userId): ?string
+    {
+        for ($i = 0; $i < 60; $i++) {
+            $pin = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+            if (self::isObviousPin($pin)) {
+                continue;
+            }
+            if (self::pinOwner($businessId, $pin, $userId) === null) {
+                return $pin;
+            }
+        }
+        return null;
+    }
+
+    public static function isObviousPin(string $pin): bool
+    {
+        return preg_match('/^(\d)\1{3}$/', $pin) === 1 || in_array($pin, ['1234', '4321', '0123', '9876', '2580'], true);
+    }
 
     public static function setPin(int $businessId, int $userId, string $pin, ?int $by): void
     {
         $now = self::nowString();
-        $row = ['business_id' => $businessId, 'pin_hash' => Hash::make($pin), 'failed_attempts' => 0, 'locked_until' => null, 'set_by' => $by, 'updated_at' => $now];
+        $row = ['business_id' => $businessId, 'pin_hash' => self::pinDigest($pin), 'failed_attempts' => 0, 'locked_until' => null, 'set_by' => $by, 'updated_at' => $now];
         if (DB::table('time_clock_pins')->where('user_id', $userId)->exists()) {
             DB::table('time_clock_pins')->where('user_id', $userId)->update($row);
         } else {
@@ -438,59 +491,60 @@ class TimeClockService
     }
 
     /**
-     * Check a PIN with a per-person lockout (PIN_MAX_FAILS wrong tries locks
-     * that person for PIN_LOCK_MINUTES). Returns ['ok' => bool, 'msg'].
+     * Who is this PIN? Wrong PINs are limited per network (IP_MAX_FAILS in
+     * PIN_LOCK_MINUTES, using the real client IP) and across everyone
+     * (GLOBAL_MAX_FAILS), since a PIN can't be tied to a person until it's
+     * right. Returns ['ok' => bool, 'user' => users row, 'msg'].
      */
-    public static function checkPin(int $userId, string $pin, string $ip = ''): array
+    public static function identifyByPin(int $businessId, string $pin, string $ip): array
     {
-        // Per-network limit on wrong PINs across all names (stops someone
-        // walking the name list). Uses the real client IP, not the proxy.
         $ipKey = 'time_clock_pin_fail_' . md5($ip);
+        $allKey = 'time_clock_pin_fail_all';
+        // The store networks only get their own limit, so wrong guesses from
+        // outside can never lock the stores out.
+        $atStore = false;
         try {
-            if ($ip !== '' && (int) \Cache::get($ipKey, 0) >= self::IP_MAX_FAILS) {
-                return ['ok' => false, 'msg' => 'Too many wrong PINs from this network. Try again in ' . self::PIN_LOCK_MINUTES . ' min.'];
+            $atStore = self::resolveStore($businessId, $ip, [])['verify'] === 'ip';
+        } catch (\Throwable $e) {
+            $atStore = false;
+        }
+        $keys = $atStore ? [$ipKey] : [$ipKey, $allKey];
+        try {
+            if ((int) \Cache::get($ipKey, 0) >= self::IP_MAX_FAILS || (!$atStore && (int) \Cache::get($allKey, 0) >= self::GLOBAL_MAX_FAILS)) {
+                return ['ok' => false, 'user' => null, 'msg' => 'Too many wrong PINs. Wait ' . self::PIN_LOCK_MINUTES . ' minutes, or ask a manager.'];
             }
         } catch (\Throwable $e) {
-            // no cache: per-person lockout still applies
+            // no cache
         }
-        $res = self::checkPinForUser($userId, $pin);
-        if (!$res['ok'] && $ip !== '' && empty($res['no_pin'])) {
+        $uid = preg_match('/^\d{4}$/', $pin) ? self::pinOwner($businessId, $pin) : null;
+        $user = $uid ? DB::table('users')->where('id', $uid)->whereNull('deleted_at')->where('allow_login', 1)->first() : null;
+        if (!$user) {
             try {
-                $n = (int) \Cache::get($ipKey, 0) + 1;
-                \Cache::put($ipKey, $n, self::PIN_LOCK_MINUTES * 60); // seconds (5.8)
+                foreach ($keys as $k) {
+                    \Cache::put($k, (int) \Cache::get($k, 0) + 1, self::PIN_LOCK_MINUTES * 60); // seconds (5.8)
+                }
             } catch (\Throwable $e) {
                 // ignore
             }
+            return ['ok' => false, 'user' => null, 'msg' => 'That PIN did not work. Try again.'];
         }
-        return $res;
+        // Upgrade an old bcrypt PIN to the lookup format.
+        try {
+            $row = DB::table('time_clock_pins')->where('user_id', $uid)->first();
+            if ($row && strpos((string) $row->pin_hash, 'h1:') !== 0) {
+                DB::table('time_clock_pins')->where('id', $row->id)->update(['pin_hash' => self::pinDigest($pin)]);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        return ['ok' => true, 'user' => $user, 'msg' => ''];
     }
 
-    private static function checkPinForUser(int $userId, string $pin): array
+    /** "6h 12m" */
+    public static function hoursText(float $hours): string
     {
-        $row = DB::table('time_clock_pins')->where('user_id', $userId)->first();
-        if (!$row) {
-            return ['ok' => false, 'no_pin' => true, 'msg' => 'You do not have a PIN yet. Ask a manager to set one for you.'];
-        }
-        if ($row->locked_until && strtotime($row->locked_until) > self::now()->timestamp) {
-            $mins = max(1, (int) ceil((strtotime($row->locked_until) - self::now()->timestamp) / 60));
-            return ['ok' => false, 'msg' => 'Too many wrong PINs. Try again in ' . $mins . ' min, or ask a manager to reset your PIN.'];
-        }
-        if (preg_match('/^\d{4}$/', $pin) && Hash::check($pin, $row->pin_hash)) {
-            DB::table('time_clock_pins')->where('id', $row->id)->update(['failed_attempts' => 0, 'locked_until' => null]);
-            return ['ok' => true, 'msg' => ''];
-        }
-        $fails = (int) $row->failed_attempts + 1;
-        $upd = ['failed_attempts' => $fails];
-        if ($fails >= self::PIN_MAX_FAILS) {
-            $upd['failed_attempts'] = 0;
-            $upd['locked_until'] = self::now()->addMinutes(self::PIN_LOCK_MINUTES)->format('Y-m-d H:i:s');
-        }
-        DB::table('time_clock_pins')->where('id', $row->id)->update($upd);
-        if ($fails >= self::PIN_MAX_FAILS) {
-            return ['ok' => false, 'msg' => 'Too many wrong PINs. Locked for ' . self::PIN_LOCK_MINUTES . ' min. Ask a manager if you forgot it.'];
-        }
-        $left = self::PIN_MAX_FAILS - $fails;
-        return ['ok' => false, 'msg' => 'Wrong PIN. ' . $left . ' ' . ($left === 1 ? 'try' : 'tries') . ' left.'];
+        $min = (int) round($hours * 60);
+        return intdiv($min, 60) . 'h ' . ($min % 60) . 'm';
     }
 
     // ---- Remembered phones -----------------------------------------------
@@ -610,10 +664,11 @@ class TimeClockService
             'clocked_in' => (bool) $open,
             'since' => $open ? \Carbon::parse($open->clock_in_at, self::TZ)->format('g:i A') : null,
             'store' => $open ? self::storeName($businessId, $open->location_id) : '',
-            'verified' => $open ? in_array($open->in_verify, ['gps', 'ip'], true) : null,
             'today_hours' => self::todayHours($userId),
+            'today_text' => '',
             'last_out' => null,
         ];
+        $out['today_text'] = self::hoursText($out['today_hours']);
         if (!$open) {
             $last = DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
                 ->whereNotNull('clock_out_at')
@@ -681,10 +736,8 @@ class TimeClockService
         ]);
 
         $store = self::storeName($businessId, $locId);
+        // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';
-        if ($where['verify'] === 'none') {
-            $msg .= ' We could not confirm you are at the store, so a manager will check this one.';
-        }
         return ['ok' => true, 'msg' => $msg];
     }
 

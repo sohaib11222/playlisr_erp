@@ -40,7 +40,7 @@
     <div class="url">{{ preg_replace('#^https?://#', '', $url) }}</div>
     <ol>
       <li>Scan the code with your phone camera.</li>
-      <li>Pick your name and type your 4-number PIN (ask a manager if you do not have one). You only do this once.</li>
+      <li>Type your 4-number PIN (ask a manager if you do not have one). You only do this once on your phone.</li>
       <li>Add it to your home screen when the page shows you how.</li>
       <li>Every shift: open it, tap Clock in. Tap Clock out when you leave. Allow location so it knows you are at the store.</li>
     </ol>

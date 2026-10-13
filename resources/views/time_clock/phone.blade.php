@@ -15,336 +15,278 @@
 <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('img/clock-icon-192.png') }}?v={{ config('constants.asset_version') }}">
 <title>Nivessa Clock</title>
 <style>
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: #111; color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  body { min-height: 100vh; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
-  .wrap { max-width: 460px; margin: 0 auto; }
-  .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-  .brand img { height: 26px; }
-  .brand .who { font-size: 14px; color: #bbb; }
-  h1 { font-size: 26px; margin: 0 0 6px; }
-  p { font-size: 16px; line-height: 1.45; margin: 0 0 12px; }
-  .muted { color: #a3a3a3; }
-  .card { background: #1d1d1d; border: 1px solid #2c2c2c; border-radius: 14px; padding: 18px; margin-bottom: 14px; }
-  .status { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  body { min-height: 100vh; min-height: 100dvh; padding: max(14px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
+  .wrap { width: 100%; max-width: 520px; margin: 0 auto; flex: 1; display: flex; flex-direction: column; }
+  body.computer .wrap { max-width: 720px; }
+  .logo { text-align: center; margin-bottom: 14px; }
+  .logo img { height: 30px; }
+  body.computer .logo img { height: 40px; }
+  .title { text-align: center; font-size: 30px; font-weight: 700; margin: 4px 0 14px; }
+  body.computer .title { font-size: clamp(32px, 5vh, 54px); }
+  .dots { display: flex; justify-content: center; gap: 18px; margin: 4px 0 12px; }
+  .dot { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #facc15; }
+  .dot.on { background: #facc15; }
+  body.computer .dot { width: clamp(22px, 3.6vh, 38px); height: clamp(22px, 3.6vh, 38px); }
+  .msg { text-align: center; font-size: 22px; min-height: 32px; margin-bottom: 10px; color: #fca5a5; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; flex: 1; max-height: 520px; }
+  body.computer .pad { max-height: none; min-height: 58vh; }
+  .key { border: 0; border-radius: 18px; background: #262626; color: #fff; font-size: 38px; font-weight: 600; min-height: 76px; cursor: pointer; -webkit-appearance: none; appearance: none; touch-action: manipulation; }
+  body.computer .key { font-size: clamp(40px, 7vh, 80px); }
+  .key:active { background: #3a3a3a; }
+  .key.alt { background: transparent; color: #d4d4d4; font-size: 24px; }
+  body.computer .key.alt { font-size: clamp(24px, 3.5vh, 40px); }
+  .key[disabled] { opacity: .5; }
+  .help { text-align: center; font-size: 19px; color: #bdbdbd; margin-top: 14px; }
+  .help a { color: #facc15; }
+  .name { text-align: center; font-size: 40px; font-weight: 800; margin: 6px 0 6px; }
+  .status { text-align: center; font-size: 26px; font-weight: 600; margin-bottom: 4px; }
   .status.in { color: #facc15; }
-  .today { font-size: 16px; color: #d4d4d4; }
-  .warn { color: #fca5a5; font-size: 14px; margin-top: 6px; }
-  .btn { display: block; width: 100%; border: 0; border-radius: 14px; font-size: 24px; font-weight: 700; padding: 26px 16px; margin: 0 0 12px; cursor: pointer; -webkit-appearance: none; appearance: none; }
-  .btn-in { background: #facc15; color: #111; }
-  .btn-out { background: #f5f5f5; color: #111; }
-  .btn[disabled] { opacity: .6; }
-  .btn-small { font-size: 18px; padding: 16px; background: #facc15; color: #111; }
-  .msg { border-radius: 12px; padding: 14px; margin-bottom: 14px; font-size: 16px; }
-  .msg.ok { background: #14361f; color: #bbf7d0; }
-  .msg.bad { background: #3f1515; color: #fecaca; }
-  label { display: block; font-size: 15px; color: #d4d4d4; margin: 10px 0 6px; }
-  select, input[type=password], input[type=tel] { width: 100%; font-size: 20px; padding: 14px; border-radius: 12px; border: 1px solid #3a3a3a; background: #0b0b0b; color: #fff; }
-  input.pin { letter-spacing: 12px; text-align: center; font-size: 28px; }
-  a { color: #facc15; }
-  .links { text-align: center; font-size: 15px; margin-top: 18px; }
-  .hint { font-size: 15px; }
-  .hint h2 { font-size: 17px; margin: 0 0 8px; }
-  .hint ol { margin: 0 0 8px 18px; padding: 0; }
-  .hint li { margin-bottom: 4px; }
-  .hint button { background: none; border: 1px solid #555; color: #ddd; border-radius: 10px; padding: 8px 14px; font-size: 15px; }
-  .hidden { display: none; }
-  body.kiosk .wrap { max-width: 760px; }
-  body.kiosk h1 { font-size: 32px; }
-  body.kiosk select, body.kiosk input.pin { font-size: 26px; padding: 18px; }
-  .row2 { display: flex; gap: 14px; margin-top: 18px; }
-  .row2 .btn { margin: 0; font-size: 28px; padding: 30px 12px; }
-  .storeline { font-size: 15px; color: #a3a3a3; margin-top: 12px; }
+  .today { text-align: center; font-size: 22px; color: #d4d4d4; margin-bottom: 18px; }
+  .big { display: block; width: 100%; border: 0; border-radius: 26px; font-size: 52px; font-weight: 800; min-height: 42vh; padding: 20px; cursor: pointer; -webkit-appearance: none; appearance: none; touch-action: manipulation; }
+  .big.in { background: #facc15; color: #111; }
+  .big.out { background: #f5f5f5; color: #111; }
+  .big[disabled] { opacity: .7; }
+  .done { text-align: center; font-size: 24px; min-height: 34px; margin: 14px 0 6px; color: #bbf7d0; }
+  .done.bad { color: #fca5a5; }
+  .hint { background: #1d1d1d; border: 1px solid #333; border-radius: 16px; padding: 16px; margin-top: 18px; font-size: 19px; line-height: 1.45; }
+  .hint b { display: block; font-size: 21px; margin-bottom: 6px; }
+  .hint ol { margin: 6px 0 10px 22px; padding: 0; }
+  .hint button { background: none; border: 2px solid #666; color: #eee; border-radius: 12px; padding: 10px 18px; font-size: 19px; }
+  .switch { text-align: center; font-size: 20px; margin-top: 18px; }
+  .switch a { color: #facc15; }
+  .overlay { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; z-index: 10; }
+  .overlay.show { display: flex; }
+  .overlay.in { background: #facc15; color: #111; }
+  .overlay.out { background: #f5f5f5; color: #111; }
+  .overlay .h { font-size: clamp(40px, 8vw, 96px); font-weight: 800; line-height: 1.1; }
+  .overlay .d { font-size: clamp(28px, 5vw, 60px); margin-top: 20px; font-weight: 600; }
+  .notready { text-align: center; font-size: 24px; line-height: 1.45; margin-top: 30px; }
+  .hidden { display: none !important; }
 </style>
 </head>
-<body class="{{ !empty($kiosk) ? 'kiosk' : '' }}">
+<body class="{{ $mode === 'computer' ? 'computer' : '' }}">
 <div class="wrap">
-  <div class="brand">
-    <img src="{{ asset('img/nivessa-logo.png') }}" alt="Nivessa">
-    @if (!empty($device))<span class="who">{{ $name }}</span> @endif
-  </div>
-
-  <div id="msg" class="msg {{ !empty($flash) ? (!empty($flash['ok']) ? 'ok' : 'bad') : 'hidden' }}">{{ $flash['msg'] ?? '' }}</div>
+  <div class="logo"><img src="{{ asset('img/nivessa-logo.png') }}" alt="Nivessa"></div>
 
   @if (!$ready)
-    <div class="card">
-      <h1>Clock is not ready yet</h1>
-      <p>The phone clock is still being set up. For now, write down your start and end time and give it to your manager.</p>
-      @if (!empty($error))<p class="muted">If this keeps showing, tell a manager.</p> @endif
+    <div class="notready">
+      <div class="title">Clock is not ready yet</div>
+      Write down your start and end time and give it to your manager.
     </div>
-  @elseif (!empty($kiosk))
-    <div class="card">
-      <h1>Clock in or out</h1>
-      <p class="muted">Pick your name, type your PIN, then tap Clock in or Clock out. Nothing is saved on this computer.</p>
-      @if (empty($roster))
-        <p>No staff are set up for the clock yet. Ask a manager.</p>
+  @elseif ($mode === 'phone')
+    <div class="name">{{ $name }}</div>
+    <div id="statusLine" class="status {{ $status['clocked_in'] ? 'in' : '' }}">
+      @if ($status['clocked_in'])
+        {{ 'Clocked in since ' . $status['since'] }}
+      @elseif ($status['last_out'])
+        {{ 'Clocked out at ' . $status['last_out'] }}
       @else
-        <form id="kioskForm" method="POST" action="{{ url('/clock/computer') }}" autocomplete="off">
-          {{ csrf_field() }}
-          <input type="hidden" name="action" id="kAction" value="in">
-          <label for="kUser">Your name</label>
-          <select name="user_id" id="kUser" required>
-            <option value="">Pick your name</option>
-            @foreach ($roster as $uid => $uname)
-              <option value="{{ $uid }}">{{ $uname }}</option>
-            @endforeach
-          </select>
-          <label for="kPin">PIN</label>
-          <input type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" name="pin" id="kPin" class="pin" required autocomplete="off">
-          <div class="row2">
-            <button type="submit" class="btn btn-in" data-action="in">Clock in</button>
-            <button type="submit" class="btn btn-out" data-action="out">Clock out</button>
-          </div>
-        </form>
-        <div class="storeline">
-          @if (!empty($kiosk_store) && in_array($kiosk_store['verify'], ['ip', 'gps'], true) && $kiosk_store['name'] !== '')
-            This computer is at {{ $kiosk_store['name'] }}.
-          @else
-            This computer is not on a store network yet, so punches here are marked not verified. A manager can add this network on Time clock settings.
-          @endif
-        </div>
+        Not clocked in
       @endif
     </div>
-    <div class="links">Using your own phone? Open this page on it to be remembered: {{ url('/clock') }}</div>
-  @elseif (!empty($device))
-    <div class="card">
-      <div id="statusLine" class="status {{ $status['clocked_in'] ? 'in' : '' }}">
-        @if ($status['clocked_in'])
-          {{ 'Clocked in at ' . $status['since'] . ($status['store'] !== '' ? ' at ' . $status['store'] : '') }}
-        @elseif ($status['last_out'])
-          Clocked out at {{ $status['last_out'] }}
-        @else
-          Not clocked in
-        @endif
-      </div>
-      <div id="todayLine" class="today">Today: {{ number_format($status['today_hours'], 2) }} hours</div>
-      <div id="verifyLine" class="warn {{ ($status['clocked_in'] && $status['verified'] === false) ? '' : 'hidden' }}">Not verified at store. A manager will check this punch.</div>
-    </div>
+    <div id="todayLine" class="today">{{ $status['today_text'] }} today</div>
+    <button type="button" id="bigBtn" class="big {{ $status['clocked_in'] ? 'out' : 'in' }}" data-action="{{ $status['clocked_in'] ? 'out' : 'in' }}">{{ $status['clocked_in'] ? 'Clock out' : 'Clock in' }}</button>
+    <div id="done" class="done"></div>
 
-    <form id="punchForm" method="POST" action="{{ url('/clock/punch') }}">
-      {{ csrf_field() }}
-      <input type="hidden" name="action" id="punchAction" value="{{ $status['clocked_in'] ? 'out' : 'in' }}">
-      <input type="hidden" name="lat" id="fLat">
-      <input type="hidden" name="lng" id="fLng">
-      <input type="hidden" name="accuracy" id="fAcc">
-      <input type="hidden" name="geo_error" id="fErr">
-      <button type="submit" id="punchBtn" class="btn {{ $status['clocked_in'] ? 'btn-out' : 'btn-in' }}">{{ $status['clocked_in'] ? 'Clock out' : 'Clock in' }}</button>
-    </form>
-    <p class="muted" style="font-size:14px;">Allow location when your phone asks. It checks that you are at the store.</p>
-
-    <div id="homeHint" class="card hint hidden">
-      <h2>Put the clock on your home screen</h2>
+    <div id="homeHint" class="hint hidden">
+      <b>Put the clock on your home screen</b>
       <div id="hintIos">
-        <p>On iPhone, in Safari:</p>
+        iPhone, in Safari:
         <ol>
-          <li>Tap the Share button (the square with an arrow).</li>
+          <li>Tap Share (the square with the arrow).</li>
           <li>Tap Add to Home Screen, then Add.</li>
-          <li>Open the new Nivessa Clock icon and enter your PIN one more time.</li>
+          <li>Open the new icon and enter your PIN one more time.</li>
         </ol>
       </div>
       <div id="hintAndroid">
-        <p>On Android, in Chrome:</p>
+        Android, in Chrome:
         <ol>
           <li>Tap the menu (three dots, top right).</li>
-          <li>Tap Add to Home screen (or Install app).</li>
+          <li>Tap Add to Home screen or Install app.</li>
         </ol>
       </div>
       <button type="button" id="hintClose">Got it</button>
     </div>
 
-    <div class="links">Not you? <a href="{{ url('/clock?switch=1') }}">Switch person</a></div>
+    <div class="switch">Not {{ $name }}? <a href="{{ url('/clock?switch=1') }}">Switch person</a></div>
   @else
-    <div class="card">
-      <h1>Set up this phone</h1>
-      <p class="muted">Pick your name and enter your 4-number PIN. You only do this once on this phone.</p>
-      @if (!empty($current_name))<p class="muted">This phone is set up for {{ $current_name }}. Entering another PIN switches it.</p> @endif
-      @if (empty($roster))
-        <p>No staff are set up for the clock yet. Ask a manager.</p>
-      @else
-        <form method="POST" action="{{ url('/clock/pin') }}" autocomplete="off">
-          {{ csrf_field() }}
-          @if ($switch)<input type="hidden" name="switch" value="1"> @endif
-          <label for="user_id">Your name</label>
-          <select name="user_id" id="user_id" required>
-            <option value="">Pick your name</option>
-            @foreach ($roster as $uid => $uname)
-              <option value="{{ $uid }}">{{ $uname }}</option>
-            @endforeach
-          </select>
-          <label for="pin">PIN</label>
-          <input type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" name="pin" id="pin" class="pin" required autocomplete="off">
-          <button type="submit" class="btn btn-small" style="margin-top:16px;">Continue</button>
-        </form>
-        <p class="muted" style="font-size:14px;">No PIN yet, or forgot it? Ask a manager to set one.</p>
-      @endif
+    <div class="title">{{ $mode === 'computer' ? 'Enter your PIN' : 'Enter your PIN to set up this phone' }}</div>
+    <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="msg" id="msg"></div>
+    <div class="pad" id="pad">
+      <button type="button" class="key" data-k="1">1</button>
+      <button type="button" class="key" data-k="2">2</button>
+      <button type="button" class="key" data-k="3">3</button>
+      <button type="button" class="key" data-k="4">4</button>
+      <button type="button" class="key" data-k="5">5</button>
+      <button type="button" class="key" data-k="6">6</button>
+      <button type="button" class="key" data-k="7">7</button>
+      <button type="button" class="key" data-k="8">8</button>
+      <button type="button" class="key" data-k="9">9</button>
+      <button type="button" class="key alt" data-k="clear">Clear</button>
+      <button type="button" class="key" data-k="0">0</button>
+      <button type="button" class="key alt" data-k="back" aria-label="Delete">Delete</button>
     </div>
-    @if ($switch)<div class="links"><a href="{{ url('/clock') }}">Back</a></div> @endif
+    @if ($mode === 'computer')
+      <div class="help">Your PIN clocks you in, or out if you are already in.</div>
+    @else
+      <div class="help">No PIN yet? Ask a manager.</div>
+      @if ($switch)<div class="switch"><a href="{{ url('/clock') }}">Back</a></div> @endif
+    @endif
   @endif
 </div>
 
-@if ($ready && !empty($kiosk) && !empty($roster))
-<script>
-(function () {
-  var form = document.getElementById('kioskForm');
-  var actionEl = document.getElementById('kAction');
-  var msg = document.getElementById('msg');
-  var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-  var busy = false, resetTimer = null;
-  var buttons = form.querySelectorAll('button[data-action]');
-  for (var i = 0; i < buttons.length; i++) {
-    buttons[i].addEventListener('click', function () { actionEl.value = this.getAttribute('data-action'); });
-  }
-  function show(ok, text) { msg.className = 'msg ' + (ok ? 'ok' : 'bad'); msg.textContent = text; }
-  function refreshToken() {
-    return fetch('/clock/state', { credentials: 'same-origin', headers: { 'Accept': 'application/json' }, cache: 'no-store' })
-      .then(function (r) { return r.json(); }).then(function (j) { if (j.csrf) { token = j.csrf; } }).catch(function () {});
-  }
-  function send(retried) {
-    var body = new URLSearchParams(new FormData(form));
-    body.set('action', actionEl.value);
-    body.delete('_token');
-    return fetch('/clock/computer', {
-      method: 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString()
-    }).then(function (r) {
-      if (r.status === 419 && !retried) { return refreshToken().then(function () { return send(true); }); }
-      return r.json();
-    });
-  }
-  form.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    if (busy) { return; }
-    busy = true;
-    for (var i = 0; i < buttons.length; i++) { buttons[i].disabled = true; }
-    send(false).then(function (j) {
-      var text = j.msg || '';
-      if (j.ok && j.status) { text += ' Today: ' + Number(j.status.today_hours || 0).toFixed(2) + ' hours.'; }
-      show(!!j.ok, text);
-      document.getElementById('kPin').value = '';
-      if (j.ok) {
-        document.getElementById('kUser').value = '';
-        clearTimeout(resetTimer);
-        resetTimer = setTimeout(function () { msg.className = 'msg hidden'; }, 12000);
-      }
-    }).catch(function () {
-      show(false, 'No connection. Try again.');
-    }).then(function () {
-      busy = false;
-      for (var i = 0; i < buttons.length; i++) { buttons[i].disabled = false; }
-    });
-  });
-  setInterval(refreshToken, 30 * 60 * 1000);
-})();
-</script>
-@endif
-@if ($ready && !empty($device))
-<script>
-(function () {
-  var form = document.getElementById('punchForm');
-  var btn = document.getElementById('punchBtn');
-  var actionEl = document.getElementById('punchAction');
-  var msg = document.getElementById('msg');
-  var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-  var busy = false;
+<div id="overlay" class="overlay"><div class="h" id="ovH"></div><div class="d" id="ovD"></div></div>
 
-  function show(ok, text) {
-    msg.className = 'msg ' + (ok ? 'ok' : 'bad');
-    msg.textContent = text;
-  }
-  function render(s) {
-    if (!s) { return; }
-    var line = document.getElementById('statusLine');
-    if (s.clocked_in) {
-      line.textContent = 'Clocked in at ' + s.since + (s.store ? ' at ' + s.store : '');
-      line.className = 'status in';
-    } else {
-      line.textContent = s.last_out ? 'Clocked out at ' + s.last_out : 'Not clocked in';
-      line.className = 'status';
-    }
-    document.getElementById('todayLine').textContent = 'Today: ' + Number(s.today_hours || 0).toFixed(2) + ' hours';
-    document.getElementById('verifyLine').className = 'warn' + ((s.clocked_in && s.verified === false) ? '' : ' hidden');
-    actionEl.value = s.clocked_in ? 'out' : 'in';
-    btn.textContent = s.clocked_in ? 'Clock out' : 'Clock in';
-    btn.className = 'btn ' + (s.clocked_in ? 'btn-out' : 'btn-in');
-  }
+@if ($ready)
+<script>
+(function () {
+  var MODE = @json($mode);
+  var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
   function refresh() {
     return fetch('/clock/state', { credentials: 'same-origin', headers: { 'Accept': 'application/json' }, cache: 'no-store' })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j.csrf) { token = j.csrf; } if (j.status) { render(j.status); } return j; })
+      .then(function (j) { if (j.csrf) { token = j.csrf; } return j; })
       .catch(function () { return null; });
   }
-  function getGeo() {
-    return new Promise(function (resolve) {
-      if (!navigator.geolocation) { resolve({ error: 'unsupported' }); return; }
-      var done = false;
-      var timer = setTimeout(function () { if (!done) { done = true; resolve({ error: 'timeout' }); } }, 9000);
-      navigator.geolocation.getCurrentPosition(function (p) {
-        if (done) { return; } done = true; clearTimeout(timer);
-        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
-      }, function (e) {
-        if (done) { return; } done = true; clearTimeout(timer);
-        resolve({ error: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
-      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
-    });
-  }
-  function send(geo, retried) {
+  function post(url, data, retried) {
     var body = new URLSearchParams();
-    body.append('action', actionEl.value);
-    if (geo.lat !== undefined) { body.append('lat', geo.lat); body.append('lng', geo.lng); body.append('accuracy', geo.accuracy); }
-    if (geo.error) { body.append('geo_error', geo.error); }
-    return fetch('/clock/punch', {
+    Object.keys(data).forEach(function (k) { if (data[k] !== undefined && data[k] !== null) { body.append(k, data[k]); } });
+    return fetch(url, {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString()
     }).then(function (r) {
-      if (r.status === 419 && !retried) {
-        return refresh().then(function () { return send(geo, true); });
-      }
+      if (r.status === 419 && !retried) { return refresh().then(function () { return post(url, data, true); }); }
       return r.json();
     });
   }
 
-  form.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    if (busy) { return; }
-    busy = true;
-    btn.disabled = true;
-    var label = btn.textContent;
-    btn.textContent = 'Checking location...';
-    getGeo().then(function (geo) {
-      btn.textContent = 'Saving...';
-      return send(geo, false);
-    }).then(function (j) {
-      if (j) { show(!!j.ok, j.msg || ''); if (j.status) { render(j.status); } }
-    }).catch(function () {
-      btn.textContent = label;
-      show(false, 'No connection. Check your signal and try again.');
-    }).then(function () {
-      busy = false;
-      btn.disabled = false;
-    });
-  });
-
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { refresh(); } });
-
-  // One-time home screen hint (not shown when already opened from the icon).
-  try {
-    var standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-    var seen = localStorage.getItem('nv_clock_hint_seen');
-    if (!standalone && !seen) {
-      var ua = navigator.userAgent || '';
-      var ios = /iPhone|iPad|iPod/i.test(ua);
-      var android = /Android/i.test(ua);
-      if (ios) { document.getElementById('hintAndroid').className = 'hidden'; }
-      if (android) { document.getElementById('hintIos').className = 'hidden'; }
-      document.getElementById('homeHint').className = 'card hint';
-      document.getElementById('hintClose').addEventListener('click', function () {
-        try { localStorage.setItem('nv_clock_hint_seen', '1'); } catch (e) {}
-        document.getElementById('homeHint').className = 'card hint hidden';
+  // ---- Keypad (store computer, and phone setup) ----
+  var pad = document.getElementById('pad');
+  if (pad) {
+    var pin = '', busy = false;
+    var dots = document.querySelectorAll('#dots .dot');
+    var msg = document.getElementById('msg');
+    var overlay = document.getElementById('overlay');
+    function draw() { for (var i = 0; i < dots.length; i++) { dots[i].className = 'dot' + (i < pin.length ? ' on' : ''); } }
+    function setBusy(b) { busy = b; var ks = pad.querySelectorAll('.key'); for (var i = 0; i < ks.length; i++) { ks[i].disabled = b; } }
+    function submit() {
+      setBusy(true);
+      msg.textContent = '';
+      var url = MODE === 'computer' ? '/clock/computer' : '/clock/pin';
+      post(url, { pin: pin }, false).then(function (j) {
+        pin = ''; draw();
+        if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work. Try again.'; setBusy(false); return; }
+        if (MODE === 'computer') {
+          document.getElementById('ovH').textContent = j.headline || '';
+          document.getElementById('ovD').textContent = j.detail || '';
+          overlay.className = 'overlay show ' + (j.action === 'out' ? 'out' : 'in');
+          setTimeout(function () { overlay.className = 'overlay'; setBusy(false); }, 3000);
+        } else {
+          window.location.href = '/clock';
+        }
+      }).catch(function () {
+        pin = ''; draw();
+        msg.textContent = 'No connection. Try again.';
+        setBusy(false);
       });
     }
-  } catch (e) {}
+    function press(k) {
+      if (busy) { return; }
+      msg.textContent = '';
+      if (k === 'back') { pin = pin.slice(0, -1); }
+      else if (k === 'clear') { pin = ''; }
+      else if (/^\d$/.test(k) && pin.length < 4) { pin += k; }
+      draw();
+      if (pin.length === 4) { submit(); }
+    }
+    pad.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.key') : null;
+      if (b) { press(b.getAttribute('data-k')); }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (/^\d$/.test(e.key)) { press(e.key); e.preventDefault(); }
+      else if (e.key === 'Backspace') { press('back'); e.preventDefault(); }
+      else if (e.key === 'Escape') { press('clear'); }
+    });
+    if (MODE === 'computer') { setInterval(refresh, 30 * 60 * 1000); }
+  }
+
+  // ---- Remembered phone: one big button ----
+  var btn = document.getElementById('bigBtn');
+  if (btn) {
+    var done = document.getElementById('done');
+    var busyBtn = false;
+    function render(s) {
+      if (!s) { return; }
+      var line = document.getElementById('statusLine');
+      line.textContent = s.clocked_in ? 'Clocked in since ' + s.since : (s.last_out ? 'Clocked out at ' + s.last_out : 'Not clocked in');
+      line.className = 'status' + (s.clocked_in ? ' in' : '');
+      document.getElementById('todayLine').textContent = (s.today_text || '0h 0m') + ' today';
+      btn.setAttribute('data-action', s.clocked_in ? 'out' : 'in');
+      btn.textContent = s.clocked_in ? 'Clock out' : 'Clock in';
+      btn.className = 'big ' + (s.clocked_in ? 'out' : 'in');
+    }
+    function getGeo() {
+      return new Promise(function (resolve) {
+        if (!navigator.geolocation) { resolve({ geo_error: 'unsupported' }); return; }
+        var finished = false;
+        var timer = setTimeout(function () { if (!finished) { finished = true; resolve({ geo_error: 'timeout' }); } }, 8000);
+        navigator.geolocation.getCurrentPosition(function (p) {
+          if (finished) { return; } finished = true; clearTimeout(timer);
+          resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+        }, function (e) {
+          if (finished) { return; } finished = true; clearTimeout(timer);
+          resolve({ geo_error: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
+        }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 });
+      });
+    }
+    btn.addEventListener('click', function () {
+      if (busyBtn) { return; }
+      busyBtn = true;
+      btn.disabled = true;
+      var label = btn.textContent;
+      btn.textContent = 'One moment';
+      done.textContent = '';
+      getGeo().then(function (geo) {
+        geo.action = btn.getAttribute('data-action');
+        return post('/clock/punch', geo, false);
+      }).then(function (j) {
+        if (j && j.setup) { window.location.href = '/clock'; return; }
+        if (!j || !j.ok) { btn.textContent = label; done.className = 'done bad'; done.textContent = (j && j.msg) || 'That did not work. Try again.'; return; }
+        render(j.status);
+        done.className = 'done';
+        done.textContent = (j.headline || '') + ' ' + (j.detail || '');
+      }).catch(function () {
+        btn.textContent = label;
+        done.className = 'done bad';
+        done.textContent = 'No connection. Check your signal and try again.';
+      }).then(function () { busyBtn = false; btn.disabled = false; });
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { refresh().then(function (j) { if (j && j.status) { render(j.status); } }); }
+    });
+
+    // One-time home screen hint (not when opened from the icon).
+    try {
+      var standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+      if (!standalone && !localStorage.getItem('nv_clock_hint_seen')) {
+        var ua = navigator.userAgent || '';
+        if (/iPhone|iPad|iPod/i.test(ua)) { document.getElementById('hintAndroid').className = 'hidden'; }
+        if (/Android/i.test(ua)) { document.getElementById('hintIos').className = 'hidden'; }
+        var hint = document.getElementById('homeHint');
+        hint.className = 'hint';
+        document.getElementById('hintClose').addEventListener('click', function () {
+          try { localStorage.setItem('nv_clock_hint_seen', '1'); } catch (e) {}
+          hint.className = 'hint hidden';
+        });
+      }
+    } catch (e) {}
+  }
 })();
 </script>
 @endif

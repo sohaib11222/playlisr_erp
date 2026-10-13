@@ -4,13 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Services\TimeClockService as TC;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Public phone time clock at /clock (Sarah, 2026-10-13). No ERP login: the
- * first time on a phone staff pick their name and enter their 4-digit PIN,
- * then the phone is remembered (see TimeClockService). Staff open it and
- * tap Clock in / Clock out.
+ * Public time clock at /clock (Sarah, 2026-10-13), as easy as Clover was:
+ * the PIN alone says who you are (PINs are unique).
+ *
+ * - Store computer: full-screen keypad. Type your PIN and it clocks you in
+ *   or out (whichever you are not), shows a big confirmation, and resets.
+ *   Nothing is remembered.
+ * - Phone: the same keypad once, then the phone is remembered (see
+ *   TimeClockService) and it is one big Clock in / Clock out button.
+ *
+ * Store verification (location / IP) is silent for staff; admins see it on
+ * Timecards.
  */
 class PhoneClockController extends Controller
 {
@@ -31,9 +37,9 @@ class PhoneClockController extends Controller
     }
 
     /**
-     * Store computers (Sarah 2026-10-13): a shared computer never remembers
-     * one person. Desktop browsers get name + PIN on every punch; phones get
-     * remember-me. ?mode=computer / ?mode=phone overrides the guess.
+     * A shared computer never remembers one person. Desktop browsers get the
+     * keypad on every punch; phones get remember-me. ?mode=computer /
+     * ?mode=phone overrides the guess.
      */
     private function isSharedComputer(Request $request, $device): bool
     {
@@ -48,9 +54,14 @@ class PhoneClockController extends Controller
         return !preg_match('/Mobi|Android|iPhone|iPod|iPad|Windows Phone/i', $ua);
     }
 
+    private function json(array $out)
+    {
+        return $this->noStore(response()->json($out));
+    }
+
     public function page(Request $request)
     {
-        $data = ['ready' => false, 'device' => null, 'status' => null, 'roster' => [], 'switch' => false, 'kiosk' => false, 'flash' => session('clock_flash')];
+        $data = ['ready' => false, 'mode' => 'setup', 'device' => null, 'status' => null, 'name' => '', 'switch' => false];
         try {
             if (!TC::ready()) {
                 return $this->noStore(response()->view('time_clock.phone', $data));
@@ -59,25 +70,19 @@ class PhoneClockController extends Controller
             $businessId = TC::businessId();
             $device = TC::deviceFromRequest($request);
             if ($this->isSharedComputer($request, $device)) {
-                $data['kiosk'] = true;
-                $data['roster'] = TC::roster($businessId);
-                $data['kiosk_store'] = TC::resolveStore($businessId, TC::clientIp($request), []);
-                $data['kiosk_store']['name'] = TC::storeName($businessId, $data['kiosk_store']['location_id']);
-                return $this->noStore(response()->view('time_clock.phone', $data));
-            }
-            $data['switch'] = $request->query('switch') === '1';
-            if ($device && !$data['switch']) {
+                $data['mode'] = 'computer';
+            } elseif ($device && $request->query('switch') !== '1') {
+                $data['mode'] = 'phone';
                 $data['device'] = $device;
                 $data['name'] = trim((string) $device->user->first_name) ?: TC::displayName($device->user);
                 $data['status'] = TC::status((int) $device->user->business_id ?: $businessId, (int) $device->user->id);
             } else {
-                $data['roster'] = TC::roster($businessId);
-                $data['current_name'] = $device ? TC::displayName($device->user) : null;
+                $data['mode'] = 'setup';
+                $data['switch'] = (bool) $device;
             }
         } catch (\Throwable $e) {
-            \Log::warning('phone clock page failed: ' . $e->getMessage());
+            \Log::warning('clock page failed: ' . $e->getMessage());
             $data['ready'] = false;
-            $data['error'] = true;
         }
         return $this->noStore(response()->view('time_clock.phone', $data));
     }
@@ -95,154 +100,128 @@ class PhoneClockController extends Controller
                 }
             }
         } catch (\Throwable $e) {
-            \Log::warning('phone clock state failed: ' . $e->getMessage());
+            \Log::warning('clock state failed: ' . $e->getMessage());
         }
-        return $this->noStore(response()->json($out));
+        return $this->json($out);
     }
 
-    /** First time on a phone (or switching person): name + PIN. */
+    /** Phone, first time (or switching person): PIN, then remember the phone. */
     public function pin(Request $request)
     {
-        $back = function ($msg) {
-            return redirect('/clock' . (request()->input('switch') === '1' ? '?switch=1' : ''))->with('clock_flash', ['ok' => false, 'msg' => $msg]);
-        };
         if (!$this->sameOrigin($request)) {
-            return $back('Please open the clock page again and retry.');
-        }
-        if (!TC::ready()) {
-            return redirect('/clock');
+            return $this->json(['ok' => false, 'msg' => 'Please reload the page and try again.']);
         }
         try {
+            if (!TC::ready()) {
+                return $this->json(['ok' => false, 'msg' => 'The clock is not ready yet.']);
+            }
             $businessId = TC::businessId();
-            $userId = (int) $request->input('user_id');
             $pin = preg_replace('/\D/', '', (string) $request->input('pin'));
-            $roster = TC::roster($businessId);
-            if (!$userId || !isset($roster[$userId])) {
-                return $back('Please pick your name.');
+            $who = TC::identifyByPin($businessId, $pin, TC::clientIp($request));
+            if (!$who['ok']) {
+                return $this->json(['ok' => false, 'msg' => $who['msg']]);
             }
-            if (strlen($pin) !== 4) {
-                return $back('Your PIN is 4 numbers.');
-            }
-            $check = TC::checkPin($userId, $pin, TC::clientIp($request));
-            if (!$check['ok']) {
-                return $back($check['msg']);
-            }
-            // Switching person: retire the old remembered phone.
+            $user = $who['user'];
             $old = TC::deviceFromRequest($request);
             if ($old) {
                 TC::revokeDevice((int) $old->id, null);
             }
-            $token = TC::issueDevice($businessId, $userId, $request);
-            $first = trim((string) DB::table('users')->where('id', $userId)->value('first_name'));
-            return redirect('/clock')
-                ->with('clock_flash', ['ok' => true, 'msg' => 'Hi ' . $first . '. This phone is set up. Next time just open this page and tap the button.', 'new' => true])
+            $token = TC::issueDevice($businessId, (int) $user->id, $request);
+            return $this->json(['ok' => true, 'name' => trim((string) $user->first_name)])
                 ->withCookie(cookie(TC::COOKIE, $token, TC::COOKIE_MINUTES, '/', null, $request->isSecure(), true, false, 'lax'));
         } catch (\Throwable $e) {
-            \Log::warning('phone clock pin failed: ' . $e->getMessage());
-            return $back('Something went wrong. Please try again.');
-        }
-    }
-
-    /** Clock in / out. JSON for the page script, redirect for no-JS. */
-    public function punch(Request $request)
-    {
-        $json = $request->expectsJson() || $request->ajax();
-        $reply = function ($ok, $msg, $status = null) use ($json) {
-            if ($json) {
-                return response()->json(['ok' => $ok, 'msg' => $msg, 'status' => $status])->header('Cache-Control', 'no-store');
-            }
-            return redirect('/clock')->with('clock_flash', ['ok' => $ok, 'msg' => $msg]);
-        };
-        if (!$this->sameOrigin($request)) {
-            return $reply(false, 'Please open the clock page again and retry.');
-        }
-        try {
-            if (!TC::ready()) {
-                return $reply(false, 'The time clock is not set up yet. Write your time down and tell a manager.');
-            }
-            $device = TC::deviceFromRequest($request);
-            if (!$device) {
-                return $reply(false, 'This phone is not set up. Pick your name and enter your PIN.');
-            }
-            $user = $device->user;
-            $businessId = (int) $user->business_id;
-            $action = $request->input('action') === 'out' ? 'out' : 'in';
-
-            if ($action === 'in') {
-                $r = TC::clockIn($request, $user, (int) $device->id);
-                return $reply($r['ok'], $r['msg'], TC::status($businessId, (int) $user->id));
-            }
-
-            $id = TC::clockOut((int) $user->id, 'phone', $request, true);
-            if (!$id) {
-                return $reply(true, 'You were not clocked in.', TC::status($businessId, (int) $user->id));
-            }
-            $this->afterClockOut($user);
-            return $reply(true, 'Clocked out at ' . TC::now()->format('g:i A') . '. Thanks!', TC::status($businessId, (int) $user->id));
-        } catch (\Throwable $e) {
-            \Log::warning('phone clock punch failed: ' . $e->getMessage());
-            return $reply(false, 'That did not go through. Please try again, or tell a manager.');
+            \Log::warning('clock pin failed: ' . $e->getMessage());
+            return $this->json(['ok' => false, 'msg' => 'Something went wrong. Please try again.']);
         }
     }
 
     /**
-     * Shared store computer: name + PIN + Clock in / Clock out in one step.
-     * Nothing is remembered. The store is confirmed by the store IP
-     * allowlist (or location, if the browser sent one).
+     * Store computer: PIN in, and the person is clocked in if they are out,
+     * or out if they are in. Nothing is remembered.
      */
     public function kiosk(Request $request)
     {
-        $json = $request->expectsJson() || $request->ajax();
-        $reply = function ($ok, $msg, $status = null) use ($json) {
-            if ($json) {
-                return response()->json(['ok' => $ok, 'msg' => $msg, 'status' => $status])->header('Cache-Control', 'no-store');
-            }
-            return redirect('/clock?mode=computer')->with('clock_flash', ['ok' => $ok, 'msg' => $msg]);
-        };
         if (!$this->sameOrigin($request)) {
-            return $reply(false, 'Please reload the page and try again.');
+            return $this->json(['ok' => false, 'msg' => 'Please reload the page and try again.']);
         }
         try {
             if (!TC::ready()) {
-                return $reply(false, 'The time clock is not set up yet. Write your time down and tell a manager.');
+                return $this->json(['ok' => false, 'msg' => 'The clock is not ready yet.']);
             }
             $businessId = TC::businessId();
-            $userId = (int) $request->input('user_id');
             $pin = preg_replace('/\D/', '', (string) $request->input('pin'));
-            $roster = TC::roster($businessId);
-            if (!$userId || !isset($roster[$userId])) {
-                return $reply(false, 'Please pick your name.');
+            $who = TC::identifyByPin($businessId, $pin, TC::clientIp($request));
+            if (!$who['ok']) {
+                return $this->json(['ok' => false, 'msg' => $who['msg']]);
             }
-            if (strlen($pin) !== 4) {
-                return $reply(false, 'Your PIN is 4 numbers.');
-            }
-            $check = TC::checkPin($userId, $pin, TC::clientIp($request));
-            if (!$check['ok']) {
-                return $reply(false, $check['msg']);
-            }
-            $user = DB::table('users')->where('id', $userId)->first();
-            $first = trim((string) $user->first_name);
-            $action = $request->input('action') === 'out' ? 'out' : 'in';
-            if ($action === 'in') {
-                $r = TC::clockIn($request, $user, null, 'computer');
-                return $reply($r['ok'], $first . ': ' . $r['msg'], TC::status($businessId, $userId));
-            }
-            $id = TC::clockOut($userId, 'computer', $request, true);
-            if (!$id) {
-                return $reply(true, $first . ': you were not clocked in.', TC::status($businessId, $userId));
-            }
-            $this->afterClockOut($user);
-            return $reply(true, $first . ': clocked out at ' . TC::now()->format('g:i A') . '. Thanks!', TC::status($businessId, $userId));
+            return $this->json($this->toggle($request, $who['user'], 'computer', null));
         } catch (\Throwable $e) {
             \Log::warning('computer clock punch failed: ' . $e->getMessage());
-            return $reply(false, 'That did not go through. Please try again, or tell a manager.');
+            return $this->json(['ok' => false, 'msg' => 'That did not go through. Please try again.']);
+        }
+    }
+
+    /** Remembered phone: the big button. */
+    public function punch(Request $request)
+    {
+        if (!$this->sameOrigin($request)) {
+            return $this->json(['ok' => false, 'msg' => 'Please reload the page and try again.']);
+        }
+        try {
+            if (!TC::ready()) {
+                return $this->json(['ok' => false, 'msg' => 'The clock is not ready yet.']);
+            }
+            $device = TC::deviceFromRequest($request);
+            if (!$device) {
+                return $this->json(['ok' => false, 'msg' => 'Enter your PIN to set up this phone.', 'setup' => true]);
+            }
+            $want = $request->input('action') === 'out' ? 'out' : 'in';
+            return $this->json($this->toggle($request, $device->user, 'phone', (int) $device->id, $want));
+        } catch (\Throwable $e) {
+            \Log::warning('phone clock punch failed: ' . $e->getMessage());
+            return $this->json(['ok' => false, 'msg' => 'That did not go through. Please try again.']);
         }
     }
 
     /**
-     * Nick (shipping): clocking out on his phone posts the daily #shipping
-     * summary, same as his End Shift (the Clover clock-in watch was removed
-     * 10/12). Runs after the response; once per day on the website side.
+     * Clock in if out, out if in. $want (phone) guards against a stale
+     * screen: if the person is already in that state, nothing changes.
+     */
+    private function toggle(Request $request, $user, string $source, ?int $deviceId, ?string $want = null): array
+    {
+        $userId = (int) $user->id;
+        $businessId = (int) ($user->business_id ?: TC::businessId());
+        $first = trim((string) $user->first_name) ?: TC::displayName($user);
+        $open = TC::openPunch($userId);
+        $time = TC::now()->format('g:i A');
+
+        if (!$open && $want !== 'out') {
+            $r = TC::clockIn($request, $user, $deviceId, $source);
+            $st = TC::status($businessId, $userId);
+            return ['ok' => $r['ok'], 'name' => $first, 'action' => 'in', 'time' => $time,
+                'headline' => $first . ", you're clocked in.", 'detail' => $time . ($st['store'] !== '' ? ' at ' . $st['store'] : ''),
+                'msg' => $r['msg'], 'status' => $st];
+        }
+        if ($open && $want !== 'in') {
+            TC::clockOut($userId, $source, $request, true);
+            $this->afterClockOut($user);
+            $st = TC::status($businessId, $userId);
+            return ['ok' => true, 'name' => $first, 'action' => 'out', 'time' => $time,
+                'headline' => $first . ", you're clocked out.", 'detail' => $time . ', ' . $st['today_text'] . ' today',
+                'msg' => 'Clocked out at ' . $time . '.', 'status' => $st];
+        }
+        // Stale phone screen: already in the state they tapped for.
+        $st = TC::status($businessId, $userId);
+        return ['ok' => true, 'name' => $first, 'action' => $open ? 'in' : 'out', 'time' => $time,
+            'headline' => $first . ($open ? ", you're already clocked in." : ", you're already clocked out."),
+            'detail' => $open ? 'Since ' . $st['since'] : $st['today_text'] . ' today',
+            'msg' => '', 'status' => $st];
+    }
+
+    /**
+     * Nick (shipping): clocking out posts the daily #shipping summary, same
+     * as his End Shift (the Clover clock-in watch was removed 10/12). Runs
+     * after the response; once per day on the website side.
      */
     private function afterClockOut($user): void
     {

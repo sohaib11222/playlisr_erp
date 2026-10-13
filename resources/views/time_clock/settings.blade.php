@@ -18,10 +18,10 @@
   <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Staff PINs</h3></div>
     <div class="box-body">
-      <p class="text-muted">Each person needs a 4-number PIN the first time they use the clock on a phone. Leave the box empty to make a random PIN. The PIN is shown once after saving, so tell the person in person. The people at the top have Sling shifts in the last 30 days and are the ones listed on the phone page; anyone given a PIN is listed too.</p>
+      <p class="text-muted">Staff clock in with their PIN only, like Clover: on the store computer they type it every time, and on a phone once, then the phone is remembered. Every PIN is different, so the PIN says who it is. Leave the box empty to make a random PIN. The PIN is shown once after saving, so tell the person in person. People at the top had Sling shifts in the last 30 days.</p>
       <div class="table-responsive">
       <table class="table table-condensed" style="max-width:900px;">
-        <thead><tr><th>Name</th><th>On the clock list</th><th>PIN</th><th>Remembered phones</th><th>Set or reset PIN</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Sling, last 30 days</th><th>PIN</th><th>Remembered phones</th><th>Set or reset PIN</th><th></th></tr></thead>
         <tbody>
         @php $__devCount = $devices->groupBy('user_id')->map->count(); @endphp
         @foreach ($people as $uid => $uname)
@@ -31,7 +31,6 @@
             <td>
               @if (isset($pins[$uid]))
                 Set
-                @if ($pins[$uid]->locked_until && strtotime($pins[$uid]->locked_until) > time())<span class="label label-danger">locked until {{ \Carbon::parse($pins[$uid]->locked_until)->format('g:i A') }}</span> @endif
               @else
                 <span class="text-muted">none</span>
               @endif

@@ -426,15 +426,22 @@ class TimeClockController extends Controller
         if (!$user) {
             return $this->back($request, false, 'Pick a person.', '/time-clock/settings');
         }
+        // PINs are unique: the PIN alone says who is clocking in.
         $pin = trim((string) $request->input('pin'));
         if ($pin === '') {
-            $pin = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+            $pin = TC::uniqueRandomPin($businessId, $userId);
+            if ($pin === null) {
+                return $this->back($request, false, 'Could not find a free PIN. Try again.', '/time-clock/settings');
+            }
         }
         if (!preg_match('/^\d{4}$/', $pin)) {
             return $this->back($request, false, 'A PIN is exactly 4 numbers.', '/time-clock/settings');
         }
-        if (in_array($pin, ['0000', '1234', '1111'], true)) {
+        if (TC::isObviousPin($pin)) {
             return $this->back($request, false, 'Pick a less obvious PIN than ' . $pin . '.', '/time-clock/settings');
+        }
+        if (TC::pinOwner($businessId, $pin, $userId) !== null) {
+            return $this->back($request, false, 'Someone else already has PIN ' . $pin . '. Pick another one, or leave it blank for a random one.', '/time-clock/settings');
         }
         TC::setPin($businessId, $userId, $pin, auth()->id());
         return $this->back($request, true, 'PIN for ' . TC::displayName($user) . ' is ' . $pin . '. Tell them in person; it is not shown again.', '/time-clock/settings');
