@@ -238,7 +238,7 @@
                 $isArchived = !empty($o['archived']);
                 $status = $o['order_status'] ?? '';
                 $pillClass = in_array($status, ['processing','ready_for_pickup','picked_up','shipped','email_sent','delivered','cancelled','flag'], true) ? "st-{$status}" : 'st-default';
-                $rowId = 'wo-detail-' . substr((string) ($o['_id'] ?? ''), -8);
+                $rowId = 'wo-detail-' . preg_replace('/[^A-Za-z0-9]/', '', (string) ($o['_id'] ?? '')) . '-' . $loop->index;
                 // Order-level preorder flag: true if ANY item is still a
                 // preorder. Surfaced on the collapsed row (not just inside
                 // View details) so Nick doesn't hunt for stock that hasn't
@@ -301,7 +301,9 @@
                   <div class="wo-row-actions">
                     <button type="button" class="wo-btn wo-btn-primary"
                       onclick="woOpenStatus('{{ $o['_id'] }}', '{{ $status }}', '{{ $o['tracking_number'] ?? '' }}')">Update status</button>
-                    <button type="button" class="wo-btn" onclick="var el=document.getElementById('{{ $rowId }}'); el.style.display = el.style.display === 'none' ? '' : 'none';">View details</button>
+                    {{-- Toggles the details row right after this order's row (not by id:
+                         two orders could end up with the same short id). --}}
+                    <button type="button" class="wo-btn" onclick="woToggleDetails(this)">View details</button>
                     <form method="POST" action="{{ route('website-orders.archive', ['id' => $o['_id']]) }}"
                           onsubmit="return confirm('{{ $isArchived ? 'Restore this order to its status bucket?' : 'Archive this order?' }}');">
                       {{ csrf_field() }}
@@ -573,6 +575,18 @@
     </dialog>
 
     <script>
+      function woToggleDetails(btn) {
+        var row = btn.closest('tr');
+        var el = row ? row.nextElementSibling : null;
+        while (el && !(el.classList && el.classList.contains('wo-detail'))) {
+          if (el.classList && el.classList.contains('wo-row')) { el = null; break; }
+          el = el.nextElementSibling;
+        }
+        if (!el) return;
+        var hidden = el.style.display === 'none' || getComputedStyle(el).display === 'none';
+        el.style.display = hidden ? 'table-row' : 'none';
+        btn.textContent = hidden ? 'Hide details' : 'View details';
+      }
       function woOpenStatus(orderId, currentStatus, currentTracking) {
         var form = document.getElementById('wo-status-form');
         form.action = '{{ url("/website-orders") }}/' + orderId + '/status';
