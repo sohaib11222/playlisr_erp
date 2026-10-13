@@ -763,7 +763,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/reorder/sync-ams', function () {
         abort_unless(auth()->user()->can('business_settings.access'), 403);
         \Artisan::call('reorder:sync-ams-orders');
-        return response('<pre>' . e(\Artisan::output()) . '</pre>');
+        $out = \Artisan::output();
+        \Artisan::call('reorder:sync-email-orders', ['--days' => 7]);
+        return response('<pre>' . e($out . \Artisan::output()) . '</pre>');
     });
     Route::post('/reports/reorder/import-counts', 'ReorderController@importCounts');
     Route::post('/reports/reorder/ordered', 'ReorderController@markOrdered');

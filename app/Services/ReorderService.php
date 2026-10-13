@@ -215,7 +215,7 @@ class ReorderService
      * for that store + format within a day of it (no double "on the way").
      * $lines: [{upc, qty, title}]. Returns how many orders were recorded.
      */
-    public function recordAutoOrder(int $business_id, int $locationId, string $key, string $at, string $note, array $lines): int
+    public function recordAutoOrder(int $business_id, int $locationId, string $key, string $at, string $note, array $lines, string $supplier = 'AMS'): int
     {
         $state = $this->loadState($business_id);
         if (!empty($state['auto_orders'][$key])) return 0;
@@ -241,7 +241,7 @@ class ReorderService
             if ($u === '' || (int) $l['qty'] < 1) continue;
             [$pid, $fmt] = $byUpc[$u] ?? [null, null];
             if (!$fmt) continue; // not sealed music we carry yet
-            $groups[$fmt][] = ['product_id' => $pid, 'upc' => $u, 'title' => mb_substr((string) $l['title'], 0, 200), 'qty' => (int) $l['qty'], 'supplier' => 'AMS'];
+            $groups[$fmt][] = ['product_id' => $pid, 'upc' => $u, 'title' => mb_substr((string) $l['title'], 0, 200), 'qty' => (int) $l['qty'], 'supplier' => $supplier];
         }
         $n = 0;
         $atC = Carbon::parse($at);
@@ -251,7 +251,7 @@ class ReorderService
                 if (abs(Carbon::parse($o['at'])->diffInHours($atC, false)) <= 24 && strpos((string) ($o['by'] ?? ''), 'Auto') !== 0) $clicked = true;
             }
             if ($clicked) continue;
-            $this->markOrdered($business_id, $locationId, $fmt, $glines, 'Auto (AMS)', $note, $at);
+            $this->markOrdered($business_id, $locationId, $fmt, $glines, 'Auto (' . $supplier . ')', $note, $at);
             $n++;
         }
         $state = $this->loadState($business_id);
