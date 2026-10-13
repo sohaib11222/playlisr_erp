@@ -157,6 +157,7 @@
                     <thead>
                         <tr>
                             <th data-sort="album">Album <span class="ro-arrow"></span></th>
+                            <th data-sort="genrecol">Genre <span class="ro-arrow"></span></th>
                             <th data-sort="count" title="Type what's actually in the bin">Counted (in bin) <span class="ro-arrow"></span></th>
                             <th data-sort="order">Order <span class="ro-arrow"></span></th>
                             <th data-sort="why">Why <span class="ro-arrow"></span></th>
@@ -200,6 +201,7 @@
                                     @if($r['used_note']) <div>{{ $r['used_note'] }}</div>@endif
                                 </div>
                             </td>
+                            <td class="ro-muted" style="font-size:12px;">{{ $r['genre'] }}</td>
                             <td>
                                 @if($r['product_id'])
                                     <input type="number" min="0" class="form-control ro-num ro-count" value="{{ $r['count'] !== null ? $r['count'] : '' }}"
@@ -369,6 +371,7 @@
         switch (sortKey) {
             case 'album': return d.album || '';
             case 'why': return d.why;
+            case 'genrecol': return (d.genre || '').toLowerCase();
             case 'last': return d.last || null;
             case 'count': var c = tr.querySelector('.ro-count'); return c && c.value !== '' ? +c.value : null;
             case 'order': return orderOf(tr);
@@ -382,7 +385,7 @@
         th.addEventListener('click', function () {
             var k = th.dataset.sort;
             // Numbers start biggest-first, names A to Z.
-            sortDir = sortKey === k ? -sortDir : (k === 'album' || k === 'why' ? 1 : -1);
+            sortDir = sortKey === k ? -sortDir : (k === 'album' || k === 'why' || k === 'genrecol' ? 1 : -1);
             sortKey = k;
             document.querySelectorAll('#ro-table .ro-arrow').forEach(function (a) { a.textContent = ''; });
             th.querySelector('.ro-arrow').textContent = sortDir === 1 ? '\u25B2' : '\u25BC';
@@ -428,7 +431,7 @@
             if (show && sortKey === 'genre' && d.genre !== lastGenre) {
                 var g = document.createElement('tr');
                 g.className = 'ro-genre';
-                g.innerHTML = '<td colspan="12"></td>';
+                g.innerHTML = '<td colspan="13"></td>';
                 g.firstChild.textContent = d.genre;
                 tr.parentNode.insertBefore(g, tr);
                 lastGenre = d.genre;
