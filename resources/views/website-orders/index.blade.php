@@ -395,7 +395,7 @@
                     <div class="wo-prod-more">+{{ $cancelLines->count() - 3 }} more</div>
                   @endif
                 </td>
-                <td class="wo-listed">@php $lp = explode(' · ', (string) ($rowListed ?? ''), 2); @endphp{{ $lp[0] }}@if(!empty($lp[1]))<span class="t">{{ $lp[1] }}</span>@endif</td>
+                <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($paymentStatusFilter === 'all')
@@ -669,7 +669,7 @@
                       </div>
                     @endforeach
                   </td>
-                  <td class="wo-listed">@php $lp = explode(' · ', (string) ($dListed ?? ''), 2); @endphp{{ $lp[0] }}@if(!empty($lp[1]))<span class="t">{{ $lp[1] }}</span>@endif</td>
+                  <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
                     @if(!empty($d['pick']))
                       <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
