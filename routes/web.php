@@ -664,6 +664,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // console so fulfillment can live entirely in the ERP.
     Route::get('/website-orders', 'WebsiteOrdersController@index')->name('website-orders.index');
     Route::get('/website-orders/shipping-summary-preview', 'WebsiteOrdersController@shippingSummaryPreview')->name('website-orders.shippingSummaryPreview');
+    Route::post('/website-orders/notes', 'WebsiteOrdersController@saveNotes')->name('website-orders.saveNotes');
     Route::post('/website-orders/discogs/{id}/ship', 'WebsiteOrdersController@shipDiscogs')->name('website-orders.shipDiscogs');
     Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');
     Route::post('/website-orders/{id}/status', 'WebsiteOrdersController@updateStatus')->name('website-orders.updateStatus');

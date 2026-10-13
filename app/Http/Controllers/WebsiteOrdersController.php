@@ -73,6 +73,9 @@ class WebsiteOrdersController extends Controller
         $search = trim((string) $request->query('q', ''));
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
+        // Pickup location filter, same as the website admin: hollywood, pico,
+        // or unknown (pickup orders with no location saved).
+        $locationFilter = (string) $request->query('location', '');
         // Filters used by the #shipping summary links (Sarah, 2026-10-13):
         // overdue=1 (5+ days old), only=website|discogs, shipped_since /
         // cancelled_since (ISO time of the previous summary post).
@@ -140,7 +143,44 @@ class WebsiteOrdersController extends Controller
             }
         }
 
-        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff) {
+        // Pickup orders with no known location. Not archive-filtered on
+        // purpose (matches the website): they need their location fixed.
+        $unknownLocationCount = 0;
+        $preorderSummary = [];
+        foreach ($allOrders as $o) {
+            if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+            if (($o['fulfillment_method'] ?? null) === 'pickup' && !self::knownPickupLocation($o)) $unknownLocationCount++;
+            if (!empty($o['archived'])) continue;
+            // Total preorders per album (ship + pickup combined), for the
+            // preorder tabs.
+            foreach ($o['items'] ?? [] as $item) {
+                $p = $item['product_id'] ?? null;
+                if (!is_array($p) || empty($p['isPreorder'])) continue;
+                $key = $p['_id'] ?? ($p['name'] ?? ($item['product_name'] ?? null));
+                if (!$key) continue;
+                if (!isset($preorderSummary[$key])) {
+                    $preorderSummary[$key] = [
+                        'name' => $p['name'] ?? ($item['product_name'] ?? 'Untitled'),
+                        'media' => self::mediaTypeLabel($p['productType'] ?? null),
+                        'format' => $p['format'] ?? null,
+                        'sku' => $p['sku'] ?? null,
+                        'price' => $p['price'] ?? ($item['price'] ?? null),
+                        'street_date' => $p['preorderShipDate'] ?? null,
+                        'erp_id' => $p['posProductId'] ?? null,
+                        'quantity' => 0,
+                    ];
+                }
+                $preorderSummary[$key]['quantity'] += (int) ($item['quantity'] ?? 0);
+            }
+        }
+        $preorderSummary = array_values($preorderSummary);
+        usort($preorderSummary, function ($a, $b) {
+            $ta = $a['street_date'] ? strtotime($a['street_date']) : PHP_INT_MAX;
+            $tb = $b['street_date'] ? strtotime($b['street_date']) : PHP_INT_MAX;
+            return $ta === $tb ? strcasecmp($a['name'], $b['name']) : $ta <=> $tb;
+        });
+
+        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter) {
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
@@ -148,6 +188,10 @@ class WebsiteOrdersController extends Controller
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
+            if ($locationFilter !== '') {
+                if (($o['fulfillment_method'] ?? null) !== 'pickup') return false;
+                if ($locationFilter === 'unknown' ? self::knownPickupLocation($o) : ($o['pickup_location'] ?? '') !== $locationFilter) return false;
+            }
             if ($search !== '') {
                 $needle = strtolower($search);
                 $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
@@ -215,6 +259,10 @@ class WebsiteOrdersController extends Controller
             'search' => $search,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'locationFilter' => $locationFilter,
+            'unknownLocationCount' => $unknownLocationCount,
+            'preorderSummary' => $preorderSummary,
+            'deskNotes' => self::loadDeskNotes(),
             'summaryFilter' => $overdueOnly || $onlySource !== '' || $shippedSince || $cancelledSince,
             'pickupSlaOverdueHours' => self::PICKUP_SLA_OVERDUE_HOURS,
         ]);
@@ -538,6 +586,55 @@ class WebsiteOrdersController extends Controller
         }
 
         return $statusOk && $fulfillmentOk;
+    }
+
+    public static function knownPickupLocation(array $o): bool
+    {
+        return in_array($o['pickup_location'] ?? '', ['hollywood', 'pico'], true);
+    }
+
+    public static function pickupLocationLabel(array $o): string
+    {
+        $map = ['hollywood' => 'Hollywood', 'pico' => 'Pico'];
+        return $map[$o['pickup_location'] ?? ''] ?? 'No Location Set';
+    }
+
+    // productType is the real media type ("format" is a vinyl sub-tag that
+    // reads the same for an LP and its CD), shortened to LP / CD / Cassette.
+    public static function mediaTypeLabel(?string $productType): ?string
+    {
+        if (!$productType) return null;
+        $map = ['Vinyl Records' => 'LP', 'CDs' => 'CD', 'Cassettes' => 'Cassette'];
+        return $map[$productType] ?? $productType;
+    }
+
+    // Shared notes for the orders desk (the website admin kept these in one
+    // browser only). Stored in the system table so everyone sees the same.
+    protected static function loadDeskNotes(): array
+    {
+        $raw = \App\System::getProperty('website_orders_desk_notes');
+        $d = $raw ? json_decode($raw, true) : null;
+        return is_array($d) ? $d : ['text' => '', 'by' => null, 'at' => null];
+    }
+
+    public function saveNotes(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $text = mb_substr((string) $request->input('notes', ''), 0, 10000);
+        $u = auth()->user();
+        \App\System::addProperty('website_orders_desk_notes', json_encode([
+            'text' => $text,
+            'by' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null),
+            'at' => now()->toIso8601String(),
+        ]));
+        return redirect()->back()->with('status', 'Notes saved.');
+    }
+
+    public static function hoursSinceStatic(?string $dateLike): int
+    {
+        return self::hoursSince($dateLike);
     }
 
     protected static function hoursSince(?string $dateLike): int

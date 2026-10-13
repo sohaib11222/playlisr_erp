@@ -30,11 +30,14 @@
   .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
   .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .wo-tbl { width:100%; table-layout:fixed; border-collapse:collapse; }
-  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
+  .wo-tbl { width:100%; min-width:1080px; table-layout:fixed; border-collapse:collapse; }
+  .wo-scroll { overflow-x:auto; }
+  .wo-tbl td { overflow-wrap:anywhere; }
+  .wo-tbl td.wo-actions-cell { overflow:visible; }
+  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:10px 10px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
   .wo-tbl tbody tr.wo-row { border-bottom:1px solid #f0f0f0; }
   .wo-tbl tbody tr.wo-row:hover { background:#fafafa; }
-  .wo-tbl td { padding:16px 14px; font-size:14px; vertical-align:top; }
+  .wo-tbl td { padding:12px 10px; font-size:14px; vertical-align:top; }
 
   .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
   .wo-prod-with-img { display:flex; gap:10px; align-items:center; }
@@ -68,9 +71,20 @@
   .wo-prod-more { font-size:12px; color:#6b7280; margin-top:4px; }
 
   .wo-total { font-weight:600; color:#111827; }
-  .wo-placed { font-size:13px; color:#6b7280; white-space:nowrap; }
+  .wo-placed { font-size:12.5px; color:#6b7280; line-height:1.35; }
+  .wo-placed .t { display:block; color:#9ca3af; }
+  .wo-pill, .wo-fm-pill { white-space:normal !important; }
+  .wo-tag { display:inline-block; margin-left:4px; padding:0 5px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; vertical-align:1px; }
+  .wo-tag.media { color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; }
+  .wo-tag.fmt { color:#6b7280; border:1px solid #e5e7eb; font-weight:600; }
+  .wo-prod-price { font-size:12px; color:#6b7280; }
+  .wo-sla { display:inline-block; margin-top:4px; padding:1px 7px; border-radius:5px; font-size:10.5px; font-weight:700; }
+  .wo-sla.ok { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
+  .wo-sla.warn { color:#92400e; background:#fef3c7; border:1px solid #fde68a; }
+  .wo-sla.over { color:#b91c1c; background:#fee2e2; border:1px solid #fecaca; }
+  .wo-sla.pre { color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; font-weight:600; }
 
-  .wo-row-actions { display:flex; flex-direction:row; align-items:center; gap:6px; white-space:nowrap; position:relative; }
+  .wo-row-actions { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:6px; position:relative; }
   .wo-row-actions form { margin:0; }
   .wo-row-actions .wo-btn { display:inline-flex; align-items:center; justify-content:center; width:auto; height:30px; padding:0 10px; font-size:12.5px; }
   .wo-more { position:relative; }
@@ -146,6 +160,7 @@
         'q' => $search,
         'from' => $dateFrom,
         'to' => $dateTo,
+        'location' => $locationFilter,
       ], fn($v) => $v !== '' && $v !== null);
     @endphp
 
@@ -190,6 +205,40 @@
       <div class="wo-banner warn">These orders include at least one item that isn't in stock yet. Not shipped - the customer collects in store, sometimes later than the street date (e.g. picking up at an event).</div>
     @endif
 
+    @if(($unknownLocationCount ?? 0) > 0)
+      <div class="wo-banner overdue"><strong>{{ $unknownLocationCount }} pickup {{ $unknownLocationCount === 1 ? 'order has' : 'orders have' }} no pickup location set.</strong> Choose <a href="{{ route('website-orders.index', ['tab' => $activeTab, 'location' => 'unknown']) }}">No Location Set</a> in the Pickup location filter to find {{ $unknownLocationCount === 1 ? 'it' : 'them' }}.</div>
+    @endif
+    @if(in_array($activeTab, ['preorder_ship', 'preorder_pickup'], true) && !empty($preorderSummary))
+      <div class="wo-card" style="margin-bottom:16px;border-color:#fed7aa;">
+        <div style="padding:8px 12px;background:#ffedd5;color:#9a3412;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total preorders per album (ship + pickup combined)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
+          @foreach($preorderSummary as $al)
+            <tr style="border-top:1px solid #ffedd5;">
+              <td style="padding:7px 12px;">
+                @if(!empty($al['erp_id']))<a class="wo-prod-name" href="{{ url('/products/' . $al['erp_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $al['name'] }}</a>@else{{ $al['name'] }}@endif
+                @if($al['media'])<span class="wo-tag media">{{ $al['media'] }}</span>@endif
+                @if($al['format'])<span class="wo-tag fmt">{{ $al['format'] }}</span>@endif
+                @if($al['sku'] || $al['price'] !== null)
+                  <div style="font-size:11px;color:#9ca3af;">@if($al['sku'])SKU {{ $al['sku'] }}@endif @if($al['sku'] && $al['price'] !== null) &middot; @endif @if($al['price'] !== null)${{ number_format((float) $al['price'], 2) }}@endif</div>
+                @endif
+              </td>
+              <td style="padding:7px 12px;color:#4b5563;white-space:nowrap;">street date {{ $al['street_date'] ? gmdate('M d, Y', strtotime($al['street_date'])) : 'TBD' }}</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:700;color:#c2410c;white-space:nowrap;">{{ $al['quantity'] }} preordered</td>
+            </tr>
+          @endforeach
+        </table>
+      </div>
+    @endif
+    <details class="wo-notes" style="margin-bottom:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;" {{ trim($deskNotes['text'] ?? '') !== '' ? 'open' : '' }}>
+      <summary style="cursor:pointer;font-size:13.5px;font-weight:600;color:#92400e;">Notes for the orders desk
+        @if(!empty($deskNotes['at']))<span style="font-weight:400;color:#a16207;font-size:12px;"> &middot; saved {{ \Carbon\Carbon::parse($deskNotes['at'])->setTimezone('America/Los_Angeles')->format('n/j g:ia') }}{{ !empty($deskNotes['by']) ? ' by ' . $deskNotes['by'] : '' }}</span>@endif
+      </summary>
+      <form method="POST" action="{{ route('website-orders.saveNotes') }}" style="margin-top:8px;">
+        {{ csrf_field() }}
+        <textarea name="notes" rows="3" placeholder="Add notes for the orders desk..." style="width:100%;box-sizing:border-box;font-size:13.5px;padding:8px;border:1px solid #fde68a;border-radius:8px;background:#fff;resize:vertical;">{{ $deskNotes['text'] ?? '' }}</textarea>
+        <button type="submit" class="wo-btn" style="width:auto;display:inline-block;margin-top:6px;background:#d97706;border-color:#d97706;color:#fff;">Save notes</button>
+      </form>
+    </details>
     <form method="GET" action="{{ route('website-orders.index') }}" class="wo-filters">
       <input type="hidden" name="tab" value="{{ $activeTab }}">
       <div class="wo-field">
@@ -210,6 +259,15 @@
           @foreach($statuses as $key => $label)
             <option value="{{ $key }}" {{ $statusFilter === $key ? 'selected' : '' }}>{{ $label }}</option>
           @endforeach
+        </select>
+      </div>
+      <div class="wo-field">
+        <label>Pickup location</label>
+        <select name="location" onchange="this.form.submit()">
+          <option value="">All Locations</option>
+          <option value="hollywood" {{ $locationFilter === 'hollywood' ? 'selected' : '' }}>Hollywood</option>
+          <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico</option>
+          <option value="unknown" {{ $locationFilter === 'unknown' ? 'selected' : '' }}>No Location Set ({{ $unknownLocationCount }})</option>
         </select>
       </div>
       <div class="wo-field">
@@ -234,17 +292,17 @@
       <div class="ev-card"><div class="empty">No orders in this view.</div></div>
     @else
       <div class="wo-card">
-        <div style="overflow-x:auto;">
+        <div class="wo-scroll">
         <table class="wo-tbl">
           <colgroup>
-            <col style="width:17%">
-            <col style="width:25%">
-            <col style="width:11%">
-            <col style="width:10%">
-            <col style="width:10%">
-            <col style="width:8%">
-            <col style="width:10%">
-            <col style="width:212px">
+            <col style="width:15%">
+            <col>
+            <col style="width:96px">
+            <col style="width:118px">
+            <col style="width:112px">
+            <col style="width:86px">
+            <col style="width:92px">
+            <col style="width:204px">
           </colgroup>
           <thead><tr>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
@@ -323,7 +381,10 @@
                       <div>
                         @if($line['cancelled'])<s>@endif @if($lineErp)<a class="wo-prod-name" href="{{ url('/products/' . $lineErp . '/edit') }}" target="_blank" rel="noopener">{{ $line['name'] }}</a>@else{{ $line['name'] }}@endif @if($line['cancelled'])</s>@endif
                         @if(!$line['gift'] && !$lineErp)<span class="wo-noerp">not in ERP</span>@endif
-                        @if($line['qty'] > 1)<span class="wo-prod-qty">&times;{{ $line['qty'] }}</span>@endif
+                        @php $lineMedia = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($lineItem['product_id']['productType'] ?? null); $lineFmt = $line['gift'] ? null : ($lineItem['product_id']['format'] ?? null); @endphp
+                        @if($lineMedia)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
+                        @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
+                        <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
                       </div>
                     </div>
@@ -335,6 +396,10 @@
                 <td class="wo-listed">{{ $rowListed ?? '' }}</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
+                  @if($paymentStatusFilter === 'all')
+                    @php $ps = $o['payment_status'] ?? 'unknown'; $psColors = ['completed' => '#dcfce7;color:#166534', 'pending' => '#fef9c3;color:#854d0e', 'failed' => '#fee2e2;color:#991b1b', 'cancelled' => '#f3f4f6;color:#374151', 'refunded' => '#f3e8ff;color:#6b21a8']; @endphp
+                    <div style="margin-top:5px;"><span class="wo-pill" style="background:{{ $psColors[$ps] ?? '#f3f4f6;color:#374151' }};font-size:11px;padding:2px 8px;">Payment: {{ ucfirst($ps) }}</span></div>
+                  @endif
                   @if($rowIsPreorder)
                     <div style="margin-top:6px;">
                       <span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#f97316;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">PREORDER — NOT IN STOCK</span>
@@ -348,7 +413,7 @@
                   @if($isGift)
                     <span class="wo-fm-pill digital">Digital (Email)</span>
                   @elseif(($o['fulfillment_method'] ?? null) === 'pickup')
-                    <span class="wo-fm-pill pickup">Pickup ({{ ($o['pickup_location'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }})</span>
+                    <span class="wo-fm-pill pickup" @if(!\App\Http\Controllers\WebsiteOrdersController::knownPickupLocation($o)) style="background:#fee2e2;color:#991b1b;" @endif>Pickup ({{ \App\Http\Controllers\WebsiteOrdersController::pickupLocationLabel($o) }})</span>
                   @else
                     <span class="wo-fm-pill shipping">Shipping</span>
                   @endif
@@ -358,8 +423,18 @@
                     <div style="font-size:11px;font-weight:600;color:{{ ($o['pick_progress']['picked'] ?? 0) >= ($o['pick_progress']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $o['pick_progress']['picked'] ?? 0 }}/{{ $o['pick_progress']['total'] ?? 0 }}</div>
                   @endif
                 </td>
-                <td class="wo-placed">{{ $placed }}</td>
-                <td>
+                <td class="wo-placed">
+                  @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
+                  @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
+                    @if($rowIsPreorder)
+                      <span class="wo-sla pre">not in stock yet</span>
+                    @else
+                      @php $slaH = \App\Http\Controllers\WebsiteOrdersController::hoursSinceStatic($o['createdAt'] ?? null); @endphp
+                      <span class="wo-sla {{ $slaH >= 48 ? 'over' : ($slaH >= 24 ? 'warn' : 'ok') }}">{{ $slaH }}h{{ $slaH >= 48 ? ' · OVERDUE' : ($slaH >= 24 ? ' · pull soon' : '') }}</span>
+                    @endif
+                  @endif
+                </td>
+                <td class="wo-actions-cell">
                   <div class="wo-row-actions">
                     <button type="button" class="wo-btn wo-btn-primary"
                       onclick="woOpenStatus('{{ $o['_id'] }}', '{{ $status }}', '{{ $o['tracking_number'] ?? '' }}')">Update status</button>
@@ -390,6 +465,9 @@
                       <h5>Order</h5>
                       {{ $o['_id'] ?? '—' }}<br>
                       Payment: {{ $o['payment_status'] ?? '—' }} via {{ $o['paymentMethod'] ?? '—' }}<br>
+                      Placed: {{ !empty($o['createdAt']) ? date('M j, Y g:ia', strtotime($o['createdAt'])) : '—' }}<br>
+                      @php $subtotal = collect($o['items'] ?? [])->sum(fn($it) => (float) ($it['price'] ?? 0) * (int) ($it['quantity'] ?? 1)); @endphp
+                      Subtotal: ${{ number_format($subtotal, 2) }}<br>
                       Total: ${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                       @if(!empty($o['total_discount']) && $o['total_discount'] > 0)
                         (discount -${{ number_format((float) $o['total_discount'], 2) }})
@@ -403,6 +481,8 @@
                     @if(!$isGift)
                       <div>
                         <h5>{{ ($o['fulfillment_method'] ?? null) === 'pickup' ? 'Pickup' : 'Shipping' }} info</h5>
+                        {{ $o['display_name'] ?? ($o['user_id']['name'] ?? '—') }}<br>
+                        {{ $o['user_id']['email'] ?? '' }}@if(!empty($o['user_id']['email']))<br>@endif
                         Contact: {{ $o['contactNumber'] ?? '—' }}<br>
                         @php $addr = $o['shippingAddress'][0] ?? []; @endphp
                         {{ $addr['fullAddress'] ?? '—' }}
@@ -410,6 +490,18 @@
                         <br>
                         {{ $addr['city'] ?? '' }}{{ !empty($addr['city']) ? ',' : '' }} {{ $addr['state'] ?? '' }} {{ $addr['zipCode'] ?? '' }}<br>
                         {{ $addr['country'] ?? '' }}
+                        @php
+                          $addrText = implode("\n", array_filter([
+                            $o['display_name'] ?? ($o['user_id']['name'] ?? null),
+                            $addr['fullAddress'] ?? null,
+                            $addr['apartment'] ?? null,
+                            implode(', ', array_filter([$addr['city'] ?? null, trim(($addr['state'] ?? '') . ' ' . ($addr['zipCode'] ?? ''))])),
+                            $addr['country'] ?? null,
+                          ]));
+                        @endphp
+                        @if(!empty($addr['fullAddress']))
+                          <div style="margin-top:8px;"><button type="button" class="wo-btn" style="width:auto;display:inline-block;font-size:12px;padding:4px 10px;" data-addr="{{ $addrText }}" onclick="woCopyAddr(this)">Copy address</button></div>
+                        @endif
                       </div>
                     @endif
                     <div style="flex:1 1 100%;">
@@ -538,8 +630,11 @@
         <div class="ev-card"><div class="empty">No Discogs orders waiting to ship.</div></div>
       @else
         <div class="wo-card">
-          <div style="overflow-x:auto;">
+          <div class="wo-scroll">
           <table class="wo-tbl">
+            <colgroup>
+              <col style="width:120px"><col style="width:14%"><col><col style="width:96px"><col style="width:86px"><col style="width:92px"><col style="width:220px">
+            </colgroup>
             <thead><tr>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Discogs order', 'key' => 'status'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
@@ -547,7 +642,7 @@
               <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Ordered', 'key' => 'placed'])</th>
-              <th style="width:230px;">Mark shipped</th>
+              <th>Mark shipped</th>
             </tr></thead>
             <tbody>
               @foreach($discogsToShip as $d)
@@ -578,7 +673,7 @@
                       <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
                     @endif
                   </td>
-                  <td class="wo-placed">{{ !empty($d['order_date']) ? date('M j, Y g:ia', strtotime($d['order_date'])) : '' }}</td>
+                  <td class="wo-placed">@if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@endif</td>
                   <td>
                     <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
                           onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking...';">
@@ -650,6 +745,12 @@
     </dialog>
 
     <script>
+      function woCopyAddr(btn) {
+        var t = btn.getAttribute('data-addr') || '';
+        var done = function () { var o = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = o; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, function () {}); }
+        else { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
+      }
       function woCloseMore() {
         document.querySelectorAll('.wo-more.open').forEach(function (m) { m.classList.remove('open'); });
       }
