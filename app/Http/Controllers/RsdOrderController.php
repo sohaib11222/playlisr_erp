@@ -445,9 +445,9 @@ class RsdOrderController extends Controller
             ->leftJoinSub($sales, 's', 's.contact_id', '=', 'c.id')
             ->where('c.business_id', $biz)->where('c.is_default', 0)
             ->whereNotNull('c.email')->where('c.email', 'like', '%@%.%')
-            ->where(function ($q) { $q->where('s.n', '>', 0)->orWhere('c.lifetime_purchases', '>', 0); })
+            ->where(function ($q) { $q->where('s.n', '>', 0)->orWhere('c.lifetime_purchases', '>', 0)->orWhere('c.loyalty_points', '>', 0)->orWhere('c.visit_count', '>', 0); })
             ->select('c.email', 'c.zip_code', 'c.name', \DB::raw('COALESCE(s.n,0) as n'), \DB::raw('COALESCE(s.spent,0) as spent'),
-                'c.lifetime_purchases', 's.last_at', 'c.last_purchase_date')
+                'c.lifetime_purchases', 'c.loyalty_points', 'c.visit_count', 's.last_at', 'c.last_purchase_date')
             ->get();
         $out = [];
         foreach ($rows as $r) {
@@ -458,7 +458,9 @@ class RsdOrderController extends Controller
             if (stripos((string) $r->name, 'website') !== false || stripos((string) $r->name, 'walk') !== false) continue;
             $zip = substr(preg_replace('/\D+/', '', (string) $r->zip_code), 0, 5);
             if ($zip !== '' && !preg_match('/^(90[0-9]|91[0-8]|935)/', $zip)) continue;
-            $out[$email] = ['email' => $email, 'spent' => round((float) $r->spent + (float) $r->lifetime_purchases, 2), 'orders' => (int) $r->n,
+            // Clover rewards points track in-store spend (~1 pt per $1); visits break ties.
+            $score = max((float) $r->spent + (float) $r->lifetime_purchases, (float) $r->loyalty_points) + 5 * (int) $r->visit_count;
+            $out[$email] = ['email' => $email, 'spent' => round($score, 2), 'orders' => (int) $r->n + (int) $r->visit_count,
                 'last' => substr((string) max((string) $r->last_at, (string) $r->last_purchase_date), 0, 10)];
         }
         $out = array_values($out);
