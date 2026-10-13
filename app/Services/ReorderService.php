@@ -808,9 +808,39 @@ class ReorderService
             if (!$type || (float) $r->qty <= 0) continue;
             $bump($type, $fam);
             $out[$type][$fam]['sold_ytd'] = ($out[$type][$fam]['sold_ytd'] ?? 0) + (float) $r->qty;
+            if (!empty($r->manual)) $out[$type][$fam]['manual_ytd'] = ($out[$type][$fam]['manual_ytd'] ?? 0) + (float) $r->qty;
             $out[$type][$fam]['revenue_ytd'] = ($out[$type][$fam]['revenue_ytd'] ?? 0) + (float) $r->rev;
             $dates[$type][$fam][$r->d] = true;
             if ($r->d > ($out[$type][$fam]['last'] ?? '')) $out[$type][$fam]['last'] = $r->d;
+        }
+
+        // Days to sell (bought -> sold) and cost, for scanned items: Clarissa's
+        // sheet sets Fast / Staple / Mid from this.
+        $dts = DB::table('transaction_sell_lines_purchase_lines as tslp')
+            ->join('transaction_sell_lines as sl', 'sl.id', '=', 'tslp.sell_line_id')
+            ->join('transactions as sale', 'sale.id', '=', 'sl.transaction_id')
+            ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+            ->join('transactions as pur', 'pur.id', '=', 'pl.transaction_id')
+            ->join('variations as v', 'v.id', '=', 'sl.variation_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('sale.business_id', $business_id)->where('sale.type', 'sell')->where('sale.status', 'final')
+            ->where('sale.location_id', $locationId)->where('sale.transaction_date', '>=', Carbon::now()->startOfYear()->toDateTimeString())
+            ->whereIn('p.category_id', array_keys($cats))
+            ->select('p.name', 'p.category_id', 'p.sub_category_id', 'pl.purchase_price', 'tslp.quantity',
+                DB::raw('GREATEST(DATEDIFF(sale.transaction_date, pur.transaction_date), 0) as days'))
+            ->get();
+        $dtsAcc = [];
+        foreach ($dts as $r) {
+            [$type, $fam] = $classify((string) $r->name, $cats[$r->category_id] ?? '', $allCats[$r->sub_category_id] ?? '');
+            if (!$type || (float) $r->quantity <= 0) continue;
+            $q = (float) $r->quantity;
+            $a = $dtsAcc[$type][$fam] ?? ['q' => 0, 'days' => 0, 'cost' => 0, 'min' => null, 'max' => null];
+            $a['q'] += $q;
+            $a['days'] += $q * (int) $r->days;
+            $a['cost'] += $q * (float) $r->purchase_price;
+            $a['min'] = $a['min'] === null ? (int) $r->days : min($a['min'], (int) $r->days);
+            $a['max'] = $a['max'] === null ? (int) $r->days : max($a['max'], (int) $r->days);
+            $dtsAcc[$type][$fam] = $a;
         }
 
         $stock = DB::table('variation_location_details as vld')
@@ -839,8 +869,16 @@ class ReorderService
                 sort($d);
                 $f['days_between'] = count($d) >= 2
                     ? round(Carbon::parse($d[0])->diffInDays(Carbon::parse(end($d))) / (count($d) - 1), 1) : null;
-                $f['speed'] = $f['days_between'] === null ? 'No data'
-                    : ($f['days_between'] <= 15 ? 'Fast' : ($f['days_between'] <= 50 ? 'Staple' : 'Mid'));
+                $dd = $dtsAcc[$type][$fam] ?? null;
+                $f['scanned'] = $dd ? $dd['q'] : 0;
+                $f['manual_ytd'] = $f['manual_ytd'] ?? 0;
+                $f['days_to_sell'] = $dd && $dd['q'] > 0 ? round($dd['days'] / $dd['q'], 1) : null;
+                $f['fastest'] = $dd['min'] ?? null;
+                $f['slowest'] = $dd['max'] ?? null;
+                $f['avg_cost'] = $dd && $dd['q'] > 0 ? round($dd['cost'] / $dd['q'], 2) : null;
+                // Speed the way Clarissa's sheet does it: average days from bought to sold.
+                $basis = $f['days_to_sell'] ?? $f['days_between'];
+                $f['speed'] = $basis === null ? 'No data' : ($basis <= 15 ? 'Fast' : ($basis <= 50 ? 'Staple' : 'Mid'));
                 $f['days_since'] = $f['last'] ? Carbon::parse($f['last'])->diffInDays(Carbon::today()) : null;
                 $f['avg_price'] = $f['sold'] > 0 ? round($f['revenue'] / $f['sold'], 2) : null;
                 $f['target'] = (int) ceil($f['per_week'] * $coverWeeks);
@@ -871,7 +909,7 @@ class ReorderService
             ->where(function ($w) { $w->whereNull('tsl.product_id')->orWhere('tsl.product_id', 0); })
             ->whereNotNull('tsl.product_name')
             ->whereIn('tsl.category_id', $catIds ?: [0]);
-        $sel = ['tsl.product_name as name', 'tsl.category_id', 'tsl.sub_category_id',
+        $sel = [DB::raw('1 as manual'), 'tsl.product_name as name', 'tsl.category_id', 'tsl.sub_category_id',
             DB::raw('SUM(tsl.quantity - tsl.quantity_returned) as qty'),
             DB::raw('SUM((tsl.quantity - tsl.quantity_returned) * tsl.unit_price_inc_tax) as rev')];
         if ($byDay) {
