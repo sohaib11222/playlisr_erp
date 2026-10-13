@@ -190,6 +190,8 @@ class EmailListsController extends Controller
                 foreach ((array) ($page['contacts'] ?? []) as $c) $used[strtolower((string) ($c['email'] ?? ''))] = true;
                 if (count((array) ($page['contacts'] ?? [])) < 1000) break;
             }
+            // Anyone who ever unsubscribed in Brevo (saved here before the cleanup) is never picked.
+            foreach (\DB::table('email_subscribers')->where('business_id', $biz)->where('unsubscribed', 1)->pluck('email') as $u) $used[strtolower($u)] = true;
             $staff = array_flip(array_filter(array_map(function ($e) { return strtolower(trim((string) $e)); },
                 \DB::table('users')->where('business_id', $biz)->pluck('email')->toArray())));
             $pick = [];
@@ -219,5 +221,42 @@ class EmailListsController extends Controller
             return response()->json(['success' => false, 'msg' => $e->getMessage()]);
         }
         return response()->json(['success' => true, 'list_id' => $listId, 'count' => count($pick), 'batch' => $n]);
+    }
+
+    /**
+     * Safety check before a send: every batch list in Brevo is checked against
+     * the unsubscribes saved in the ERP and against the other batch lists.
+     * Unsubscribed people are blocklisted in Brevo; anyone on two batch
+     * lists is removed from the later one. ?lists=17,18,19
+     */
+    public function checkBatches(Request $request)
+    {
+        $biz = $this->guard();
+        $key = $this->apiKey($biz);
+        $unsub = array_flip(array_map('strtolower', \DB::table('email_subscribers')->where('business_id', $biz)->where('unsubscribed', 1)->pluck('email')->toArray()));
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->input('lists'))));
+        $seen = []; $report = [];
+        try {
+            foreach ($ids as $id) {
+                $emails = [];
+                for ($off = 0; $off < 5000; $off += 500) {
+                    $page = $this->brevo($key, '/contacts/lists/' . $id . '/contacts?limit=500&offset=' . $off);
+                    foreach ((array) ($page['contacts'] ?? []) as $c) if (empty($c['emailBlacklisted'])) $emails[] = strtolower((string) $c['email']);
+                    if (count((array) ($page['contacts'] ?? [])) < 500) break;
+                }
+                $dupes = []; $bad = [];
+                foreach ($emails as $e) {
+                    if (isset($unsub[$e])) $bad[] = $e;
+                    elseif (isset($seen[$e])) $dupes[] = $e;
+                    else $seen[$e] = $id;
+                }
+                foreach ($bad as $e) $this->brevoSend($key, 'PUT', '/contacts/' . rawurlencode($e), ['emailBlacklisted' => true]);
+                if ($dupes) $this->brevoSend($key, 'POST', '/contacts/lists/' . $id . '/contacts/remove', ['emails' => $dupes]);
+                $report[] = ['list' => $id, 'sendable' => count($emails) - count($bad) - count($dupes), 'unsubscribed_blocked' => count($bad), 'duplicates_removed' => count($dupes)];
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'msg' => $e->getMessage(), 'report' => $report]);
+        }
+        return response()->json(['success' => true, 'report' => $report]);
     }
 }
