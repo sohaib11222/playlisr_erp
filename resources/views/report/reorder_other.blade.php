@@ -35,6 +35,7 @@
                         <option value="vinyl">Sealed vinyl</option>
                         <option value="cd">Sealed CDs</option>
                         <option value="cassette">Sealed cassettes</option>
+                        <option value="comics">Comics &amp; magazines</option>
                         <option value="other" selected>Everything else (apparel, toys, books...)</option>
                         <option value="rsd">RSD Black Friday order</option>
                     </select>
