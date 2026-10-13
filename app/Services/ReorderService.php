@@ -1399,6 +1399,7 @@ class ReorderService
         $byKey = [];
         $tenAgo = $this->now()->subDays(10)->toDateTimeString();
         foreach ($lines as $l) {
+            if (preg_match('#^https?://#i', (string) $l->artist)) $l->artist = null; // image URL in the artist field
             $key = $this->albumKey($l->artist, $l->name);
             if ($key === '') continue;
             $g = $byKey[$key] ?? ['artist' => $l->artist, 'name' => $l->name, 'n' => 0, 'n10' => 0, 'fast' => 0, 'max_price' => 0, 'days' => []];
