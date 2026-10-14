@@ -19,8 +19,8 @@
 .sc-msg.ok { color: #2E6B2E; }
 </style>
 <div class="sc-wrap">
-    <h1>This week's shelf count</h1>
-    <p class="sc-sub">{{ number_format($fresh) }} of {{ number_format($total) }} titles at this store were counted in the last {{ $dueDays }} days. Below are the next {{ count($groups, COUNT_RECURSIVE) - count($groups) }} to count, sealed first, in bin order. Type how many you find (0 if none, check the wall and shelves above too). It saves when you leave the box, the ERP and website update, and anything short goes on the <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>.</p>
+    <h1>Today's shelf count</h1>
+    <p class="sc-sub">{{ number_format($fresh) }} of {{ number_format($total) }} titles at this store were counted in the last {{ $dueDays }} days. Today's list is the next {{ count($groups, COUNT_RECURSIVE) - count($groups) }} to count, sealed first, in bin order. Type how many you find (0 if none, check the wall and shelves above too). It saves when you leave the box, the ERP and website update, and anything short goes on the <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>.</p>
     <div class="sc-bar">
         @foreach ($locations as $id => $nm)
             <a class="sc-pill {{ $id == $loc ? 'on' : '' }}" href="?location_id={{ $id }}">{{ $nm }}</a>

@@ -56,7 +56,7 @@ class ShelfCountController extends Controller
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $n = min(1000, max(25, (int) $request->input('n', 250)));
+        $n = min(1000, max(25, (int) $request->input('n', 600)));
         $counted = $this->lastCounted($business_id, $loc);
         $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
 
