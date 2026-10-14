@@ -72,7 +72,7 @@
   .block .steps p { margin: 8px 0; }
 </style>
 </head>
-<body class="{{ $mode === 'computer' ? 'computer' : '' }}">
+<body class="{{ ($mode === 'computer' || ($mode === 'change' && $computer)) ? 'computer' : '' }}">
 <div class="wrap">
   <div class="logo"><img src="{{ asset('img/nivessa-logo.png') }}" alt="Nivessa"></div>
 
@@ -122,8 +122,9 @@
     </div>
 
     <div class="switch">Not {{ $name }}? <a href="{{ url('/clock?switch=1') }}">Switch person</a></div>
+    <div class="help"><a href="{{ url('/clock?change=1') }}">Change my PIN</a></div>
   @else
-    <div class="title">{{ $mode === 'computer' ? 'Enter your PIN' : 'Enter your PIN to set up this phone' }}</div>
+    <div class="title" id="padTitle">{{ $mode === 'change' ? 'Type your current PIN' : ($mode === 'computer' ? 'Enter your PIN' : 'Enter your PIN to set up this phone') }}</div>
     <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
     <div class="msg" id="msg"></div>
     <div id="block" class="block hidden"><b id="blockMsg"></b><div id="blockSteps" class="steps hidden">
@@ -145,10 +146,13 @@
       <button type="button" class="key" data-k="0">0</button>
       <button type="button" class="key alt" data-k="back" aria-label="Delete">Delete</button>
     </div>
-    @if ($mode === 'computer')
+    @if ($mode === 'change')
+      <div class="help"><a href="{{ url($computer ? '/clock?mode=computer' : '/clock') }}">Back</a></div>
+    @elseif ($mode === 'computer')
       <div class="help">Your PIN clocks you in, or out if you are already in. Allow location if the browser asks.</div>
+      <div class="help"><a href="{{ url('/clock?change=1&mode=computer') }}">Change my PIN</a></div>
     @else
-      <div class="help">No PIN yet? Ask a manager.</div>
+      <div class="help">No PIN yet? Ask a manager. <a href="{{ url('/clock?change=1') }}">Change my PIN</a></div>
       @if ($switch)<div class="switch"><a href="{{ url('/clock') }}">Back</a></div> @endif
     @endif
   @endif
@@ -160,6 +164,7 @@
 <script>
 (function () {
   var MODE = @json($mode);
+  var COMPUTER = @json((bool) $computer);
   var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
   function refresh() {
@@ -207,7 +212,7 @@
   function getGeo() {
     // Store computer: one short try (the page keeps a fix warm and the
     // store Wi-Fi is the fallback). Phone: one quick retry for a better fix.
-    var quick = MODE === 'computer';
+    var quick = MODE === 'computer' || COMPUTER;
     var fresh = lastFix && Date.now() - lastFix.t < 120000 ? lastFix : null;
     var first = fresh && fresh.accuracy <= GOOD_M ? Promise.resolve({ fix: fresh }) : locate({ high: true, maxAge: 60000 }, quick ? 2500 : 4000);
     return first.then(function (r) {
@@ -241,7 +246,32 @@
     var overlay = document.getElementById('overlay');
     function draw() { for (var i = 0; i < dots.length; i++) { dots[i].className = 'dot' + (i < pin.length ? ' on' : ''); } }
     function setBusy(b) { busy = b; var ks = pad.querySelectorAll('.key'); for (var i = 0; i < ks.length; i++) { ks[i].disabled = b; } }
+    // Change my PIN: current PIN, then the new one twice.
+    var step = 0, curPin = '', newPin = '';
+    var titleEl = document.getElementById('padTitle');
+    var STEPS = ['Type your current PIN', 'Type your new PIN', 'Type your new PIN again'];
+    function changeReset(text) { step = 0; curPin = ''; newPin = ''; pin = ''; draw(); titleEl.textContent = STEPS[0]; if (text) { msg.textContent = text; } }
+    function changeNext() {
+      if (step === 0) { curPin = pin; step = 1; pin = ''; draw(); titleEl.textContent = STEPS[1]; return; }
+      if (step === 1) { newPin = pin; step = 2; pin = ''; draw(); titleEl.textContent = STEPS[2]; return; }
+      if (pin !== newPin) { changeReset('The new PINs did not match, start again.'); return; }
+      setBusy(true);
+      hideBlock();
+      getGeo().then(function (geo) {
+        geo.pin = curPin; geo.new_pin = newPin;
+        return post('/clock/change-pin', geo, false);
+      }).then(function (j) {
+        if (j && j.blocked) { changeReset(''); showBlock(j); setBusy(false); return; }
+        if (!j || !j.ok) { changeReset((j && j.msg) || 'That did not work, try again.'); setBusy(false); return; }
+        changeReset('');
+        document.getElementById('ovH').textContent = j.msg || 'Your PIN is changed.';
+        document.getElementById('ovD').textContent = '';
+        overlay.className = 'overlay show in';
+        setTimeout(function () { window.location.href = COMPUTER ? '/clock?mode=computer' : '/clock'; }, 3000);
+      }).catch(function () { changeReset('No connection, try again.'); setBusy(false); });
+    }
     function submit() {
+      if (MODE === 'change') { changeNext(); return; }
       setBusy(true);
       msg.textContent = '';
       hideBlock();
@@ -288,6 +318,7 @@
       else if (e.key === 'Backspace') { press('back'); e.preventDefault(); }
       else if (e.key === 'Escape') { press('clear'); }
     });
+    if (MODE === 'change') { warmGeo(); }
     if (MODE === 'computer') {
       setInterval(refresh, 30 * 60 * 1000);
       // Ask for location once when the page opens (the browser remembers

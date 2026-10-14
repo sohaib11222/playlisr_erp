@@ -110,6 +110,7 @@ Route::middleware(['setData'])->group(function () {
     Route::post('/clock/pin', 'PhoneClockController@pin')->middleware('throttle:30,1');
     Route::post('/clock/computer', 'PhoneClockController@kiosk')->middleware('throttle:30,1');
     Route::post('/clock/punch', 'PhoneClockController@punch')->middleware('throttle:30,1');
+    Route::post('/clock/change-pin', 'PhoneClockController@changePin')->middleware('throttle:30,1');
     // One-time store setup link (owner makes it on Time clock settings).
     Route::get('/clock/setup/{token}', 'PhoneClockController@setupPage')->where('token', '[a-f0-9]{48}');
     Route::post('/clock/setup/{token}', 'PhoneClockController@setupUse')->where('token', '[a-f0-9]{48}')->middleware('throttle:10,1');

@@ -1128,6 +1128,33 @@ class TimeClockService
         return ['ok' => true, 'user' => $user, 'msg' => ''];
     }
 
+    /**
+     * A refused new PIN on Change my PIN: counts as a wrong PIN for the
+     * network (same limit as punches) and toward that person's daily cap.
+     */
+    public static function countPinFailure(string $ip, int $userId): void
+    {
+        try {
+            $net = filter_var($ip, FILTER_VALIDATE_IP) ? self::networkFor($ip) : $ip;
+            $ipKey = 'time_clock_pin_fail_' . md5($net);
+            \Cache::put($ipKey, (int) \Cache::get($ipKey, 0) + 1, self::PIN_LOCK_MINUTES * 60); // seconds (5.8)
+            $uKey = 'time_clock_pin_change_fail_' . $userId . '_' . self::now()->toDateString();
+            \Cache::put($uKey, (int) \Cache::get($uKey, 0) + 1, 86400);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /** Too many refused new PINs today for this person (5). */
+    public static function pinChangeLocked(int $userId): bool
+    {
+        try {
+            return (int) \Cache::get('time_clock_pin_change_fail_' . $userId . '_' . self::now()->toDateString(), 0) >= 5;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     /** "6h 12m" */
     public static function hoursText(float $hours): string
     {

@@ -61,7 +61,7 @@ class PhoneClockController extends Controller
 
     public function page(Request $request)
     {
-        $data = ['ready' => false, 'mode' => 'setup', 'device' => null, 'status' => null, 'name' => '', 'switch' => false];
+        $data = ['ready' => false, 'mode' => 'setup', 'device' => null, 'status' => null, 'name' => '', 'switch' => false, 'change' => false, 'computer' => false];
         try {
             if (!TC::ready()) {
                 return $this->noStore(response()->view('time_clock.phone', $data));
@@ -81,7 +81,13 @@ class PhoneClockController extends Controller
                 // optional
             }
             $device = TC::deviceFromRequest($request);
-            if ($this->isSharedComputer($request, $device)) {
+            $data['computer'] = $this->isSharedComputer($request, $device);
+            if ($request->query('change') === '1') {
+                // Change my PIN (Sarah 10/13): same keypad, current PIN,
+                // then the new one twice.
+                $data['mode'] = 'change';
+                $data['change'] = true;
+            } elseif ($data['computer']) {
                 $data['mode'] = 'computer';
             } elseif ($device && $request->query('switch') !== '1') {
                 $data['mode'] = 'phone';
@@ -311,6 +317,62 @@ class PhoneClockController extends Controller
             }
         } catch (\Throwable $e) {
             \Log::warning('shipping summary on clock-out failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Change my PIN (Sarah 10/13): current PIN, new PIN twice (the page
+     * checks the two match). Only at the store (same location / store IP
+     * check as punches), and rate limited like punches. A refused new PIN
+     * (taken by someone, or too obvious) gets the same answer and counts
+     * as a wrong try, so the form can't be used to find coworkers' PINs.
+     * PINs are never logged.
+     */
+    public function changePin(Request $request)
+    {
+        if (!$this->sameOrigin($request)) {
+            return $this->json(['ok' => false, 'msg' => 'Please reload the page and try again.']);
+        }
+        try {
+            if (!TC::ready()) {
+                return $this->json(['ok' => false, 'msg' => 'The clock is not ready yet.']);
+            }
+            $businessId = TC::businessId();
+            $ip = TC::clientIp($request);
+            if (TC::requireAtStore()) {
+                $geo = TC::geoFrom($request);
+                $where = TC::resolveStore($businessId, $ip, $geo);
+                if ($where['verify'] === 'none') {
+                    return $this->json(['ok' => false, 'blocked' => true, 'geo_denied' => $geo['error'] === 'denied',
+                        'msg' => 'You need to be at the store to change your PIN.']);
+                }
+            }
+            $cur = preg_replace('/\D/', '', (string) $request->input('pin'));
+            $new = preg_replace('/\D/', '', (string) $request->input('new_pin'));
+            $who = TC::identifyByPin($businessId, $cur, $ip);
+            if (!$who['ok']) {
+                return $this->json(['ok' => false, 'msg' => $who['msg'] === 'That PIN did not work, try again.' ? 'Your current PIN did not work, start again.' : $who['msg']]);
+            }
+            $uid = (int) $who['user']->id;
+            if (TC::pinChangeLocked($uid)) {
+                return $this->json(['ok' => false, 'msg' => 'Too many tries today, ask a manager.']);
+            }
+            if (!preg_match('/^\d{4}$/', $new)) {
+                return $this->json(['ok' => false, 'msg' => 'A PIN is 4 numbers, start again.']);
+            }
+            if ($new !== $cur && (TC::isObviousPin($new) || TC::pinOwner($businessId, $new, $uid) !== null)) {
+                TC::countPinFailure($ip, $uid);
+                return $this->json(['ok' => false, 'msg' => 'Pick a different PIN.']);
+            }
+            TC::withUserLock($uid, function () use ($businessId, $uid, $new) {
+                TC::setPin($businessId, $uid, $new, $uid);
+                return true;
+            });
+            \Log::info('time clock: PIN changed by its owner', ['user_id' => $uid]);
+            return $this->json(['ok' => true, 'msg' => 'Your PIN is changed.']);
+        } catch (\Throwable $e) {
+            \Log::warning('clock change pin failed: ' . $e->getMessage());
+            return $this->json(['ok' => false, 'msg' => 'That did not go through, try again.']);
         }
     }
 
