@@ -97,6 +97,19 @@ class TimeClockController extends Controller
         return $q;
     }
 
+    /** LA dates with no Sling shifts at all (sync broken): [date => true]. */
+    private $noSchedDates = [];
+
+    private function loadNoScheduleDates($rows): void
+    {
+        $this->noSchedDates = [];
+        foreach ($rows->pluck('clock_in_at')->map(function ($d) { return substr((string) $d, 0, 10); })->unique() as $date) {
+            if ($date !== '' && !TC::hasScheduleData($date)) {
+                $this->noSchedDates[$date] = true;
+            }
+        }
+    }
+
     /** Hours + flags for display/export. */
     private function decorate($p)
     {
@@ -116,6 +129,9 @@ class TimeClockController extends Controller
             }
         }
         if ($p->in_verify === 'none') { $flags[] = 'Clock-in not verified at store'; }
+        if (in_array($p->clock_in_source, ['phone', 'computer'], true) && isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
+            $flags[] = 'No schedule data';
+        }
         if ($p->out_verify === 'none') { $flags[] = 'Clock-out not verified at store'; }
         if ($p->hours !== null && $p->hours > 10) { $flags[] = 'Over 10 hours'; }
         if ($p->edited) { $flags[] = 'Edited'; }
@@ -134,7 +150,9 @@ class TimeClockController extends Controller
         $history = [];
         $summary = [];
         if ($ready) {
-            $punches = $this->punchQuery($businessId, $f)->limit(3000)->get()->map(function ($p) { return $this->decorate($p); });
+            $punches = $this->punchQuery($businessId, $f)->limit(3000)->get();
+            $this->loadNoScheduleDates($punches);
+            $punches = $punches->map(function ($p) { return $this->decorate($p); });
             $ids = $punches->pluck('id')->all();
             if ($ids) {
                 foreach (DB::table('time_clock_punch_edits as e')->leftJoin('users as u', 'u.id', '=', 'e.edited_by')
@@ -163,7 +181,9 @@ class TimeClockController extends Controller
         $this->ensureAdmin();
         $businessId = $this->businessId($request);
         $f = $this->filters($request);
-        $rows = TC::ready() ? $this->punchQuery($businessId, $f)->get()->map(function ($p) { return $this->decorate($p); }) : collect();
+        $rows = TC::ready() ? $this->punchQuery($businessId, $f)->get() : collect();
+        $this->loadNoScheduleDates($rows);
+        $rows = $rows->map(function ($p) { return $this->decorate($p); });
         $filename = 'timecards-' . $f['start'] . '_to_' . $f['end'] . '.csv';
         return response()->stream(function () use ($rows) {
             $out = fopen('php://output', 'w');
@@ -358,7 +378,9 @@ class TimeClockController extends Controller
         }
 
         $requireAtStore = TC::requireAtStore();
-        return view('time_clock.settings', compact('requireAtStore', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        $requireSchedule = TC::requireSchedule();
+        $scheduleWindow = TC::scheduleWindow();
+        return view('time_clock.settings', compact('requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -397,6 +419,8 @@ class TimeClockController extends Controller
         }
         $settings['stores'] = $stores;
         $settings['require_at_store'] = $request->input('require_at_store') === '1';
+        $settings['require_schedule'] = $request->input('require_schedule') === '1';
+        $settings['schedule_window_min'] = max(1, min(240, (int) $request->input('schedule_window_min', 15) ?: 15));
         TC::saveSettings($settings);
         $msg = 'Store settings saved.';
         if ($bad) { $msg .= ' Skipped these because they are not IP addresses: ' . implode(', ', $bad) . '.'; }

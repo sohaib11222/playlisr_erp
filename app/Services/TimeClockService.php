@@ -146,6 +146,111 @@ class TimeClockService
         return !array_key_exists('require_at_store', $s) || !empty($s['require_at_store']);
     }
 
+    /** "Only allow clock-in near a scheduled shift" (default on). */
+    public static function requireSchedule(): bool
+    {
+        $s = self::settings();
+        return !array_key_exists('require_schedule', $s) || !empty($s['require_schedule']);
+    }
+
+    /** Minutes before/after a scheduled start that clock-in is allowed (default 15). */
+    public static function scheduleWindow(): int
+    {
+        $v = (int) (self::settings()['schedule_window_min'] ?? 15);
+        return $v > 0 ? min($v, 240) : 15;
+    }
+
+    /** Does sling_shifts have any shift on this LA date (sync working)? */
+    public static function hasScheduleData(string $date): bool
+    {
+        try {
+            if (!Schema::hasTable('sling_shifts')) {
+                return false;
+            }
+            return DB::table('sling_shifts')->where('event_type', 'shift')
+                ->where(function ($q) use ($date) {
+                    $q->whereBetween('dtstart', [$date . ' 00:00:00', $date . ' 23:59:59'])
+                      ->orWhere(function ($o) use ($date) {
+                          $o->where('dtstart', '<', $date . ' 00:00:00')->where('dtend', '>', $date . ' 00:00:00');
+                      });
+                })->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Buddy-punch guard (Sarah 10/13): may this person clock in now at this
+     * store? Their Sling shifts (type shift; times are LA) are merged into
+     * blocks when back to back (gap <= 15 min, e.g. Open Store Checklist
+     * 09:15 then Cashier 10:00). The earliest block that hasn't ended must
+     * start within the window of now. Someone already clocked in during
+     * that block (back from a break) may clock in again.
+     * Returns ['ok' => bool, 'no_data' => bool].
+     */
+    public static function scheduleAllows(int $userId, ?int $locId, int $businessId): array
+    {
+        $now = self::now();
+        $today = $now->toDateString();
+        if (!self::hasScheduleData($today)) {
+            return ['ok' => true, 'no_data' => true];
+        }
+        $win = self::scheduleWindow() * 60;
+        $nowTs = $now->timestamp;
+        $email = strtolower(trim((string) DB::table('users')->where('id', $userId)->value('email')));
+        $rows = DB::table('sling_shifts')->where('event_type', 'shift')
+            ->where(function ($q) use ($userId, $email) {
+                $q->where('erp_user_id', $userId);
+                if ($email !== '') {
+                    $q->orWhere(function ($o) use ($email) {
+                        $o->whereNull('erp_user_id')->where(DB::raw('LOWER(user_email)'), $email);
+                    });
+                }
+            })
+            ->where('dtstart', '>=', $now->copy()->subHours(24)->format('Y-m-d H:i:s'))
+            ->where('dtstart', '<=', $now->copy()->addSeconds($win)->format('Y-m-d H:i:s'))
+            ->orderBy('dtstart')
+            ->get(['dtstart', 'dtend', 'location_name']);
+
+        $storeName = $locId ? self::storeName($businessId, $locId) : '';
+        $blocks = [];
+        foreach ($rows as $r) {
+            if ($storeName !== '' && $r->location_name && stripos((string) $r->location_name, $storeName) === false) {
+                continue; // a shift at the other store
+            }
+            $st = \Carbon::parse($r->dtstart, self::TZ)->timestamp;
+            $en = $r->dtend ? \Carbon::parse($r->dtend, self::TZ)->timestamp : $st + 8 * 3600;
+            if ($en <= $st) {
+                $en += 86400; // ends after midnight
+            }
+            $n = count($blocks);
+            if ($n && $st <= $blocks[$n - 1]['end'] + 15 * 60) {
+                $blocks[$n - 1]['end'] = max($blocks[$n - 1]['end'], $en);
+            } else {
+                $blocks[] = ['start' => $st, 'end' => $en];
+            }
+        }
+        foreach ($blocks as $b) {
+            if ($b['end'] <= $nowTs) {
+                continue;
+            }
+            if (abs($nowTs - $b['start']) <= $win) {
+                return ['ok' => true, 'no_data' => false];
+            }
+            if ($nowTs > $b['start']) {
+                // Back from a break: already clocked in during this block.
+                $back = DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
+                    ->where('clock_in_at', '>=', \Carbon::createFromTimestamp($b['start'] - $win, self::TZ)->format('Y-m-d H:i:s'))
+                    ->exists();
+                if ($back) {
+                    return ['ok' => true, 'no_data' => false];
+                }
+            }
+            return ['ok' => false, 'no_data' => false];
+        }
+        return ['ok' => false, 'no_data' => false];
+    }
+
     /** Learned IPs seen within LEARNED_IP_DAYS: [rule => 'Y-m-d']. */
     public static function freshLearned($learned): array
     {

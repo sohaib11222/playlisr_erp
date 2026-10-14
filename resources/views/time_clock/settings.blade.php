@@ -119,6 +119,9 @@
         <div class="well well-sm" style="font-size:15px;">
           <label style="margin:0;"><input type="checkbox" name="require_at_store" value="1" @if ($requireAtStore) checked @endif> <strong>Require being at the store</strong></label>
           <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-ins and clock-outs from anywhere else are refused (staff see "You need to be at the store"). Off: they go through and are flagged "not verified at store" on Timecards. End Shift and register close always clock people out. Admins can always add or fix punches on Timecards.</div>
+          <label style="margin:10px 0 0;display:block;"><input type="checkbox" name="require_schedule" value="1" @if ($requireSchedule) checked @endif> <strong>Only allow clock-in near a scheduled shift</strong></label>
+          <div style="margin-top:4px;">Window: <input type="number" name="schedule_window_min" value="{{ $scheduleWindow }}" min="1" max="240" class="form-control input-sm" style="display:inline-block;width:80px;"> minutes before or after the Sling shift start</div>
+          <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-in needs a Sling shift at that store starting within the window (back-to-back shifts count as one; someone already in for that shift can clock back in after a break). Otherwise staff see "You are not on the schedule right now". Clock-out is never limited by schedule. If Sling has no shifts at all for the day (sync broken), clock-ins go through and Timecards flags them "No schedule data". Add hours for unscheduled people on Timecards.</div>
         </div>
         <div class="table-responsive">
         <table class="table table-condensed">

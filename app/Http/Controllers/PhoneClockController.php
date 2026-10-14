@@ -198,12 +198,31 @@ class PhoneClockController extends Controller
         // Punches only count at the store (Sarah 10/13): location within the
         // store radius, or a store network. Admin switch can turn this off.
         $doing = (!$open && $want !== 'out') ? 'in' : (($open && $want !== 'in') ? 'out' : null);
+        $where = null;
         if ($doing !== null && TC::requireAtStore()) {
             $geo = TC::geoFrom($request);
             $where = TC::resolveStore($businessId, TC::clientIp($request), $geo);
             if ($where['verify'] === 'none') {
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => $geo['error'] === 'denied', 'name' => $first,
                     'msg' => 'You need to be at the store to clock ' . $doing . '. Turn on Location for this page and try again.'];
+            }
+        }
+
+        // Buddy-punch guard (Sarah 10/13): clock-in only near your Sling
+        // shift at this store. Clock-out is never limited by schedule. If
+        // Sling has nothing for today (sync broken), let it through; Timecards
+        // flags it "No schedule data".
+        if ($doing === 'in' && TC::requireSchedule()) {
+            $where = $where ?? TC::resolveStore($businessId, TC::clientIp($request), TC::geoFrom($request));
+            try {
+                $sched = TC::scheduleAllows($userId, $where['location_id'] ?? null, $businessId);
+            } catch (\Throwable $e) {
+                \Log::warning('time clock schedule check failed: ' . $e->getMessage());
+                $sched = ['ok' => true, 'no_data' => true];
+            }
+            if (!$sched['ok']) {
+                return ['ok' => false, 'blocked' => true, 'geo_denied' => false, 'name' => $first,
+                    'msg' => 'You are not on the schedule right now. Ask a manager to add your hours.'];
             }
         }
 

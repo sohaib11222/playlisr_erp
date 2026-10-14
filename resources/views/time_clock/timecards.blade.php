@@ -146,7 +146,7 @@
             <td class="text-right">{{ $p->hours === null ? '' : number_format($p->hours, 2) }}</td>
             <td>
               @foreach($p->flags as $fl)
-                <span class="tc-flag {{ in_array($fl, ['Missing clock-out', 'Over 10 hours', 'Clocked in over 10 hours', 'Clock-in not verified at store', 'Clock-out not verified at store']) ? 'bad' : (in_array($fl, ['Edited', 'Removed', 'Still clocked in']) ? 'muted' : '') }}">{{ $fl }}</span>
+                <span class="tc-flag {{ in_array($fl, ['Missing clock-out', 'Over 10 hours', 'Clocked in over 10 hours', 'Clock-in not verified at store', 'Clock-out not verified at store', 'No schedule data']) ? 'bad' : (in_array($fl, ['Edited', 'Removed', 'Still clocked in']) ? 'muted' : '') }}">{{ $fl }}</span>
               @endforeach
               @if($p->voided_at && $p->void_reason)<div class="tc-hist">Removed: {{ $p->void_reason }}</div> @endif
             </td>
