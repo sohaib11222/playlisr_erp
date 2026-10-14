@@ -172,6 +172,24 @@ class ReorderService
             return ['updated' => false, 'before' => $before, 'after' => null, 'note' => 'could not save'];
         }
 
+        // Undo (Sarah 10/14: "make sure we are not overwriting any important
+        // information"): every count that changes stock is added to one undo
+        // record per person per day in Admin Action History.
+        try {
+            $disk = \Illuminate\Support\Facades\Storage::disk('local');
+            $uid = (int) (auth()->id() ?? 0);
+            $key = 'admin-snapshots/shelf-count-' . now()->format('Y-m-d') . '_000000-u' . $uid . '.json';
+            $snap = $disk->exists($key) ? (json_decode($disk->get($key), true) ?: []) : [
+                'timestamp' => now()->format('Y-m-d_His'), 'action' => 'shelf-count', 'user_id' => $uid, 'business_id' => $business_id,
+                'source_name' => 'Shelf counts by ' . (auth()->user()->first_name ?? '?') . ' on ' . now()->format('n/j'), 'target_name' => 'stock', 'rows' => [],
+            ];
+            $snap['rows'][] = ['variation_id' => (int) $variation->id, 'product_id' => $productId, 'location_id' => $locationId, 'old' => $before, 'new' => $qty, 'name' => $product->name];
+            $snap['target_name'] = count($snap['rows']) . ' stock count(s)';
+            $disk->put($key, json_encode($snap));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Shelf count undo snapshot failed: ' . $e->getMessage());
+        }
+
         // Last updated at / by on the products list = this count and its counter.
         DB::table('products')->where('id', $productId)->update(['updated_at' => now()]);
 
