@@ -83,7 +83,11 @@ class ShelfCountController extends Controller
         }
         usort($due, function ($a, $b) {
             $sa = stripos((string) $a->cat, 'sealed') !== false; $sb = stripos((string) $b->cat, 'sealed') !== false;
-            return [$sb, (float) $b->price] <=> [$sa, (float) $a->price];
+            // Sealed first, then straight through the bins (genre, artist) so
+            // the day's list is one continuous walk, picking up tomorrow
+            // where today stopped.
+            return [$sb, (string) $a->cat, (string) $a->sub, mb_strtolower((string) ($a->artist ?: $a->name))]
+                <=> [$sa, (string) $b->cat, (string) $b->sub, mb_strtolower((string) ($b->artist ?: $b->name))];
         });
         $week = array_slice($due, 0, $n);
         usort($week, function ($a, $b) {
