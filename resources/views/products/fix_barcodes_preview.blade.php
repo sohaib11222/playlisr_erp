@@ -47,7 +47,7 @@ tr.pv-done td { opacity: .4; }
             var nm = x.exact ? '' : ' <span class="pv-diff">(names differ)</span>';
             return '<tr><td><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a><div class="pv-small">' + esc(x.sku) + ', ' + esc(x.cat) + '</div></td>'
                 + '<td' + d + '>' + money(x.price) + '</td><td>' + x.hw + ' / ' + x.pico + '</td><td>' + x.sold + '</td><td class="arrow">into</td>'
-                + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a>' + nm + '<div class="pv-small">' + esc(x.keep_sku) + '</div></td>'
+                + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a>' + nm + '<div class="pv-small">' + esc(x.keep_sku) + ', ' + esc(x.keep_cat || '') + '</div></td>'
                 + '<td' + d + '>' + money(x.keep_price) + '</td><td>' + x.keep_hw + ' / ' + x.keep_pico + '</td><td>' + x.keep_sold + '</td>'
                 + '<td class="pv-act" data-id="' + x.id + '" data-keep="' + x.keep_id + '"><button class="pv-btn" data-a="merge" type="button">Merge</button> <button class="pv-btn light" data-a="skip" type="button">Not the same</button><div class="pv-msg"></div></td></tr>';
         }).join('') || '<tr><td colspan="10">Nothing here.</td></tr>';

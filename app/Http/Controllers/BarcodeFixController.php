@@ -246,7 +246,7 @@ class BarcodeFixController extends Controller
                 'exact' => (bool) $exact,
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
                 'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
-                'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku,
+                'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku, 'keep_cat' => $k->cat,
                 'keep_hw' => $stock[$k->id]['hw'] ?? 0, 'keep_pico' => $stock[$k->id]['pico'] ?? 0, 'keep_sold' => (float) ($sold[$k->id] ?? 0), 'keep_price' => round((float) ($price[$k->id] ?? 0), 2),
             ];
         }
