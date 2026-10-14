@@ -1253,13 +1253,31 @@ class TimeClockService
      */
     public static function announceClockIn($user, string $store): void
     {
+        self::announce($user, $store, 'clocked in ' . "\u{1F44B}\u{1F3FC}");
+    }
+
+    /** Same, for clock-outs (phone, keypad, End Shift, register close). */
+    public static function announceClockOut(int $userId, int $businessId, $locationId): void
+    {
+        try {
+            $user = DB::table('users')->where('id', $userId)->first(['id', 'first_name', 'last_name']);
+            if ($user) {
+                self::announce($user, self::storeName($businessId, $locationId), 'clocked out');
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('time clock: clock-out Slack post error: ' . $e->getMessage());
+        }
+    }
+
+    private static function announce($user, string $store, string $what): void
+    {
         $s = strtolower($store);
         $key = strpos($s, 'pico') !== false ? 'pico' : (strpos($s, 'holly') !== false ? 'hollywood' : '');
         if ($key === '') {
             return;
         }
-        $name = trim((string) ($user->first_name ?? '')) ?: self::displayName($user);
-        $text = $name . ' clocked in ' . "\u{1F44B}\u{1F3FC}";
+        $name = trim(trim((string) ($user->first_name ?? '')) . ' ' . trim((string) ($user->last_name ?? '')));
+        $text = ($name !== '' ? $name : self::displayName($user)) . ' ' . $what;
         app()->terminating(function () use ($key, $text) {
             try {
                 $apiKey = \App\Services\ShippingShiftNotifier::erpApiKey();
@@ -1706,6 +1724,7 @@ class TimeClockService
             'clock_out_source' => $source,
             'updated_at' => $now,
         ]);
+        self::announceClockOut($userId, (int) $open->business_id, $open->location_id);
         if ($verify === 'gps' && !empty($where['location_id'])) {
             self::learnIp((int) $where['location_id'], $ip);
         } elseif ($verify === 'ip' && !empty($where['location_id'])) {
