@@ -34,7 +34,7 @@
 <script>
 (function () {
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    var offset = 0, done = 0, data = null;
+    var offset = 0, done = 0, data = null, nextOffset = 0, history_ = [];
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return n ? '$' + Number(n).toFixed(2) : ''; }
     function post(url, body) {
@@ -46,13 +46,13 @@
             + '<div class="fb-title"><a href="/products/' + r.id + '/edit" target="_blank">' + esc(r.name) + '</a></div>'
             + '<div class="fb-meta">' + esc(r.artist || '') + (r.artist ? ', ' : '') + esc(r.cat) + ', SKU ' + esc(r.sku) + ', ' + stock(r.hw, r.pico) + (r.price ? ', ' + money(r.price) : '') + '</div>';
         if (r.twins.length) {
-            h += '<div class="fb-h">Already in the ERP with a real barcode</div>';
+            h += '<div class="fb-h">Same record, entered with the real barcode?</div>';
             r.twins.forEach(function (t) {
                 h += '<div class="fb-opt"><span><a href="/products/' + t.id + '/edit" target="_blank">' + esc(t.name) + '</a><br><small>' + esc(t.sku) + ', ' + stock(t.hw, t.pico) + (t.price ? ', ' + money(t.price) : '') + '</small></span>'
-                    + '<button class="fb-btn" data-act="merge" data-keep="' + t.id + '" type="button">Merge into this</button></div>';
+                    + '<button class="fb-btn" data-act="merge" data-keep="' + t.id + '" type="button">Yes, same record</button></div>';
             });
         }
-        if (r.distributors.length) {
+        if (r.distributors.length && !r.twins.length) {
             h += '<div class="fb-h">Distributor barcodes for this album</div>';
             r.distributors.forEach(function (d) {
                 var sup = Object.keys(d.suppliers).map(function (k) { return k + ' ' + money(d.suppliers[k]); }).join(', ');
@@ -70,12 +70,12 @@
         document.getElementById('fbSub').textContent = 'Loading...';
         fetch('/products/fix-barcodes/data?offset=' + offset, { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
             data = j;
-            document.getElementById('fbSub').textContent = j.total.toLocaleString() + ' sealed listings have a made-up SKU instead of the real barcode (' + j.in_stock.toLocaleString() + ' in stock, shown first). Merge it into the real listing, pick the right barcode, or type it in. Every change can be undone in Admin Action History.';
+            document.getElementById('fbSub').textContent = j.total.toLocaleString() + ' sealed records were entered twice: once with a made-up SKU and once with the real barcode. For each one below, if both lines are the same record, press Yes, same record. If not, press Skip. Every merge can be undone.';
             document.getElementById('fbList').innerHTML = j.rows.map(card).join('') || '<div class="fb-none">Nothing left to fix.</div>';
-            done = 0;
-            document.getElementById('fbPage').textContent = (j.total ? (offset + 1) + ' to ' + Math.min(j.total, offset + j.rows.length) : 0) + ' of ' + j.total.toLocaleString();
+            done = 0; nextOffset = j.next_offset;
+            document.getElementById('fbPage').textContent = j.rows.length ? '' : 'No more matches on this page, press Next.';
             document.getElementById('fbPrev').disabled = offset === 0;
-            document.getElementById('fbNext').disabled = offset + j.rows.length >= j.total;
+            document.getElementById('fbNext').disabled = j.next_offset >= j.total;
         }).catch(function () { document.getElementById('fbSub').textContent = 'Load failed, refresh to try again.'; });
     }
     document.getElementById('fbList').addEventListener('click', function (e) {
@@ -93,8 +93,8 @@
             else { msg.className = 'fb-msg bad'; msg.textContent = j.msg || 'Did not work.'; }
         }).catch(function () { b.disabled = false; msg.className = 'fb-msg bad'; msg.textContent = 'Did not work, try again.'; });
     });
-    document.getElementById('fbPrev').addEventListener('click', function () { offset = Math.max(0, offset - 25); load(); });
-    document.getElementById('fbNext').addEventListener('click', function () { offset += 25 - done; load(); window.scrollTo(0, 0); });
+    document.getElementById('fbPrev').addEventListener('click', function () { offset = history_.length ? history_.pop() : 0; load(); });
+    document.getElementById('fbNext').addEventListener('click', function () { history_.push(offset); offset = Math.max(offset, nextOffset - done); load(); window.scrollTo(0, 0); });
     load();
 })();
 </script>

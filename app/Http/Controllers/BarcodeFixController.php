@@ -70,8 +70,11 @@ class BarcodeFixController extends Controller
                 \DB::raw('(select coalesce(sum(qty_available),0) from variation_location_details v where v.product_id = p.id) as stock'),
                 \DB::raw("(select group_concat(concat(v.location_id, ':', v.qty_available) separator '|') from variation_location_details v where v.product_id = p.id) as locs"),
                 \DB::raw('(select max(sell_price_inc_tax) from variations va where va.product_id = p.id and va.deleted_at is null) as price'))
-            ->orderByDesc('stock')->orderByDesc('p.id')
-            ->offset($offset)->limit(self::PAGE)->get();
+            ->orderByDesc('stock')->orderByDesc('p.id');
+        // Simple mode (default, Sarah 10/14 "not helpful"): only listings that
+        // have a real-barcode twin, so every card is one yes/no question.
+        $onlyTwins = $request->query('mode') !== 'all';
+        $rowsQuery = $rows;
 
         $ica = app(\App\Services\InventoryCheckService::class);
         $split = function ($locs) use ($locNames) {
@@ -88,8 +91,7 @@ class BarcodeFixController extends Controller
         // Real-barcode twins in the ERP: look up active barcode listings that
         // share a title word with this page's rows, then confirm with the same
         // album matcher the distributor prices use.
-        $out = [];
-        foreach ($rows as $r) {
+        $build = function ($r) use ($split, $ica, $biz) {
             [$hw, $pico] = $split($r->locs);
             $fam = $ica->formatFamily($r->cat);
             $keys = $ica->albumKeys($r->artist, $r->name);
@@ -126,13 +128,32 @@ class BarcodeFixController extends Controller
             $dist = array_values(array_filter($ica->albumListings($biz, $r->artist, $r->name, $r->cat), function ($d) use ($twinUpcs, $ica) {
                 return !isset($twinUpcs[$ica->upcKey($d['upc'])]);
             }));
-            $out[] = [
+            return [
                 'id' => (int) $r->id, 'name' => $r->name, 'artist' => $r->artist, 'sku' => $r->sku, 'cat' => $r->cat,
                 'hw' => $hw, 'pico' => $pico, 'price' => round((float) $r->price, 2),
                 'twins' => array_slice($twins, 0, 6), 'distributors' => array_slice($dist, 0, 8),
             ];
+        };
+
+        $out = [];
+        $next = $offset;
+        if (!$onlyTwins) {
+            foreach ((clone $rowsQuery)->offset($offset)->limit(self::PAGE)->get() as $r) $out[] = $build($r);
+            $next = $offset + self::PAGE;
+        } else {
+            // Walk forward until 10 cards with a twin (or ~25s of looking).
+            $started = microtime(true);
+            while (count($out) < 10 && (microtime(true) - $started) < 25) {
+                $batch = (clone $rowsQuery)->offset($next)->limit(40)->get();
+                if ($batch->isEmpty()) break;
+                foreach ($batch as $r) {
+                    $next++;
+                    $row = $build($r);
+                    if ($row['twins']) { $out[] = $row; if (count($out) >= 10) break; }
+                }
+            }
         }
-        return response()->json(['total' => $total, 'in_stock' => $inStock, 'offset' => $offset, 'per_page' => self::PAGE, 'rows' => $out]);
+        return response()->json(['total' => $total, 'in_stock' => $inStock, 'offset' => $offset, 'next_offset' => $next, 'per_page' => self::PAGE, 'rows' => $out]);
     }
 
     /** Save a real barcode as the SKU (product + its single variation). */
