@@ -329,8 +329,16 @@ class ReorderController extends Controller
                 // the old dupes are def wrong"): the counted row gets the
                 // count, every other copy goes to 0 at this store.
                 $erp = $this->svc->applyCountToErp($business_id, $locationId, $pid, (int) $raw);
+                // Only exact same album + same (...) edition text gets zeroed.
+                $paren = function ($n) { preg_match_all('/[\(\[]([^\)\]]*)[\)\]]/', strtolower((string) $n), $m); $x = array_map('trim', $m[1]); sort($x); return $x; };
+                $me = \DB::table('products')->where('id', $pid)->select('name', 'artist')->first();
+                $myKey = $me ? $this->svc->albumKey($me->artist, $me->name) : '';
                 foreach (array_unique($members) as $other) {
-                    if ((int) $other !== $pid) $this->svc->applyCountToErp($business_id, $locationId, (int) $other, 0);
+                    if ((int) $other === $pid || !$me) continue;
+                    $o = \DB::table('products')->where('id', (int) $other)->select('name', 'artist')->first();
+                    if ($o && $myKey !== '' && strpos($myKey, '|') > 0 && $this->svc->albumKey($o->artist, $o->name) === $myKey && $paren($o->name) === $paren($me->name)) {
+                        $this->svc->applyCountToErp($business_id, $locationId, (int) $other, 0);
+                    }
                 }
                 $erp['note'] = trim(($erp['note'] ?? '') . ' other copies set to 0');
             } elseif (!auth()->user()->can('product.update')) {
