@@ -238,7 +238,13 @@ class BarcodeFixController extends Controller
         }
         return response()->json(['made_up' => count($made), 'one_match' => count($pairs), 'several_matches' => $amb, 'no_match' => $none,
             'same_price' => count(array_filter($pairs, function ($x) { return abs($x['price'] - $x['keep_price']) < 0.01; })),
-            'sample' => array_slice($pairs, 0, 40)]);
+            'sample' => $request->query('all') ? $pairs : array_slice($pairs, 0, 40)]);
+    }
+
+    public function preview()
+    {
+        if (!$this->isOwner()) abort(403);
+        return view('products.fix_barcodes_preview');
     }
 
     /** Save a real barcode as the SKU (product + its single variation). */
