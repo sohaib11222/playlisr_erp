@@ -1392,9 +1392,21 @@ class EventsController extends Controller
         if (!in_array($status, ['pending', 'ready', 'picked_up', 'canceled'], true)) {
             return redirect()->route('events.edit', ['id' => $id])->with('error', 'Invalid preorder status.');
         }
-        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/status', ['status' => $status]);
+        $body = ['status' => $status];
+        if ($status === 'ready') {
+            // Same street-date hold as the Preorders overview: pass the event's
+            // street date so the website waits until that morning to text and
+            // email the customer (Sarah, 2026-10-14; this page used to notify
+            // right away, before the record could be picked up).
+            $event = self::load($this->businessId($request))['items'][$id] ?? null;
+            $street = substr((string) ($event['streetDate'] ?? ''), 0, 10);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $street)) {
+                $body['notifyOn'] = $street;
+            }
+        }
+        $resp = $this->websiteApi('PATCH', '/erp/preorders/' . rawurlencode($preorderId) . '/status', $body);
         $msg = $resp === null ? 'Could not reach the website to update the preorder.'
-            : ('Preorder marked ' . str_replace('_', ' ', $status) . '.');
+            : ($resp['message'] ?? ('Preorder marked ' . str_replace('_', ' ', $status) . '.'));
         return redirect()->route('events.edit', ['id' => $id])
             ->with($resp === null ? 'error' : 'status', $msg);
     }
