@@ -242,6 +242,7 @@ class WebsiteOrdersController extends Controller
         }
 
         return view('website-orders.index', [
+            'erpLocations' => self::erpLocations($orders),
             'sortKey' => $sortKey,
             'sortDir' => $sortDir,
             'discogsToShip' => $discogsToShip,
@@ -473,6 +474,55 @@ class WebsiteOrdersController extends Controller
      * been on the shelf and how hard to look (Sarah, 2026-10-13).
      */
     /** Value a row is sorted by for a column (website orders or Discogs rows). */
+    /**
+     * Where each ordered item physically is, from the ERP's own stock (the
+     * website's item location is usually blank): stores with qty on hand
+     * (Hollywood / Pico / Warehouse) plus the bin if we have one, keyed by
+     * ERP product id (Sarah, 2026-10-14).
+     */
+    protected static function erpLocations(array $orders): array
+    {
+        $ids = [];
+        foreach ($orders as $o) {
+            foreach (($o['items'] ?? []) as $it) {
+                $pid = (int) ($it['product_id']['posProductId'] ?? 0);
+                if ($pid > 0) $ids[$pid] = true;
+            }
+        }
+        if (!$ids) return [];
+
+        try {
+            $rows = \DB::table('products as p')
+                ->leftJoin('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->whereIn('p.id', array_keys($ids))
+                ->select('p.id', 'p.bin_position', 'p.listing_location', 'bl.name as loc_name', 'vld.qty_available')
+                ->get();
+        } catch (\Throwable $e) {
+            \Log::warning('website-orders erpLocations failed: ' . $e->getMessage());
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $r) {
+            $pid = (int) $r->id;
+            if (!isset($map[$pid])) {
+                $bin = trim((string) ($r->bin_position ?? ''));
+                if ($bin === '') $bin = trim((string) ($r->listing_location ?? ''));
+                $map[$pid] = ['stores' => [], 'bin' => $bin];
+            }
+            $qty = (float) ($r->qty_available ?? 0);
+            if ($qty <= 0 || empty($r->loc_name)) continue;
+            $name = (string) $r->loc_name;
+            if (stripos($name, 'warehouse') !== false) $label = 'Warehouse';
+            elseif (stripos($name, 'pico') !== false) $label = 'Pico';
+            elseif (stripos($name, 'hollywood') !== false) $label = 'Hollywood';
+            else $label = $name;
+            $map[$pid]['stores'][$label] = ($map[$pid]['stores'][$label] ?? 0) + $qty;
+        }
+        return $map;
+    }
+
     public static function sortValue(array $o, string $key, bool $discogs)
     {
         $items = $o['items'] ?? [];

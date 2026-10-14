@@ -75,6 +75,13 @@
   .wo-prod-more { font-size:12px; color:#6b7280; margin-top:4px; }
 
   .wo-total { font-weight:600; color:#111827; }
+  .wo-loc { font-size:12.5px; line-height:1.35; min-width:110px; }
+  .wo-loc-line { min-height:64px; margin-bottom:4px; }
+  .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
+  .wo-loc .q { font-weight:400; color:#6b7280; }
+  .wo-loc .bin { display:block; color:#4b5563; font-family:monospace; font-size:12px; }
+  .wo-loc .none { color:#b91c1c; font-weight:600; }
+  .wo-loc .na { color:#9ca3af; }
   .wo-placed { font-size:12.5px; color:#6b7280; line-height:1.35; }
   .wo-placed .t { display:block; color:#9ca3af; }
   .wo-pill, .wo-fm-pill { white-space:normal !important; }
@@ -315,6 +322,7 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
+            <th>Location</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -440,6 +448,29 @@
                     @endif
                   @endif
                 </td>
+                <td class="wo-loc">
+                  {{-- One line per product shown in the Product column (same first 3). --}}
+                  @foreach($cancelLines->take(3) as $line)
+                    @php
+                      $locPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
+                      $locInfo = $locPid ? ($erpLocations[$locPid] ?? null) : null;
+                    @endphp
+                    <div class="wo-loc-line">
+                      @if($line['gift'])
+                        <span class="na">Digital</span>
+                      @elseif(!$locInfo)
+                        <span class="na">&mdash;</span>
+                      @else
+                        @if(!empty($locInfo['stores']))
+                          @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
+                        @else
+                          <span class="none">No stock</span>
+                        @endif
+                        @if($locInfo['bin'] !== '')<span class="bin">Bin {{ $locInfo['bin'] }}</span>@endif
+                      @endif
+                    </div>
+                  @endforeach
+                </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
                     <div style="font-size:11px;font-weight:600;color:{{ ($o['pick_progress']['picked'] ?? 0) >= ($o['pick_progress']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $o['pick_progress']['picked'] ?? 0 }}/{{ $o['pick_progress']['total'] ?? 0 }}</div>
@@ -481,7 +512,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
