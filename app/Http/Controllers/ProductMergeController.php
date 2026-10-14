@@ -1174,7 +1174,9 @@ class ProductMergeController extends Controller
             return response()->json(['success' => false, 'msg' => 'Merge failed — nothing was changed.']);
         }
 
-        $timestamp = now()->format('Y-m-d_His');
+        // Unique suffix: several merges in one second overwrote each other's
+        // undo snapshot (found 10/14, Merge all on /products/fix-barcodes/preview).
+        $timestamp = now()->format('Y-m-d_His') . '-' . substr(uniqid(), -6);
         \Storage::disk('local')->put(
             "admin-snapshots/merge-products-bulk-{$timestamp}.json",
             json_encode([
