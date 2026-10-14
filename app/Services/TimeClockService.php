@@ -52,12 +52,12 @@ class TimeClockService
     const LEARN_MIN_PEOPLE = 2;
     const LEARN_MIN_DAYS = 2;
     // Clock-in more than this many minutes after the shift start is "late".
-    const LATE_GRACE_MIN = 5;
+    const LATE_GRACE_MIN = 15;
     // Clock-in opens this many minutes before a shift (editable on settings).
     const DEFAULT_WINDOW_MIN = 5;
     // Clock-out more than this many minutes after the shift end is flagged
     // "Stayed N min past shift" on Timecards and Payroll (hours unchanged).
-    const STAYED_GRACE_MIN = 10;
+    const STAYED_GRACE_MIN = 15;
     // Store computer: the same PIN again within this many seconds of a punch
     // shows the current state instead of flipping it (double taps, retries).
     const TOGGLE_GUARD_SEC = 60;

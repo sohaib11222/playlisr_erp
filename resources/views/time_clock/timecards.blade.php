@@ -43,8 +43,8 @@
         <option value="missing" @if($f['flag'] === 'missing') selected @endif>Missing clock-out</option>
         <option value="long" @if($f['flag'] === 'long') selected @endif>Over 10 hours (forgot to clock out)</option>
         <option value="unverified" @if($f['flag'] === 'unverified') selected @endif>Not verified at store</option>
-        <option value="late" @if($f['flag'] === 'late') selected @endif>Late (over 5 minutes)</option>
-        <option value="stayed" @if($f['flag'] === 'stayed') selected @endif>Stayed past shift (over 10 minutes)</option>
+        <option value="late" @if($f['flag'] === 'late') selected @endif>Late (over 15 minutes)</option>
+        <option value="stayed" @if($f['flag'] === 'stayed') selected @endif>Stayed past shift (over 15 minutes)</option>
         <option value="edited" @if($f['flag'] === 'edited') selected @endif>Edited by an admin</option>
         <option value="voided" @if($f['flag'] === 'voided') selected @endif>Removed</option>
       </select>
@@ -83,7 +83,7 @@
       <div class="box box-solid">
         <div class="box-header"><h3 class="box-title">Stayed past shift, by week</h3></div>
         <div class="box-body table-responsive">
-          <p class="text-muted" style="font-size:12px;">Minutes clocked out more than 10 minutes after the scheduled shift end. Hours are still paid as recorded; use this to remind people to clock out on time.</p>
+          <p class="text-muted" style="font-size:12px;">Minutes clocked out more than 15 minutes after the scheduled shift end. Hours are still paid as recorded; use this to remind people to clock out on time.</p>
           <table class="table table-condensed">
             <thead><tr><th>Name</th><th>Week of</th><th class="text-right">Extra minutes</th></tr></thead>
             <tbody>
