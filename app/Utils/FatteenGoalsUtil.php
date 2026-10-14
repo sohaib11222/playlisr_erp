@@ -52,62 +52,23 @@ class FatteenGoalsUtil
     public static function goals(): array
     {
         return [
-            'phones_pct' => [
-                'label' => 'Calls and texts answered the same day',
-                'unit' => '%', 'cmp' => 'gte', 'target' => 95, 'bonus' => 5, 'source' => 'owner',
-                'baseline' => '1% (6 of 504 calls, 4 weeks to 10/8). 96% on 10/12 to 10/13.',
-                'how' => 'Quo analytics. Above the 80% already required for the $10/day phone pay.',
-            ],
-            'backlog' => [
-                'label' => 'Customers still waiting from earlier days',
-                'unit' => '', 'cmp' => 'lte', 'target' => 3, 'bonus' => 5, 'source' => 'owner',
-                'baseline' => '47 on 10/11, 38 on 10/13 (Hollywood 30, Pico 8).',
-                'how' => 'Highest "still waiting from earlier days" on the nightly phone recap that month.',
-            ],
-            'recon_days' => [
-                'label' => 'Register days fully reconciled within 2 days',
-                'unit' => '%', 'cmp' => 'gte', 'target' => 85, 'bonus' => 5, 'source' => 'auto',
-                'baseline' => '1 of 11 days (10/3 to 10/13). Drawers up to $150 short with no reason posted.',
-                'how' => 'Register recon re-checked 2 days later. If a cashier does not reply, call them or ask the manager.',
-            ],
-            'web_cancels' => [
-                'label' => 'Website orders cancelled',
-                'unit' => '', 'cmp' => 'lte', 'target' => 4, 'bonus' => 5, 'source' => 'auto',
-                'baseline' => '2 in 2 days, both sold in store first (#100192 and #100139, 10/13 to 10/14).',
-                'how' => 'Every website cancel this month. Work with Nick to pull items that sold in store before they get ordered online.',
-            ],
-            'good_buys' => [
-                'label' => 'Good collection buys from his calls and texts',
-                'unit' => '', 'cmp' => 'gte', 'target' => 3, 'bonus' => 5, 'source' => 'log',
-                'baseline' => 'None tracked. A seller with 1,000+ records waited 9+ days for a reply (Pico, 10/5).',
-                'how' => 'Log the seller\'s phone. Counts automatically when a buy of $' . self::GOOD_BUY_MIN . '+ is accepted in the ERP for that number.',
-            ],
-            'venue_bookings' => [
-                'label' => 'Venue bookings he closes',
-                'unit' => '', 'cmp' => 'gte', 'target' => 2, 'bonus' => 5, 'source' => 'log',
-                'baseline' => '9 paid bookings Jun to Sep (about 2 a month), none made yet in October.',
-                'how' => 'Log the booking. Counts once it shows paid on the events calendar and the owner approves.',
-            ],
-            'collabs' => [
-                'label' => 'Good partnerships and collabs that happen',
-                'unit' => '', 'cmp' => 'gte', 'target' => 1, 'bonus' => 5, 'source' => 'log',
-                'baseline' => 'Leads like Shondaland, Victoria Dunn and a December employee party were handed to Sarah.',
-                'how' => 'Brand partners, listening parties, private events. Counts when it is confirmed and the owner approves.',
-            ],
-            'reviews' => [
-                'label' => 'New Google reviews, both stores',
-                'unit' => '', 'cmp' => 'gte', 'target' => 10, 'bonus' => 5, 'source' => 'owner',
-                'baseline' => 'Hollywood 233, Pico 214 (10/14). Hollywood was 228 on 7/11, so about 2 a month.',
-                'how' => 'Text happy customers the review link after a good call. Owner enters both counts at month end.',
-            ],
-            'chases' => [
-                'label' => 'Times Sarah or Jon had to ask for an update',
-                'unit' => '', 'cmp' => 'lte', 'target' => 2, 'bonus' => 5, 'source' => 'log',
-                'baseline' => 'Recon asked 10/8, 10/9, 10/10, 10/11. Shipping 8/31, 9/4. Refund 10/8.',
-                'how' => 'Close the loop without being asked: what got done, or who was called and what is next.',
-            ],
+            'phones_pct'     => ['label' => 'Calls and texts answered', 'unit' => '%', 'cmp' => 'gte', 'target' => 95, 'bonus' => 5, 'src' => 'Quo, auto'],
+            'backlog'        => ['label' => 'Customers waiting over 24h (right now)', 'unit' => '', 'cmp' => 'lte', 'target' => 3, 'bonus' => 5, 'src' => 'Quo, auto'],
+            'thanks'         => ['label' => 'Customers who thanked us for the help', 'unit' => '', 'cmp' => 'gte', 'target' => 'up10', 'bonus' => 5, 'src' => 'Quo texts, auto'],
+            'angry_open'     => ['label' => 'Unhappy customers not resolved', 'unit' => '', 'cmp' => 'lte', 'target' => 0, 'bonus' => 5, 'src' => 'Communications Hub, auto'],
+            'recon_days'     => ['label' => 'Register days reconciled within 2 days', 'unit' => '%', 'cmp' => 'gte', 'target' => 85, 'bonus' => 5, 'src' => 'Register recon, auto'],
+            'cancel_rate'    => ['label' => 'Website orders cancelled', 'unit' => '%', 'cmp' => 'lte', 'target' => 3, 'bonus' => 5, 'src' => 'Website orders, auto'],
+            'store_sales'    => ['label' => 'In-store purchases, both stores', 'unit' => '', 'cmp' => 'gte', 'target' => 'up5', 'bonus' => 5, 'src' => 'ERP sales, auto'],
+            'good_buys'      => ['label' => 'Good collection buys ($' . self::GOOD_BUY_MIN . '+) from his leads', 'unit' => '', 'cmp' => 'gte', 'target' => 3, 'bonus' => 5, 'src' => 'Logged + ERP buys'],
+            'venue_bookings' => ['label' => 'Venue bookings closed', 'unit' => '', 'cmp' => 'gte', 'target' => 2, 'bonus' => 5, 'src' => 'Logged, approved'],
+            'collabs'        => ['label' => 'Good partnerships or collabs', 'unit' => '', 'cmp' => 'gte', 'target' => 1, 'bonus' => 5, 'src' => 'Logged, approved'],
+            'reviews'        => ['label' => 'New Google reviews, both stores', 'unit' => '', 'cmp' => 'gte', 'target' => 10, 'bonus' => 5, 'src' => 'Google, entered monthly'],
+            'chases'         => ['label' => 'Times Sarah or Jon had to ask for an update', 'unit' => '', 'cmp' => 'lte', 'target' => 2, 'bonus' => 5, 'src' => 'Logged by Sarah/Jon'],
         ];
     }
+
+    /** Words that mean a customer thanked us. */
+    const THANKS_RE = '/\b(thank(s| you| u)?|thx|ty|appreciate[ds]?|so helpful|very helpful|super helpful|you.?re the best|amazing|awesome|lifesaver)\b/i';
 
     /* ---------- access ---------- */
 
@@ -279,6 +240,162 @@ class FatteenGoalsUtil
      * Everything the goals card needs for one month: each goal's value,
      * whether it's hit, the bonus earned, plus the gate.
      */
+    /** Phone inquiries (Quo) for a month: total, answered, and customers who thanked us. */
+    public static function phoneStats(int $business_id, string $month): array
+    {
+        $start = \Carbon\Carbon::parse($month . '-01')->startOfMonth();
+        $rows = \DB::table('communications')
+            ->where('business_id', $business_id)
+            ->whereIn('channel', ['phone_1', 'phone_2'])
+            ->whereBetween('created_at', [$start, $start->copy()->endOfMonth()])
+            ->where('message', '!=', '(no inbound message logged for this contact)')
+            ->get(['contact_info', 'message', 'status', 'resolution_notes']);
+        $total = 0;
+        $answered = 0;
+        $thanked = [];
+        foreach ($rows as $r) {
+            $total++;
+            if ($r->status === 'resolved' || trim((string) $r->resolution_notes) !== '') {
+                $answered++;
+            }
+            if (preg_match(self::THANKS_RE, (string) $r->message)) {
+                $thanked[substr(preg_replace('/\D/', '', (string) $r->contact_info), -10) ?: uniqid()] = true;
+            }
+        }
+        return ['total' => $total, 'answered' => $answered, 'thanked' => count($thanked)];
+    }
+
+    /** Customers still waiting on a reply for more than 24 hours, right now. */
+    public static function backlogNow(int $business_id): int
+    {
+        return (int) \DB::table('communications')
+            ->where('business_id', $business_id)
+            ->whereIn('channel', ['phone_1', 'phone_2'])
+            ->where('status', 'pending')
+            ->where(function ($q) {
+                $q->whereNull('resolution_notes')->orWhere('resolution_notes', '');
+            })
+            ->where('created_at', '<', now()->subDay())
+            ->where('created_at', '>=', now()->subDays(30))
+            ->count();
+    }
+
+    /** In-store purchases (POS sales, not web/Discogs/eBay) for a month. */
+    public static function storeSales(int $business_id, string $month): int
+    {
+        $start = \Carbon\Carbon::parse($month . '-01')->startOfMonth();
+        return (int) \DB::table('transactions')
+            ->where('business_id', $business_id)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->whereBetween('transaction_date', [$start, $start->copy()->endOfMonth()])
+            ->where(function ($q) {
+                $q->whereNull('channel')->orWhere('channel', 'in_store');
+            })
+            ->count();
+    }
+
+    /** Website orders placed in a month and how many of them were cancelled. */
+    public static function cancelStats(string $month): ?array
+    {
+        try {
+            $resp = \Cache::remember('fatteen_goals_web_orders_all', 600, function () {
+                $ctl = app(\App\Http\Controllers\WebsiteOrdersController::class);
+                return $ctl->bridgeGet('/erp/orders/console?limit=300&payment_status=all');
+            });
+            if (!is_array($resp) || empty($resp['data'])) {
+                return null;
+            }
+            $placed = 0;
+            $cancelled = 0;
+            foreach ($resp['data'] as $o) {
+                $created = strtotime((string) ($o['createdAt'] ?? ''));
+                if (!$created || date('Y-m', $created) !== $month) {
+                    continue;
+                }
+                if (($o['payment_status'] ?? '') !== 'completed' && ($o['payment_status'] ?? '') !== 'refunded') {
+                    continue;
+                }
+                $placed++;
+                if (!empty($o['cancelled_at']) || ($o['order_status'] ?? '') === 'cancelled') {
+                    $cancelled++;
+                }
+            }
+            return ['placed' => $placed, 'cancelled' => $cancelled];
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** Every goal's number for one month (null = no data). */
+    public static function monthValues(int $business_id, string $month, array $d, bool $isCurrent): array
+    {
+        $v = [];
+        $notes = [];
+        $metrics = $d['metrics'][$month] ?? [];
+
+        $ph = self::phoneStats($business_id, $month);
+        $v['phones_pct'] = $ph['total'] ? round(100 * $ph['answered'] / $ph['total']) : null;
+        $notes['phones_pct'] = $ph['answered'] . ' of ' . $ph['total'];
+        $v['thanks'] = $ph['total'] ? $ph['thanked'] : null;
+        $v['backlog'] = $isCurrent ? self::backlogNow($business_id) : null;
+        // Unhappy customers still open: this month counts everything open now;
+        // past months count the ones from that month that are still open.
+        $start = \Carbon\Carbon::parse($month . '-01')->startOfMonth();
+        $q = \DB::table('communications')->where('business_id', $business_id)
+            ->where('topic', 'unhappy_customer')->where('status', 'pending');
+        if (!$isCurrent) {
+            $q->whereBetween('created_at', [$start, $start->copy()->endOfMonth()]);
+        }
+        $v['angry_open'] = (int) $q->count();
+
+        $reconDays = array_filter($d['recon'], function ($x, $date) use ($month) {
+            return self::inMonth($date, $month);
+        }, ARRAY_FILTER_USE_BOTH);
+        $clean = count(array_filter($reconDays, function ($x) {
+            return (int) $x === 0;
+        }));
+        $v['recon_days'] = count($reconDays) ? round(100 * $clean / count($reconDays)) : null;
+        $notes['recon_days'] = count($reconDays) ? $clean . ' of ' . count($reconDays) . ' days' : '';
+
+        $cs = self::cancelStats($month);
+        $v['cancel_rate'] = $cs && $cs['placed'] ? round(100 * $cs['cancelled'] / $cs['placed'], 1) : null;
+        $notes['cancel_rate'] = $cs ? $cs['cancelled'] . ' of ' . $cs['placed'] . ' orders' : '';
+
+        $v['store_sales'] = self::storeSales($business_id, $month) ?: null;
+
+        $buys = 0;
+        $bookings = 0;
+        $collabs = 0;
+        $chases = 0;
+        foreach ($d['entries'] as $e) {
+            if (($e['month'] ?? '') !== $month) {
+                continue;
+            }
+            $type = $e['type'] ?? '';
+            $ok = ($e['approved'] ?? null) === true;
+            if ($type === 'chase') {
+                $chases++;
+            } elseif ($type === 'collection_buy') {
+                $m = !empty($e['phone']) ? self::matchBuy($business_id, (string) $e['phone'], (string) ($e['at'] ?? 'now')) : null;
+                if (($m && $m['paid'] >= self::GOOD_BUY_MIN && ($e['approved'] ?? null) !== false) || $ok) {
+                    $buys++;
+                }
+            } elseif ($type === 'venue_booking' && $ok) {
+                $bookings++;
+            } elseif ($type === 'collab' && $ok) {
+                $collabs++;
+            }
+        }
+        $v['good_buys'] = $buys;
+        $v['venue_bookings'] = $bookings;
+        $v['collabs'] = $collabs;
+        $v['chases'] = $chases;
+        $v['reviews'] = isset($metrics['reviews_new']) ? (int) $metrics['reviews_new'] : null;
+
+        return [$v, $notes];
+    }
+
     public static function summary(int $business_id, string $month): array
     {
         $d = self::read();
@@ -304,70 +421,29 @@ class FatteenGoalsUtil
             }
         }
 
-        $values = [];
+        $prevMonth = \Carbon\Carbon::parse($month . '-01')->subMonth()->format('Y-m');
+        [$values, $notes] = self::monthValues($business_id, $month, $d, $month === date('Y-m'));
+        [$prev] = self::monthValues($business_id, $prevMonth, $d, false);
 
-        // Owner-entered.
-        $values['phones_pct'] = isset($metrics['phones_pct']) ? (float) $metrics['phones_pct'] : null;
-        $values['backlog'] = isset($metrics['backlog']) ? (int) $metrics['backlog'] : null;
-        $rv = null;
-        if (isset($metrics['reviews_hw_end'], $metrics['reviews_pico_end'])) {
-            $startHw = $metrics['reviews_hw_start'] ?? null;
-            $startPico = $metrics['reviews_pico_start'] ?? null;
-            if ($startHw !== null && $startPico !== null) {
-                $rv = (int) $metrics['reviews_hw_end'] + (int) $metrics['reviews_pico_end'] - (int) $startHw - (int) $startPico;
-            }
-        }
-        $values['reviews'] = $rv;
-
-        // Recon.
-        $reconDays = array_filter($d['recon'], function ($v, $date) use ($month) {
-            return self::inMonth($date, $month);
-        }, ARRAY_FILTER_USE_BOTH);
-        $clean = count(array_filter($reconDays, function ($v) {
-            return (int) $v === 0;
-        }));
-        $values['recon_days'] = count($reconDays) ? round(100 * $clean / count($reconDays)) : null;
-        $reconNote = count($reconDays) ? $clean . ' of ' . count($reconDays) . ' days' : 'No days checked yet';
-
-        // Website cancels.
-        $cancels = self::webCancels($month);
-        $values['web_cancels'] = $cancels === null ? null : count($cancels);
-
-        // Logged wins.
-        $buys = 0;
-        $bookings = 0;
-        $collabs = 0;
-        $chases = 0;
+        // Entries list (with the matched buy shown) for this month.
         foreach ($entries as $i => $e) {
-            $type = $e['type'] ?? '';
-            if ($type === 'chase') {
-                $chases++;
-                continue;
-            }
-            if ($type === 'collection_buy') {
-                $m = !empty($e['phone']) ? self::matchBuy($business_id, (string) $e['phone'], (string) ($e['at'] ?? 'now')) : null;
-                $entries[$i]['buy'] = $m;
-                if (($m && $m['paid'] >= self::GOOD_BUY_MIN && ($e['approved'] ?? null) !== false) || ($e['approved'] ?? null) === true) {
-                    $buys++;
-                }
-            } elseif ($type === 'venue_booking' && ($e['approved'] ?? null) === true) {
-                $bookings++;
-            } elseif ($type === 'collab' && ($e['approved'] ?? null) === true) {
-                $collabs++;
+            if (($e['type'] ?? '') === 'collection_buy' && !empty($e['phone'])) {
+                $entries[$i]['buy'] = self::matchBuy($business_id, (string) $e['phone'], (string) ($e['at'] ?? 'now'));
             }
         }
-        $values['good_buys'] = $buys;
-        $values['venue_bookings'] = $bookings;
-        $values['collabs'] = $collabs;
-        $values['chases'] = $chases;
 
         $rows = [];
         $bonus = 0;
         $hitCount = 0;
         foreach ($goals as $key => $g) {
             $v = $values[$key] ?? null;
+            // Growth targets are set from last month's number.
+            if ($g['target'] === 'up5' || $g['target'] === 'up10') {
+                $base = $prev[$key] ?? null;
+                $g['target'] = $base ? (int) ceil($base * ($g['target'] === 'up5' ? 1.05 : 1.10)) : null;
+            }
             $hit = null;
-            if ($v !== null) {
+            if ($v !== null && $g['target'] !== null) {
                 $hit = $g['cmp'] === 'gte' ? $v >= $g['target'] : $v <= $g['target'];
             }
             if ($hit) {
@@ -377,10 +453,8 @@ class FatteenGoalsUtil
             $earn = $hit ? $g['bonus'] : 0;
             $max = $g['bonus'];
             $bonus += $earn;
-            $rows[$key] = $g + ['value' => $v, 'hit' => $hit, 'earn' => $earn, 'max' => $max];
+            $rows[$key] = $g + ['value' => $v, 'prev' => $prev[$key] ?? null, 'note' => $notes[$key] ?? '', 'hit' => $hit, 'earn' => $earn, 'max' => $max];
         }
-        $rows['recon_days']['note'] = $reconNote;
-        $rows['good_buys']['note'] = 'Store-wide good buys this month: ' . self::storeGoodBuys($business_id, $month);
 
         $gateOk = $checkDays >= self::GATE_DAYS && $wrapDays >= self::GATE_DAYS;
         $active = $month >= self::START_MONTH;

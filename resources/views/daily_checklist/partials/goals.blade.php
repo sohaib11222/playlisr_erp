@@ -36,6 +36,9 @@
     $g = $goals;
     $prevMonth = \Carbon\Carbon::parse($goalMonth . '-01')->subMonth()->format('Y-m');
     $nextMonth = \Carbon\Carbon::parse($goalMonth . '-01')->addMonth()->format('Y-m');
+    $fmtNum = function ($n, $unit) {
+        return rtrim(rtrim(number_format((float) $n, 1), '0'), '.') . $unit;
+    };
     $fmtVal = function ($row) {
         if ($row['value'] === null) { return 'Not entered'; }
         return rtrim(rtrim(number_format((float) $row['value'], 1), '0'), '.') . ($row['unit'] ?? '');
@@ -67,25 +70,25 @@
         <div><b>{{ $g['wrap_days'] }} / {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}</b><span>End-of-day wrap-ups posted</span></div>
     </div>
     <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 12px;line-height:1.5">
-        Each goal pays $5 only when its target is hit. Nothing pays unless both the checklist and the wrap-up are done on {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}+ days that month.
+        Each goal pays $5 when its target is hit. Nothing pays unless both the checklist and the wrap-up are done on {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}+ days that month.
         Goals hit: <b style="color:var(--d-ink)">{{ $g['hit_count'] }} of {{ $g['goal_count'] }}</b>.
         Rate review: {{ \Carbon\Carbon::parse(\App\Utils\FatteenGoalsUtil::REVIEW_DATE)->format('M j, Y') }}, based on November and December.
     </p>
 
     <div class="goals-wrap">
     <table class="goals">
-        <thead><tr><th>Goal</th><th>Started at</th><th>Target</th><th>This month</th><th>Bonus</th></tr></thead>
+        <thead><tr><th>Goal</th><th>Last month</th><th>This month</th><th>Target</th><th>Bonus</th></tr></thead>
         <tbody>
         @foreach($g['rows'] as $key => $row)
             <tr>
-                <td><span class="lbl">{{ $row['label'] }}</span><span class="sub">{{ $row['how'] }}</span></td>
-                <td style="min-width:150px"><span class="sub" style="margin:0">{{ $row['baseline'] }}</span></td>
-                <td class="num">{{ $fmtTarget($row) }}</td>
+                <td><span class="lbl">{{ $row['label'] }}</span><span class="sub">{{ $row['src'] }}</span></td>
+                <td class="num" style="font-weight:500;color:var(--d-ink-2)">{{ $row['prev'] === null ? '-' : $fmtNum($row['prev'], $row['unit']) }}</td>
                 <td class="num">
-                    <span class="tag {{ $row['hit'] === null ? 'none' : ($row['hit'] ? 'full' : 'miss') }}">{{ $fmtVal($row) }}</span>
-                    @if(!empty($row['note']))<span class="sub" style="font-weight:400;white-space:normal">{{ $row['note'] }}</span>@endif
+                    <span class="tag {{ $row['hit'] === null ? 'none' : ($row['hit'] ? 'full' : 'miss') }}">{{ $row['value'] === null ? '-' : $fmtNum($row['value'], $row['unit']) }}</span>
+                    @if(!empty($row['note']))<span class="sub" style="font-weight:400">{{ $row['note'] }}</span>@endif
                 </td>
-                <td class="num">${{ $row['earn'] }}<span class="sub" style="font-weight:400">of ${{ $row['max'] }}</span></td>
+                <td class="num">{{ $row['target'] === null ? '-' : ($row['cmp'] === 'gte' ? $row['target'] . $row['unit'] . '+' : $row['target'] . $row['unit'] . ' or less') }}</td>
+                <td class="num">${{ $row['earn'] }}</td>
             </tr>
         @endforeach
         </tbody>
@@ -168,16 +171,11 @@
 
     @if($isOwner)
         <div class="grp">
-            <h3>Numbers from outside the ERP (owner only)</h3>
+            <h3>Google reviews (owner only)</h3>
             <form method="POST" action="{{ url('/daily-checklist/goals/metrics') }}" class="gform">
                 @csrf
                 <input type="hidden" name="month" value="{{ $goalMonth }}">
-                <label>Quo answered %<input type="number" step="0.1" name="phones_pct" id="m_phones" value="{{ $g['metrics']['phones_pct'] ?? '' }}" style="width:90px"></label>
-                <label>Most waiting<input type="number" name="backlog" id="m_backlog" value="{{ $g['metrics']['backlog'] ?? '' }}" style="width:90px"></label>
-                <label>Reviews HW start<input type="number" name="reviews_hw_start" id="m_rhs" value="{{ $g['metrics']['reviews_hw_start'] ?? '' }}" style="width:90px"></label>
-                <label>Pico start<input type="number" name="reviews_pico_start" id="m_rps" value="{{ $g['metrics']['reviews_pico_start'] ?? '' }}" style="width:90px"></label>
-                <label>HW end<input type="number" name="reviews_hw_end" id="m_rhe" value="{{ $g['metrics']['reviews_hw_end'] ?? '' }}" style="width:90px"></label>
-                <label>Pico end<input type="number" name="reviews_pico_end" id="m_rpe" value="{{ $g['metrics']['reviews_pico_end'] ?? '' }}" style="width:90px"></label>
+                <label>New Google reviews this month (both stores)<input type="number" name="reviews_new" id="m_reviews" value="{{ $g['metrics']['reviews_new'] ?? '' }}" style="width:110px"></label>
                 <button type="submit" class="gbtn">Save</button>
             </form>
         </div>

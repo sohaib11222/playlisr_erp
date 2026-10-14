@@ -453,7 +453,7 @@ class DailyChecklistController extends Controller
         }
         $d = FatteenGoalsUtil::read();
         $m = $d['metrics'][$month] ?? [];
-        foreach (['phones_pct', 'backlog', 'reviews_hw_start', 'reviews_pico_start', 'reviews_hw_end', 'reviews_pico_end'] as $k) {
+        foreach (['reviews_new'] as $k) {
             $v = trim((string) $request->input($k, ''));
             if ($v === '') {
                 unset($m[$k]);
