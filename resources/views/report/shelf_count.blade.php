@@ -14,15 +14,16 @@
 .sc-due { color: #8E1B1B; font-weight: 700; font-size: 13px; }
 </style>
 <div class="sc-wrap">
+@include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
     <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins not counted the longest are on top. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
-        <select name="kind" onchange="this.form.submit()">@foreach ($kinds as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
+        <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
     </form>
     @foreach ($bins as $b)
-        <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $kind }}&sub={{ $b['sub'] }}">
-            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP</span></span>
+        <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
+            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span></span>
             <span>@if (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('n/j') }}</span>@else<span class="sc-due">Never counted</span>@endif</span>
         </a>
     @endforeach

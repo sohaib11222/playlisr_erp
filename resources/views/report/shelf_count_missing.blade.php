@@ -15,6 +15,7 @@
 .sc-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; }
 </style>
 <div class="sc-wrap">
+@include('report._count_tabs', ['ctOn' => 'missing'])
     <h1>Missing list</h1>
     @php $tu = array_sum(array_column($rows, 'units')); $tc = array_sum(array_map(function ($r) { return $r['units'] * $r['unit_cost']; }, $rows)); @endphp
     <p class="sc-sub">Copies the ERP had that weren't on the shelf when counted, last {{ $days }} days: {{ $tu }} copies, about ${{ number_format($tc, 2) }} at cost. Some of it is old bad data rather than theft, especially on a section's first count.</p>

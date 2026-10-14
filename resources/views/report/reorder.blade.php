@@ -54,6 +54,7 @@
     .ro-list h4 { margin:0 0 4px; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
 </style>
 
+<div style="padding:12px 15px 0;">@include('report._count_tabs', ['ctOn' => 'order'])</div>
 <section class="content-header">
     <h1>Weekly Reorder <small>{{ $storeName }}, sealed {{ ['cd' => 'CDs', 'cassette' => 'cassettes'][$format] ?? 'vinyl' }}</small></h1>
 </section>

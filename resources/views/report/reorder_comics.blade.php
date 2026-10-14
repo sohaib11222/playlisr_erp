@@ -21,6 +21,7 @@
     .rc-toggle { font-size:13px; margin-left:8px; }
 </style>
 
+<div style="padding:12px 15px 0;">@include('report._count_tabs', ['ctOn' => 'comics'])</div>
 <section class="content-header">
     <h1>Weekly Reorder <small>{{ $storeName }}, comics &amp; magazines</small></h1>
 </section>

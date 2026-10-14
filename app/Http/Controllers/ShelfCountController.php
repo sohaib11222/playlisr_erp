@@ -88,8 +88,9 @@ class ShelfCountController extends Controller
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $kind = $this->pickKind($request, $business_id);
+        $kind = $request->input('kind') ? $this->pickKind($request, $business_id) : 'all';
         $counted = $this->lastCounted($business_id, $loc);
+        if ($kind === 'all') return $this->overview($request, $business_id, $locations, $loc, $counted);
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
@@ -110,6 +111,43 @@ class ShelfCountController extends Controller
         $bins = array_values($bins);
         usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
+    }
+
+    /**
+     * Every shelf at the store on one page (Sarah 10/14: "which shelves we
+     * didn't count yet and the last date we counted it"). Never counted on
+     * top, then oldest first.
+     */
+    protected function overview(Request $request, int $business_id, array $locations, int $loc, array $counted)
+    {
+        $kinds = $this->kinds($business_id);
+        $rows = \DB::table('products as p')
+            ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
+            ->select('p.id', 'p.category_id', 'p.sub_category_id', 'c.name as cat', 'sc.name as sub')->get();
+        $bins = [];
+        foreach ($rows as $r) {
+            $cat = (string) $r->cat;
+            $isV = preg_match('/vinyl/i', $cat); $isC = preg_match('/\\bcds?\\b/i', $cat);
+            $new = stripos($cat, 'sealed') !== false; $used = stripos($cat, 'used') !== false;
+            if (($isV || $isC) && ($new || $used)) { $kind = ($isV ? 'vinyl' : 'cd') . '-' . ($new ? 'new' : 'used'); }
+            elseif (isset($kinds['cat-' . (int) $r->category_id])) { $kind = 'cat-' . (int) $r->category_id; }
+            else continue;
+            $k = $kind . '|' . (int) $r->sub_category_id;
+            $b = &$bins[$k];
+            $b['kind'] = $kind; $b['sub'] = (int) $r->sub_category_id;
+            $b['name'] = ($kinds[$kind] ?? $cat) . ' / ' . ($r->sub ?: 'No sub-category');
+            $b['titles'] = ($b['titles'] ?? 0) + 1;
+            $c = $counted[$r->id] ?? null;
+            if ($c) { $b['counted'] = ($b['counted'] ?? 0) + 1; if (!isset($b['last']) || $c['at'] > $b['last']) $b['last'] = $c['at']; }
+            unset($b);
+        }
+        $bins = array_values($bins);
+        usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
+        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
+            'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
     }
 
     /** Scan one bin: what the ERP expects there, then scan or search each record. */
