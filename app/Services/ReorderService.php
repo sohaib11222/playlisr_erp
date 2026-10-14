@@ -972,8 +972,12 @@ class ReorderService
         $state = $this->loadState($business_id);
         foreach ($out as $type => &$fams) {
             foreach ($fams as $fam => &$f) {
-                $f['per_week'] = round($f['sold'] / ($days / 7), 1);
                 $f['sold_ytd'] = $f['sold_ytd'] ?? 0;
+                // Pace = the faster of the last 90 days and this year so far
+                // (Sarah 10/14: comics went a long time between orders, so
+                // empty bins made the last 90 days look slow).
+                $weeksYtd = max(1, Carbon::now()->startOfYear()->diffInDays(Carbon::now()) / 7);
+                $f['per_week'] = round(max($f['sold'] / ($days / 7), $f['sold_ytd'] / $weeksYtd), 1);
                 $f['revenue_ytd'] = $f['revenue_ytd'] ?? 0;
                 // Speed like Clarissa's sheet: average days between sales this year.
                 $d = array_keys($dates[$type][$fam] ?? []);
