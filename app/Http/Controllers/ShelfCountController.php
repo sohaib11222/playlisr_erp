@@ -162,11 +162,22 @@ class ShelfCountController extends Controller
             if (!empty($b['last']) && (!isset($t['last']) || $b['last'] > $t['last'])) $t['last'] = $b['last'];
             unset($t);
         }
+        // Comics and magazines are counted by series on their own page, so
+        // their tiles here would always say "never". One tile with the
+        // series counts instead (Sarah 10/14: "comics and mags were counted today").
+        foreach ($tiles as $k => $t) { if (preg_match('/comic|magazine/i', $t['name'])) unset($tiles[$k]); }
+        $fam = app(ReorderService::class)->loadState($business_id)['family_counts'][$loc] ?? [];
+        $famLast = null; $famRecent = 0;
+        foreach ($fam as $c) {
+            if (!empty($c['at']) && $c['at'] >= $cut) $famRecent++;
+            if (!empty($c['at']) && (!$famLast || $c['at'] > $famLast)) $famLast = $c['at'];
+        }
         $order = array_keys($kinds);
         uasort($tiles, function ($a, $b) use ($order) { return array_search($a['kind'], $order) <=> array_search($b['kind'], $order); });
         $allDone = array_sum(array_map(function ($t) { return $t['done'] ?? 0; }, $tiles));
         return view('report.shelf_count_home', ['locations' => $locations, 'loc' => $loc, 'tiles' => array_values($tiles),
-            'shelves' => count($bins), 'done' => $allDone, 'dueDays' => self::DUE_DAYS]);
+            'shelves' => count($bins), 'done' => $allDone, 'dueDays' => self::DUE_DAYS,
+            'comics' => ['series' => count(\App\Services\ReorderService::COMIC_FAMILIES) + count(\App\Services\ReorderService::MAGAZINE_FAMILIES), 'recent' => $famRecent, 'last' => $famLast]]);
     }
 
     /** Scan one bin: what the ERP expects there, then scan or search each record. */

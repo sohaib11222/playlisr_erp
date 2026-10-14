@@ -24,7 +24,7 @@
         <a class="sh-small" href="/reports/shelf-count?location_id={{ $loc }}&kind=all">See every shelf and its last count</a>
     </form>
     <div class="sh-grid">
-        <a class="sh-tile" href="/reports/reorder?format=comics&location_id={{ $loc }}"><b>Comics &amp; magazines</b><div class="sh-bar"></div><span class="sh-small">Counted by series</span></a>
+        <a class="sh-tile" href="/reports/reorder?format=comics&location_id={{ $loc }}">@php $cp = $comics['series'] ? min(100, round(100 * $comics['recent'] / $comics['series'])) : 0; @endphp<b>Comics &amp; magazines</b><div class="sh-bar"><span style="width:{{ $cp }}%"></span></div><span class="sh-small">{{ $comics['recent'] }}/{{ $comics['series'] }} series{{ $comics['last'] ? ', last ' . \Carbon\Carbon::parse($comics['last'])->format('n/j') : ', never' }}</span></a>
         @foreach ($tiles as $t)
             @php $pct = $t['shelves'] ? round(100 * ($t['done'] ?? 0) / $t['shelves']) : 0; @endphp
             <a class="sh-tile" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $t['kind'] }}">
