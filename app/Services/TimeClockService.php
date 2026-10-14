@@ -1276,7 +1276,7 @@ class TimeClockService
         if ($key === '') {
             return;
         }
-        $name = trim(trim((string) ($user->first_name ?? '')) . ' ' . trim((string) ($user->last_name ?? '')));
+        $name = trim((string) ($user->first_name ?? ''));
         $text = ($name !== '' ? $name : self::displayName($user)) . ' ' . $what;
         app()->terminating(function () use ($key, $text) {
             try {
