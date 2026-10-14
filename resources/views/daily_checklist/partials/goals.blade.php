@@ -50,9 +50,9 @@
     <div class="goal-head">
         <h3 class="grp" style="margin:0"><span style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--d-ink-2)">Goals and bonus: {{ \Carbon\Carbon::parse($goalMonth . '-01')->format('F Y') }}</span></h3>
         <div class="mnav">
-            <a href="{{ url('/daily-checklist?month=' . $prevMonth) }}#goals">&larr; {{ \Carbon\Carbon::parse($prevMonth . '-01')->format('M') }}</a>
+            <a href="{{ url('/fatteen-goals?month=' . $prevMonth) }}">&larr; {{ \Carbon\Carbon::parse($prevMonth . '-01')->format('M') }}</a>
             @if($goalMonth < date('Y-m'))
-                <a href="{{ url('/daily-checklist?month=' . $nextMonth) }}#goals">{{ \Carbon\Carbon::parse($nextMonth . '-01')->format('M') }} &rarr;</a>
+                <a href="{{ url('/fatteen-goals?month=' . $nextMonth) }}">{{ \Carbon\Carbon::parse($nextMonth . '-01')->format('M') }} &rarr;</a>
             @endif
         </div>
     </div>
@@ -67,7 +67,7 @@
         <div><b>{{ $g['wrap_days'] }} / {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}</b><span>End-of-day wrap-ups posted</span></div>
     </div>
     <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 12px;line-height:1.5">
-        No bonus pays unless both the checklist and the wrap-up are done on {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}+ days that month.
+        Each goal pays $5 only when its target is hit. Nothing pays unless both the checklist and the wrap-up are done on {{ \App\Utils\FatteenGoalsUtil::GATE_DAYS }}+ days that month.
         Goals hit: <b style="color:var(--d-ink)">{{ $g['hit_count'] }} of {{ $g['goal_count'] }}</b>.
         Rate review: {{ \Carbon\Carbon::parse(\App\Utils\FatteenGoalsUtil::REVIEW_DATE)->format('M j, Y') }}, based on November and December.
     </p>
@@ -85,7 +85,7 @@
                     <span class="tag {{ $row['hit'] === null ? 'none' : ($row['hit'] ? 'full' : 'miss') }}">{{ $fmtVal($row) }}</span>
                     @if(!empty($row['note']))<span class="sub" style="font-weight:400;white-space:normal">{{ $row['note'] }}</span>@endif
                 </td>
-                <td class="num">${{ $row['earn'] }}<span class="sub" style="font-weight:400">of ${{ $row['max'] }}{{ isset($row['per']) ? ', $' . $row['per'] . ' each' : '' }}</span></td>
+                <td class="num">${{ $row['earn'] }}<span class="sub" style="font-weight:400">of ${{ $row['max'] }}</span></td>
             </tr>
         @endforeach
         </tbody>

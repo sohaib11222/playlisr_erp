@@ -71,7 +71,7 @@ class DailyChecklistController extends Controller
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
         'Customers & growth' => [
-            'seller_leads'  => 'Follow up with every seller lead until they book a time to bring the collection in. Log good buys under Goals.',
+            'seller_leads'  => 'Follow up with every seller lead until they book a time to bring the collection in. Log good buys on the Goals page.',
             'venue_leads'   => 'Reply to every venue booking inquiry and follow up until it is booked.',
             'collab_leads'  => 'Follow up on partnership and event leads (brands, listening parties, private events).',
             'review_ask'    => 'Text the Google review link to customers who had a good call or visit.',
@@ -260,26 +260,8 @@ class DailyChecklistController extends Controller
             }
         }
 
-        // Goals + bonus for the chosen month (default this month).
-        $month = (string) $request->input('month', '');
-        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = date('Y-m');
-        }
-        $business_id = (int) $request->session()->get('user.business_id');
-        $goals = null;
-        try {
-            FatteenGoalsUtil::fillRecon($business_id, $request->session());
-            $goals = FatteenGoalsUtil::summary($business_id, $month);
-        } catch (\Throwable $e) {
-            \Log::warning('fatteen goals: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-        }
-
         return view('daily_checklist.index', [
             'wrapup'        => $wrapup,
-            'goals'         => $goals,
-            'goalMonth'     => $month,
-            'isOwner'       => FatteenGoalsUtil::isOwner(),
-            'winTypes'      => FatteenGoalsUtil::WIN_TYPES,
             'groups'        => self::GROUPS,
             'links'         => self::LINKS,
             'checked'       => $checked,
@@ -348,6 +330,30 @@ class DailyChecklistController extends Controller
             'ok'      => true,
             'checked' => count($checked),
             'total'   => count(self::allKeys()),
+        ]);
+    }
+
+    /** Fatteen's goals dashboard: monthly goals, bonus, wins log and review. */
+    public function goalsPage(Request $request)
+    {
+        $this->guard();
+        $month = (string) $request->input('month', '');
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $goals = null;
+        try {
+            FatteenGoalsUtil::fillRecon($business_id, $request->session());
+            $goals = FatteenGoalsUtil::summary($business_id, $month);
+        } catch (\Throwable $e) {
+            \Log::warning('fatteen goals: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+        }
+        return view('daily_checklist.goals', [
+            'goals'     => $goals,
+            'goalMonth' => $month,
+            'isOwner'   => FatteenGoalsUtil::isOwner(),
+            'winTypes'  => FatteenGoalsUtil::WIN_TYPES,
         ]);
     }
 

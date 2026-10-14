@@ -54,19 +54,19 @@ class FatteenGoalsUtil
         return [
             'phones_pct' => [
                 'label' => 'Calls and texts answered the same day',
-                'unit' => '%', 'cmp' => 'gte', 'target' => 95, 'bonus' => 10, 'source' => 'owner',
+                'unit' => '%', 'cmp' => 'gte', 'target' => 95, 'bonus' => 5, 'source' => 'owner',
                 'baseline' => '1% (6 of 504 calls, 4 weeks to 10/8). 96% on 10/12 to 10/13.',
                 'how' => 'Quo analytics. Above the 80% already required for the $10/day phone pay.',
             ],
             'backlog' => [
                 'label' => 'Customers still waiting from earlier days',
-                'unit' => '', 'cmp' => 'lte', 'target' => 3, 'bonus' => 10, 'source' => 'owner',
+                'unit' => '', 'cmp' => 'lte', 'target' => 3, 'bonus' => 5, 'source' => 'owner',
                 'baseline' => '47 on 10/11, 38 on 10/13 (Hollywood 30, Pico 8).',
                 'how' => 'Highest "still waiting from earlier days" on the nightly phone recap that month.',
             ],
             'recon_days' => [
                 'label' => 'Register days fully reconciled within 2 days',
-                'unit' => '%', 'cmp' => 'gte', 'target' => 85, 'bonus' => 10, 'source' => 'auto',
+                'unit' => '%', 'cmp' => 'gte', 'target' => 85, 'bonus' => 5, 'source' => 'auto',
                 'baseline' => '1 of 11 days (10/3 to 10/13). Drawers up to $150 short with no reason posted.',
                 'how' => 'Register recon re-checked 2 days later. If a cashier does not reply, call them or ask the manager.',
             ],
@@ -78,31 +78,31 @@ class FatteenGoalsUtil
             ],
             'good_buys' => [
                 'label' => 'Good collection buys from his calls and texts',
-                'unit' => '', 'cmp' => 'gte', 'target' => 3, 'per' => 10, 'cap' => 30, 'source' => 'log',
+                'unit' => '', 'cmp' => 'gte', 'target' => 3, 'bonus' => 5, 'source' => 'log',
                 'baseline' => 'None tracked. A seller with 1,000+ records waited 9+ days for a reply (Pico, 10/5).',
                 'how' => 'Log the seller\'s phone. Counts automatically when a buy of $' . self::GOOD_BUY_MIN . '+ is accepted in the ERP for that number.',
             ],
             'venue_bookings' => [
                 'label' => 'Venue bookings he closes',
-                'unit' => '', 'cmp' => 'gte', 'target' => 2, 'per' => 5, 'cap' => 10, 'source' => 'log',
+                'unit' => '', 'cmp' => 'gte', 'target' => 2, 'bonus' => 5, 'source' => 'log',
                 'baseline' => '9 paid bookings Jun to Sep (about 2 a month), none made yet in October.',
                 'how' => 'Log the booking. Counts once it shows paid on the events calendar and the owner approves.',
             ],
             'collabs' => [
                 'label' => 'Good partnerships and collabs that happen',
-                'unit' => '', 'cmp' => 'gte', 'target' => 1, 'per' => 10, 'cap' => 20, 'source' => 'log',
+                'unit' => '', 'cmp' => 'gte', 'target' => 1, 'bonus' => 5, 'source' => 'log',
                 'baseline' => 'Leads like Shondaland, Victoria Dunn and a December employee party were handed to Sarah.',
                 'how' => 'Brand partners, listening parties, private events. Counts when it is confirmed and the owner approves.',
             ],
             'reviews' => [
                 'label' => 'New Google reviews, both stores',
-                'unit' => '', 'cmp' => 'gte', 'target' => 10, 'bonus' => 10, 'source' => 'owner',
+                'unit' => '', 'cmp' => 'gte', 'target' => 10, 'bonus' => 5, 'source' => 'owner',
                 'baseline' => 'Hollywood 233, Pico 214 (10/14). Hollywood was 228 on 7/11, so about 2 a month.',
                 'how' => 'Text happy customers the review link after a good call. Owner enters both counts at month end.',
             ],
             'chases' => [
                 'label' => 'Times Sarah or Jon had to ask for an update',
-                'unit' => '', 'cmp' => 'lte', 'target' => 2, 'bonus' => 10, 'source' => 'log',
+                'unit' => '', 'cmp' => 'lte', 'target' => 2, 'bonus' => 5, 'source' => 'log',
                 'baseline' => 'Recon asked 10/8, 10/9, 10/10, 10/11. Shipping 8/31, 9/4. Refund 10/8.',
                 'how' => 'Close the loop without being asked: what got done, or who was called and what is next.',
             ],
@@ -373,21 +373,13 @@ class FatteenGoalsUtil
             if ($hit) {
                 $hitCount++;
             }
-            $earn = 0;
-            if (isset($g['per'])) {
-                $earn = min($g['cap'], $g['per'] * (int) $v);
-                $max = $g['cap'];
-            } else {
-                $earn = $hit ? $g['bonus'] : 0;
-                $max = $g['bonus'];
-            }
+            // 100% goal based: a goal pays its bonus only when the target is hit.
+            $earn = $hit ? $g['bonus'] : 0;
+            $max = $g['bonus'];
             $bonus += $earn;
             $rows[$key] = $g + ['value' => $v, 'hit' => $hit, 'earn' => $earn, 'max' => $max];
         }
         $rows['recon_days']['note'] = $reconNote;
-        if (is_array($cancels) && $cancels) {
-            $rows['web_cancels']['note'] = implode(', ', $cancels);
-        }
         $rows['good_buys']['note'] = 'Store-wide good buys this month: ' . self::storeGoodBuys($business_id, $month);
 
         $gateOk = $checkDays >= self::GATE_DAYS && $wrapDays >= self::GATE_DAYS;
@@ -404,9 +396,7 @@ class FatteenGoalsUtil
             'goal_count' => count($goals),
             'bonus' => $gateOk && $active ? $bonus : 0,
             'bonus_if_gate' => $bonus,
-            'max_bonus' => array_sum(array_map(function ($g) {
-                return $g['cap'] ?? $g['bonus'];
-            }, $goals)),
+            'max_bonus' => array_sum(array_column($goals, 'bonus')),
             'entries' => array_reverse($entries),
             'metrics' => $metrics,
         ];

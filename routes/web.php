@@ -1386,6 +1386,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/daily-checklist', 'DailyChecklistController@index')->name('daily-checklist.index');
     Route::post('/daily-checklist/toggle', 'DailyChecklistController@toggle')->name('daily-checklist.toggle');
     Route::post('/daily-checklist/toggle-periodic', 'DailyChecklistController@togglePeriodic')->name('daily-checklist.toggle-periodic');
+    Route::get('/fatteen-goals', 'DailyChecklistController@goalsPage')->name('fatteen-goals');
     Route::post('/daily-checklist/wrapup', 'DailyChecklistController@saveWrapup')->name('daily-checklist.wrapup');
     Route::post('/daily-checklist/goals/log', 'DailyChecklistController@logGoal')->name('daily-checklist.goals.log');
     Route::post('/daily-checklist/goals/review', 'DailyChecklistController@reviewGoal')->name('daily-checklist.goals.review');
