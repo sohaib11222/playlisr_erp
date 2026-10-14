@@ -1386,6 +1386,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/daily-checklist', 'DailyChecklistController@index')->name('daily-checklist.index');
     Route::post('/daily-checklist/toggle', 'DailyChecklistController@toggle')->name('daily-checklist.toggle');
     Route::post('/daily-checklist/toggle-periodic', 'DailyChecklistController@togglePeriodic')->name('daily-checklist.toggle-periodic');
+    Route::post('/daily-checklist/wrapup', 'DailyChecklistController@saveWrapup')->name('daily-checklist.wrapup');
+    Route::post('/daily-checklist/goals/log', 'DailyChecklistController@logGoal')->name('daily-checklist.goals.log');
+    Route::post('/daily-checklist/goals/review', 'DailyChecklistController@reviewGoal')->name('daily-checklist.goals.review');
+    Route::post('/daily-checklist/goals/metrics', 'DailyChecklistController@saveGoalMetrics')->name('daily-checklist.goals.metrics');
 
     // Manager Checklist: recurring duties for the two store managers (Zakary
     // at Pico, Luis at Hollywood) — daily/weekly/monthly items reset on their

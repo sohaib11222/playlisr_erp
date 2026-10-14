@@ -202,6 +202,10 @@
     })();
     </script>
 
+    @if(session('status'))
+        <div class="callout" style="font-weight:600">{{ session('status')['msg'] ?? '' }}</div>
+    @endif
+
     <div class="card">
         <div class="topbar">
             <div class="progress-pill"><span id="progCount">0</span> / {{ $totalItems }} done</div>
@@ -228,6 +232,22 @@
             </div>
         @endforeach
     </div>
+
+    <div class="card">
+        <div class="grp" style="margin-top:0">
+            <h3>End-of-day wrap-up</h3>
+            <p style="font-size:13px;color:var(--d-ink-3);margin:0 0 10px;line-height:1.5">
+                Before you sign off: what got done, what is still open, and for anything waiting on someone, who you called or what you tried.
+            </p>
+            <textarea class="wrap-box" id="wrapupBox" maxlength="4000" placeholder="Done: ...&#10;Still open: ...&#10;Waiting on: (who) - tried: (call, text, asked manager)">{{ $wrapup ?? '' }}</textarea>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+                <button type="button" class="gbtn" id="wrapupSave">Save wrap-up</button>
+                <span class="saved-note" id="wrapupSaved">Saved</span>
+            </div>
+        </div>
+    </div>
+
+    @include('daily_checklist.partials.goals')
 
     @php
         $quarterlyDue  = $quarterlyDue  ?? [];
@@ -342,6 +362,26 @@
     });
 
     refreshCount();
+
+    var wBtn = document.getElementById('wrapupSave');
+    if (wBtn) {
+        wBtn.addEventListener('click', function () {
+            var body = new FormData();
+            body.append('wrapup', document.getElementById('wrapupBox').value);
+            fetch('{{ url('/daily-checklist/wrapup') }}', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+                body: body
+            }).then(function (r) {
+                if (!r.ok) { throw new Error('save failed'); }
+                var n = document.getElementById('wrapupSaved');
+                n.classList.add('show');
+                setTimeout(function () { n.classList.remove('show'); }, 1500);
+            }).catch(function () {
+                alert('Could not save the wrap-up. Check your connection and try again.');
+            });
+        });
+    }
 
     // Quarterly tasks save to their own endpoint and don't affect the daily count.
     var periodicUrl = '{{ url('/daily-checklist/toggle-periodic') }}';

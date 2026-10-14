@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Utils\FatteenGoalsUtil;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -69,6 +70,15 @@ class DailyChecklistController extends Controller
             'purchasing'  => 'Help with purchasing — ask Jon what the priority is to purchase.',
             'cameras'     => 'Check the cameras — staff are working, not on their phones.',
         ],
+        'Customers & growth' => [
+            'seller_leads'  => 'Follow up with every seller lead until they book a time to bring the collection in. Log good buys under Goals.',
+            'venue_leads'   => 'Reply to every venue booking inquiry and follow up until it is booked.',
+            'collab_leads'  => 'Follow up on partnership and event leads (brands, listening parties, private events).',
+            'review_ask'    => 'Text the Google review link to customers who had a good call or visit.',
+        ],
+        'End of day' => [
+            'close_loops'   => 'Nothing left waiting on a reply. If someone has not answered, call them, try someone else, or propose a fix.',
+        ],
         'Other' => [
             'payroll'     => 'Run payroll — every other Thursday.',
         ],
@@ -82,6 +92,8 @@ class DailyChecklistController extends Controller
         'events_ready'   => '/events',
         'ams_orders'     => '/purchases/create',
         'onboarding'     => '/employee-checklist',
+        'seller_leads'   => '/buy-from-customer',
+        'venue_leads'    => 'https://nivessa.com/venues',
         // External tools
         'sling_week'     => 'https://app.getsling.com',
         'discogs'        => 'https://www.discogs.com/sell/orders',
@@ -106,10 +118,10 @@ class DailyChecklistController extends Controller
             && strtolower(trim((string) $u->last_name)) === 'hedvat';
     }
 
-    /** Fatteen + Jon only — this is Fatteen's personal list; Jon oversees it. */
+    /** Fatteen + Jon/Sarah only — this is Fatteen's personal list; the owners oversee it. */
     public static function canAccess()
     {
-        return EmployeeChecklistController::isFatteen() || self::isJon();
+        return EmployeeChecklistController::isFatteen() || self::isJon() || FatteenGoalsUtil::isOwner();
     }
 
     private function guard()
@@ -224,6 +236,7 @@ class DailyChecklistController extends Controller
         $all = self::readAll();
         $idx = self::todayIndex($all, $date, $userId);
         $checked = $idx !== null ? ($all[$idx]['checked'] ?? []) : [];
+        $wrapup = $idx !== null ? (string) ($all[$idx]['wrapup'] ?? '') : '';
 
         // Recent history (all users, most recent first) so admins can review.
         $recent = $all;
@@ -247,7 +260,26 @@ class DailyChecklistController extends Controller
             }
         }
 
+        // Goals + bonus for the chosen month (default this month).
+        $month = (string) $request->input('month', '');
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $goals = null;
+        try {
+            FatteenGoalsUtil::fillRecon($business_id, $request->session());
+            $goals = FatteenGoalsUtil::summary($business_id, $month);
+        } catch (\Throwable $e) {
+            \Log::warning('fatteen goals: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+        }
+
         return view('daily_checklist.index', [
+            'wrapup'        => $wrapup,
+            'goals'         => $goals,
+            'goalMonth'     => $month,
+            'isOwner'       => FatteenGoalsUtil::isOwner(),
+            'winTypes'      => FatteenGoalsUtil::WIN_TYPES,
             'groups'        => self::GROUPS,
             'links'         => self::LINKS,
             'checked'       => $checked,
@@ -317,6 +349,115 @@ class DailyChecklistController extends Controller
             'checked' => count($checked),
             'total'   => count(self::allKeys()),
         ]);
+    }
+
+    /** Save today's end-of-day wrap-up note (done / still open / waiting on). */
+    public function saveWrapup(Request $request)
+    {
+        $this->guard();
+        $text = mb_substr(trim((string) $request->input('wrapup', '')), 0, 4000);
+        $date = date('Y-m-d');
+        $userId = auth()->id();
+        $all = self::readAll();
+        $idx = self::todayIndex($all, $date, $userId);
+        if ($idx === null) {
+            $all[] = [
+                'date'       => $date,
+                'user_id'    => $userId,
+                'user_name'  => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+                'checked'    => [],
+                'total'      => count(self::allKeys()),
+                'created_at' => date('Y-m-d H:i'),
+            ];
+            $idx = count($all) - 1;
+        }
+        $all[$idx]['wrapup'] = $text;
+        $all[$idx]['updated_at'] = date('Y-m-d H:i');
+        self::writeAll($all);
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Add a goals entry. Fatteen logs wins (collection buy, venue booking,
+     * collab, problem solved); the owner logs chases.
+     */
+    public function logGoal(Request $request)
+    {
+        $this->guard();
+        $type = (string) $request->input('type', '');
+        $isOwner = FatteenGoalsUtil::isOwner();
+        if (!array_key_exists($type, FatteenGoalsUtil::WIN_TYPES) && !($type === 'chase' && $isOwner)) {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Pick what you are logging.']);
+        }
+        $desc = mb_substr(trim((string) $request->input('desc', '')), 0, 500);
+        if ($desc === '') {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Add a short description.']);
+        }
+        $d = FatteenGoalsUtil::read();
+        $d['entries'][] = [
+            'id'       => uniqid('g', true),
+            'month'    => date('Y-m'),
+            'type'     => $type,
+            'desc'     => $desc,
+            'phone'    => mb_substr(trim((string) $request->input('phone', '')), 0, 40),
+            'by'       => auth()->user()->first_name,
+            'at'       => date('Y-m-d H:i'),
+            'approved' => $type === 'chase' ? true : null,
+        ];
+        FatteenGoalsUtil::write($d);
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Logged.']);
+    }
+
+    /** Owner: approve, reject or delete an entry. */
+    public function reviewGoal(Request $request)
+    {
+        $this->guard();
+        if (!FatteenGoalsUtil::isOwner()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $id = (string) $request->input('id', '');
+        $action = (string) $request->input('action', '');
+        $d = FatteenGoalsUtil::read();
+        foreach ($d['entries'] as $i => $e) {
+            if (($e['id'] ?? '') !== $id) {
+                continue;
+            }
+            if ($action === 'delete') {
+                array_splice($d['entries'], $i, 1);
+            } else {
+                $d['entries'][$i]['approved'] = $action === 'approve';
+                $d['entries'][$i]['reviewed_by'] = auth()->user()->first_name;
+            }
+            break;
+        }
+        FatteenGoalsUtil::write($d);
+        return redirect()->back();
+    }
+
+    /** Owner: enter the month's numbers that live outside the ERP. */
+    public function saveGoalMetrics(Request $request)
+    {
+        $this->guard();
+        if (!FatteenGoalsUtil::isOwner()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $month = (string) $request->input('month', '');
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return redirect()->back();
+        }
+        $d = FatteenGoalsUtil::read();
+        $m = $d['metrics'][$month] ?? [];
+        foreach (['phones_pct', 'backlog', 'reviews_hw_start', 'reviews_pico_start', 'reviews_hw_end', 'reviews_pico_end'] as $k) {
+            $v = trim((string) $request->input($k, ''));
+            if ($v === '') {
+                unset($m[$k]);
+            } elseif (is_numeric($v)) {
+                $m[$k] = $v + 0;
+            }
+        }
+        $d['metrics'][$month] = $m;
+        FatteenGoalsUtil::write($d);
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Numbers saved.']);
     }
 
     /**
