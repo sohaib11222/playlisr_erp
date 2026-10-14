@@ -76,6 +76,13 @@
             <td>
               @if (isset($pins[$uid]))
                 <span class="tcx-badge green">Set</span>
+                @if (array_key_exists($uid, $pinView))
+                  @if ($pinView[$uid] !== null)
+                    <details style="display:inline-block"><summary class="tcx-small" style="cursor:pointer">Show</summary><code>{{ $pinView[$uid] }}</code></details>
+                  @else
+                    <span class="tcx-small" title="This PIN was set before PINs could be looked up. It shows here after their next clock-in.">after next punch</span>
+                  @endif
+                @endif
               @else
                 <span class="tcx-badge red">None</span>
               @endif

@@ -1060,10 +1060,40 @@ class TimeClockService
     {
         $now = self::nowString();
         $row = ['business_id' => $businessId, 'pin_hash' => self::pinDigest($pin), 'failed_attempts' => 0, 'locked_until' => null, 'set_by' => $by, 'updated_at' => $now];
+        if (self::hasPinSecret()) {
+            $row['pin_secret'] = \Crypt::encryptString($pin);
+        }
         if (DB::table('time_clock_pins')->where('user_id', $userId)->exists()) {
             DB::table('time_clock_pins')->where('user_id', $userId)->update($row);
         } else {
             DB::table('time_clock_pins')->insert($row + ['user_id' => $userId, 'created_at' => $now]);
+        }
+    }
+
+    private static $hasPinSecret = null;
+
+    public static function hasPinSecret(): bool
+    {
+        if (self::$hasPinSecret === null) {
+            try {
+                self::$hasPinSecret = Schema::hasColumn('time_clock_pins', 'pin_secret');
+            } catch (\Throwable $e) {
+                self::$hasPinSecret = false;
+            }
+        }
+        return self::$hasPinSecret;
+    }
+
+    /** The plain PIN from a time_clock_pins row, or null if not known yet. */
+    public static function readablePin($row): ?string
+    {
+        if (!$row || empty($row->pin_secret)) {
+            return null;
+        }
+        try {
+            return \Crypt::decryptString($row->pin_secret);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 
@@ -1121,6 +1151,10 @@ class TimeClockService
             $row = DB::table('time_clock_pins')->where('user_id', $uid)->first();
             if ($row && strpos((string) $row->pin_hash, 'h1:') !== 0) {
                 DB::table('time_clock_pins')->where('id', $row->id)->update(['pin_hash' => self::pinDigest($pin)]);
+            }
+            // PINs set before pin_secret existed: keep a copy for the owners' view.
+            if ($row && self::hasPinSecret() && empty($row->pin_secret)) {
+                DB::table('time_clock_pins')->where('id', $row->id)->update(['pin_secret' => \Crypt::encryptString($pin)]);
             }
         } catch (\Throwable $e) {
             // ignore

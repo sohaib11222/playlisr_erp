@@ -510,9 +510,16 @@ class TimeClockController extends Controller
         }
         $requireAtStore = TC::requireAtStore();
         $isOwner = $this->isOwner();
+        // Jon, Sarah and Fatteen can look up anyone's PIN.
+        $pinView = [];
+        if ($this->canEditPunches()) {
+            foreach ($pins as $uid => $p) {
+                $pinView[$uid] = TC::readablePin($p);
+            }
+        }
         $requireSchedule = TC::requireSchedule();
         $scheduleWindow = TC::scheduleWindow();
-        return view('time_clock.settings', compact('posManagers', 'slackIds', 'posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        return view('time_clock.settings', compact('posManagers', 'slackIds', 'posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'pinView', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -690,7 +697,8 @@ class TimeClockController extends Controller
     /**
      * Owner-only: give everyone on the clock list (Sling, last 30 days) who
      * has no PIN a unique random PIN, and show printable slips once. The
-     * PINs are never stored in plain text, logged, or put in the session.
+     * PINs are never stored in plain text (only encrypted, for the owners'
+     * lookup), logged, or put in the session.
      */
     public function bulkPins(Request $request)
     {
