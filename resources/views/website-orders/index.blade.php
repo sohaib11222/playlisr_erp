@@ -745,6 +745,45 @@
           </div>
         </div>
       @endif
+
+      {{-- Discogs orders waiting on the buyer (Sarah, 2026-10-14): we told them
+           we can't find the item and they haven't answered. Nothing to ship;
+           each needs a refund or substitute on Discogs. --}}
+      @if(!empty($discogsWaiting))
+        <h3 style="margin:22px 0 10px;font-size:16px;font-weight:700;color:#111827;">
+          <span class="wo-pill" style="background:#fee2e2;color:#991b1b;">Discogs</span>
+          Waiting on buyer / needs refund ({{ count($discogsWaiting) }})
+        </h3>
+        <div style="font-size:13px;color:#6b7280;margin:-4px 0 10px;">We told these buyers we can't find the item and they haven't replied. Not to ship: refund or send a substitute on Discogs.</div>
+        <div class="wo-card">
+          <div class="wo-scroll">
+          <table class="wo-tbl">
+            <thead><tr>
+              <th>Discogs order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ordered</th><th>Waiting</th>
+            </tr></thead>
+            <tbody>
+              @foreach($discogsWaiting as $d)
+                @php $wDays = $d['days_waiting'] ?? null; @endphp
+                <tr class="wo-row">
+                  <td><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">{{ $d['id'] }}</a></td>
+                  <td><div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div></td>
+                  <td style="font-size:13px;">
+                    @foreach(($d['items'] ?? []) as $it)
+                      <div class="wo-prod-line">{{ $it['name'] ?? 'Item' }}</div>
+                    @endforeach
+                  </td>
+                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
+                  <td class="wo-placed">@if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}@endif</td>
+                  <td style="font-weight:600;white-space:nowrap;color:{{ ($wDays ?? 0) >= 7 ? '#b91c1c' : '#92400e' }};">
+                    @if($wDays !== null){{ $wDays }} {{ $wDays === 1 ? 'day' : 'days' }}@else &mdash; @endif
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+          </div>
+        </div>
+      @endif
     @endif
 
     {{-- Shared "Update status" dialog — one dialog reused for every row, retargeted by

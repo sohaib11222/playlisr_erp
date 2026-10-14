@@ -211,6 +211,7 @@ class WebsiteOrdersController extends Controller
         // marks everything shipped in one place (Sarah, 2026-10-12).
         $discogsToShip = [];
         $discogsError = null;
+        $discogsWaiting = null;
         if ($activeTab === 'to_ship') {
             $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
             if (($d['success'] ?? false) === true) {
@@ -230,6 +231,14 @@ class WebsiteOrdersController extends Controller
             } else {
                 $discogsError = 'Could not load Discogs orders: ' . ($d['message'] ?? 'unknown error');
             }
+            // Paid Discogs orders we told the buyer we can't find, still
+            // waiting on their answer (Sarah, 2026-10-14): not to ship, but
+            // listed so they get a refund or substitute.
+            $w = $this->websiteApi('GET', '/erp/discogs/waiting-on-buyer', null, 30);
+            if (($w['success'] ?? false) === true) {
+                $discogsWaiting = $w['data'] ?? [];
+                usort($discogsWaiting, fn($a, $b) => ($b['days_waiting'] ?? 0) <=> ($a['days_waiting'] ?? 0));
+            }
         }
 
         // Column sorting from the header links (?sort=listed&dir=asc), kept in
@@ -247,6 +256,7 @@ class WebsiteOrdersController extends Controller
             'sortDir' => $sortDir,
             'discogsToShip' => $discogsToShip,
             'discogsError' => $discogsError,
+            'discogsWaiting' => $discogsWaiting,
             'orders' => $orders,
             'bridgeError' => $bridgeError,
             'bridgeErrorMessage' => $bridgeErrorMessage,
