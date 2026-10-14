@@ -444,6 +444,18 @@ class SellPosController extends Controller
     }
 
     /**
+     * Manager duty with no open register (Sarah 10/13): one line and a button
+     * to the duty page with Cashier preselected.
+     */
+    public function managerNeedsRegister(Request $request)
+    {
+        if (!auth()->user()->can('sell.view') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        return view('sale_pos.manager_needs_register');
+    }
+
+    /**
      * Persist POS duty to session and activity_log (pos_duty).
      */
     public function savePosDuty(Request $request)
@@ -501,7 +513,7 @@ class SellPosController extends Controller
 
         $openingCash = null;
         $openingCashDenoms = null;
-        if (\App\Services\TimeClockService::isRegisterDuty($duty)) {
+        if ($duty === 'cashier') {
             // The duty picker now counts the drawer by bill denomination
             // (100/50/20/10/5/1). Recompute the total server-side from those
             // counts so we don't trust the client-computed hidden field. Fall
@@ -536,6 +548,11 @@ class SellPosController extends Controller
         );
 
         $intended = $request->input('intended', action('SellPosController@create'));
+        // Manager skips the register (Sarah 10/13): straight into the ERP
+        // unless they were headed somewhere other than the POS screen.
+        if ($duty === 'manager' && (!is_string($intended) || rtrim((string) parse_url($intended, PHP_URL_PATH), '/') === rtrim((string) parse_url(action('SellPosController@create'), PHP_URL_PATH), '/'))) {
+            return redirect('/home');
+        }
         if (!is_string($intended)) {
             return redirect()->action('SellPosController@create');
         }
@@ -4920,6 +4937,13 @@ class SellPosController extends Controller
         $skip_register = !\App\Services\TimeClockService::isRegisterDuty(session('pos_duty'))
             || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
+        // Manager duty (Sarah 10/13) skips the drawer count, so with no open
+        // register a Manager is sent to switch to Cashier instead of opening
+        // one here. Same rule as before: no register, no ringing.
+        if (!$skip_register && session('pos_duty') === 'manager' && $this->cashRegisterUtil->countOpenedRegister() == 0) {
+            return redirect()->action('SellPosController@managerNeedsRegister');
+        }
+
         //Check if there is a open register, if no then redirect to Create Register screen.
         if (!$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create', ['sub_type' => $sub_type]);
@@ -5099,6 +5123,13 @@ class SellPosController extends Controller
             || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
         //Check if there is a open register, if no then redirect to Create Register screen.
+        if (!$is_direct_sale && !$skip_register && session('pos_duty') === 'manager' && $this->cashRegisterUtil->countOpenedRegister() == 0) {
+            $msg = 'To ring sales, switch to Cashier and count the drawer.';
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json(['success' => 0, 'msg' => $msg]);
+            }
+            return redirect()->action('SellPosController@managerNeedsRegister');
+        }
         if (!$is_direct_sale && !$skip_register && $this->cashRegisterUtil->countOpenedRegister() == 0) {
             return redirect()->action('CashRegisterController@create');
         }

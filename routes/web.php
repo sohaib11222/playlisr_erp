@@ -575,6 +575,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // middleware so staff can reach the picker itself.
     Route::get('/pos/select-duty', 'SellPosController@selectPosDuty')->name('pos.selectDuty');
     Route::post('/pos/duty', 'SellPosController@savePosDuty')->name('pos.setDuty');
+    Route::get('/pos/manager-register', 'SellPosController@managerNeedsRegister')->name('pos.managerNeedsRegister');
 
     // Export routes must be defined BEFORE resource route to avoid conflicts
     Route::middleware(['pos.duty'])->group(function () {

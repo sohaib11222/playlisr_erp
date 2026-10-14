@@ -404,7 +404,7 @@
                 <div class="field-prompt">Choose your role</div>
                 <div class="duty-options">
                     <label class="duty-option">
-                        <input type="radio" name="duty" value="cashier" id="duty_cashier" required>
+                        <input type="radio" name="duty" value="cashier" id="duty_cashier" required @if(request('duty') === 'cashier') checked @endif>
                         <span class="opt-title">Cashier</span>
                     </label>
                     @if(!empty($is_manager))
@@ -516,13 +516,15 @@
                 function refresh() {
                     var cashier = document.getElementById('duty_cashier');
                     var mgr = document.getElementById('duty_manager');
-                    var on = (cashier && cashier.checked) || (mgr && mgr.checked);
+                    // Drawer count: Cashier only. Store required: Cashier and Manager.
+                    var on = cashier && cashier.checked;
+                    var needStore = on || (mgr && mgr.checked);
                     group.style.display = on ? 'block' : 'none';
                     if (!on) {
                         err.style.display = 'none';
                     }
                     if (bothPill && bothInput) {
-                        if (on) {
+                        if (needStore) {
                             // Deselect "Both" if it was checked; cashier needs
                             // to pick Pico or Hollywood specifically.
                             if (bothInput.checked) bothInput.checked = false;
@@ -549,7 +551,7 @@
                             // Total is derived from the bill counts, so it's
                             // always a valid number (an empty drawer = $0.00,
                             // which is allowed). Just make sure it's current.
-                            recompute();
+                            if (cashier && cashier.checked) { recompute(); }
                             // Block Cashier + Both at the form level so the
                             // server doesn't have to bounce them back.
                             var locChecked = form.querySelector('input[name="location_id"]:checked');
