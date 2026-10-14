@@ -64,6 +64,12 @@
   .overlay .d { font-size: clamp(28px, 5vw, 60px); margin-top: 20px; font-weight: 600; }
   .notready { text-align: center; font-size: 24px; line-height: 1.45; margin-top: 30px; }
   .hidden { display: none !important; }
+  .block { background: #3f1515; color: #fee2e2; border-radius: 18px; padding: 18px; margin: 12px 0; font-size: 22px; line-height: 1.4; text-align: center; }
+  .block b { display: block; font-size: 26px; margin-bottom: 6px; }
+  body.computer .block { font-size: clamp(22px, 3vh, 32px); }
+  body.computer .block b { font-size: clamp(28px, 4vh, 44px); }
+  .block .steps { text-align: left; margin-top: 12px; font-size: 19px; }
+  .block .steps p { margin: 8px 0; }
 </style>
 </head>
 <body class="{{ $mode === 'computer' ? 'computer' : '' }}">
@@ -89,6 +95,11 @@
     <div id="todayLine" class="today">{{ $status['today_text'] }} today</div>
     <button type="button" id="bigBtn" class="big {{ $status['clocked_in'] ? 'out' : 'in' }}" data-action="{{ $status['clocked_in'] ? 'out' : 'in' }}">{{ $status['clocked_in'] ? 'Clock out' : 'Clock in' }}</button>
     <div id="done" class="done"></div>
+    <div id="block" class="block hidden"><b id="blockMsg"></b><div id="blockSteps" class="steps hidden">
+      <p><strong>iPhone:</strong> Settings, Privacy and Security, Location Services: turn it on, then Safari Websites: While Using the App. Come back, reload, and tap Allow.</p>
+      <p><strong>Android:</strong> turn on Location in quick settings. In Chrome, tap the icon left of the address, then Permissions, Location, Allow.</p>
+      <p><strong>Computer:</strong> click the icon left of the address, set Location to Allow, and reload.</p>
+    </div></div>
 
     <div id="homeHint" class="hint hidden">
       <b>Put the clock on your home screen</b>
@@ -115,6 +126,11 @@
     <div class="title">{{ $mode === 'computer' ? 'Enter your PIN' : 'Enter your PIN to set up this phone' }}</div>
     <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
     <div class="msg" id="msg"></div>
+    <div id="block" class="block hidden"><b id="blockMsg"></b><div id="blockSteps" class="steps hidden">
+      <p><strong>iPhone:</strong> Settings, Privacy and Security, Location Services: turn it on, then Safari Websites: While Using the App. Come back, reload, and tap Allow.</p>
+      <p><strong>Android:</strong> turn on Location in quick settings. In Chrome, tap the icon left of the address, then Permissions, Location, Allow.</p>
+      <p><strong>Computer:</strong> click the icon left of the address, set Location to Allow, and reload.</p>
+    </div></div>
     <div class="pad" id="pad">
       <button type="button" class="key" data-k="1">1</button>
       <button type="button" class="key" data-k="2">2</button>
@@ -130,7 +146,7 @@
       <button type="button" class="key alt" data-k="back" aria-label="Delete">Delete</button>
     </div>
     @if ($mode === 'computer')
-      <div class="help">Your PIN clocks you in, or out if you are already in.</div>
+      <div class="help">Your PIN clocks you in, or out if you are already in. Allow location if the browser asks.</div>
     @else
       <div class="help">No PIN yet? Ask a manager.</div>
       @if ($switch)<div class="switch"><a href="{{ url('/clock') }}">Back</a></div> @endif
@@ -165,6 +181,29 @@
     });
   }
 
+  function getGeo() {
+    return new Promise(function (resolve) {
+      if (!navigator.geolocation) { resolve({ geo_error: 'unsupported' }); return; }
+      var finished = false;
+      var timer = setTimeout(function () { if (!finished) { finished = true; resolve({ geo_error: 'timeout' }); } }, 9000);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (finished) { return; } finished = true; clearTimeout(timer);
+        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+      }, function (e) {
+        if (finished) { return; } finished = true; clearTimeout(timer);
+        resolve({ geo_error: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
+      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+    });
+  }
+  var blockEl = document.getElementById('block');
+  function showBlock(j) {
+    if (!blockEl) { return; }
+    document.getElementById('blockMsg').textContent = j.msg || '';
+    document.getElementById('blockSteps').className = 'steps' + (j.geo_denied ? '' : ' hidden');
+    blockEl.className = 'block';
+  }
+  function hideBlock() { if (blockEl) { blockEl.className = 'block hidden'; } }
+
   // ---- Keypad (store computer, and phone setup) ----
   var pad = document.getElementById('pad');
   if (pad) {
@@ -177,9 +216,15 @@
     function submit() {
       setBusy(true);
       msg.textContent = '';
+      hideBlock();
       var url = MODE === 'computer' ? '/clock/computer' : '/clock/pin';
-      post(url, { pin: pin }, false).then(function (j) {
+      var geoP = MODE === 'computer' ? getGeo() : Promise.resolve({});
+      geoP.then(function (geo) {
+        geo.pin = pin;
+        return post(url, geo, false);
+      }).then(function (j) {
         pin = ''; draw();
+        if (j && j.blocked) { showBlock(j); setBusy(false); return; }
         if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work. Try again.'; setBusy(false); return; }
         if (MODE === 'computer') {
           document.getElementById('ovH').textContent = j.headline || '';
@@ -198,6 +243,7 @@
     function press(k) {
       if (busy) { return; }
       msg.textContent = '';
+      if (pin.length === 0) { hideBlock(); }
       if (k === 'back') { pin = pin.slice(0, -1); }
       else if (k === 'clear') { pin = ''; }
       else if (/^\d$/.test(k) && pin.length < 4) { pin += k; }
@@ -231,20 +277,6 @@
       btn.textContent = s.clocked_in ? 'Clock out' : 'Clock in';
       btn.className = 'big ' + (s.clocked_in ? 'out' : 'in');
     }
-    function getGeo() {
-      return new Promise(function (resolve) {
-        if (!navigator.geolocation) { resolve({ geo_error: 'unsupported' }); return; }
-        var finished = false;
-        var timer = setTimeout(function () { if (!finished) { finished = true; resolve({ geo_error: 'timeout' }); } }, 8000);
-        navigator.geolocation.getCurrentPosition(function (p) {
-          if (finished) { return; } finished = true; clearTimeout(timer);
-          resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
-        }, function (e) {
-          if (finished) { return; } finished = true; clearTimeout(timer);
-          resolve({ geo_error: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
-        }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 });
-      });
-    }
     btn.addEventListener('click', function () {
       if (busyBtn) { return; }
       busyBtn = true;
@@ -252,11 +284,13 @@
       var label = btn.textContent;
       btn.textContent = 'One moment';
       done.textContent = '';
+      hideBlock();
       getGeo().then(function (geo) {
         geo.action = btn.getAttribute('data-action');
         return post('/clock/punch', geo, false);
       }).then(function (j) {
         if (j && j.setup) { window.location.href = '/clock'; return; }
+        if (j && j.blocked) { btn.textContent = label; showBlock(j); return; }
         if (!j || !j.ok) { btn.textContent = label; done.className = 'done bad'; done.textContent = (j && j.msg) || 'That did not work. Try again.'; return; }
         render(j.status);
         done.className = 'done';

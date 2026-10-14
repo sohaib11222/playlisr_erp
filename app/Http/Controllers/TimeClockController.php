@@ -56,7 +56,7 @@ class TimeClockController extends Controller
             'end' => $end,
             'user_id' => (int) $request->input('user_id') ?: null,
             'location_id' => (int) $request->input('location_id') ?: null,
-            'flag' => in_array($request->input('flag'), ['missing', 'unverified', 'edited', 'voided'], true) ? $request->input('flag') : '',
+            'flag' => in_array($request->input('flag'), ['missing', 'long', 'unverified', 'edited', 'voided'], true) ? $request->input('flag') : '',
         ];
     }
 
@@ -82,6 +82,12 @@ class TimeClockController extends Controller
             $q->whereNull('p.voided_at');
             if ($f['flag'] === 'missing') {
                 $q->whereNull('p.clock_out_at');
+            } elseif ($f['flag'] === 'long') {
+                $cut = TC::now()->subHours(10)->format('Y-m-d H:i:s');
+                $q->where(function ($w) use ($cut) {
+                    $w->where(function ($o) use ($cut) { $o->whereNull('p.clock_out_at')->where('p.clock_in_at', '<', $cut); })
+                      ->orWhereRaw('TIMESTAMPDIFF(MINUTE, p.clock_in_at, p.clock_out_at) > 600');
+                });
             } elseif ($f['flag'] === 'unverified') {
                 $q->where(function ($w) { $w->where('p.in_verify', 'none')->orWhere('p.out_verify', 'none'); });
             } elseif ($f['flag'] === 'edited') {
@@ -105,10 +111,13 @@ class TimeClockController extends Controller
         if (!$p->clock_out_at && !$p->voided_at) {
             $stillOpen = strtotime($p->clock_in_at) >= TC::now()->subHours(TC::OPEN_MAX_HOURS)->timestamp;
             $flags[] = $stillOpen ? 'Still clocked in' : 'Missing clock-out';
+            if ($stillOpen && strtotime($p->clock_in_at) < TC::now()->subHours(10)->timestamp) {
+                $flags[] = 'Clocked in over 10 hours';
+            }
         }
         if ($p->in_verify === 'none') { $flags[] = 'Clock-in not verified at store'; }
         if ($p->out_verify === 'none') { $flags[] = 'Clock-out not verified at store'; }
-        if ($p->hours !== null && $p->hours > 12) { $flags[] = 'Over 12 hours'; }
+        if ($p->hours !== null && $p->hours > 10) { $flags[] = 'Over 10 hours'; }
         if ($p->edited) { $flags[] = 'Edited'; }
         if ($p->voided_at) { $flags[] = 'Removed'; }
         $p->flags = $flags;
@@ -348,7 +357,8 @@ class TimeClockController extends Controller
             // suggestions are optional
         }
 
-        return view('time_clock.settings', compact('ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        $requireAtStore = TC::requireAtStore();
+        return view('time_clock.settings', compact('requireAtStore', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -371,7 +381,13 @@ class TimeClockController extends Controller
                 if (!filter_var(explode('/', $rule)[0], FILTER_VALIDATE_IP)) { $bad[] = $rule; continue; }
                 $ips[] = $rule;
             }
+            $prev = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
+            $learned = TC::freshLearned(is_array($prev) ? ($prev['learned_ips'] ?? []) : []);
+            foreach ((array) ($in['forget_learned'] ?? []) as $rule) {
+                unset($learned[(string) $rule]);
+            }
             $stores[$locId] = [
+                'learned_ips' => $learned,
                 'lat' => is_numeric($lat) && abs((float) $lat) <= 90 ? (float) $lat : '',
                 'lng' => is_numeric($lng) && abs((float) $lng) <= 180 ? (float) $lng : '',
                 'radius_m' => max(50, min(2000, (int) ($in['radius_m'] ?? TC::DEFAULT_RADIUS_M) ?: TC::DEFAULT_RADIUS_M)),
@@ -380,6 +396,7 @@ class TimeClockController extends Controller
             ];
         }
         $settings['stores'] = $stores;
+        $settings['require_at_store'] = $request->input('require_at_store') === '1';
         TC::saveSettings($settings);
         $msg = 'Store settings saved.';
         if ($bad) { $msg .= ' Skipped these because they are not IP addresses: ' . implode(', ', $bad) . '.'; }

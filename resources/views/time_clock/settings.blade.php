@@ -98,7 +98,7 @@
   <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Store location and Wi-Fi</h3></div>
     <div class="box-body">
-      <p class="text-muted">A punch counts as "at the store" when the phone's location is within the radius of a store, or when it comes from one of the store's IP addresses (Wi-Fi). If neither confirms it, the punch still goes through and is flagged on Timecards. Hollywood and Pico start with coordinates looked up from their addresses.</p>
+      <p class="text-muted">A punch counts as "at the store" when the device's location is within a store's radius (distance minus the reported accuracy), or when it comes from one of the store's IP addresses. Every time a punch is confirmed by location, its IP is learned for that store automatically (Auto); auto IPs not seen for 30 days drop off. IPs you type in (Manual) stay until you remove them. Hollywood and Pico start with coordinates looked up from their addresses.</p>
       <p>This computer or phone is on <strong>{{ $ip }}</strong>
         @if ($ipStore['verify'] === 'ip' && isset($stores[$ipStore['location_id']]))
           <span class="label label-success">counts as {{ $stores[$ipStore['location_id']]['name'] }}</span>
@@ -116,9 +116,13 @@
 
       <form method="POST" action="{{ url('/time-clock/settings/stores') }}" style="margin-top:10px;">
         {{ csrf_field() }}
+        <div class="well well-sm" style="font-size:15px;">
+          <label style="margin:0;"><input type="checkbox" name="require_at_store" value="1" @if ($requireAtStore) checked @endif> <strong>Require being at the store</strong></label>
+          <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-ins and clock-outs from anywhere else are refused (staff see "You need to be at the store"). Off: they go through and are flagged "not verified at store" on Timecards. End Shift and register close always clock people out. Admins can always add or fix punches on Timecards.</div>
+        </div>
         <div class="table-responsive">
         <table class="table table-condensed">
-          <thead><tr><th>Location</th><th>Latitude</th><th>Longitude</th><th>Radius (m)</th><th>Store IPs (one per line, ranges like 203.0.113.0/24 work)</th><th>Not a store</th></tr></thead>
+          <thead><tr><th>Location</th><th>Latitude</th><th>Longitude</th><th>Radius (m)</th><th>Manual IPs (one per line, ranges like 203.0.113.0/24 work)</th><th>Auto IPs (last seen)</th><th>Not a store</th></tr></thead>
           <tbody>
           @foreach ($locations as $lid => $lname)
             @php $__s = $stores[$lid] ?? null; $__sv = $saved[$lid] ?? ($saved[(string) $lid] ?? []); @endphp
@@ -127,7 +131,14 @@
               <td><input type="text" name="stores[{{ $lid }}][lat]" value="{{ $__s['lat'] ?? '' }}" class="form-control input-sm" style="width:120px;"></td>
               <td><input type="text" name="stores[{{ $lid }}][lng]" value="{{ $__s['lng'] ?? '' }}" class="form-control input-sm" style="width:130px;"></td>
               <td><input type="number" name="stores[{{ $lid }}][radius_m]" value="{{ $__s['radius_m'] ?? 200 }}" min="50" max="2000" class="form-control input-sm" style="width:90px;"></td>
-              <td><textarea name="stores[{{ $lid }}][ips]" rows="2" class="form-control input-sm" style="min-width:220px;">{{ implode("\n", $__s['ips'] ?? []) }}</textarea></td>
+              <td><textarea name="stores[{{ $lid }}][ips]" rows="2" class="form-control input-sm" style="min-width:200px;">{{ implode("\n", $__s['ips'] ?? []) }}</textarea></td>
+              <td style="font-size:12px;">
+                @forelse (($__s['learned_ips'] ?? []) as $__rule => $__seen)
+                  <div><label style="font-weight:400;margin:0;" title="Tick and save to forget this IP"><input type="checkbox" name="stores[{{ $lid }}][forget_learned][]" value="{{ $__rule }}"> {{ $__rule }}</label> <span class="text-muted">{{ \Carbon::parse($__seen)->format('M j') }}</span></div>
+                @empty
+                  <span class="text-muted">none yet</span>
+                @endforelse
+              </td>
               <td><input type="checkbox" name="stores[{{ $lid }}][disabled]" value="1" @if (!empty($__sv['disabled'])) checked @endif></td>
             </tr>
           @endforeach

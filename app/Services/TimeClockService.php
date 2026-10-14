@@ -37,9 +37,13 @@ class TimeClockService
     const IP_MAX_FAILS = 15;
     const GLOBAL_MAX_FAILS = 60;
     const DEFAULT_RADIUS_M = 200;
-    // Credit the phone's reported accuracy up to this much when checking the
-    // radius, so a fuzzy indoor fix at the counter still counts.
-    const MAX_ACCURACY_CREDIT_M = 100;
+    // Accept when distance minus the reported accuracy is inside the radius
+    // (Sarah 10/13). The accuracy credit is capped so a very rough fix (city
+    // level, several km) can't pass from home.
+    const MAX_ACCURACY_CREDIT_M = 300;
+    // Auto-learned store IPs expire when not seen on a location-confirmed
+    // punch for this many days. Manual IPs never expire.
+    const LEARNED_IP_DAYS = 30;
 
     // Geocoded once (OpenStreetMap / Census, 2026-10-13) from the addresses
     // on nivessa.com. Matched to business_locations by name. Admins can
@@ -135,6 +139,67 @@ class TimeClockService
         Storage::disk('local')->put(self::SETTINGS_FILE, json_encode($s, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
+    /** "Require being at the store" (default on; admin switch, no deploy). */
+    public static function requireAtStore(): bool
+    {
+        $s = self::settings();
+        return !array_key_exists('require_at_store', $s) || !empty($s['require_at_store']);
+    }
+
+    /** Learned IPs seen within LEARNED_IP_DAYS: [rule => 'Y-m-d']. */
+    public static function freshLearned($learned): array
+    {
+        $out = [];
+        $cut = self::now()->subDays(self::LEARNED_IP_DAYS)->toDateString();
+        foreach ((array) $learned as $rule => $seen) {
+            if (is_string($rule) && $rule !== '' && is_string($seen) && $seen >= $cut) {
+                $out[$rule] = $seen;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * A punch was confirmed at store $locId by location: remember the
+     * network it came from (auto-learned, expires after LEARNED_IP_DAYS
+     * unseen). Never throws.
+     */
+    public static function learnIp(int $locId, string $ip): void
+    {
+        try {
+            if (!$locId || !filter_var($ip, FILTER_VALIDATE_IP)) {
+                return;
+            }
+            $rule = self::networkFor($ip);
+            $today = self::now()->toDateString();
+            $settings = self::settings();
+            $cur = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
+            if (!is_array($cur)) {
+                $cur = [];
+            }
+            if (in_array($rule, (array) ($cur['ips'] ?? []), true)) {
+                return; // already a manual IP
+            }
+            $learned = self::freshLearned($cur['learned_ips'] ?? []);
+            if (($learned[$rule] ?? '') === $today) {
+                return;
+            }
+            // An IP belongs to one store: drop it from any other store.
+            foreach ($settings['stores'] as $otherId => $other) {
+                if ((int) $otherId !== $locId && is_array($other) && isset($other['learned_ips'][$rule])) {
+                    unset($settings['stores'][$otherId]['learned_ips'][$rule]);
+                }
+            }
+            $learned[$rule] = $today;
+            $cur['learned_ips'] = $learned;
+            unset($settings['stores'][(string) $locId]);
+            $settings['stores'][$locId] = $cur;
+            self::saveSettings($settings);
+        } catch (\Throwable $e) {
+            \Log::warning('time clock learn ip failed: ' . $e->getMessage());
+        }
+    }
+
     /** Active business locations: [id => name]. */
     public static function locations(int $businessId): array
     {
@@ -171,11 +236,13 @@ class TimeClockService
             $lat = is_array($cfg) && isset($cfg['lat']) && $cfg['lat'] !== '' ? (float) $cfg['lat'] : ($def['lat'] ?? null);
             $lng = is_array($cfg) && isset($cfg['lng']) && $cfg['lng'] !== '' ? (float) $cfg['lng'] : ($def['lng'] ?? null);
             $ips = is_array($cfg) && isset($cfg['ips']) ? array_values(array_filter((array) $cfg['ips'])) : [];
+            $learned = self::freshLearned(is_array($cfg) ? ($cfg['learned_ips'] ?? []) : []);
             if (is_array($cfg) && !empty($cfg['disabled'])) {
                 $lat = $lng = null;
                 $ips = [];
+                $learned = [];
             }
-            if ($lat === null && $lng === null && !$ips) {
+            if ($lat === null && $lng === null && !$ips && !$learned) {
                 continue;
             }
             $out[(int) $id] = [
@@ -186,6 +253,7 @@ class TimeClockService
                 'lng' => $lng,
                 'radius_m' => (int) (is_array($cfg) && !empty($cfg['radius_m']) ? $cfg['radius_m'] : self::DEFAULT_RADIUS_M),
                 'ips' => $ips,
+                'learned_ips' => $learned,
                 'address' => $def['address'] ?? '',
             ];
         }
@@ -305,7 +373,7 @@ class TimeClockService
 
         if ($ip !== '') {
             foreach ($stores as $id => $s) {
-                foreach ($s['ips'] as $rule) {
+                foreach (array_merge($s['ips'], array_keys($s['learned_ips'])) as $rule) {
                     if (self::ipMatches($ip, (string) $rule)) {
                         return ['location_id' => $id, 'verify' => 'ip', 'distance_m' => $nearestDist !== null ? (int) round($nearestDist) : null];
                     }
@@ -684,7 +752,7 @@ class TimeClockService
 
     // ---- Actions ---------------------------------------------------------
 
-    private static function geoFrom(Request $request): array
+    public static function geoFrom(Request $request): array
     {
         $num = function ($v) { return is_numeric($v) ? (float) $v : null; };
         $err = preg_replace('/[^a-z_]/', '', strtolower((string) $request->input('geo_error', '')));
@@ -736,6 +804,9 @@ class TimeClockService
         ]);
 
         $store = self::storeName($businessId, $locId);
+        if ($where['verify'] === 'gps' && $locId) {
+            self::learnIp((int) $locId, $ip);
+        }
         // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';
         return ['ok' => true, 'msg' => $msg];
@@ -763,6 +834,9 @@ class TimeClockService
             $where = self::resolveStore((int) $open->business_id, $ip, $geo);
             $verify = $where['verify'];
             $dist = $where['distance_m'];
+            if ($verify === 'gps' && $where['location_id']) {
+                self::learnIp((int) $where['location_id'], $ip);
+            }
         }
         $now = self::nowString();
         DB::table('time_clock_punches')->where('id', $open->id)->whereNull('clock_out_at')->update([
