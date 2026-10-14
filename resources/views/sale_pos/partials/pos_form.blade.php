@@ -278,6 +278,8 @@
 					'autofocus' => is_null($default_location)? false : true,
 				]) !!}
 			</div>
+			{{-- Sarah 10/14: ~187 duplicate listings were made at the register when a search missed. --}}
+			<div style="font-size:12px;color:#6b7c8a;margin-top:4px;">Sealed: scan the barcode on the shrink wrap. Can't find it? Search the artist before making a New Product.</div>
 
 			<div class="pos-action-row">
 				@if(isset($pos_settings['enable_weighing_scale']) && $pos_settings['enable_weighing_scale'] == 1)
