@@ -205,6 +205,14 @@ class BarcodeFixController extends Controller
 
         $users = \DB::table('users')->where('business_id', $biz)->select('id', \DB::raw("TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) as n"))->pluck('n', 'id')->all();
         $who = function ($p) use ($users) { return trim(($users[(int) $p->created_by] ?? '?') . ', ' . ($p->created_at ? date('n/j/Y', strtotime($p->created_at)) : '')); };
+        // AMS cost for the kept (real-barcode) listing, so an overpriced
+        // record stands out (Sarah 10/14).
+        $ams = function ($k) use ($ica, $biz) {
+            foreach ($ica->allSupplierPrices($biz, $k->artist, $k->name, $k->cat, $k->sku) as $sp) {
+                if (($sp['supplier_key'] ?? '') === 'ams') return round((float) $sp['cost'], 2);
+            }
+            return null;
+        };
         $isBarcode = function ($sku) { return (bool) preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $sku)); };
         $index = []; $made = [];
         foreach (\DB::table('products as p')->join('categories as c', 'c.id', '=', 'p.category_id')
@@ -258,13 +266,14 @@ class BarcodeFixController extends Controller
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
                 'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
                 'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku, 'keep_cat' => $k->cat, 'keep_who' => $who($k), 'who' => $who($p),
+                'keep_ams' => $ams($k),
                 'keep_hw' => $stock[$k->id]['hw'] ?? 0, 'keep_pico' => $stock[$k->id]['pico'] ?? 0, 'keep_sold' => (float) ($sold[$k->id] ?? 0), 'keep_price' => round((float) ($price[$k->id] ?? 0), 2),
             ];
         }
         if ($request->query('csv')) {
             $fh = fopen('php://temp', 'w+');
-            fputcsv($fh, ['Made-up listing', 'Its SKU', 'Format', 'HW', 'Pico', 'Sold', 'Price', 'Real-barcode listing', 'Barcode', 'HW', 'Pico', 'Sold', 'Price', 'Made-up link', 'Real link']);
-            foreach ($pairs as $x) fputcsv($fh, [$x['name'], $x['sku'], $x['cat'], $x['hw'], $x['pico'], $x['sold'], $x['price'], $x['keep_name'], $x['keep_sku'], $x['keep_hw'], $x['keep_pico'], $x['keep_sold'], $x['keep_price'], url('/products/' . $x['id'] . '/edit'), url('/products/' . $x['keep_id'] . '/edit')]);
+            fputcsv($fh, ['Made-up listing', 'Its SKU', 'Format', 'HW', 'Pico', 'Sold', 'Price', 'Real-barcode listing', 'Barcode', 'HW', 'Pico', 'Sold', 'Price', 'AMS cost', 'Made-up link', 'Real link']);
+            foreach ($pairs as $x) fputcsv($fh, [$x['name'], $x['sku'], $x['cat'], $x['hw'], $x['pico'], $x['sold'], $x['price'], $x['keep_name'], $x['keep_sku'], $x['keep_hw'], $x['keep_pico'], $x['keep_sold'], $x['keep_price'], $x['keep_ams'], url('/products/' . $x['id'] . '/edit'), url('/products/' . $x['keep_id'] . '/edit')]);
             rewind($fh); $csv = stream_get_contents($fh); fclose($fh);
             return response($csv, 200)->header('Content-Type', 'text/csv')->header('Content-Disposition', 'attachment; filename="entered-twice.csv"');
         }
