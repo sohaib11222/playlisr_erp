@@ -243,7 +243,7 @@ class BarcodeFixController extends Controller
             $artistWords = array_merge($words($p->artist), $words($k->artist), $words($hitArtist[(int) $k->id] ?? ''));
             $wa = array_diff($words($p->name), $artistWords); $wb = array_diff($words($k->name), $artistWords);
             sort($wa); sort($wb);
-            $exact = array_values(array_unique($wa)) === array_values(array_unique($wb)) && $wa;
+            $exact = array_values(array_unique($wa)) === array_values(array_unique($wb));
             $pairs[] = [
                 'exact' => (bool) $exact,
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
@@ -325,7 +325,38 @@ class BarcodeFixController extends Controller
         $sub = Request::create('/products/merge-selected', 'POST', ['product_ids' => [(int) $id, $keep], 'keep_id' => $keep]);
         $sub->setLaravelSession($request->session());
         $sub->setUserResolver($request->getUserResolver());
-        return app(ProductMergeController::class)->mergeSelected($sub);
+        $res = app(ProductMergeController::class)->mergeSelected($sub);
+        $price = $request->input('price');
+        $data = method_exists($res, 'getData') ? $res->getData(true) : [];
+        if ($price === null || $price === '' || empty($data['success'])) return $res;
+
+        // Sarah picked which price is right (Check by hand tab): set it on the
+        // kept listing. Undo: Admin Action History ('set-merge-price').
+        $price = round((float) $price, 2);
+        $biz = (int) $request->session()->get('user.business_id');
+        $vars = \DB::table('variations as v')->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $biz)->where('v.product_id', $keep)->whereNull('v.deleted_at')
+            ->select('v.id', 'v.sell_price_inc_tax', 'v.default_sell_price')->get();
+        $rows = [];
+        foreach ($vars as $v) {
+            $oldInc = (float) $v->sell_price_inc_tax; $oldExc = (float) $v->default_sell_price;
+            if (abs($oldInc - $price) < 0.005) continue;
+            $newExc = ($oldInc > 0 && $oldExc > 0) ? round($oldExc * $price / $oldInc, 4) : $price;
+            \DB::table('variations')->where('id', $v->id)->update(['sell_price_inc_tax' => $price, 'default_sell_price' => $newExc, 'updated_at' => now()]);
+            $rows[] = ['id' => (int) $v->id, 'old_inc' => $oldInc, 'old_exc' => $oldExc, 'new_inc' => $price, 'new_exc' => $newExc];
+        }
+        if ($rows) {
+            $ts = now()->format('Y-m-d_His') . '-' . $keep;
+            \Storage::disk('local')->put("admin-snapshots/set-merge-price-{$ts}.json", json_encode([
+                'timestamp' => $ts, 'action' => 'set-merge-price', 'user_id' => auth()->id(), 'business_id' => $biz,
+                'source_name' => (string) \DB::table('products')->where('id', $keep)->value('name'), 'target_name' => '$' . number_format($price, 2),
+                'product_id' => $keep, 'rows' => $rows,
+            ], JSON_PRETTY_PRINT));
+            \DB::table('products')->where('id', $keep)->update(['updated_at' => now()]);
+            try { (new \App\Services\NivessaStockNotifier())->pushProductChanged([$keep]); } catch (\Throwable $e) {}
+        }
+        $data['msg'] = ($data['msg'] ?? 'Merged.') . ' Price set to $' . number_format($price, 2) . '.';
+        return response()->json($data);
     }
 
     /** Hide a listing from this page (can't tell / not worth it). */

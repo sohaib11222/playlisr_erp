@@ -50,7 +50,7 @@ tr.pv-done td { opacity: .4; }
                 + '<td' + d + '>' + money(x.price) + '</td><td>' + x.hw + ' / ' + x.pico + '</td><td>' + x.sold + '</td><td class="arrow">into</td>'
                 + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a>' + nm + '<div class="pv-small">' + esc(x.keep_sku) + ', ' + esc(x.keep_cat || '') + '</div><div class="pv-small">Entered by ' + esc(x.keep_who || '') + '</div></td>'
                 + '<td' + d + '>' + money(x.keep_price) + '</td><td>' + x.keep_hw + ' / ' + x.keep_pico + '</td><td>' + x.keep_sold + '</td>'
-                + '<td class="pv-act" data-id="' + x.id + '" data-keep="' + x.keep_id + '"><button class="pv-btn" data-a="merge" type="button">Merge</button> <button class="pv-btn light" data-a="skip" type="button">Not the same</button><div class="pv-msg"></div></td></tr>';
+                + '<td class="pv-act" data-id="' + x.id + '" data-keep="' + x.keep_id + '">' + (same(x) ? '<button class="pv-btn" data-a="merge" type="button">Merge</button>' : '<button class="pv-btn" data-a="merge" data-price="' + x.price + '" type="button">Merge, keep ' + money(x.price) + '</button><br><button class="pv-btn" data-a="merge" data-price="' + x.keep_price + '" type="button">Merge, keep ' + money(x.keep_price) + '</button>') + '<br><button class="pv-btn light" data-a="skip" type="button">Not the same</button><div class="pv-msg"></div></td></tr>';
         }).join('') || '<tr><td colspan="10">Nothing here.</td></tr>';
     }
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -59,7 +59,7 @@ tr.pv-done td { opacity: .4; }
         var td = b.closest('.pv-act'), id = td.getAttribute('data-id'), msg = td.querySelector('.pv-msg'), a = b.getAttribute('data-a');
         td.querySelectorAll('.pv-btn').forEach(function (x) { x.disabled = true; });
         msg.textContent = 'Working...';
-        fetch('/products/fix-barcodes/' + id + '/' + a, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ keep_id: td.getAttribute('data-keep') }) })
+        fetch('/products/fix-barcodes/' + id + '/' + a, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ keep_id: td.getAttribute('data-keep'), price: b.getAttribute('data-price') }) })
             .then(function (r) { return r.json(); }).then(function (j) {
                 if (j.success) { msg.textContent = a === 'merge' ? 'Merged.' : 'Marked not the same.'; td.closest('tr').classList.add('pv-done'); pairs = pairs.filter(function (x) { return String(x.id) !== String(id); }); }
                 else { msg.textContent = j.msg || 'Did not work.'; td.querySelectorAll('.pv-btn').forEach(function (x) { x.disabled = false; }); }
