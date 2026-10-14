@@ -39,6 +39,19 @@ class BarcodeFixController extends Controller
         return is_array($j) ? $j : [];
     }
 
+    /**
+     * Album keys safe for listing-to-listing matching: both sides need a real
+     * artist, and a "title" that is just the artist name doesn't count (found
+     * 10/14: "Safe In The Hands Of Love - Yves Tumor" matched "Yves Tumor -
+     * Asymptotical World" through the shared key "yves tumor").
+     */
+    protected function pairKeys($ica, $artist, $name): array
+    {
+        return array_values(array_filter($ica->albumKeys($artist, $name), function ($k) {
+            return $k[0] !== '' && $k[1] !== '' && $k[0] !== $k[1];
+        }));
+    }
+
     public function index()
     {
         if (!$this->isOwner()) abort(403);
@@ -94,7 +107,7 @@ class BarcodeFixController extends Controller
         $build = function ($r) use ($split, $ica, $biz) {
             [$hw, $pico] = $split($r->locs);
             $fam = $ica->formatFamily($r->cat);
-            $keys = $ica->albumKeys($r->artist, $r->name);
+            $keys = $this->pairKeys($ica, $r->artist, $r->name);
             $twins = [];
             $word = '';
             foreach ($keys as [$a, $t]) {
@@ -115,7 +128,7 @@ class BarcodeFixController extends Controller
                 foreach ($cands as $c) {
                     if ($ica->formatFamily($c->cat) !== $fam) continue;
                     $hit = false;
-                    foreach ($ica->albumKeys($c->artist, $c->name) as [$ca, $ct]) {
+                    foreach ($this->pairKeys($ica, $c->artist, $c->name) as [$ca, $ct]) {
                         foreach ($mine[$ct] ?? [] as $a) { if ($ica->artistsCompatible($a, $ca)) { $hit = true; break 2; } }
                     }
                     if (!$hit) continue;
@@ -179,9 +192,9 @@ class BarcodeFixController extends Controller
         }
         $sold = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
             ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')
-            ->groupBy('l.product_id')->pluck(\DB::raw('SUM(l.quantity)'), 'l.product_id')->all();
+            ->groupBy('l.product_id')->select('l.product_id', \DB::raw('SUM(l.quantity) as v'))->pluck('v', 'product_id')->all();
         $price = \DB::table('variations as va')->join('products as p', 'p.id', '=', 'va.product_id')->where('p.business_id', $biz)
-            ->whereNull('va.deleted_at')->groupBy('va.product_id')->pluck(\DB::raw('MAX(va.sell_price_inc_tax)'), 'va.product_id')->all();
+            ->whereNull('va.deleted_at')->groupBy('va.product_id')->select('va.product_id', \DB::raw('MAX(va.sell_price_inc_tax) as v'))->pluck('v', 'product_id')->all();
 
         $isBarcode = function ($sku) { return (bool) preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $sku)); };
         $index = []; $made = [];
@@ -191,7 +204,7 @@ class BarcodeFixController extends Controller
             $fam = $ica->formatFamily($p->cat);
             if ($fam === null) continue;
             if ($isBarcode($p->sku)) {
-                foreach ($ica->albumKeys($p->artist, $p->name) as [$a, $t]) $index[$fam . '|' . $t][] = [$a, $p];
+                foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) $index[$fam . '|' . $t][] = [$a, $p];
             } else {
                 $made[] = [$fam, $p];
             }
@@ -201,7 +214,7 @@ class BarcodeFixController extends Controller
         foreach ($made as [$fam, $p]) {
             if (isset($skipped[(int) $p->id])) continue;
             $hits = [];
-            foreach ($ica->albumKeys($p->artist, $p->name) as [$a, $t]) {
+            foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) {
                 foreach ($index[$fam . '|' . $t] ?? [] as [$ta, $tp]) {
                     if ($ica->artistsCompatible($a, $ta)) $hits[(int) $tp->id] = $tp;
                 }
