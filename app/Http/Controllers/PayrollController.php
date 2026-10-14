@@ -293,6 +293,12 @@ class PayrollController extends Controller
 
         $rows = [];
         $missing = 0;
+        // Schedule flags per punch, same rules as Timecards (Sarah 10/13):
+        // late in (saved at clock-in) and stayed past the shift end. Info
+        // only; recorded hours are never trimmed (CA pays all time worked).
+        $blockCache = [];
+        $blocksFrom = \Carbon::parse($start)->subDays(2)->format('Y-m-d H:i:s');
+        $blocksTo = \Carbon::parse($end)->addDay()->format('Y-m-d 23:59:59');
         foreach ($punches as $p) {
             $inPeriod = substr($p->clock_in_at, 0, 10) >= $start;
             if (!$p->clock_out_at) { if ($inPeriod) { $missing++; } continue; }
@@ -318,9 +324,28 @@ class PayrollController extends Controller
             // first part keeps the real clock-in (late check), the last part
             // the real clock-out. strtotime runs in the app timezone (LA), so
             // DST nights count real elapsed time.
+            $tcFlags = [];
+            try {
+                $dayLabel = \Carbon::parse($p->clock_in_at)->format('D M j');
+                if (!empty($p->late_min) && (int) $p->late_min > 0) {
+                    $tcFlags[] = $dayLabel . ': in ' . (int) $p->late_min . 'm late';
+                }
+                $storeShort = \App\Services\TimeClockService::shortStoreName((string) $p->location_name);
+                $bk = $uid . '|' . $storeShort;
+                if (!isset($blockCache[$bk])) {
+                    $blockCache[$bk] = \App\Services\TimeClockService::scheduleBlocks($uid, $blocksFrom, $blocksTo, $storeShort);
+                }
+                $bf = \App\Services\TimeClockService::blockFlags($blockCache[$bk], (string) $p->clock_in_at, (string) $p->clock_out_at);
+                if ($bf['stayed_min']) {
+                    $tcFlags[] = $dayLabel . ': stayed ' . $bf['stayed_min'] . ' min past shift';
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('payroll time clock flags failed: ' . $e->getMessage());
+            }
             $inTs = strtotime($p->clock_in_at);
             $outTs = strtotime($p->clock_out_at);
             $cur = $inTs;
+            $flagsGiven = false;
             $guard = 0;
             while ($cur < $outTs && $guard++ < 4) {
                 $day = date('Y-m-d', $cur);
@@ -335,7 +360,9 @@ class PayrollController extends Controller
                         'elapsed'  => round(($partEnd - $cur) / 3600, 4),
                         'location' => \App\Services\TimeClockService::shortStoreName((string) $p->location_name),
                         'comment'  => trim(($p->edited ? 'edited in Timecards' : '') . ($outTs > $next || $cur !== $inTs ? ' split at midnight' : '')),
+                        'tc_flags' => $flagsGiven ? [] : $tcFlags,
                     ];
+                    $flagsGiven = true;
                 }
                 $cur = $partEnd;
             }
@@ -525,9 +552,14 @@ class PayrollController extends Controller
             $hrs = (float) $r['elapsed'];
             $byPerson[$key]['days'][$day] = ($byPerson[$key]['days'][$day] ?? 0) + $hrs;
 
-            // Late detection for this punch against the schedule.
-            $flag = $this->lateFlag($byPerson[$key]['user_id'], $r, $settings['grace_minutes']);
-            if ($flag) { $byPerson[$key]['flags'][] = $flag; }
+            // Late detection for this punch against the schedule. ERP time
+            // clock rows carry their own flags (same rules as Timecards).
+            if (isset($r['tc_flags']) && is_array($r['tc_flags'])) {
+                foreach ($r['tc_flags'] as $tf) { $byPerson[$key]['flags'][] = (string) $tf; }
+            } else {
+                $flag = $this->lateFlag($byPerson[$key]['user_id'], $r, $settings['grace_minutes']);
+                if ($flag) { $byPerson[$key]['flags'][] = $flag; }
+            }
         }
 
         $people = [];

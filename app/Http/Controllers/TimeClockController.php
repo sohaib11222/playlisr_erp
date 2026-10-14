@@ -56,7 +56,7 @@ class TimeClockController extends Controller
             'end' => $end,
             'user_id' => (int) $request->input('user_id') ?: null,
             'location_id' => (int) $request->input('location_id') ?: null,
-            'flag' => in_array($request->input('flag'), ['missing', 'long', 'unverified', 'late', 'edited', 'voided'], true) ? $request->input('flag') : '',
+            'flag' => in_array($request->input('flag'), ['missing', 'long', 'unverified', 'late', 'stayed', 'edited', 'voided'], true) ? $request->input('flag') : '',
         ];
     }
 
@@ -96,6 +96,8 @@ class TimeClockController extends Controller
                 } else {
                     $q->whereRaw('1 = 0');
                 }
+            } elseif ($f['flag'] === 'stayed') {
+                $q->whereNotNull('p.clock_out_at'); // narrowed after scheduleFlags()
             } elseif ($f['flag'] === 'edited') {
                 $q->where('p.edited', 1);
             }
@@ -113,6 +115,42 @@ class TimeClockController extends Controller
             if ($date !== '' && !TC::hasScheduleData($date)) {
                 $this->noSchedDates[$date] = true;
             }
+        }
+    }
+
+    /**
+     * Minutes stayed past the scheduled shift end for each punch (Sarah
+     * 10/13, info only: hours are never trimmed). Sling blocks are loaded
+     * once per person and store. [punch id => minutes]
+     */
+    private $stayed = [];
+
+    private function loadStayed($rows): void
+    {
+        $this->stayed = [];
+        if (!count($rows)) {
+            return;
+        }
+        try {
+            $from = \Carbon::parse($rows->min('clock_in_at'))->subDay()->format('Y-m-d H:i:s');
+            $to = \Carbon::parse($rows->max('clock_in_at'))->addDay()->format('Y-m-d H:i:s');
+            $cache = [];
+            foreach ($rows as $p) {
+                if (!$p->clock_out_at || $p->voided_at) {
+                    continue;
+                }
+                $store = $p->location_name ? TC::shortStoreName((string) $p->location_name) : '';
+                $k = $p->user_id . '|' . $store;
+                if (!isset($cache[$k])) {
+                    $cache[$k] = TC::scheduleBlocks((int) $p->user_id, $from, $to, $store);
+                }
+                $bf = TC::blockFlags($cache[$k], (string) $p->clock_in_at, (string) $p->clock_out_at);
+                if ($bf['stayed_min']) {
+                    $this->stayed[(int) $p->id] = $bf['stayed_min'];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('timecards stayed-past-shift failed: ' . $e->getMessage());
         }
     }
 
@@ -147,6 +185,8 @@ class TimeClockController extends Controller
             $flags[] = 'No schedule data';
         }
         if ($p->out_verify === 'none') { $flags[] = 'Clock-out not verified at store'; }
+        $p->stayed_min = $this->stayed[(int) $p->id] ?? null;
+        if ($p->stayed_min) { $flags[] = 'Stayed ' . $p->stayed_min . ' min past shift'; }
         if ($p->hours !== null && $p->hours > 10) { $flags[] = 'Over 10 hours'; }
         if ($p->edited) { $flags[] = 'Edited'; }
         if ($p->voided_at) { $flags[] = 'Removed'; }
@@ -163,10 +203,15 @@ class TimeClockController extends Controller
         $punches = collect();
         $history = [];
         $summary = [];
+        $stayedWeeks = [];
         if ($ready) {
             $punches = $this->punchQuery($businessId, $f)->limit(3000)->get();
             $this->loadNoScheduleDates($punches);
+            $this->loadStayed($punches);
             $punches = $punches->map(function ($p) { return $this->decorate($p); });
+            if ($f['flag'] === 'stayed') {
+                $punches = $punches->filter(function ($p) { return $p->stayed_min; })->values();
+            }
             $ids = $punches->pluck('id')->all();
             if ($ids) {
                 foreach (DB::table('time_clock_punch_edits as e')->leftJoin('users as u', 'u.id', '=', 'e.edited_by')
@@ -182,12 +227,21 @@ class TimeClockController extends Controller
                 $s['hours'] += (float) $p->hours;
                 $s['flags'] += count(array_diff($p->flags, ['Edited', 'Still clocked in']));
                 $summary[$p->user_id] = $s;
+                // Weekly extra minutes past shift (weeks start Monday).
+                if ($p->stayed_min) {
+                    $wk = \Carbon::parse($p->clock_in_at)->startOfWeek()->toDateString();
+                    $stayedWeeks[$p->user_id]['name'] = $p->name;
+                    $stayedWeeks[$p->user_id]['weeks'][$wk] = ($stayedWeeks[$p->user_id]['weeks'][$wk] ?? 0) + $p->stayed_min;
+                }
             }
+            uasort($stayedWeeks, function ($a, $b) { return strcasecmp($a['name'], $b['name']); });
+            foreach ($stayedWeeks as &$sw) { krsort($sw['weeks']); }
+            unset($sw);
             uasort($summary, function ($a, $b) { return strcasecmp($a['name'], $b['name']); });
         }
         $users = TC::staff($businessId);
         $locations = TC::locations($businessId);
-        return view('time_clock.timecards', compact('f', 'ready', 'punches', 'history', 'summary', 'users', 'locations'));
+        return view('time_clock.timecards', compact('f', 'ready', 'punches', 'history', 'summary', 'stayedWeeks', 'users', 'locations'));
     }
 
     public function exportCsv(Request $request)
@@ -197,7 +251,11 @@ class TimeClockController extends Controller
         $f = $this->filters($request);
         $rows = TC::ready() ? $this->punchQuery($businessId, $f)->get() : collect();
         $this->loadNoScheduleDates($rows);
+        $this->loadStayed($rows);
         $rows = $rows->map(function ($p) { return $this->decorate($p); });
+        if ($f['flag'] === 'stayed') {
+            $rows = $rows->filter(function ($p) { return $p->stayed_min; })->values();
+        }
         $filename = 'timecards-' . $f['start'] . '_to_' . $f['end'] . '.csv';
         return response()->stream(function () use ($rows) {
             $out = fopen('php://output', 'w');
@@ -473,7 +531,8 @@ class TimeClockController extends Controller
         $settings['stores'] = $stores;
         $settings['require_at_store'] = $request->input('require_at_store') === '1';
         $settings['require_schedule'] = $request->input('require_schedule') === '1';
-        $settings['schedule_window_min'] = max(1, min(240, (int) $request->input('schedule_window_min', 15) ?: 15));
+        $settings['schedule_window_min'] = max(1, min(240, (int) $request->input('schedule_window_min', TC::DEFAULT_WINDOW_MIN) ?: TC::DEFAULT_WINDOW_MIN));
+        $settings['window_v2'] = true;
         TC::saveSettings($settings);
         $msg = 'Store settings saved.';
         if ($bad) { $msg .= ' Skipped these because they are not IP addresses: ' . implode(', ', $bad) . '.'; }

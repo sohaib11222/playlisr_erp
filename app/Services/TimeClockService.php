@@ -53,6 +53,11 @@ class TimeClockService
     const LEARN_MIN_DAYS = 2;
     // Clock-in more than this many minutes after the shift start is "late".
     const LATE_GRACE_MIN = 5;
+    // Clock-in opens this many minutes before a shift (editable on settings).
+    const DEFAULT_WINDOW_MIN = 5;
+    // Clock-out more than this many minutes after the shift end is flagged
+    // "Stayed N min past shift" on Timecards and Payroll (hours unchanged).
+    const STAYED_GRACE_MIN = 10;
     // Store computer: the same PIN again within this many seconds of a punch
     // shows the current state instead of flipping it (double taps, retries).
     const TOGGLE_GUARD_SEC = 60;
@@ -167,11 +172,89 @@ class TimeClockService
         return !array_key_exists('require_schedule', $s) || !empty($s['require_schedule']);
     }
 
-    /** Minutes before/after a scheduled start that clock-in is allowed (default 15). */
+    /**
+     * Minutes before a scheduled start that clock-in opens (default 5, Sarah
+     * 10/13: no paying for unneeded early time). A saved 15 from before the
+     * change was just the old default.
+     */
     public static function scheduleWindow(): int
     {
-        $v = (int) (self::settings()['schedule_window_min'] ?? 15);
-        return $v > 0 ? min($v, 240) : 15;
+        $s = self::settings();
+        $v = (int) ($s['schedule_window_min'] ?? self::DEFAULT_WINDOW_MIN);
+        if ($v === 15 && empty($s['window_v2'])) {
+            $v = self::DEFAULT_WINDOW_MIN;
+        }
+        return $v > 0 ? min($v, 240) : self::DEFAULT_WINDOW_MIN;
+    }
+
+    /**
+     * The person's Sling shifts (type shift, LA times) between $from and $to
+     * (dtstart, 'Y-m-d H:i:s'), at the store named $storeName ('' = any),
+     * merged into blocks when back to back (gap <= 15 min). A shift ending
+     * before it starts runs past midnight. [['start' => ts, 'end' => ts]]
+     */
+    public static function scheduleBlocks(int $userId, string $from, string $to, string $storeName = ''): array
+    {
+        if (!Schema::hasTable('sling_shifts')) {
+            return [];
+        }
+        $email = strtolower(trim((string) DB::table('users')->where('id', $userId)->value('email')));
+        $rows = DB::table('sling_shifts')->where('event_type', 'shift')
+            ->where(function ($q) use ($userId, $email) {
+                $q->where('erp_user_id', $userId);
+                if ($email !== '') {
+                    $q->orWhere(function ($o) use ($email) {
+                        $o->whereNull('erp_user_id')->where(DB::raw('LOWER(user_email)'), $email);
+                    });
+                }
+            })
+            ->where('dtstart', '>=', $from)
+            ->where('dtstart', '<=', $to)
+            ->orderBy('dtstart')
+            ->get(['dtstart', 'dtend', 'location_name']);
+        $blocks = [];
+        foreach ($rows as $r) {
+            if ($storeName !== '' && $r->location_name && stripos((string) $r->location_name, $storeName) === false) {
+                continue; // a shift at the other store
+            }
+            $st = \Carbon::parse($r->dtstart, self::TZ)->timestamp;
+            $en = $r->dtend ? \Carbon::parse($r->dtend, self::TZ)->timestamp : $st + 8 * 3600;
+            if ($en <= $st) {
+                $en += 86400;
+            }
+            $n = count($blocks);
+            if ($n && $st <= $blocks[$n - 1]['end'] + 15 * 60) {
+                $blocks[$n - 1]['end'] = max($blocks[$n - 1]['end'], $en);
+            } else {
+                $blocks[] = ['start' => $st, 'end' => $en];
+            }
+        }
+        return $blocks;
+    }
+
+    /**
+     * Scheduled-time flags for a finished or open punch, given that
+     * person's blocks: the block the clock-in falls in (from an hour before
+     * its start to its end), and minutes stayed past its end when over
+     * STAYED_GRACE_MIN. Info only: recorded hours are never changed (CA
+     * pays all time worked). ['block' => ?array, 'stayed_min' => ?int]
+     */
+    public static function blockFlags(array $blocks, string $clockIn, ?string $clockOut): array
+    {
+        $in = strtotime($clockIn);
+        foreach ($blocks as $b) {
+            if ($in >= $b['start'] - 3600 && $in < $b['end']) {
+                $stayed = null;
+                if ($clockOut) {
+                    $over = strtotime($clockOut) - $b['end'];
+                    if ($over > self::STAYED_GRACE_MIN * 60) {
+                        $stayed = (int) floor($over / 60);
+                    }
+                }
+                return ['block' => $b, 'stayed_min' => $stayed];
+            }
+        }
+        return ['block' => null, 'stayed_min' => null];
     }
 
     /** Does sling_shifts have any shift on this LA date (sync working)? */
@@ -213,39 +296,10 @@ class TimeClockService
         }
         $win = self::scheduleWindow() * 60;
         $nowTs = $now->timestamp;
-        $email = strtolower(trim((string) DB::table('users')->where('id', $userId)->value('email')));
-        $rows = DB::table('sling_shifts')->where('event_type', 'shift')
-            ->where(function ($q) use ($userId, $email) {
-                $q->where('erp_user_id', $userId);
-                if ($email !== '') {
-                    $q->orWhere(function ($o) use ($email) {
-                        $o->whereNull('erp_user_id')->where(DB::raw('LOWER(user_email)'), $email);
-                    });
-                }
-            })
-            ->where('dtstart', '>=', $now->copy()->subHours(24)->format('Y-m-d H:i:s'))
-            ->where('dtstart', '<=', $now->copy()->addSeconds($win)->format('Y-m-d H:i:s'))
-            ->orderBy('dtstart')
-            ->get(['dtstart', 'dtend', 'location_name']);
-
         $storeName = $locId ? self::storeName($businessId, $locId) : '';
-        $blocks = [];
-        foreach ($rows as $r) {
-            if ($storeName !== '' && $r->location_name && stripos((string) $r->location_name, $storeName) === false) {
-                continue; // a shift at the other store
-            }
-            $st = \Carbon::parse($r->dtstart, self::TZ)->timestamp;
-            $en = $r->dtend ? \Carbon::parse($r->dtend, self::TZ)->timestamp : $st + 8 * 3600;
-            if ($en <= $st) {
-                $en += 86400; // ends after midnight
-            }
-            $n = count($blocks);
-            if ($n && $st <= $blocks[$n - 1]['end'] + 15 * 60) {
-                $blocks[$n - 1]['end'] = max($blocks[$n - 1]['end'], $en);
-            } else {
-                $blocks[] = ['start' => $st, 'end' => $en];
-            }
-        }
+        // Look ahead 12 hours too, to tell "too early" from "not scheduled".
+        $blocks = self::scheduleBlocks($userId, $now->copy()->subHours(24)->format('Y-m-d H:i:s'),
+            $now->copy()->addHours(12)->format('Y-m-d H:i:s'), $storeName);
         foreach ($blocks as $b) {
             if ($nowTs < $b['start'] - $win || $nowTs >= $b['end']) {
                 continue; // too early for this block, or it is over
@@ -264,7 +318,14 @@ class TimeClockService
             return ['ok' => true, 'no_data' => false, 'late_min' => $late,
                 'sched_start' => \Carbon::createFromTimestamp($b['start'], self::TZ)->format('Y-m-d H:i:s')];
         }
-        return ['ok' => false, 'no_data' => false, 'late_min' => null, 'sched_start' => null];
+        $early = false;
+        foreach ($blocks as $b) {
+            if ($b['start'] - $win > $nowTs && \Carbon::createFromTimestamp($b['start'], self::TZ)->toDateString() === $today) {
+                $early = true;
+                break;
+            }
+        }
+        return ['ok' => false, 'no_data' => false, 'late_min' => null, 'sched_start' => null, 'early' => $early];
     }
 
     /** Learned IPs seen within LEARNED_IP_DAYS: [rule => 'Y-m-d']. */

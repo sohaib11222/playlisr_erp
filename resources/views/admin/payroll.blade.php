@@ -174,7 +174,7 @@
             @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
             <td class="text-muted" style="font-size:11.5px;line-height:1.35;min-width:220px;">
               @if(!empty($p['memo'])){{ $p['memo'] }}@endif
-              @if(!empty($p['flags']))<div style="margin-top:3px;color:#8a6d3b;">Late: {{ implode('; ', $p['flags']) }}</div>@endif
+              @if(!empty($p['flags']))<div style="margin-top:3px;color:#8a6d3b;">Flags: {{ implode('; ', $p['flags']) }}</div>@endif
             </td>
             <td style="min-width:190px;"><input form="notes-form" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" class="form-control input-sm" placeholder="Add a note"></td>
             <td class="text-center">

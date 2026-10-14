@@ -239,7 +239,7 @@ class PhoneClockController extends Controller
             }
         }
 
-        // Buddy-punch guard (Sarah 10/13): clock-in only from 15 minutes
+        // Buddy-punch guard (Sarah 10/13): clock-in only from 5 minutes (setting)
         // before your Sling shift at this store until it ends (late is
         // allowed and flagged on Timecards). Clock-out is never limited by
         // schedule. If Sling has nothing for today (sync broken), let it
@@ -255,7 +255,9 @@ class PhoneClockController extends Controller
             }
             if (!$sched['ok']) {
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => false, 'name' => $first,
-                    'msg' => 'You are not on the schedule here right now.'];
+                    'msg' => !empty($sched['early'])
+                        ? 'You can clock in ' . TC::scheduleWindow() . ' minutes before your shift.'
+                        : 'You are not on the schedule here right now.'];
             }
         }
 
