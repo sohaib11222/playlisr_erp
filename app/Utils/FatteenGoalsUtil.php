@@ -299,12 +299,15 @@ class FatteenGoalsUtil
     public static function cancelStats(string $month): ?array
     {
         try {
-            $resp = \Cache::remember('fatteen_goals_web_orders_all', 600, function () {
+            // Cache only a good answer, so one slow website call doesn't blank the number for 10 min.
+            $resp = \Cache::get('fatteen_goals_web_orders_ok');
+            if (!$resp) {
                 $ctl = app(\App\Http\Controllers\WebsiteOrdersController::class);
-                return $ctl->bridgeGet('/erp/orders/console?limit=300&payment_status=all');
-            });
-            if (!is_array($resp) || empty($resp['data'])) {
-                return null;
+                $resp = $ctl->bridgeGet('/erp/orders/console?limit=300&payment_status=all', 25);
+                if (!is_array($resp) || empty($resp['data'])) {
+                    return null;
+                }
+                \Cache::put('fatteen_goals_web_orders_ok', $resp, 600);
             }
             $placed = 0;
             $cancelled = 0;
