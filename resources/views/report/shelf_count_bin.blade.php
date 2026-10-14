@@ -41,7 +41,7 @@
     <div id="scExtra"></div>
     <div id="scSummary"></div>
 </div>
-<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Finish this bin</button></div>
+<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Count complete</button></div>
 @endsection
 
 @section('javascript')
@@ -67,9 +67,27 @@
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length;
         document.getElementById('scProg').textContent = seen + ' of ' + items.length + ' found';
     }
+    // Draft kept on this device after every scan, so closing the tab, a
+    // dead battery or a refresh never loses a half-counted bin (Sarah 10/14).
+    var DRAFT = 'shelfcount:' + LOC + ':{{ $kind }}:{{ (int) request('sub') }}', saved = true;
+    function keepDraft() {
+        saved = false;
+        try { localStorage.setItem(DRAFT, JSON.stringify({ count: count, extra: extra, at: Date.now() })); } catch (e) {}
+    }
+    try {
+        var dr = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+        if (dr && dr.count) {
+            Object.keys(dr.count).forEach(function (k) { count[k] = dr.count[k]; });
+            (dr.extra || []).forEach(function (i) { if (!byId[i.id]) { byId[i.id] = i; extra.push(i); } });
+            saved = false;
+            setTimeout(function () { var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = 'Picked up where you left off (' + new Date(dr.at).toLocaleString() + ').'; }, 0);
+        }
+    } catch (e) {}
+    window.addEventListener('beforeunload', function (e) { if (!saved) { e.preventDefault(); e.returnValue = ''; } });
     function bump(i, d) {
         if (!byId[i.id]) { byId[i.id] = i; extra.unshift(i); count[i.id] = 0; }
         count[i.id] = Math.max(0, (count[i.id] || 0) + d);
+        keepDraft();
         render();
         var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : 'Removed: ') + label(i) + ' (' + count[i.id] + ')';
     }
@@ -120,14 +138,19 @@
         document.getElementById('scSave').addEventListener('click', save);
     });
     function save() {
-        var all = items.concat(extra), i = 0, msg = document.getElementById('scSaveMsg'), btn = document.getElementById('scSave');
+        var all = (save.retry || items.concat(extra)), i = 0, failed = [], msg = document.getElementById('scSaveMsg'), btn = document.getElementById('scSave');
         btn.disabled = true;
         (function next() {
-            if (i >= all.length) { msg.textContent = 'Saved ' + all.length + ' titles. Anything short is on the Missing list.'; return; }
+            if (i >= all.length) {
+                if (failed.length) { msg.textContent = failed.length + ' did not save. Press Save again to retry them (nothing is lost).'; save.retry = failed; btn.disabled = false; return; }
+                saved = true; save.retry = null; try { localStorage.removeItem(DRAFT); } catch (e) {}
+                msg.textContent = 'Saved ' + all.length + ' titles. Anything short is on the Missing list.'; return;
+            }
             var x = all[i++];
             msg.textContent = 'Saving ' + i + ' of ' + all.length + '...';
             fetch('/reports/reorder/count', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                body: JSON.stringify({ product_id: x.id, qty: String(count[x.id] || 0), location_id: LOC }) }).then(next, next);
+                body: JSON.stringify({ product_id: x.id, qty: String(count[x.id] || 0), location_id: LOC }) })
+                .then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) failed.push(x); next(); }, function () { failed.push(x); next(); });
         })();
     }
     render();
