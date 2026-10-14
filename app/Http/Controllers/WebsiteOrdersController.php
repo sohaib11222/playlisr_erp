@@ -483,6 +483,27 @@ class WebsiteOrdersController extends Controller
         return redirect()->back()->with('status', $archived ? 'Order archived.' : 'Order restored.');
     }
 
+    /** Move one shipping line to the store that really has it (Sarah, 2026-10-14). */
+    public function itemStore(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $store = $request->input('store') === 'pico' ? 'pico' : 'hollywood';
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/item-store", [
+            'productId' => (string) $request->input('product_id'),
+            'store' => $store,
+            'changedBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
+        ]);
+
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return redirect()->back()->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website to update the order.');
+        }
+
+        return redirect()->back()->with('status', 'Now pulled from ' . ($store === 'pico' ? 'Pico' : 'Hollywood') . '.');
+    }
+
     /**
      * "Listed 3/14/2025 (7 months)" for an item, so staff know how long it's
      * been on the shelf and how hard to look (Sarah, 2026-10-13).

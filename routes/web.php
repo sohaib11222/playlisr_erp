@@ -680,6 +680,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');
     Route::post('/website-orders/{id}/status', 'WebsiteOrdersController@updateStatus')->name('website-orders.updateStatus');
     Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
+    Route::post('/website-orders/{id}/item-store', 'WebsiteOrdersController@itemStore')->name('website-orders.itemStore');
     Route::post('/website-orders/{id}/remind', 'WebsiteOrdersController@remind')->name('website-orders.remind');
 
     // Customer email copy editor — moved here from nivessa.com's
