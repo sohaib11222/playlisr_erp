@@ -509,16 +509,19 @@ class WebsiteOrdersController extends Controller
             if (!isset($map[$pid])) {
                 $bin = trim((string) ($r->bin_position ?? ''));
                 if ($bin === '') $bin = trim((string) ($r->listing_location ?? ''));
-                $map[$pid] = ['stores' => [], 'bin' => $bin];
+                $map[$pid] = ['stores' => [], 'stocked' => [], 'bin' => $bin];
             }
+            if (empty($r->loc_name)) continue;
             $qty = (float) ($r->qty_available ?? 0);
-            if ($qty <= 0 || empty($r->loc_name)) continue;
             $name = (string) $r->loc_name;
             if (stripos($name, 'warehouse') !== false) $label = 'Warehouse';
             elseif (stripos($name, 'pico') !== false) $label = 'Pico';
             elseif (stripos($name, 'hollywood') !== false) $label = 'Hollywood';
             else $label = $name;
-            $map[$pid]['stores'][$label] = ($map[$pid]['stores'][$label] ?? 0) + $qty;
+            // Where it has been stocked, even at 0 now: a website sale already
+            // took the qty down, but that's still where the record sits.
+            $map[$pid]['stocked'][$label] = true;
+            if ($qty > 0) $map[$pid]['stores'][$label] = ($map[$pid]['stores'][$label] ?? 0) + $qty;
         }
         return $map;
     }
