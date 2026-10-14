@@ -102,8 +102,11 @@ class SendEventCheckinTexts extends Command
             $sent = (array) ($log[$eventId] ?? []);
             foreach ($targets as $phone => $t) {
                 if (in_array($phone, $sent, true)) { continue; }
-                // Wording from Sarah, 2026-10-07.
-                $message = 'Thanks for coming out to Nivessa Records! Please check in here to be entered into tonight\'s giveaway. Must be present to win. ' . self::LINK;
+                // Goes to every RSVP not checked in yet, so it can't assume they
+                // came or that it's night (Sarah, 2026-10-14; was "Thanks for
+                // coming out... tonight's giveaway", which reached no-shows).
+                $hi = $t['first'] !== '' ? 'Hi ' . $t['first'] . '! ' : 'Hi! ';
+                $message = $hi . 'The event at Nivessa is starting now. If you\'re here with us, check in at ' . self::LINK . ' to be entered into the giveaway. You must be here to win.';
                 $line = array_search($t['store'] === 'pico' ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
                 if ($dry) {
                     $this->line("[dry] {$eventId} from {$line} to {$phone}: {$message}");
