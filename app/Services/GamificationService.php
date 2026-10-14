@@ -138,7 +138,7 @@ class GamificationService
 
         $props = json_decode($row->properties ?? '{}', true) ?: [];
         $duty = $props['duty'] ?? null;
-        if (!in_array($duty, ['cashier', 'shipping', 'inventory'], true)) {
+        if (!in_array($duty, ['cashier', 'manager', 'shipping', 'inventory'], true)) {
             return null;
         }
 
@@ -557,7 +557,8 @@ class GamificationService
      */
     protected function taskDefinitions(string $duty): array
     {
-        if ($duty === 'cashier') {
+        // Manager runs the register like a cashier (Sarah 10/13): same goals.
+        if ($duty === 'cashier' || $duty === 'manager') {
             return [
                 ['key' => 'sales_total', 'label' => 'Your shift sales', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift'],
                 ['key' => 'avg_ticket', 'label' => 'Avg ticket', 'unit' => '$', 'decimals' => 0, 'scope' => 'shift', 'paired_with' => 'sales_total'],

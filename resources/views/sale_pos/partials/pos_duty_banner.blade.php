@@ -1,15 +1,15 @@
 @php
     $pd = session('pos_duty');
-    $dutyLabels = ['cashier' => 'Cashier', 'shipping' => 'Shipping', 'inventory' => 'Inventory', 'admin' => 'Admin'];
+    $dutyLabels = ['cashier' => 'Cashier', 'manager' => 'Manager', 'shipping' => 'Shipping', 'inventory' => 'Inventory', 'admin' => 'Admin'];
 @endphp
-@if(in_array($pd, ['cashier', 'shipping', 'inventory', 'admin'], true))
+@if(in_array($pd, ['cashier', 'manager', 'shipping', 'inventory', 'admin'], true))
     <div style="margin-bottom:12px;padding:6px 12px;border-radius:6px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;background:#FAF6EE;border:1px solid #ECE3CF;color:#5A5045;font-size:12px;">
         <span>
             <strong style="color:#1F1B16;">POS today:</strong> {{ $dutyLabels[$pd] ?? $pd }}
             @if(session('pos_duty_location_label'))
                 · {{ session('pos_duty_location_label') }}
             @endif
-            @if($pd === 'cashier' && session('pos_duty_opening_cash') !== null)
+            @if(in_array($pd, ['cashier', 'manager'], true) && session('pos_duty_opening_cash') !== null)
                 @php
                     $openCash = (float) session('pos_duty_opening_cash');
                     $openAt = session('pos_duty_opening_cash_at');

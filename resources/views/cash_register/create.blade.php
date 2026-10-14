@@ -18,7 +18,7 @@
         $countFresh = false;
     }
     $prefillAmount = null;
-    if ($countFresh && session('pos_duty') === 'cashier' && session('pos_duty_opening_cash') !== null) {
+    if ($countFresh && in_array(session('pos_duty'), ['cashier', 'manager'], true) && session('pos_duty_opening_cash') !== null) {
         $prefillAmount = number_format((float) session('pos_duty_opening_cash'), 2, '.', '');
     }
     // Sarah 2026-07-10: this page now counts the drawer by bill denomination
@@ -28,7 +28,7 @@
     // through the picker, prefill each bill count from that session so they
     // don't recount. Keyed by face value; missing = empty (0) count.
     $prefillDenoms = [];
-    if ($countFresh && session('pos_duty') === 'cashier' && is_array(session('pos_duty_opening_cash_denoms'))) {
+    if ($countFresh && in_array(session('pos_duty'), ['cashier', 'manager'], true) && is_array(session('pos_duty_opening_cash_denoms'))) {
         $prefillDenoms = session('pos_duty_opening_cash_denoms');
     }
     $prefillLoc = session('pos_duty_location_id');

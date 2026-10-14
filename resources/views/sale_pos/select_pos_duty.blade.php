@@ -407,6 +407,12 @@
                         <input type="radio" name="duty" value="cashier" id="duty_cashier" required>
                         <span class="opt-title">Cashier</span>
                     </label>
+                    @if(!empty($is_manager))
+                    <label class="duty-option">
+                        <input type="radio" name="duty" value="manager" id="duty_manager">
+                        <span class="opt-title">Manager</span>
+                    </label>
+                    @endif
                     <label class="duty-option">
                         <input type="radio" name="duty" value="warehouse" id="duty_warehouse">
                         <span class="opt-title">Shipping</span>
@@ -509,7 +515,8 @@
 
                 function refresh() {
                     var cashier = document.getElementById('duty_cashier');
-                    var on = cashier && cashier.checked;
+                    var mgr = document.getElementById('duty_manager');
+                    var on = (cashier && cashier.checked) || (mgr && mgr.checked);
                     group.style.display = on ? 'block' : 'none';
                     if (!on) {
                         err.style.display = 'none';
@@ -527,7 +534,7 @@
                         }
                     }
                 }
-                ['duty_cashier','duty_warehouse','duty_discogs','duty_admin'].forEach(function (id) {
+                ['duty_cashier','duty_manager','duty_warehouse','duty_discogs','duty_admin'].forEach(function (id) {
                     var el = document.getElementById(id);
                     if (el) el.addEventListener('change', refresh);
                 });
@@ -537,7 +544,8 @@
                 if (form) {
                     form.addEventListener('submit', function (e) {
                         var cashier = document.getElementById('duty_cashier');
-                        if (cashier && cashier.checked) {
+                        var mgr = document.getElementById('duty_manager');
+                        if ((cashier && cashier.checked) || (mgr && mgr.checked)) {
                             // Total is derived from the bill counts, so it's
                             // always a valid number (an empty drawer = $0.00,
                             // which is allowed). Just make sure it's current.
@@ -547,7 +555,7 @@
                             var locChecked = form.querySelector('input[name="location_id"]:checked');
                             if (!locChecked || locChecked.value === '') {
                                 e.preventDefault();
-                                alert('Cashier must pick a specific store (not "Both").');
+                                alert('Pick a specific store (not "Both").');
                             }
                         }
                     });

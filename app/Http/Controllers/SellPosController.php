@@ -436,8 +436,11 @@ class SellPosController extends Controller
         // Admin# role but is treated as an admin everywhere else.
         $is_admin = $this->businessUtil->is_admin(auth()->user(), $business_id)
             || self::canFixPaymentMethod();
+        // Manager duty (Sarah 10/13): store managers (Luis, Zak; owner-editable
+        // list on Time clock settings) plus admins. A label only, no new access.
+        $is_manager = $is_admin || \App\Services\TimeClockService::isPosManager(auth()->user());
 
-        return view('sale_pos.select_pos_duty', compact('business_locations', 'intended', 'is_admin'));
+        return view('sale_pos.select_pos_duty', compact('business_locations', 'intended', 'is_admin', 'is_manager'));
     }
 
     /**
@@ -450,7 +453,7 @@ class SellPosController extends Controller
         }
 
         $request->validate([
-            'duty' => 'required|in:cashier,warehouse,discogs,admin',
+            'duty' => 'required|in:cashier,manager,warehouse,discogs,admin',
             'location_id' => 'nullable|integer',
             'intended' => 'nullable|string|max:2048',
         ]);
@@ -466,6 +469,11 @@ class SellPosController extends Controller
         if ($duty === 'admin' && !$can_be_admin) {
             return back()->with('status', ['success' => 0, 'msg' => 'You are not authorized to select the Admin role.'])->withInput();
         }
+        // Manager: same server-side gate as the picker (admins + the store
+        // manager list). It is a shift label only and grants nothing.
+        if ($duty === 'manager' && !$can_be_admin && !\App\Services\TimeClockService::isPosManager(auth()->user())) {
+            return back()->with('status', ['success' => 0, 'msg' => 'You are not authorized to select the Manager role.'])->withInput();
+        }
         $locationId = $request->input('location_id');
         if ($locationId !== null && $locationId !== '') {
             $ok = BusinessLocation::where('business_id', $business_id)->where('id', $locationId)->exists();
@@ -479,8 +487,8 @@ class SellPosController extends Controller
         // Cashier must pick a specific store — "Both" doesn't make sense at
         // the register since a single Clover terminal can only be at one
         // location at a time.
-        if ($duty === 'cashier' && $locationId === null) {
-            return back()->with('status', ['success' => 0, 'msg' => 'Cashier must pick a specific store (not "Both").'])->withInput();
+        if (\App\Services\TimeClockService::isRegisterDuty($duty) && $locationId === null) {
+            return back()->with('status', ['success' => 0, 'msg' => ucfirst($duty) . ' must pick a specific store (not "Both").'])->withInput();
         }
 
         $request->session()->put('pos_duty', $duty);
@@ -493,7 +501,7 @@ class SellPosController extends Controller
 
         $openingCash = null;
         $openingCashDenoms = null;
-        if ($duty === 'cashier') {
+        if (\App\Services\TimeClockService::isRegisterDuty($duty)) {
             // The duty picker now counts the drawer by bill denomination
             // (100/50/20/10/5/1). Recompute the total server-side from those
             // counts so we don't trust the client-computed hidden field. Fall
@@ -640,7 +648,9 @@ class SellPosController extends Controller
                     $roleAtCharge = $ev['duty'];
                     $lastChangeTs = $ev['t'];
                 }
-                if ($roleAtCharge !== 'cashier' || $lastChangeTs === null) {
+                // Manager runs the register like a cashier (Sarah 10/13), so
+                // their Clover charges are attributed (and commissioned) the same.
+                if (!\App\Services\TimeClockService::isRegisterDuty($roleAtCharge) || $lastChangeTs === null) {
                     continue;
                 }
                 $gap = $cpTs - $lastChangeTs;
@@ -4907,7 +4917,7 @@ class SellPosController extends Controller
         $user_roles = array_map(function ($role) {
             return explode('#', $role)[0];
         }, auth()->user()->getRoleNames()->toArray());
-        $skip_register = session('pos_duty') !== 'cashier'
+        $skip_register = !\App\Services\TimeClockService::isRegisterDuty(session('pos_duty'))
             || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
         //Check if there is a open register, if no then redirect to Create Register screen.
@@ -5085,7 +5095,7 @@ class SellPosController extends Controller
         $user_roles = array_map(function ($role) {
             return explode('#', $role)[0];
         }, auth()->user()->getRoleNames()->toArray());
-        $skip_register = session('pos_duty') !== 'cashier'
+        $skip_register = !\App\Services\TimeClockService::isRegisterDuty(session('pos_duty'))
             || count(array_intersect($non_cashier_roles, $user_roles)) > 0;
 
         //Check if there is a open register, if no then redirect to Create Register screen.

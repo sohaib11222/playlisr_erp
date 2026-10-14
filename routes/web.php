@@ -1484,6 +1484,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/time-clock/settings/pins/slack', 'TimeClockController@slackPins');
     Route::post('/time-clock/settings/pins/slack-resend', 'TimeClockController@slackResend');
     Route::post('/time-clock/settings/slack-id', 'TimeClockController@saveSlackId');
+    Route::post('/time-clock/settings/pos-managers', 'TimeClockController@savePosManagers');
     Route::post('/time-clock/settings/pos-backfill', 'TimeClockController@posBackfill');
     Route::get('/time-clock/qr', 'TimeClockController@qrSheet');
 

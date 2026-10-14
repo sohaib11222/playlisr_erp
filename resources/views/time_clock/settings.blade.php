@@ -294,6 +294,25 @@
     </fieldset>
   </form>
 
+  {{-- POS Manager duty --}}
+  <div class="box box-solid">
+    <div class="box-header"><h3 class="box-title">Manager duty on the POS</h3></div>
+    <div class="box-body">
+      <p class="tcx-hint">These people (and admins) see Manager on the POS duty page. It only labels the shift; it gives no extra access.</p>
+      <form method="POST" action="{{ url('/time-clock/settings/pos-managers') }}">
+        {{ csrf_field() }}
+        <fieldset @if (!$isOwner) disabled @endif>
+        <div class="tcx-actions">
+          @foreach ($people as $uid => $uname)
+            <label class="tcx-inline" style="margin-right:12px;"><input type="checkbox" name="manager_ids[]" value="{{ $uid }}" @if (in_array((int) $uid, $posManagers, true)) checked @endif> {{ $uname }}</label>
+          @endforeach
+        </div>
+        @if ($isOwner)<button type="submit" class="btn btn-primary btn-sm">Save manager list</button> @endif
+        </fieldset>
+      </form>
+    </div>
+  </div>
+
   {{-- Remembered phones --}}
   <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Remembered phones</h3></div>

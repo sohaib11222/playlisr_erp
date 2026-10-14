@@ -1130,7 +1130,40 @@ class CashRegisterController extends Controller
                 ->all();
         }
 
+        // Manager duty (Sarah 10/13): add the store picture for the shift:
+        // all register sales at their store and the registers closed there.
+        // Cheap (two indexed queries), only for the manager's own summary.
+        $manager = null;
+        try {
+            if (session('pos_duty') === 'manager' && (int) $user_id === (int) auth()->id()) {
+                $mLoc = (int) (session('pos_duty_location_id') ?: $location_id);
+                if ($mLoc) {
+                    $storeSells = \DB::table('transactions')
+                        ->where('business_id', $business_id)
+                        ->where('location_id', $mLoc)
+                        ->where('type', 'sell')
+                        ->where('status', 'final')
+                        ->whereBetween('created_at', [$open_time, $close_time]);
+                    $manager = [
+                        'store' => (string) (session('pos_duty_location_label') ?: ''),
+                        'store_sales' => round((float) (clone $storeSells)->sum('final_total'), 2),
+                        'store_transactions' => (int) (clone $storeSells)->count(),
+                        'registers_closed' => (int) \DB::table('cash_registers')
+                            ->where('business_id', $business_id)
+                            ->where('location_id', $mLoc)
+                            ->where('status', 'close')
+                            ->whereBetween('closed_at', [$open_time, $close_time])
+                            ->count(),
+                    ];
+                }
+            }
+        } catch (\Throwable $ex) {
+            \Log::warning('manager shift summary failed: ' . $ex->getMessage());
+            $manager = null;
+        }
+
         return [
+            'manager' => $manager,
             'sales' => round($sales, 2),
             'transactions_count' => $transactions_count,
             'mass_add_count' => $mass_add_count,
@@ -1373,6 +1406,13 @@ class CashRegisterController extends Controller
             $n = $mass + $bought;
             $lines[] = ':memo: Entered *' . $n . ' new item' . ($n == 1 ? '' : 's') . '* in the ERP'
                 . ' (' . implode(' · ', $how) . ')';
+        }
+
+        if (!empty($s['manager']) && is_array($s['manager'])) {
+            $m = $s['manager'];
+            $lines[] = ':office: Managed' . ($m['store'] !== '' ? ' *' . $m['store'] . '*' : '') . ': store sales '
+                . $money($m['store_sales'] ?? 0) . ' across ' . (int) ($m['store_transactions'] ?? 0) . ' sales, '
+                . (int) ($m['registers_closed'] ?? 0) . ' register close' . ((int) ($m['registers_closed'] ?? 0) === 1 ? '' : 's');
         }
 
         if (!empty($s['customer_accounts_created'])) {

@@ -124,6 +124,12 @@
 					<span class="sne-cap">Sales · {{ (int) $shift_summary['transactions_count'] }} transactions{{ (int) ($shift_summary['transactions_count'] ?? 0) > 0 ? ' · $' . number_format((float) $shift_summary['sales'] / (int) $shift_summary['transactions_count'], 2) . '/txn avg' : '' }}</span>
 				</div>
 				@endif
+				@if(!empty($shift_summary['manager']))
+				<div class="sne-stat">
+					<span class="sne-num">${{ number_format((float) ($shift_summary['manager']['store_sales'] ?? 0), 2) }}</span>
+					<span class="sne-cap">Store sales{{ !empty($shift_summary['manager']['store']) ? ' at ' . $shift_summary['manager']['store'] : '' }} · {{ (int) ($shift_summary['manager']['store_transactions'] ?? 0) }} sales · {{ (int) ($shift_summary['manager']['registers_closed'] ?? 0) }} register closes</span>
+				</div>
+				@endif
 				@if(!empty($shift_summary['customer_accounts_created']))
 				<div class="sne-stat">
 					<span class="sne-num">{{ (int) $shift_summary['customer_accounts_created'] }}</span>

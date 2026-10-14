@@ -8,6 +8,7 @@
     .st-strip-title { font-size:12px; font-weight:600; color:#374151; letter-spacing:.3px; text-transform:uppercase; }
     .st-strip-title .st-duty-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.4px; vertical-align:middle; margin-left:6px; text-transform:uppercase; }
     .st-strip-title .st-duty-pill.cashier { background:#e0f2fe; color:#075985; }
+    .st-strip-title .st-duty-pill.manager { background:#dcfce7; color:#166534; }
     .st-strip-title .st-duty-pill.shipping { background:#fef3c7; color:#92400e; }
     .st-strip-title .st-duty-pill.inventory { background:#ede9fe; color:#5b21b6; }
     .st-strip-meta { font-size:12px; color:#6b7280; }

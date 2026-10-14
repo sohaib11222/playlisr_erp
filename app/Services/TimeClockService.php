@@ -1315,6 +1315,39 @@ class TimeClockService
         return $r ?: ['ok' => false, 'error' => 'busy, try again'];
     }
 
+    // ---- POS "Manager" duty (Sarah 10/13) --------------------------------
+    //
+    // Who sees Manager on the POS duty picker: admins plus this owner-editable
+    // list (Time clock settings). Defaults to Zak (Pico, user 18) and Luis
+    // (Hollywood, user 26). Manager is a shift-tracking label only: it grants
+    // no permission; it works like Cashier (store + drawer count + register).
+    const DEFAULT_POS_MANAGERS = [18, 26];
+
+    public static function posManagerIds(): array
+    {
+        $s = self::settings();
+        $ids = array_key_exists('pos_managers', $s) && is_array($s['pos_managers']) ? $s['pos_managers'] : self::DEFAULT_POS_MANAGERS;
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    public static function isPosManager($user): bool
+    {
+        return $user && in_array((int) $user->id, self::posManagerIds(), true);
+    }
+
+    public static function savePosManagerIds(array $ids): void
+    {
+        $s = self::settings();
+        $s['pos_managers'] = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        self::saveSettings($s);
+    }
+
+    /** Duties that run a register (cashier rules apply): Cashier and Manager. */
+    public static function isRegisterDuty($duty): bool
+    {
+        return in_array($duty, ['cashier', 'manager'], true);
+    }
+
     /** "6h 12m" */
     public static function hoursText(float $hours): string
     {

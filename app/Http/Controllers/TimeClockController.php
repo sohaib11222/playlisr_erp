@@ -501,6 +501,7 @@ class TimeClockController extends Controller
             // optional
         }
         $setupLink = $request->session()->get('tc_setup_link');
+        $posManagers = TC::posManagerIds();
         $slackIds = [];
         try {
             $slackIds = TC::slackIds($businessId);
@@ -511,7 +512,7 @@ class TimeClockController extends Controller
         $isOwner = $this->isOwner();
         $requireSchedule = TC::requireSchedule();
         $scheduleWindow = TC::scheduleWindow();
-        return view('time_clock.settings', compact('slackIds', 'posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        return view('time_clock.settings', compact('posManagers', 'slackIds', 'posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -787,6 +788,25 @@ class TimeClockController extends Controller
         return $this->back($request, $r['ok'], $r['ok']
             ? 'New PIN sent to ' . TC::displayName($user) . ' on Slack.'
             : 'Not sent to ' . TC::displayName($user) . ' (' . $r['error'] . '). Their PIN did not change.', '/time-clock/settings');
+    }
+
+    /** Owner-only: who sees the Manager duty on the POS duty picker. */
+    public function savePosManagers(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can change the manager list.');
+        }
+        $businessId = $this->businessId($request);
+        $ids = [];
+        foreach ((array) $request->input('manager_ids', []) as $id) {
+            $id = (int) $id;
+            if ($id && DB::table('users')->where('id', $id)->where('business_id', $businessId)->exists()) {
+                $ids[] = $id;
+            }
+        }
+        TC::savePosManagerIds($ids);
+        return $this->back($request, true, 'Manager list saved.', '/time-clock/settings');
     }
 
     /** Owner-only: set or clear someone's Slack user ID. */

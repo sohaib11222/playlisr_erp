@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
  */
 class EnsurePosDuty
 {
-    private const DUTIES = ['cashier', 'warehouse', 'discogs', 'admin'];
+    private const DUTIES = ['cashier', 'manager', 'warehouse', 'discogs', 'admin'];
 
     public function handle(Request $request, Closure $next)
     {
