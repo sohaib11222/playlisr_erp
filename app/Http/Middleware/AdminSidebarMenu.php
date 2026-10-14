@@ -85,14 +85,15 @@ class AdminSidebarMenu
                 )->order(15);
             }
 
-            //Inventory Count — shortcut to the reorder report, where staff
-            //enter shelf counts per section. Same staff gate as above.
+            //Inventory: ONE link for counting shelves, the weekly order,
+            //comics and the missing list (Sarah 10/14: "i want 1 link for
+            //clarissa for everything"). Tabs on each page move between them.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
                 $menu->url(
-                    action('ReorderController@index'),
-                    'Inventory Count',
-                    ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'reorder']
-                )->order(15);
+                    url('/reports/shelf-count'),
+                    'Inventory',
+                    ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->segment(1) == 'reports' && in_array(request()->segment(2), ['reorder', 'shelf-count', 'inventory-check-assistant'], true)]
+                )->order(11);
             }
 
             //Email Lists: Brevo contacts saved in the ERP.
@@ -655,11 +656,8 @@ class AdminSidebarMenu
                 ['icon' => 'fa fas fa-chart-bar', 'id' => 'tour_step8', 'active' => request()->segment(1) == 'reports']
             )->order(17);
 
-            $menu->url(
-                action('InventoryCheckController@index'),
-                'Inventory Check',
-                ['icon' => 'fa fas fa-magic', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'inventory-check-assistant']
-            )->order(11);
+            // Inventory Check (budget + distributor prices) is now a tab inside
+            // the one Inventory link above, not its own sidebar item.
 
             $menu->url(
                 action('HelpController@index'),
