@@ -174,6 +174,12 @@ class ReorderService
 
         // Last updated at / by on the products list = this count and its counter.
         DB::table('products')->where('id', $productId)->update(['updated_at' => now()]);
+
+        // Missing list (Sarah 10/14, theft): a count lower than the ERP is
+        // logged with units, cost, who counted and when.
+        if ($qty < $before) {
+            try { $this->logMissing($business_id, $locationId, $product, $variation, $before - $qty); } catch (\Throwable $e) {}
+        }
         \Cache::forget('products_index_updated_by:' . $business_id);
 
         $loc = \App\BusinessLocation::find($locationId);
@@ -193,6 +199,30 @@ class ReorderService
             \Illuminate\Support\Facades\Log::warning('Reorder count website push failed: ' . $e->getMessage());
         }
         return ['updated' => true, 'before' => $before, 'after' => $qty, 'note' => ''];
+    }
+
+    protected function missingPath(int $business_id): string
+    {
+        return storage_path('app/shelf-missing-' . $business_id . '.json');
+    }
+
+    public function loadMissing(int $business_id): array
+    {
+        $j = json_decode((string) @file_get_contents($this->missingPath($business_id)), true);
+        return is_array($j) ? $j : [];
+    }
+
+    protected function logMissing(int $business_id, int $locationId, $product, $variation, float $units): void
+    {
+        $cat = DB::table('categories')->whereIn('id', array_filter([$product->category_id, $product->sub_category_id]))->pluck('name', 'id')->all();
+        $rows = $this->loadMissing($business_id);
+        $rows[] = [
+            'at' => now()->toDateTimeString(), 'by' => auth()->user()->first_name ?? '',
+            'location_id' => $locationId, 'product_id' => (int) $product->id, 'name' => $product->name, 'artist' => $product->artist,
+            'format' => $cat[$product->category_id] ?? null, 'genre' => $cat[$product->sub_category_id] ?? null,
+            'units' => $units, 'unit_cost' => round((float) $variation->default_purchase_price, 2),
+        ];
+        file_put_contents($this->missingPath($business_id), json_encode($rows));
     }
 
     /** Mark this week's order as placed. Lines: [{product_id, upc, qty, title}]. */
