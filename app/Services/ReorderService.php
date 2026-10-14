@@ -935,6 +935,11 @@ class ReorderService
             $out[$type][$fam]['stock'] += (int) round((float) $r->q);
         }
 
+        // Every series gets a row even with nothing in the ERP yet, so
+        // Clarissa can type a count for a new series (Sarah 10/14).
+        foreach (array_keys(self::COMIC_FAMILIES) as $fam) $bump('comics', $fam);
+        foreach (array_keys(self::MAGAZINE_FAMILIES) as $fam) $bump('magazines', $fam);
+
         $state = $this->loadState($business_id);
         foreach ($out as $type => &$fams) {
             foreach ($fams as $fam => &$f) {
