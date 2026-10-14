@@ -89,7 +89,7 @@
     @foreach(['comics' => 'Comic Books to Order', 'magazines' => 'Magazines to Order'] as $type => $label)
         <div class="box box-solid">
             <div class="box-header with-border">
-                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Order enough for <select class="rc-weeks" style="font-size:13px;">@foreach([4, 6, 8, 12] as $w)<option value="{{ $w }}" @if($w == $weeks) selected @endif>{{ $w }} weeks</option>@endforeach</select>. <span id="rc-total-{{ $type }}"></span></small></h3>
+                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4. <span id="rc-total-{{ $type }}"></span></small></h3>
             </div>
             <div class="box-body table-responsive">
                 <a href="#" class="rc-toggle">Show details</a>
@@ -178,11 +178,6 @@
     });
     totals();
 
-    document.querySelectorAll('.rc-weeks').forEach(function (sel) {
-        sel.addEventListener('change', function () {
-            var u = new URL(location.href); u.searchParams.set('weeks', sel.value); location.href = u.toString();
-        });
-    });
     // Submit count: every box saves on its own already; this re-sends any
     // that didn't save, then records that the count is finished.
     document.getElementById('rcSubmit').addEventListener('click', function () {
