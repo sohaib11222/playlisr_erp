@@ -209,7 +209,7 @@
         <ul>
             <li>Finish the loop. When someone doesn't reply, call them, try someone else, or propose a fix. Recon lines stayed open from 9/27 because cashiers didn't answer.</li>
             <li>Close out with detail. "Already sorted" or "no" doesn't say what was done. Say what happened, what's next, and who owns it.</li>
-            <li>Make your work visible. The checklist hasn't been ticked since 7/15. Tick it and post the end-of-day wrap-up so we can see what got done.</li>
+            <li>Make your work visible. The checklist went unticked from 7/15 to 10/14. Tick it every day and post the end-of-day wrap-up so we can see what got done.</li>
             <li>Be reachable during your hours and reply in Slack quickly, so problems don't wait until we find them.</li>
             <li>Customers: 38 people are still waiting on a reply, including sellers. Warm replies that turn into buys and visits.</li>
             <li>Catch problems early. Staff unable to clock in, bank feeds down for 7 weeks, and Discogs orders not syncing for 5 weeks were all found by us.</li>

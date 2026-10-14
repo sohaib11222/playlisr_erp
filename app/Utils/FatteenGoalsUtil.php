@@ -71,10 +71,10 @@ class FatteenGoalsUtil
                 'how' => 'Register recon re-checked 2 days later. If a cashier does not reply, call them or ask the manager.',
             ],
             'web_cancels' => [
-                'label' => 'Website orders cancelled because the item sold elsewhere first',
+                'label' => 'Website orders cancelled',
                 'unit' => '', 'cmp' => 'lte', 'target' => 4, 'bonus' => 5, 'source' => 'auto',
-                'baseline' => '2 in 2 days (#100192 and #100139, 10/13 to 10/14).',
-                'how' => 'Cancels with reason "sold in store" or "sold on Discogs". Work with Nick to pull sold items early.',
+                'baseline' => '2 in 2 days, both sold in store first (#100192 and #100139, 10/13 to 10/14).',
+                'how' => 'Every website cancel this month. Work with Nick to pull items that sold in store before they get ordered online.',
             ],
             'good_buys' => [
                 'label' => 'Good collection buys from his calls and texts',
@@ -265,11 +265,9 @@ class FatteenGoalsUtil
                 if ($at === '' || !self::inMonth(date('Y-m-d', strtotime($at)), $month)) {
                     continue;
                 }
-                $blob = strtolower(json_encode($o));
-                if (strpos($blob, 'sold_in_store') !== false || strpos($blob, 'sold_on_discogs') !== false
-                    || strpos($blob, 'sold in store') !== false || strpos($blob, 'sold on discogs') !== false) {
-                    $hits[] = '#' . ($o['orderNumber'] ?? $o['order_number'] ?? $o['_id'] ?? '?');
-                }
+                // The bridge doesn't send the cancel reason, so every website
+                // cancel counts (most are items that sold in store first).
+                $hits[] = (string) ($o['display_name'] ?? $o['_id'] ?? '?');
             }
             return $hits;
         } catch (\Throwable $e) {
