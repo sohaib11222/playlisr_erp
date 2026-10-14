@@ -213,10 +213,10 @@ class BarcodeFixController extends Controller
         $pairs = []; $amb = 0; $none = 0;
         foreach ($made as [$fam, $p]) {
             if (isset($skipped[(int) $p->id])) continue;
-            $hits = [];
+            $hits = []; $hitArtist = [];
             foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) {
                 foreach ($index[$fam . '|' . $t] ?? [] as [$ta, $tp]) {
-                    if ($ica->artistsCompatible($a, $ta)) $hits[(int) $tp->id] = $tp;
+                    if ($ica->artistsCompatible($a, $ta)) { $hits[(int) $tp->id] = $tp; $hitArtist[(int) $tp->id] = trim($a . ' ' . $ta); }
                 }
             }
             if (count($hits) === 0) { $none++; continue; }
@@ -231,9 +231,7 @@ class BarcodeFixController extends Controller
                 $noise = ['the','and','a','an','lp','2lp','3lp','cd','vinyl','x','180g','140g','150g','200g','gatefold','black','standard','edition','by'];
                 return array_values(array_diff(array_unique(array_filter(explode(' ', $n))), $noise));
             };
-            $artistWords = array_merge($words($p->artist), $words($k->artist));
-            foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) { $artistWords = array_merge($artistWords, explode(' ', $a)); }
-            foreach ($this->pairKeys($ica, $k->artist, $k->name) as [$a, $t]) { $artistWords = array_merge($artistWords, explode(' ', $a)); }
+            $artistWords = array_merge($words($p->artist), $words($k->artist), $words($hitArtist[(int) $k->id] ?? ''));
             $wa = array_diff($words($p->name), $artistWords); $wb = array_diff($words($k->name), $artistWords);
             sort($wa); sort($wb);
             $exact = array_values(array_unique($wa)) === array_values(array_unique($wb)) && $wa;
