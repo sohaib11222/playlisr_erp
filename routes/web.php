@@ -781,6 +781,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/reorder/csv', 'ReorderController@csv');
     Route::get('/reports/reorder/backtest', 'ReorderController@backtest');
     Route::post('/reports/reorder/count', 'ReorderController@saveCount');
+    Route::match(['get', 'post'], '/reports/reorder/backfill-combined-counts', 'ReorderController@backfillCombinedCounts');
     Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
     Route::post('/reports/reorder/genre', 'ReorderController@saveGenre');
     Route::post('/reports/reorder/auto-order', 'ReorderController@autoOrder');

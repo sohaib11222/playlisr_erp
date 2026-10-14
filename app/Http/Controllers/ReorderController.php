@@ -321,8 +321,18 @@ class ReorderController extends Controller
         // Also make the ERP stock match the count (single-entry rows only).
         $erp = ['updated' => false, 'note' => ''];
         if ($raw !== '') {
-            if (count(array_unique(array_merge([$pid], $members))) > 1) {
-                $erp['note'] = 'combined entries, ERP not changed';
+            if (!auth()->user()->can('product.update')) {
+                $erp['note'] = 'no permission to change ERP stock';
+            } elseif (count(array_unique(array_merge([$pid], $members))) > 1) {
+                // Same album entered several times (Sarah 10/14: "anything
+                // Clarissa counted should DEFINITELY be what we have on hand,
+                // the old dupes are def wrong"): the counted row gets the
+                // count, every other copy goes to 0 at this store.
+                $erp = $this->svc->applyCountToErp($business_id, $locationId, $pid, (int) $raw);
+                foreach (array_unique($members) as $other) {
+                    if ((int) $other !== $pid) $this->svc->applyCountToErp($business_id, $locationId, (int) $other, 0);
+                }
+                $erp['note'] = trim(($erp['note'] ?? '') . ' other copies set to 0');
             } elseif (!auth()->user()->can('product.update')) {
                 $erp['note'] = 'no permission to change ERP stock';
             } else {
@@ -330,6 +340,62 @@ class ReorderController extends Controller
             }
         }
         return response()->json(['ok' => true, 'erp' => $erp]);
+    }
+
+    /**
+     * Counts saved before 10/14 on combined album rows never reached ERP
+     * stock. Re-apply them: counted copy = count minus what sold at that
+     * store since, same-album copies (same category) = 0. GET previews,
+     * POST applies. Owner-only.
+     */
+    public function backfillCombinedCounts(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') abort(403);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $since = preg_replace('/[^0-9-]/', '', (string) $request->input('since', '2026-10-09'));
+        $state = $this->svc->loadState($business_id);
+        $plan = [];
+        foreach ($state['counts'] as $key => $c) {
+            if (substr((string) ($c['at'] ?? ''), 0, 10) < $since) continue;
+            [$loc, $pid] = array_map('intval', explode(':', $key));
+            $p = \DB::table('products')->where('business_id', $business_id)->where('id', $pid)->select('id', 'name', 'artist', 'category_id')->first();
+            if (!$p) continue;
+            $k = $this->svc->albumKey($p->artist, $p->name);
+            if ($k === '') continue;
+            $words = array_filter(explode(' ', preg_replace('/[^a-z0-9]+/', ' ', strtolower(substr($k, strpos($k, '|') + 1)))), function ($w) { return strlen($w) >= 3; });
+            if (!$words) continue;
+            usort($words, function ($a, $b) { return strlen($b) - strlen($a); });
+            $others = [];
+            foreach (\DB::table('products')->where('business_id', $business_id)->where('is_inactive', 0)->where('category_id', $p->category_id)
+                ->where('id', '!=', $pid)->whereRaw('LOWER(name) LIKE ?', ['%' . $words[0] . '%'])->select('id', 'name', 'artist')->limit(300)->get() as $o) {
+                $ok = $this->svc->albumKey($o->artist, $o->name);
+                if ($ok === $k || ($ok !== '' && strpos($ok, '|') === 0 && substr($k, strpos($k, '|')) === $ok)) $others[] = $o;
+            }
+            $sold = (float) \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)
+                ->whereIn('l.product_id', array_merge([$pid], array_map(function ($o) { return (int) $o->id; }, $others)))
+                ->where('t.transaction_date', '>=', $c['at'])->sum('l.quantity');
+            $want = max(0, (int) $c['qty'] - (int) round($sold));
+            $now = (float) \DB::table('variation_location_details')->where('product_id', $pid)->where('location_id', $loc)->sum('qty_available');
+            $otherStock = [];
+            foreach ($others as $o) {
+                $q = (float) \DB::table('variation_location_details')->where('product_id', $o->id)->where('location_id', $loc)->sum('qty_available');
+                if ($q != 0) $otherStock[] = ['id' => (int) $o->id, 'name' => $o->name, 'qty' => $q];
+            }
+            if (abs($now - $want) < 0.01 && !$otherStock) continue;
+            $plan[] = ['loc' => $loc, 'pid' => $pid, 'name' => $p->name, 'counted' => (int) $c['qty'], 'counted_at' => $c['at'], 'sold_since' => $sold, 'erp_now' => $now, 'set_to' => $want, 'zero' => $otherStock];
+        }
+        if ($request->isMethod('post')) {
+            $n = 0;
+            foreach ($plan as $x) {
+                $this->svc->applyCountToErp($business_id, $x['loc'], $x['pid'], $x['set_to']);
+                foreach ($x['zero'] as $o) $this->svc->applyCountToErp($business_id, $x['loc'], $o['id'], 0);
+                $n++;
+            }
+            return response()->json(['success' => true, 'applied' => $n]);
+        }
+        return response()->json(['since' => $since, 'to_fix' => count($plan), 'plan' => $plan]);
     }
 
     public function importCounts(Request $request)
