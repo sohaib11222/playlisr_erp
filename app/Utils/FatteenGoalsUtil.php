@@ -252,9 +252,9 @@ class FatteenGoalsUtil
     {
         try {
             // Cached 10 min so the checklist page doesn't wait on the website every load.
-            $resp = \Cache::remember('fatteen_goals_web_orders', 600, function () {
+            $resp = \Cache::remember('fatteen_goals_web_orders_all', 600, function () {
                 $ctl = app(\App\Http\Controllers\WebsiteOrdersController::class);
-                return $ctl->bridgeGet('/erp/orders/console?limit=300&payment_status=completed');
+                return $ctl->bridgeGet('/erp/orders/console?limit=300&payment_status=all');
             });
             if (!is_array($resp) || empty($resp['data'])) {
                 return null;
