@@ -1473,6 +1473,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/time-clock/settings/allow-ip', 'TimeClockController@allowIp');
     Route::post('/time-clock/settings/pin', 'TimeClockController@setPin');
     Route::post('/time-clock/settings/pin/clear', 'TimeClockController@clearPin');
+    Route::post('/time-clock/settings/pins/bulk', 'TimeClockController@bulkPins');
     Route::post('/time-clock/settings/revoke', 'TimeClockController@revokeDevice');
     Route::get('/time-clock/qr', 'TimeClockController@qrSheet');
 

@@ -19,6 +19,13 @@
     <div class="box-header"><h3 class="box-title">Staff PINs</h3></div>
     <div class="box-body">
       <p class="text-muted">Staff clock in with their PIN only, like Clover: on the store computer they type it every time, and on a phone once, then the phone is remembered. Every PIN is different, so the PIN says who it is. Leave the box empty to make a random PIN. The PIN is shown once after saving, so tell the person in person. People at the top had Sling shifts in the last 30 days.</p>
+      @if ($isOwner && $ready)
+        <form method="POST" action="{{ url('/time-clock/settings/pins/bulk') }}" target="_blank" style="margin-bottom:12px;">
+          {{ csrf_field() }}
+          <button type="submit" class="btn btn-warning btn-sm">Give everyone without a PIN a new PIN</button>
+          <span class="text-muted" style="font-size:12px;margin-left:6px;">Opens a page of slips to print and cut. The PINs are shown only that one time.</span>
+        </form>
+      @endif
       <div class="table-responsive">
       <table class="table table-condensed" style="max-width:900px;">
         <thead><tr><th>Name</th><th>Sling, last 30 days</th><th>PIN</th><th>Remembered phones</th><th>Set or reset PIN</th><th></th></tr></thead>

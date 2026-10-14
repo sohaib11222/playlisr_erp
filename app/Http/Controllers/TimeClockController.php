@@ -378,9 +378,10 @@ class TimeClockController extends Controller
         }
 
         $requireAtStore = TC::requireAtStore();
+        $isOwner = $this->isOwner();
         $requireSchedule = TC::requireSchedule();
         $scheduleWindow = TC::scheduleWindow();
-        return view('time_clock.settings', compact('requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        return view('time_clock.settings', compact('isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -486,6 +487,57 @@ class TimeClockController extends Controller
         }
         TC::setPin($businessId, $userId, $pin, auth()->id());
         return $this->back($request, true, 'PIN for ' . TC::displayName($user) . ' is ' . $pin . '. Tell them in person; it is not shown again.', '/time-clock/settings');
+    }
+
+    /** Owners only (same rule as payroll rates): first name jon/jonathan/sarah. */
+    private function isOwner(): bool
+    {
+        $u = auth()->user();
+        if (!$u) {
+            return false;
+        }
+        return in_array(strtolower(trim((string) $u->first_name)), ['jon', 'jonathan', 'sarah'], true);
+    }
+
+    /**
+     * Owner-only: give everyone on the clock list (Sling, last 30 days) who
+     * has no PIN a unique random PIN, and show printable slips once. The
+     * PINs are never stored in plain text, logged, or put in the session.
+     */
+    public function bulkPins(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can hand out PINs in bulk.');
+        }
+        if (!TC::ready()) {
+            return $this->back($request, false, 'The time clock tables are not set up yet.', '/time-clock/settings');
+        }
+        $businessId = $this->businessId($request);
+        $have = DB::table('time_clock_pins')->where('business_id', $businessId)->pluck('user_id')->map(function ($v) { return (int) $v; })->all();
+        $slips = [];
+        foreach (TC::roster($businessId) as $uid => $name) {
+            if (in_array((int) $uid, $have, true)) {
+                continue;
+            }
+            $pin = TC::uniqueRandomPin($businessId, (int) $uid);
+            if ($pin === null) {
+                continue;
+            }
+            TC::setPin($businessId, (int) $uid, $pin, auth()->id());
+            $slips[] = ['name' => $name, 'pin' => $pin];
+        }
+        \Log::info('time clock: bulk PINs generated', [
+            'by_user_id' => auth()->id(),
+            'count' => count($slips),
+            'user_names' => array_column($slips, 'name'),
+        ]);
+        if (!$slips) {
+            return $this->back($request, true, 'Everyone on the clock list already has a PIN.', '/time-clock/settings');
+        }
+        return response()->view('time_clock.pin_slips', ['slips' => $slips, 'url' => url('/clock')])
+            ->header('Cache-Control', 'no-store, private')
+            ->header('X-Robots-Tag', 'noindex, nofollow');
     }
 
     public function clearPin(Request $request)
