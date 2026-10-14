@@ -788,6 +788,28 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::match(['get', 'post'], '/reports/reorder/backfill-combined-counts', 'ReorderController@backfillCombinedCounts');
     Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
     Route::post('/reports/reorder/family-submit', 'ReorderController@submitFamilyCount');
+    // Read-only (Sarah 10/14, Jon: "CD order was 66% less than usual"): past
+    // sealed-CD distributor purchases at a store, per purchase, vs the orders
+    // marked on the Weekly Reorder page.
+    Route::get('/reports/reorder/cd-order-history', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $loc = (int) $request->input('location_id', 2);
+        $rows = \DB::table('purchase_lines as pl')->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'pl.product_id')->join('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('contacts as ct', 'ct.id', '=', 't.contact_id')
+            ->where('t.business_id', $biz)->where('t.location_id', $loc)->where('t.type', 'purchase')
+            ->whereRaw("LOWER(c.name) LIKE '%cd%' AND LOWER(c.name) LIKE '%sealed%'")
+            ->where('t.transaction_date', '>=', now()->subDays(150))
+            ->groupBy('t.id', 't.transaction_date', 't.ref_no', 'ct.name', 'ct.supplier_business_name')
+            ->select('t.id', \DB::raw('DATE(t.transaction_date) as d'), 't.ref_no', \DB::raw('COALESCE(ct.supplier_business_name, ct.name) as supplier'),
+                \DB::raw('COUNT(DISTINCT pl.product_id) as titles'), \DB::raw('SUM(pl.quantity) as copies'))
+            ->orderBy('d')->get();
+        $state = app(\App\Services\ReorderService::class)->loadState($biz);
+        $marked = array_values(array_map(function ($o) {
+            return ['at' => $o['at'] ?? null, 'format' => $o['format'] ?? null, 'loc' => $o['location_id'] ?? null, 'titles' => count($o['lines'] ?? []), 'copies' => array_sum(array_column($o['lines'] ?? [], 'qty'))];
+        }, $state['orders'] ?? []));
+        return response()->json(['purchases' => $rows, 'marked_on_page' => $marked]);
+    });
     Route::post('/reports/reorder/genre', 'ReorderController@saveGenre');
     Route::post('/reports/reorder/auto-order', 'ReorderController@autoOrder');
     // Run the AMS auto "Mark as ordered" check now (admins), shows what it did.
