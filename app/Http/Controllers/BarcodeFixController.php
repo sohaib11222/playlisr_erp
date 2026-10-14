@@ -303,6 +303,69 @@ class BarcodeFixController extends Controller
             'sample' => $request->query('all') ? $pairs : array_slice($pairs, 0, 40)]);
     }
 
+    /**
+     * Old listings with stale stock (Sarah 10/14: "consolidate all the old
+     * listings that are dated w bad stock counts"). Sealed only (used copies
+     * are each their own listing). Groups active listings of the same album
+     * and format; where 2+ show stock at the same store, every listing but
+     * the newest is "old". Read-only; ?csv=1 downloads.
+     */
+    public function staleScan(Request $request)
+    {
+        if (!$this->isOwner()) abort(403);
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+        $biz = (int) $request->session()->get('user.business_id');
+        $ica = app(\App\Services\InventoryCheckService::class);
+        $locNames = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id')->all();
+        $stock = [];
+        foreach (\DB::table('variation_location_details as v')->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
+            ->select('v.product_id', 'v.location_id', 'v.qty_available')->cursor() as $v) {
+            $stock[(int) $v->product_id][(int) $v->location_id] = ($stock[(int) $v->product_id][(int) $v->location_id] ?? 0) + (float) $v->qty_available;
+        }
+        $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
+        $groups = [];
+        foreach (\DB::table('products as p')->join('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereRaw("LOWER(c.name) LIKE '%sealed%'")
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.created_at', 'c.name as cat')->cursor() as $p) {
+            if (empty($stock[(int) $p->id])) continue;
+            $fam = $ica->formatFamily($p->cat);
+            $keys = $this->pairKeys($ica, $p->artist, $p->name);
+            if (!$fam || !$keys) continue;
+            // Canonical key: the pair whose artist is a real artist column, else the first.
+            [$a, $t] = $keys[0];
+            $a = implode(' ', (function ($x) { $x = array_values(array_unique(array_filter(explode(' ', $x)))); sort($x); return $x; })($a));
+            $groups[$fam . '|' . $a . '|' . $t][] = $p;
+        }
+        $rows = []; $units = 0;
+        foreach ($groups as $g) {
+            if (count($g) < 2) continue;
+            foreach (array_keys($locNames) as $loc) {
+                $here = array_values(array_filter($g, function ($p) use ($stock, $loc) { return !empty($stock[(int) $p->id][$loc]); }));
+                if (count($here) < 2) continue;
+                usort($here, function ($x, $y) { return strcmp((string) $y->created_at, (string) $x->created_at); });
+                $keep = $here[0];
+                foreach (array_slice($here, 1) as $old) {
+                    $q = $stock[(int) $old->id][$loc];
+                    $units += $q;
+                    $rows[] = ['store' => $locNames[$loc], 'old_id' => (int) $old->id, 'old' => $old->name, 'old_sku' => $old->sku, 'old_created' => substr((string) $old->created_at, 0, 10), 'old_qty' => $q,
+                        'old_counted' => $counts[$loc . ':' . $old->id]['at'] ?? null,
+                        'new_id' => (int) $keep->id, 'new' => $keep->name, 'new_sku' => $keep->sku, 'new_created' => substr((string) $keep->created_at, 0, 10), 'new_qty' => $stock[(int) $keep->id][$loc],
+                        'new_counted' => $counts[$loc . ':' . $keep->id]['at'] ?? null, 'cat' => $old->cat];
+                }
+            }
+        }
+        if ($request->query('csv')) {
+            $fh = fopen('php://temp', 'w+');
+            fputcsv($fh, ['Store', 'Format', 'Old listing', 'Old SKU', 'Old entered', 'Old stock', 'Newest listing', 'New SKU', 'New entered', 'New stock']);
+            foreach ($rows as $r) fputcsv($fh, [$r['store'], $r['cat'], $r['old'], $r['old_sku'], $r['old_created'], $r['old_qty'], $r['new'], $r['new_sku'], $r['new_created'], $r['new_qty']]);
+            rewind($fh); $csv = stream_get_contents($fh); fclose($fh);
+            return response($csv, 200)->header('Content-Type', 'text/csv')->header('Content-Disposition', 'attachment; filename="old-listings-with-stock.csv"');
+        }
+        return response()->json(['old_listings' => count($rows), 'old_copies' => $units, 'sample' => array_slice($rows, 0, 40)]);
+    }
+
     public function preview()
     {
         if (!$this->isOwner()) abort(403);
