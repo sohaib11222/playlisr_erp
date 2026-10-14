@@ -370,7 +370,11 @@ class ReorderController extends Controller
             foreach (\DB::table('products')->where('business_id', $business_id)->where('is_inactive', 0)->where('category_id', $p->category_id)
                 ->where('id', '!=', $pid)->whereRaw('LOWER(name) LIKE ?', ['%' . $words[0] . '%'])->select('id', 'name', 'artist')->limit(300)->get() as $o) {
                 $ok = $this->svc->albumKey($o->artist, $o->name);
-                if ($ok === $k || ($ok !== '' && strpos($ok, '|') === 0 && substr($k, strpos($k, '|')) === $ok)) $others[] = $o;
+                // Exact album key only (no title-only joins: "Muse" by Jimin
+                // is not the Muse CD), and the same (...) edition text
+                // ("Born To Die (Paradise)" is a different release).
+                $paren = function ($n) { preg_match_all('/[\(\[]([^\)\]]*)[\)\]]/', strtolower((string) $n), $m); $x = array_map('trim', $m[1]); sort($x); return $x; };
+                if ($ok === $k && strpos($k, '|') > 0 && $paren($o->name) === $paren($p->name)) $others[] = $o;
             }
             $sold = (float) \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
                 ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)
