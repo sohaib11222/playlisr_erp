@@ -447,8 +447,10 @@ class BarcodeFixController extends Controller
         $biz = (int) $request->session()->get('user.business_id');
         $day = preg_replace('/[^0-9-]/', '', (string) $request->input('day', now()->format('Y-m-d')));
         $out = [];
-        foreach (glob(storage_path('app/admin-snapshots/merge-products-bulk-' . $day . '*.json')) ?: [] as $f) {
-            $d = json_decode((string) @file_get_contents($f), true);
+        $disk = \Storage::disk('local');
+        foreach ($disk->files('admin-snapshots') as $f) {
+            if (strpos(basename($f), 'merge-products-bulk-' . $day) !== 0) continue;
+            $d = json_decode((string) $disk->get($f), true);
             if (!is_array($d) || (int) ($d['business_id'] ?? 0) !== $biz) continue;
             foreach (($d['merges'] ?? []) as $m) {
                 $src = (int) ($m['source_id'] ?? 0); $keep = (int) ($m['target_id'] ?? 0);
