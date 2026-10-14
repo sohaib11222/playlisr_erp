@@ -46,43 +46,48 @@ class ShelfCountController extends Controller
         return $out;
     }
 
+    /**
+     * One list for the week instead of sections (Sarah 10/14: "310 sections
+     * are u joking"). Titles not counted in DUE_DAYS, sealed first, then the
+     * priciest, capped at ?n= (default 250), laid out bin by bin (format,
+     * genre, artist) so it's one walk through the store.
+     */
     public function index(Request $request)
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
+        $n = min(1000, max(25, (int) $request->input('n', 250)));
         $counted = $this->lastCounted($business_id, $loc);
+        $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
 
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
             ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
-            ->select('p.id', 'p.category_id', 'p.sub_category_id', 'c.name as cat', 'sc.name as sub', 'v.qty_available as qty')
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat', 'sc.name as sub', 'v.qty_available as qty',
+                \DB::raw('(select max(sell_price_inc_tax) from variations va where va.product_id = p.id and va.deleted_at is null) as price'))
             ->get();
-        $sections = [];
+        $total = $rows->count();
+        $fresh = 0; $due = [];
         foreach ($rows as $r) {
-            $k = (int) $r->category_id . '-' . (int) $r->sub_category_id;
-            if (!isset($sections[$k])) $sections[$k] = ['cat_id' => (int) $r->category_id, 'sub_id' => (int) $r->sub_category_id, 'name' => trim(($r->cat ?: 'No format') . ($r->sub ? ' / ' . $r->sub : '')), 'titles' => 0, 'units' => 0, 'counted' => 0, 'last' => null];
-            $s = &$sections[$k];
-            $s['titles']++; $s['units'] += (float) $r->qty;
-            if (isset($counted[$r->id])) {
-                $s['counted']++;
-                if (!$s['last'] || $counted[$r->id]['at'] > $s['last']) $s['last'] = $counted[$r->id]['at'];
-            }
-            unset($s);
+            $c = $counted[$r->id] ?? null;
+            if ($c && $c['at'] >= $cut) { $fresh++; continue; }
+            $due[] = $r;
         }
-        $now = time();
-        foreach ($sections as &$s) {
-            // A section counts as counted once most of it has been (a few
-            // titles counted for the weekly order don't make it done).
-            $done = $s['titles'] && $s['counted'] / $s['titles'] >= 0.8;
-            $s['due'] = !$done || ($now - strtotime((string) $s['last'])) > self::DUE_DAYS * 86400;
-        }
-        unset($s);
-        usort($sections, function ($a, $b) {
-            return [$b['due'], $a['last'] ?? '', -$a['titles']] <=> [$a['due'], $b['last'] ?? '', -$b['titles']];
+        usort($due, function ($a, $b) {
+            $sa = stripos((string) $a->cat, 'sealed') !== false; $sb = stripos((string) $b->cat, 'sealed') !== false;
+            return [$sb, (float) $b->price] <=> [$sa, (float) $a->price];
         });
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'sections' => $sections, 'dueDays' => self::DUE_DAYS]);
+        $week = array_slice($due, 0, $n);
+        usort($week, function ($a, $b) {
+            return [(string) $a->cat, (string) $a->sub, mb_strtolower((string) ($a->artist ?: $a->name)), (string) $a->name]
+                <=> [(string) $b->cat, (string) $b->sub, mb_strtolower((string) ($b->artist ?: $b->name)), (string) $b->name];
+        });
+        $groups = [];
+        foreach ($week as $r) $groups[trim(($r->cat ?: 'Other') . ($r->sub ? ' / ' . $r->sub : ''))][] = $r;
+        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'groups' => $groups, 'counted' => $counted,
+            'total' => $total, 'fresh' => $fresh, 'dueCount' => count($due), 'n' => $n, 'dueDays' => self::DUE_DAYS]);
     }
 
     public function section(Request $request)
