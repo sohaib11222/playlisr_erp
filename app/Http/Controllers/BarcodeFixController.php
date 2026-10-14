@@ -482,7 +482,13 @@ class BarcodeFixController extends Controller
             }
             foreach (\DB::table('variation_location_details')->where('product_id', $x['keep'])->get() as $r) {
                 if ($srcNewer && array_key_exists((int) $r->location_id, $x['srcVld']) && abs($x['srcVld'][(int) $r->location_id] - (float) $r->qty_available) > 0.001) {
-                    $would[] = $x['name'] . ' @' . $r->location_id . ': ' . (float) $r->qty_available . ' -> ' . $x['srcVld'][(int) $r->location_id];
+                    $sp = \DB::table('products')->where('id', $x['src'])->select('name', 'sku', 'created_at', 'created_by')->first();
+                    $kp = \DB::table('products')->where('id', $x['keep'])->select('name', 'sku', 'created_at', 'created_by')->first();
+                    $u = function ($id) { return (string) \DB::table('users')->where('id', $id)->value('first_name'); };
+                    $would[] = ['store' => (string) \DB::table('business_locations')->where('id', $r->location_id)->value('name'),
+                        'now' => (float) $r->qty_available, 'would_be' => $x['srcVld'][(int) $r->location_id],
+                        'kept' => $kp->name . ' (' . $kp->sku . ', entered by ' . $u($kp->created_by) . ' ' . substr((string) $kp->created_at, 0, 10) . ')',
+                        'merged_away' => $sp->name . ' (' . $sp->sku . ', entered by ' . $u($sp->created_by) . ' ' . substr((string) $sp->created_at, 0, 10) . ')'];
                 }
             }
         }
