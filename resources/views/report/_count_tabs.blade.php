@@ -1,9 +1,8 @@
-{{-- One place for Clarissa (Sarah 10/14): count the shelves, then build the order. Both share the same counts. --}}
-@php $ctOn = $ctOn ?? 'count'; $ctLoc = $ctLoc ?? request('location_id'); @endphp
+{{-- One place for Clarissa (Sarah 10/14): count, then order, then what went missing. --}}
+@php $ctOn = $ctOn ?? 'count'; $ctLoc = $ctLoc ?? request('location_id'); $q = $ctLoc ? '?location_id=' . $ctLoc : ''; @endphp
+@php $tab = function ($on, $href, $label) use ($ctOn) { $style = $ctOn === $on ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;'; return '<a href="' . $href . '" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;' . $style . '">' . e($label) . '</a>'; }; @endphp
 <div style="display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap;">
-    <a href="/reports/shelf-count{{ $ctLoc ? '?location_id=' . $ctLoc : '' }}" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;{{ $ctOn === 'count' ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;' }}">1. Count shelves</a>
-    <a href="/reports/reorder{{ $ctLoc ? '?location_id=' . $ctLoc : '' }}" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;{{ $ctOn === 'order' ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;' }}">2. Weekly order</a>
-    <a href="/reports/reorder?format=comics{{ $ctLoc ? '&location_id=' . $ctLoc : '' }}" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;{{ $ctOn === 'comics' ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;' }}">Comics &amp; magazines</a>
-    <a href="/reports/inventory-check-assistant" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;{{ $ctOn === 'ica' ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;' }}">Budget &amp; distributor prices</a>
-    <a href="/reports/shelf-count/missing{{ $ctLoc ? '?location_id=' . $ctLoc : '' }}" style="padding:9px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none;{{ $ctOn === 'missing' ? 'background:#1F1B16;color:#FFE8A3;' : 'background:#fff;color:#1F1B16;border:1px solid #E1D7C4;' }}">Missing list</a>
+    {!! $tab('count', '/reports/shelf-count' . $q, '1. Count') !!}
+    {!! $tab('order', '/reports/reorder' . $q, '2. Order') !!}
+    {!! $tab('missing', '/reports/shelf-count/missing' . $q, 'Missing / possible theft') !!}
 </div>

@@ -2,7 +2,7 @@
 @section('title', 'Order for this Week')
 
 @section('content')
-<div style="padding:12px 15px 0;">@include('report._count_tabs', ['ctOn' => 'ica'])</div>
+<div style="padding:12px 15px 0;">@include('report._count_tabs', ['ctOn' => 'order'])</div>
 {{-- 2026-05-20: visual reskin to match /pos/create — Sarah asked
      "make ui like pos create please". Same body-scoped class trick
      (.ica-v2) + static CSS + Inter Tight font as the POS v2 redesign. --}}

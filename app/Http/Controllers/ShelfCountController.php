@@ -88,7 +88,7 @@ class ShelfCountController extends Controller
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $kind = $request->input('kind') ? $this->pickKind($request, $business_id) : 'all';
+        $kind = ($request->input('kind') && $request->input('kind') !== 'all') ? $this->pickKind($request, $business_id) : 'all';
         $counted = $this->lastCounted($business_id, $loc);
         if ($kind === 'all') return $this->overview($request, $business_id, $locations, $loc, $counted);
         $rows = \DB::table('products as p')
@@ -146,8 +146,27 @@ class ShelfCountController extends Controller
         }
         $bins = array_values($bins);
         usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
-            'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
+        if ($request->input('kind') === 'all') {
+            return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
+                'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
+        }
+        // Home (Sarah 10/14 "count shelves is overwhelming"): one tile per
+        // type of stock with how many of its shelves were counted this month.
+        $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
+        $tiles = [];
+        foreach ($bins as $b) {
+            $t = &$tiles[$b['kind']];
+            $t['kind'] = $b['kind']; $t['name'] = $kinds[$b['kind']] ?? $b['kind'];
+            $t['shelves'] = ($t['shelves'] ?? 0) + 1; $t['titles'] = ($t['titles'] ?? 0) + $b['titles'];
+            if (!empty($b['last']) && $b['last'] >= $cut) $t['done'] = ($t['done'] ?? 0) + 1;
+            if (!empty($b['last']) && (!isset($t['last']) || $b['last'] > $t['last'])) $t['last'] = $b['last'];
+            unset($t);
+        }
+        $order = array_keys($kinds);
+        uasort($tiles, function ($a, $b) use ($order) { return array_search($a['kind'], $order) <=> array_search($b['kind'], $order); });
+        $allDone = array_sum(array_map(function ($t) { return $t['done'] ?? 0; }, $tiles));
+        return view('report.shelf_count_home', ['locations' => $locations, 'loc' => $loc, 'tiles' => array_values($tiles),
+            'shelves' => count($bins), 'done' => $allDone, 'dueDays' => self::DUE_DAYS]);
     }
 
     /** Scan one bin: what the ERP expects there, then scan or search each record. */
