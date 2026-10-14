@@ -863,31 +863,11 @@ class ProductController extends Controller
                     return '<a href="#" data-id="' . $row->id . '" class="btn btn-xs btn-default list-to-ebay"><i class="fa fa-shopping-cart"></i> List</a>';
                 })
                 ->addColumn('nivessa_url', function ($row) {
-                    if (empty($row->sku)) {
-                        return '';
-                    }
-                    // SKU may hold several comma-separated values (e.g. an internal SKU
-                    // plus a Discogs release id). nivessa.com keys products by a single
-                    // exact SKU and, in practice, that is the numeric Discogs release id
-                    // (or a POS-/DISCOGS- prefixed SKU) — internal "PD-" SKUs never exist
-                    // on the site. Prefer the website-shaped token so the link resolves.
-                    $tokens = array_filter(array_map('trim', explode(',', $row->sku)), 'strlen');
-                    $sku = null;
-                    foreach ($tokens as $t) {
-                        if (ctype_digit($t)) { $sku = $t; break; }
-                    }
-                    if ($sku === null) {
-                        foreach ($tokens as $t) {
-                            if (stripos($t, 'POS-') === 0 || stripos($t, 'DISCOGS-') === 0) { $sku = $t; break; }
-                        }
-                    }
-                    if ($sku === null) {
-                        $sku = reset($tokens) ?: '';
-                    }
-                    if ($sku === '') {
-                        return '';
-                    }
-                    $url = 'https://nivessa.com/products/' . rawurlencode($sku) . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
+                    // The website's sku often differs from ours (POS-<id>, UPC, etc.),
+                    // but every synced site product stores our product id as
+                    // posProductId. nivessa.com resolves /products/erp-<id>/... by that
+                    // and redirects to the real product URL.
+                    $url = 'https://nivessa.com/products/erp-' . (int) $row->id . '/' . \Illuminate\Support\Str::slug($row->product ?? '');
                     return '<a href="' . $url . '" target="_blank" rel="noopener"><i class="fa fa-external-link"></i> View</a>';
                 })
                 // One column per distributor (Sarah 10/8: "show this more
