@@ -55,7 +55,7 @@ class ShippingShiftNotifier
     }
 
     // Same key / base URL resolution as WebsiteOrdersController.
-    private static function erpApiKey(): string
+    public static function erpApiKey(): string
     {
         $key = trim((string) config('constants.erp_api_key'));
         if ($key === '') {
@@ -90,7 +90,7 @@ class ShippingShiftNotifier
         return $key;
     }
 
-    private static function baseUrl(): string
+    public static function baseUrl(): string
     {
         $base = trim((string) config('constants.nivessa_api'));
         if ($base === '') {

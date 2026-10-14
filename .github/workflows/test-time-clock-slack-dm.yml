@@ -1,0 +1,64 @@
+# Time clock Slack test (Sarah 10/13): sends ONE fixed, harmless test DM to
+# Sarah only (no PIN), and prints, read-only, which staff the Slack ID list
+# matches by email. Writes nothing to the ERP.
+# READ-ONLY: compiles a given list of .blade.php files against the live
+# server's actual blade.compiler + runs php -l on the output, exactly like
+# diag-tasks-edit-blade-syntax.yml did for the earlier "unexpected endif"
+# incident. Reusable — edit $files below before dispatching to check
+# whatever views just changed.
+name: Test time clock Slack DM
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Compile + php -l each file (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $r = \App\Services\TimeClockService::slackDm('U07D33PMQLA', 'Time clock Slack test, please ignore.'); echo "TEST DM to Sarah: " . json_encode($r) . "\n";
+            $seed = \App\Services\TimeClockService::SLACK_SEED; $emails = array_keys($seed); $hit = [];
+            foreach (DB::table('users')->whereNull('deleted_at')->whereIn(DB::raw('LOWER(email)'), $emails)->get(['id', 'first_name', 'last_name', 'email']) as $u) { $hit[(int) $u->id] = trim($u->first_name . ' ' . $u->last_name) . ' (login email)'; }
+            foreach (DB::table('sling_shifts')->whereNotNull('erp_user_id')->whereIn(DB::raw('LOWER(user_email)'), $emails)->select('erp_user_id')->distinct()->get() as $r2) { if (!isset($hit[(int) $r2->erp_user_id])) { $n = DB::table('users')->where('id', $r2->erp_user_id)->first(); $hit[(int) $r2->erp_user_id] = ($n ? trim($n->first_name . ' ' . $n->last_name) : '#' . $r2->erp_user_id) . ' (Sling email)'; } }
+            foreach ($hit as $id => $label) { echo "MATCH user $id $label\n"; }
+            echo "matched users: " . count($hit) . " of " . count(array_unique(array_values($seed))) . " Slack IDs\n";
+            $roster = \App\Services\TimeClockService::roster((int) DB::table('business')->min('id')); foreach ($roster as $id => $nm) { if (!isset($hit[$id])) { echo "ROSTER WITHOUT SLACK ID: $nm\n"; } }
+            PHP
+            echo "=== done ==="

@@ -1155,6 +1155,166 @@ class TimeClockService
         }
     }
 
+    // ---- Slack PIN delivery (Sarah 10/13) ---------------------------------
+    //
+    // PINs go to each person as a Slack DM through the nivessa.com API
+    // (POST /erp/slack-dm, ERP key; it posts with the Quo Threads bot), so
+    // nobody sees them. Slack user IDs live in settings.json "slack_ids"
+    // [user_id => Slack ID], editable on Time clock settings. PINs are never
+    // logged, stored in plain text or shown.
+
+    // Slack IDs Sarah's team looked up (10/13), matched to ERP users by
+    // email (ERP login email or Sling email) the first time they're needed.
+    const SLACK_SEED = [
+        'alecklusza@gmail.com' => 'U07SA4VQYUF',
+        'soundslikeandy@gmail.com' => 'U0845G7FDNU',
+        'clherr5@gmail.com' => 'U0BUBKUKTGU',
+        'codyandrewtinsley@gmail.com' => 'U0BDX9RM30E',
+        'dgbryant632@gmail.com' => 'U096X42NQ4U',
+        'heyimhomeo@gmail.com' => 'U0B277N040K',
+        'sternbergjai@gmail.com' => 'U0BUMGB723T',
+        'luis3pt@gmail.com' => 'U08FQKLKKHS',
+        'inthesink1999@gmail.com' => 'U08FQKLKKHS',
+        'manoloaf95@gmail.com' => 'U08CE6SSGDS',
+        'littlesonbooking@gmail.com' => 'U0BU7V0U0GJ',
+        'nikolamatic214@gmail.com' => 'U081P5QEZSQ',
+        'quentonhol@gmail.com' => 'U0BHE0QD2DR',
+        'willyanez19@gmail.com' => 'U0BB5RCA411',
+        '19zheimlich@gmail.com' => 'U07L3J8D6FP',
+        'zellalezak@gmail.com' => 'U08C7RAPH0X',
+    ];
+
+    public static function validSlackId(string $id): bool
+    {
+        return preg_match('/^[UW][A-Z0-9]{6,20}$/', $id) === 1;
+    }
+
+    /** [user_id => Slack ID]; seeds from SLACK_SEED once. */
+    public static function slackIds(int $businessId): array
+    {
+        $s = self::settings();
+        $map = is_array($s['slack_ids'] ?? null) ? $s['slack_ids'] : [];
+        if (empty($s['slack_seeded'])) {
+            try {
+                $emails = array_keys(self::SLACK_SEED);
+                $byUser = [];
+                foreach (DB::table('users')->where('business_id', $businessId)->whereNull('deleted_at')
+                    ->whereIn(DB::raw('LOWER(email)'), $emails)->get(['id', 'email']) as $u) {
+                    $byUser[(int) $u->id] = self::SLACK_SEED[strtolower(trim($u->email))] ?? null;
+                }
+                if (Schema::hasTable('sling_shifts')) {
+                    foreach (DB::table('sling_shifts')->whereNotNull('erp_user_id')->whereIn(DB::raw('LOWER(user_email)'), $emails)
+                        ->select('erp_user_id', 'user_email')->distinct()->get() as $r) {
+                        if (!isset($byUser[(int) $r->erp_user_id])) {
+                            $byUser[(int) $r->erp_user_id] = self::SLACK_SEED[strtolower(trim($r->user_email))] ?? null;
+                        }
+                    }
+                }
+                foreach ($byUser as $uid => $sid) {
+                    if ($sid && !isset($map[$uid]) && !isset($map[(string) $uid])) {
+                        $map[$uid] = $sid;
+                    }
+                }
+                $s = self::settings();
+                $s['slack_ids'] = $map;
+                $s['slack_seeded'] = self::nowString();
+                self::saveSettings($s);
+            } catch (\Throwable $e) {
+                \Log::warning('time clock slack id seed failed: ' . $e->getMessage());
+            }
+        }
+        $out = [];
+        foreach ($map as $uid => $sid) {
+            if (is_string($sid) && self::validSlackId($sid)) {
+                $out[(int) $uid] = $sid;
+            }
+        }
+        return $out;
+    }
+
+    public static function saveSlackId(int $userId, string $slackId): void
+    {
+        $s = self::settings();
+        $map = is_array($s['slack_ids'] ?? null) ? $s['slack_ids'] : [];
+        unset($map[(string) $userId]);
+        if ($slackId === '') {
+            unset($map[$userId]);
+        } else {
+            $map[$userId] = $slackId;
+        }
+        $s['slack_ids'] = $map;
+        self::saveSettings($s);
+    }
+
+    /** DM $text to Slack user $slackId via nivessa.com. ['ok' => bool, 'error' => code]. Never logs $text. */
+    public static function slackDm(string $slackId, string $text): array
+    {
+        try {
+            if (!self::validSlackId($slackId)) {
+                return ['ok' => false, 'error' => 'bad Slack ID'];
+            }
+            $key = \App\Services\ShippingShiftNotifier::erpApiKey();
+            if ($key === '') {
+                return ['ok' => false, 'error' => 'ERP key missing'];
+            }
+            $ch = curl_init(\App\Services\ShippingShiftNotifier::baseUrl() . '/erp/slack-dm');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode(['slack_user_id' => $slackId, 'text' => $text]),
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'x-erp-key: ' . $key],
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_CONNECTTIMEOUT => 8,
+            ]);
+            $raw = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $j = json_decode((string) $raw, true);
+            if ($code === 200 && is_array($j) && !empty($j['success'])) {
+                return ['ok' => true, 'error' => ''];
+            }
+            $err = is_array($j) ? (string) ($j['error'] ?? $j['message'] ?? ('HTTP ' . $code)) : ('HTTP ' . $code);
+            return ['ok' => false, 'error' => mb_substr($err, 0, 80)];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'could not reach the website'];
+        }
+    }
+
+    public static function pinMessage(string $firstName, string $pin): string
+    {
+        return 'Hi ' . $firstName . ', your Nivessa time clock PIN is ' . $pin . '. Clock in at https://playlist.nivessa.com/clock. You can change it with Change my PIN on that page. Please keep it private.';
+    }
+
+    /**
+     * New unique PIN for $userId, DMed on Slack; saved only when the DM
+     * went through (otherwise the person keeps what they had). Returns
+     * ['ok' => bool, 'error' => string]. The PIN never leaves this method
+     * except inside the DM.
+     */
+    public static function sendNewPinOnSlack(int $businessId, $user, string $slackId, ?int $by): array
+    {
+        $uid = (int) $user->id;
+        $r = self::withUserLock($uid, function () use ($businessId, $user, $uid, $slackId, $by) {
+            $pin = self::uniqueRandomPin($businessId, $uid);
+            if ($pin === null) {
+                return ['ok' => false, 'error' => 'no free PIN'];
+            }
+            $first = trim((string) $user->first_name) ?: 'there';
+            $sent = self::slackDm($slackId, self::pinMessage($first, $pin));
+            if (!$sent['ok']) {
+                return $sent;
+            }
+            try {
+                self::setPin($businessId, $uid, $pin, $by);
+            } catch (\Throwable $e) {
+                \Log::warning('time clock: PIN was DMed but not saved for user ' . $uid);
+                return ['ok' => false, 'error' => 'sent but not saved, re-send'];
+            }
+            return ['ok' => true, 'error' => ''];
+        });
+        return $r ?: ['ok' => false, 'error' => 'busy, try again'];
+    }
+
     /** "6h 12m" */
     public static function hoursText(float $hours): string
     {

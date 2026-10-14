@@ -495,11 +495,17 @@ class TimeClockController extends Controller
             // optional
         }
         $setupLink = $request->session()->get('tc_setup_link');
+        $slackIds = [];
+        try {
+            $slackIds = TC::slackIds($businessId);
+        } catch (\Throwable $e) {
+            // optional
+        }
         $requireAtStore = TC::requireAtStore();
         $isOwner = $this->isOwner();
         $requireSchedule = TC::requireSchedule();
         $scheduleWindow = TC::scheduleWindow();
-        return view('time_clock.settings', compact('posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        return view('time_clock.settings', compact('slackIds', 'posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -662,6 +668,89 @@ class TimeClockController extends Controller
         return response()->view('time_clock.pin_slips', ['slips' => $slips, 'url' => url('/clock')])
             ->header('Cache-Control', 'no-store, private')
             ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    /**
+     * Owner-only: everyone on the clock list with a Slack ID and no PIN
+     * gets a new unique PIN as a Slack DM. A PIN is saved only when its DM
+     * went through. The result page shows names and sent / not sent only.
+     */
+    public function slackPins(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can send PINs.');
+        }
+        if (!TC::ready()) {
+            return $this->back($request, false, 'The time clock tables are not set up yet.', '/time-clock/settings');
+        }
+        @set_time_limit(300);
+        $businessId = $this->businessId($request);
+        $slackIds = TC::slackIds($businessId);
+        $have = DB::table('time_clock_pins')->where('business_id', $businessId)->pluck('user_id')->map(function ($v) { return (int) $v; })->all();
+        $results = [];
+        foreach (TC::roster($businessId) as $uid => $name) {
+            if (in_array((int) $uid, $have, true)) {
+                continue;
+            }
+            if (empty($slackIds[(int) $uid])) {
+                $results[] = ['name' => $name, 'sent' => false, 'why' => 'No Slack ID, set by hand'];
+                continue;
+            }
+            $user = DB::table('users')->where('id', (int) $uid)->first();
+            $r = $user ? TC::sendNewPinOnSlack($businessId, $user, $slackIds[(int) $uid], auth()->id()) : ['ok' => false, 'error' => 'user not found'];
+            $results[] = ['name' => $name, 'sent' => $r['ok'], 'why' => $r['ok'] ? '' : 'Not sent (' . $r['error'] . '), set by hand'];
+        }
+        \Log::info('time clock: Slack PINs sent', ['by_user_id' => auth()->id(), 'sent' => count(array_filter(array_column($results, 'sent'))), 'not_sent' => count(array_filter($results, function ($r) { return !$r['sent']; }))]);
+        return response()->view('time_clock.slack_result', ['results' => $results, 'title' => 'PINs sent on Slack'])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /** Owner-only: reset one person's PIN and DM the new one on Slack. */
+    public function slackResend(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can send PINs.');
+        }
+        if (!TC::ready()) {
+            return $this->back($request, false, 'The time clock tables are not set up yet.', '/time-clock/settings');
+        }
+        $businessId = $this->businessId($request);
+        $uid = (int) $request->input('user_id');
+        $user = DB::table('users')->where('id', $uid)->where('business_id', $businessId)->first();
+        if (!$user) {
+            return $this->back($request, false, 'Pick a person.', '/time-clock/settings');
+        }
+        $sid = TC::slackIds($businessId)[$uid] ?? '';
+        if ($sid === '') {
+            return $this->back($request, false, TC::displayName($user) . ' has no Slack ID yet.', '/time-clock/settings');
+        }
+        $r = TC::sendNewPinOnSlack($businessId, $user, $sid, auth()->id());
+        return $this->back($request, $r['ok'], $r['ok']
+            ? 'New PIN sent to ' . TC::displayName($user) . ' on Slack.'
+            : 'Not sent to ' . TC::displayName($user) . ' (' . $r['error'] . '). Their PIN did not change.', '/time-clock/settings');
+    }
+
+    /** Owner-only: set or clear someone's Slack user ID. */
+    public function saveSlackId(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can change Slack IDs.');
+        }
+        $businessId = $this->businessId($request);
+        $uid = (int) $request->input('user_id');
+        if (!DB::table('users')->where('id', $uid)->where('business_id', $businessId)->exists()) {
+            return $this->back($request, false, 'Pick a person.', '/time-clock/settings');
+        }
+        $sid = strtoupper(trim((string) $request->input('slack_id')));
+        if ($sid !== '' && !TC::validSlackId($sid)) {
+            return $this->back($request, false, 'A Slack ID looks like U07D33PMQLA.', '/time-clock/settings');
+        }
+        TC::slackIds($businessId); // seed first so the seed can't overwrite this
+        TC::saveSlackId($uid, $sid);
+        return $this->back($request, true, 'Slack ID saved.', '/time-clock/settings');
     }
 
     public function clearPin(Request $request)

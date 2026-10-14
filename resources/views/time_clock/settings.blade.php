@@ -25,10 +25,15 @@
           <button type="submit" class="btn btn-warning btn-sm">Give everyone without a PIN a new PIN</button>
           <span class="text-muted" style="font-size:12px;margin-left:6px;">Opens a page of slips to print and cut. The PINs are shown only that one time.</span>
         </form>
+        <form method="POST" action="{{ url('/time-clock/settings/pins/slack') }}" style="margin-bottom:12px;" onsubmit="return confirm('Give everyone without a PIN a new PIN and DM it to them on Slack?');">
+          {{ csrf_field() }}
+          <button type="submit" class="btn btn-success btn-sm">Give everyone a PIN and DM it on Slack</button>
+          <span class="text-muted" style="font-size:12px;margin-left:6px;">Only for people without a PIN who have a Slack ID. Nobody sees the PINs; a PIN is saved only if its DM went through.</span>
+        </form>
       @endif
       <div class="table-responsive">
       <table class="table table-condensed" style="max-width:900px;">
-        <thead><tr><th>Name</th><th>Sling, last 30 days</th><th>PIN</th><th>Remembered phones</th><th>Set or reset PIN</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Sling, last 30 days</th><th>PIN</th><th>Remembered phones</th><th>Set or reset PIN</th><th>Slack ID</th><th></th></tr></thead>
         <tbody>
         @php $__devCount = $devices->groupBy('user_id')->map->count(); @endphp
         @foreach ($people as $uid => $uname)
@@ -52,6 +57,23 @@
               </form>
             </td>
             <td>
+              @if ($isOwner)
+                <form method="POST" action="{{ url('/time-clock/settings/slack-id') }}" class="form-inline">
+                  {{ csrf_field() }}<input type="hidden" name="user_id" value="{{ $uid }}">
+                  <input type="text" name="slack_id" value="{{ $slackIds[$uid] ?? '' }}" maxlength="22" class="form-control input-sm" style="width:120px;" placeholder="U0..." autocomplete="off">
+                  <button type="submit" class="btn btn-default btn-xs">Save</button>
+                </form>
+              @else
+                {{ $slackIds[$uid] ?? '' }}
+              @endif
+            </td>
+            <td>
+              @if ($isOwner && $ready && isset($pins[$uid]) && !empty($slackIds[$uid]))
+                <form method="POST" action="{{ url('/time-clock/settings/pins/slack-resend') }}" style="display:inline;" onsubmit="return confirm('Reset this person\'s PIN and DM the new one on Slack?');">
+                  {{ csrf_field() }}<input type="hidden" name="user_id" value="{{ $uid }}">
+                  <button type="submit" class="btn btn-default btn-xs">Re-send new PIN</button>
+                </form>
+              @endif
               @if (isset($pins[$uid]))
                 <form method="POST" action="{{ url('/time-clock/settings/pin/clear') }}" style="display:inline;">
                   {{ csrf_field() }}<input type="hidden" name="user_id" value="{{ $uid }}">
