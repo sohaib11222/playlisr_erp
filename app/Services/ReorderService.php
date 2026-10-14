@@ -737,6 +737,26 @@ class ReorderService
      */
     /** Comic series, same families as Clarissa's 10/12 order sheet. First match wins. */
     const COMIC_FAMILIES = [
+        // DC series Clarissa asked for on 10/14 (popular or several issues).
+        // Listed first so they win over the wider Batman / Justice League groups.
+        'Cosmic Boy' => 'cosmic boy',
+        'COPS' => '\\bcops\\b',
+        'Creature Commandos' => 'creature commandos',
+        'Demon Knights' => 'demon knights',
+        'Final Crisis' => 'final crisis',
+        'The Fury of Firestorm' => 'firestorm',
+        'Green Arrow' => 'green arrow',
+        'Infinity Inc.' => 'infinity,? inc',
+        'Kobalt' => 'kobalt',
+        'Outlaws' => 'outlaws',
+        'Peacemaker' => 'peacemaker',
+        'Primal Force' => 'primal force',
+        'The Ray' => '\\bthe ray\\b',
+        'Secret Six' => 'secret six',
+        'The Shadow' => '\\bthe shadow\\b',
+        'Teen Titans' => 'teen titans',
+        'Year of the Villain' => 'year of the villain',
+        'Young Heroes In Love' => 'young heroes in love',
         'Spider-Man' => 'spider|venom|carnage|miles morales',
         'Batman' => 'batman|joker|gotham|robin|harley quinn|nightwing|catwoman',
         'Superman' => 'superman|action comics|supergirl',
