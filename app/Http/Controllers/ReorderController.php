@@ -406,6 +406,43 @@ class ReorderController extends Controller
         return response()->json(['since' => $since, 'to_fix' => count($plan), 'plan' => $plan]);
     }
 
+    /**
+     * Jon's imported 10/5 CD count never reached ERP stock (importCounts only
+     * stores counts). Apply it to every listing whose LATEST count is still
+     * that import; anything Clarissa counted later already replaced it and
+     * is left alone (Sarah 10/14). Stock = count minus what that store sold
+     * since. GET previews, POST applies. Owner-only.
+     */
+    public function applyImportedCount(Request $request)
+    {
+        $u = auth()->user();
+        if (!$u || strtolower(trim((string) $u->first_name)) !== 'jonathan' || strtolower(trim((string) $u->last_name)) !== 'hedvat') abort(403);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $at = preg_replace('/[^0-9: -]/', '', (string) $request->input('at', '2026-10-05 23:59:00'));
+        $state = $this->svc->loadState($business_id);
+        $plan = []; $sum = ['entries' => 0, 'already_right' => 0, 'erp_too_high' => 0, 'erp_too_low' => 0, 'copies_removed' => 0, 'copies_added' => 0];
+        foreach ($state['counts'] as $key => $c) {
+            if (($c['at'] ?? '') !== $at) continue;
+            [$loc, $pid] = array_map('intval', explode(':', $key));
+            $sum['entries']++;
+            $sold = (float) \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)->where('l.product_id', $pid)
+                ->where('t.transaction_date', '>=', $at)->sum('l.quantity');
+            $want = max(0, (int) $c['qty'] - (int) round($sold));
+            $now = (float) \DB::table('variation_location_details')->where('product_id', $pid)->where('location_id', $loc)->sum('qty_available');
+            if (abs($now - $want) < 0.01) { $sum['already_right']++; continue; }
+            if ($now > $want) { $sum['erp_too_high']++; $sum['copies_removed'] += $now - $want; } else { $sum['erp_too_low']++; $sum['copies_added'] += $want - $now; }
+            $plan[] = ['loc' => $loc, 'pid' => $pid, 'name' => (string) \DB::table('products')->where('id', $pid)->value('name'), 'counted' => (int) $c['qty'], 'sold_since' => $sold, 'erp_now' => $now, 'set_to' => $want];
+        }
+        if ($request->isMethod('post')) {
+            $n = 0;
+            foreach ($plan as $x) { $r = $this->svc->applyCountToErp($business_id, $x['loc'], $x['pid'], $x['set_to']); if (!empty($r['updated'])) $n++; }
+            return response()->json(['success' => true, 'updated' => $n, 'of' => count($plan)]);
+        }
+        usort($plan, function ($a, $b) { return abs($b['erp_now'] - $b['set_to']) <=> abs($a['erp_now'] - $a['set_to']); });
+        return response()->json(['count_from' => $at, 'summary' => $sum, 'biggest' => array_slice($plan, 0, 30)]);
+    }
+
     public function importCounts(Request $request)
     {
         [$business_id, , $locationId, $format] = $this->params($request);
