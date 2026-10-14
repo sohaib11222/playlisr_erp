@@ -87,7 +87,7 @@
                     <span class="tag {{ $row['hit'] === null ? 'none' : ($row['hit'] ? 'full' : 'miss') }}">{{ $row['value'] === null ? '-' : $fmtNum($row['value'], $row['unit']) }}</span>
                     @if(!empty($row['note']))<span class="sub" style="font-weight:400">{{ $row['note'] }}</span>@endif
                 </td>
-                <td class="num">{{ $row['target'] === null ? '-' : ($row['cmp'] === 'gte' ? $row['target'] . $row['unit'] . '+' : $row['target'] . $row['unit'] . ' or less') }}</td>
+                <td class="num">{{ $row['target'] === null ? '-' : ($row['cmp'] === 'gte' ? number_format($row['target']) . $row['unit'] . '+' : ($row['target'] == 0 ? '0' : $row['target'] . $row['unit'] . ' or less')) }}</td>
                 <td class="num">${{ $row['earn'] }}</td>
             </tr>
         @endforeach

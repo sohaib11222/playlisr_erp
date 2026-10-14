@@ -68,7 +68,7 @@ class FatteenGoalsUtil
     }
 
     /** Words that mean a customer thanked us. */
-    const THANKS_RE = '/\b(thank(s| you| u)?|thx|ty|appreciate[ds]?|so helpful|very helpful|super helpful|you.?re the best|amazing|awesome|lifesaver)\b/i';
+    const THANKS_RE = '/\b(thank you|thanks|thank u|thx|appreciate (it|you|that|the help|your help)|so helpful|very helpful|super helpful|really helpful|you.?re the best|you guys are the best)\b/i';
 
     /* ---------- access ---------- */
 
@@ -359,7 +359,8 @@ class FatteenGoalsUtil
         $notes['recon_days'] = count($reconDays) ? $clean . ' of ' . count($reconDays) . ' days' : '';
 
         $cs = self::cancelStats($month);
-        $v['cancel_rate'] = $cs && $cs['placed'] ? round(100 * $cs['cancelled'] / $cs['placed'], 1) : null;
+        // Needs 20+ orders in the window (the bridge returns the latest 300).
+        $v['cancel_rate'] = $cs && $cs['placed'] >= 20 ? round(100 * $cs['cancelled'] / $cs['placed'], 1) : null;
         $notes['cancel_rate'] = $cs ? $cs['cancelled'] . ' of ' . $cs['placed'] . ' orders' : '';
 
         $v['store_sales'] = self::storeSales($business_id, $month) ?: null;
