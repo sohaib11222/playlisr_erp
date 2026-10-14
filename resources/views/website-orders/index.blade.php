@@ -749,6 +749,9 @@
       {{-- Discogs orders waiting on the buyer (Sarah, 2026-10-14): we told them
            we can't find the item and they haven't answered. Nothing to ship;
            each needs a refund or substitute on Discogs. --}}
+      @if(!empty($discogsWaitingError))
+        <div class="alert-err" style="margin-top:16px;">{{ $discogsWaitingError }}</div>
+      @endif
       @if(!empty($discogsWaiting))
         <h3 style="margin:22px 0 10px;font-size:16px;font-weight:700;color:#111827;">
           <span class="wo-pill" style="background:#fee2e2;color:#991b1b;">Discogs</span>

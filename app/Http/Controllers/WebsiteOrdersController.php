@@ -212,6 +212,7 @@ class WebsiteOrdersController extends Controller
         $discogsToShip = [];
         $discogsError = null;
         $discogsWaiting = null;
+        $discogsWaitingError = null;
         if ($activeTab === 'to_ship') {
             $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
             if (($d['success'] ?? false) === true) {
@@ -238,6 +239,8 @@ class WebsiteOrdersController extends Controller
             if (($w['success'] ?? false) === true) {
                 $discogsWaiting = $w['data'] ?? [];
                 usort($discogsWaiting, fn($a, $b) => ($b['days_waiting'] ?? 0) <=> ($a['days_waiting'] ?? 0));
+            } else {
+                $discogsWaitingError = 'Could not load Discogs orders waiting on the buyer: ' . ($w['message'] ?? 'unknown error');
             }
         }
 
@@ -257,6 +260,7 @@ class WebsiteOrdersController extends Controller
             'discogsToShip' => $discogsToShip,
             'discogsError' => $discogsError,
             'discogsWaiting' => $discogsWaiting,
+            'discogsWaitingError' => $discogsWaitingError,
             'orders' => $orders,
             'bridgeError' => $bridgeError,
             'bridgeErrorMessage' => $bridgeErrorMessage,
