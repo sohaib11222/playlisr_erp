@@ -52,6 +52,13 @@ class BarcodeFixController extends Controller
         }));
     }
 
+    /** Same artist words, nothing more or less ("Evilive II" is not "Evilive"). */
+    protected function sameArtist(string $a, string $b): bool
+    {
+        $t = function ($s) { $x = array_values(array_unique(array_filter(explode(' ', $s)))); sort($x); return $x; };
+        return $t($a) === $t($b);
+    }
+
     public function index()
     {
         if (!$this->isOwner()) abort(403);
@@ -129,7 +136,7 @@ class BarcodeFixController extends Controller
                     if ($ica->formatFamily($c->cat) !== $fam) continue;
                     $hit = false;
                     foreach ($this->pairKeys($ica, $c->artist, $c->name) as [$ca, $ct]) {
-                        foreach ($mine[$ct] ?? [] as $a) { if ($ica->artistsCompatible($a, $ca)) { $hit = true; break 2; } }
+                        foreach ($mine[$ct] ?? [] as $a) { if ($this->sameArtist($a, $ca)) { $hit = true; break 2; } }
                     }
                     if (!$hit) continue;
                     [$chw, $cpico] = $split($c->locs);
@@ -216,7 +223,7 @@ class BarcodeFixController extends Controller
             $hits = []; $hitArtist = [];
             foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) {
                 foreach ($index[$fam . '|' . $t] ?? [] as [$ta, $tp]) {
-                    if ($ica->artistsCompatible($a, $ta)) { $hits[(int) $tp->id] = $tp; $hitArtist[(int) $tp->id] = trim($a . ' ' . $ta); }
+                    if ($this->sameArtist($a, $ta)) { $hits[(int) $tp->id] = $tp; $hitArtist[(int) $tp->id] = trim($a . ' ' . $ta); }
                 }
             }
             if (count($hits) === 0) { $none++; continue; }
