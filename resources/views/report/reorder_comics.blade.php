@@ -50,7 +50,7 @@
     @php
         $publishers = [
             'MARVEL' => ['Spider-Man', 'X-Men', 'Wolverine', 'Hulk', 'Avengers & solo heroes', 'Deadpool', 'Daredevil', 'Punisher', 'Fantastic Four', 'Doom', 'Silver Surfer / What If', 'Ghost Rider', 'Werewolf by Night', 'Conan'],
-            'DC' => ['Batman', 'Superman', 'Flash', 'Justice League / DC', 'Wonder Woman', 'Green Lantern', 'Sandman / Vertigo'],
+            'DC' => ['Batman', 'Superman', 'Flash', 'Justice League / DC', 'Wonder Woman', 'Green Lantern', 'Sandman / Vertigo', 'Cosmic Boy', 'COPS', 'Creature Commandos', 'Demon Knights', 'Final Crisis', 'The Fury of Firestorm', 'Green Arrow', 'Infinity Inc.', 'Kobalt', 'Outlaws', 'Peacemaker', 'Primal Force', 'The Ray', 'Secret Six', 'The Shadow', 'Teen Titans', 'Year of the Villain', 'Young Heroes In Love'],
             'IMAGE' => ['Spawn'],
             'INDIE / LICENSED' => ['Star Wars / Star Trek', 'Godzilla', 'Cartoon & kids', 'Predator / Aliens'],
             'MANGA / POKEMON' => ['Pokemon', 'Manga'],
