@@ -33,7 +33,7 @@ return [
     'document_size_limit' => '5000000', //in Bytes,
     'image_size_limit' => '5000000', //in Bytes
 
-    'asset_version' => 798,
+    'asset_version' => 799,
 
     // Locked reason list for issuing store credit from a customer account.
     // Cashiers must pick one (see ContactController@updateStoreCredit — reason

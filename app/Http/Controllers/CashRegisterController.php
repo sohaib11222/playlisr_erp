@@ -272,6 +272,14 @@ class CashRegisterController extends Controller
 
             $register = CashRegister::create($registerData);
 
+            // Time clock (Sarah 2026-10-13): learn the store's network from
+            // the register open. Never throws.
+            try {
+                \App\Services\TimeClockService::notePosIp($request, $location_id, $user_id, 0);
+            } catch (\Throwable $ex) {
+                \Log::info('time clock register-open ip note failed: ' . $ex->getMessage());
+            }
+
             // Sarah 2026-05-13: previously we auto-closed the prior cashier's
             // shift on handover (using the new cashier's count). Reverted
             // because Sarah didn't want logging in as a cashier to silently
@@ -1598,6 +1606,11 @@ class CashRegisterController extends Controller
                     \App\Services\TimeClockService::clockOutFromHook($user_id, 'register_close', $request);
                 } catch (\Throwable $ex) {
                     \Log::warning('time clock register-close hook failed: ' . $ex->getMessage());
+                }
+                try {
+                    \App\Services\TimeClockService::notePosIp($request, $openRegister->location_id, $user_id, 0);
+                } catch (\Throwable $ex) {
+                    \Log::info('time clock register-close ip note failed: ' . $ex->getMessage());
                 }
             }
 

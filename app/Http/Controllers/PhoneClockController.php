@@ -68,6 +68,18 @@ class PhoneClockController extends Controller
             }
             $data['ready'] = true;
             $businessId = TC::businessId();
+            // One-time backfill of store networks from POS history, after
+            // the response (Sarah 10/13). Runs once; owners can rerun it on
+            // Time clock settings.
+            try {
+                if (TC::ipSeenReady() && \Cache::add('tc_pos_backfill_done_v1', 1, 86400 * 365)) {
+                    app()->terminating(function () {
+                        TC::backfillPosIps();
+                    });
+                }
+            } catch (\Throwable $e) {
+                // optional
+            }
             $device = TC::deviceFromRequest($request);
             if ($this->isSharedComputer($request, $device)) {
                 $data['mode'] = 'computer';
@@ -300,6 +312,51 @@ class PhoneClockController extends Controller
         } catch (\Throwable $e) {
             \Log::warning('shipping summary on clock-out failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * One-time setup link (owner texts it to the store, Sarah 10/13): the
+     * GET only shows a button, so link previews in Messages can't use it up
+     * or add the wrong network; the POST adds this computer's network to
+     * the store as a manual IP and uses up the link.
+     */
+    public function setupPage(Request $request, $token)
+    {
+        $data = ['token' => (string) $token, 'store' => '', 'state' => 'invalid', 'msg' => ''];
+        try {
+            $t = TC::peekSetupToken((string) $token);
+            if ($t) {
+                $data['store'] = TC::storeName(TC::businessId(), (int) $t['loc']) ?: 'the store';
+                $data['state'] = 'ready';
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('clock setup page failed: ' . $e->getMessage());
+        }
+        return $this->noStore(response()->view('time_clock.setup', $data));
+    }
+
+    public function setupUse(Request $request, $token)
+    {
+        $data = ['token' => '', 'store' => '', 'state' => 'invalid', 'msg' => ''];
+        if (!$this->sameOrigin($request)) {
+            return $this->noStore(response()->view('time_clock.setup', $data));
+        }
+        try {
+            $t = TC::useSetupToken((string) $token);
+            if ($t) {
+                $businessId = TC::businessId();
+                $ip = TC::clientIp($request);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    $rule = TC::addManualIp($businessId, (int) $t['loc'], $ip, 'setup');
+                    \Log::info('time clock: store network added by setup link', ['location_id' => (int) $t['loc'], 'network' => $rule, 'link_by' => $t['by'] ?? null]);
+                    $data['store'] = TC::storeName($businessId, (int) $t['loc']) ?: 'the store';
+                    $data['state'] = 'done';
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('clock setup use failed: ' . $e->getMessage());
+        }
+        return $this->noStore(response()->view('time_clock.setup', $data));
     }
 
     public function manifest()

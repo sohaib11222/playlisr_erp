@@ -5613,6 +5613,17 @@ class SellPosController extends Controller
 
                 DB::commit();
 
+                // Time clock (Sarah 2026-10-13): the network a finalized sale
+                // is rung from is the store's; learn it for the clock's store
+                // check. Cache-throttled, never throws, never blocks the sale.
+                try {
+                    if (($transaction->status ?? '') === 'final' && empty($is_direct_sale)) {
+                        \App\Services\TimeClockService::notePosIp($request, $transaction->location_id, $request->session()->get('user.id'));
+                    }
+                } catch (\Throwable $e) {
+                    \Log::info('time clock pos ip note failed: ' . $e->getMessage());
+                }
+
                 // Nivessa (real-time stock): the sale is committed, so push its
                 // stock changes to nivessa.com now — the storefront updates in
                 // seconds instead of on the website's nightly POS stock sync.

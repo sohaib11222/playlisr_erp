@@ -377,21 +377,282 @@ class TimeClockService
             if (!isset($learned[$rule]) && !self::ipHasEnoughEvidence($locId, $rule)) {
                 return;
             }
-            // An IP belongs to one store: drop it from any other store.
-            foreach ($settings['stores'] as $otherId => $other) {
-                if ((int) $otherId !== $locId && is_array($other) && isset($other['auto_ips'][$rule])) {
-                    unset($settings['stores'][$otherId]['auto_ips'][$rule]);
-                }
-            }
-            $learned[$rule] = $today;
-            $cur['auto_ips'] = $learned;
-            unset($cur['learned_ips']);
-            unset($settings['stores'][(string) $locId]);
-            $settings['stores'][$locId] = $cur;
-            self::saveSettings($settings);
+            self::trustAuto($locId, $rule, 'gps');
         } catch (\Throwable $e) {
             \Log::warning('time clock learn ip failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Make $rule a trusted auto IP for store $locId (seen today), or just
+     * refresh its date when it already is one. $src: gps (clock location),
+     * pos (POS sales / register open and close). An IP belongs to one
+     * store, so it is dropped from any other store. Writes the settings
+     * file at most once per IP per day.
+     */
+    public static function trustAuto(int $locId, string $rule, string $src): bool
+    {
+        $today = self::now()->toDateString();
+        $settings = self::settings();
+        $cur = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
+        if (!is_array($cur)) {
+            $cur = [];
+        }
+        if (in_array($rule, (array) ($cur['ips'] ?? []), true)) {
+            return true; // already a manual IP
+        }
+        if (isset($cur['auto_blocked'][$rule])) {
+            return false; // an owner removed it
+        }
+        $learned = self::freshLearned($cur['auto_ips'] ?? []);
+        if (($learned[$rule] ?? '') === $today) {
+            return true;
+        }
+        foreach ($settings['stores'] as $otherId => $other) {
+            if ((int) $otherId !== $locId && is_array($other) && isset($other['auto_ips'][$rule])) {
+                unset($settings['stores'][$otherId]['auto_ips'][$rule], $settings['stores'][$otherId]['auto_src'][$rule]);
+            }
+        }
+        $src0 = is_array($cur['auto_src'] ?? null) ? $cur['auto_src'] : [];
+        if (!isset($learned[$rule]) || empty($src0[$rule])) {
+            $src0[$rule] = $src;
+        }
+        $learned[$rule] = $today;
+        $cur['auto_ips'] = $learned;
+        $cur['auto_src'] = array_intersect_key($src0, $learned);
+        unset($cur['learned_ips']);
+        unset($settings['stores'][(string) $locId]);
+        $settings['stores'][$locId] = $cur;
+        self::saveSettings($settings);
+        return true;
+    }
+
+    /** A punch passed on a store IP: keep that auto IP from expiring. Never throws. */
+    public static function touchAutoIp(?int $locId, string $ip): void
+    {
+        try {
+            if (!$locId || !filter_var($ip, FILTER_VALIDATE_IP)) {
+                return;
+            }
+            $rule = self::networkFor($ip);
+            $st = self::stores(self::businessId())[$locId] ?? null;
+            if ($st && isset($st['learned_ips'][$rule]) && $st['learned_ips'][$rule] !== self::now()->toDateString()) {
+                self::trustAuto($locId, $rule, 'gps');
+            }
+        } catch (\Throwable $e) {
+            // optional
+        }
+    }
+
+    // ---- Store IPs learned from POS activity (Sarah 10/13) ---------------
+    //
+    // The store computers ring sales, so the network they ring from is the
+    // store's. Each finalized sale and register open/close records its real
+    // client IP (clientIp(), never X-Forwarded-For) as a candidate for that
+    // location in time_clock_ip_seen. It becomes a trusted auto IP once
+    // seen from POS_MIN_PEOPLE staff on POS_MIN_DAYS days, or with
+    // POS_DAY_SALES sales on one day (last LEARNED_IP_DAYS days).
+
+    const POS_MIN_PEOPLE = 2;
+    const POS_MIN_DAYS = 2;
+    const POS_DAY_SALES = 10;
+
+    public static function ipSeenReady(): bool
+    {
+        static $ok = null;
+        if ($ok !== null) {
+            return $ok;
+        }
+        try {
+            if (\Cache::get('time_clock_ip_seen_v1') === 1) {
+                return $ok = true;
+            }
+            $ok = Schema::hasTable('time_clock_ip_seen');
+            if ($ok) {
+                \Cache::put('time_clock_ip_seen_v1', 1, 86400);
+            }
+        } catch (\Throwable $e) {
+            $ok = false;
+        }
+        return $ok;
+    }
+
+    /**
+     * POS hook: a sale was finalized / a register opened or closed at
+     * $locId by $userId. Cheap: one cache counter per call, and at most one
+     * DB upsert (plus the promotion check) per IP, store and person per
+     * hour. Never throws.
+     */
+    public static function notePosIp(?Request $request, $locId, $userId, int $sales = 1): void
+    {
+        try {
+            $locId = (int) $locId;
+            $userId = (int) $userId;
+            if (!$request || !$locId || !$userId) {
+                return;
+            }
+            $ip = self::clientIp($request);
+            if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return;
+            }
+            $rule = self::networkFor($ip);
+            $day = self::now()->toDateString();
+            $k = md5($locId . '|' . $rule . '|' . $userId . '|' . $day);
+            $cntKey = 'tc_pos_cnt_' . $k;
+            \Cache::add($cntKey, 0, 90000); // seconds (5.8)
+            $cnt = (int) \Cache::increment($cntKey, $sales);
+            if (!\Cache::add('tc_pos_hr_' . $k . '_' . self::now()->format('H'), 1, 3600)) {
+                return; // already written this hour
+            }
+            if (!self::ipSeenReady()) {
+                return;
+            }
+            self::upsertSeen($locId, $rule, $userId, $day, max(1, $cnt), 'pos');
+            self::promoteIfEarned($locId, $rule);
+        } catch (\Throwable $e) {
+            \Log::warning('time clock POS ip note failed: ' . $e->getMessage());
+        }
+    }
+
+    private static function upsertSeen(int $locId, string $rule, int $userId, string $day, int $cnt, string $src): void
+    {
+        $now = self::nowString();
+        DB::statement('INSERT INTO time_clock_ip_seen (location_id, net, user_id, day, cnt, source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE cnt = GREATEST(cnt, VALUES(cnt)), updated_at = VALUES(updated_at)',
+            [$locId, mb_substr($rule, 0, 64), $userId, $day, $cnt, $src, $now, $now]);
+    }
+
+    /** Promote $rule at $locId to a trusted auto IP when the POS rule is met. */
+    public static function promoteIfEarned(int $locId, string $rule): bool
+    {
+        $since = self::now()->subDays(self::LEARNED_IP_DAYS)->toDateString();
+        $rows = DB::table('time_clock_ip_seen')->where('location_id', $locId)->where('net', $rule)
+            ->where('day', '>=', $since)->get(['user_id', 'day', 'cnt']);
+        $people = [];
+        $days = [];
+        $perDay = [];
+        foreach ($rows as $r) {
+            $people[(int) $r->user_id] = true;
+            $days[(string) $r->day] = true;
+            $perDay[(string) $r->day] = ($perDay[(string) $r->day] ?? 0) + (int) $r->cnt;
+        }
+        $earned = (count($people) >= self::POS_MIN_PEOPLE && count($days) >= self::POS_MIN_DAYS)
+            || ($perDay && max($perDay) >= self::POS_DAY_SALES);
+        if (!$earned) {
+            return false;
+        }
+        // Seen at two stores (shouldn't happen): leave it to the owner.
+        $elsewhere = DB::table('time_clock_ip_seen')->where('net', $rule)->where('location_id', '!=', $locId)
+            ->where('day', '>=', $since)->exists();
+        if ($elsewhere) {
+            return false;
+        }
+        return self::trustAuto($locId, $rule, 'pos');
+    }
+
+    /**
+     * One-time backfill from history: successful staff logins
+     * (login_activities.ip_address) matched to a cash register the same
+     * person opened within 3 hours after logging in (that gives the
+     * store), last LEARNED_IP_DAYS days. Returns [location_id => [rules
+     * promoted]]. Never throws.
+     */
+    public static function backfillPosIps(): array
+    {
+        $promoted = [];
+        try {
+            if (!self::ipSeenReady() || !Schema::hasTable('login_activities') || !Schema::hasTable('cash_registers')) {
+                return [];
+            }
+            $since = self::now()->subDays(self::LEARNED_IP_DAYS)->format('Y-m-d H:i:s');
+            $rows = DB::select('SELECT la.ip_address AS ip, la.user_id AS uid, DATE(la.created_at) AS d, cr.location_id AS loc, COUNT(DISTINCT cr.id) AS n
+                FROM login_activities la
+                JOIN cash_registers cr ON cr.user_id = la.user_id
+                    AND cr.created_at >= la.created_at AND cr.created_at <= DATE_ADD(la.created_at, INTERVAL 3 HOUR)
+                WHERE la.successful = 1 AND la.user_id IS NOT NULL AND la.ip_address IS NOT NULL
+                    AND la.created_at >= ? AND cr.location_id IS NOT NULL
+                GROUP BY la.ip_address, la.user_id, DATE(la.created_at), cr.location_id', [$since]);
+            $pairs = [];
+            foreach ($rows as $r) {
+                $ip = trim((string) $r->ip);
+                if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    continue;
+                }
+                $rule = self::networkFor($ip);
+                self::upsertSeen((int) $r->loc, $rule, (int) $r->uid, (string) $r->d, 1, 'backfill');
+                $pairs[(int) $r->loc . '|' . $rule] = [(int) $r->loc, $rule];
+            }
+            foreach ($pairs as $pr) {
+                if (self::promoteIfEarned($pr[0], $pr[1])) {
+                    $promoted[$pr[0]][] = $pr[1];
+                }
+            }
+            \Log::info('time clock POS ip backfill', ['candidates' => count($pairs), 'promoted' => $promoted]);
+        } catch (\Throwable $e) {
+            \Log::warning('time clock POS ip backfill failed: ' . $e->getMessage());
+        }
+        return $promoted;
+    }
+
+    // ---- One-time setup links (owner texts it to the store) --------------
+
+    /** New single-use link for store $locId, valid 24 hours. Returns the token. */
+    public static function makeSetupToken(int $locId, ?int $by): string
+    {
+        $token = bin2hex(random_bytes(24));
+        \Cache::put('tc_setup_' . hash('sha256', $token), ['loc' => $locId, 'by' => $by], 86400); // seconds (5.8)
+        return $token;
+    }
+
+    /** Look up a setup token without using it. */
+    public static function peekSetupToken(string $token): ?array
+    {
+        if (!preg_match('/^[a-f0-9]{48}$/', $token)) {
+            return null;
+        }
+        $v = \Cache::get('tc_setup_' . hash('sha256', $token));
+        return is_array($v) && !empty($v['loc']) ? $v : null;
+    }
+
+    /** Use a setup token once (null when unknown, used or expired). */
+    public static function useSetupToken(string $token): ?array
+    {
+        if (!preg_match('/^[a-f0-9]{48}$/', $token)) {
+            return null;
+        }
+        $v = \Cache::pull('tc_setup_' . hash('sha256', $token));
+        return is_array($v) && !empty($v['loc']) ? $v : null;
+    }
+
+    /** Add $ip's network to store $locId as a manual IP ($src: manual, setup). */
+    public static function addManualIp(int $businessId, int $locId, string $ip, string $src): string
+    {
+        $rule = self::networkFor($ip);
+        $settings = self::settings();
+        $cur = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
+        if (!is_array($cur)) {
+            $cur = [];
+        }
+        $list = (array) ($cur['ips'] ?? []);
+        if (!in_array($rule, $list, true)) {
+            $list[] = $rule;
+        }
+        $cur['ips'] = array_values($list);
+        $ms = is_array($cur['manual_src'] ?? null) ? $cur['manual_src'] : [];
+        $ms[$rule] = ['src' => $src, 'at' => self::now()->toDateString()];
+        $cur['manual_src'] = $ms;
+        $st = self::stores($businessId)[$locId] ?? null;
+        if ($st && (!isset($cur['lat']) || $cur['lat'] === '')) {
+            $cur['lat'] = $st['lat'];
+            $cur['lng'] = $st['lng'];
+            $cur['radius_m'] = $st['radius_m'];
+            $cur['radius_v2'] = true;
+        }
+        unset($settings['stores'][(string) $locId]);
+        $settings['stores'][$locId] = $cur;
+        self::saveSettings($settings);
+        return $rule;
     }
 
     /** Location-confirmed punches on $rule at $locId: enough people and days? */
@@ -477,6 +738,8 @@ class TimeClockService
                 'radius_m' => (int) (is_array($cfg) && !empty($cfg['radius_m']) && (!empty($cfg['radius_v2']) || (int) $cfg['radius_m'] !== 200) ? $cfg['radius_m'] : self::DEFAULT_RADIUS_M),
                 'ips' => $ips,
                 'learned_ips' => $learned,
+                'auto_src' => is_array($cfg) && is_array($cfg['auto_src'] ?? null) ? $cfg['auto_src'] : [],
+                'manual_src' => is_array($cfg) && is_array($cfg['manual_src'] ?? null) ? $cfg['manual_src'] : [],
                 'address' => $def['address'] ?? '',
             ];
         }
@@ -1135,6 +1398,8 @@ class TimeClockService
         $store = self::storeName($businessId, $locId);
         if ($where['verify'] === 'gps' && $locId) {
             self::learnIp((int) $locId, $ip);
+        } elseif ($where['verify'] === 'ip') {
+            self::touchAutoIp($where['location_id'], $ip);
         }
         // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';
@@ -1181,6 +1446,8 @@ class TimeClockService
         ]);
         if ($verify === 'gps' && !empty($where['location_id'])) {
             self::learnIp((int) $where['location_id'], $ip);
+        } elseif ($verify === 'ip' && !empty($where['location_id'])) {
+            self::touchAutoIp((int) $where['location_id'], $ip);
         }
         return (int) $open->id;
     }

@@ -105,7 +105,7 @@
   <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Store location and Wi-Fi</h3></div>
     <div class="box-body">
-      <p class="text-muted">A punch counts as "at the store" when the device's distance to the store plus its reported accuracy is within the store's radius plus 50 m (a rough location fails), or when it comes from one of the store's IP addresses (the store Wi-Fi, the most reliable check in the store). A network is learned for a store automatically (Auto) only after location-confirmed punches on it from at least 2 different people on at least 2 different days, so one person faking their location at home can't add their home network. Auto IPs not seen for 30 days drop off. IPs you type in (Manual) stay until you remove them. Hollywood and Pico start with coordinates looked up from their addresses.</p>
+      <p class="text-muted">A punch counts as "at the store" when the device's distance to the store plus its reported accuracy is within the store's radius plus 50 m (a rough location fails), or when it comes from one of the store's IP addresses (the store Wi-Fi, the most reliable check in the store). A network is learned for a store automatically (Auto) from POS sales and register opens and closes at that store (2 different staff on 2 different days, or 10 sales in one day), or from location-confirmed clock punches by 2 different people on 2 different days, so one person faking their location at home can't add their home network. If you remove an auto IP below, it is not learned again. Auto IPs not seen for 30 days drop off. IPs you type in (Manual) stay until you remove them. Hollywood and Pico start with coordinates looked up from their addresses.</p>
       @if (!$isOwner)
         <div class="alert alert-info">Only the owners can change store locations, store networks and the switches below.</div>
       @endif
@@ -117,6 +117,12 @@
         @endif
         @if ($network !== $ip)<span class="text-muted" style="font-size:12px;"> (IPv6, so the whole network {{ $network }} is saved)</span> @endif
       </p>
+      @if ($setupLink)
+        <div class="alert alert-success" style="font-size:15px;">
+          One-time setup link for <strong>{{ $setupLink['store'] }}</strong> (works once, for 24 hours). Text it to someone at the store and have them open it on the store computer and tap the button:
+          <input type="text" readonly value="{{ $setupLink['url'] }}" class="form-control input-sm" style="margin-top:6px;" onclick="this.select();">
+        </div>
+      @endif
       @if ($isOwner)
       @foreach ($locations as $lid => $lname)
         <form method="POST" action="{{ url('/time-clock/settings/allow-ip') }}" style="display:inline-block;margin:0 6px 8px 0;">
@@ -124,6 +130,55 @@
           <button type="submit" class="btn btn-default btn-sm">Add this network to {{ $lname }}</button>
         </form>
       @endforeach
+      <div style="margin-bottom:8px;">
+      @foreach ($locations as $lid => $lname)
+        <form method="POST" action="{{ url('/time-clock/settings/setup-link') }}" style="display:inline-block;margin:0 6px 4px 0;">
+          {{ csrf_field() }}<input type="hidden" name="location_id" value="{{ $lid }}">
+          <button type="submit" class="btn btn-default btn-sm">Make a one-time setup link for {{ $lname }}</button>
+        </form>
+      @endforeach
+        <form method="POST" action="{{ url('/time-clock/settings/pos-backfill') }}" style="display:inline-block;margin:0 6px 4px 0;">
+          {{ csrf_field() }}
+          <button type="submit" class="btn btn-default btn-sm">Scan POS history for store networks</button>
+        </form>
+      </div>
+      @endif
+
+      @php $__srcLabel = ['pos' => 'POS', 'gps' => 'clock location', 'manual' => 'manual', 'setup' => 'setup link']; @endphp
+      <table class="table table-condensed" style="max-width:820px;">
+        <thead><tr><th>Store</th><th>Trusted store IP</th><th>Came from</th><th>Since / last seen</th></tr></thead>
+        <tbody>
+        @php $__anyTrusted = false; @endphp
+        @foreach ($stores as $sid => $st)
+          @foreach ($st['ips'] as $__ip)
+            @php $__anyTrusted = true; $__m = $st['manual_src'][$__ip] ?? null; @endphp
+            <tr><td>{{ $st['name'] }}</td><td>{{ $__ip }}</td><td>{{ $__srcLabel[is_array($__m) ? ($__m['src'] ?? 'manual') : 'manual'] ?? 'manual' }}</td><td>{{ is_array($__m) && !empty($__m['at']) ? \Carbon::parse($__m['at'])->format('M j') : '' }}</td></tr>
+          @endforeach
+          @foreach ($st['learned_ips'] as $__ip => $__seen)
+            @php $__anyTrusted = true; @endphp
+            <tr><td>{{ $st['name'] }}</td><td>{{ $__ip }}</td><td>{{ $__srcLabel[$st['auto_src'][$__ip] ?? 'gps'] ?? 'auto' }} (auto, drops off after 30 days unseen)</td><td>{{ \Carbon::parse($__seen)->format('M j') }}</td></tr>
+          @endforeach
+        @endforeach
+        @if (!$__anyTrusted)
+          <tr><td colspan="4" class="text-muted">No trusted store IPs yet. They are learned from POS sales and register opens, or use a one-time setup link.</td></tr>
+        @endif
+        </tbody>
+      </table>
+      @if (count($posSeen))
+        <details style="margin-bottom:10px;"><summary style="cursor:pointer;">Seen from the POS, not trusted yet</summary>
+          <table class="table table-condensed" style="max-width:820px;margin-top:6px;">
+            <thead><tr><th>Store</th><th>IP</th><th>Staff</th><th>Days</th><th>Last seen</th></tr></thead>
+            <tbody>
+            @foreach ($posSeen as $__lid => $__nets)
+              @foreach ($__nets as $__net => $__r)
+                @if (!isset($stores[$__lid]) || (!in_array($__net, $stores[$__lid]['ips'], true) && !isset($stores[$__lid]['learned_ips'][$__net])))
+                  <tr><td>{{ $locations[$__lid] ?? ('#' . $__lid) }}</td><td>{{ $__net }}</td><td>{{ $__r->people }}</td><td>{{ $__r->days }}</td><td>{{ \Carbon::parse($__r->last_day)->format('M j') }}</td></tr>
+                @endif
+              @endforeach
+            @endforeach
+            </tbody>
+          </table>
+        </details>
       @endif
 
       <form method="POST" action="{{ url('/time-clock/settings/stores') }}" style="margin-top:10px;">

@@ -1,0 +1,61 @@
+# Read-only: prints the time clock trusted store IPs (settings) and the
+# POS-seen candidates summary (Sarah 10/13). No writes.
+# READ-ONLY: compiles a given list of .blade.php files against the live
+# server's actual blade.compiler + runs php -l on the output, exactly like
+# diag-tasks-edit-blade-syntax.yml did for the earlier "unexpected endif"
+# incident. Reusable — edit $files below before dispatching to check
+# whatever views just changed.
+name: Diag time clock store IPs
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Compile + php -l each file (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $s = \App\Services\TimeClockService::settings();
+            foreach ((array) ($s['stores'] ?? []) as $id => $st) { echo "STORE $id manual=" . json_encode($st['ips'] ?? []) . " manual_src=" . json_encode($st['manual_src'] ?? []) . " auto=" . json_encode($st['auto_ips'] ?? []) . " auto_src=" . json_encode($st['auto_src'] ?? []) . "\n"; }
+            if (\Schema::hasTable('time_clock_ip_seen')) { foreach (DB::table('time_clock_ip_seen')->select('location_id', 'net', 'source', DB::raw('COUNT(DISTINCT user_id) p'), DB::raw('COUNT(DISTINCT day) d'), DB::raw('SUM(cnt) c'))->groupBy('location_id', 'net', 'source')->orderBy('location_id')->get() as $r) { echo "SEEN loc={$r->location_id} net={$r->net} src={$r->source} people={$r->p} days={$r->d} cnt={$r->c}\n"; } } else { echo "NO ip_seen table\n"; }
+            echo "login_activities rows 30d: " . (\Schema::hasTable('login_activities') ? DB::table('login_activities')->where('created_at', '>=', now()->subDays(30))->count() : 'no table') . "\n";
+            echo "backfill flag: " . json_encode(\Cache::get('tc_pos_backfill_done_v1')) . "\n";
+            PHP
+            echo "=== done ==="

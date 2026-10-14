@@ -481,11 +481,25 @@ class TimeClockController extends Controller
             // suggestions are optional
         }
 
+        // POS candidates not trusted yet: [location_id => [net => [people, days, best day sales]]]
+        $posSeen = [];
+        try {
+            if (TC::ipSeenReady()) {
+                foreach (DB::table('time_clock_ip_seen')->where('day', '>=', TC::now()->subDays(TC::LEARNED_IP_DAYS)->toDateString())
+                    ->select('location_id', 'net', DB::raw('COUNT(DISTINCT user_id) as people'), DB::raw('COUNT(DISTINCT day) as days'), DB::raw('MAX(day) as last_day'))
+                    ->groupBy('location_id', 'net')->orderBy('last_day', 'desc')->limit(40)->get() as $r) {
+                    $posSeen[(int) $r->location_id][$r->net] = $r;
+                }
+            }
+        } catch (\Throwable $e) {
+            // optional
+        }
+        $setupLink = $request->session()->get('tc_setup_link');
         $requireAtStore = TC::requireAtStore();
         $isOwner = $this->isOwner();
         $requireSchedule = TC::requireSchedule();
         $scheduleWindow = TC::scheduleWindow();
-        return view('time_clock.settings', compact('isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
+        return view('time_clock.settings', compact('posSeen', 'setupLink', 'isOwner', 'requireAtStore', 'requireSchedule', 'scheduleWindow', 'ready', 'stores', 'locations', 'saved', 'ip', 'network', 'ipStore', 'roster', 'people', 'pins', 'devices', 'suggest'));
     }
 
     public function saveStores(Request $request)
@@ -515,11 +529,17 @@ class TimeClockController extends Controller
             }
             $prev = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
             $learned = TC::freshLearned(is_array($prev) ? ($prev['auto_ips'] ?? []) : []);
+            // Forgotten auto IPs stay forgotten (not learned again).
+            $blocked = is_array($prev) && is_array($prev['auto_blocked'] ?? null) ? $prev['auto_blocked'] : [];
             foreach ((array) ($in['forget_learned'] ?? []) as $rule) {
                 unset($learned[(string) $rule]);
+                $blocked[(string) $rule] = TC::now()->toDateString();
             }
             $stores[$locId] = [
                 'auto_ips' => $learned,
+                'auto_src' => array_intersect_key(is_array($prev) && is_array($prev['auto_src'] ?? null) ? $prev['auto_src'] : [], $learned),
+                'manual_src' => array_intersect_key(is_array($prev) && is_array($prev['manual_src'] ?? null) ? $prev['manual_src'] : [], array_flip(array_values(array_unique($ips)))),
+                'auto_blocked' => $blocked,
                 'radius_v2' => true,
                 'lat' => is_numeric($lat) && abs((float) $lat) <= 90 ? (float) $lat : '',
                 'lng' => is_numeric($lng) && abs((float) $lng) <= 180 ? (float) $lng : '',
@@ -556,17 +576,7 @@ class TimeClockController extends Controller
         if (!filter_var($ip, FILTER_VALIDATE_IP)) {
             return $this->back($request, false, 'That is not an IP address.', '/time-clock/settings');
         }
-        $rule = TC::networkFor($ip);
-        $settings = TC::settings();
-        $cur = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
-        $list = (array) ($cur['ips'] ?? []);
-        if (!in_array($rule, $list, true)) { $list[] = $rule; }
-        $cur['ips'] = array_values($list);
-        // Keep the store's coordinates when it had only defaults so far.
-        $st = TC::stores($businessId)[$locId] ?? null;
-        if ($st && (!isset($cur['lat']) || $cur['lat'] === '')) { $cur['lat'] = $st['lat']; $cur['lng'] = $st['lng']; $cur['radius_m'] = $st['radius_m']; $cur['radius_v2'] = true; }
-        $settings['stores'][$locId] = $cur;
-        TC::saveSettings($settings);
+        $rule = TC::addManualIp($businessId, $locId, $ip, 'manual');
         return $this->back($request, true, $rule . ' now counts as ' . TC::shortStoreName($locations[$locId]) . '.', '/time-clock/settings');
     }
 
@@ -678,6 +688,41 @@ class TimeClockController extends Controller
             }
         }
         return $this->back($request, true, 'Phone signed out. They need their PIN next time.', '/time-clock/settings');
+    }
+
+    /** Owner: a single-use link (24 hours) that sets up a store computer. */
+    public function setupLink(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can make setup links.');
+        }
+        $businessId = $this->businessId($request);
+        $locId = (int) $request->input('location_id');
+        $locations = TC::locations($businessId);
+        if (!isset($locations[$locId])) {
+            return $this->back($request, false, 'Pick a store.', '/time-clock/settings');
+        }
+        $token = TC::makeSetupToken($locId, auth()->id());
+        return redirect('/time-clock/settings')->with('tc_setup_link', [
+            'url' => url('/clock/setup/' . $token),
+            'store' => TC::shortStoreName($locations[$locId]),
+        ]);
+    }
+
+    /** Owner: scan POS history (logins + register opens) for store networks again. */
+    public function posBackfill(Request $request)
+    {
+        $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can do this.');
+        }
+        if (!TC::ipSeenReady()) {
+            return $this->back($request, false, 'The table for this is not set up yet (the migration has not run).', '/time-clock/settings');
+        }
+        $promoted = TC::backfillPosIps();
+        $n = array_sum(array_map('count', $promoted));
+        return $this->back($request, true, $n ? $n . ' store network(s) added from POS history.' : 'No new store networks found in POS history.', '/time-clock/settings');
     }
 
     /** Printable sheet: one QR per store pointing at /clock. */
