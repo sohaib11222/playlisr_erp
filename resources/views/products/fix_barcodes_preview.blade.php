@@ -24,7 +24,8 @@ tr.pv-done td { opacity: .4; }
 <div class="pv-wrap">
     <h1>Records entered twice</h1>
     <p class="pv-sub" id="pvSub">Loading, this takes about a minute...</p>
-    <div class="pv-tabs"><span class="pv-tab on" data-t="safe">Safe to merge</span><span class="pv-tab" data-t="check">Check by hand</span><a class="pv-tab" href="/products/fix-barcodes/scan?csv=1">Download all (CSV)</a></div>
+    <div class="pv-tabs"><span class="pv-tab on" data-t="safe">Safe to merge</span><span class="pv-tab" data-t="check">Check by hand</span><a class="pv-tab" href="/products/fix-barcodes/scan?csv=1">Download all (CSV)</a>
+        <button class="pv-btn" id="pvAll" type="button" style="margin-left:auto;">Merge all on this tab</button><span class="pv-msg" id="pvAllMsg" style="align-self:center;"></span></div>
     <div class="pv-tablewrap"><table class="pv-table">
         <thead><tr><th>Fake-SKU listing (goes away)</th><th>Price</th><th>HW / Pico</th><th>Sold</th><th></th><th>Real-barcode listing (kept)</th><th>Price</th><th>HW / Pico</th><th>Sold</th><th></th></tr></thead>
         <tbody id="pvRows"></tbody>
@@ -64,17 +65,42 @@ tr.pv-done td { opacity: .4; }
                 else { msg.textContent = j.msg || 'Did not work.'; td.querySelectorAll('.pv-btn').forEach(function (x) { x.disabled = false; }); }
             }).catch(function () { msg.textContent = 'Did not work, try again.'; td.querySelectorAll('.pv-btn').forEach(function (x) { x.disabled = false; }); });
     });
+    // Merge all: Safe tab only, two clicks (no browser confirm box), one at a
+    // time so each merge gets its own undo entry and website push.
+    var armed = false, running = false;
+    function allBtn() {
+        var b = document.getElementById('pvAll');
+        var n = pairs.filter(safe).length;
+        b.style.display = tab === 'safe' && n ? '' : 'none';
+        if (!running) b.textContent = armed ? 'Click again to merge all ' + n : 'Merge all ' + n + ' on this tab';
+    }
+    document.getElementById('pvAll').addEventListener('click', function () {
+        if (running) return;
+        if (!armed) { armed = true; allBtn(); setTimeout(function () { armed = false; allBtn(); }, 6000); return; }
+        running = true; armed = false;
+        var list = pairs.filter(safe), i = 0, ok = 0, bad = 0, b = this, m = document.getElementById('pvAllMsg');
+        b.disabled = true;
+        (function next() {
+            if (i >= list.length) { running = false; b.disabled = false; m.textContent = 'Done: ' + ok + ' merged' + (bad ? ', ' + bad + ' failed (still listed)' : '') + '. Undo at Admin Action History.'; render(); allBtn(); return; }
+            var x = list[i++];
+            b.textContent = 'Merging ' + i + ' of ' + list.length + '...';
+            fetch('/products/fix-barcodes/' + x.id + '/merge', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: JSON.stringify({ keep_id: x.keep_id }) })
+                .then(function (r) { return r.json(); }).then(function (j) {
+                    if (j.success) { ok++; pairs = pairs.filter(function (p) { return p.id !== x.id; }); } else bad++;
+                }).catch(function () { bad++; }).then(next);
+        })();
+    });
     document.querySelector('.pv-tabs').addEventListener('click', function (e) {
         var t = e.target.closest('.pv-tab[data-t]'); if (!t) return;
         tab = t.getAttribute('data-t');
         document.querySelectorAll('.pv-tab[data-t]').forEach(function (x) { x.classList.toggle('on', x === t); });
-        render();
+        render(); allBtn();
     });
     fetch('/products/fix-barcodes/scan?all=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         pairs = j.sample || [];
         var s = pairs.filter(safe).length;
         document.getElementById('pvSub').textContent = pairs.length.toLocaleString() + ' records look entered twice: once with a made-up SKU and once with the real barcode. ' + s + ' are safe to merge (same name and same price). ' + (pairs.length - s) + ' need a look (different price or a different word in the name, like Box Set or Acoustic). Nothing changes until you press Merge on a row. Open both titles to compare if unsure.';
-        render();
+        render(); allBtn();
     }).catch(function () { document.getElementById('pvSub').textContent = 'Load failed, refresh to try again.'; });
 })();
 </script>
