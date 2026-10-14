@@ -172,6 +172,10 @@ class ReorderService
             return ['updated' => false, 'before' => $before, 'after' => null, 'note' => 'could not save'];
         }
 
+        // Last updated at / by on the products list = this count and its counter.
+        DB::table('products')->where('id', $productId)->update(['updated_at' => now()]);
+        \Cache::forget('products_index_updated_by:' . $business_id);
+
         $loc = \App\BusinessLocation::find($locationId);
         try {
             $log = activity()->performedOn($product)->causedBy(auth()->user())

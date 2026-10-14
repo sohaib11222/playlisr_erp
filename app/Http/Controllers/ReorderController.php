@@ -324,23 +324,10 @@ class ReorderController extends Controller
             if (!auth()->user()->can('product.update')) {
                 $erp['note'] = 'no permission to change ERP stock';
             } elseif (count(array_unique(array_merge([$pid], $members))) > 1) {
-                // Same album entered several times (Sarah 10/14: "anything
-                // Clarissa counted should DEFINITELY be what we have on hand,
-                // the old dupes are def wrong"): the counted row gets the
-                // count, every other copy goes to 0 at this store.
+                // Album entered several times: the count goes to the listing
+                // that was counted only; the other copies are left alone
+                // (Sarah 10/14: "her count should just go to her listing").
                 $erp = $this->svc->applyCountToErp($business_id, $locationId, $pid, (int) $raw);
-                // Only exact same album + same (...) edition text gets zeroed.
-                $paren = function ($n) { preg_match_all('/[\(\[]([^\)\]]*)[\)\]]/', strtolower((string) $n), $m); $x = array_map('trim', $m[1]); sort($x); return $x; };
-                $me = \DB::table('products')->where('id', $pid)->select('name', 'artist')->first();
-                $myKey = $me ? $this->svc->albumKey($me->artist, $me->name) : '';
-                foreach (array_unique($members) as $other) {
-                    if ((int) $other === $pid || !$me) continue;
-                    $o = \DB::table('products')->where('id', (int) $other)->select('name', 'artist')->first();
-                    if ($o && $myKey !== '' && strpos($myKey, '|') > 0 && $this->svc->albumKey($o->artist, $o->name) === $myKey && $paren($o->name) === $paren($me->name)) {
-                        $this->svc->applyCountToErp($business_id, $locationId, (int) $other, 0);
-                    }
-                }
-                $erp['note'] = trim(($erp['note'] ?? '') . ' other copies set to 0');
             } elseif (!auth()->user()->can('product.update')) {
                 $erp['note'] = 'no permission to change ERP stock';
             } else {
@@ -395,14 +382,13 @@ class ReorderController extends Controller
                 $q = (float) \DB::table('variation_location_details')->where('product_id', $o->id)->where('location_id', $loc)->sum('qty_available');
                 if ($q != 0) $otherStock[] = ['id' => (int) $o->id, 'name' => $o->name, 'qty' => $q];
             }
-            if (abs($now - $want) < 0.01 && !$otherStock) continue;
+            if (abs($now - $want) < 0.01) continue;
             $plan[] = ['loc' => $loc, 'pid' => $pid, 'name' => $p->name, 'counted' => (int) $c['qty'], 'counted_at' => $c['at'], 'sold_since' => $sold, 'erp_now' => $now, 'set_to' => $want, 'zero' => $otherStock];
         }
         if ($request->isMethod('post')) {
             $n = 0;
             foreach ($plan as $x) {
                 $this->svc->applyCountToErp($business_id, $x['loc'], $x['pid'], $x['set_to']);
-                foreach ($x['zero'] as $o) $this->svc->applyCountToErp($business_id, $x['loc'], $o['id'], 0);
                 $n++;
             }
             return response()->json(['success' => true, 'applied' => $n]);
