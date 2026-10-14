@@ -270,6 +270,26 @@ class BarcodeFixController extends Controller
                 'keep_hw' => $stock[$k->id]['hw'] ?? 0, 'keep_pico' => $stock[$k->id]['pico'] ?? 0, 'keep_sold' => (float) ($sold[$k->id] ?? 0), 'keep_price' => round((float) ($price[$k->id] ?? 0), 2),
             ];
         }
+        // Suggested price (Sarah 10/14): our usual markup over AMS cost for
+        // the format (median price / AMS across these listings, about 1.5x
+        // vinyl and 1.7x CD), and whichever of the two prices is closer.
+        $ratios = [];
+        foreach ($pairs as $x) {
+            if (!empty($x['keep_ams']) && $x['keep_price'] > 0) $ratios[stripos((string) $x['cat'], 'cd') !== false ? 'cd' : 'lp'][] = $x['keep_price'] / $x['keep_ams'];
+        }
+        $median = [];
+        foreach ($ratios as $f => $a) { sort($a); $median[$f] = $a[intdiv(count($a), 2)]; }
+        foreach ($pairs as &$x) {
+            $f = stripos((string) $x['cat'], 'cd') !== false ? 'cd' : 'lp';
+            $x['suggest'] = null; $x['typical'] = null;
+            if (!empty($x['keep_ams']) && isset($median[$f]) && abs($x['price'] - $x['keep_price']) >= 0.01) {
+                $t = round($x['keep_ams'] * $median[$f], 2);
+                $x['typical'] = $t;
+                $x['suggest'] = abs($x['price'] - $t) < abs($x['keep_price'] - $t) ? $x['price'] : $x['keep_price'];
+            }
+        }
+        unset($x);
+
         if ($request->query('csv')) {
             $fh = fopen('php://temp', 'w+');
             fputcsv($fh, ['Made-up listing', 'Its SKU', 'Format', 'HW', 'Pico', 'Sold', 'Price', 'Real-barcode listing', 'Barcode', 'HW', 'Pico', 'Sold', 'Price', 'AMS cost', 'Made-up link', 'Real link']);
