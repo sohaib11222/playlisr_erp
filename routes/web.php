@@ -434,6 +434,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/fix-barcodes/{id}/save', 'BarcodeFixController@save');
     Route::post('/products/fix-barcodes/{id}/merge', 'BarcodeFixController@merge');
     Route::post('/products/fix-barcodes/{id}/skip', 'BarcodeFixController@skip');
+    Route::post('/products/fix-barcodes/{id}/set-stock', 'BarcodeFixController@setStock');
     Route::get('/stock-lookup/data', 'StockLookupController@data');
     Route::get('/reports/supplier-price-pulls', function () {
         $u = auth()->user();

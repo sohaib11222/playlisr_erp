@@ -489,6 +489,28 @@ class BarcodeFixController extends Controller
         return response()->json(['checked' => count($out), 'would_change' => count($would), 'list' => $would]);
     }
 
+    /** Set one listing's stock at one store (Sarah's call on a merge), undoable as 'set-merge-stock'. */
+    public function setStock(Request $request, $id)
+    {
+        if (!$this->isOwner()) return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        $biz = (int) $request->session()->get('user.business_id');
+        $loc = (int) $request->input('location_id');
+        $qty = max(0, (float) $request->input('qty'));
+        $p = \DB::table('products')->where('business_id', $biz)->where('id', (int) $id)->first();
+        $r = \DB::table('variation_location_details')->where('product_id', (int) $id)->where('location_id', $loc)->first();
+        if (!$p || !$r) return response()->json(['success' => false, 'msg' => 'No stock row for that product at that store.']);
+        \DB::table('variation_location_details')->where('id', $r->id)->update(['qty_available' => $qty, 'updated_at' => now()]);
+        $ts = now()->format('Y-m-d_His') . '-' . $p->id;
+        \Storage::disk('local')->put("admin-snapshots/set-merge-stock-{$ts}.json", json_encode([
+            'timestamp' => $ts, 'action' => 'set-merge-stock', 'user_id' => auth()->id(), 'business_id' => $biz,
+            'source_name' => $p->name, 'target_name' => 'stock set by owner', 'product_id' => (int) $p->id,
+            'rows' => [['id' => (int) $r->id, 'location_id' => $loc, 'old' => (float) $r->qty_available, 'new' => $qty, 'why' => 'owner']],
+        ], JSON_PRETTY_PRINT));
+        \DB::table('product_stock_cache')->where('product_id', $p->id)->delete();
+        try { (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $p->id]); } catch (\Throwable $e) {}
+        return response()->json(['success' => true, 'msg' => $p->name . ': ' . (float) $r->qty_available . ' -> ' . $qty]);
+    }
+
     /** Hide a listing from this page (can't tell / not worth it). */
     public function skip(Request $request, $id)
     {
