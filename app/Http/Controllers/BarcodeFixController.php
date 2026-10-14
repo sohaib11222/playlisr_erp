@@ -203,11 +203,13 @@ class BarcodeFixController extends Controller
         $price = \DB::table('variations as va')->join('products as p', 'p.id', '=', 'va.product_id')->where('p.business_id', $biz)
             ->whereNull('va.deleted_at')->groupBy('va.product_id')->select('va.product_id', \DB::raw('MAX(va.sell_price_inc_tax) as v'))->pluck('v', 'product_id')->all();
 
+        $users = \DB::table('users')->where('business_id', $biz)->select('id', \DB::raw("TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) as n"))->pluck('n', 'id')->all();
+        $who = function ($p) use ($users) { return trim(($users[(int) $p->created_by] ?? '?') . ', ' . ($p->created_at ? date('n/j/Y', strtotime($p->created_at)) : '')); };
         $isBarcode = function ($sku) { return (bool) preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $sku)); };
         $index = []; $made = [];
         foreach (\DB::table('products as p')->join('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereRaw("LOWER(c.name) LIKE '%sealed%'")
-            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat')->cursor() as $p) {
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat', 'p.created_by', 'p.created_at')->cursor() as $p) {
             $fam = $ica->formatFamily($p->cat);
             if ($fam === null) continue;
             if ($isBarcode($p->sku)) {
@@ -246,7 +248,7 @@ class BarcodeFixController extends Controller
                 'exact' => (bool) $exact,
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
                 'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
-                'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku, 'keep_cat' => $k->cat,
+                'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku, 'keep_cat' => $k->cat, 'keep_who' => $who($k), 'who' => $who($p),
                 'keep_hw' => $stock[$k->id]['hw'] ?? 0, 'keep_pico' => $stock[$k->id]['pico'] ?? 0, 'keep_sold' => (float) ($sold[$k->id] ?? 0), 'keep_price' => round((float) ($price[$k->id] ?? 0), 2),
             ];
         }
