@@ -797,6 +797,12 @@ class WebsiteOrdersController extends Controller
         if (empty($resp['refunds'])) {
             $out .= "(none)\n";
         }
+        $out .= "\nWHAT WOULD BE POSTED TO #pico (preview, nothing sent)\n\n";
+        try {
+            $out .= (\App\Services\PicoPullsNotifier::build('preview') ?? '(nothing to pull at Pico, no post)') . "\n";
+        } catch (\Throwable $e) {
+            $out .= 'Pico preview failed: ' . $e->getMessage() . "\n";
+        }
         return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
     }
 

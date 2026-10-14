@@ -63,6 +63,9 @@ class ShippingSummaryWatch extends Command
                 @mkdir(dirname($file), 0775, true);
             }
             @file_put_contents($file, json_encode(['date' => $today, 'trigger' => $trigger, 'resp' => $resp['posted'] ?? null]));
+            if (!empty($resp['posted'])) {
+                \App\Services\PicoPullsNotifier::post();
+            }
         }
         return 0;
     }

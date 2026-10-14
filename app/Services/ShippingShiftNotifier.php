@@ -20,12 +20,35 @@ class ShippingShiftNotifier
     }
 
     /**
+     * Nick's clock-in and clock-out (any path: /clock, keypad, End Shift,
+     * register close) post a fresh #shipping summary and the #pico pull list
+     * (Sarah, 2026-10-14), so the update matches his real shift. Runs after
+     * the response so the punch never waits.
+     */
+    public static function onClock($user, string $what): void
+    {
+        try {
+            if (!$user || !self::isShippingStaff($user)) {
+                return;
+            }
+            $first = trim((string) ($user->first_name ?? '')) ?: 'Nick';
+            $note = $first . ' clocked ' . $what . ' ' . \Carbon::now('America/Los_Angeles')->format('g:i A');
+            app()->terminating(function () use ($what, $note) {
+                self::postSummary('clock_' . $what, true, $note);
+                PicoPullsNotifier::post($note);
+            });
+        } catch (\Throwable $e) {
+            \Log::warning('shipping summary on clock ' . $what . ' failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Ask the website to post the shipping summary (everything since the
-     * previous post) to #shipping + Sarah's DM. The website posts once per
-     * LA day, so calling this again is harmless.
+     * previous post) to #shipping. Once per LA day unless $force (Nick's
+     * clock-in / clock-out), so repeat fallback calls are harmless.
      * @return array|null decoded response
      */
-    public static function postSummary(string $trigger): ?array
+    public static function postSummary(string $trigger, bool $force = false, string $note = ''): ?array
     {
         try {
             $key = self::erpApiKey();
@@ -36,7 +59,7 @@ class ShippingShiftNotifier
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => json_encode(['trigger' => $trigger]),
+                CURLOPT_POSTFIELDS => json_encode(['trigger' => $trigger, 'force' => $force, 'note' => $note]),
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'x-erp-key: ' . $key],
                 CURLOPT_TIMEOUT => 40,
             ]);

@@ -1715,6 +1715,7 @@ class TimeClockService
             self::touchAutoIp($where['location_id'], $ip);
         }
         self::announceClockIn($user, $store);
+        ShippingShiftNotifier::onClock($user, 'in');
         // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';
         return ['ok' => true, 'msg' => $msg];
@@ -1759,6 +1760,11 @@ class TimeClockService
             'updated_at' => $now,
         ]);
         self::announceClockOut($userId, (int) $open->business_id, $open->location_id);
+        try {
+            ShippingShiftNotifier::onClock(DB::table('users')->where('id', $userId)->first(['id', 'first_name', 'last_name']), 'out');
+        } catch (\Throwable $e) {
+            \Log::warning('shipping summary clock-out hook failed: ' . $e->getMessage());
+        }
         if ($verify === 'gps' && !empty($where['location_id'])) {
             self::learnIp((int) $where['location_id'], $ip);
         } elseif ($verify === 'ip' && !empty($where['location_id'])) {

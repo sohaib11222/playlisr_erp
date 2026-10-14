@@ -288,7 +288,6 @@ class PhoneClockController extends Controller
         }
         if ($doing === 'out') {
             TC::clockOut($userId, $source, $request, true);
-            $this->afterClockOut($user);
             $st = TC::status($businessId, $userId);
             return ['ok' => true, 'name' => $first, 'action' => 'out', 'time' => $time,
                 'headline' => $first . ", you're clocked out.", 'detail' => $time . ', ' . $st['today_text'] . ' today',
@@ -300,24 +299,6 @@ class PhoneClockController extends Controller
             'headline' => $first . ($open ? ", you're already clocked in." : ", you're already clocked out."),
             'detail' => $open ? 'Since ' . $st['since'] : $st['today_text'] . ' today',
             'msg' => '', 'status' => $st];
-    }
-
-    /**
-     * Nick (shipping): clocking out posts the daily #shipping summary, same
-     * as his End Shift (the Clover clock-in watch was removed 10/12). Runs
-     * after the response; once per day on the website side.
-     */
-    private function afterClockOut($user): void
-    {
-        try {
-            if (\App\Services\ShippingShiftNotifier::isShippingStaff($user)) {
-                app()->terminating(function () {
-                    \App\Services\ShippingShiftNotifier::postSummary('erp_clock_out');
-                });
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('shipping summary on clock-out failed: ' . $e->getMessage());
-        }
     }
 
     /**
