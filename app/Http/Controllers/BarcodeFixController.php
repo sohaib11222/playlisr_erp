@@ -222,7 +222,23 @@ class BarcodeFixController extends Controller
             if (count($hits) === 0) { $none++; continue; }
             if (count($hits) > 1) { $amb++; continue; }
             $k = reset($hits);
+            // Same words on both names (ignoring artist words and format
+            // noise)? "Renaissance (Box Set)" vs "Renaissance" or "Evilive II"
+            // vs "Evilive" are different releases even though the core title matches.
+            $words = function ($n) {
+                $n = mb_strtolower((string) $n);
+                $n = preg_replace('/[^a-z0-9]+/', ' ', $n);
+                $noise = ['the','and','a','an','lp','2lp','3lp','cd','vinyl','x','180g','140g','150g','200g','gatefold','black','standard','edition','by'];
+                return array_values(array_diff(array_unique(array_filter(explode(' ', $n))), $noise));
+            };
+            $artistWords = array_merge($words($p->artist), $words($k->artist));
+            foreach ($this->pairKeys($ica, $p->artist, $p->name) as [$a, $t]) { $artistWords = array_merge($artistWords, explode(' ', $a)); }
+            foreach ($this->pairKeys($ica, $k->artist, $k->name) as [$a, $t]) { $artistWords = array_merge($artistWords, explode(' ', $a)); }
+            $wa = array_diff($words($p->name), $artistWords); $wb = array_diff($words($k->name), $artistWords);
+            sort($wa); sort($wb);
+            $exact = array_values(array_unique($wa)) === array_values(array_unique($wb)) && $wa;
             $pairs[] = [
+                'exact' => (bool) $exact,
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
                 'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
                 'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku,
@@ -238,6 +254,7 @@ class BarcodeFixController extends Controller
         }
         return response()->json(['made_up' => count($made), 'one_match' => count($pairs), 'several_matches' => $amb, 'no_match' => $none,
             'same_price' => count(array_filter($pairs, function ($x) { return abs($x['price'] - $x['keep_price']) < 0.01; })),
+            'safe' => count(array_filter($pairs, function ($x) { return $x['exact'] && abs($x['price'] - $x['keep_price']) < 0.01; })),
             'sample' => $request->query('all') ? $pairs : array_slice($pairs, 0, 40)]);
     }
 

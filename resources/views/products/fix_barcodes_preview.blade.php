@@ -20,7 +20,7 @@
 <div class="pv-wrap">
     <h1>Records entered twice</h1>
     <p class="pv-sub" id="pvSub">Loading, this takes about a minute...</p>
-    <div class="pv-tabs"><span class="pv-tab on" data-t="same">Same price</span><span class="pv-tab" data-t="diff">Different price</span><a class="pv-tab" href="/products/fix-barcodes/scan?csv=1">Download all (CSV)</a></div>
+    <div class="pv-tabs"><span class="pv-tab on" data-t="safe">Safe to merge</span><span class="pv-tab" data-t="check">Check by hand</span><a class="pv-tab" href="/products/fix-barcodes/scan?csv=1">Download all (CSV)</a></div>
     <div class="pv-tablewrap"><table class="pv-table">
         <thead><tr><th>Fake-SKU listing (goes away)</th><th>Price</th><th>HW / Pico</th><th>Sold</th><th></th><th>Real-barcode listing (kept)</th><th>Price</th><th>HW / Pico</th><th>Sold</th></tr></thead>
         <tbody id="pvRows"></tbody>
@@ -31,17 +31,19 @@
 @section('javascript')
 <script>
 (function () {
-    var pairs = [], tab = 'same';
+    var pairs = [], tab = 'safe';
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return n ? '$' + Number(n).toFixed(2) : '$0'; }
     function same(x) { return Math.abs(x.price - x.keep_price) < 0.01; }
+    function safe(x) { return x.exact && same(x); }
     function render() {
-        var list = pairs.filter(function (x) { return tab === 'same' ? same(x) : !same(x); });
+        var list = pairs.filter(function (x) { return tab === 'safe' ? safe(x) : !safe(x); });
         document.getElementById('pvRows').innerHTML = list.map(function (x) {
             var d = same(x) ? '' : ' class="pv-diff"';
+            var nm = x.exact ? '' : ' <span class="pv-diff">(names differ)</span>';
             return '<tr><td><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a><div class="pv-small">' + esc(x.sku) + ', ' + esc(x.cat) + '</div></td>'
                 + '<td' + d + '>' + money(x.price) + '</td><td>' + x.hw + ' / ' + x.pico + '</td><td>' + x.sold + '</td><td class="arrow">into</td>'
-                + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a><div class="pv-small">' + esc(x.keep_sku) + '</div></td>'
+                + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a>' + nm + '<div class="pv-small">' + esc(x.keep_sku) + '</div></td>'
                 + '<td' + d + '>' + money(x.keep_price) + '</td><td>' + x.keep_hw + ' / ' + x.keep_pico + '</td><td>' + x.keep_sold + '</td></tr>';
         }).join('') || '<tr><td colspan="9">Nothing here.</td></tr>';
     }
@@ -53,8 +55,8 @@
     });
     fetch('/products/fix-barcodes/scan?all=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         pairs = j.sample || [];
-        var s = pairs.filter(same).length;
-        document.getElementById('pvSub').textContent = pairs.length.toLocaleString() + ' records were entered twice: once with a made-up SKU and once with the real barcode. ' + s + ' have the same price, ' + (pairs.length - s) + ' have different prices. Nothing has been changed yet.';
+        var s = pairs.filter(safe).length;
+        document.getElementById('pvSub').textContent = pairs.length.toLocaleString() + ' records look entered twice: once with a made-up SKU and once with the real barcode. ' + s + ' are safe to merge (same name and same price). ' + (pairs.length - s) + ' need a look (different price or a different word in the name, like Box Set or Acoustic). Nothing has been changed yet.';
         render();
     }).catch(function () { document.getElementById('pvSub').textContent = 'Load failed, refresh to try again.'; });
 })();
