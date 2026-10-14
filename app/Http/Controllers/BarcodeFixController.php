@@ -249,7 +249,7 @@ class BarcodeFixController extends Controller
             // later at a whole-dollar price, the newer price is the real one.
             $fp = round((float) ($price[$p->id] ?? 0), 2); $kp = round((float) ($price[$k->id] ?? 0), 2);
             $samePrice = abs($fp - $kp) < 0.01;
-            $newerWhole = !$samePrice && $kp > 0 && fmod($kp, 1) == 0 && fmod($fp, 1) != 0
+            $newerWhole = !$samePrice && $kp > 0 && fmod($kp, 1) == 0 && in_array((int) round(fmod($fp, 1) * 100), [25, 50, 75], true)
                 && strtotime((string) $k->created_at) > strtotime((string) $p->created_at);
             $pairs[] = [
                 'safe' => (bool) $exact && ($samePrice || $newerWhole),
