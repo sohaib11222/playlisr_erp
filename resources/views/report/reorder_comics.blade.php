@@ -13,6 +13,9 @@
     /* Sarah 10/14 "too much scrolling": counting view shows the 6 columns
        Clarissa needs; the rest are behind "Show details". */
     table.rc.compact .rc-d { display:none; }
+    table.rc.compact { width:auto !important; min-width:560px; }
+    table.rc.compact td:first-child { min-width:220px; }
+    table.rc.compact .rc-num { width:70px; height:32px; }
     table.rc td, table.rc th { padding:4px 8px !important; }
     table.rc thead th { position:sticky; top:0; background:#fff; z-index:2; }
     .rc-toggle { font-size:13px; margin-left:8px; }
