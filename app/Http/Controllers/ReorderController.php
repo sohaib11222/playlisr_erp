@@ -387,7 +387,9 @@ class ReorderController extends Controller
         }
         if ($request->isMethod('post')) {
             $n = 0;
+            $only = array_map('intval', (array) $request->input('only', []));
             foreach ($plan as $x) {
+                if ($only && !in_array((int) $x['pid'], $only, true)) continue;
                 $this->svc->applyCountToErp($business_id, $x['loc'], $x['pid'], $x['set_to']);
                 $n++;
             }
