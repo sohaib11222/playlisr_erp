@@ -10,6 +10,12 @@
     .rc-num { width:60px; text-align:right; font-weight:bold; font-size:15px; padding:2px 4px; }
     .rc-order { font-weight:bold; font-size:15px; }
     .rc-saved { color:#2e7d32; font-size:11px; }
+    /* Sarah 10/14 "too much scrolling": counting view shows the 6 columns
+       Clarissa needs; the rest are behind "Show details". */
+    table.rc.compact .rc-d { display:none; }
+    table.rc td, table.rc th { padding:4px 8px !important; }
+    table.rc thead th { position:sticky; top:0; background:#fff; z-index:2; }
+    .rc-toggle { font-size:13px; margin-left:8px; }
 </style>
 
 <section class="content-header">
@@ -39,11 +45,12 @@
                     </select>
                 </div>
             </form>
-            <ol style="margin:12px 0 0; padding-left:22px; font-size:15px; line-height:1.55;">
-                <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed (like Clarissa's sheet): Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
+            <details style="margin-top:10px;font-size:14px;"><summary style="cursor:pointer;">How this works</summary>
+            <ol style="margin:8px 0 0; padding-left:22px; line-height:1.55;">
+                <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed: Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
                 <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
                 <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
-            </ol>
+            </ol></details>
         </div>
     </div>
 
@@ -80,7 +87,8 @@
                 <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4. <span id="rc-total-{{ $type }}"></span></small></h3>
             </div>
             <div class="box-body table-responsive">
-                <table class="table table-bordered table-condensed rc" data-type="{{ $type }}">
+                <a href="#" class="rc-toggle">Show details</a>
+                <table class="table table-bordered table-condensed rc compact" data-type="{{ $type }}">
                     <thead>
                         <tr>
                             <th>Family / Series</th>
@@ -164,6 +172,24 @@
         });
     });
     totals();
+
+    // Mark the detail columns (everything but Series, Speed, Copies Sold,
+    // ERP says, Qty in Stock, # to Order) so compact mode can hide them.
+    var KEEP = [0, 1, 6, 13, 14, 15];
+    document.querySelectorAll('table.rc').forEach(function (t) {
+        t.querySelectorAll('tr').forEach(function (tr) {
+            if (tr.classList.contains('rc-section')) return;
+            Array.prototype.forEach.call(tr.children, function (td, i) { if (KEEP.indexOf(i) === -1) td.classList.add('rc-d'); });
+        });
+    });
+    document.querySelectorAll('.rc-toggle').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            var t = a.parentNode.querySelector('table.rc');
+            t.classList.toggle('compact');
+            a.textContent = t.classList.contains('compact') ? 'Show details' : 'Hide details';
+        });
+    });
 
     // Click any column name to sort; click again to flip. "Back to sections" undoes it.
     var tierRank = { 'Fast': 0, 'Staple': 1, 'Mid': 2, 'No data': 3 };
