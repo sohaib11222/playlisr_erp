@@ -345,9 +345,8 @@ class CustomerWantController extends Controller
             $label = $title !== '' ? $title : 'record';
             if ($title !== '' && $artist !== '') $label .= ' by ' . $artist;
             if (!empty($want->format)) $label .= ' (' . $want->format . ')';
-            $storeName = optional($want->location)->name ?: 'Nivessa';
-            $msg = $hey . "Nivessa here. We just got your {$label} in at {$storeName}. "
-                 . "We're holding it for you at the counter, so stop by when you can.";
+            // No hold promise (Sarah, 2026-10-14); same wording as the 4pm auto-match.
+            $msg = \App\Services\WantNotice::text($first, $label, \App\Services\WantNotice::store(optional($want->location)->name), null);
 
             try {
                 // Send from the store's own Quo line, like the other ERP texts.

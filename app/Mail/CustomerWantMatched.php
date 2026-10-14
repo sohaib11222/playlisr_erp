@@ -23,11 +23,15 @@ class CustomerWantMatched extends Mailable
 
     public $want;
     public $contact;
+    public $store;
+    public $link;
 
-    public function __construct(CustomerWant $want, Contact $contact)
+    public function __construct(CustomerWant $want, Contact $contact, ?string $locationName = null, ?string $link = null)
     {
         $this->want = $want;
         $this->contact = $contact;
+        $this->store = \App\Services\WantNotice::store($locationName ?: optional($want->location)->name);
+        $this->link = $link;
     }
 
     public function build()
@@ -36,10 +40,10 @@ class CustomerWantMatched extends Mailable
         $title = trim((string) $this->want->title);
         $format = trim((string) $this->want->format);
 
-        $label = trim(implode(' — ', array_filter([$artist, $title])));
+        $label = trim(implode(', ', array_filter([$artist, $title])));
         if ($format) $label .= ' (' . $format . ')';
 
-        return $this->subject('We have your ' . $label . '!')
+        return $this->subject('Your ' . $label . ' just came in at ' . $this->store['name'])
             ->view('emails.customer_want_matched');
     }
 }

@@ -82,7 +82,17 @@ class ScanWantMatches extends Command
 
             if (!$commit) continue;
 
-            $results = $this->dispatch($chosenMethod, $want, $contact, $product);
+            // Link to the product's nivessa.com page so they can place a
+            // pickup order. New stock reaches the site with the nightly sync,
+            // so a record added today waits for tomorrow's run (still inside
+            // the --days window) rather than going out without a link.
+            $link = \App\Services\WantNotice::productLink($product->id);
+            if (!$link && !empty($product->created_at) && strtotime($product->created_at) > time() - 30 * 3600) {
+                $this->line('    not on nivessa.com yet, will notify on the next run');
+                continue;
+            }
+
+            $results = $this->dispatch($chosenMethod, $want, $contact, $product, $link);
             $anyOk = false;
             foreach ($results as $ch => $r) {
                 if ($r['ok']) {
@@ -139,7 +149,7 @@ class ScanWantMatches extends Command
             ->where('p.name', 'LIKE', '%' . $title . '%')
             ->where('vld.qty_available', '>', 0)
             ->select([
-                'p.id', 'p.name', 'p.artist', 'p.sku', 'p.format',
+                'p.id', 'p.name', 'p.artist', 'p.sku', 'p.format', 'p.created_at',
                 'c.name as category_name',
                 'vld.location_id as stock_location_id',
             ])
@@ -210,7 +220,7 @@ class ScanWantMatches extends Command
     }
 
     /** @return array  channel => ['ok' => bool, 'msg' => string] */
-    private function dispatch(string $method, CustomerWant $want, Contact $contact, $product): array
+    private function dispatch(string $method, CustomerWant $want, Contact $contact, $product, ?string $link = null): array
     {
         $results = [];
         $channels = [];
@@ -222,7 +232,8 @@ class ScanWantMatches extends Command
             if ($ch === 'email') {
                 if (empty($contact->email)) { $results[$ch] = ['ok' => false, 'msg' => 'no email']; continue; }
                 try {
-                    Mail::to($contact->email)->send(new CustomerWantMatched($want, $contact));
+                    $stockStore = !empty($product->stock_location_id) ? optional(BusinessLocation::find((int) $product->stock_location_id))->name : null;
+                    Mail::to($contact->email)->send(new CustomerWantMatched($want, $contact, $stockStore ?: optional($want->location)->name, $link));
                     $results[$ch] = ['ok' => true, 'msg' => 'emailed ' . $contact->email];
                 } catch (\Throwable $e) {
                     Log::warning('wants:scan-matches email failed: ' . $e->getMessage());
@@ -232,7 +243,6 @@ class ScanWantMatches extends Command
                 $phone = $contact->mobile ?: $contact->alternate_number;
                 if (empty($phone)) { $results[$ch] = ['ok' => false, 'msg' => 'no phone']; continue; }
                 $first = trim((string) ($contact->first_name ?? ''));
-                $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
                 $label = $this->labelFor($want);
                 // Name the store that actually has it on the shelf, and text
                 // from that store's own Quo line.
@@ -243,8 +253,7 @@ class ScanWantMatches extends Command
                 if (empty($storeName)) {
                     $storeName = optional($want->location)->name;
                 }
-                $store = $storeName ?: 'Nivessa';
-                $msg = $hey . "Nivessa here. Your {$label} is on the shelf at {$store} now. Come by soon if you want it.";
+                $msg = \App\Services\WantNotice::text($first, $label, \App\Services\WantNotice::store($storeName), $link);
                 try {
                     $r = app(OpenPhoneService::class)->sendFromStore($storeName, $phone, $msg);
                 } catch (\Throwable $e) {
