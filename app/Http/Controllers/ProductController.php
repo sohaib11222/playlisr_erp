@@ -2729,6 +2729,14 @@ class ProductController extends Controller
 
             $product_details['warranty_id'] = !empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
 
+            // Sealed items need the real barcode as the SKU here too (Sarah
+            // 10/14: quick add was the one create path without the 10/8 rule).
+            $quickCat = (string) DB::table('categories')->where('id', (int) ($product_details['category_id'] ?? 0))->value('name');
+            if (stripos($quickCat, 'sealed') !== false
+                && !preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $request->input('sku')))) {
+                return ['success' => 0, 'msg' => 'Sealed items need the barcode as the SKU. Scan the barcode on the shrink wrap.'];
+            }
+
             // Same duplicate guard as the full create form (barcode / name).
             $dupService = app(\App\Services\ProductDuplicateService::class);
             $conflict = $dupService->findConflict(
