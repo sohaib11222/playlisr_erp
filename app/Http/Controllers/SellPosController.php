@@ -2373,6 +2373,16 @@ class SellPosController extends Controller
             $quo = $this->sendReceiptTextViaQuo($transaction, $phone, $base);
             $sent = !empty($quo['success']);
 
+            // A Quo timeout or server error may still have delivered the
+            // text, so never fall back to the website send then: that
+            // would give the customer two receipts in different wording.
+            if (!$sent && !empty($quo['uncertain'])) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'The text may still go through. Check with the customer before sending again.',
+                ]);
+            }
+
             if (!$sent) {
                 $sent = $this->pushReceiptText(array_merge(['to' => $phone], $base));
             }
@@ -2421,8 +2431,12 @@ class SellPosController extends Controller
         $result = $sms->sendFrom((string) $from, $phone, $message);
         if (empty($result['success'])) {
             $why = (string) ($result['msg'] ?? 'unknown error');
-            \Log::warning('textReceipt: Quo send failed for sale #' . $transaction->id . ': ' . $why);
-            return ['success' => false, 'msg' => $why];
+            // Only a definite refusal (bad key, 4xx, couldn't connect) is
+            // safe to retry through the website; treat anything else as
+            // possibly sent.
+            $uncertain = array_key_exists('uncertain', $result) ? (bool) $result['uncertain'] : true;
+            \Log::warning('textReceipt: Quo send failed for sale #' . $transaction->id . ($uncertain ? ' (may have sent)' : '') . ': ' . $why);
+            return ['success' => false, 'msg' => $why, 'uncertain' => $uncertain];
         }
 
         return ['success' => true, 'msg' => 'sent'];
@@ -2491,21 +2505,26 @@ class SellPosController extends Controller
     {
         $lines = $transaction->sell_lines()->with('product')->get();
         $items = [];
+        $lineSubtotal = 0.0;
         foreach ($lines as $line) {
             $qty = (float) ($line->quantity ?? 0) - (float) ($line->quantity_returned ?? 0);
             if ($qty <= 0) {
                 continue;
             }
-            $unitPrice = (float) ($line->unit_price_inc_tax ?? $line->unit_price ?? 0);
+            // Pre-tax price (after any line discount), so the item lines add
+            // up to Subtotal and Tax is shown once, like the email receipt.
+            $unitPrice = (float) ($line->unit_price ?? $line->unit_price_inc_tax ?? 0);
             $items[] = [
                 'name' => !empty($line->product) ? $line->product->name : 'Item',
                 'quantity' => $qty,
                 'price' => $unitPrice,
             ];
+            $lineSubtotal += round($unitPrice * $qty, 2);
         }
         if (empty($items)) {
             return null;
         }
+        $lineSubtotal = round($lineSubtotal, 2);
 
         $discountDollar = 0.0;
         if (!empty($transaction->discount_amount)) {
@@ -2549,15 +2568,37 @@ class SellPosController extends Controller
             'storeLocation' => $storeLocation,
             'paymentMethod' => $paymentMethod,
             'items' => $items,
-            'subtotal' => (float) $transaction->total_before_tax,
+            // Subtotal is the sum of the pre-tax item lines above, and Tax is
+            // whatever the total charged on top of that (line tax plus order
+            // tax), so Subtotal - Discount + Tax = Total on the receipt.
+            'subtotal' => $lineSubtotal,
             'discount' => $discountDollar,
-            // tax_amount is the order tax rate applied to the whole subtotal,
-            // including tax-exempt lines (gift cards, bag fee), so it can be
-            // higher than what was charged. Show what the total actually
-            // includes instead.
-            'tax' => $this->receiptTaxCharged($transaction, $discountDollar),
+            'tax' => $this->receiptTaxFromLines($transaction, $lineSubtotal, $discountDollar),
             'total' => (float) $transaction->final_total,
         ];
+    }
+
+    /**
+     * Tax the receipt shows: the total minus the pre-tax lines (after
+     * discount), shipping and round-off. Capped at the stored order tax
+     * plus any per-line tax so an unrelated gap never shows up as tax.
+     */
+    private function receiptTaxFromLines($transaction, float $lineSubtotal, $discountDollar)
+    {
+        $lineTax = 0.0;
+        foreach ($transaction->sell_lines as $line) {
+            $qty = (float) ($line->quantity ?? 0) - (float) ($line->quantity_returned ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+            $lineTax += max(0, (float) ($line->unit_price_inc_tax ?? 0) - (float) ($line->unit_price ?? 0)) * $qty;
+        }
+        $charged = (float) $transaction->final_total
+            - ($lineSubtotal - (float) $discountDollar)
+            - (float) ($transaction->shipping_charges ?? 0)
+            - (float) ($transaction->round_off_amount ?? 0);
+        $cap = (float) $transaction->tax_amount + $lineTax;
+        return round(max(0, min($cap, $charged)), 2);
     }
 
     private function receiptTaxCharged($transaction, $discountDollar)

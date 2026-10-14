@@ -321,12 +321,16 @@ class InStoreOrderController extends Controller
                 } else {
                     $first = trim(explode(' ', trim($order->customer_name))[0] ?? '');
                     $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
-                    $msg = $hey . "Nivessa here — your {$order->item_name} order is ready at {$storeName}. "
-                         . "We'll hold it behind the counter.";
+                    $msg = $hey . "Nivessa here. Your {$order->item_name} order is ready for pickup at {$storeName}. "
+                         . "We're holding it for you at the counter.";
                     try {
+                        // Send from the store's own Quo line, like the other ERP texts.
                         $sms = app(\App\Services\OpenPhoneService::class);
-                        $result = $sms->send($order->customer_phone, $msg);
+                        $result = $sms->sendFromStore(optional($order->location)->name, $order->customer_phone, $msg);
                         $results['sms'] = ['ok' => (bool) ($result['success'] ?? false), 'msg' => $result['msg'] ?? ''];
+                        if (!$results['sms']['ok']) {
+                            \Log::warning('InStoreOrder sms failed for order #' . $order->id . ': ' . $results['sms']['msg']);
+                        }
                     } catch (\Throwable $e) {
                         \Log::warning('InStoreOrder sms failed: ' . $e->getMessage());
                         $results['sms'] = ['ok' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
@@ -334,13 +338,22 @@ class InStoreOrderController extends Controller
                 }
             }
 
-            $order->notified_at = now();
-            $order->notify_method = $notifyMethod;
-            $order->save();
+            // Only record the order as notified if something actually went out.
+            $anyOk = false;
+            foreach ($results as $r) {
+                if (!empty($r['ok'])) $anyOk = true;
+            }
+            if ($anyOk) {
+                $order->notified_at = now();
+                $order->notify_method = $notifyMethod;
+                $order->save();
+            }
 
             return [
-                'success' => true,
-                'msg' => 'Notification sent.',
+                'success' => $anyOk,
+                'msg' => $anyOk ? 'Notification sent.' : ('Could not notify the customer. ' . implode(' ', array_map(function ($k, $r) {
+                    return $k . ': ' . ($r['msg'] ?? '');
+                }, array_keys($results), $results))),
                 'notifications' => $results,
             ];
         } catch (\Exception $e) {

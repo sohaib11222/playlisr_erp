@@ -655,7 +655,12 @@ class CustomerPickupController extends Controller
             if (in_array($notifyMethod, ['sms', 'both']))   $channels[] = 'sms';
 
             $notifyResults = \App\Services\AmsArrivalNotifier::notifyCustomer($pickup, $channels);
-            if (!empty($channels)) {
+            // Only count it as notified if a channel actually went out.
+            $anyOk = false;
+            foreach ($notifyResults as $r) {
+                if (!empty($r['ok'])) $anyOk = true;
+            }
+            if ($anyOk) {
                 AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);
             }
 

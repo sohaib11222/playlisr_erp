@@ -82,13 +82,26 @@ class AmsArrivalNotifier
             }
             $first = trim((string) ($contact->first_name ?? ''));
             $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
-            $what = $label !== '' ? ('your ' . $label) : 'your order';
-            $msg = $hey . "Nivessa here — {$what} just came in at {$storeName}. "
-                 . "It's ready for pickup, we'll hold it behind the counter.";
+            $artist = trim((string) optional($pickup->product)->artist);
+            $name = trim((string) optional($pickup->product)->name);
+            if ($name !== '' && $artist !== '') {
+                $what = 'Your ' . $name . ' by ' . $artist;
+            } elseif ($name !== '') {
+                $what = 'Your ' . $name;
+            } else {
+                $what = 'Your special order';
+            }
+            $msg = $hey . "Nivessa here. {$what} just came in at {$storeName}. "
+                 . "It's ready for pickup, and we're holding it for you at the counter.";
             try {
+                // Send from the store's own Quo line, like the other ERP texts.
                 $sms = app(\App\Services\OpenPhoneService::class);
-                $result = $sms->send($phone, $msg);
-                return ['ok' => (bool) ($result['success'] ?? false), 'msg' => $result['msg'] ?? ''];
+                $result = $sms->sendFromStore(optional($pickup->location)->name, $phone, $msg);
+                $ok = (bool) ($result['success'] ?? false);
+                if (!$ok) {
+                    \Log::warning('CustomerPickup sms failed for pickup #' . $pickup->id . ': ' . ($result['msg'] ?? ''));
+                }
+                return ['ok' => $ok, 'msg' => $result['msg'] ?? ''];
             } catch (\Throwable $e) {
                 \Log::warning('CustomerPickup sms failed: ' . $e->getMessage());
                 return ['ok' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
@@ -145,8 +158,21 @@ class AmsArrivalNotifier
                 if (($contact && !empty($contact->email)) || !empty($meta['ams_email'])) $channels[] = 'email';
                 if (($contact && ($contact->mobile || $contact->alternate_number)) || !empty($meta['ams_phone'])) $channels[] = 'sms';
                 if (!empty($channels)) {
-                    self::notifyCustomer($pickup, $channels);
-                    AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);
+                    // Only mark notified when at least one channel actually
+                    // went out, so a failed send still shows as not notified
+                    // and staff can hit "Arrived" to retry.
+                    $results = self::notifyCustomer($pickup, $channels);
+                    $anyOk = false;
+                    foreach ($results as $ch => $r) {
+                        if (!empty($r['ok'])) {
+                            $anyOk = true;
+                        } else {
+                            \Log::warning("AMS arrival: {$ch} notify failed for pickup #{$pickup->id}: " . ($r['msg'] ?? ''));
+                        }
+                    }
+                    if ($anyOk) {
+                        AmsPickupOrders::put($business_id, $pickup->id, ['notified' => true]);
+                    }
                 }
                 $count++;
             }

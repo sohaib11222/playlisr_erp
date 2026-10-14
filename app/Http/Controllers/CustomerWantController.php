@@ -338,19 +338,28 @@ class CustomerWantController extends Controller
             if (empty($phone)) {
                 return ['ok' => false, 'msg' => 'Customer has no phone on file.'];
             }
-            $sms = app(\App\Services\OpenPhoneService::class);
             $first = trim((string) ($contact->first_name ?? ''));
             $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
             $artist = trim((string) $want->artist);
             $title = trim((string) $want->title);
-            $label = trim(implode(' — ', array_filter([$artist, $title])));
+            $label = $title !== '' ? $title : 'record';
+            if ($title !== '' && $artist !== '') $label .= ' by ' . $artist;
             if (!empty($want->format)) $label .= ' (' . $want->format . ')';
             $storeName = optional($want->location)->name ?: 'Nivessa';
-            $msg = $hey . "Nivessa here — we just got your {$label} in at {$storeName}. "
-                 . "We'll hold it behind the counter. Stop by when you can.";
+            $msg = $hey . "Nivessa here. We just got your {$label} in at {$storeName}. "
+                 . "We're holding it for you at the counter, so stop by when you can.";
 
-            $result = $sms->send($phone, $msg);
-            return ['ok' => (bool) $result['success'], 'msg' => $result['msg'] ?? ''];
+            try {
+                // Send from the store's own Quo line, like the other ERP texts.
+                $sms = app(\App\Services\OpenPhoneService::class);
+                $result = $sms->sendFromStore(optional($want->location)->name, $phone, $msg);
+            } catch (\Throwable $e) {
+                $result = ['success' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
+            }
+            if (empty($result['success'])) {
+                \Log::warning('CustomerWant sms failed for want #' . $want->id . ': ' . ($result['msg'] ?? ''));
+            }
+            return ['ok' => !empty($result['success']), 'msg' => $result['msg'] ?? ''];
         }
 
         return ['ok' => false, 'msg' => 'Unknown notify channel: ' . $channel];

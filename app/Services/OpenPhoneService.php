@@ -106,12 +106,12 @@ class OpenPhoneService
     public function sendFrom(string $fromNumber, string $toPhone, string $message): array
     {
         if ($this->apiKey() === '') {
-            return ['success' => false, 'msg' => 'Quo API key is not configured — add one under Quo Setup.'];
+            return ['success' => false, 'msg' => 'Quo API key is not configured — add one under Quo Setup.', 'uncertain' => false];
         }
 
         $to = $this->normalize($toPhone);
         if (!$to) {
-            return ['success' => false, 'msg' => 'Invalid phone number: ' . $toPhone];
+            return ['success' => false, 'msg' => 'Invalid phone number: ' . $toPhone, 'uncertain' => false];
         }
 
         try {
@@ -134,13 +134,27 @@ class OpenPhoneService
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
+            $errno = curl_errno($ch);
             curl_close($ch);
 
             if ($error) {
-                throw new \Exception('cURL error: ' . $error);
+                // A timeout (or a dropped connection after the request went
+                // out) means Quo may still have sent the text, so callers
+                // must not retry it through another channel. Only errors
+                // before anything reached Quo (DNS, refused connect) are a
+                // definite "not sent".
+                $definite = in_array($errno, [6, 7], true); // couldn't resolve host / couldn't connect
+                Log::warning('OpenPhone send failed: cURL error ' . $errno . ': ' . $error);
+                return ['success' => false, 'msg' => 'OpenPhone error: cURL error: ' . $error, 'uncertain' => !$definite];
             }
             if ($httpCode < 200 || $httpCode >= 300) {
-                throw new \Exception('HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 400));
+                // 4xx = Quo refused it, nothing went out. 5xx = unknown.
+                Log::warning('OpenPhone send failed: HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 400));
+                return [
+                    'success' => false,
+                    'msg' => 'OpenPhone error: HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 400),
+                    'uncertain' => $httpCode >= 500 || $httpCode === 0,
+                ];
             }
 
             $data = json_decode($response, true);
@@ -151,8 +165,30 @@ class OpenPhoneService
             ];
         } catch (\Throwable $e) {
             Log::warning('OpenPhone send failed: ' . $e->getMessage());
-            return ['success' => false, 'msg' => 'OpenPhone error: ' . $e->getMessage()];
+            return ['success' => false, 'msg' => 'OpenPhone error: ' . $e->getMessage(), 'uncertain' => false];
         }
+    }
+
+    /**
+     * The store's own Quo line for a location name: Pico texts from the
+     * Pico line (phone_1), everything else from Hollywood (phone_2). Same
+     * mapping the event check-in and shift texts use.
+     */
+    public static function storeLine(?string $locationName): ?string
+    {
+        $channel = stripos((string) $locationName, 'pico') !== false ? 'phone_1' : 'phone_2';
+        $line = array_search($channel, \App\Communication::QUO_NUMBERS, true);
+        return $line === false ? null : (string) $line;
+    }
+
+    /** Send from the store's own Quo line (see storeLine()). Never throws. */
+    public function sendFromStore(?string $locationName, string $toPhone, string $message): array
+    {
+        $line = self::storeLine($locationName);
+        if ($line === null) {
+            return ['success' => false, 'msg' => 'No Quo line configured for this store.', 'uncertain' => false];
+        }
+        return $this->sendFrom($line, $toPhone, $message);
     }
 
     /** GET wrapper — returns ['success'=>bool, 'data'=>array, 'msg'=>string]. Never throws. */

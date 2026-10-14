@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\BusinessLocation;
 use App\Contact;
 use App\CustomerWant;
 use App\Mail\CustomerWantMatched;
@@ -81,14 +82,23 @@ class ScanWantMatches extends Command
 
             if (!$commit) continue;
 
-            $results = $this->dispatch($chosenMethod, $want, $contact);
+            $results = $this->dispatch($chosenMethod, $want, $contact, $product);
+            $anyOk = false;
             foreach ($results as $ch => $r) {
                 if ($r['ok']) {
                     $notifiedCount++;
+                    $anyOk = true;
                 } else {
                     $errorCount++;
                     $this->warn("    {$ch} failed: " . $r['msg']);
+                    Log::warning("wants:scan-matches {$ch} failed for want #{$want->id}: " . $r['msg']);
                 }
+            }
+
+            // Only close the want once the customer was actually told. A
+            // failed send leaves it active so tomorrow's run tries again.
+            if (!$anyOk) {
+                continue;
             }
 
             $want->status = 'fulfilled';
@@ -108,10 +118,13 @@ class ScanWantMatches extends Command
     }
 
     /**
-     * Find a product added in the recent window that matches this want's
-     * artist + title. Matches on substring (LIKE) in both directions so
-     * "Some Girls" finds a product named "Some Girls (1978)" and "Dark Side
-     * of the Moon" finds "The Dark Side of the Moon, 1973 Pressing".
+     * Find an in-stock product added in the recent window that matches this
+     * want's artist + title. Matches on substring (LIKE) so "Some Girls"
+     * finds a product named "Some Girls (1978)". When the want names a
+     * format, the product must be the same format (an LP want never
+     * matches a CD); a product with no recognizable format is skipped.
+     * Prefers stock at the want's own store, and returns the store that
+     * actually has it as stock_location_id so the text names the right shop.
      */
     private function findRecentMatch(CustomerWant $want, $since)
     {
@@ -119,23 +132,59 @@ class ScanWantMatches extends Command
         if ($title === '') return null;
 
         $q = DB::table('products as p')
-            ->leftJoin('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
+            ->join('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $want->business_id)
             ->where('p.created_at', '>=', $since)
             ->where('p.name', 'LIKE', '%' . $title . '%')
+            ->where('vld.qty_available', '>', 0)
             ->select([
-                'p.id', 'p.name', 'p.artist', 'p.sku',
-                DB::raw('COALESCE(SUM(vld.qty_available), 0) as total_stock'),
+                'p.id', 'p.name', 'p.artist', 'p.sku', 'p.format',
+                'c.name as category_name',
+                'vld.location_id as stock_location_id',
             ])
-            ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku')
-            ->havingRaw('total_stock > 0')
-            ->limit(1);
+            ->limit(50);
 
         if (!empty($want->artist)) {
             $q->where('p.artist', 'LIKE', '%' . $want->artist . '%');
         }
+        if (!empty($want->location_id)) {
+            $q->orderByRaw('vld.location_id = ? DESC', [(int) $want->location_id]);
+        }
+        $q->orderBy('p.id', 'desc');
 
-        return $q->first();
+        $wantFormat = trim((string) $want->format);
+        foreach ($q->get() as $row) {
+            if ($wantFormat === '' || $this->sameFormat($wantFormat, $row)) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
+    /** Coarse format family, same buckets as InventoryCheckService::formatFamily. */
+    private function formatFamily(?string $s): ?string
+    {
+        $s = strtolower(trim((string) $s));
+        if ($s === '') return null;
+        if (preg_match('/vinyl|\blp\b|\d+lp|12"|7"|45 rpm|record/', $s)) return 'lp';
+        if (preg_match('/\bcds?\b|compact disc/', $s)) return 'cd';
+        if (preg_match('/cassette|tape/', $s)) return 'cassette';
+        return null;
+    }
+
+    private function sameFormat(string $wantFormat, $row): bool
+    {
+        $productFormat = trim((string) ($row->format ?? ''));
+        $category = trim((string) ($row->category_name ?? ''));
+        $wantFamily = $this->formatFamily($wantFormat);
+        if ($wantFamily !== null) {
+            $productFamily = $this->formatFamily($productFormat) ?: $this->formatFamily($category);
+            return $productFamily === $wantFamily;
+        }
+        // A format we don't bucket (e.g. "8-track"): require it verbatim.
+        $needle = strtolower($wantFormat);
+        return strpos(strtolower($productFormat . ' ' . $category), $needle) !== false;
     }
 
     private function pickDefaultMethod(Contact $contact): string
@@ -152,13 +201,16 @@ class ScanWantMatches extends Command
 
     private function labelFor(CustomerWant $w): string
     {
-        $label = trim(trim((string) $w->artist) . ' — ' . trim((string) $w->title), ' —');
+        $artist = trim((string) $w->artist);
+        $title = trim((string) $w->title);
+        $label = $title !== '' ? $title : 'record';
+        if ($title !== '' && $artist !== '') $label .= ' by ' . $artist;
         if (!empty($w->format)) $label .= ' (' . $w->format . ')';
         return $label;
     }
 
     /** @return array  channel => ['ok' => bool, 'msg' => string] */
-    private function dispatch(string $method, CustomerWant $want, Contact $contact): array
+    private function dispatch(string $method, CustomerWant $want, Contact $contact, $product): array
     {
         $results = [];
         $channels = [];
@@ -179,14 +231,26 @@ class ScanWantMatches extends Command
             } else {
                 $phone = $contact->mobile ?: $contact->alternate_number;
                 if (empty($phone)) { $results[$ch] = ['ok' => false, 'msg' => 'no phone']; continue; }
-                $sms = app(OpenPhoneService::class);
                 $first = trim((string) ($contact->first_name ?? ''));
                 $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
                 $label = $this->labelFor($want);
-                $store = optional($want->location)->name ?: 'Nivessa';
-                $msg = $hey . "Nivessa — we just got your {$label} in at {$store}. We'll hold it behind the counter.";
-                $r = $sms->send($phone, $msg);
-                $results[$ch] = ['ok' => (bool) $r['success'], 'msg' => $r['msg'] ?? ''];
+                // Name the store that actually has it on the shelf, and text
+                // from that store's own Quo line.
+                $storeName = null;
+                if (!empty($product->stock_location_id)) {
+                    $storeName = optional(BusinessLocation::find((int) $product->stock_location_id))->name;
+                }
+                if (empty($storeName)) {
+                    $storeName = optional($want->location)->name;
+                }
+                $store = $storeName ?: 'Nivessa';
+                $msg = $hey . "Nivessa here. Your {$label} is on the shelf at {$store} now. Come by soon if you want it.";
+                try {
+                    $r = app(OpenPhoneService::class)->sendFromStore($storeName, $phone, $msg);
+                } catch (\Throwable $e) {
+                    $r = ['success' => false, 'msg' => $e->getMessage()];
+                }
+                $results[$ch] = ['ok' => !empty($r['success']), 'msg' => $r['msg'] ?? ''];
             }
         }
         return $results;
