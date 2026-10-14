@@ -397,6 +397,11 @@ class BarcodeFixController extends Controller
             $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
             $rows = \DB::table('variation_location_details')->where('product_id', $keepId)->select('id', 'location_id', 'qty_available')->get();
             $srcNewer = strtotime((string) ($created[$srcId] ?? '')) > strtotime((string) ($created[$keepId] ?? ''));
+            // A store the later listing was set up for but had no stock row at
+            // counts as 0 there (King Animal: later listing showed 0/0).
+            foreach (\DB::table('product_locations')->where('product_id', $srcId)->pluck('location_id') as $l) {
+                if (!array_key_exists((int) $l, $srcVld)) $srcVld[(int) $l] = 0.0;
+            }
             $changes = []; $why = [];
             foreach ($rows as $r) {
                 $loc = (int) $r->location_id;
@@ -472,6 +477,9 @@ class BarcodeFixController extends Controller
         $would = [];
         foreach ($out as $x) {
             $srcNewer = strtotime((string) ($x['created'][$x['src']] ?? '')) > strtotime((string) ($x['created'][$x['keep']] ?? ''));
+            foreach (\DB::table('product_locations')->where('product_id', $x['src'])->pluck('location_id') as $l) {
+                if (!array_key_exists((int) $l, $x['srcVld'])) $x['srcVld'][(int) $l] = 0.0;
+            }
             foreach (\DB::table('variation_location_details')->where('product_id', $x['keep'])->get() as $r) {
                 if ($srcNewer && array_key_exists((int) $r->location_id, $x['srcVld']) && abs($x['srcVld'][(int) $r->location_id] - (float) $r->qty_available) > 0.001) {
                     $would[] = $x['name'] . ' @' . $r->location_id . ': ' . (float) $r->qty_available . ' -> ' . $x['srcVld'][(int) $r->location_id];
