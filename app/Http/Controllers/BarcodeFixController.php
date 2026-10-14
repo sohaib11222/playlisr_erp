@@ -436,6 +436,49 @@ class BarcodeFixController extends Controller
         }
     }
 
+    /**
+     * Merges already done today under the old stock rule: re-settle each
+     * kept listing's stock with settleMergedStock (shelf count, else the
+     * later-entered listing). GET lists what would change; POST applies.
+     */
+    public function restock(Request $request)
+    {
+        if (!$this->isOwner()) abort(403);
+        $biz = (int) $request->session()->get('user.business_id');
+        $day = preg_replace('/[^0-9-]/', '', (string) $request->input('day', now()->format('Y-m-d')));
+        $out = [];
+        foreach (glob(storage_path('app/admin-snapshots/merge-products-bulk-' . $day . '*.json')) ?: [] as $f) {
+            $d = json_decode((string) @file_get_contents($f), true);
+            if (!is_array($d) || (int) ($d['business_id'] ?? 0) !== $biz) continue;
+            foreach (($d['merges'] ?? []) as $m) {
+                $src = (int) ($m['source_id'] ?? 0); $keep = (int) ($m['target_id'] ?? 0);
+                if (!$src || !$keep) continue;
+                $srcVld = [];
+                foreach (($m['source_vld'] ?? []) as $r) $srcVld[(int) $r['location_id']] = (float) $r['qty_available'];
+                $created = \DB::table('products')->whereIn('id', [$src, $keep])->pluck('created_at', 'id')->all();
+                $out[] = ['src' => $src, 'keep' => $keep, 'srcVld' => $srcVld, 'created' => $created, 'name' => $m['target_name'] ?? ''];
+            }
+        }
+        if ($request->isMethod('post')) {
+            $done = 0; $notes = [];
+            foreach ($out as $x) {
+                $n = $this->settleMergedStock($biz, $x['src'], $x['keep'], $x['srcVld'], $x['created']);
+                if ($n) { $done++; $notes[] = $x['name']; }
+            }
+            return response()->json(['success' => true, 'checked' => count($out), 'changed' => $done, 'names' => array_slice($notes, 0, 50)]);
+        }
+        $would = [];
+        foreach ($out as $x) {
+            $srcNewer = strtotime((string) ($x['created'][$x['src']] ?? '')) > strtotime((string) ($x['created'][$x['keep']] ?? ''));
+            foreach (\DB::table('variation_location_details')->where('product_id', $x['keep'])->get() as $r) {
+                if ($srcNewer && array_key_exists((int) $r->location_id, $x['srcVld']) && abs($x['srcVld'][(int) $r->location_id] - (float) $r->qty_available) > 0.001) {
+                    $would[] = $x['name'] . ' @' . $r->location_id . ': ' . (float) $r->qty_available . ' -> ' . $x['srcVld'][(int) $r->location_id];
+                }
+            }
+        }
+        return response()->json(['checked' => count($out), 'would_change' => count($would), 'list' => $would]);
+    }
+
     /** Hide a listing from this page (can't tell / not worth it). */
     public function skip(Request $request, $id)
     {

@@ -430,6 +430,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/fix-barcodes/data', 'BarcodeFixController@data');
     Route::get('/products/fix-barcodes/scan', 'BarcodeFixController@scan');
     Route::get('/products/fix-barcodes/preview', 'BarcodeFixController@preview');
+    Route::match(['get', 'post'], '/products/fix-barcodes/restock', 'BarcodeFixController@restock');
     Route::post('/products/fix-barcodes/{id}/save', 'BarcodeFixController@save');
     Route::post('/products/fix-barcodes/{id}/merge', 'BarcodeFixController@merge');
     Route::post('/products/fix-barcodes/{id}/skip', 'BarcodeFixController@skip');
