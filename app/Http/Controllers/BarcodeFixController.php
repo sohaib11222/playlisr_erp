@@ -156,6 +156,78 @@ class BarcodeFixController extends Controller
         return response()->json(['total' => $total, 'in_stock' => $inStock, 'offset' => $offset, 'next_offset' => $next, 'per_page' => self::PAGE, 'rows' => $out]);
     }
 
+    /**
+     * Whole-catalog scan (Sarah 10/14 "i need to do this for whole erp"):
+     * every active sealed made-up-SKU listing that has exactly ONE real-barcode
+     * twin (same album, same format). One in-memory index instead of a query
+     * per row. Read-only; ?csv=1 downloads it.
+     */
+    public function scan(Request $request)
+    {
+        if (!$this->isOwner()) abort(403);
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+        $biz = (int) $request->session()->get('user.business_id');
+        $ica = app(\App\Services\InventoryCheckService::class);
+        $locNames = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id')->all();
+        $stock = [];
+        foreach (\DB::table('variation_location_details as v')->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->select('v.product_id', 'v.location_id', 'v.qty_available')->cursor() as $v) {
+            $n = mb_strtolower((string) ($locNames[(int) $v->location_id] ?? ''));
+            $k = strpos($n, 'pico') !== false ? 'pico' : (strpos($n, 'hollywood') !== false ? 'hw' : null);
+            if ($k) $stock[(int) $v->product_id][$k] = ($stock[(int) $v->product_id][$k] ?? 0) + max(0, (float) $v->qty_available);
+        }
+        $sold = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')
+            ->groupBy('l.product_id')->pluck(\DB::raw('SUM(l.quantity)'), 'l.product_id')->all();
+        $price = \DB::table('variations as va')->join('products as p', 'p.id', '=', 'va.product_id')->where('p.business_id', $biz)
+            ->whereNull('va.deleted_at')->groupBy('va.product_id')->pluck(\DB::raw('MAX(va.sell_price_inc_tax)'), 'va.product_id')->all();
+
+        $isBarcode = function ($sku) { return (bool) preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $sku)); };
+        $index = []; $made = [];
+        foreach (\DB::table('products as p')->join('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereRaw("LOWER(c.name) LIKE '%sealed%'")
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat')->cursor() as $p) {
+            $fam = $ica->formatFamily($p->cat);
+            if ($fam === null) continue;
+            if ($isBarcode($p->sku)) {
+                foreach ($ica->albumKeys($p->artist, $p->name) as [$a, $t]) $index[$fam . '|' . $t][] = [$a, $p];
+            } else {
+                $made[] = [$fam, $p];
+            }
+        }
+        $skipped = $this->skipped($biz);
+        $pairs = []; $amb = 0; $none = 0;
+        foreach ($made as [$fam, $p]) {
+            if (isset($skipped[(int) $p->id])) continue;
+            $hits = [];
+            foreach ($ica->albumKeys($p->artist, $p->name) as [$a, $t]) {
+                foreach ($index[$fam . '|' . $t] ?? [] as [$ta, $tp]) {
+                    if ($ica->artistsCompatible($a, $ta)) $hits[(int) $tp->id] = $tp;
+                }
+            }
+            if (count($hits) === 0) { $none++; continue; }
+            if (count($hits) > 1) { $amb++; continue; }
+            $k = reset($hits);
+            $pairs[] = [
+                'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
+                'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
+                'keep_id' => (int) $k->id, 'keep_name' => $k->name, 'keep_sku' => $k->sku,
+                'keep_hw' => $stock[$k->id]['hw'] ?? 0, 'keep_pico' => $stock[$k->id]['pico'] ?? 0, 'keep_sold' => (float) ($sold[$k->id] ?? 0), 'keep_price' => round((float) ($price[$k->id] ?? 0), 2),
+            ];
+        }
+        if ($request->query('csv')) {
+            $fh = fopen('php://temp', 'w+');
+            fputcsv($fh, ['Made-up listing', 'Its SKU', 'Format', 'HW', 'Pico', 'Sold', 'Price', 'Real-barcode listing', 'Barcode', 'HW', 'Pico', 'Sold', 'Price', 'Made-up link', 'Real link']);
+            foreach ($pairs as $x) fputcsv($fh, [$x['name'], $x['sku'], $x['cat'], $x['hw'], $x['pico'], $x['sold'], $x['price'], $x['keep_name'], $x['keep_sku'], $x['keep_hw'], $x['keep_pico'], $x['keep_sold'], $x['keep_price'], url('/products/' . $x['id'] . '/edit'), url('/products/' . $x['keep_id'] . '/edit')]);
+            rewind($fh); $csv = stream_get_contents($fh); fclose($fh);
+            return response($csv, 200)->header('Content-Type', 'text/csv')->header('Content-Disposition', 'attachment; filename="entered-twice.csv"');
+        }
+        return response()->json(['made_up' => count($made), 'one_match' => count($pairs), 'several_matches' => $amb, 'no_match' => $none,
+            'same_price' => count(array_filter($pairs, function ($x) { return abs($x['price'] - $x['keep_price']) < 0.01; })),
+            'sample' => array_slice($pairs, 0, 40)]);
+    }
+
     /** Save a real barcode as the SKU (product + its single variation). */
     public function save(Request $request, $id)
     {
