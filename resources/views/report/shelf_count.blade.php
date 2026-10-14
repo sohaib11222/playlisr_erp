@@ -23,8 +23,14 @@
     <p class="sc-sub">{{ number_format($fresh) }} of {{ number_format($total) }} titles at this store were counted in the last {{ $dueDays }} days. Today's list is the next {{ count($groups, COUNT_RECURSIVE) - count($groups) }} to count, sealed first, in bin order. Type how many you find (0 if none, check the wall and shelves above too). It saves when you leave the box, the ERP and website update, and anything short goes on the <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>.</p>
     <div class="sc-bar">
         @foreach ($locations as $id => $nm)
-            <a class="sc-pill {{ $id == $loc ? 'on' : '' }}" href="?location_id={{ $id }}">{{ $nm }}</a>
+            <a class="sc-pill {{ $id == $loc ? 'on' : '' }}" href="?location_id={{ $id }}&kind={{ $kind }}">{{ $nm }}</a>
         @endforeach
+    </div>
+    <div class="sc-bar">
+        @foreach (['all' => 'Everything', 'vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'] as $k => $label)
+            <a class="sc-pill {{ $kind === $k ? 'on' : '' }}" href="?location_id={{ $loc }}&kind={{ $k }}">{{ $label }}</a>
+        @endforeach
+        <a class="sc-pill" href="/reports/reorder?format=comics&location_id={{ $loc }}">Comics and magazines</a>
         <a class="sc-pill" href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>
     </div>
     @forelse ($groups as $g => $items)

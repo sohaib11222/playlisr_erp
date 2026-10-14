@@ -57,6 +57,7 @@ class ShelfCountController extends Controller
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
         $n = min(1000, max(25, (int) $request->input('n', 600)));
+        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'all';
         $counted = $this->lastCounted($business_id, $loc);
         $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
 
@@ -65,6 +66,11 @@ class ShelfCountController extends Controller
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
             ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
+            ->when($kind !== 'all', function ($q) use ($kind) {
+                [$fmt, $cond] = explode('-', $kind);
+                $q->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($fmt === 'cd' ? 'cd' : 'vinyl') . '%'])
+                  ->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($cond === 'new' ? 'sealed' : 'used') . '%']);
+            })
             ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat', 'sc.name as sub', 'v.qty_available as qty',
                 \DB::raw('(select max(sell_price_inc_tax) from variations va where va.product_id = p.id and va.deleted_at is null) as price'))
             ->get();
@@ -87,7 +93,7 @@ class ShelfCountController extends Controller
         $groups = [];
         foreach ($week as $r) $groups[trim(($r->cat ?: 'Other') . ($r->sub ? ' / ' . $r->sub : ''))][] = $r;
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'groups' => $groups, 'counted' => $counted,
-            'total' => $total, 'fresh' => $fresh, 'dueCount' => count($due), 'n' => $n, 'dueDays' => self::DUE_DAYS]);
+            'total' => $total, 'fresh' => $fresh, 'dueCount' => count($due), 'n' => $n, 'dueDays' => self::DUE_DAYS, 'kind' => $kind]);
     }
 
     public function section(Request $request)
