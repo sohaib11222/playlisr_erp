@@ -1246,6 +1246,47 @@ class TimeClockService
         self::saveSettings($s);
     }
 
+    /**
+     * "Manolo clocked in" in #pico / #hollywood (Sarah 10/13, so she knows
+     * who is on staff). Sent after the response so the punch never waits on
+     * Slack; failures only log.
+     */
+    public static function announceClockIn($user, string $store): void
+    {
+        $s = strtolower($store);
+        $key = strpos($s, 'pico') !== false ? 'pico' : (strpos($s, 'holly') !== false ? 'hollywood' : '');
+        if ($key === '') {
+            return;
+        }
+        $name = trim((string) ($user->first_name ?? '')) ?: self::displayName($user);
+        $text = $name . ' clocked in ' . "\u{1F44B}\u{1F3FC}";
+        app()->terminating(function () use ($key, $text) {
+            try {
+                $apiKey = \App\Services\ShippingShiftNotifier::erpApiKey();
+                if ($apiKey === '') {
+                    return;
+                }
+                $ch = curl_init(\App\Services\ShippingShiftNotifier::baseUrl() . '/erp/slack-store-post');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => json_encode(['store' => $key, 'text' => $text]),
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'x-erp-key: ' . $apiKey],
+                    CURLOPT_TIMEOUT => 10,
+                    CURLOPT_CONNECTTIMEOUT => 5,
+                ]);
+                $raw = curl_exec($ch);
+                curl_close($ch);
+                $j = json_decode((string) $raw, true);
+                if (!is_array($j) || empty($j['success'])) {
+                    \Log::warning('time clock: clock-in Slack post failed', ['store' => $key, 'error' => is_array($j) ? ($j['error'] ?? '') : 'no response']);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('time clock: clock-in Slack post error: ' . $e->getMessage());
+            }
+        });
+    }
+
     /** DM $text to Slack user $slackId via nivessa.com. ['ok' => bool, 'error' => code]. Never logs $text. */
     public static function slackDm(string $slackId, string $text): array
     {
@@ -1621,6 +1662,7 @@ class TimeClockService
         } elseif ($where['verify'] === 'ip') {
             self::touchAutoIp($where['location_id'], $ip);
         }
+        self::announceClockIn($user, $store);
         // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';
         return ['ok' => true, 'msg' => $msg];
