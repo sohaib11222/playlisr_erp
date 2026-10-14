@@ -46,77 +46,92 @@ class ShelfCountController extends Controller
         return $out;
     }
 
+    protected function kindQuery($q, string $kind)
+    {
+        [$fmt, $cond] = explode('-', $kind);
+        $q->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($fmt === 'cd' ? 'cd' : 'vinyl') . '%'])
+          ->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($cond === 'new' ? 'sealed' : 'used') . '%']);
+    }
+
     /**
-     * One list for the week instead of sections (Sarah 10/14: "310 sections
-     * are u joking"). Titles not counted in DUE_DAYS, sealed first, then the
-     * priciest, capped at ?n= (default 250), laid out bin by bin (format,
-     * genre, artist) so it's one walk through the store.
+     * Pick a bin (Sarah 10/14: "she'll be running everywhere, it needs to be
+     * efficient"). A bin = format + genre at one store, e.g. New vinyl /
+     * Rock. Shows how many titles the ERP expects in each and when it was
+     * last counted; the oldest are on top.
      */
     public function index(Request $request)
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $n = min(1000, max(25, (int) $request->input('n', 600)));
-        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'all';
+        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'vinyl-new';
         $counted = $this->lastCounted($business_id, $loc);
-        $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
-
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
             ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
-            ->when($kind !== 'all', function ($q) use ($kind) {
-                [$fmt, $cond] = explode('-', $kind);
-                $q->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($fmt === 'cd' ? 'cd' : 'vinyl') . '%'])
-                  ->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($cond === 'new' ? 'sealed' : 'used') . '%']);
-            })
-            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'c.name as cat', 'sc.name as sub', 'v.qty_available as qty',
-                \DB::raw('(select max(sell_price_inc_tax) from variations va where va.product_id = p.id and va.deleted_at is null) as price'))
-            ->get();
-        $total = $rows->count();
-        $fresh = 0; $due = [];
+            ->where(function ($q) use ($kind) { $this->kindQuery($q, $kind); })
+            ->select('p.id', 'p.sub_category_id', 'sc.name as sub', 'v.qty_available as qty')->get();
+        $bins = [];
         foreach ($rows as $r) {
+            $k = (int) $r->sub_category_id;
+            $b = &$bins[$k];
+            $b['sub'] = $k; $b['name'] = $r->sub ?: 'No genre set';
+            $b['titles'] = ($b['titles'] ?? 0) + 1; $b['units'] = ($b['units'] ?? 0) + (float) $r->qty;
             $c = $counted[$r->id] ?? null;
-            if ($c && $c['at'] >= $cut) { $fresh++; continue; }
-            $due[] = $r;
+            if ($c && (!isset($b['last']) || $c['at'] > $b['last'])) $b['last'] = $c['at'];
+            unset($b);
         }
-        usort($due, function ($a, $b) {
-            $sa = stripos((string) $a->cat, 'sealed') !== false; $sb = stripos((string) $b->cat, 'sealed') !== false;
-            // Sealed first, then straight through the bins (genre, artist) so
-            // the day's list is one continuous walk, picking up tomorrow
-            // where today stopped.
-            return [$sb, (string) $a->cat, (string) $a->sub, mb_strtolower((string) ($a->artist ?: $a->name))]
-                <=> [$sa, (string) $b->cat, (string) $b->sub, mb_strtolower((string) ($b->artist ?: $b->name))];
-        });
-        $week = array_slice($due, 0, $n);
-        usort($week, function ($a, $b) {
-            return [(string) $a->cat, (string) $a->sub, mb_strtolower((string) ($a->artist ?: $a->name)), (string) $a->name]
-                <=> [(string) $b->cat, (string) $b->sub, mb_strtolower((string) ($b->artist ?: $b->name)), (string) $b->name];
-        });
-        $groups = [];
-        foreach ($week as $r) $groups[trim(($r->cat ?: 'Other') . ($r->sub ? ' / ' . $r->sub : ''))][] = $r;
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'groups' => $groups, 'counted' => $counted,
-            'total' => $total, 'fresh' => $fresh, 'dueCount' => count($due), 'n' => $n, 'dueDays' => self::DUE_DAYS, 'kind' => $kind]);
+        $bins = array_values($bins);
+        usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
+        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'bins' => $bins, 'total' => $rows->count()]);
     }
 
-    public function section(Request $request)
+    /** Scan one bin: what the ERP expects there, then scan or search each record. */
+    public function bin(Request $request)
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $cat = (int) $request->input('cat'); $sub = (int) $request->input('sub');
-        $counted = $this->lastCounted($business_id, $loc);
+        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'vinyl-new';
+        $sub = (int) $request->input('sub');
         $items = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
-            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)
-            ->where('p.category_id', $cat)->where(function ($q) use ($sub) { $sub ? $q->where('p.sub_category_id', $sub) : $q->whereNull('p.sub_category_id')->orWhere('p.sub_category_id', 0); })
-            ->where('v.qty_available', '>', 0)
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
+            ->where(function ($q) use ($kind) { $this->kindQuery($q, $kind); })
+            ->where(function ($q) use ($sub) { $sub ? $q->where('p.sub_category_id', $sub) : $q->whereNull('p.sub_category_id')->orWhere('p.sub_category_id', 0); })
             ->select('p.id', 'p.name', 'p.artist', 'p.sku', \DB::raw('SUM(v.qty_available) as qty'))
             ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku')
-            ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->orderBy('p.name')
-            ->get();
-        $name = trim((string) \DB::table('categories')->where('id', $cat)->value('name') . ($sub ? ' / ' . \DB::table('categories')->where('id', $sub)->value('name') : ''));
-        return view('report.shelf_count_section', ['locations' => $locations, 'loc' => $loc, 'items' => $items, 'counted' => $counted, 'name' => $name]);
+            ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->get();
+        $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No genre set';
+        $labels = ['vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'];
+        return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
+            'name' => $name, 'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'erp' => (float) $i->qty]; })->values()]);
+    }
+
+    /** Barcode (or words) -> product, for the scan box. */
+    public function lookup(Request $request)
+    {
+        if (!auth()->user()->can('product.view')) abort(403);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $q = trim((string) $request->input('q'));
+        $digits = preg_replace('/\D+/', '', $q);
+        if (strlen($digits) >= 8 && strlen($digits) === strlen(preg_replace('/[\s-]+/', '', $q))) {
+            $key = ltrim($digits, '0');
+            $rows = \DB::table('products as p')->join('variations as va', 'va.product_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->whereNull('va.deleted_at')
+                ->where(function ($x) use ($key) {
+                    $x->whereRaw("TRIM(LEADING '0' FROM REPLACE(REPLACE(p.sku,' ',''),'-','')) = ?", [$key])
+                      ->orWhereRaw("TRIM(LEADING '0' FROM REPLACE(REPLACE(va.sub_sku,' ',''),'-','')) = ?", [$key]);
+                })->select('p.id', 'p.name', 'p.artist', 'p.sku')->distinct()->limit(5)->get();
+        } else {
+            $words = array_filter(preg_split('/\s+/', mb_strtolower($q)), function ($w) { return mb_strlen($w) >= 2; });
+            if (!$words) return response()->json(['items' => []]);
+            $x = \DB::table('products as p')->where('p.business_id', $business_id)->where('p.is_inactive', 0);
+            foreach ($words as $w) $x->where(function ($y) use ($w) { $y->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
+            $rows = $x->select('p.id', 'p.name', 'p.artist', 'p.sku')->limit(10)->get();
+        }
+        return response()->json(['items' => $rows]);
     }
 
     public function missing(Request $request)

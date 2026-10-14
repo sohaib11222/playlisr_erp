@@ -3,73 +3,29 @@
 
 @section('content')
 <style>
-.sc-wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; color: #1F1B16; }
+.sc-wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; color: #1F1B16; }
 .sc-wrap h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
-.sc-wrap h2 { font-size: 16px; margin: 18px 0 6px; color: #6B6155; }
 .sc-sub { color: #6B6155; font-size: 15px; margin: 0 0 14px; }
-.sc-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-.sc-pill { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; font-weight: 600; color: #1F1B16; text-decoration: none; }
-.sc-pill.on { background: #1F1B16; color: #FFE8A3; border-color: #1F1B16; }
-.sc-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #E6DCCF; font-size: 15px; }
-.sc-table td { padding: 9px 12px; border-top: 1px solid #F3ECE1; vertical-align: middle; }
-.sc-in { width: 70px; height: 40px; font-size: 18px; text-align: center; border: 1px solid #E1D7C4; border-radius: 8px; }
-.sc-small { color: #8E8273; font-size: 12px; }
-.sc-msg { font-size: 12px; }
-.sc-msg.miss { color: #8E1B1B; font-weight: 700; }
-.sc-msg.ok { color: #2E6B2E; }
+.sc-row { display: flex; gap: 8px; margin: 0 0 12px; }
+.sc-row select { height: 44px; font-size: 16px; border: 1px solid #E1D7C4; border-radius: 10px; padding: 0 10px; flex: 1; }
+.sc-bin { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; text-decoration: none; color: #1F1B16; }
+.sc-bin b { font-size: 16px; }
+.sc-small { color: #8E8273; font-size: 13px; }
+.sc-due { color: #8E1B1B; font-weight: 700; font-size: 13px; }
 </style>
 <div class="sc-wrap">
-    <h1>Today's shelf count</h1>
-    <p class="sc-sub">{{ number_format($fresh) }} of {{ number_format($total) }} titles at this store were counted in the last {{ $dueDays }} days. Today's list is the next {{ count($groups, COUNT_RECURSIVE) - count($groups) }} to count, sealed first, in bin order. Type how many you find (0 if none, check the wall and shelves above too). It saves when you leave the box, the ERP and website update, and anything short goes on the <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>.</p>
-    <div class="sc-bar">
-        @foreach ($locations as $id => $nm)
-            <a class="sc-pill {{ $id == $loc ? 'on' : '' }}" href="?location_id={{ $id }}&kind={{ $kind }}">{{ $nm }}</a>
-        @endforeach
-    </div>
-    <div class="sc-bar">
-        @foreach (['all' => 'Everything', 'vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'] as $k => $label)
-            <a class="sc-pill {{ $kind === $k ? 'on' : '' }}" href="?location_id={{ $loc }}&kind={{ $k }}">{{ $label }}</a>
-        @endforeach
-        <a class="sc-pill" href="/reports/reorder?format=comics&location_id={{ $loc }}">Comics and magazines</a>
-        <a class="sc-pill" href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a>
-    </div>
-    @forelse ($groups as $g => $items)
-        <h2>{{ $g }}</h2>
-        <table class="sc-table"><tbody>
-        @foreach ($items as $i)
-            <tr>
-                <td><a href="/products/{{ $i->id }}/edit" target="_blank">{{ $i->name }}</a>@if($i->artist && stripos($i->name, $i->artist) === false) <span class="sc-small">{{ $i->artist }}</span>@endif
-                    <div class="sc-small">ERP says <span class="sc-erp">{{ rtrim(rtrim(number_format($i->qty, 2), '0'), '.') }}</span>, {{ $i->sku }}</div></td>
-                <td style="width:90px;"><input class="sc-in" type="number" min="0" inputmode="numeric" data-id="{{ $i->id }}" data-erp="{{ (float) $i->qty }}"></td>
-                <td style="width:110px;"><span class="sc-msg"></span></td>
-            </tr>
-        @endforeach
-        </tbody></table>
-    @empty
-        <p>Everything here was counted in the last {{ $dueDays }} days.</p>
-    @endforelse
+    <h1>Shelf count</h1>
+    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins not counted the longest are on top. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
+    <form class="sc-row" method="get">
+        <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
+        <select name="kind" onchange="this.form.submit()">@foreach (['vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'] as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
+    </form>
+    @foreach ($bins as $b)
+        <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $kind }}&sub={{ $b['sub'] }}">
+            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP</span></span>
+            <span>@if (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('n/j') }}</span>@else<span class="sc-due">Never counted</span>@endif</span>
+        </a>
+    @endforeach
+    <p class="sc-small">Comics and magazines are counted on <a href="/reports/reorder?format=comics&location_id={{ $loc }}">their own page</a>.</p>
 </div>
-@endsection
-
-@section('javascript')
-<script>
-(function () {
-    var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    document.querySelectorAll('.sc-in').forEach(function (inp) {
-        inp.addEventListener('change', function () {
-            var v = inp.value.trim(); if (v === '') return;
-            var tr = inp.closest('tr'), msg = tr.querySelector('.sc-msg'), erp = parseFloat(inp.getAttribute('data-erp'));
-            msg.className = 'sc-msg'; msg.textContent = 'Saving...';
-            fetch('/reports/reorder/count', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                body: JSON.stringify({ product_id: inp.getAttribute('data-id'), qty: v, location_id: {{ (int) $loc }} }) })
-                .then(function (r) { return r.json(); }).then(function (j) {
-                    if (!j.ok) { msg.textContent = 'Did not save'; return; }
-                    var n = parseInt(v, 10);
-                    tr.querySelector('.sc-erp').textContent = n;
-                    if (n < erp) { msg.className = 'sc-msg miss'; msg.textContent = (erp - n) + ' missing'; } else { msg.className = 'sc-msg ok'; msg.textContent = 'Saved'; }
-                }).catch(function () { msg.textContent = 'Did not save, try again'; });
-        });
-    });
-})();
-</script>
 @endsection
