@@ -757,6 +757,16 @@ class ReorderService
         'Teen Titans' => 'teen titans',
         'Year of the Villain' => 'year of the villain',
         'Young Heroes In Love' => 'young heroes in love',
+        // Image / indie series and publishers (Clarissa 10/14).
+        'WildCATS' => 'wild ?c\\.?a\\.?t\\.?s',
+        'Cyberforce' => 'cyber ?force',
+        'Deathblow' => 'deathblow',
+        'G.I. Joe' => 'g\\.? ?i\\.? joe',
+        'Virgin Comics' => 'virgin comics',
+        'Vault Comics' => 'vault comics',
+        'Valiant Comics' => 'valiant',
+        'Dark Horse' => 'dark horse|hellboy',
+        'Eclipse Comics' => 'eclipse comics',
         'Spider-Man' => 'spider|venom|carnage|miles morales',
         'Batman' => 'batman|joker|gotham|robin|harley quinn|nightwing|catwoman',
         'Superman' => 'superman|action comics|supergirl',
@@ -779,12 +789,16 @@ class ReorderService
         'Green Lantern' => 'green lantern',
         'Sandman / Vertigo' => 'sandman|vertigo|animal man|deadman|ragman|hellblazer|swamp thing',
         'Spawn' => 'spawn|violator',
-        'Star Wars / Star Trek' => 'star wars|star trek|aphra|empire strikes',
+        'Star Wars' => 'star wars|aphra|empire strikes',
+        'Star Trek' => 'star trek',
         'Godzilla' => 'godzilla',
         'Cartoon & kids' => 'looney|sonic|spongebob|bongo|simpsons|archie|scooby',
         'Predator / Aliens' => 'predator|alien',
         'Pokemon' => 'pokemon|pikachu',
         'Manga' => 'manga|naruto|shonen|devilman|one piece|dragon ball|jojo|berserk|chainsaw',
+        // Count-only rows (nothing in the ERP matches these by name).
+        'DC - Other' => '^\\b$',
+        'Image - Other' => '^\\b$',
     ];
 
     const MAGAZINE_FAMILIES = [
@@ -794,6 +808,21 @@ class ReorderService
         'National Geographic' => 'national geographic|nat geo',
         'Sports Illustrated' => 'sports illustrated',
         'Time / Life' => '\btime\b|\blife\b',
+        // Magazines Clarissa counts on their own (10/14); before Music magazines so they win.
+        'Rock City' => 'rock city',
+        'Skratch' => 'skratch',
+        'Pulse' => '\\bpulse\\b',
+        'Downbeat' => 'down ?beat',
+        'People' => '\\bpeople\\b',
+        'XXL' => '\\bxxl\\b',
+        'Ebony' => 'ebony',
+        'Jet' => '\\bjet\\b',
+        'Entertainment Weekly' => 'entertainment',
+        "Men's Journal" => "men'?s journal",
+        'Variety' => '\\bvariety\\b',
+        'Mojo / Uncut' => '\\bmojo\\b|\\buncut\\b',
+        'Spin' => '\\bspin\\b',
+        'BAM' => '\\bbam\\b',
         'Music magazines' => 'spin|billboard|kerrang|guitar|mojo|creem|vibe|the source|xxl|rap pages',
     ];
 
@@ -1013,6 +1042,16 @@ class ReorderService
             $state['family_counts'][$locationId][$key] = ['qty' => max(0, $qty), 'at' => now()->toDateTimeString(), 'by' => $by];
         }
         $this->saveState($business_id, $state);
+    }
+
+    /** "Submit count" on the comics page: who finished the count and when. */
+    public function submitFamilyCount(int $business_id, int $locationId, string $by, int $n): array
+    {
+        $state = $this->loadState($business_id);
+        $rec = ['at' => now()->toDateTimeString(), 'by' => $by, 'counted' => $n];
+        $state['family_submits'][$locationId][] = $rec;
+        $this->saveState($business_id, $state);
+        return $rec;
     }
 
     public function otherAreas(int $business_id, int $locationId): array

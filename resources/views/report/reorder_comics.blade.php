@@ -54,15 +54,17 @@
                 <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
                 <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
             </ol></details>
+            <div style="margin-top:10px;"><button type="button" class="btn btn-success" id="rcSubmit">Submit count</button>
+                <span id="rcSubmitMsg" style="margin-left:8px;">@if($lastSubmit)Last submitted {{ \Carbon\Carbon::parse($lastSubmit['at'])->format('n/j g:ia') }} by {{ $lastSubmit['by'] }}@endif</span></div>
         </div>
     </div>
 
     @php
         $publishers = [
             'MARVEL' => ['Spider-Man', 'X-Men', 'Wolverine', 'Hulk', 'Avengers & solo heroes', 'Deadpool', 'Daredevil', 'Punisher', 'Fantastic Four', 'Doom', 'Silver Surfer / What If', 'Ghost Rider', 'Werewolf by Night', 'Conan'],
-            'DC' => ['Batman', 'Superman', 'Flash', 'Justice League / DC', 'Wonder Woman', 'Green Lantern', 'Sandman / Vertigo', 'Cosmic Boy', 'COPS', 'Creature Commandos', 'Demon Knights', 'Final Crisis', 'The Fury of Firestorm', 'Green Arrow', 'Infinity Inc.', 'Kobalt', 'Outlaws', 'Peacemaker', 'Primal Force', 'The Ray', 'Secret Six', 'The Shadow', 'Teen Titans', 'Year of the Villain', 'Young Heroes In Love'],
-            'IMAGE' => ['Spawn'],
-            'INDIE / LICENSED' => ['Star Wars / Star Trek', 'Godzilla', 'Cartoon & kids', 'Predator / Aliens'],
+            'DC' => ['Batman', 'Superman', 'Flash', 'Justice League / DC', 'Wonder Woman', 'Green Lantern', 'Sandman / Vertigo', 'Cosmic Boy', 'COPS', 'Creature Commandos', 'Demon Knights', 'Final Crisis', 'The Fury of Firestorm', 'Green Arrow', 'Infinity Inc.', 'Kobalt', 'Outlaws', 'Peacemaker', 'Primal Force', 'The Ray', 'Secret Six', 'The Shadow', 'Teen Titans', 'Year of the Villain', 'Young Heroes In Love', 'DC - Other'],
+            'IMAGE' => ['Spawn', 'WildCATS', 'Cyberforce', 'Deathblow', 'Image - Other'],
+            'INDIE / LICENSED' => ['Star Wars', 'Star Trek', 'Godzilla', 'Cartoon & kids', 'Predator / Aliens', 'G.I. Joe', 'Virgin Comics', 'Vault Comics', 'Valiant Comics', 'Dark Horse', 'Eclipse Comics'],
             'MANGA / POKEMON' => ['Pokemon', 'Manga'],
             'UNIDENTIFIED' => ['Other comics'],
         ];
@@ -87,7 +89,7 @@
     @foreach(['comics' => 'Comic Books to Order', 'magazines' => 'Magazines to Order'] as $type => $label)
         <div class="box box-solid">
             <div class="box-header with-border">
-                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4. <span id="rc-total-{{ $type }}"></span></small></h3>
+                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Order enough for <select class="rc-weeks" style="font-size:13px;">@foreach([4, 6, 8, 12] as $w)<option value="{{ $w }}" @if($w == $weeks) selected @endif>{{ $w }} weeks</option>@endforeach</select>. <span id="rc-total-{{ $type }}"></span></small></h3>
             </div>
             <div class="box-body table-responsive">
                 <a href="#" class="rc-toggle">Show details</a>
@@ -175,6 +177,31 @@
         });
     });
     totals();
+
+    document.querySelectorAll('.rc-weeks').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            var u = new URL(location.href); u.searchParams.set('weeks', sel.value); location.href = u.toString();
+        });
+    });
+    // Submit count: every box saves on its own already; this re-sends any
+    // that didn't save, then records that the count is finished.
+    document.getElementById('rcSubmit').addEventListener('click', function () {
+        var msg = document.getElementById('rcSubmitMsg'), btn = this, pending = [], n = 0;
+        btn.disabled = true; msg.textContent = 'Checking every count is saved...';
+        document.querySelectorAll('.rc-count').forEach(function (inp) {
+            if (inp.value === '') return;
+            n++;
+            var tr = inp.closest('tr'), s = tr.querySelector('.rc-saved');
+            if (s && s.textContent === 'saved') return;
+            pending.push($.post('/reports/reorder/family-count', { _token: CSRF, location_id: LOC, format: 'comics', key: tr.dataset.key, qty: inp.value })
+                .done(function () { if (s) s.textContent = 'saved'; }));
+        });
+        $.when.apply($, pending).done(function () {
+            $.post('/reports/reorder/family-submit', { _token: CSRF, location_id: LOC, counted: n }).done(function () {
+                msg.textContent = 'Submitted: ' + n + ' counts saved. Thank you!'; btn.disabled = false;
+            }).fail(function () { msg.textContent = 'Counts are saved, but the submit did not go through. Try again.'; btn.disabled = false; });
+        }).fail(function () { msg.textContent = 'Some counts did not save. Press Submit count again (nothing is lost).'; btn.disabled = false; });
+    });
 
     // Mark the detail columns (everything but Series, Speed, Copies Sold,
     // ERP says, Qty in Stock, # to Order) so compact mode can hide them.

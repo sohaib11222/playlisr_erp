@@ -52,7 +52,11 @@ class ReorderController extends Controller
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
         if ($format === 'comics') {
             return view('report.reorder_comics', [
-                'data' => $locationId ? $this->svc->comicsAndMagazines($business_id, $locationId, 4) : ['comics' => [], 'magazines' => []],
+                // Weeks of cover is a choice now (Clarissa 10/14: after a long gap
+                // between comics orders, 4 weeks orders too little).
+                'data' => $locationId ? $this->svc->comicsAndMagazines($business_id, $locationId, $weeks = in_array((int) $request->input('weeks'), [4, 6, 8, 12], true) ? (int) $request->input('weeks') : 4) : ['comics' => [], 'magazines' => []],
+                'weeks' => $weeks ?? 4,
+                'lastSubmit' => collect($this->svc->loadState($business_id)['family_submits'][$locationId] ?? [])->last(),
                 'locations' => $locations,
                 'locationId' => $locationId,
                 'storeName' => $locations[$locationId] ?? '',
@@ -297,6 +301,13 @@ class ReorderController extends Controller
             } catch (\Throwable $e) {}
         }
         return response()->json(['ok' => $n > 0, 'updated' => $n]);
+    }
+
+    public function submitFamilyCount(Request $request)
+    {
+        [$business_id, , $locationId] = $this->params($request);
+        $rec = $this->svc->submitFamilyCount($business_id, $locationId, auth()->user()->first_name ?? '', (int) $request->input('counted'));
+        return response()->json(['ok' => true, 'at' => $rec['at']]);
     }
 
     public function saveFamilyCount(Request $request)
