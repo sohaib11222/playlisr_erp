@@ -244,7 +244,16 @@ class BarcodeFixController extends Controller
             $wa = array_diff($words($p->name), $artistWords); $wb = array_diff($words($k->name), $artistWords);
             sort($wa); sort($wb);
             $exact = array_values(array_unique($wa)) === array_values(array_unique($wb));
+            // Sarah 10/14: when the made-up listing has the old cost x1.25 kind
+            // of price (cents like $46.25) and the barcode listing was entered
+            // later at a whole-dollar price, the newer price is the real one.
+            $fp = round((float) ($price[$p->id] ?? 0), 2); $kp = round((float) ($price[$k->id] ?? 0), 2);
+            $samePrice = abs($fp - $kp) < 0.01;
+            $newerWhole = !$samePrice && $kp > 0 && fmod($kp, 1) == 0 && fmod($fp, 1) != 0
+                && strtotime((string) $k->created_at) > strtotime((string) $p->created_at);
             $pairs[] = [
+                'safe' => (bool) $exact && ($samePrice || $newerWhole),
+                'price_rule' => $newerWhole ? 'newer whole-dollar price' : null,
                 'exact' => (bool) $exact,
                 'id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat,
                 'hw' => $stock[$p->id]['hw'] ?? 0, 'pico' => $stock[$p->id]['pico'] ?? 0, 'sold' => (float) ($sold[$p->id] ?? 0), 'price' => round((float) ($price[$p->id] ?? 0), 2),
@@ -261,7 +270,7 @@ class BarcodeFixController extends Controller
         }
         return response()->json(['made_up' => count($made), 'one_match' => count($pairs), 'several_matches' => $amb, 'no_match' => $none,
             'same_price' => count(array_filter($pairs, function ($x) { return abs($x['price'] - $x['keep_price']) < 0.01; })),
-            'safe' => count(array_filter($pairs, function ($x) { return $x['exact'] && abs($x['price'] - $x['keep_price']) < 0.01; })),
+            'safe' => count(array_filter($pairs, function ($x) { return $x['safe']; })),
             'sample' => $request->query('all') ? $pairs : array_slice($pairs, 0, 40)]);
     }
 

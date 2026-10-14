@@ -40,7 +40,7 @@ tr.pv-done td { opacity: .4; }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return n ? '$' + Number(n).toFixed(2) : '$0'; }
     function same(x) { return Math.abs(x.price - x.keep_price) < 0.01; }
-    function safe(x) { return x.exact && same(x); }
+    function safe(x) { return !!x.safe; }
     function render() {
         var list = pairs.filter(function (x) { return tab === 'safe' ? safe(x) : !safe(x); });
         document.getElementById('pvRows').innerHTML = list.map(function (x) {
@@ -50,7 +50,7 @@ tr.pv-done td { opacity: .4; }
                 + '<td' + d + '>' + money(x.price) + '</td><td>' + x.hw + ' / ' + x.pico + '</td><td>' + x.sold + '</td><td class="arrow">into</td>'
                 + '<td><a href="/products/' + x.keep_id + '/edit" target="_blank">' + esc(x.keep_name) + '</a>' + nm + '<div class="pv-small">' + esc(x.keep_sku) + ', ' + esc(x.keep_cat || '') + '</div><div class="pv-small">Entered by ' + esc(x.keep_who || '') + '</div></td>'
                 + '<td' + d + '>' + money(x.keep_price) + '</td><td>' + x.keep_hw + ' / ' + x.keep_pico + '</td><td>' + x.keep_sold + '</td>'
-                + '<td class="pv-act" data-id="' + x.id + '" data-keep="' + x.keep_id + '">' + (same(x) ? '<button class="pv-btn" data-a="merge" type="button">Merge</button>' : '<button class="pv-btn" data-a="merge" data-price="' + x.price + '" type="button">Merge, keep ' + money(x.price) + '</button><br><button class="pv-btn" data-a="merge" data-price="' + x.keep_price + '" type="button">Merge, keep ' + money(x.keep_price) + '</button>') + '<br><button class="pv-btn light" data-a="skip" type="button">Not the same</button><div class="pv-msg"></div></td></tr>';
+                + '<td class="pv-act" data-id="' + x.id + '" data-keep="' + x.keep_id + '">' + (safe(x) ? '<button class="pv-btn" data-a="merge" type="button">Merge' + (same(x) ? '' : ', keep ' + money(x.keep_price)) + '</button>' : '<button class="pv-btn" data-a="merge" data-price="' + x.price + '" type="button">Merge, keep ' + money(x.price) + '</button><br><button class="pv-btn" data-a="merge" data-price="' + x.keep_price + '" type="button">Merge, keep ' + money(x.keep_price) + '</button>') + '<br><button class="pv-btn light" data-a="skip" type="button">Not the same</button><div class="pv-msg"></div></td></tr>';
         }).join('') || '<tr><td colspan="10">Nothing here.</td></tr>';
     }
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -99,7 +99,7 @@ tr.pv-done td { opacity: .4; }
     fetch('/products/fix-barcodes/scan?all=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         pairs = j.sample || [];
         var s = pairs.filter(safe).length;
-        document.getElementById('pvSub').textContent = pairs.length.toLocaleString() + ' records look entered twice: once with a made-up SKU and once with the real barcode. ' + s + ' are safe to merge (same name and same price). ' + (pairs.length - s) + ' need a look (different price or a different word in the name, like Box Set or Acoustic). Nothing changes until you press Merge on a row. Open both titles to compare if unsure.';
+        document.getElementById('pvSub').textContent = pairs.length.toLocaleString() + ' records look entered twice: once with a made-up SKU and once with the real barcode. ' + s + ' are safe to merge (same name, and the same price or a newer whole-dollar price replacing an old $xx.25 style price). ' + (pairs.length - s) + ' need a look (different price or a different word in the name, like Box Set or Acoustic). Nothing changes until you press Merge on a row. Open both titles to compare if unsure.';
         render(); allBtn();
     }).catch(function () { document.getElementById('pvSub').textContent = 'Load failed, refresh to try again.'; });
 })();
