@@ -177,24 +177,52 @@
       body: body.toString()
     }).then(function (r) {
       if (r.status === 419 && !retried) { return refresh().then(function () { return post(url, data, true); }); }
-      return r.json();
+      if (r.status === 429) { return { ok: false, msg: 'Too many tries, wait a minute.' }; }
+      return r.json().catch(function () { return { ok: false, msg: 'That did not go through, try again.' }; });
     });
   }
 
-  function getGeo() {
+  // Location: a punch never waits long on GPS. The last good fix is kept
+  // (store computer: asked once on page load, then refreshed quietly), a
+  // fix worse than 100 m gets one quick high-accuracy retry, and if nothing
+  // comes in time the server falls back to the store Wi-Fi.
+  var GOOD_M = 100, lastFix = null;
+  function fixFrom(p) { return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, t: Date.now() }; }
+  function better(a, b) { if (!a) { return b; } if (!b) { return a; } return b.accuracy < a.accuracy ? b : a; }
+  function locate(opts, ms) {
     return new Promise(function (resolve) {
-      if (!navigator.geolocation) { resolve({ geo_error: 'unsupported' }); return; }
+      if (!navigator.geolocation) { resolve({ err: 'unsupported' }); return; }
       var finished = false;
-      var timer = setTimeout(function () { if (!finished) { finished = true; resolve({ geo_error: 'timeout' }); } }, 9000);
+      var timer = setTimeout(function () { if (!finished) { finished = true; resolve({ err: 'timeout' }); } }, ms + 500);
       navigator.geolocation.getCurrentPosition(function (p) {
         if (finished) { return; } finished = true; clearTimeout(timer);
-        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+        var f = fixFrom(p); lastFix = better(lastFix && Date.now() - lastFix.t < 120000 ? lastFix : null, f);
+        resolve({ fix: f });
       }, function (e) {
         if (finished) { return; } finished = true; clearTimeout(timer);
-        resolve({ geo_error: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
-      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+        resolve({ err: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
+      }, { enableHighAccuracy: opts.high, timeout: ms, maximumAge: opts.maxAge });
     });
   }
+  function getGeo() {
+    // Store computer: one short try (the page keeps a fix warm and the
+    // store Wi-Fi is the fallback). Phone: one quick retry for a better fix.
+    var quick = MODE === 'computer';
+    var fresh = lastFix && Date.now() - lastFix.t < 120000 ? lastFix : null;
+    var first = fresh && fresh.accuracy <= GOOD_M ? Promise.resolve({ fix: fresh }) : locate({ high: true, maxAge: 60000 }, quick ? 2500 : 4000);
+    return first.then(function (r) {
+      var fix = better(fresh, r.fix);
+      if (fix && fix.accuracy <= GOOD_M) { return fix; }
+      if (quick || r.err === 'denied' || r.err === 'unsupported') { return fix || { geo_error: r.err || 'unavailable' }; }
+      return locate({ high: true, maxAge: 0 }, 3000).then(function (r2) {
+        var f2 = better(fix, r2.fix);
+        return f2 || { geo_error: r2.err || r.err || 'unavailable' };
+      });
+    }).then(function (f) {
+      return f.geo_error ? f : { lat: f.lat, lng: f.lng, accuracy: f.accuracy };
+    });
+  }
+  function warmGeo() { locate({ high: true, maxAge: 60000 }, 8000); }
   var blockEl = document.getElementById('block');
   function showBlock(j) {
     if (!blockEl) { return; }
@@ -225,7 +253,7 @@
       }).then(function (j) {
         pin = ''; draw();
         if (j && j.blocked) { showBlock(j); setBusy(false); return; }
-        if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work. Try again.'; setBusy(false); return; }
+        if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work, try again.'; setBusy(false); return; }
         if (MODE === 'computer') {
           document.getElementById('ovH').textContent = j.headline || '';
           document.getElementById('ovD').textContent = j.detail || '';
@@ -236,7 +264,7 @@
         }
       }).catch(function () {
         pin = ''; draw();
-        msg.textContent = 'No connection. Try again.';
+        msg.textContent = 'No connection, try again.';
         setBusy(false);
       });
     }
@@ -255,11 +283,18 @@
       if (b) { press(b.getAttribute('data-k')); }
     });
     document.addEventListener('keydown', function (e) {
+      if (e.repeat) { return; }
       if (/^\d$/.test(e.key)) { press(e.key); e.preventDefault(); }
       else if (e.key === 'Backspace') { press('back'); e.preventDefault(); }
       else if (e.key === 'Escape') { press('clear'); }
     });
-    if (MODE === 'computer') { setInterval(refresh, 30 * 60 * 1000); }
+    if (MODE === 'computer') {
+      setInterval(refresh, 30 * 60 * 1000);
+      // Ask for location once when the page opens (the browser remembers
+      // the answer), then keep a recent fix so punches don't wait on GPS.
+      warmGeo();
+      setInterval(warmGeo, 4 * 60 * 1000);
+    }
   }
 
   // ---- Remembered phone: one big button ----
@@ -291,19 +326,35 @@
       }).then(function (j) {
         if (j && j.setup) { window.location.href = '/clock'; return; }
         if (j && j.blocked) { btn.textContent = label; showBlock(j); return; }
-        if (!j || !j.ok) { btn.textContent = label; done.className = 'done bad'; done.textContent = (j && j.msg) || 'That did not work. Try again.'; return; }
+        if (!j || !j.ok) { btn.textContent = label; done.className = 'done bad'; done.textContent = (j && j.msg) || 'That did not work, try again.'; return; }
         render(j.status);
         done.className = 'done';
         done.textContent = (j.headline || '') + ' ' + (j.detail || '');
       }).catch(function () {
         btn.textContent = label;
         done.className = 'done bad';
-        done.textContent = 'No connection. Check your signal and try again.';
+        done.textContent = 'No connection, try again.';
       }).then(function () { busyBtn = false; btn.disabled = false; });
     });
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) { refresh().then(function (j) { if (j && j.status) { render(j.status); } }); }
-    });
+    // Keep the button right when the phone wakes, the tab comes back, or
+    // the home-screen app is reopened (it may show an old saved page).
+    function resync() {
+      if (busyBtn) { return; }
+      refresh().then(function (j) {
+        if (!j) { return; }
+        if (j.ready && !j.status) { window.location.href = '/clock'; return; }
+        if (j.status) { render(j.status); }
+      });
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { resync(); } });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) { resync(); } });
+    window.addEventListener('focus', resync);
+    // Warm up location only when it is already allowed (no surprise prompt).
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' }).then(function (r) { if (r.state === 'granted') { warmGeo(); } }).catch(function () {});
+      }
+    } catch (e) {}
 
     // One-time home screen hint (not when opened from the icon).
     try {

@@ -128,7 +128,7 @@ class PhoneClockController extends Controller
             }
             $token = TC::issueDevice($businessId, (int) $user->id, $request);
             return $this->json(['ok' => true, 'name' => trim((string) $user->first_name)])
-                ->withCookie(cookie(TC::COOKIE, $token, TC::COOKIE_MINUTES, '/', null, $request->isSecure(), true, false, 'lax'));
+                ->withCookie(cookie(TC::COOKIE, $token, TC::COOKIE_MINUTES, '/', null, $request->isSecure() || app()->environment('production'), true, false, 'lax'));
         } catch (\Throwable $e) {
             \Log::warning('clock pin failed: ' . $e->getMessage());
             return $this->json(['ok' => false, 'msg' => 'Something went wrong. Please try again.']);
@@ -153,6 +153,12 @@ class PhoneClockController extends Controller
             $who = TC::identifyByPin($businessId, $pin, TC::clientIp($request));
             if (!$who['ok']) {
                 return $this->json(['ok' => false, 'msg' => $who['msg']]);
+            }
+            // A phone remembered for one person can't punch someone else
+            // with their PIN (buddy punching from your own phone).
+            $device = TC::deviceFromRequest($request);
+            if ($device && (int) $device->user->id !== (int) $who['user']->id) {
+                return $this->json(['ok' => false, 'msg' => 'This phone is set up for ' . trim((string) $device->user->first_name) . ', so it can only clock them.']);
             }
             return $this->json($this->toggle($request, $who['user'], 'computer', null));
         } catch (\Throwable $e) {
@@ -184,10 +190,19 @@ class PhoneClockController extends Controller
     }
 
     /**
-     * Clock in if out, out if in. $want (phone) guards against a stale
+     * Clock in if out, out if in, under a per-person lock so two requests at
+     * once can't open two punches. $want (phone) guards against a stale
      * screen: if the person is already in that state, nothing changes.
      */
     private function toggle(Request $request, $user, string $source, ?int $deviceId, ?string $want = null): array
+    {
+        $r = TC::withUserLock((int) $user->id, function () use ($request, $user, $source, $deviceId, $want) {
+            return $this->toggleLocked($request, $user, $source, $deviceId, $want);
+        });
+        return $r ?: ['ok' => false, 'msg' => 'That did not go through, try again.'];
+    }
+
+    private function toggleLocked(Request $request, $user, string $source, ?int $deviceId, ?string $want): array
     {
         $userId = (int) $user->id;
         $businessId = (int) ($user->business_id ?: TC::businessId());
@@ -195,45 +210,63 @@ class PhoneClockController extends Controller
         $open = TC::openPunch($userId);
         $time = TC::now()->format('g:i A');
 
-        // Punches only count at the store (Sarah 10/13): location within the
-        // store radius, or a store network. Admin switch can turn this off.
+        // Store computer: the same PIN again right after a punch (double
+        // tap, network retry, replay) shows the state instead of flipping it.
+        if ($want === null) {
+            $guard = TC::now()->subSeconds(TC::TOGGLE_GUARD_SEC)->format('Y-m-d H:i:s');
+            $recent = $open
+                ? $open->clock_in_at >= $guard
+                : \DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
+                    ->where('clock_out_at', '>=', $guard)->exists();
+            if ($recent) {
+                $want = $open ? 'in' : 'out';
+            }
+        }
+
+        // Punches only count at the store (Sarah 10/13): location close to
+        // the store, or a store network. Admin switch can turn this off.
         $doing = (!$open && $want !== 'out') ? 'in' : (($open && $want !== 'in') ? 'out' : null);
         $where = null;
         if ($doing !== null && TC::requireAtStore()) {
             $geo = TC::geoFrom($request);
             $where = TC::resolveStore($businessId, TC::clientIp($request), $geo);
             if ($where['verify'] === 'none') {
-                return ['ok' => false, 'blocked' => true, 'geo_denied' => $geo['error'] === 'denied', 'name' => $first,
-                    'msg' => 'You need to be at the store to clock ' . $doing . '. Turn on Location for this page and try again.'];
+                $denied = $geo['error'] === 'denied';
+                $msg = $denied
+                    ? 'Allow location for this page to clock ' . $doing . '.'
+                    : (!empty($where['has_fix']) ? 'You need to be at the store to clock ' . $doing . '.' : 'Could not confirm you are at the store, try again.');
+                return ['ok' => false, 'blocked' => true, 'geo_denied' => $denied, 'name' => $first, 'msg' => $msg];
             }
         }
 
-        // Buddy-punch guard (Sarah 10/13): clock-in only near your Sling
-        // shift at this store. Clock-out is never limited by schedule. If
-        // Sling has nothing for today (sync broken), let it through; Timecards
-        // flags it "No schedule data".
+        // Buddy-punch guard (Sarah 10/13): clock-in only from 15 minutes
+        // before your Sling shift at this store until it ends (late is
+        // allowed and flagged on Timecards). Clock-out is never limited by
+        // schedule. If Sling has nothing for today (sync broken), let it
+        // through; Timecards flags it "No schedule data".
+        $sched = null;
         if ($doing === 'in' && TC::requireSchedule()) {
             $where = $where ?? TC::resolveStore($businessId, TC::clientIp($request), TC::geoFrom($request));
             try {
                 $sched = TC::scheduleAllows($userId, $where['location_id'] ?? null, $businessId);
             } catch (\Throwable $e) {
                 \Log::warning('time clock schedule check failed: ' . $e->getMessage());
-                $sched = ['ok' => true, 'no_data' => true];
+                $sched = ['ok' => true, 'no_data' => true, 'late_min' => null, 'sched_start' => null];
             }
             if (!$sched['ok']) {
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => false, 'name' => $first,
-                    'msg' => 'You are not on the schedule right now. Ask a manager to add your hours.'];
+                    'msg' => 'You are not on the schedule here right now.'];
             }
         }
 
-        if (!$open && $want !== 'out') {
-            $r = TC::clockIn($request, $user, $deviceId, $source);
+        if ($doing === 'in') {
+            $r = TC::clockIn($request, $user, $deviceId, $source, $sched);
             $st = TC::status($businessId, $userId);
             return ['ok' => $r['ok'], 'name' => $first, 'action' => 'in', 'time' => $time,
                 'headline' => $first . ", you're clocked in.", 'detail' => $time . ($st['store'] !== '' ? ' at ' . $st['store'] : ''),
                 'msg' => $r['msg'], 'status' => $st];
         }
-        if ($open && $want !== 'in') {
+        if ($doing === 'out') {
             TC::clockOut($userId, $source, $request, true);
             $this->afterClockOut($user);
             $st = TC::status($businessId, $userId);
@@ -241,7 +274,7 @@ class PhoneClockController extends Controller
                 'headline' => $first . ", you're clocked out.", 'detail' => $time . ', ' . $st['today_text'] . ' today',
                 'msg' => 'Clocked out at ' . $time . '.', 'status' => $st];
         }
-        // Stale phone screen: already in the state they tapped for.
+        // Stale screen or repeat: already in the state they asked for.
         $st = TC::status($businessId, $userId);
         return ['ok' => true, 'name' => $first, 'action' => $open ? 'in' : 'out', 'time' => $time,
             'headline' => $first . ($open ? ", you're already clocked in." : ", you're already clocked out."),

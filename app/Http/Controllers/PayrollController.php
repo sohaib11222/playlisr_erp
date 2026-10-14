@@ -272,7 +272,9 @@ class PayrollController extends Controller
             ->leftJoin('business_locations as l', 'l.id', '=', 'p.location_id')
             ->where('p.business_id', $businessId)
             ->whereNull('p.voided_at')
-            ->where('p.clock_in_at', '>=', $start . ' 00:00:00')
+            // From the day before: a shift that started the night before the
+            // period and ran past midnight has hours inside the period.
+            ->where('p.clock_in_at', '>=', \Carbon::parse($start)->subDay()->toDateString() . ' 00:00:00')
             ->where('p.clock_in_at', '<=', $end . ' 23:59:59')
             ->orderBy('p.clock_in_at')
             ->get(['p.*', 'u.first_name', 'u.last_name', 'l.name as location_name']);
@@ -292,7 +294,8 @@ class PayrollController extends Controller
         $rows = [];
         $missing = 0;
         foreach ($punches as $p) {
-            if (!$p->clock_out_at) { $missing++; continue; }
+            $inPeriod = substr($p->clock_in_at, 0, 10) >= $start;
+            if (!$p->clock_out_at) { if ($inPeriod) { $missing++; } continue; }
             $sec = strtotime($p->clock_out_at) - strtotime($p->clock_in_at);
             if ($sec <= 0) { continue; }
             $uid = (int) $p->user_id;
@@ -310,15 +313,32 @@ class PayrollController extends Controller
                     $config['rates'][$key]['user_id'] = $uid;
                 }
             }
-            $rows[] = [
-                'name'     => $name,
-                'in'       => $p->clock_in_at,
-                'out'      => $p->clock_out_at,
-                'in_date'  => substr($p->clock_in_at, 0, 10),
-                'elapsed'  => round($sec / 3600, 4),
-                'location' => \App\Services\TimeClockService::shortStoreName((string) $p->location_name),
-                'comment'  => $p->edited ? 'edited in Timecards' : '',
-            ];
+            // Daily OT is per calendar day (midnight to midnight, LA): a punch
+            // past midnight is split so each day gets its own hours. The
+            // first part keeps the real clock-in (late check), the last part
+            // the real clock-out. strtotime runs in the app timezone (LA), so
+            // DST nights count real elapsed time.
+            $inTs = strtotime($p->clock_in_at);
+            $outTs = strtotime($p->clock_out_at);
+            $cur = $inTs;
+            $guard = 0;
+            while ($cur < $outTs && $guard++ < 4) {
+                $day = date('Y-m-d', $cur);
+                $next = strtotime($day . ' 00:00:00 +1 day');
+                $partEnd = min($outTs, $next);
+                if ($day >= $start && $day <= $end && $partEnd > $cur) {
+                    $rows[] = [
+                        'name'     => $name,
+                        'in'       => $cur === $inTs ? $p->clock_in_at : null,
+                        'out'      => $partEnd === $outTs ? $p->clock_out_at : null,
+                        'in_date'  => $day,
+                        'elapsed'  => round(($partEnd - $cur) / 3600, 4),
+                        'location' => \App\Services\TimeClockService::shortStoreName((string) $p->location_name),
+                        'comment'  => trim(($p->edited ? 'edited in Timecards' : '') . ($outTs > $next || $cur !== $inTs ? ' split at midnight' : '')),
+                    ];
+                }
+                $cur = $partEnd;
+            }
         }
 
         if (empty($rows)) {

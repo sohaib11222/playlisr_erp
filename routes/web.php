@@ -105,10 +105,11 @@ Route::middleware(['setData'])->group(function () {
     Route::get('/clock', 'PhoneClockController@page');
     Route::get('/clock/state', 'PhoneClockController@state');
     Route::get('/clock/manifest.webmanifest', 'PhoneClockController@manifest');
-    // PIN guessing is limited in TimeClockService (per person + per client IP).
-    Route::post('/clock/pin', 'PhoneClockController@pin');
-    Route::post('/clock/computer', 'PhoneClockController@kiosk');
-    Route::post('/clock/punch', 'PhoneClockController@punch');
+    // PIN guessing is limited in TimeClockService (per network, plus caps
+    // across everyone off the store networks); throttle is per connection.
+    Route::post('/clock/pin', 'PhoneClockController@pin')->middleware('throttle:30,1');
+    Route::post('/clock/computer', 'PhoneClockController@kiosk')->middleware('throttle:30,1');
+    Route::post('/clock/punch', 'PhoneClockController@punch')->middleware('throttle:30,1');
 });
 
 //Routes for authenticated users only

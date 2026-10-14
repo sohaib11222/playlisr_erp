@@ -56,7 +56,7 @@ class TimeClockController extends Controller
             'end' => $end,
             'user_id' => (int) $request->input('user_id') ?: null,
             'location_id' => (int) $request->input('location_id') ?: null,
-            'flag' => in_array($request->input('flag'), ['missing', 'long', 'unverified', 'edited', 'voided'], true) ? $request->input('flag') : '',
+            'flag' => in_array($request->input('flag'), ['missing', 'long', 'unverified', 'late', 'edited', 'voided'], true) ? $request->input('flag') : '',
         ];
     }
 
@@ -90,6 +90,12 @@ class TimeClockController extends Controller
                 });
             } elseif ($f['flag'] === 'unverified') {
                 $q->where(function ($w) { $w->where('p.in_verify', 'none')->orWhere('p.out_verify', 'none'); });
+            } elseif ($f['flag'] === 'late') {
+                if (TC::hasLateColumns()) {
+                    $q->where('p.late_min', '>', 0);
+                } else {
+                    $q->whereRaw('1 = 0');
+                }
             } elseif ($f['flag'] === 'edited') {
                 $q->where('p.edited', 1);
             }
@@ -128,7 +134,15 @@ class TimeClockController extends Controller
                 $flags[] = 'Clocked in over 10 hours';
             }
         }
+        if (!empty($p->late_min) && (int) $p->late_min > 0) {
+            $flags[] = 'Late ' . (int) $p->late_min . ' min' . (!empty($p->sched_start_at) ? ' (shift ' . \Carbon::parse($p->sched_start_at)->format('g:i A') . ')' : '');
+        }
         if ($p->in_verify === 'none') { $flags[] = 'Clock-in not verified at store'; }
+        // The keypad (store computer mode) used on a phone: someone may be
+        // typing a coworker's PIN on their own phone.
+        if ($p->clock_in_source === 'computer' && preg_match('/Mobi|Android|iPhone|iPod/i', (string) $p->in_user_agent)) {
+            $flags[] = 'PIN typed on a phone';
+        }
         if (in_array($p->clock_in_source, ['phone', 'computer'], true) && isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
             $flags[] = 'No schedule data';
         }
@@ -188,15 +202,20 @@ class TimeClockController extends Controller
         return response()->stream(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['Name', 'Store', 'Date', 'Clock In', 'Clock Out', 'Hours', 'Flags', 'Clock-in check', 'Clock-out check', 'Clocked out by', 'Clock In IP', 'Clock Out IP', 'Clock In Lat', 'Clock In Lng', 'Accuracy (m)', 'Distance to store (m)']);
+            // Text cells starting with = + - @ would run as formulas in Excel.
+            $safe = function ($v) {
+                $v = (string) $v;
+                return ($v !== '' && strpos('=+-@', $v[0]) !== false) ? "'" . $v : $v;
+            };
             foreach ($rows as $p) {
                 fputcsv($out, [
-                    $p->name,
-                    $p->store,
+                    $safe($p->name),
+                    $safe($p->store),
                     substr($p->clock_in_at, 0, 10),
                     \Carbon::parse($p->clock_in_at)->format('g:i A'),
                     $p->clock_out_at ? \Carbon::parse($p->clock_out_at)->format('Y-m-d g:i A') : '',
                     $p->hours === null ? '' : number_format($p->hours, 2, '.', ''),
-                    implode('; ', $p->flags),
+                    $safe(implode('; ', $p->flags)),
                     TC::verifyLabel($p->in_verify),
                     TC::verifyLabel($p->out_verify),
                     TC::sourceLabel($p->clock_out_source),
@@ -256,13 +275,23 @@ class TimeClockController extends Controller
             return $this->back($request, false, 'Clock-out has to be after clock-in.');
         }
         $locId = (int) $request->input('location_id') ?: null;
+        if ($locId && !isset(TC::locations($businessId)[$locId])) {
+            return $this->back($request, false, 'Pick a store from the list.');
+        }
         $now = TC::nowString();
         $id = (int) $request->input('id');
+        $ownerOk = $this->isOwner();
 
         if ($id) {
             $p = DB::table('time_clock_punches')->where('id', $id)->where('business_id', $businessId)->first();
             if (!$p) {
                 return $this->back($request, false, 'That punch was not found.');
+            }
+            if (!$ownerOk && (int) $p->user_id === (int) auth()->id()) {
+                return $this->back($request, false, 'Only an owner can change your own punches.');
+            }
+            if (!$out && !$p->voided_at && $this->hasOtherOpen((int) $p->user_id, $id)) {
+                return $this->back($request, false, 'They already have an open punch. Add a clock-out time.');
             }
             $before = $this->snapshot($p);
             $upd = ['clock_in_at' => $in, 'clock_out_at' => $out, 'location_id' => $locId, 'edited' => 1, 'updated_by' => auth()->id(), 'updated_at' => $now];
@@ -277,6 +306,12 @@ class TimeClockController extends Controller
         $userId = (int) $request->input('user_id');
         if (!DB::table('users')->where('id', $userId)->where('business_id', $businessId)->exists()) {
             return $this->back($request, false, 'Please pick a person.');
+        }
+        if (!$ownerOk && $userId === (int) auth()->id()) {
+            return $this->back($request, false, 'Only an owner can add punches for you.');
+        }
+        if (!$out && $this->hasOtherOpen($userId, 0)) {
+            return $this->back($request, false, 'They are already clocked in. Add a clock-out time.');
         }
         $newId = DB::table('time_clock_punches')->insertGetId([
             'business_id' => $businessId,
@@ -295,6 +330,14 @@ class TimeClockController extends Controller
         return $this->back($request, true, 'Punch added.');
     }
 
+    /** Does the person have an open punch other than $exceptId? */
+    private function hasOtherOpen(int $userId, int $exceptId): bool
+    {
+        return DB::table('time_clock_punches')->where('user_id', $userId)->where('id', '!=', $exceptId)
+            ->whereNull('clock_out_at')->whereNull('voided_at')
+            ->where('clock_in_at', '>=', TC::now()->subHours(TC::OPEN_MAX_HOURS)->format('Y-m-d H:i:s'))->exists();
+    }
+
     /** Remove (void) or restore a punch. Never deletes the row. */
     public function voidPunch(Request $request)
     {
@@ -311,6 +354,9 @@ class TimeClockController extends Controller
         $p = DB::table('time_clock_punches')->where('id', $id)->where('business_id', $businessId)->first();
         if (!$p) {
             return $this->back($request, false, 'That punch was not found.');
+        }
+        if (!$this->isOwner() && (int) $p->user_id === (int) auth()->id()) {
+            return $this->back($request, false, 'Only an owner can change your own punches.');
         }
         $restore = $request->input('restore') === '1';
         $now = TC::nowString();
@@ -387,6 +433,11 @@ class TimeClockController extends Controller
     public function saveStores(Request $request)
     {
         $this->ensureAdmin();
+        // Store locations, store networks and the anti-cheat switches decide
+        // where punches count: owners only, so nobody can add their home IP.
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can change the store settings.');
+        }
         $businessId = $this->businessId($request);
         $locations = TC::locations($businessId);
         $settings = TC::settings();
@@ -405,12 +456,13 @@ class TimeClockController extends Controller
                 $ips[] = $rule;
             }
             $prev = $settings['stores'][$locId] ?? $settings['stores'][(string) $locId] ?? [];
-            $learned = TC::freshLearned(is_array($prev) ? ($prev['learned_ips'] ?? []) : []);
+            $learned = TC::freshLearned(is_array($prev) ? ($prev['auto_ips'] ?? []) : []);
             foreach ((array) ($in['forget_learned'] ?? []) as $rule) {
                 unset($learned[(string) $rule]);
             }
             $stores[$locId] = [
-                'learned_ips' => $learned,
+                'auto_ips' => $learned,
+                'radius_v2' => true,
                 'lat' => is_numeric($lat) && abs((float) $lat) <= 90 ? (float) $lat : '',
                 'lng' => is_numeric($lng) && abs((float) $lng) <= 180 ? (float) $lng : '',
                 'radius_m' => max(50, min(2000, (int) ($in['radius_m'] ?? TC::DEFAULT_RADIUS_M) ?: TC::DEFAULT_RADIUS_M)),
@@ -432,6 +484,9 @@ class TimeClockController extends Controller
     public function allowIp(Request $request)
     {
         $this->ensureAdmin();
+        if (!$this->isOwner()) {
+            abort(403, 'Only the owners can add store networks.');
+        }
         $businessId = $this->businessId($request);
         $locId = (int) $request->input('location_id');
         $locations = TC::locations($businessId);
@@ -450,7 +505,7 @@ class TimeClockController extends Controller
         $cur['ips'] = array_values($list);
         // Keep the store's coordinates when it had only defaults so far.
         $st = TC::stores($businessId)[$locId] ?? null;
-        if ($st && (!isset($cur['lat']) || $cur['lat'] === '')) { $cur['lat'] = $st['lat']; $cur['lng'] = $st['lng']; $cur['radius_m'] = $st['radius_m']; }
+        if ($st && (!isset($cur['lat']) || $cur['lat'] === '')) { $cur['lat'] = $st['lat']; $cur['lng'] = $st['lng']; $cur['radius_m'] = $st['radius_m']; $cur['radius_v2'] = true; }
         $settings['stores'][$locId] = $cur;
         TC::saveSettings($settings);
         return $this->back($request, true, $rule . ' now counts as ' . TC::shortStoreName($locations[$locId]) . '.', '/time-clock/settings');

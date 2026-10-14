@@ -36,14 +36,28 @@ class TimeClockService
     const PIN_LOCK_MINUTES = 15;
     const IP_MAX_FAILS = 15;
     const GLOBAL_MAX_FAILS = 60;
-    const DEFAULT_RADIUS_M = 200;
-    // Accept when distance minus the reported accuracy is inside the radius
-    // (Sarah 10/13). The accuracy credit is capped so a very rough fix (city
-    // level, several km) can't pass from home.
-    const MAX_ACCURACY_CREDIT_M = 300;
+    const DEFAULT_RADIUS_M = 100;
+    // Location passes only when distance + reported accuracy <= radius +
+    // RADIUS_SLACK_M (Sarah 10/13, tightened): a rough fix fails instead of
+    // helping, so nobody passes from blocks away. The phone retries once
+    // for a better fix, then the store Wi-Fi (IP allowlist) is the fallback.
+    const RADIUS_SLACK_M = 50;
     // Auto-learned store IPs expire when not seen on a location-confirmed
     // punch for this many days. Manual IPs never expire.
     const LEARNED_IP_DAYS = 30;
+    // An IP is only auto-learned once location-confirmed punches on it come
+    // from at least this many different people on this many different days
+    // (Sarah 10/13): one person GPS-spoofing from home can't teach the
+    // clock their home network.
+    const LEARN_MIN_PEOPLE = 2;
+    const LEARN_MIN_DAYS = 2;
+    // Clock-in more than this many minutes after the shift start is "late".
+    const LATE_GRACE_MIN = 5;
+    // Store computer: the same PIN again within this many seconds of a punch
+    // shows the current state instead of flipping it (double taps, retries).
+    const TOGGLE_GUARD_SEC = 60;
+    const STORE_IP_MAX_FAILS = 30;
+    const GLOBAL_DAY_MAX_FAILS = 300;
 
     // Geocoded once (OpenStreetMap / Census, 2026-10-13) from the addresses
     // on nivessa.com. Matched to business_locations by name. Admins can
@@ -180,20 +194,22 @@ class TimeClockService
     }
 
     /**
-     * Buddy-punch guard (Sarah 10/13): may this person clock in now at this
-     * store? Their Sling shifts (type shift; times are LA) are merged into
-     * blocks when back to back (gap <= 15 min, e.g. Open Store Checklist
-     * 09:15 then Cashier 10:00). The earliest block that hasn't ended must
-     * start within the window of now. Someone already clocked in during
-     * that block (back from a break) may clock in again.
-     * Returns ['ok' => bool, 'no_data' => bool].
+     * Buddy-punch guard (Sarah 10/13, late rule 10/13 evening): may this
+     * person clock in now at this store? Their Sling shifts (type shift;
+     * times are LA) are merged into blocks when back to back (gap <= 15
+     * min, e.g. Open Store Checklist 09:15 then Cashier 10:00; a shift
+     * ending before it starts runs past midnight). Clock-in is allowed from
+     * the window (15 min) before a block starts until that block ends.
+     * More than LATE_GRACE_MIN after the start is "late", unless they were
+     * already clocked in during that block (back from a break).
+     * Returns ['ok', 'no_data', 'late_min' (int|null), 'sched_start' (Y-m-d H:i:s|null)].
      */
     public static function scheduleAllows(int $userId, ?int $locId, int $businessId): array
     {
         $now = self::now();
         $today = $now->toDateString();
         if (!self::hasScheduleData($today)) {
-            return ['ok' => true, 'no_data' => true];
+            return ['ok' => true, 'no_data' => true, 'late_min' => null, 'sched_start' => null];
         }
         $win = self::scheduleWindow() * 60;
         $nowTs = $now->timestamp;
@@ -231,24 +247,24 @@ class TimeClockService
             }
         }
         foreach ($blocks as $b) {
-            if ($b['end'] <= $nowTs) {
-                continue;
+            if ($nowTs < $b['start'] - $win || $nowTs >= $b['end']) {
+                continue; // too early for this block, or it is over
             }
-            if (abs($nowTs - $b['start']) <= $win) {
-                return ['ok' => true, 'no_data' => false];
-            }
-            if ($nowTs > $b['start']) {
+            $late = null;
+            $lateSec = $nowTs - $b['start'];
+            if ($lateSec > self::LATE_GRACE_MIN * 60) {
                 // Back from a break: already clocked in during this block.
                 $back = DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
                     ->where('clock_in_at', '>=', \Carbon::createFromTimestamp($b['start'] - $win, self::TZ)->format('Y-m-d H:i:s'))
                     ->exists();
-                if ($back) {
-                    return ['ok' => true, 'no_data' => false];
+                if (!$back) {
+                    $late = (int) floor($lateSec / 60);
                 }
             }
-            return ['ok' => false, 'no_data' => false];
+            return ['ok' => true, 'no_data' => false, 'late_min' => $late,
+                'sched_start' => \Carbon::createFromTimestamp($b['start'], self::TZ)->format('Y-m-d H:i:s')];
         }
-        return ['ok' => false, 'no_data' => false];
+        return ['ok' => false, 'no_data' => false, 'late_min' => null, 'sched_start' => null];
     }
 
     /** Learned IPs seen within LEARNED_IP_DAYS: [rule => 'Y-m-d']. */
@@ -265,15 +281,23 @@ class TimeClockService
     }
 
     /**
-     * A punch was confirmed at store $locId by location: remember the
-     * network it came from (auto-learned, expires after LEARNED_IP_DAYS
-     * unseen). Never throws.
+     * A punch was confirmed at store $locId by location. Remember the
+     * network it came from as a store network only when location-confirmed
+     * punches on it come from LEARN_MIN_PEOPLE different people on
+     * LEARN_MIN_DAYS different days in the last LEARNED_IP_DAYS (so one
+     * person faking their location at home can't add their home IP).
+     * An IP already learned is just refreshed. Stored under "auto_ips"
+     * (the older "learned_ips" list had no such check and is ignored).
+     * Call after the punch is saved. Never throws.
      */
     public static function learnIp(int $locId, string $ip): void
     {
         try {
             if (!$locId || !filter_var($ip, FILTER_VALIDATE_IP)) {
                 return;
+            }
+            if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return; // a private / loopback address says nothing about where someone is
             }
             $rule = self::networkFor($ip);
             $today = self::now()->toDateString();
@@ -285,24 +309,56 @@ class TimeClockService
             if (in_array($rule, (array) ($cur['ips'] ?? []), true)) {
                 return; // already a manual IP
             }
-            $learned = self::freshLearned($cur['learned_ips'] ?? []);
+            $learned = self::freshLearned($cur['auto_ips'] ?? []);
             if (($learned[$rule] ?? '') === $today) {
+                return;
+            }
+            if (!isset($learned[$rule]) && !self::ipHasEnoughEvidence($locId, $rule)) {
                 return;
             }
             // An IP belongs to one store: drop it from any other store.
             foreach ($settings['stores'] as $otherId => $other) {
-                if ((int) $otherId !== $locId && is_array($other) && isset($other['learned_ips'][$rule])) {
-                    unset($settings['stores'][$otherId]['learned_ips'][$rule]);
+                if ((int) $otherId !== $locId && is_array($other) && isset($other['auto_ips'][$rule])) {
+                    unset($settings['stores'][$otherId]['auto_ips'][$rule]);
                 }
             }
             $learned[$rule] = $today;
-            $cur['learned_ips'] = $learned;
+            $cur['auto_ips'] = $learned;
+            unset($cur['learned_ips']);
             unset($settings['stores'][(string) $locId]);
             $settings['stores'][$locId] = $cur;
             self::saveSettings($settings);
         } catch (\Throwable $e) {
             \Log::warning('time clock learn ip failed: ' . $e->getMessage());
         }
+    }
+
+    /** Location-confirmed punches on $rule at $locId: enough people and days? */
+    private static function ipHasEnoughEvidence(int $locId, string $rule): bool
+    {
+        $since = self::now()->subDays(self::LEARNED_IP_DAYS)->format('Y-m-d H:i:s');
+        $people = [];
+        $days = [];
+        $rows = DB::table('time_clock_punches')->where('location_id', $locId)->whereNull('voided_at')
+            ->where('clock_in_at', '>=', $since)
+            ->where(function ($q) {
+                $q->where('in_verify', 'gps')->orWhere('out_verify', 'gps');
+            })
+            ->orderBy('id', 'desc')->limit(2000)
+            ->get(['user_id', 'clock_in_at', 'clock_out_at', 'in_verify', 'out_verify', 'clock_in_ip', 'clock_out_ip']);
+        foreach ($rows as $r) {
+            foreach ([['in_verify', 'clock_in_ip', 'clock_in_at'], ['out_verify', 'clock_out_ip', 'clock_out_at']] as $c) {
+                [$v, $ipCol, $atCol] = $c;
+                if ($r->$v !== 'gps' || !$r->$ipCol || !$r->$atCol) {
+                    continue;
+                }
+                if (filter_var($r->$ipCol, FILTER_VALIDATE_IP) && self::networkFor((string) $r->$ipCol) === $rule) {
+                    $people[(int) $r->user_id] = true;
+                    $days[substr((string) $r->$atCol, 0, 10)] = true;
+                }
+            }
+        }
+        return count($people) >= self::LEARN_MIN_PEOPLE && count($days) >= self::LEARN_MIN_DAYS;
     }
 
     /** Active business locations: [id => name]. */
@@ -341,7 +397,7 @@ class TimeClockService
             $lat = is_array($cfg) && isset($cfg['lat']) && $cfg['lat'] !== '' ? (float) $cfg['lat'] : ($def['lat'] ?? null);
             $lng = is_array($cfg) && isset($cfg['lng']) && $cfg['lng'] !== '' ? (float) $cfg['lng'] : ($def['lng'] ?? null);
             $ips = is_array($cfg) && isset($cfg['ips']) ? array_values(array_filter((array) $cfg['ips'])) : [];
-            $learned = self::freshLearned(is_array($cfg) ? ($cfg['learned_ips'] ?? []) : []);
+            $learned = self::freshLearned(is_array($cfg) ? ($cfg['auto_ips'] ?? []) : []);
             if (is_array($cfg) && !empty($cfg['disabled'])) {
                 $lat = $lng = null;
                 $ips = [];
@@ -356,7 +412,8 @@ class TimeClockService
                 'full_name' => (string) $name,
                 'lat' => $lat,
                 'lng' => $lng,
-                'radius_m' => (int) (is_array($cfg) && !empty($cfg['radius_m']) ? $cfg['radius_m'] : self::DEFAULT_RADIUS_M),
+                // A saved 200 from before 10/14 was just the old default.
+                'radius_m' => (int) (is_array($cfg) && !empty($cfg['radius_m']) && (!empty($cfg['radius_v2']) || (int) $cfg['radius_m'] !== 200) ? $cfg['radius_m'] : self::DEFAULT_RADIUS_M),
                 'ips' => $ips,
                 'learned_ips' => $learned,
                 'address' => $def['address'] ?? '',
@@ -376,18 +433,34 @@ class TimeClockService
         return trim($name);
     }
 
-    /** Best-effort real client IP (same rule as LoginController::clientIp). */
+    /**
+     * The client IP for store checks and PIN limits. The server answers the
+     * internet directly (nginx, no CDN), so CF-Connecting-IP and
+     * X-Forwarded-For are whatever the client typed and must not be trusted:
+     * anyone could send a store IP in them (Sarah 10/13 audit). They are only
+     * read when the connection itself comes from this machine or a private
+     * network (a local proxy), and then the last X-Forwarded-For hop, the
+     * one that proxy added, is used.
+     */
     public static function clientIp(Request $request): string
     {
-        $cf = $request->headers->get('CF-Connecting-IP');
-        if (!empty($cf)) {
-            return trim($cf);
+        $remote = (string) $request->server('REMOTE_ADDR', '');
+        if ($remote === '') {
+            $remote = (string) $request->ip();
         }
-        $xff = $request->headers->get('X-Forwarded-For');
-        if (!empty($xff)) {
-            return trim(explode(',', $xff)[0]);
+        $isLocal = filter_var($remote, FILTER_VALIDATE_IP)
+            && !filter_var($remote, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+        if ($isLocal) {
+            $xff = (string) $request->headers->get('X-Forwarded-For', '');
+            if ($xff !== '') {
+                $hops = array_values(array_filter(array_map('trim', explode(',', $xff))));
+                $last = $hops ? end($hops) : '';
+                if (filter_var($last, FILTER_VALIDATE_IP)) {
+                    return $last;
+                }
+            }
         }
-        return (string) $request->ip();
+        return $remote;
     }
 
     /**
@@ -451,13 +524,21 @@ class TimeClockService
     public static function resolveStore(int $businessId, string $ip, array $geo): array
     {
         $stores = self::stores($businessId);
+        // Validate everything the phone sent (it can send anything): finite
+        // numbers in range, and not 0,0. A fix with no usable accuracy
+        // (missing, zero, negative, broken) is not trusted at all.
         $lat = isset($geo['lat']) && is_numeric($geo['lat']) ? (float) $geo['lat'] : null;
         $lng = isset($geo['lng']) && is_numeric($geo['lng']) ? (float) $geo['lng'] : null;
-        $acc = isset($geo['accuracy']) && is_numeric($geo['accuracy']) ? max(0, (float) $geo['accuracy']) : null;
+        $acc = isset($geo['accuracy']) && is_numeric($geo['accuracy']) ? (float) $geo['accuracy'] : null;
+        if ($acc !== null && (!is_finite($acc) || $acc <= 0)) {
+            $acc = null;
+        }
+        $geoOk = $lat !== null && $lng !== null && is_finite($lat) && is_finite($lng)
+            && abs($lat) <= 90 && abs($lng) <= 180 && !($lat == 0.0 && $lng == 0.0);
 
         $nearest = null;
         $nearestDist = null;
-        if ($lat !== null && $lng !== null && abs($lat) <= 90 && abs($lng) <= 180) {
+        if ($geoOk) {
             foreach ($stores as $id => $s) {
                 if ($s['lat'] === null || $s['lng'] === null) {
                     continue;
@@ -468,10 +549,9 @@ class TimeClockService
                     $nearest = $id;
                 }
             }
-            if ($nearest !== null) {
-                $credit = min((float) ($acc ?? 0), self::MAX_ACCURACY_CREDIT_M);
-                if ($nearestDist - $credit <= $stores[$nearest]['radius_m']) {
-                    return ['location_id' => $nearest, 'verify' => 'gps', 'distance_m' => (int) round($nearestDist)];
+            if ($nearest !== null && $acc !== null) {
+                if ($nearestDist + $acc <= $stores[$nearest]['radius_m'] + self::RADIUS_SLACK_M) {
+                    return ['location_id' => $nearest, 'verify' => 'gps', 'distance_m' => (int) round($nearestDist), 'has_fix' => true];
                 }
             }
         }
@@ -480,13 +560,13 @@ class TimeClockService
             foreach ($stores as $id => $s) {
                 foreach (array_merge($s['ips'], array_keys($s['learned_ips'])) as $rule) {
                     if (self::ipMatches($ip, (string) $rule)) {
-                        return ['location_id' => $id, 'verify' => 'ip', 'distance_m' => $nearestDist !== null ? (int) round($nearestDist) : null];
+                        return ['location_id' => $id, 'verify' => 'ip', 'distance_m' => $nearestDist !== null ? (int) round($nearestDist) : null, 'has_fix' => $geoOk];
                     }
                 }
             }
         }
 
-        return ['location_id' => $nearest, 'verify' => 'none', 'distance_m' => $nearestDist !== null ? (int) round($nearestDist) : null];
+        return ['location_id' => $nearest, 'verify' => 'none', 'distance_m' => $nearestDist !== null ? (int) round($nearestDist) : null, 'has_fix' => $geoOk];
     }
 
     /** Store from the person's Sling shift today, else their last punch. */
@@ -671,20 +751,27 @@ class TimeClockService
      */
     public static function identifyByPin(int $businessId, string $pin, string $ip): array
     {
-        $ipKey = 'time_clock_pin_fail_' . md5($ip);
+        // Counted per network (an IPv6 phone can rotate through a whole /64),
+        // plus a 15-minute and a daily cap across everyone off the store
+        // networks, since a PIN can't be tied to a person until it's right.
+        $net = filter_var($ip, FILTER_VALIDATE_IP) ? self::networkFor($ip) : $ip;
+        $ipKey = 'time_clock_pin_fail_' . md5($net);
         $allKey = 'time_clock_pin_fail_all';
-        // The store networks only get their own limit, so wrong guesses from
-        // outside can never lock the stores out.
+        $dayKey = 'time_clock_pin_fail_day_' . self::now()->toDateString();
+        // The store networks only get their own (higher) limit, so wrong
+        // guesses from outside can never lock the stores out.
         $atStore = false;
         try {
             $atStore = self::resolveStore($businessId, $ip, [])['verify'] === 'ip';
         } catch (\Throwable $e) {
             $atStore = false;
         }
-        $keys = $atStore ? [$ipKey] : [$ipKey, $allKey];
+        $keys = $atStore ? [$ipKey => self::PIN_LOCK_MINUTES * 60] : [$ipKey => self::PIN_LOCK_MINUTES * 60, $allKey => self::PIN_LOCK_MINUTES * 60, $dayKey => 86400];
         try {
-            if ((int) \Cache::get($ipKey, 0) >= self::IP_MAX_FAILS || (!$atStore && (int) \Cache::get($allKey, 0) >= self::GLOBAL_MAX_FAILS)) {
-                return ['ok' => false, 'user' => null, 'msg' => 'Too many wrong PINs. Wait ' . self::PIN_LOCK_MINUTES . ' minutes, or ask a manager.'];
+            $locked = (int) \Cache::get($ipKey, 0) >= ($atStore ? self::STORE_IP_MAX_FAILS : self::IP_MAX_FAILS)
+                || (!$atStore && ((int) \Cache::get($allKey, 0) >= self::GLOBAL_MAX_FAILS || (int) \Cache::get($dayKey, 0) >= self::GLOBAL_DAY_MAX_FAILS));
+            if ($locked) {
+                return ['ok' => false, 'user' => null, 'msg' => 'Too many wrong PINs, wait ' . self::PIN_LOCK_MINUTES . ' minutes.'];
             }
         } catch (\Throwable $e) {
             // no cache
@@ -693,13 +780,17 @@ class TimeClockService
         $user = $uid ? DB::table('users')->where('id', $uid)->whereNull('deleted_at')->where('allow_login', 1)->first() : null;
         if (!$user) {
             try {
-                foreach ($keys as $k) {
-                    \Cache::put($k, (int) \Cache::get($k, 0) + 1, self::PIN_LOCK_MINUTES * 60); // seconds (5.8)
+                foreach ($keys as $k => $ttl) {
+                    $n = (int) \Cache::get($k, 0) + 1;
+                    \Cache::put($k, $n, $ttl); // seconds (5.8)
+                    if ($k === $allKey && $n === self::GLOBAL_MAX_FAILS) {
+                        \Log::warning('time clock: PIN guessing limit reached for everyone off the store networks', ['last_ip' => $ip]);
+                    }
                 }
             } catch (\Throwable $e) {
                 // ignore
             }
-            return ['ok' => false, 'user' => null, 'msg' => 'That PIN did not work. Try again.'];
+            return ['ok' => false, 'user' => null, 'msg' => 'That PIN did not work, try again.'];
         }
         // Upgrade an old bcrypt PIN to the lookup format.
         try {
@@ -859,18 +950,87 @@ class TimeClockService
 
     public static function geoFrom(Request $request): array
     {
-        $num = function ($v) { return is_numeric($v) ? (float) $v : null; };
+        // Out-of-range or non-finite values become null, so they can neither
+        // pass the store check nor break the insert (decimal / unsigned columns).
+        $num = function ($v, $max) {
+            if (!is_numeric($v)) {
+                return null;
+            }
+            $f = (float) $v;
+            return is_finite($f) && abs($f) <= $max ? $f : null;
+        };
         $err = preg_replace('/[^a-z_]/', '', strtolower((string) $request->input('geo_error', '')));
+        $lat = $num($request->input('lat'), 90);
+        $lng = $num($request->input('lng'), 180);
+        if ($lat === null || $lng === null) {
+            $lat = $lng = null;
+        }
+        $acc = $num($request->input('accuracy'), 4000000);
         return [
-            'lat' => $num($request->input('lat')),
-            'lng' => $num($request->input('lng')),
-            'accuracy' => $num($request->input('accuracy')),
+            'lat' => $lat,
+            'lng' => $lng,
+            'accuracy' => ($acc !== null && $acc > 0) ? $acc : null,
             'error' => $err !== '' ? substr($err, 0, 40) : null,
         ];
     }
 
-    /** Clock in from the phone. Returns ['ok', 'msg']. */
-    public static function clockIn(Request $request, $user, ?int $deviceId, string $source = 'phone'): array
+    /**
+     * Run $fn while holding a per-person MySQL lock, so two requests at the
+     * same moment (double tap, phone + computer) can't both see "not
+     * clocked in" and open two punches. Returns $fn's result, or null when
+     * the lock could not be had within a few seconds.
+     */
+    public static function withUserLock(int $userId, callable $fn)
+    {
+        $name = 'tc_user_' . $userId;
+        $got = false;
+        try {
+            $got = (int) (DB::selectOne('SELECT GET_LOCK(?, 3) AS l', [$name])->l ?? 0) === 1;
+        } catch (\Throwable $e) {
+            \Log::warning('time clock lock failed: ' . $e->getMessage());
+            return null;
+        }
+        if (!$got) {
+            return null;
+        }
+        try {
+            return $fn();
+        } finally {
+            try {
+                DB::selectOne('SELECT RELEASE_LOCK(?) AS r', [$name]);
+            } catch (\Throwable $e) {
+                // released when the connection closes anyway
+            }
+        }
+    }
+
+    /** Do the late columns exist (migration 2026_10_14)? Cached. */
+    public static function hasLateColumns(): bool
+    {
+        static $ok = null;
+        if ($ok !== null) {
+            return $ok;
+        }
+        try {
+            $c = \Cache::get('time_clock_late_cols_v1');
+            if ($c === 1) {
+                return $ok = true;
+            }
+            $ok = Schema::hasColumn('time_clock_punches', 'late_min') && Schema::hasColumn('time_clock_punches', 'sched_start_at');
+            if ($ok) {
+                \Cache::put('time_clock_late_cols_v1', 1, 86400);
+            }
+        } catch (\Throwable $e) {
+            $ok = false;
+        }
+        return $ok;
+    }
+
+    /**
+     * Clock in. $sched is scheduleAllows() output (late minutes are saved
+     * for Timecards). Call inside withUserLock. Returns ['ok', 'msg'].
+     */
+    public static function clockIn(Request $request, $user, ?int $deviceId, string $source = 'phone', ?array $sched = null): array
     {
         if (!self::ready()) {
             return ['ok' => false, 'msg' => 'The time clock is not set up yet. Write your time down and tell a manager.'];
@@ -906,7 +1066,10 @@ class TimeClockService
             'created_by' => $userId,
             'created_at' => $now,
             'updated_at' => $now,
-        ]);
+        ] + (self::hasLateColumns() && $sched ? [
+            'late_min' => isset($sched['late_min']) ? (int) min(65000, max(0, $sched['late_min'])) : null,
+            'sched_start_at' => $sched['sched_start'] ?? null,
+        ] : []));
 
         $store = self::storeName($businessId, $locId);
         if ($where['verify'] === 'gps' && $locId) {
@@ -935,13 +1098,11 @@ class TimeClockService
         $geo = ($request && $withGeo) ? self::geoFrom($request) : ['lat' => null, 'lng' => null, 'accuracy' => null, 'error' => null];
         $verify = null;
         $dist = null;
+        $where = null;
         if ($request) {
             $where = self::resolveStore((int) $open->business_id, $ip, $geo);
             $verify = $where['verify'];
             $dist = $where['distance_m'];
-            if ($verify === 'gps' && $where['location_id']) {
-                self::learnIp((int) $where['location_id'], $ip);
-            }
         }
         $now = self::nowString();
         DB::table('time_clock_punches')->where('id', $open->id)->whereNull('clock_out_at')->update([
@@ -957,6 +1118,9 @@ class TimeClockService
             'clock_out_source' => $source,
             'updated_at' => $now,
         ]);
+        if ($verify === 'gps' && !empty($where['location_id'])) {
+            self::learnIp((int) $where['location_id'], $ip);
+        }
         return (int) $open->id;
     }
 
@@ -968,7 +1132,9 @@ class TimeClockService
     {
         try {
             if ($userId && self::ready()) {
-                self::clockOut((int) $userId, $source, $request, false);
+                self::withUserLock((int) $userId, function () use ($userId, $source, $request) {
+                    return self::clockOut((int) $userId, $source, $request, false);
+                });
             }
         } catch (\Throwable $e) {
             \Log::warning('time clock ' . $source . ' clock-out failed: ' . $e->getMessage());

@@ -105,7 +105,10 @@
   <div class="box box-solid">
     <div class="box-header"><h3 class="box-title">Store location and Wi-Fi</h3></div>
     <div class="box-body">
-      <p class="text-muted">A punch counts as "at the store" when the device's location is within a store's radius (distance minus the reported accuracy), or when it comes from one of the store's IP addresses. Every time a punch is confirmed by location, its IP is learned for that store automatically (Auto); auto IPs not seen for 30 days drop off. IPs you type in (Manual) stay until you remove them. Hollywood and Pico start with coordinates looked up from their addresses.</p>
+      <p class="text-muted">A punch counts as "at the store" when the device's distance to the store plus its reported accuracy is within the store's radius plus 50 m (a rough location fails), or when it comes from one of the store's IP addresses (the store Wi-Fi, the most reliable check in the store). A network is learned for a store automatically (Auto) only after location-confirmed punches on it from at least 2 different people on at least 2 different days, so one person faking their location at home can't add their home network. Auto IPs not seen for 30 days drop off. IPs you type in (Manual) stay until you remove them. Hollywood and Pico start with coordinates looked up from their addresses.</p>
+      @if (!$isOwner)
+        <div class="alert alert-info">Only the owners can change store locations, store networks and the switches below.</div>
+      @endif
       <p>This computer or phone is on <strong>{{ $ip }}</strong>
         @if ($ipStore['verify'] === 'ip' && isset($stores[$ipStore['location_id']]))
           <span class="label label-success">counts as {{ $stores[$ipStore['location_id']]['name'] }}</span>
@@ -114,21 +117,24 @@
         @endif
         @if ($network !== $ip)<span class="text-muted" style="font-size:12px;"> (IPv6, so the whole network {{ $network }} is saved)</span> @endif
       </p>
+      @if ($isOwner)
       @foreach ($locations as $lid => $lname)
         <form method="POST" action="{{ url('/time-clock/settings/allow-ip') }}" style="display:inline-block;margin:0 6px 8px 0;">
           {{ csrf_field() }}<input type="hidden" name="location_id" value="{{ $lid }}">
           <button type="submit" class="btn btn-default btn-sm">Add this network to {{ $lname }}</button>
         </form>
       @endforeach
+      @endif
 
       <form method="POST" action="{{ url('/time-clock/settings/stores') }}" style="margin-top:10px;">
         {{ csrf_field() }}
+        <fieldset @if (!$isOwner) disabled @endif>
         <div class="well well-sm" style="font-size:15px;">
           <label style="margin:0;"><input type="checkbox" name="require_at_store" value="1" @if ($requireAtStore) checked @endif> <strong>Require being at the store</strong></label>
           <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-ins and clock-outs from anywhere else are refused (staff see "You need to be at the store"). Off: they go through and are flagged "not verified at store" on Timecards. End Shift and register close always clock people out. Admins can always add or fix punches on Timecards.</div>
           <label style="margin:10px 0 0;display:block;"><input type="checkbox" name="require_schedule" value="1" @if ($requireSchedule) checked @endif> <strong>Only allow clock-in near a scheduled shift</strong></label>
-          <div style="margin-top:4px;">Window: <input type="number" name="schedule_window_min" value="{{ $scheduleWindow }}" min="1" max="240" class="form-control input-sm" style="display:inline-block;width:80px;"> minutes before or after the Sling shift start</div>
-          <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-in needs a Sling shift at that store starting within the window (back-to-back shifts count as one; someone already in for that shift can clock back in after a break). Otherwise staff see "You are not on the schedule right now". Clock-out is never limited by schedule. If Sling has no shifts at all for the day (sync broken), clock-ins go through and Timecards flags them "No schedule data". Add hours for unscheduled people on Timecards.</div>
+          <div style="margin-top:4px;">Clock-in opens <input type="number" name="schedule_window_min" value="{{ $scheduleWindow }}" min="1" max="240" class="form-control input-sm" style="display:inline-block;width:80px;"> minutes before the Sling shift starts</div>
+          <div class="text-muted" style="font-size:13px;margin-top:4px;">On: clock-in works from that many minutes before a Sling shift at that store until the shift ends (back-to-back shifts count as one). More than 5 minutes after the start is flagged "Late" on Timecards. With no shift at that store right now, staff see "You are not on the schedule here right now". Clock-out is never limited by schedule. If Sling has no shifts at all for the day (sync broken), clock-ins go through and Timecards flags them "No schedule data". Add hours for unscheduled people on Timecards.</div>
         </div>
         <div class="table-responsive">
         <table class="table table-condensed">
@@ -140,7 +146,7 @@
               <td>{{ $lname }} @if ($__s && $__s['address'])<div class="text-muted" style="font-size:11px;">{{ $__s['address'] }}</div> @endif</td>
               <td><input type="text" name="stores[{{ $lid }}][lat]" value="{{ $__s['lat'] ?? '' }}" class="form-control input-sm" style="width:120px;"></td>
               <td><input type="text" name="stores[{{ $lid }}][lng]" value="{{ $__s['lng'] ?? '' }}" class="form-control input-sm" style="width:130px;"></td>
-              <td><input type="number" name="stores[{{ $lid }}][radius_m]" value="{{ $__s['radius_m'] ?? 200 }}" min="50" max="2000" class="form-control input-sm" style="width:90px;"></td>
+              <td><input type="number" name="stores[{{ $lid }}][radius_m]" value="{{ $__s['radius_m'] ?? 100 }}" min="50" max="2000" class="form-control input-sm" style="width:90px;"></td>
               <td><textarea name="stores[{{ $lid }}][ips]" rows="2" class="form-control input-sm" style="min-width:200px;">{{ implode("\n", $__s['ips'] ?? []) }}</textarea></td>
               <td style="font-size:12px;">
                 @forelse (($__s['learned_ips'] ?? []) as $__rule => $__seen)
@@ -155,10 +161,11 @@
           </tbody>
         </table>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Save store settings</button>
+        @if ($isOwner)<button type="submit" class="btn btn-primary btn-sm">Save store settings</button> @endif
+        </fieldset>
       </form>
 
-      @if (count($suggest))
+      @if ($isOwner && count($suggest))
         <p style="margin-top:16px;margin-bottom:4px;"><strong>Likely store IPs</strong> <span class="text-muted">(add one only if you are sure it is the store)</span></p>
         <table class="table table-condensed" style="max-width:820px;">
           <thead><tr><th>IP</th><th>Seen</th><th>Add to</th></tr></thead>
