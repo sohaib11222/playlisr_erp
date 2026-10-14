@@ -361,6 +361,8 @@
 
 <section class="content" style="background:#FAF6EE;">
     <div class="pos-duty-shell">
+        {{-- Time clock (Sarah 10/13): link only, no POS logic. --}}
+        <a href="{{ url('/clock?mode=computer') }}" style="display:block;text-align:center;background:#FACC15;color:#111;font-size:22px;font-weight:800;padding:16px 18px;border-radius:14px;text-decoration:none;margin:0 0 18px;border:2px solid #E8B90F;">Clock in / out</a>
         <div class="duty-header">
             <h1>What are you working on today? <span class="pick-one">(pick one)</span></h1>
         </div>

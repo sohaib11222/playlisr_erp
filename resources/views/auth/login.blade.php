@@ -81,6 +81,8 @@
                 <h1 class="niv-title">Welcome back</h1>
                 <p class="niv-sub">Sign in to the Nivessa dashboard</p>
 
+                {{-- Time clock (Sarah 10/13): one click to the store computer clock, no login needed. --}}
+                <a href="{{ url('/clock?mode=computer') }}" style="display:block;text-align:center;background:#FACC15;color:#111;font-size:22px;font-weight:800;padding:16px 18px;border-radius:14px;text-decoration:none;margin:0 0 18px;border:2px solid #E8B90F;">Clock in / out</a>
                 <form method="POST" action="{{ route('login') }}" id="login-form">
                     {{ csrf_field() }}
                     <div class="niv-field {{ $errors->has('username') ? 'has-error' : '' }}">

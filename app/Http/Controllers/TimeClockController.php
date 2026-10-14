@@ -241,7 +241,7 @@ class TimeClockController extends Controller
         }
         $users = TC::staff($businessId);
         $locations = TC::locations($businessId);
-        return view('time_clock.timecards', compact('f', 'ready', 'punches', 'history', 'summary', 'stayedWeeks', 'users', 'locations'));
+        return view('time_clock.timecards', compact('f', 'ready', 'punches', 'history', 'summary', 'stayedWeeks', 'users', 'locations') + ['canEdit' => $this->canEditPunches(), 'me' => (int) auth()->id()]);
     }
 
     public function exportCsv(Request $request)
@@ -315,7 +315,7 @@ class TimeClockController extends Controller
     /** Add a punch (no id) or edit one (id). Reason required either way. */
     public function savePunch(Request $request)
     {
-        $this->ensureAdmin();
+        $this->ensurePunchEditor();
         if (!TC::ready()) {
             return $this->back($request, false, 'The time clock tables are not set up yet (the migration has not run).');
         }
@@ -332,21 +332,27 @@ class TimeClockController extends Controller
         if ($out && strtotime($out) <= strtotime($in)) {
             return $this->back($request, false, 'Clock-out has to be after clock-in.');
         }
+        // No times in the future (Sarah 10/13). One minute of slack for a
+        // form filled in right now.
+        $limit = TC::now()->addMinute()->format('Y-m-d H:i:s');
+        if ($in > $limit || ($out && $out > $limit)) {
+            return $this->back($request, false, 'Times can not be in the future.');
+        }
         $locId = (int) $request->input('location_id') ?: null;
         if ($locId && !isset(TC::locations($businessId)[$locId])) {
             return $this->back($request, false, 'Pick a store from the list.');
         }
         $now = TC::nowString();
         $id = (int) $request->input('id');
-        $ownerOk = $this->isOwner();
+        $me = (int) auth()->id();
 
         if ($id) {
             $p = DB::table('time_clock_punches')->where('id', $id)->where('business_id', $businessId)->first();
             if (!$p) {
                 return $this->back($request, false, 'That punch was not found.');
             }
-            if (!$ownerOk && (int) $p->user_id === (int) auth()->id()) {
-                return $this->back($request, false, 'Only an owner can change your own punches.');
+            if ((int) $p->user_id === $me) {
+                return $this->back($request, false, 'You can not change your own punches. Ask Jon, Sarah or Fatteen.');
             }
             if (!$out && !$p->voided_at && $this->hasOtherOpen((int) $p->user_id, $id)) {
                 return $this->back($request, false, 'They already have an open punch. Add a clock-out time.');
@@ -365,8 +371,8 @@ class TimeClockController extends Controller
         if (!DB::table('users')->where('id', $userId)->where('business_id', $businessId)->exists()) {
             return $this->back($request, false, 'Please pick a person.');
         }
-        if (!$ownerOk && $userId === (int) auth()->id()) {
-            return $this->back($request, false, 'Only an owner can add punches for you.');
+        if ($userId === $me) {
+            return $this->back($request, false, 'You can not add your own punches. Ask Jon, Sarah or Fatteen.');
         }
         if (!$out && $this->hasOtherOpen($userId, 0)) {
             return $this->back($request, false, 'They are already clocked in. Add a clock-out time.');
@@ -399,7 +405,7 @@ class TimeClockController extends Controller
     /** Remove (void) or restore a punch. Never deletes the row. */
     public function voidPunch(Request $request)
     {
-        $this->ensureAdmin();
+        $this->ensurePunchEditor();
         if (!TC::ready()) {
             return $this->back($request, false, 'The time clock tables are not set up yet.');
         }
@@ -413,8 +419,8 @@ class TimeClockController extends Controller
         if (!$p) {
             return $this->back($request, false, 'That punch was not found.');
         }
-        if (!$this->isOwner() && (int) $p->user_id === (int) auth()->id()) {
-            return $this->back($request, false, 'Only an owner can change your own punches.');
+        if ((int) $p->user_id === (int) auth()->id()) {
+            return $this->back($request, false, 'You can not change your own punches. Ask Jon, Sarah or Fatteen.');
         }
         $restore = $request->input('restore') === '1';
         $now = TC::nowString();
@@ -617,6 +623,57 @@ class TimeClockController extends Controller
         }
         TC::setPin($businessId, $userId, $pin, auth()->id());
         return $this->back($request, true, 'PIN for ' . TC::displayName($user) . ' is ' . $pin . '. Tell them in person; it is not shown again.', '/time-clock/settings');
+    }
+
+    /**
+     * Who may add, edit or remove punches on Timecards (Sarah 10/13): Jon
+     * (Jonathan Hedvat), Sarah Hedvat and Fatteen (username "fatteen",
+     * account "Nerdy Solutions"), by user ID. The IDs are looked up once
+     * (oldest matching account wins, so a later rename can't take over)
+     * and pinned in the time clock settings file.
+     */
+    private function punchEditorIds(): array
+    {
+        $s = TC::settings();
+        if (!empty($s['punch_editors']) && is_array($s['punch_editors']) && count($s['punch_editors']) === 3) {
+            return array_map('intval', array_values($s['punch_editors']));
+        }
+        $ids = [];
+        try {
+            $ids['jon'] = (int) DB::table('users')->whereNull('deleted_at')->where(DB::raw('LOWER(TRIM(last_name))'), 'hedvat')
+                ->whereIn(DB::raw('LOWER(TRIM(first_name))'), ['jon', 'jonathan'])->orderBy('id')->value('id');
+            $ids['sarah'] = (int) DB::table('users')->whereNull('deleted_at')->where(DB::raw('LOWER(TRIM(last_name))'), 'hedvat')
+                ->where(DB::raw('LOWER(TRIM(first_name))'), 'sarah')->orderBy('id')->value('id');
+            $ids['fatteen'] = (int) DB::table('users')->whereNull('deleted_at')->where(DB::raw('LOWER(TRIM(username))'), 'fatteen')
+                ->orderBy('id')->value('id');
+        } catch (\Throwable $e) {
+            \Log::warning('time clock punch editors lookup failed: ' . $e->getMessage());
+            return [];
+        }
+        $ids = array_filter($ids);
+        if (count($ids) === 3) {
+            try {
+                $s = TC::settings();
+                $s['punch_editors'] = $ids;
+                TC::saveSettings($s);
+            } catch (\Throwable $e) {
+                // use them unpinned
+            }
+        }
+        return array_map('intval', array_values($ids));
+    }
+
+    private function canEditPunches(): bool
+    {
+        return auth()->check() && in_array((int) auth()->id(), $this->punchEditorIds(), true);
+    }
+
+    private function ensurePunchEditor(): void
+    {
+        $this->ensureAdmin();
+        if (!$this->canEditPunches()) {
+            abort(403, 'Only Jon, Sarah and Fatteen can change punches.');
+        }
     }
 
     /** Owners only (same rule as payroll rates): first name jon/jonathan/sarah. */
