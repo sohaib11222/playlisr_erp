@@ -8,7 +8,7 @@
 .pv-sub { color: #6B6155; font-size: 15px; margin: 0 0 12px; }
 .pv-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
 .pv-tab { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; }
-.pv-tab.on { background: #1F1B16; color: #FFE8A3; border-color: #1F1B16; }
+.pv-tab.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .pv-tablewrap { max-height: 72vh; overflow: auto; border: 1px solid #E6DCCF; border-radius: 10px; background: #fff; }
 .pv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pv-table th { position: sticky; top: 0; background: #FAF6EE; text-align: left; padding: 8px; font-weight: 600; }

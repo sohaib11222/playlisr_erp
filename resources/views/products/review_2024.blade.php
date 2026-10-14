@@ -9,7 +9,7 @@
 .rv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .rv-bar input, .rv-bar select { height: 34px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 10px; font-size: 14px; }
 .rv-chip { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 5px 11px; font-size: 13px; cursor: pointer; user-select: none; }
-.rv-chip.on { background: #1F1B16; color: #FFE8A3; border-color: #1F1B16; }
+.rv-chip.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .rv-btn { border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; background: #F1EADF; }
 .rv-tablewrap { max-height: 70vh; overflow: auto; border: 1px solid #E6DCCF; border-radius: 10px; background: #fff; }
 .rv-table { width: 100%; border-collapse: collapse; font-size: 13px; }

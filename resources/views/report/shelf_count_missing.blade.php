@@ -8,8 +8,8 @@
 .sc-wrap h2 { font-size: 18px; margin: 22px 0 8px; }
 .sc-sub { color: #6B6155; font-size: 15px; margin: 0 0 14px; }
 .sc-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.sc-pill { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; font-weight: 600; color: #1F1B16; text-decoration: none; }
-.sc-pill.on { background: #1F1B16; color: #FFE8A3; border-color: #1F1B16; }
+.sc-pill { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; font-weight: 600; color: #1F1B16 !important; text-decoration: none; }
+.sc-pill.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .sc-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #E6DCCF; font-size: 14px; }
 .sc-table th { text-align: left; background: #FAF6EE; padding: 8px 10px; font-size: 13px; color: #6B6155; }
 .sc-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; }
