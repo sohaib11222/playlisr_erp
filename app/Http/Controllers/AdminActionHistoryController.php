@@ -40,7 +40,7 @@ class AdminActionHistoryController extends Controller
             // Human-readable detail per action (so e.g. category merges are
             // identifiable at a glance instead of just a row count).
             $detail = $data['direction'] ?? null;
-            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'legacy-listing-retire', 'discogs-link-barcode', 'set-real-barcode', 'set-merge-price'], true)) {
+            if (in_array(($data['action'] ?? ''), ['merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'legacy-listing-retire', 'discogs-link-barcode', 'set-real-barcode', 'set-merge-price', 'set-merge-stock'], true)) {
                 $detail = ($data['source_name'] ?? '?') . ' → ' . ($data['target_name'] ?? '?');
             }
 
@@ -306,7 +306,7 @@ class AdminActionHistoryController extends Controller
         // row's original owner before a wrong-login reassignment. Undo restores
         // user_id, but only if it still points at the to-user (so a later manual
         // change isn't clobbered).
-        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'move-sale-location', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku', 'legacy-listing-retire', 'discogs-link-barcode', 'set-real-barcode', 'set-merge-price'];
+        $supportedActions = ['purchase-price-mismatch', 'cost-price-rules', 'future-product-dates', 'fix-imported-dates', 'fix-in-store-sold-dates', 'fix-web-sync-times', 'bfc-receive', 'qb-expense-import', 'whatnot-statement-import', 'force-close-register', 'delete-register', 'reassign-register-user', 'adjust-register-opening', 'store-credit-split', 'void-duplicate-sale', 'move-sale-location', 'backfill-cash-buys', 'update-product-cost', 'apply-legacy-store-credit', 'reassign-user-created-by', 'remove-label-duplicates', 'ring-backfill', 'merge-categories', 'merge-products', 'merge-products-bulk', 'product-name-cleanup', 'product-quote-cleanup', 'backfill-artist-from-name', 'backfill-genre-from-discogs', 'events-update', 'events-delete', 'events-import', 'reassign-import-location', 'nivessa-sheet-import', 'remove-register-overlap', 'recategorize-audio-gear', 'zero-retired-stock', 'zero-bootleg-stock', 'zero-supplier-stock', 'zero-single-product-stock', 'remove-location-stock-cleanup', 'orphaned-location-stock-backfill', 'fix-wrong-barcode-sku', 'legacy-listing-retire', 'discogs-link-barcode', 'set-real-barcode', 'set-merge-price', 'set-merge-stock'];
         if (!in_array($action, $supportedActions, true)) {
             return redirect('/admin/admin-action-history')
                 ->with('status', ['success' => 0, 'msg' => "Don't know how to undo action: " . $action]);
@@ -545,6 +545,19 @@ class AdminActionHistoryController extends Controller
         // that copied one release's barcode onto several different titles).
         // Undo restores old_sku, but only if the row still carries the SKU we
         // set (so it isn't clobbered by a later manual edit).
+        // set-merge-stock: put back the kept listing's stock from before.
+        if ($action === 'set-merge-stock') {
+            $restored = 0; $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $n = DB::table('variation_location_details')->where('id', $row['id'])->whereRaw('ABS(qty_available - ?) < 0.001', [$row['new']])
+                    ->update(['qty_available' => $row['old']]);
+                $n ? $restored++ : $skipped++;
+            }
+            DB::table('product_stock_cache')->where('product_id', (int) ($data['product_id'] ?? 0))->delete();
+            try { (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) ($data['product_id'] ?? 0)]); } catch (\Throwable $e) {}
+            return redirect('/admin/admin-action-history')->with('status', ['success' => 1, 'msg' => "Put back stock on {$restored} store row(s)" . ($skipped ? "; skipped {$skipped} changed since." : '.')]);
+        }
+
         // set-merge-price (/products/fix-barcodes/preview): put the kept
         // listing's old price back unless it was changed again since.
         if ($action === 'set-merge-price') {

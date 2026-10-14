@@ -343,9 +343,17 @@ class BarcodeFixController extends Controller
         $sub = Request::create('/products/merge-selected', 'POST', ['product_ids' => [(int) $id, $keep], 'keep_id' => $keep]);
         $sub->setLaravelSession($request->session());
         $sub->setUserResolver($request->getUserResolver());
+        $biz0 = (int) $request->session()->get('user.business_id');
+        // Before merging: each listing's stock per store + when it was entered.
+        $srcVld = \DB::table('variation_location_details')->where('product_id', (int) $id)->pluck('qty_available', 'location_id')->all();
+        $created = \DB::table('products')->whereIn('id', [(int) $id, $keep])->pluck('created_at', 'id')->all();
         $res = app(ProductMergeController::class)->mergeSelected($sub);
-        $price = $request->input('price');
         $data = method_exists($res, 'getData') ? $res->getData(true) : [];
+        if (!empty($data['success'])) {
+            $note = $this->settleMergedStock($biz0, (int) $id, $keep, $srcVld, $created);
+            if ($note) { $data['msg'] = ($data['msg'] ?? 'Merged.') . ' ' . $note; $res = response()->json($data); }
+        }
+        $price = $request->input('price');
         if ($price === null || $price === '' || empty($data['success'])) return $res;
 
         // Sarah picked which price is right (Check by hand tab): set it on the
@@ -375,6 +383,57 @@ class BarcodeFixController extends Controller
         }
         $data['msg'] = ($data['msg'] ?? 'Merged.') . ' Price set to $' . number_format($price, 2) . '.';
         return response()->json($data);
+    }
+
+    /**
+     * Which stock count to trust after a merge (Sarah 10/14, Soundgarden King
+     * Animal): a shelf count wins (Weekly Reorder bin counts, minus what sold
+     * at that store since); otherwise the listing entered LATER wins at each
+     * store it had a row for. Snapshot 'set-merge-stock' for undo.
+     */
+    protected function settleMergedStock(int $biz, int $srcId, int $keepId, array $srcVld, array $created): ?string
+    {
+        try {
+            $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
+            $rows = \DB::table('variation_location_details')->where('product_id', $keepId)->select('id', 'location_id', 'qty_available')->get();
+            $srcNewer = strtotime((string) ($created[$srcId] ?? '')) > strtotime((string) ($created[$keepId] ?? ''));
+            $changes = []; $why = [];
+            foreach ($rows as $r) {
+                $loc = (int) $r->location_id;
+                $want = null; $reason = null;
+                $c = null;
+                foreach ([$srcId, $keepId] as $pid) {
+                    $x = $counts[$loc . ':' . $pid] ?? null;
+                    if ($x && (!$c || $x['at'] > $c['at'])) $c = $x;
+                }
+                if ($c) {
+                    $soldSince = (float) \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                        ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)->where('l.product_id', $keepId)
+                        ->where('t.transaction_date', '>=', $c['at'])->sum('l.quantity');
+                    $want = max(0, (float) $c['qty'] - $soldSince); $reason = 'shelf count';
+                } elseif ($srcNewer && array_key_exists($loc, $srcVld)) {
+                    $want = (float) $srcVld[$loc]; $reason = 'newer listing';
+                }
+                if ($want !== null && abs($want - (float) $r->qty_available) > 0.001) {
+                    \DB::table('variation_location_details')->where('id', $r->id)->update(['qty_available' => $want, 'updated_at' => now()]);
+                    $changes[] = ['id' => (int) $r->id, 'location_id' => $loc, 'old' => (float) $r->qty_available, 'new' => $want, 'why' => $reason];
+                    $why[$reason] = true;
+                }
+            }
+            if (!$changes) return null;
+            $ts = now()->format('Y-m-d_His') . '-' . $keepId;
+            \Storage::disk('local')->put("admin-snapshots/set-merge-stock-{$ts}.json", json_encode([
+                'timestamp' => $ts, 'action' => 'set-merge-stock', 'user_id' => auth()->id(), 'business_id' => $biz,
+                'source_name' => (string) \DB::table('products')->where('id', $keepId)->value('name'), 'target_name' => 'stock from ' . implode(' / ', array_keys($why)),
+                'product_id' => $keepId, 'rows' => $changes,
+            ], JSON_PRETTY_PRINT));
+            \DB::table('product_stock_cache')->where('product_id', $keepId)->delete();
+            try { (new \App\Services\NivessaStockNotifier())->pushProductChanged([$keepId]); } catch (\Throwable $e) {}
+            return 'Stock set from the ' . implode(' / ', array_keys($why)) . '.';
+        } catch (\Throwable $e) {
+            \Log::warning('settleMergedStock failed: ' . $e->getMessage());
+            return null;
+        }
     }
 
     /** Hide a listing from this page (can't tell / not worth it). */
