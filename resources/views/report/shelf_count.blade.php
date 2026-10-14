@@ -18,7 +18,7 @@
     <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins not counted the longest are on top. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
-        <select name="kind" onchange="this.form.submit()">@foreach (['vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'] as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
+        <select name="kind" onchange="this.form.submit()">@foreach ($kinds as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
     </form>
     @foreach ($bins as $b)
         <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $kind }}&sub={{ $b['sub'] }}">

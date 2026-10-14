@@ -46,8 +46,33 @@ class ShelfCountController extends Controller
         return $out;
     }
 
+    /**
+     * What can be counted: the 4 music kinds plus every other top-level
+     * category (Books, VHS, DVD, Blu-ray, Video Games, Magazines, Audio Gear,
+     * Pokemon, Sports Cards, T-shirts, Toys, Drinks, Posters...; Sarah 10/14).
+     * Bins inside a category are its sub-categories; titles, stars, bands or
+     * designs are the rows you tap inside a bin.
+     */
+    protected function kinds(int $business_id): array
+    {
+        $k = ['vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'];
+        foreach (\DB::table('categories')->where('business_id', $business_id)->where('parent_id', 0)->whereNull('deleted_at')
+            ->where('category_type', 'product')->orderBy('name')->pluck('name', 'id') as $id => $name) {
+            if (preg_match('/vinyl|\\bcds?\\b/i', $name)) continue;
+            $k['cat-' . $id] = $name;
+        }
+        return $k;
+    }
+
+    protected function pickKind(Request $request, int $business_id): string
+    {
+        $kinds = $this->kinds($business_id);
+        return isset($kinds[$request->input('kind')]) ? $request->input('kind') : 'vinyl-new';
+    }
+
     protected function kindQuery($q, string $kind)
     {
+        if (strpos($kind, 'cat-') === 0) { $q->where('p.category_id', (int) substr($kind, 4)); return; }
         [$fmt, $cond] = explode('-', $kind);
         $q->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($fmt === 'cd' ? 'cd' : 'vinyl') . '%'])
           ->whereRaw('LOWER(c.name) LIKE ?', ['%' . ($cond === 'new' ? 'sealed' : 'used') . '%']);
@@ -63,7 +88,7 @@ class ShelfCountController extends Controller
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'vinyl-new';
+        $kind = $this->pickKind($request, $business_id);
         $counted = $this->lastCounted($business_id, $loc);
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
@@ -76,7 +101,7 @@ class ShelfCountController extends Controller
         foreach ($rows as $r) {
             $k = (int) $r->sub_category_id;
             $b = &$bins[$k];
-            $b['sub'] = $k; $b['name'] = $r->sub ?: 'No genre set';
+            $b['sub'] = $k; $b['name'] = $r->sub ?: 'No sub-category';
             $b['titles'] = ($b['titles'] ?? 0) + 1; $b['units'] = ($b['units'] ?? 0) + (float) $r->qty;
             $c = $counted[$r->id] ?? null;
             if ($c && (!isset($b['last']) || $c['at'] > $b['last'])) $b['last'] = $c['at'];
@@ -84,7 +109,7 @@ class ShelfCountController extends Controller
         }
         $bins = array_values($bins);
         usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'bins' => $bins, 'total' => $rows->count()]);
+        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
     }
 
     /** Scan one bin: what the ERP expects there, then scan or search each record. */
@@ -92,7 +117,7 @@ class ShelfCountController extends Controller
     {
         if (!auth()->user()->can('product.view')) abort(403);
         [$business_id, $locations, $loc] = $this->location($request);
-        $kind = in_array($request->input('kind'), ['vinyl-new', 'vinyl-used', 'cd-new', 'cd-used'], true) ? $request->input('kind') : 'vinyl-new';
+        $kind = $this->pickKind($request, $business_id);
         $sub = (int) $request->input('sub');
         $items = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
@@ -103,8 +128,8 @@ class ShelfCountController extends Controller
             ->select('p.id', 'p.name', 'p.artist', 'p.sku', \DB::raw('SUM(v.qty_available) as qty'))
             ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku')
             ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->get();
-        $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No genre set';
-        $labels = ['vinyl-new' => 'New vinyl', 'vinyl-used' => 'Used vinyl', 'cd-new' => 'New CDs', 'cd-used' => 'Used CDs'];
+        $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No sub-category';
+        $labels = $this->kinds($business_id);
         return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
             'name' => $name, 'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'erp' => (float) $i->qty]; })->values()]);
     }
