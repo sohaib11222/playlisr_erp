@@ -30,7 +30,7 @@
   .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
   .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .wo-tbl { width:100%; min-width:1240px; table-layout:fixed; border-collapse:collapse; }
+  .wo-tbl { width:100%; min-width:1380px; table-layout:fixed; border-collapse:collapse; }
   .wo-scroll { overflow-x:auto; }
   .wo-tbl td { overflow-wrap:anywhere; }
   .wo-tbl td.wo-actions-cell { overflow:visible; }
@@ -76,12 +76,12 @@
   .wo-prod-artist { font-size:12px; color:#000; }
   .wo-prod-more { font-size:12px; color:#000; margin-top:4px; }
 
-  .wo-total { font-weight:600; color:#111827; }
+  .wo-total { font-weight:600; color:#000; }
   .wo-loc { font-size:12.5px; line-height:1.35; min-width:110px; }
   .wo-loc-line { min-height:64px; margin-bottom:4px; }
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
   .wo-loc .q { font-weight:400; color:#000; }
-  .wo-loc .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
+  .wo-genre .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
   .wo-loc .bin { display:block; color:#000; font-family:monospace; font-size:12px; }
   .wo-loc .none { color:#b91c1c; font-weight:600; }
   .wo-loc .na { color:#000; }
@@ -327,6 +327,7 @@
             <col style="width:118px">
             <col style="width:112px">
             <col style="width:150px">
+            <col style="width:140px">
             <col style="width:86px">
             <col style="width:92px">
             <col style="width:236px">
@@ -337,7 +338,8 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
-            <th>Location / genre</th>
+            <th>Location</th>
+            <th>Genre</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -476,8 +478,6 @@
                       @elseif(!$locInfo)
                         <span class="na">&mdash;</span>
                       @else
-                        @php $locGenre = ($locInfo['genre'] ?? '') !== '' ? $locInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''); @endphp
-                        @if($locGenre !== '')<span class="genre">{{ $locGenre }}</span>@endif
                         @if(!empty($locInfo['stores']))
                           @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
                         @elseif(!empty($locInfo['stocked']))
@@ -504,6 +504,17 @@
                         </form>
                       @endif
                     </div>
+                  @endforeach
+                </td>
+                <td class="wo-genre">
+                  {{-- Store bins are laid out by genre: one line per product, lined up with Location. --}}
+                  @foreach($cancelLines->take(3) as $line)
+                    @php
+                      $gPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
+                      $gInfo = $gPid ? ($erpLocations[$gPid] ?? null) : null;
+                      $gName = $line['gift'] ? '' : ((($gInfo['genre'] ?? '') !== '') ? $gInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''));
+                    @endphp
+                    <div class="wo-loc-line">@if($gName !== '')<span class="genre">{{ $gName }}</span>@else &mdash; @endif</div>
                   @endforeach
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
@@ -548,7 +559,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="9">
+                <td colspan="10">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
