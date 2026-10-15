@@ -400,6 +400,9 @@ class BarcodeFixController extends Controller
         $by = [];
         foreach (\DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $biz)->where('p.is_inactive', 0)
+            // Sealed only: used copies sharing a barcode are separate copies
+            // with their own condition and price, not duplicates.
+            ->whereRaw("LOWER(c.name) LIKE '%sealed%'")
             ->whereRaw("REPLACE(REPLACE(COALESCE(p.sku,''),' ',''),'-','') REGEXP '^[0-9]{8,14}$'")
             ->select('p.id', 'p.name', 'p.sku', 'p.category_id', 'c.name as cat', 'p.created_by', 'p.created_at', 'p.updated_at')->cursor() as $p) {
             $by[ltrim(preg_replace('/\D+/', '', (string) $p->sku), '0') . '|' . (int) $p->category_id][] = $p;
