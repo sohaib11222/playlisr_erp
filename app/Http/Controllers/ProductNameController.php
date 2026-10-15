@@ -1426,6 +1426,92 @@ class ProductNameController extends Controller
      * discogsArtistFill: two passes (sealed vinyl first), cursor-paged by id,
      * rate-limited ~55/min, snapshot + undoable via Admin Action History.
      */
+    /**
+     * Genre from the artist's own other records (Sarah 10/15: fill the
+     * "No genre" records so Clarissa only fixes what's left). Artist = the
+     * artist column, else either side of "ARTIST / TITLE" or "Artist - Title".
+     * Same format's genre first, else the artist's genre in any music format
+     * mapped to this format's genre list. Active music listings with no genre.
+     * GET previews, POST applies (undo: 'backfill-genre-from-discogs' rows).
+     */
+    public function artistGenreFill(Request $request)
+    {
+        if (!$this->isOwner()) return response()->json(['success' => false, 'msg' => 'Owner-only.'], 403);
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+        $business_id = (int) $request->session()->get('user.business_id');
+        $catIds = $this->musicCategoryIds($business_id);
+        $genreName = \DB::table('categories')->where('business_id', $business_id)->where('parent_id', '>', 0)->pluck('name', 'id')->all();
+        $norm = function ($a) { $a = mb_strtolower(trim((string) $a)); $a = preg_replace('/^the\s+/', '', $a); return trim(preg_replace('/[^a-z0-9]+/', ' ', $a)); };
+        $bad = function ($a) { return $a === '' || preg_match('/^(n a|na|unknown|various|various artists|none|no artist|v a)$/', $a); };
+        // artist -> [category_id -> [genre name -> count]]
+        $map = [];
+        foreach (\DB::table('products')->where('business_id', $business_id)->whereIn('category_id', $catIds)
+            ->where('sub_category_id', '>', 0)->select('artist', 'category_id', 'sub_category_id')->cursor() as $r) {
+            $a = $norm($r->artist);
+            if ($bad($a) || !isset($genreName[$r->sub_category_id])) continue;
+            $g = $genreName[$r->sub_category_id];
+            $map[$a][(int) $r->category_id][$g] = ($map[$a][(int) $r->category_id][$g] ?? 0) + 1;
+        }
+        $pickGenre = function ($a, $cat) use ($map) {
+            if (!isset($map[$a])) return [null, null];
+            if (!empty($map[$a][$cat])) { arsort($map[$a][$cat]); return [array_key_first($map[$a][$cat]), 'same format']; }
+            $all = [];
+            foreach ($map[$a] as $gs) foreach ($gs as $g => $n) $all[$g] = ($all[$g] ?? 0) + $n;
+            arsort($all);
+            return [array_key_first($all), 'other format'];
+        };
+        $subCache = [];
+        $changes = []; $sample = []; $none = 0; $total = 0;
+        foreach (\DB::table('products')->where('business_id', $business_id)->where('is_inactive', 0)->whereIn('category_id', $catIds)
+            ->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })
+            ->select('id', 'name', 'artist', 'category_id')->cursor() as $p) {
+            $total++;
+            $cands = [];
+            if (!$bad($norm($p->artist))) $cands[] = $norm($p->artist);
+            foreach ([' / ', ' - ', ' – '] as $sep) {
+                if (mb_strpos((string) $p->name, $sep) === false) continue;
+                [$x, $y] = array_map('trim', explode($sep, (string) $p->name, 2));
+                foreach ([$x, $y] as $c) { $c = $norm($c); if (!$bad($c)) $cands[] = $c; }
+                break;
+            }
+            $hit = null;
+            foreach (array_unique($cands) as $a) { [$g, $how] = $pickGenre($a, (int) $p->category_id); if ($g) { $hit = [$g, $how, $a]; break; } }
+            if (!$hit) { $none++; continue; }
+            $ck = $p->category_id . '|' . $hit[0];
+            if (!array_key_exists($ck, $subCache)) $subCache[$ck] = $this->matchExistingSubCategory($business_id, $p->category_id, [$hit[0]]);
+            $sub = $subCache[$ck];
+            if (!$sub) { $none++; continue; }
+            $changes[] = ['id' => (int) $p->id, 'old' => null, 'new' => (int) $sub];
+            if (count($sample) < 40) $sample[] = $p->name . ' => ' . $hit[0] . ' (' . $hit[1] . ')';
+        }
+        if (!$request->isMethod('post')) {
+            return response()->json(['no_genre' => $total, 'can_fill' => count($changes), 'left_for_clarissa' => $none, 'sample' => $sample]);
+        }
+        $filled = 0;
+        $timestamp = now()->format('Y-m-d_His');
+        \DB::beginTransaction();
+        try {
+            $done = [];
+            foreach (array_chunk($changes, 500) as $chunk) {
+                foreach ($chunk as $c) {
+                    $n = \DB::table('products')->where('id', $c['id'])->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })
+                        ->update(['sub_category_id' => $c['new']]);
+                    if ($n) { $filled++; $done[] = $c; }
+                }
+            }
+            \Storage::disk('local')->put("admin-snapshots/backfill-genre-from-discogs-{$timestamp}.json", json_encode([
+                'timestamp' => $timestamp, 'action' => 'backfill-genre-from-discogs', 'user_id' => auth()->id(), 'business_id' => $business_id,
+                'source_name' => $filled . " genre(s) from the artist's other records", 'target_name' => 'products.sub_category_id', 'rows' => $done,
+            ], JSON_PRETTY_PRINT));
+            \DB::commit();
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            return response()->json(['success' => false, 'msg' => 'Fill failed, nothing changed.']);
+        }
+        return response()->json(['success' => true, 'filled' => $filled, 'left_for_clarissa' => $none]);
+    }
+
     public function discogsGenreFill(Request $request)
     {
         @set_time_limit(0);
