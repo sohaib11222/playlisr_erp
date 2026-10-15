@@ -675,6 +675,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // only (the website admin's old generic status dropdown had no reason
     // field); grew into the full Needs Action/To Ship/Pickup/Completed
     // console so fulfillment can live entirely in the ERP.
+    // Website admin pages moved into the ERP (Sarah, 2026-10-15), one file
+    // per area under routes/website_admin/. They call the website through
+    // App\Services\WebsiteBridge.
+    foreach (glob(base_path('routes/website_admin/*.php')) as $websiteAdminRoutes) {
+        require $websiteAdminRoutes;
+    }
     Route::get('/website-orders', 'WebsiteOrdersController@index')->name('website-orders.index');
     Route::get('/website-orders/shipping-summary-preview', 'WebsiteOrdersController@shippingSummaryPreview')->name('website-orders.shippingSummaryPreview');
     Route::post('/website-orders/notes', 'WebsiteOrdersController@saveNotes')->name('website-orders.saveNotes');
