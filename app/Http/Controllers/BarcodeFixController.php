@@ -382,6 +382,58 @@ class BarcodeFixController extends Controller
         return response()->json(['old_listings' => count($rows), 'old_copies' => $units, 'sample' => array_slice($rows, 0, 40)]);
     }
 
+    /**
+     * Same barcode entered more than once (Sarah 10/15: "definite products to
+     * clean up"). Active listings with the identical barcode in the same
+     * category. The listing updated most recently is kept, with its price;
+     * each listing shows who entered it and when. ?json=1 for data.
+     */
+    public function sameBarcode(Request $request)
+    {
+        if (!$this->isOwner()) abort(403);
+        if (!$request->query('json')) return view('products.same_barcode');
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+        $biz = (int) $request->session()->get('user.business_id');
+        $locNames = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id')->all();
+        $users = \DB::table('users')->where('business_id', $biz)->select('id', \DB::raw("TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) as n"))->pluck('n', 'id')->all();
+        $by = [];
+        foreach (\DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)
+            ->whereRaw("REPLACE(REPLACE(COALESCE(p.sku,''),' ',''),'-','') REGEXP '^[0-9]{8,14}$'")
+            ->select('p.id', 'p.name', 'p.sku', 'p.category_id', 'c.name as cat', 'p.created_by', 'p.created_at', 'p.updated_at')->cursor() as $p) {
+            $by[ltrim(preg_replace('/\D+/', '', (string) $p->sku), '0') . '|' . (int) $p->category_id][] = $p;
+        }
+        $by = array_filter($by, function ($g) { return count($g) > 1; });
+        $ids = [];
+        foreach ($by as $g) foreach ($g as $p) $ids[] = (int) $p->id;
+        $vinfo = []; $stock = []; $sold = [];
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            foreach (\DB::table('variations')->whereIn('product_id', $chunk)->whereNull('deleted_at')->groupBy('product_id')
+                ->select('product_id', \DB::raw('MAX(sell_price_inc_tax) as price'), \DB::raw('MAX(updated_at) as upd'))->get() as $v) $vinfo[(int) $v->product_id] = $v;
+            foreach (\DB::table('variation_location_details')->whereIn('product_id', $chunk)->select('product_id', 'location_id', 'qty_available', 'updated_at')->get() as $v) {
+                $stock[(int) $v->product_id][$locNames[$v->location_id] ?? $v->location_id] = (float) $v->qty_available;
+                $vinfo['s' . $v->product_id] = max((string) ($vinfo['s' . $v->product_id] ?? ''), (string) $v->updated_at);
+            }
+            foreach (\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->whereIn('l.product_id', $chunk)
+                ->where('t.type', 'sell')->where('t.status', 'final')->groupBy('l.product_id')->select('l.product_id', \DB::raw('SUM(l.quantity) as q'))->get() as $r) $sold[(int) $r->product_id] = (float) $r->q;
+        }
+        $groups = [];
+        foreach ($by as $key => $g) {
+            $items = array_map(function ($p) use ($vinfo, $stock, $sold, $users) {
+                $v = $vinfo[(int) $p->id] ?? null;
+                $last = max((string) $p->updated_at, (string) ($v->upd ?? ''), (string) ($vinfo['s' . $p->id] ?? ''));
+                return ['id' => (int) $p->id, 'name' => $p->name, 'sku' => $p->sku, 'cat' => $p->cat, 'price' => round((float) ($v->price ?? 0), 2),
+                    'who' => $users[(int) $p->created_by] ?? '?', 'created' => substr((string) $p->created_at, 0, 10), 'updated' => substr($last, 0, 10), 'upd_full' => $last,
+                    'stock' => $stock[(int) $p->id] ?? [], 'sold' => $sold[(int) $p->id] ?? 0];
+            }, $g);
+            usort($items, function ($a, $b) { return strcmp($b['upd_full'], $a['upd_full']); });
+            $groups[] = ['barcode' => explode('|', $key)[0], 'items' => $items];
+        }
+        usort($groups, function ($a, $b) { return strcmp($a['items'][0]['name'], $b['items'][0]['name']); });
+        return response()->json(['groups' => $groups]);
+    }
+
     public function oldPreview()
     {
         if (!$this->isOwner()) abort(403);
