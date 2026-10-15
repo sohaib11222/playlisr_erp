@@ -338,6 +338,13 @@ class BarcodeFixController extends Controller
             $a = implode(' ', (function ($x) { $x = array_values(array_unique(array_filter(explode(' ', $x)))); sort($x); return $x; })($a));
             $groups[$fam . '|' . $a . '|' . $t][] = $p;
         }
+        $price = \DB::table('variations as va')->join('products as p', 'p.id', '=', 'va.product_id')->where('p.business_id', $biz)
+            ->whereNull('va.deleted_at')->groupBy('va.product_id')->select('va.product_id', \DB::raw('MAX(va.sell_price_inc_tax) as v'))->pluck('v', 'product_id')->all();
+        $sold = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')
+            ->groupBy('l.product_id')->select('l.product_id', \DB::raw('SUM(l.quantity) as v'))->pluck('v', 'product_id')->all();
+        $isBc = function ($sku) { return (bool) preg_match('/^[0-9]{8,14}$/', preg_replace('/[\s-]+/', '', (string) $sku)); };
+        $bcKey = function ($sku) { return ltrim(preg_replace('/\D+/', '', (string) $sku), '0'); };
         $rows = []; $units = 0;
         foreach ($groups as $g) {
             if (count($g) < 2) continue;
@@ -346,13 +353,21 @@ class BarcodeFixController extends Controller
                 if (count($here) < 2) continue;
                 usort($here, function ($x, $y) { return strcmp((string) $y->created_at, (string) $x->created_at); });
                 $keep = $here[0];
-                foreach (array_slice($here, 1) as $old) {
-                    $q = $stock[(int) $old->id][$loc];
-                    $units += $q;
-                    $rows[] = ['store' => $locNames[$loc], 'old_id' => (int) $old->id, 'old' => $old->name, 'old_sku' => $old->sku, 'old_created' => substr((string) $old->created_at, 0, 10), 'old_qty' => $q,
-                        'old_counted' => $counts[$loc . ':' . $old->id]['at'] ?? null,
-                        'new_id' => (int) $keep->id, 'new' => $keep->name, 'new_sku' => $keep->sku, 'new_created' => substr((string) $keep->created_at, 0, 10), 'new_qty' => $stock[(int) $keep->id][$loc],
-                        'new_counted' => $counts[$loc . ':' . $keep->id]['at'] ?? null, 'cat' => $old->cat];
+                foreach (array_slice($here, 1) as $o0) {
+                    $o = $o0; $k = $keep;
+                    // 1 = same barcode, 2 = one fake SKU + the real barcode
+                    // (kept listing = the real barcode), 3 = two different
+                    // real barcodes (different pressings), 4 = no barcodes.
+                    $ob = $isBc($o->sku); $nb = $isBc($k->sku);
+                    $grp = ($ob && $nb) ? ($bcKey($o->sku) === $bcKey($k->sku) ? 1 : 3) : (($ob xor $nb) ? 2 : 4);
+                    if ($grp === 2 && $ob && !$nb) { [$o, $k] = [$k, $o]; }
+                    $units += $stock[(int) $o->id][$loc];
+                    $rows[] = ['group' => $grp, 'old_price' => round((float) ($price[$o->id] ?? 0), 2), 'new_price' => round((float) ($price[$k->id] ?? 0), 2),
+                        'old_sold' => (float) ($sold[$o->id] ?? 0), 'new_sold' => (float) ($sold[$k->id] ?? 0),
+                        'store' => $locNames[$loc], 'old_id' => (int) $o->id, 'old' => $o->name, 'old_sku' => $o->sku, 'old_created' => substr((string) $o->created_at, 0, 10), 'old_qty' => $stock[(int) $o->id][$loc],
+                        'old_counted' => $counts[$loc . ':' . $o->id]['at'] ?? null, 'old_cat' => $o->cat,
+                        'new_id' => (int) $k->id, 'new' => $k->name, 'new_sku' => $k->sku, 'new_created' => substr((string) $k->created_at, 0, 10), 'new_qty' => $stock[(int) $k->id][$loc],
+                        'new_counted' => $counts[$loc . ':' . $k->id]['at'] ?? null, 'cat' => $k->cat];
                 }
             }
         }
@@ -363,7 +378,14 @@ class BarcodeFixController extends Controller
             rewind($fh); $csv = stream_get_contents($fh); fclose($fh);
             return response($csv, 200)->header('Content-Type', 'text/csv')->header('Content-Disposition', 'attachment; filename="old-listings-with-stock.csv"');
         }
+        if ($request->query('all')) return response()->json(['rows' => $rows]);
         return response()->json(['old_listings' => count($rows), 'old_copies' => $units, 'sample' => array_slice($rows, 0, 40)]);
+    }
+
+    public function oldPreview()
+    {
+        if (!$this->isOwner()) abort(403);
+        return view('products.old_listings_preview');
     }
 
     public function preview()
