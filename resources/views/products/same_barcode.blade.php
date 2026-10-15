@@ -9,7 +9,10 @@
 .sb-group { background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; margin-bottom: 10px; }
 .sb-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FAF6EE; border-radius: 10px 10px 0 0; font-size: 13px; }
 .sb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.sb-table td { padding: 7px 12px; border-top: 1px solid #F3ECE1; vertical-align: top; }
+.sb-table { background: #fff; border: 1px solid #E6DCCF; }
+.sb-table th { text-align: left; background: #FAF6EE; padding: 8px 10px; }
+.sb-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; vertical-align: top; }
+tr.sb-group.done td { opacity: .4; }
 .sb-keep { background: #F2FAF2; }
 .sb-tag { font-size: 11px; font-weight: 700; color: #2E6B2E; }
 .sb-small { color: #2B2620; font-size: 12px; }
@@ -34,15 +37,14 @@
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return '$' + Number(n || 0).toFixed(2); }
     function stock(s) { var k = Object.keys(s || {}); return k.length ? k.map(function (x) { return x + ' ' + s[x]; }).join(', ') : 'none'; }
+    function who(x) { return esc(x.who) + ', ' + esc(d8(x.created)) + ', ' + money(x.price) + ', stock ' + esc(stock(x.stock)); }
     function render() {
-        document.getElementById('sbList').innerHTML = groups.map(function (g, gi) {
-            return '<div class="sb-group" data-g="' + gi + '"><div class="sb-head"><span>Barcode ' + esc(g.barcode) + ', ' + esc(g.items[0].cat) + '</span><span><button class="sb-btn" data-a="merge" type="button">Merge</button> <button class="sb-btn light" data-a="skip" type="button">Not the same</button> <span class="sb-small sb-msg"></span></span></div><table class="sb-table">'
-                + g.items.map(function (x, i) {
-                    return '<tr class="' + (i === 0 ? 'sb-keep' : '') + '"><td style="width:38%;"><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a>' + (i === 0 ? ' <span class="sb-tag">KEPT</span>' : '') + '</td>'
-                        + '<td>Entered by <b>' + esc(x.who) + '</b> on ' + esc(d8(x.created)) + '<div class="sb-small">last updated ' + esc(d8(x.updated)) + '</div></td>'
-                        + '<td>' + money(x.price) + '</td><td>Stock: ' + esc(stock(x.stock)) + '</td><td>Sold ' + x.sold + '</td></tr>';
-                }).join('') + '</table></div>';
-        }).join('') || '<p>Nothing left.</p>';
+        document.getElementById('sbList').innerHTML = groups.length ? '<table class="sb-table"><thead><tr><th>Record</th><th>Keep</th><th>Merge into it</th><th></th></tr></thead><tbody>'
+            + groups.map(function (g, gi) {
+                return '<tr class="sb-group" data-g="' + gi + '"><td><a href="/products/' + g.items[0].id + '/edit" target="_blank">' + esc(g.items[0].name) + '</a></td>'
+                    + '<td>' + who(g.items[0]) + '</td><td>' + g.items.slice(1).map(who).join('<br>') + '</td>'
+                    + '<td><button class="sb-btn" data-a="merge" type="button">Merge</button> <span class="sb-msg"></span></td></tr>';
+            }).join('') + '</tbody></table>' : '<p>Nothing left.</p>';
         var b = document.getElementById('sbAll'); b.style.display = groups.length ? '' : 'none';
         if (!running) b.textContent = armed ? 'Click again to merge all ' + groups.length : 'Merge all ' + groups.length;
     }
@@ -59,7 +61,7 @@
     }
     document.getElementById('sbList').addEventListener('click', function (e) {
         var b = e.target.closest('button[data-a]'); if (!b) return;
-        var box = b.closest('.sb-group'), g = groups[+box.dataset.g], msg = box.querySelector('.sb-msg');
+        var box = b.closest('tr'), g = groups[+box.dataset.g], msg = box.querySelector('.sb-msg');
         b.disabled = true; msg.textContent = 'Working...';
         if (b.dataset.a === 'skip') {
             Promise.all(g.items.slice(1).map(function (x) { return fetch('/products/fix-barcodes/' + x.id + '/skip', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } }); }))
@@ -82,7 +84,7 @@
     });
     fetch('/products/same-barcode?json=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         groups = j.groups || [];
-        document.getElementById('sbSub').textContent = groups.length + ' records have the same barcode on two or more listings in the same format. The green row is kept with its price and stock (the most recently updated listing, but never a 2024 one unless all copies are from 2024); the others merge into it with all their sales. Nothing changes until you press Merge, and every merge can be undone.';
+        document.getElementById('sbSub').textContent = groups.length + ' records were entered more than once with the same barcode. Merge keeps the first listing (its price and stock) and moves all sales onto it. You can undo any merge.';
         render();
     });
 })();
