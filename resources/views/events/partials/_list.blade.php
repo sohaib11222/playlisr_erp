@@ -170,6 +170,15 @@
           @else
             <span class="prep-badge todo">Hidden</span>
           @endif
+          {{-- Publish / hide on nivessa.com, like the website's toggle (Sarah, 2026-10-15). --}}
+          @if($isLive !== null)
+            <form method="POST" action="{{ route('wa.directory.eventPublished', ['id' => $ev['id']]) }}" style="margin:3px 0 0;"
+                  onsubmit="return confirm('{{ $isLive ? 'Hide this event from nivessa.com?' : 'Publish this event on nivessa.com?' }}');">
+              {{ csrf_field() }}
+              <input type="hidden" name="published" value="{{ $isLive ? 0 : 1 }}">
+              <button type="submit" class="btn-link" style="color:#2563eb; padding:0; font-size:12px;">{{ $isLive ? 'Hide' : 'Publish' }}</button>
+            </form>
+          @endif
         </td>
         <td>
           @if($isLP)

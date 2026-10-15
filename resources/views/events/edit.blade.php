@@ -39,7 +39,8 @@
       @if($evWhen)
         <p style="font-size:16px;font-weight:700;margin:2px 0 4px;color:var(--pos-ink);">{{ $evWhen }}</p>
       @endif
-      <p class="sub"><a class="ev-edit" href="{{ route('events.index') }}">&larr; All events</a></p>
+      <p class="sub"><a class="ev-edit" href="{{ route('events.index') }}">&larr; All events</a>
+        &middot; <a class="ev-edit" href="{{ route('wa.directory.eventRsvpsCsv', ['id' => $event['id']]) }}">Download RSVPs (CSV)</a></p>
     </div>
     @if(!empty($event['streetDate']))
       <div style="text-align:right;flex:0 1 auto;">
@@ -65,6 +66,12 @@
       <div style="margin-top:14px;">
         <button type="submit" class="btn-accent">Save details</button>
       </div>
+    </form>
+    {{-- Delete had a route but no button (Sarah, 2026-10-15). Snapshotted, undo from Admin Action History. --}}
+    <form method="POST" action="{{ route('events.destroy', ['id' => $event['id']]) }}" style="margin-top:18px; border-top:1px solid var(--pos-line); padding-top:12px;"
+          onsubmit="return confirm('Delete this event? You can undo it from Admin Action History.');">
+      {{ csrf_field() }}
+      <button type="submit" class="btn-link">Delete this event</button>
     </form>
   </details>
 

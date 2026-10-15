@@ -571,6 +571,21 @@
                     {{ $ci ? 'Checked in' : 'Check in' }}
                   </button>
                 </form>
+                {{-- Add a named guest / delete a duplicate or spam RSVP, as on the website (Sarah, 2026-10-15). --}}
+                <details style="display:inline-block; margin-left:6px; vertical-align:top;">
+                  <summary class="ev-meta" style="cursor:pointer;">More</summary>
+                  <form method="POST" action="{{ route('wa.directory.rsvpAddGuest', ['rsvpId' => $rid]) }}" style="margin:6px 0; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                    {{ csrf_field() }}
+                    <input type="email" name="email" required placeholder="Guest email" style="font-size:12px; padding:4px 8px; border:1px solid #d1d5db; border-radius:6px; width:170px;">
+                    <label class="ev-meta" style="display:flex; gap:4px; align-items:center;"><input type="checkbox" name="wantsFutureEvents" value="1"> Wants future events</label>
+                    <button type="submit" class="btn-ghost" style="padding:4px 10px; font-size:12px;">Add guest</button>
+                  </form>
+                  <form method="POST" action="{{ route('wa.directory.rsvpDelete', ['rsvpId' => $rid]) }}" style="margin:0;"
+                        onsubmit="return confirm('Delete this RSVP{{ $primaryName !== '' ? ' for ' . addslashes($primaryName) : '' }}? This cannot be undone.');">
+                    {{ csrf_field() }}
+                    <button type="submit" class="btn-link">Delete RSVP</button>
+                  </form>
+                </details>
                 @endif
               </td>
               @if($preordersOn)

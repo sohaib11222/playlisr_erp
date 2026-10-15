@@ -21,6 +21,11 @@
       @endforeach
     </select>
   </div>
+  {{-- Was missing here, so every save blanked it (Sarah, 2026-10-15). --}}
+  <div class="ev-field" style="flex:2 1 200px;">
+    <label>Artist sounds like</label>
+    <input type="text" name="artistSoundsLike" maxlength="191" value="{{ $e['artistSoundsLike'] ?? '' }}" placeholder="e.g. SZA meets Kaytranada">
+  </div>
 </div>
 
 <div class="ev-row">
@@ -87,7 +92,12 @@
   </div>
   <div class="ev-field" style="flex:3 1 280px;">
     <label>Image URL</label>
-    <input type="text" name="image" value="{{ $e['image'] ?? '' }}" placeholder="https://nivessa.com/imageNiv/...">
+    <input type="text" name="image" value="{{ $e['image'] ?? '' }}" placeholder="https://nivessa.com/imageNiv/..." data-ev-image-url>
+    {{-- Upload instead of pasting a link: the file goes to the website's image host and its URL lands above (Sarah, 2026-10-15). --}}
+    <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+      <input type="file" accept="image/*" data-ev-image-file style="font-size:12.5px;">
+      <span class="ev-meta" data-ev-image-msg></span>
+    </div>
   </div>
 </div>
 
@@ -157,5 +167,30 @@
   var t = document.getElementById('pre-toggle');
   var f = document.getElementById('pre-fields');
   if (t && f) { t.addEventListener('change', function () { f.style.display = t.checked ? '' : 'none'; }); }
+})();
+</script>
+
+<script>
+(function () {
+  document.querySelectorAll('[data-ev-image-file]').forEach(function (inp) {
+    if (inp.dataset.wired) return;
+    inp.dataset.wired = '1';
+    inp.addEventListener('change', function () {
+      var box = inp.closest('.ev-field');
+      var url = box.querySelector('[data-ev-image-url]');
+      var msg = box.querySelector('[data-ev-image-msg]');
+      if (!inp.files || !inp.files[0]) return;
+      var fd = new FormData();
+      fd.append('image', inp.files[0]);
+      msg.textContent = 'Uploading...';
+      fetch('{{ route('wa.directory.eventImageUpload') }}', {
+        method: 'POST', credentials: 'same-origin', body: fd,
+        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.success && j.url) { url.value = j.url; msg.textContent = 'Uploaded. Save the event to keep it.'; }
+        else { msg.textContent = j.message || 'Upload failed.'; }
+      }).catch(function () { msg.textContent = 'Upload failed.'; });
+    });
+  });
 })();
 </script>
