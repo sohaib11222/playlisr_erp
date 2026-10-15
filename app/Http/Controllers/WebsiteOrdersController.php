@@ -585,9 +585,9 @@ class WebsiteOrdersController extends Controller
             if (empty($r->loc_name)) continue;
             $qty = (float) ($r->qty_available ?? 0);
             $name = (string) $r->loc_name;
-            if (stripos($name, 'warehouse') !== false) $label = 'Warehouse';
-            elseif (stripos($name, 'pico') !== false) $label = 'Pico';
-            elseif (stripos($name, 'hollywood') !== false) $label = 'Hollywood';
+            if (stripos($name, 'warehouse') !== false) $label = 'Hollywood Warehouse';
+            elseif (stripos($name, 'pico') !== false) $label = 'Pico In Store';
+            elseif (stripos($name, 'hollywood') !== false) $label = 'Hollywood In Store';
             else $label = $name;
             // Where it has been stocked, even at 0 now: a website sale already
             // took the qty down, but that's still where the record sits.
