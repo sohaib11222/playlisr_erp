@@ -603,7 +603,7 @@
 				})();
 				</script>
 
-				@php $safeKeep = stripos($register_details->location_name ?? '', 'pico') !== false ? 200 : 500; @endphp
+				@php $safeKeep = stripos($register_details->location_name ?? '', 'pico') !== false ? 300 : 500; @endphp
 				<script>
 				/* Over-$500 safe alert: watch the closing-amount field and
 				   suggest moving the excess (rounded down to nearest $100)
@@ -640,7 +640,7 @@
 							var raw = ($input.val() || '').toString().replace(/,/g, '').trim();
 							var val = parseFloat(raw);
 							if (!isFinite(val)) { $alert.removeClass('cr-safe-alert-on'); return; }
-							// Drawer keeps $500 at Hollywood, $200 at Pico (Pico
+							// Drawer keeps $500 at Hollywood, $300 at Pico (Pico
 							// drawers run ~$40 median, Sarah 2026-10-15).
 							var toSafe = Math.floor((val - {{ $safeKeep }}) / 100) * 100;
 							if (toSafe >= 100) {

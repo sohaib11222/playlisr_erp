@@ -384,8 +384,8 @@
             <script>
               window.crDepositSeqs = {!! json_encode($next_deposit_seqs ?? []) !!};
               {{-- Cash the drawer keeps before a safe drop, per location:
-                   $200 at Pico (drawers run ~$40 median), $500 elsewhere. --}}
-              window.crSafeKeep = {!! json_encode(collect($business_locations ?? [])->map(function ($n) { return stripos((string) $n, 'pico') !== false ? 200 : 500; })) !!};
+                   $300 at Pico (covers ~90% of cash buy days), $500 elsewhere. --}}
+              window.crSafeKeep = {!! json_encode(collect($business_locations ?? [])->map(function ($n) { return stripos((string) $n, 'pico') !== false ? 300 : 500; })) !!};
             </script>
 
             {{-- Capture the actual amount the cashier moved at open. Left
@@ -526,7 +526,7 @@
           if (slipEl) slipEl.textContent = '0';
           return;
         }
-        // Excess above the store's drawer keep ($500 Hollywood, $200
+        // Excess above the store's drawer keep ($500 Hollywood, $300
         // Pico), rounded down to the nearest $100.
         // $1250 at Hollywood → $700 (leaves $550 in the drawer).
         var locEl = document.querySelector('[name="location_id"]');
