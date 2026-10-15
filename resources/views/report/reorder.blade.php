@@ -161,6 +161,7 @@
                             <th data-sort="genrecol">Genre <span class="ro-arrow"></span></th>
                             <th data-sort="count" title="Type what's actually in the bin">Counted (in bin) <span class="ro-arrow"></span></th>
                             <th data-sort="order">Order <span class="ro-arrow"></span></th>
+                            <th data-sort="lastorder" title="When this title was last ordered. Blank = the date at the top. Changing it recounts Sold since last order and the Order">Last ordered <span class="ro-arrow"></span></th>
                             <th data-sort="why">Why <span class="ro-arrow"></span></th>
                             <th data-sort="since" title="Copies sold since the last order">Sold since last order <span class="ro-arrow"></span></th>
                             <th data-sort="ytd">Sold this year <span class="ro-arrow"></span></th>
@@ -192,6 +193,8 @@
                             data-onorder="{{ $r['on_order'] }}"
                             data-erp="{{ $r['erp_stock'] }}"
                             data-since="{{ $r['sold_since'] }}"
+                            data-since-default="{{ $r['sold_since_default'] }}"
+                            data-daily="{{ json_encode((object) ($r['daily_sales'] ?? [])) }}"
                             data-cant="{{ $r['cant_order'] ? 1 : 0 }}"
                             data-cost="{{ $r['best_cost'] ?? $r['ams_cost'] ?? $r['erp_cost'] ?? 0 }}">
                             <td title="{{ !empty($r['merged']) ? 'Combines ' . count($r['merged']) . ' ERP entries: ' . implode(' | ', $r['merged']) : '' }}">
@@ -214,8 +217,9 @@
                                 @endif
                             </td>
                             <td title="Should have {{ $r['suggested'] }}"><input type="number" min="0" class="form-control ro-num ro-order" value="{{ $r['order_qty'] }}"></td>
+                            <td>@if($r['product_id'])<input type="date" class="form-control ro-lastorder" style="width:140px; padding:2px 4px;" value="{{ $r['last_order'] }}" max="{{ now()->toDateString() }}">@endif</td>
                             <td>@foreach($r['why'] as $w)<span class="ro-tag" style="background:{{ $whyColors[$w] ?? '#777' }}" title="{{ $whyLabels[$w] ?? $w }}">{{ $whyShort[$w] ?? $w }}</span> @endforeach</td>
-                            <td class="n">{{ $r['sold_since'] ?: '' }}</td>
+                            <td class="n ro-since">{{ $r['sold_since'] ?: '' }}</td>
                             <td class="n">{{ $r['sold_ytd'] ?: '' }}
                                 @if(!empty($r['sold_last_year']))<div class="ro-muted">last yr {{ $r['sold_last_year'] + 0 }}</div>@endif
                                 @if(!empty($r['sold_other_store']))<div class="ro-muted">other store {{ $r['sold_other_store'] + 0 }}</div>@endif</td>
@@ -379,6 +383,7 @@
             case 'last': return d.last || null;
             case 'count': var c = tr.querySelector('.ro-count'); return c && c.value !== '' ? +c.value : null;
             case 'order': return orderOf(tr);
+            case 'lastorder': var lo = tr.querySelector('.ro-lastorder'); return lo && lo.value ? lo.value : null;
             case 'onorder': return +d.onorder;
             case 'cost': return +d.cost || null;
             default: v = d[sortKey]; return v === '' || v === undefined ? null : +v;
@@ -435,7 +440,7 @@
             if (show && sortKey === 'genre' && d.genre !== lastGenre) {
                 var g = document.createElement('tr');
                 g.className = 'ro-genre';
-                g.innerHTML = '<td colspan="13"></td>';
+                g.innerHTML = '<td colspan="14"></td>';
                 g.firstChild.textContent = d.genre;
                 tr.parentNode.insertBefore(g, tr);
                 lastGenre = d.genre;
@@ -528,6 +533,20 @@
             return;
         }
         tr.dataset.keep = '1';
+        if (e.target.classList.contains('ro-lastorder')) {
+            // Sold since this row's own last order (blank = the page date).
+            var lo = e.target.value, sold = 0, daily = JSON.parse(tr.dataset.daily || '{}');
+            if (lo) Object.keys(daily).forEach(function (d) { if (d >= lo) sold += +daily[d]; });
+            else sold = +tr.dataset.sinceDefault;
+            tr.dataset.since = sold;
+            tr.querySelector('.ro-since').textContent = sold || '';
+            tr.querySelector('.ro-order').value = calc(tr);
+            var loEl = e.target;
+            loEl.style.outline = '2px solid #ccc';
+            $.post('/reports/reorder/last-order', $.extend({ _token: CSRF, key: Q.format + ':p' + tr.dataset.pid, date: lo }, Q))
+                .done(function () { loEl.style.outline = '2px solid #2e7d32'; })
+                .fail(function () { loEl.style.outline = '2px solid #c62828'; });
+        }
         if (e.target.classList.contains('ro-count')) {
             tr.querySelector('.ro-order').value = calc(tr);
             var saved = tr.querySelector('.ro-saved');

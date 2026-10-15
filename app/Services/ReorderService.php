@@ -371,6 +371,7 @@ class ReorderService
     public $blankOverride = null;
     /** Reasons that also get auto-ordered when the ERP shows none left. */
     public $autoExtra = [];
+    protected $format = 'vinyl';
 
     protected function now(): Carbon
     {
@@ -391,6 +392,7 @@ class ReorderService
         if ($this->blankOverride) $state['settings']['blank_count'] = $this->blankOverride;
         $s = $state['settings'];
         $label = $format === 'cd' ? 'CD' : ($format === 'cassette' ? 'Cassette' : 'Vinyl');
+        $this->format = $format;
         $sealedNames = $this->categoryIds($business_id, 'sealed', $format);
         $usedNames = $this->categoryIds($business_id, 'used', $format);
         $sealedCats = array_keys($sealedNames);
@@ -934,7 +936,7 @@ class ReorderService
             $out[$type][$fam]['sold_ytd'] = ($out[$type][$fam]['sold_ytd'] ?? 0) + (float) $r->qty;
             if (!empty($r->manual)) $out[$type][$fam]['manual_ytd'] = ($out[$type][$fam]['manual_ytd'] ?? 0) + (float) $r->qty;
             $out[$type][$fam]['revenue_ytd'] = ($out[$type][$fam]['revenue_ytd'] ?? 0) + (float) $r->rev;
-            $dates[$type][$fam][$r->d] = true;
+            $dates[$type][$fam][$r->d] = ($dates[$type][$fam][$r->d] ?? 0) + (float) $r->qty;
             if ($r->d > ($out[$type][$fam]['last'] ?? '')) $out[$type][$fam]['last'] = $r->d;
         }
 
@@ -1020,6 +1022,17 @@ class ReorderService
                 $f['count_at'] = $c['at'] ?? null;
                 $have = $f['count'] !== null ? $f['count'] : $f['stock'];
                 $f['order'] = max(0, $f['target'] - $have);
+                // Last ordered typed in, no count: order back what sold since
+                // then, up to the 4-week target (same rule as sealed music).
+                $lo = $state['last_orders'][$locationId]['comics:' . $type . ':' . $fam]['date'] ?? null;
+                $f['last_order'] = $lo;
+                $f['daily'] = $dates[$type][$fam] ?? [];
+                $f['sold_since'] = null;
+                if ($lo) {
+                    $f['sold_since'] = 0;
+                    foreach ($f['daily'] as $d => $q) if ($d >= $lo) $f['sold_since'] += $q;
+                    if ($f['count'] === null) $f['order'] = (int) min($f['sold_since'], max($f['target'], 1));
+                }
                 arsort($f['titles']);
                 $f['examples'] = implode('; ', array_slice(array_keys($f['titles']), 0, 4));
                 unset($f['titles']);
@@ -1062,6 +1075,22 @@ class ReorderService
             unset($state['family_counts'][$locationId][$key]);
         } else {
             $state['family_counts'][$locationId][$key] = ['qty' => max(0, $qty), 'at' => now()->toDateTimeString(), 'by' => $by];
+        }
+        $this->saveState($business_id, $state);
+    }
+
+    /**
+     * "Last ordered" typed on a row (Sarah 10/15): that row counts sales from
+     * this date instead of the page-wide last order. Key is per format, e.g.
+     * vinyl:p123 or comics:comics:Batman. Null clears it.
+     */
+    public function saveLastOrder(int $business_id, int $locationId, string $key, ?string $date, string $by): void
+    {
+        $state = $this->loadState($business_id);
+        if ($date === null) {
+            unset($state['last_orders'][$locationId][$key]);
+        } else {
+            $state['last_orders'][$locationId][$key] = ['date' => $date, 'at' => now()->toDateTimeString(), 'by' => $by];
         }
         $this->saveState($business_id, $state);
     }
@@ -1280,6 +1309,16 @@ class ReorderService
                 $countAt = max((string) $countAt, $c['at']);
             }
         }
+        // "Last ordered" typed on this row: sold since that date instead.
+        $r['last_order'] = null;
+        $lo = !$this->asOf && $r['product_id'] ? ($state['last_orders'][$locationId][$this->format . ':p' . $r['product_id']]['date'] ?? null) : null;
+        $r['sold_since_default'] = $r['sold_since'];
+        if ($lo) {
+            $r['last_order'] = $lo;
+            $r['sold_since'] = 0;
+            foreach ($r['daily'] ?? [] as $d => $q) if ($d >= $lo) $r['sold_since'] += $q;
+        }
+        $r['daily_sales'] = $r['daily'] ?? [];
         unset($r['daily']);
         $r['count'] = $count;
         $r['count_raw'] = $countRaw;

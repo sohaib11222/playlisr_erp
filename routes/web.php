@@ -800,6 +800,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::match(['get', 'post'], '/reports/reorder/backfill-combined-counts', 'ReorderController@backfillCombinedCounts');
     Route::post('/reports/reorder/family-count', 'ReorderController@saveFamilyCount');
     Route::post('/reports/reorder/family-submit', 'ReorderController@submitFamilyCount');
+    Route::post('/reports/reorder/last-order', 'ReorderController@saveLastOrder');
     Route::match(['get', 'post'], '/reports/reorder/apply-imported-count', 'ReorderController@applyImportedCount');
     // Read-only (Sarah 10/14, Jon: "CD order was 66% less than usual"): past
     // sealed-CD distributor purchases at a store, per purchase, vs the orders

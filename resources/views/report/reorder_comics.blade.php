@@ -54,6 +54,7 @@
                 <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed: Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
                 <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
                 <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
+                <li><b>Last Ordered</b>: when this series was last ordered. If you haven't counted it, # to Order becomes what sold since that date (never more than 4 weeks' worth).</li>
             </ol></details>
             <div style="margin-top:10px;"><button type="button" class="btn btn-success" id="rcSubmit">Submit count</button>
                 <span id="rcSubmitMsg" style="margin-left:8px;">@if($lastSubmit)Last submitted {{ \Carbon\Carbon::parse($lastSubmit['at'])->format('n/j g:ia') }} by {{ $lastSubmit['by'] }}@endif</span></div>
@@ -112,14 +113,15 @@
                             <th class="text-right">Sold per Week</th>
                             <th class="text-right">ERP says</th>
                             <th style="background:#fff7d6;">Qty in Stock</th>
+                            <th style="background:#fff7d6;" title="When this series was last ordered">Last Ordered</th>
                             <th style="background:#fff7d6;"># to Order</th>
                         </tr>
                     </thead>
                     <tbody>
                     @forelse($sections[$type] as $pub => $rows)
-                        <tr class="rc-section"><td colspan="16" style="background:#eef3f8; font-weight:bold;">{{ $pub }}</td></tr>
+                        <tr class="rc-section"><td colspan="17" style="background:#eef3f8; font-weight:bold;">{{ $pub }}</td></tr>
                         @foreach($rows as $f)
-                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ $f['target'] }}" data-erp="{{ $f['stock'] }}">
+                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ $f['target'] }}" data-erp="{{ $f['stock'] }}" data-daily="{{ json_encode((object) $f['daily']) }}">
                             <td><b>{{ $f['family'] }}</b></td>
                             <td>{{ $f['speed'] }}</td>
                             <td class="text-right">{{ $f['days_to_sell'] }}</td>
@@ -136,11 +138,13 @@
                             <td class="text-right">{{ $f['stock'] }}</td>
                             <td style="background:#fffbea;"><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
                                 title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
+                            <td style="background:#fffbea; white-space:nowrap;"><input type="date" class="form-control rc-lastorder" style="width:150px; display:inline-block;" value="{{ $f['last_order'] }}" max="{{ now()->toDateString() }}">
+                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since@endif</div></td>
                             <td class="rc-order" style="background:#fffbea;">{{ $f['order'] }}</td>
                         </tr>
                         @endforeach
                     @empty
-                        <tr><td colspan="16" class="text-muted">Nothing sold this year.</td></tr>
+                        <tr><td colspan="17" class="text-muted">Nothing sold this year.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
@@ -163,13 +167,32 @@
             if (el) el.textContent = 'to order: ' + sum;
         });
     }
+    // Same rule as ReorderService::comicsAndMagazines.
+    function recalc(tr) {
+        var v = parseInt(tr.querySelector('.rc-count').value, 10), lo = tr.querySelector('.rc-lastorder').value;
+        var target = +tr.dataset.target, sinceEl = tr.querySelector('.rc-since'), order;
+        var sold = 0, daily = JSON.parse(tr.dataset.daily || '{}');
+        Object.keys(daily).forEach(function (d) { if (lo && d >= lo) sold += +daily[d]; });
+        sinceEl.textContent = lo ? sold + ' sold since' : '';
+        if (!isNaN(v)) order = Math.max(0, target - v);
+        else if (lo) order = Math.min(sold, Math.max(target, 1));
+        else order = Math.max(0, target - +tr.dataset.erp);
+        tr.querySelector('.rc-order').textContent = order;
+        totals();
+    }
+    document.querySelectorAll('.rc-lastorder').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+            var tr = inp.closest('tr');
+            recalc(tr);
+            var sinceEl = tr.querySelector('.rc-since');
+            $.post('/reports/reorder/last-order', { _token: CSRF, location_id: LOC, format: 'comics', key: 'comics:' + tr.dataset.key, date: inp.value })
+                .fail(function () { sinceEl.textContent = 'not saved'; sinceEl.style.color = '#c62828'; });
+        });
+    });
     document.querySelectorAll('.rc-count').forEach(function (inp) {
         inp.addEventListener('change', function () {
             var tr = inp.closest('tr');
-            var v = parseInt(inp.value, 10);
-            var have = isNaN(v) ? +tr.dataset.erp : v;
-            tr.querySelector('.rc-order').textContent = Math.max(0, +tr.dataset.target - have);
-            totals();
+            recalc(tr);
             var saved = tr.querySelector('.rc-saved');
             saved.textContent = '...';
             $.post('/reports/reorder/family-count', { _token: CSRF, location_id: LOC, format: 'comics', key: tr.dataset.key, qty: inp.value })
@@ -200,8 +223,8 @@
     });
 
     // Mark the detail columns (everything but Series, Speed, Copies Sold,
-    // ERP says, Qty in Stock, # to Order) so compact mode can hide them.
-    var KEEP = [0, 1, 6, 13, 14, 15];
+    // ERP says, Qty in Stock, Last Ordered, # to Order) so compact mode can hide them.
+    var KEEP = [0, 1, 6, 13, 14, 15, 16];
     document.querySelectorAll('table.rc').forEach(function (t) {
         t.querySelectorAll('tr').forEach(function (tr) {
             if (tr.classList.contains('rc-section')) return;
@@ -237,6 +260,7 @@
             var td = tr.children[i];
             var inp = td.querySelector('input');
             var t = inp ? inp.value : td.textContent.trim();
+            if (inp && inp.type === 'date') return t || null;
             if (t in tierRank) return tierRank[t];
             var n = parseFloat(t.replace(/[$,]/g, ''));
             return t === '' ? null : (isNaN(n) ? t.toLowerCase() : n);

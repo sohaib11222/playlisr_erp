@@ -317,6 +317,18 @@ class ReorderController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Per-row "Last ordered" date; blank clears it. */
+    public function saveLastOrder(Request $request)
+    {
+        [$business_id, , $locationId] = $this->params($request);
+        $key = mb_substr((string) $request->input('key'), 0, 120);
+        $date = trim((string) $request->input('date'));
+        if (!preg_match('/^(vinyl|cd|cassette):p\d+$|^comics:(comics|magazines):/', $key)) return response()->json(['ok' => false], 422);
+        if ($date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return response()->json(['ok' => false], 422);
+        $this->svc->saveLastOrder($business_id, $locationId, $key, $date === '' ? null : $date, auth()->user()->first_name ?? '');
+        return response()->json(['ok' => true]);
+    }
+
     public function saveCount(Request $request)
     {
         [$business_id, , $locationId] = $this->params($request);
