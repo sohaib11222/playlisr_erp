@@ -452,10 +452,16 @@ class BarcodeFixController extends Controller
         // Before merging: each listing's stock per store + when it was entered.
         $srcVld = \DB::table('variation_location_details')->where('product_id', (int) $id)->pluck('qty_available', 'location_id')->all();
         $created = \DB::table('products')->whereIn('id', [(int) $id, $keep])->pluck('created_at', 'id')->all();
+        // When each listing's stock at each store was last updated (Sarah
+        // 10/15: "only want the most recently updated stock count").
+        $upd = [];
+        foreach (\DB::table('variation_location_details')->whereIn('product_id', [(int) $id, $keep])->select('product_id', 'location_id', 'qty_available', 'updated_at')->get() as $v) {
+            $upd[(int) $v->product_id][(int) $v->location_id] = ['qty' => (float) $v->qty_available, 'at' => (string) $v->updated_at];
+        }
         $res = app(ProductMergeController::class)->mergeSelected($sub);
         $data = method_exists($res, 'getData') ? $res->getData(true) : [];
         if (!empty($data['success'])) {
-            $note = $this->settleMergedStock($biz0, (int) $id, $keep, $srcVld, $created);
+            $note = $this->settleMergedStock($biz0, (int) $id, $keep, $srcVld, $created, $upd);
             if ($note) { $data['msg'] = ($data['msg'] ?? 'Merged.') . ' ' . $note; $res = response()->json($data); }
         }
         $price = $request->input('price');
@@ -493,10 +499,10 @@ class BarcodeFixController extends Controller
     /**
      * Which stock count to trust after a merge (Sarah 10/14, Soundgarden King
      * Animal): a shelf count wins (Weekly Reorder bin counts, minus what sold
-     * at that store since); otherwise the listing entered LATER wins at each
-     * store it had a row for. Snapshot 'set-merge-stock' for undo.
+     * at that store since); otherwise the stock number updated most recently
+     * (before the merge) wins at each store. Snapshot 'set-merge-stock'.
      */
-    protected function settleMergedStock(int $biz, int $srcId, int $keepId, array $srcVld, array $created): ?string
+    protected function settleMergedStock(int $biz, int $srcId, int $keepId, array $srcVld, array $created, array $upd = []): ?string
     {
         try {
             $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
@@ -504,7 +510,7 @@ class BarcodeFixController extends Controller
             $srcNewer = strtotime((string) ($created[$srcId] ?? '')) > strtotime((string) ($created[$keepId] ?? ''));
             // A store the later listing was set up for but had no stock row at
             // counts as 0 there (King Animal: later listing showed 0/0).
-            foreach (\DB::table('product_locations')->where('product_id', $srcId)->pluck('location_id') as $l) {
+            if (!$upd) foreach (\DB::table('product_locations')->where('product_id', $srcId)->pluck('location_id') as $l) {
                 if (!array_key_exists((int) $l, $srcVld)) $srcVld[(int) $l] = 0.0;
             }
             $changes = []; $why = [];
@@ -521,6 +527,12 @@ class BarcodeFixController extends Controller
                         ->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)->where('l.product_id', $keepId)
                         ->where('t.transaction_date', '>=', $c['at'])->sum('l.quantity');
                     $want = max(0, (float) $c['qty'] - $soldSince); $reason = 'shelf count';
+                } elseif ($upd) {
+                    // The stock number updated most recently wins at each store.
+                    $sv = $upd[$srcId][$loc] ?? null; $kv = $upd[$keepId][$loc] ?? null;
+                    if ($sv && $kv) { $win = strcmp($sv['at'], $kv['at']) > 0 ? $sv : $kv; $want = $win['qty']; $reason = 'most recently updated count'; }
+                    elseif ($sv) { $want = $sv['qty']; $reason = 'most recently updated count'; }
+                    elseif ($kv) { $want = $kv['qty']; $reason = 'most recently updated count'; }
                 } elseif ($srcNewer && array_key_exists($loc, $srcVld)) {
                     $want = (float) $srcVld[$loc]; $reason = 'newer listing';
                 }
