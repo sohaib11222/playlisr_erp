@@ -248,13 +248,15 @@ class WebsiteOrdersController extends Controller
         // the URL. All rows are on one page, so sort here (Sarah, 2026-10-13).
         $sortKey = (string) $request->query('sort', '');
         $sortDir = $request->query('dir') === 'desc' ? 'desc' : 'asc';
+        $erpLocations = self::erpLocations($orders);
+        self::$sortGenres = $erpLocations;
         if ($sortKey !== '') {
             $orders = self::sortRows($orders, $sortKey, $sortDir, false);
             $discogsToShip = self::sortRows($discogsToShip, $sortKey, $sortDir, true);
         }
 
         return view('website-orders.index', [
-            'erpLocations' => self::erpLocations($orders),
+            'erpLocations' => $erpLocations,
             'sortKey' => $sortKey,
             'sortDir' => $sortDir,
             'discogsToShip' => $discogsToShip,
@@ -595,6 +597,9 @@ class WebsiteOrdersController extends Controller
         return $map;
     }
 
+    /** ERP locations/genres by product id, so the Genre column can sort by what it shows. */
+    protected static $sortGenres = [];
+
     public static function sortValue(array $o, string $key, bool $discogs)
     {
         $items = $o['items'] ?? [];
@@ -612,6 +617,13 @@ class WebsiteOrdersController extends Controller
                 return $dates ? min($dates) : PHP_INT_MAX;
             case 'status':
                 return strtolower($discogs ? ($o['status'] ?? '') : ($o['order_status'] ?? ''));
+            case 'genre':
+                // First item's genre (same ERP-then-website fallback the column shows); blanks last.
+                if ($discogs) return '';
+                $first = $items[0] ?? [];
+                $pid = (int) ($first['product_id']['posProductId'] ?? 0);
+                $g = ($pid && (self::$sortGenres[$pid]['genre'] ?? '') !== '') ? self::$sortGenres[$pid]['genre'] : ($first['product_id']['genre'] ?? '');
+                return $g !== '' ? strtolower($g) : "\u{FFFF}";
             case 'fulfillment':
                 return strtolower($o['fulfillment_method'] ?? '');
             case 'total':

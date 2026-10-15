@@ -339,7 +339,7 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
             <th>Location</th>
-            <th>Genre</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Genre', 'key' => 'genre'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
