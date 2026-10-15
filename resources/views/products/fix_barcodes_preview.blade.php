@@ -5,7 +5,7 @@
 <style>
 .pv-wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; color: #1F1B16; }
 .pv-wrap h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
-.pv-sub { color: #6B6155; font-size: 15px; margin: 0 0 12px; }
+.pv-sub { color: #2B2620; font-size: 15px; margin: 0 0 12px; }
 .pv-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
 .pv-tab { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; }
 .pv-tab.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
@@ -13,8 +13,8 @@
 .pv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pv-table th { position: sticky; top: 0; background: #FAF6EE; text-align: left; padding: 8px; font-weight: 600; }
 .pv-table td { padding: 7px 8px; border-top: 1px solid #F3ECE1; vertical-align: top; }
-.pv-table td.arrow { color: #8E8273; }
-.pv-small { color: #8E8273; font-size: 12px; }
+.pv-table td.arrow { color: #2B2620; }
+.pv-small { color: #2B2620; font-size: 12px; }
 .pv-diff { color: #8E1B1B; font-weight: 700; }
 .pv-btn { border: 0; border-radius: 8px; padding: 6px 10px; font-weight: 600; cursor: pointer; background: #1F1B16; color: #FFE8A3; white-space: nowrap; margin: 0 0 4px; }
 .pv-btn.light { background: #F1EADF; color: #1F1B16; }
@@ -37,6 +37,7 @@ tr.pv-done td { opacity: .4; }
 <script>
 (function () {
     var pairs = [], tab = 'safe';
+    function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return n ? '$' + Number(n).toFixed(2) : '$0'; }
     function same(x) { return Math.abs(x.price - x.keep_price) < 0.01; }

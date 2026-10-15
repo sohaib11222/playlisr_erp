@@ -5,7 +5,7 @@
 <style>
 .sc-wrap { max-width: 760px; margin: 0 auto; padding: 18px 16px 80px; color: #1F1B16; }
 .sc-wrap h1 { font-size: 22px; font-weight: 700; margin: 4px 0; }
-.sc-small { color: #8E8273; font-size: 13px; }
+.sc-small { color: #2B2620; font-size: 13px; }
 .sc-scan { display: flex; gap: 8px; margin: 12px 0 6px; position: sticky; top: 0; background: #F7F4EE; padding: 8px 0; z-index: 5; }
 .sc-scan input { flex: 1; height: 52px; font-size: 20px; border: 2px solid #1F1B16; border-radius: 12px; padding: 0 14px; }
 .sc-btn { border: 0; border-radius: 10px; padding: 0 16px; height: 52px; font-weight: 700; background: #1F1B16; color: #FFE8A3; cursor: pointer; }
@@ -18,7 +18,7 @@
 .sc-item .n { font-size: 22px; font-weight: 800; min-width: 34px; text-align: center; }
 .sc-item.seen { border-color: #2E6B2E; background: #F2FAF2; }
 .sc-pm { width: 44px; height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; font-size: 22px; font-weight: 700; cursor: pointer; }
-.sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8E8273; margin: 16px 0 6px; }
+.sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #2B2620; margin: 16px 0 6px; }
 #scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; }
 .sc-bottom { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #E6DCCF; padding: 10px 16px; display: flex; gap: 10px; justify-content: center; z-index: 10; }
 .sc-sum td { padding: 6px 8px; border-top: 1px solid #F3ECE1; font-size: 14px; }
@@ -53,6 +53,7 @@
     var items = @json($items);
     var byId = {}, count = {}, extra = [];
     items.forEach(function (i) { byId[i.id] = i; count[i.id] = 0; });
+    function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function label(i) { return (i.artist && (i.name || '').toLowerCase().indexOf(String(i.artist).toLowerCase()) === -1 ? i.artist + ' - ' : '') + i.name; }
     function row(i) {

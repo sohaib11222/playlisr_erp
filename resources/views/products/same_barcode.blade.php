@@ -5,14 +5,14 @@
 <style>
 .sb-wrap { max-width: 1250px; margin: 0 auto; padding: 14px 16px 50px; color: #1F1B16; }
 .sb-wrap h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
-.sb-sub { color: #6B6155; font-size: 14px; margin: 0 0 10px; }
+.sb-sub { color: #2B2620; font-size: 14px; margin: 0 0 10px; }
 .sb-group { background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; margin-bottom: 10px; }
 .sb-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FAF6EE; border-radius: 10px 10px 0 0; font-size: 13px; }
 .sb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sb-table td { padding: 7px 12px; border-top: 1px solid #F3ECE1; vertical-align: top; }
 .sb-keep { background: #F2FAF2; }
 .sb-tag { font-size: 11px; font-weight: 700; color: #2E6B2E; }
-.sb-small { color: #8E8273; font-size: 12px; }
+.sb-small { color: #2B2620; font-size: 12px; }
 .sb-btn { border: 0; border-radius: 8px; padding: 6px 12px; font-weight: 600; cursor: pointer; background: #1b6ca8; color: #fff; }
 .sb-btn.light { background: #F1EADF; color: #1F1B16; }
 .sb-group.done { opacity: .4; }
@@ -30,6 +30,7 @@
 (function () {
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var groups = [], armed = false, running = false;
+    function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return '$' + Number(n || 0).toFixed(2); }
     function stock(s) { var k = Object.keys(s || {}); return k.length ? k.map(function (x) { return x + ' ' + s[x]; }).join(', ') : 'none'; }
@@ -38,7 +39,7 @@
             return '<div class="sb-group" data-g="' + gi + '"><div class="sb-head"><span>Barcode ' + esc(g.barcode) + ', ' + esc(g.items[0].cat) + '</span><span><button class="sb-btn" data-a="merge" type="button">Merge</button> <button class="sb-btn light" data-a="skip" type="button">Not the same</button> <span class="sb-small sb-msg"></span></span></div><table class="sb-table">'
                 + g.items.map(function (x, i) {
                     return '<tr class="' + (i === 0 ? 'sb-keep' : '') + '"><td style="width:38%;"><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a>' + (i === 0 ? ' <span class="sb-tag">KEPT</span>' : '') + '</td>'
-                        + '<td>Entered by <b>' + esc(x.who) + '</b> on ' + esc(x.created) + '<div class="sb-small">last updated ' + esc(x.updated) + '</div></td>'
+                        + '<td>Entered by <b>' + esc(x.who) + '</b> on ' + esc(d8(x.created)) + '<div class="sb-small">last updated ' + esc(d8(x.updated)) + '</div></td>'
                         + '<td>' + money(x.price) + '</td><td>Stock: ' + esc(stock(x.stock)) + '</td><td>Sold ' + x.sold + '</td></tr>';
                 }).join('') + '</table></div>';
         }).join('') || '<p>Nothing left.</p>';

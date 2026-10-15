@@ -6,12 +6,12 @@
 .sc-wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; color: #1F1B16; }
 .sc-wrap h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
 .sc-wrap h2 { font-size: 18px; margin: 22px 0 8px; }
-.sc-sub { color: #6B6155; font-size: 15px; margin: 0 0 14px; }
+.sc-sub { color: #2B2620; font-size: 15px; margin: 0 0 14px; }
 .sc-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .sc-pill { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; font-weight: 600; color: #1F1B16 !important; text-decoration: none; }
 .sc-pill.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .sc-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #E6DCCF; font-size: 14px; }
-.sc-table th { text-align: left; background: #FAF6EE; padding: 8px 10px; font-size: 13px; color: #6B6155; }
+.sc-table th { text-align: left; background: #FAF6EE; padding: 8px 10px; font-size: 13px; color: #2B2620; }
 .sc-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; }
 </style>
 <div class="sc-wrap">
@@ -36,7 +36,7 @@
     <h2>Every missing count</h2>
     <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>Missing</th><th>Cost</th><th>Counted by</th></tr></thead><tbody>
         @foreach ($rows as $r)
-            <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('n/j') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
+            <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('m/d/y') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
                 <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['units'] }}</td><td>${{ number_format($r['units'] * $r['unit_cost'], 2) }}</td><td>{{ $r['by'] }}</td></tr>
         @endforeach
     </tbody></table>

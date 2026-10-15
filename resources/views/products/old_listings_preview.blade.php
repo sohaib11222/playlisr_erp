@@ -5,14 +5,14 @@
 <style>
 .ol-wrap { max-width: 1250px; margin: 0 auto; padding: 14px 16px 50px; color: #1F1B16; }
 .ol-wrap h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
-.ol-sub { color: #6B6155; font-size: 14px; margin: 0 0 10px; }
+.ol-sub { color: #2B2620; font-size: 14px; margin: 0 0 10px; }
 .ol-tabs { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 .ol-tab { border: 1px solid #E1D7C4; background: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; color: #1F1B16 !important; }
 .ol-tab.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .ol-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid #E6DCCF; }
 .ol-table th { position: sticky; top: 0; background: #FAF6EE; text-align: left; padding: 7px 8px; }
 .ol-table td { padding: 7px 8px; border-top: 1px solid #F3ECE1; vertical-align: top; }
-.ol-small { color: #8E8273; font-size: 12px; }
+.ol-small { color: #2B2620; font-size: 12px; }
 .ol-diff { color: #8E1B1B; font-weight: 700; }
 .ol-btn { border: 0; border-radius: 8px; padding: 6px 10px; font-weight: 600; cursor: pointer; background: #1b6ca8; color: #fff; }
 .ol-btn.light { background: #F1EADF; color: #1F1B16; }
@@ -32,6 +32,7 @@ tr.done td { opacity: .4; }
 (function () {
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var rows = [], tab = 'same', armed = false, running = false;
+    function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return '$' + Number(n || 0).toFixed(2); }
     function same(x) { return Math.abs(x.old_price - x.new_price) < 0.01; }
@@ -41,9 +42,9 @@ tr.done td { opacity: .4; }
         document.getElementById('olRows').innerHTML = list().map(function (x) {
             d = same(x) ? '' : ' class="ol-diff"';
             return '<tr data-id="' + x.old_id + '" data-keep="' + x.new_id + '"><td>' + esc(x.store) + '</td>'
-                + '<td><a href="/products/' + x.old_id + '/edit" target="_blank">' + esc(x.old) + '</a><div class="ol-small">' + esc(x.old_sku) + ', ' + esc(x.old_cat) + ', entered ' + esc(x.old_created) + '</div></td>'
+                + '<td><a href="/products/' + x.old_id + '/edit" target="_blank">' + esc(x.old) + '</a><div class="ol-small">' + esc(x.old_sku) + ', ' + esc(x.old_cat) + ', entered ' + esc(d8(x.old_created)) + '</div></td>'
                 + '<td' + d + '>' + money(x.old_price) + '</td><td>' + x.old_qty + '</td><td>' + x.old_sold + '</td>'
-                + '<td><a href="/products/' + x.new_id + '/edit" target="_blank">' + esc(x.new) + '</a><div class="ol-small">' + esc(x.new_sku) + ', ' + esc(x.cat) + ', entered ' + esc(x.new_created) + '</div></td>'
+                + '<td><a href="/products/' + x.new_id + '/edit" target="_blank">' + esc(x.new) + '</a><div class="ol-small">' + esc(x.new_sku) + ', ' + esc(x.cat) + ', entered ' + esc(d8(x.new_created)) + '</div></td>'
                 + '<td' + d + '>' + money(x.new_price) + '</td><td>' + x.new_qty + '</td><td>' + x.new_sold + '</td>'
                 + '<td><button class="ol-btn" data-a="merge" type="button">Merge</button> <button class="ol-btn light" data-a="skip" type="button">Not the same</button><div class="ol-small ol-msg"></div></td></tr>';
         }).join('') || '<tr><td colspan="10">Nothing here.</td></tr>';

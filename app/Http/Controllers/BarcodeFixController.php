@@ -204,7 +204,7 @@ class BarcodeFixController extends Controller
             ->whereNull('va.deleted_at')->groupBy('va.product_id')->select('va.product_id', \DB::raw('MAX(va.sell_price_inc_tax) as v'))->pluck('v', 'product_id')->all();
 
         $users = \DB::table('users')->where('business_id', $biz)->select('id', \DB::raw("TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) as n"))->pluck('n', 'id')->all();
-        $who = function ($p) use ($users) { return trim(($users[(int) $p->created_by] ?? '?') . ', ' . ($p->created_at ? date('n/j/Y', strtotime($p->created_at)) : '')); };
+        $who = function ($p) use ($users) { return trim(($users[(int) $p->created_by] ?? '?') . ', ' . ($p->created_at ? date('m/d/y', strtotime($p->created_at)) : '')); };
         // AMS cost for the kept (real-barcode) listing, so an overpriced
         // record stands out (Sarah 10/14).
         $ams = function ($k) use ($ica, $biz) {

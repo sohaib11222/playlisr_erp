@@ -5,12 +5,12 @@
 <style>
 .fb-wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; color: #1F1B16; }
 .fb-wrap h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
-.fb-sub { color: #6B6155; font-size: 15px; margin: 0 0 16px; }
+.fb-sub { color: #2B2620; font-size: 15px; margin: 0 0 16px; }
 .fb-card { background: #fff; border: 1px solid #E6DCCF; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
 .fb-card.done { opacity: .45; }
 .fb-title { font-size: 17px; font-weight: 700; }
-.fb-meta { color: #6B6155; font-size: 13px; margin-top: 2px; }
-.fb-h { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: #8E8273; margin: 12px 0 4px; }
+.fb-meta { color: #2B2620; font-size: 13px; margin-top: 2px; }
+.fb-h { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: #2B2620; margin: 12px 0 4px; }
 .fb-opt { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #F3ECE1; font-size: 14px; }
 .fb-opt > span { flex: 1; }
 .fb-btn { border: 0; border-radius: 8px; padding: 7px 12px; font-weight: 600; cursor: pointer; background: #1F1B16; color: #FFE8A3; white-space: nowrap; }
@@ -19,7 +19,7 @@
 .fb-row input { height: 34px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 10px; font-size: 14px; width: 200px; }
 .fb-msg { font-size: 13px; color: #2E6B2E; }
 .fb-msg.bad { color: #8E1B1B; }
-.fb-none { font-size: 14px; color: #8E8273; padding-top: 6px; }
+.fb-none { font-size: 14px; color: #2B2620; padding-top: 6px; }
 .fb-nav { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
 </style>
 <div class="fb-wrap">
@@ -35,6 +35,7 @@
 (function () {
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var offset = 0, done = 0, data = null, nextOffset = 0, history_ = [];
+    function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function money(n) { return n ? '$' + Number(n).toFixed(2) : ''; }
     function post(url, body) {
