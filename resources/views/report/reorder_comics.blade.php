@@ -139,7 +139,7 @@
                             <td style="background:#fffbea;"><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
                                 title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
                             <td style="background:#fffbea; white-space:nowrap;"><input type="date" class="form-control rc-lastorder" style="width:150px; display:inline-block;" value="{{ $f['last_order'] }}" max="{{ now()->toDateString() }}">
-                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since@endif</div></td>
+                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since @endif</div></td>
                             <td class="rc-order" style="background:#fffbea;">{{ $f['order'] }}</td>
                         </tr>
                         @endforeach
