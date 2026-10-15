@@ -66,6 +66,12 @@ class AdminSidebarMenu
                             'Customer Pickups',
                             ['icon' => 'fa fas fa-hand-holding', 'active' => request()->segment(1) == 'customer-pickups']
                         );
+                        // Moved from the website admin (Sarah, 2026-10-15).
+                        $sub->url(route('wa.warehouse.packer'), 'Packer View', ['icon' => 'fa fas fa-dolly', 'active' => request()->is('website-admin/warehouse/packer*')]);
+                        $sub->url(route('wa.warehouse.index'), 'Warehouse', ['icon' => 'fa fas fa-warehouse', 'active' => request()->segment(1) == 'website-admin' && !request()->is('website-admin/warehouse/packer*') && !request()->is('website-admin/rates*')]);
+                        $sub->url(route('wa.inbox.returns'), 'Website Returns', ['icon' => 'fa fas fa-undo', 'active' => request()->segment(1) == 'website-returns']);
+                        $sub->url(route('wa.tools.abandonedCarts'), 'Abandoned Carts', ['icon' => 'fa fas fa-shopping-cart', 'active' => request()->segment(1) == 'website-carts']);
+                        $sub->url(route('wa.warehouse.rates'), 'Shipping Rates', ['icon' => 'fa fas fa-truck', 'active' => request()->is('website-admin/rates*')]);
                     },
                     ['icon' => 'fa fas fa-box']
                 )->order(8);
@@ -83,6 +89,88 @@ class AdminSidebarMenu
                     'Communications Hub',
                     ['icon' => 'fa fas fa-comments', 'active' => request()->segment(1) == 'communications']
                 )->order(15);
+            }
+
+            //Website admin pages moved into the ERP (Sarah, 2026-10-15: "all
+            //website admin functionality must be in the ERP"). They run the
+            //website's own admin API through App\Services\WebsiteBridge.
+            if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
+                $seg = request()->segment(1);
+                $menu->dropdown(
+                    'Website Inbox',
+                    function ($sub) use ($seg) {
+                        $sub->url(route('wa.inbox.applications'), 'Job Applications', ['icon' => 'fa fas fa-id-badge', 'active' => request()->is('website-inbox/applications*')]);
+                        $sub->url(route('wa.inbox.messages'), 'Contact Messages', ['icon' => 'fa fas fa-envelope', 'active' => request()->is('website-inbox/messages*')]);
+                        $sub->url(route('wa.inbox.buy_sell'), 'Buy / Sell Queries', ['icon' => 'fa fas fa-handshake', 'active' => request()->is('website-inbox/buy-sell*')]);
+                        $sub->url(route('wa.inbox.chats'), 'Chat Conversations', ['icon' => 'fa fas fa-comments', 'active' => request()->is('website-inbox/chats*')]);
+                    },
+                    ['icon' => 'fa fas fa-inbox']
+                )->order(16);
+                $menu->dropdown(
+                    'Website Catalog',
+                    function ($sub) {
+                        $sub->url(route('wa.catalog.products'), 'Website Products', ['icon' => 'fa fas fa-box', 'active' => request()->is('website-catalog/products*')]);
+                        $sub->url(route('wa.catalog.images'), 'Missing Images', ['icon' => 'fa fas fa-image', 'active' => request()->is('website-catalog/images*')]);
+                        $sub->url(route('wa.catalog.metadata'), 'Product Metadata', ['icon' => 'fa fas fa-tags', 'active' => request()->is('website-catalog/metadata*')]);
+                        $sub->url(route('wa.catalog.requests'), 'Stock Requests', ['icon' => 'fa fas fa-bell', 'active' => request()->is('website-catalog/stock-requests*')]);
+                        $sub->url(route('wa.catalog.synced'), 'Synced Products', ['icon' => 'fa fas fa-sync', 'active' => request()->is('website-catalog/synced*')]);
+                        $sub->url(route('wa.catalog.featured'), 'Featured Products', ['icon' => 'fa fas fa-star', 'active' => (request()->is('website-catalog/featured') || request()->is('website-catalog/featured/*'))]);
+                        $sub->url(route('wa.catalog.records'), 'Featured Records', ['icon' => 'fa fas fa-compact-disc', 'active' => request()->is('website-catalog/featured-records*')]);
+                        $sub->url(route('wa.catalog.categories'), 'Website Categories', ['icon' => 'fa fas fa-folder-open', 'active' => request()->is('website-catalog/categories*')]);
+                        $sub->url(route('wa.catalog.collections'), 'Collections', ['icon' => 'fa fas fa-layer-group', 'active' => request()->is('website-catalog/collections*')]);
+                        $sub->url(route('wa.catalog.giftcards'), 'Website Gift Cards', ['icon' => 'fa fas fa-gift', 'active' => request()->segment(1) == 'website-gift-cards']);
+                    },
+                    ['icon' => 'fa fas fa-globe']
+                )->order(17);
+                $isAdminUser = auth()->user()->hasRole('Admin#' . session('business.id'));
+                $menu->dropdown(
+                    'Website Content',
+                    function ($sub) use ($isAdminUser) {
+                        $sub->url(route('wa.content.newsletter'), 'Newsletters', ['icon' => 'fa fas fa-newspaper', 'active' => request()->is('website-content/newsletter*')]);
+                        $sub->url(route('wa.content.emailSubscribers'), 'Email Subscribers', ['icon' => 'fa fas fa-envelope-open', 'active' => request()->is('website-content/email-subscribers*')]);
+                        $sub->url(route('wa.content.subscriberList'), 'Subscriber List', ['icon' => 'fa fas fa-list', 'active' => request()->is('website-content/subscriber-list*')]);
+                        $sub->url(route('wa.content.blog'), 'Blog', ['icon' => 'fa fas fa-pen-nib', 'active' => request()->is('website-content/blog*')]);
+                        $sub->url(route('wa.content.pages'), 'Website Pages', ['icon' => 'fa fas fa-file-alt', 'active' => request()->is('website-content/pages*')]);
+                        $sub->url(route('wa.content.seo'), 'SEO Manager', ['icon' => 'fa fas fa-search', 'active' => request()->is('website-content/seo*')]);
+                        $sub->url(route('wa.content.mostSearched'), 'Most Searched', ['icon' => 'fa fas fa-chart-bar', 'active' => request()->is('website-content/most-searched*')]);
+                        $sub->url(route('wa.content.bstOfferItems'), 'BST Offer Items', ['icon' => 'fa fas fa-tags', 'active' => request()->is('website-content/bst-offer*')]);
+                        $sub->url(route('wa.content.bstSearchQueries'), 'Buy/Sell/Trade Searches', ['icon' => 'fa fas fa-search-dollar', 'active' => request()->is('website-content/bst-search*')]);
+                        $sub->url(route('wa.content.sealedVelocity'), 'Sealed Velocity', ['icon' => 'fa fas fa-tachometer-alt', 'active' => request()->is('website-content/sealed-velocity*')]);
+                        $sub->url(route('wa.content.users'), 'Website Customers', ['icon' => 'fa fas fa-users', 'active' => request()->segment(1) == 'website-users' && !request()->is('website-users/admins*')]);
+                        if ($isAdminUser) {
+                            $sub->url(route('wa.content.siteSettings'), 'Website Settings', ['icon' => 'fa fas fa-sliders-h', 'active' => request()->segment(1) == 'website-settings']);
+                            $sub->url(route('wa.content.admins'), 'Website Admin Logins', ['icon' => 'fa fas fa-user-shield', 'active' => request()->is('website-users/admins*')]);
+                        }
+                    },
+                    ['icon' => 'fa fas fa-pen']
+                )->order(18);
+                $menu->dropdown(
+                    'Website Tools',
+                    function ($sub) {
+                        $sub->url(route('wa.tools.dashboard'), 'Website Dashboard', ['icon' => 'fa fas fa-tachometer-alt', 'active' => request()->is('website-tools/dashboard*')]);
+                        $sub->url(route('wa.tools.syncDashboard'), 'Sync Dashboard', ['icon' => 'fa fas fa-heartbeat', 'active' => request()->is('website-tools/sync-dashboard*')]);
+                        $sub->url(route('wa.tools.autoSync'), 'Website Auto Sync', ['icon' => 'fa fas fa-sync-alt', 'active' => request()->is('website-tools/auto-sync*')]);
+                        $sub->url(route('wa.tools.posImageRefresh'), 'POS Image Refresh', ['icon' => 'fa fas fa-image', 'active' => request()->is('website-tools/pos-image*')]);
+                        $sub->url(route('wa.tools.posArtistRefresh'), 'POS Artist Refresh', ['icon' => 'fa fas fa-microphone', 'active' => request()->is('website-tools/pos-artist*')]);
+                        $sub->url(route('wa.tools.bulkDiscogsImport'), 'Bulk Discogs Import', ['icon' => 'fa fas fa-compact-disc', 'active' => request()->is('website-tools/bulk-discogs*')]);
+                        $sub->url(route('wa.tools.backgroundImport'), 'Background Import', ['icon' => 'fa fas fa-tasks', 'active' => request()->is('website-tools/background*')]);
+                        $sub->url(route('wa.tools.importStatus'), 'Website Import Status', ['icon' => 'fa fas fa-database', 'active' => request()->is('website-tools/import-status*')]);
+                    },
+                    ['icon' => 'fa fas fa-tools']
+                )->order(19);
+                $menu->dropdown(
+                    'Record Store Directory',
+                    function ($sub) {
+                        $sub->url(route('wa.directory.stores'), 'Directory Stores', ['icon' => 'fa fas fa-store', 'active' => request()->is('website-directory/stores*')]);
+                        $sub->url(route('wa.directory.submissions'), 'Store Submissions', ['icon' => 'fa fas fa-inbox', 'active' => request()->is('website-directory/submissions*')]);
+                        $sub->url(route('wa.directory.claims'), 'Store Claims', ['icon' => 'fa fas fa-certificate', 'active' => request()->is('website-directory/claims*')]);
+                        $sub->url(route('wa.directory.requests'), 'Store Location Requests', ['icon' => 'fa fas fa-map-marker-alt', 'active' => request()->is('website-directory/requests*')]);
+                        $sub->url(route('wa.directory.searches'), 'Directory Searches', ['icon' => 'fa fas fa-search', 'active' => request()->is('website-directory/searches*')]);
+                        $sub->url(route('wa.directory.artists'), 'Artist Submissions', ['icon' => 'fa fas fa-microphone', 'active' => request()->is('website-directory/artists*')]);
+                        $sub->url(route('wa.directory.indexSubmissions'), 'Index Submissions', ['icon' => 'fa fas fa-book', 'active' => request()->is('website-directory/index*')]);
+                    },
+                    ['icon' => 'fa fas fa-map']
+                )->order(20);
             }
 
             //Inventory: ONE link for counting shelves, the weekly order,
@@ -187,6 +275,12 @@ class AdminSidebarMenu
                             'Email Templates',
                             ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
                         );
+                        $sub->url(route('wa.directory.partyPrep'), 'Listening Party Prep', ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->is('website-events/listening-party-prep*')]);
+                        $sub->url(route('wa.directory.communityEvents'), 'Community Events', ['icon' => 'fa fas fa-users', 'active' => request()->is('website-events/community*')]);
+                        $sub->url(route('wa.bookings.index'), 'Venue Bookings', ['icon' => 'fa fas fa-calendar-check', 'active' => request()->segment(1) == 'website-bookings' && !request()->is('website-bookings/calendar*') && !request()->is('website-bookings/add*') && !request()->is('website-bookings/venues*')]);
+                        $sub->url(route('wa.bookings.calendar'), 'Bookings Calendar', ['icon' => 'fa fas fa-calendar', 'active' => request()->is('website-bookings/calendar*')]);
+                        $sub->url(route('wa.bookings.add'), 'Add Missed Booking', ['icon' => 'fa fas fa-calendar-plus', 'active' => request()->is('website-bookings/add*')]);
+                        $sub->url(route('wa.bookings.venues'), 'Manage Venues', ['icon' => 'fa fas fa-building', 'active' => request()->is('website-bookings/venues*')]);
                     },
                     ['icon' => 'fa fas fa-music']
                 )->order(13);
