@@ -430,7 +430,13 @@ class BarcodeFixController extends Controller
                     'who' => $users[(int) $p->created_by] ?? '?', 'created' => substr((string) $p->created_at, 0, 10), 'updated' => substr($last, 0, 10), 'upd_full' => $last,
                     'stock' => $stock[(int) $p->id] ?? [], 'sold' => $sold[(int) $p->id] ?? 0];
             }, $g);
-            usort($items, function ($a, $b) { return strcmp($b['upd_full'], $a['upd_full']); });
+            // Keep the most recently updated listing, but a 2024 listing only
+            // when every copy is from 2024 (Sarah 10/15: "the ones from 2024
+            // are def not to be totally trusted").
+            usort($items, function ($a, $b) {
+                $a24 = strpos($a['created'], '2024') === 0; $b24 = strpos($b['created'], '2024') === 0;
+                return [$a24, $b['upd_full']] <=> [$b24, $a['upd_full']];
+            });
             $groups[] = ['barcode' => explode('|', $key)[0], 'items' => $items];
         }
         usort($groups, function ($a, $b) { return strcmp($a['items'][0]['name'], $b['items'][0]['name']); });

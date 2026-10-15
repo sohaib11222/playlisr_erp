@@ -37,7 +37,7 @@
         document.getElementById('sbList').innerHTML = groups.map(function (g, gi) {
             return '<div class="sb-group" data-g="' + gi + '"><div class="sb-head"><span>Barcode ' + esc(g.barcode) + ', ' + esc(g.items[0].cat) + '</span><span><button class="sb-btn" data-a="merge" type="button">Merge</button> <button class="sb-btn light" data-a="skip" type="button">Not the same</button> <span class="sb-small sb-msg"></span></span></div><table class="sb-table">'
                 + g.items.map(function (x, i) {
-                    return '<tr class="' + (i === 0 ? 'sb-keep' : '') + '"><td style="width:38%;"><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a>' + (i === 0 ? ' <span class="sb-tag">KEPT (updated most recently)</span>' : '') + '</td>'
+                    return '<tr class="' + (i === 0 ? 'sb-keep' : '') + '"><td style="width:38%;"><a href="/products/' + x.id + '/edit" target="_blank">' + esc(x.name) + '</a>' + (i === 0 ? ' <span class="sb-tag">KEPT</span>' : '') + '</td>'
                         + '<td>Entered by <b>' + esc(x.who) + '</b> on ' + esc(x.created) + '<div class="sb-small">last updated ' + esc(x.updated) + '</div></td>'
                         + '<td>' + money(x.price) + '</td><td>Stock: ' + esc(stock(x.stock)) + '</td><td>Sold ' + x.sold + '</td></tr>';
                 }).join('') + '</table></div>';
@@ -81,7 +81,7 @@
     });
     fetch('/products/same-barcode?json=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         groups = j.groups || [];
-        document.getElementById('sbSub').textContent = groups.length + ' records have the same barcode on two or more listings in the same format. The green row (updated most recently) is kept with its price and stock; the others merge into it with all their sales. Nothing changes until you press Merge, and every merge can be undone.';
+        document.getElementById('sbSub').textContent = groups.length + ' records have the same barcode on two or more listings in the same format. The green row is kept with its price and stock (the most recently updated listing, but never a 2024 one unless all copies are from 2024); the others merge into it with all their sales. Nothing changes until you press Merge, and every merge can be undone.';
         render();
     });
 })();
