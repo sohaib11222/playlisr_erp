@@ -19,7 +19,7 @@ class EventsExtrasController extends DirectoryBaseController
     public function published(Request $request, string $id)
     {
         $this->guard();
-        $published = $request->boolean('published');
+        $published = filter_var($request->input('published'), FILTER_VALIDATE_BOOLEAN);
         return $this->done(
             self::call('PATCH', '/events/' . rawurlencode($id) . '/published', ['published' => $published]),
             $published ? 'Event published on nivessa.com.' : 'Event hidden from nivessa.com.'
@@ -61,7 +61,7 @@ class EventsExtrasController extends DirectoryBaseController
         return $this->done(
             self::call('POST', '/events/rsvp/' . rawurlencode($rsvpId) . '/add-guest', [
                 'email' => $email,
-                'wantsFutureEvents' => $request->boolean('wantsFutureEvents'),
+                'wantsFutureEvents' => filter_var($request->input('wantsFutureEvents'), FILTER_VALIDATE_BOOLEAN),
             ]),
             'Guest added.'
         );
@@ -127,7 +127,7 @@ class EventsExtrasController extends DirectoryBaseController
     public function preorderPaid(Request $request, string $preorderId)
     {
         $this->guard();
-        $paid = $request->boolean('paid');
+        $paid = filter_var($request->input('paid'), FILTER_VALIDATE_BOOLEAN);
         return $this->done(
             WebsiteBridge::erp('PATCH', '/preorders/' . rawurlencode($preorderId) . '/paid', ['paid' => $paid, 'changedBy' => WebsiteBridge::actor()]),
             $paid ? 'Preorder marked paid.' : 'Preorder marked unpaid.'

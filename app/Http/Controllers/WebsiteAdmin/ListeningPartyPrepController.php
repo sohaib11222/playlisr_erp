@@ -43,7 +43,7 @@ class ListeningPartyPrepController extends DirectoryBaseController
     {
         $this->guard();
         $businessId = (int) $request->session()->get('user.business_id');
-        $showPast = $request->boolean('past');
+        $showPast = filter_var($request->input('past'), FILTER_VALIDATE_BOOLEAN);
         $today = Carbon::now('America/Los_Angeles')->startOfDay();
         $todayStr = $today->format('Y-m-d');
 

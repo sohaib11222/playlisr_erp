@@ -46,7 +46,7 @@ class StoreRequestsController extends DirectoryBaseController
     public function handled(Request $request, string $id)
     {
         $this->guard();
-        $handled = $request->boolean('handled');
+        $handled = filter_var($request->input('handled'), FILTER_VALIDATE_BOOLEAN);
         return $this->done(
             self::call('PATCH', '/admin/store-requests/' . rawurlencode($id) . '/handled', ['handled' => $handled]),
             $handled ? 'Marked handled.' : 'Marked new.'

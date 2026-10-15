@@ -152,7 +152,7 @@ class DirectoryStoresController extends DirectoryBaseController
             $fields[$k] = trim((string) $request->input($k, ''));
         }
         $fields['status'] = in_array($request->input('status'), self::STATUSES, true) ? $request->input('status') : 'published';
-        $fields['is_active'] = $request->boolean('is_active') ? 'true' : 'false';
+        $fields['is_active'] = filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
         // Arrays go up JSON-encoded; the website's normalizeArray parses them.
         $fields['categories'] = self::csv($request->input('categories', ''));
         $fields['gallery_images'] = self::csv($request->input('gallery_images', ''));
@@ -197,7 +197,7 @@ class DirectoryStoresController extends DirectoryBaseController
             'venue_name'  => trim((string) $request->input('venue_name', '')),
             'start_at'    => $start,
             'end_at'      => self::toIso($request->input('end_at')),
-            'is_active'   => $request->boolean('is_active') ? 'true' : 'false',
+            'is_active'   => filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
         ];
         $base = '/admin/record-stores/stores/' . rawurlencode($id) . '/events';
         $files = ['image' => $request->file('image')];
