@@ -10,7 +10,7 @@
 
 <style>
   .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
-  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#6b7280; text-decoration:none; white-space:nowrap; }
+  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
   .wo-tab:hover { color:#111827; }
   .wo-tab.active { color:#111827; }
   .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#111827; border-radius:2px 2px 0 0; }
@@ -20,7 +20,7 @@
 
   .wo-filters { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
   .wo-filters .wo-field { display:flex; flex-direction:column; gap:4px; }
-  .wo-filters label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#9ca3af; }
+  .wo-filters label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#000; }
   .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { font-size:13.5px; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; background:#fff; }
   .wo-filters .wo-actions-inline { display:flex; gap:10px; align-items:center; }
 
@@ -34,20 +34,20 @@
   .wo-scroll { overflow-x:auto; }
   .wo-tbl td { overflow-wrap:anywhere; }
   .wo-tbl td.wo-actions-cell { overflow:visible; }
-  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:10px 10px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
+  .wo-tbl thead th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#000; padding:10px 10px; border-bottom:1px solid #e5e7eb; background:#f9fafb; }
   .wo-tbl tbody tr.wo-row { border-bottom:1px solid #f0f0f0; }
   .wo-tbl tbody tr.wo-row:hover { background:#fafafa; }
-  .wo-tbl td { padding:12px 10px; font-size:14px; vertical-align:top; }
+  .wo-tbl td { padding:12px 10px; font-size:14px; vertical-align:top; color:#000; }
 
   .wo-buyer-name { font-size:14.5px; font-weight:600; color:#111827; }
   .wo-prod-with-img { display:flex; gap:10px; align-items:center; }
   .wo-prod-img { width:64px; height:64px; border-radius:8px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6; flex-shrink:0; display:block; }
-  .wo-listed { font-size:12.5px; color:#374151; line-height:1.35; min-width:96px; }
-  .wo-listed .t { display:block; color:#9ca3af; white-space:nowrap; }
+  .wo-listed { font-size:12.5px; color:#000; line-height:1.35; min-width:96px; }
+  .wo-listed .t { display:block; color:#000; white-space:nowrap; }
   .wo-sort { color:inherit; text-decoration:none; white-space:nowrap; }
   .wo-sort:hover { text-decoration:underline; }
-  .wo-sort-arrow { font-size:10px; margin-left:3px; color:#6b7280; }
-  .wo-buyer-email { font-size:12.5px; color:#6b7280; margin-top:2px; }
+  .wo-sort-arrow { font-size:10px; margin-left:3px; color:#000; }
+  .wo-buyer-email { font-size:12.5px; color:#000; margin-top:2px; }
 
   .wo-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap; }
   .wo-pill.st-processing { background:#fef9c3; color:#854d0e; }
@@ -58,7 +58,7 @@
   .wo-pill.st-delivered { background:#dcfce7; color:#166534; }
   .wo-pill.st-cancelled { background:#fee2e2; color:#991b1b; }
   .wo-pill.st-flag { background:#fee2e2; color:#991b1b; }
-  .wo-pill.st-default { background:#f3f4f6; color:#374151; }
+  .wo-pill.st-default { background:#f3f4f6; color:#000; }
 
   .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; }
   .wo-fm-pill.shipping { background:#e0f2fe; color:#0369a1; }
@@ -66,32 +66,32 @@
   .wo-fm-pill.digital { background:#dcfce7; color:#166534; }
   .wo-fm-pill.both-sep { background:#fef3c7; color:#92400e; margin-top:4px; }
   .wo-fm-pill.both-comb { background:#ffedd5; color:#9a3412; margin-top:4px; }
-  .wo-shipfrom { font-size:11px; color:#6b7280; margin-top:3px; }
+  .wo-shipfrom { font-size:11px; color:#000; margin-top:3px; }
   .wo-mvstore { display:inline; margin-left:6px; }
   .wo-mvstore button { background:none; border:0; padding:0; font-size:11px; color:#2563eb; text-decoration:underline; cursor:pointer; }
 
   .wo-prod-line { font-size:13.5px; color:#111827; line-height:1.35; margin-bottom:6px; word-break:break-word; }
   .wo-prod-line:last-child { margin-bottom:0; }
-  .wo-prod-qty { margin-left:4px; font-size:12px; font-weight:700; color:#6b7280; }
-  .wo-prod-artist { font-size:12px; color:#6b7280; }
-  .wo-prod-more { font-size:12px; color:#6b7280; margin-top:4px; }
+  .wo-prod-qty { margin-left:4px; font-size:12px; font-weight:700; color:#000; }
+  .wo-prod-artist { font-size:12px; color:#000; }
+  .wo-prod-more { font-size:12px; color:#000; margin-top:4px; }
 
   .wo-total { font-weight:600; color:#111827; }
   .wo-loc { font-size:12.5px; line-height:1.35; min-width:110px; }
   .wo-loc-line { min-height:64px; margin-bottom:4px; }
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
-  .wo-loc .q { font-weight:400; color:#6b7280; }
-  .wo-loc .genre { display:block; margin-top:2px; padding:1px 6px; border-radius:5px; background:#eef2ff; color:#3730a3; font-weight:600; width:fit-content; }
-  .wo-loc .bin { display:block; color:#4b5563; font-family:monospace; font-size:12px; }
+  .wo-loc .q { font-weight:400; color:#000; }
+  .wo-loc .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
+  .wo-loc .bin { display:block; color:#000; font-family:monospace; font-size:12px; }
   .wo-loc .none { color:#b91c1c; font-weight:600; }
-  .wo-loc .na { color:#9ca3af; }
-  .wo-placed { font-size:12.5px; color:#6b7280; line-height:1.35; }
-  .wo-placed .t { display:block; color:#9ca3af; }
+  .wo-loc .na { color:#000; }
+  .wo-placed { font-size:12.5px; color:#000; line-height:1.35; }
+  .wo-placed .t { display:block; color:#000; }
   .wo-pill, .wo-fm-pill { white-space:normal !important; }
   .wo-tag { display:inline-block; margin-left:4px; padding:0 5px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; vertical-align:1px; }
   .wo-tag.media { color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; }
-  .wo-tag.fmt { color:#6b7280; border:1px solid #e5e7eb; font-weight:600; }
-  .wo-prod-price { font-size:12px; color:#6b7280; }
+  .wo-tag.fmt { color:#000; border:1px solid #e5e7eb; font-weight:600; }
+  .wo-prod-price { font-size:12px; color:#000; }
   .wo-sla { display:inline-block; margin-top:4px; padding:1px 7px; border-radius:5px; font-size:10.5px; font-weight:700; }
   .wo-sla.ok { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
   .wo-sla.warn { color:#92400e; background:#fef3c7; border:1px solid #fde68a; }
@@ -108,7 +108,7 @@
   .wo-more-menu { display:none; position:fixed; z-index:1000; min-width:150px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; }
   .wo-more.open .wo-more-menu { display:block; }
   .wo-more-menu form { margin:0; }
-  .wo-more-item { display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; font-size:13px; color:#374151; border-radius:6px; cursor:pointer; }
+  .wo-more-item { display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; font-size:13px; color:#000; border-radius:6px; cursor:pointer; }
   .wo-more-item:hover { background:#f3f4f6; }
   .wo-more-item.danger { color:#b91c1c; }
   .wo-more-item.danger:hover { background:#fef2f2; }
@@ -116,8 +116,8 @@
   .wo-row .wo-prod-line { margin-bottom:4px; }
   .wo-prod-name { color:#111827; text-decoration:none; }
   .wo-prod-name:hover { color:#4a6fa5; text-decoration:underline; }
-  .wo-noerp { display:inline-block; margin-left:5px; padding:0 6px; border-radius:999px; background:#f3f4f6; color:#6b7280; font-size:10.5px; font-weight:600; vertical-align:1px; white-space:nowrap; }
-  .wo-btn { display:block; width:100%; box-sizing:border-box; font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#374151; text-align:center; }
+  .wo-noerp { display:inline-block; margin-left:5px; padding:0 6px; border-radius:999px; background:#f3f4f6; color:#000; font-size:10.5px; font-weight:600; vertical-align:1px; white-space:nowrap; }
+  .wo-btn { display:block; width:100%; box-sizing:border-box; font-size:13px; padding:7px 12px; border-radius:7px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-weight:500; color:#000; text-align:center; }
   .wo-btn:hover { background:#f9fafb; }
   .wo-btn-primary { background:#111827; color:#fff; border-color:#111827; }
   .wo-btn-primary:hover { background:#1f2937; }
@@ -128,27 +128,27 @@
   .wo-dialog::backdrop { background:rgba(17,24,39,.45); }
   .wo-dialog-body { padding:22px; }
   .wo-dialog-body h3 { margin:0 0 14px; font-size:16px; font-weight:700; color:#111827; }
-  .wo-dialog-body label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#6b7280; margin:12px 0 5px; }
+  .wo-dialog-body label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#000; margin:12px 0 5px; }
   .wo-dialog-body label:first-of-type { margin-top:0; }
   .wo-dialog-body select, .wo-dialog-body input[type=text] { width:100%; font-size:14px; padding:9px 10px; border:1px solid #d1d5db; border-radius:8px; box-sizing:border-box; }
-  .wo-dialog-checkline { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:#374151; margin-top:14px; }
+  .wo-dialog-checkline { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:#000; margin-top:14px; }
   .wo-dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
 
   .wo-detail td { background:#f9fafb; padding:0 14px 18px; }
   .wo-detail-grid { display:flex; flex-wrap:wrap; gap:28px; padding:14px 4px; font-size:13px; }
-  .wo-detail-grid h5 { font-size:12.5px; font-weight:700; margin:0 0 8px; color:#4b5563; text-transform:uppercase; letter-spacing:.03em; }
+  .wo-detail-grid h5 { font-size:12.5px; font-weight:700; margin:0 0 8px; color:#000; text-transform:uppercase; letter-spacing:.03em; }
   .wo-detail-items { width:100%; border-collapse:collapse; margin-top:6px; }
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
-  .wo-detail-items th { color:#6b7280; font-weight:700; font-size:11px; text-transform:uppercase; }
+  .wo-detail-items th { color:#000; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
   .wo-pick { margin-top:6px; text-align:left; }
   .wo-pick-line { border:1px solid #e5e7eb; border-radius:7px; padding:5px 7px; margin-bottom:5px; background:#fff; }
   .wo-pick-line.is-done { background:#ecfdf5; border-color:#a7f3d0; }
   .wo-pick-line.is-missing { background:#fef2f2; border-color:#fecaca; }
   .wo-pick-name { font-size:12px; font-weight:600; color:#111827; line-height:1.3; }
-  .wo-pick-state { font-size:11px; color:#6b7280; margin:1px 0 4px; }
+  .wo-pick-state { font-size:11px; color:#000; margin:1px 0 4px; }
   .wo-pick-btns { display:flex; gap:5px; }
-  .wo-pick-btns button, .wo-pick-all { font-size:12px; padding:5px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#374151; cursor:pointer; }
+  .wo-pick-btns button, .wo-pick-all { font-size:12px; padding:5px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#000; cursor:pointer; }
   .wo-pick-btns button.go, .wo-pick-all { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
   .wo-pick-btns button:disabled, .wo-pick-all:disabled { opacity:.5; cursor:wait; }
 </style>
@@ -245,10 +245,10 @@
                 @if($al['media'])<span class="wo-tag media">{{ $al['media'] }}</span>@endif
                 @if($al['format'])<span class="wo-tag fmt">{{ $al['format'] }}</span>@endif
                 @if($al['sku'] || $al['price'] !== null)
-                  <div style="font-size:11px;color:#9ca3af;">@if($al['sku'])SKU {{ $al['sku'] }}@endif @if($al['sku'] && $al['price'] !== null) &middot; @endif @if($al['price'] !== null)${{ number_format((float) $al['price'], 2) }}@endif</div>
+                  <div style="font-size:11px;color:#000;">@if($al['sku'])SKU {{ $al['sku'] }}@endif @if($al['sku'] && $al['price'] !== null) &middot; @endif @if($al['price'] !== null)${{ number_format((float) $al['price'], 2) }}@endif</div>
                 @endif
               </td>
-              <td style="padding:7px 12px;color:#4b5563;white-space:nowrap;">street date {{ $al['street_date'] ? gmdate('M d, Y', strtotime($al['street_date'])) : 'TBD' }}</td>
+              <td style="padding:7px 12px;color:#000;white-space:nowrap;">street date {{ $al['street_date'] ? gmdate('M d, Y', strtotime($al['street_date'])) : 'TBD' }}</td>
               <td style="padding:7px 12px;text-align:right;font-weight:700;color:#c2410c;white-space:nowrap;">{{ $al['quantity'] }} preordered</td>
             </tr>
           @endforeach
@@ -310,7 +310,7 @@
       </div>
       <div class="wo-actions-inline">
         <button type="submit" class="wo-btn wo-btn-primary">Filter</button>
-        <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:13px;color:#6b7280;">Clear</a>
+        <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}" style="font-size:13px;color:#000;">Clear</a>
       </div>
     </form>
 
@@ -425,8 +425,8 @@
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($paymentStatusFilter === 'all')
-                    @php $ps = $o['payment_status'] ?? 'unknown'; $psColors = ['completed' => '#dcfce7;color:#166534', 'pending' => '#fef9c3;color:#854d0e', 'failed' => '#fee2e2;color:#991b1b', 'cancelled' => '#f3f4f6;color:#374151', 'refunded' => '#f3e8ff;color:#6b21a8']; @endphp
-                    <div style="margin-top:5px;"><span class="wo-pill" style="background:{{ $psColors[$ps] ?? '#f3f4f6;color:#374151' }};font-size:11px;padding:2px 8px;">Payment: {{ ucfirst($ps) }}</span></div>
+                    @php $ps = $o['payment_status'] ?? 'unknown'; $psColors = ['completed' => '#dcfce7;color:#166534', 'pending' => '#fef9c3;color:#854d0e', 'failed' => '#fee2e2;color:#991b1b', 'cancelled' => '#f3f4f6;color:#000', 'refunded' => '#f3e8ff;color:#6b21a8']; @endphp
+                    <div style="margin-top:5px;"><span class="wo-pill" style="background:{{ $psColors[$ps] ?? '#f3f4f6;color:#000' }};font-size:11px;padding:2px 8px;">Payment: {{ ucfirst($ps) }}</span></div>
                   @endif
                   @if($rowIsPreorder)
                     <div style="margin-top:6px;">
@@ -476,6 +476,8 @@
                       @elseif(!$locInfo)
                         <span class="na">&mdash;</span>
                       @else
+                        @php $locGenre = ($locInfo['genre'] ?? '') !== '' ? $locInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''); @endphp
+                        @if($locGenre !== '')<span class="genre">{{ $locGenre }}</span>@endif
                         @if(!empty($locInfo['stores']))
                           @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
                         @elseif(!empty($locInfo['stocked']))
@@ -483,8 +485,6 @@
                         @else
                           <span class="none">Not set</span>
                         @endif
-                        @php $locGenre = ($locInfo['genre'] ?? '') !== '' ? $locInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''); @endphp
-                        @if($locGenre !== '')<span class="genre">{{ $locGenre }}</span>@endif
                         @if($locInfo['bin'] !== '')<span class="bin">Bin {{ $locInfo['bin'] }}</span>@endif
                       @endif
                       @php
@@ -655,7 +655,7 @@
                                   </div>
                                   @php $listed = \App\Http\Controllers\WebsiteOrdersController::listedLabel($item['product_id']['posCreatedAt'] ?? ($item['product_id']['createdAt'] ?? null)); @endphp
                                   @if($listed)
-                                    <div style="font-size:11px;color:#6b7280;">{{ $listed }}</div>
+                                    <div style="font-size:11px;color:#000;">{{ $listed }}</div>
                                   @endif
                                 @endif
                               </td>
@@ -666,9 +666,9 @@
                                 @if($itemIsGift)
                                   —
                                 @elseif($locStore !== '')
-                                  {{ $locStore }}@if($locSub)<br><span style="color:#6b7280;">&rarr; {{ $locSub }}</span>@endif
+                                  {{ $locStore }}@if($locSub)<br><span style="color:#000;">&rarr; {{ $locSub }}</span>@endif
                                 @else
-                                  <span style="color:#9ca3af;font-style:italic;">Not set</span>
+                                  <span style="color:#000;font-style:italic;">Not set</span>
                                 @endif
                               </td>
                               <td style="font-family:monospace;font-size:12px;">{{ $itemIsGift ? '—' : ($discogs ?: '—') }}</td>
@@ -678,7 +678,7 @@
                                 @elseif($inStoreBins)
                                   <span style="color:#15803d;font-weight:600;">In Store Bins</span>
                                 @else
-                                  <span style="color:#9ca3af;">—</span>
+                                  <span style="color:#000;">—</span>
                                 @endif
                               </td>
                               <td>{{ $item['quantity'] ?? 1 }}</td>
@@ -739,7 +739,7 @@
                   <td>
                     <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
                     <div><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">{{ $d['id'] }}</a></div>
-                    <div style="font-size:11px;color:#6b7280;">{{ $d['status'] ?? '' }}</div>
+                    <div style="font-size:11px;color:#000;">{{ $d['status'] ?? '' }}</div>
                   </td>
                   @php
                     $dListed = \App\Http\Controllers\WebsiteOrdersController::listedShort(collect($d['items'] ?? [])->map(fn($it) => $it['listed_at'] ?? null)->filter()->sort()->first());
@@ -749,9 +749,9 @@
                     @foreach(($d['items'] ?? []) as $it)
                       <div class="wo-prod-line wo-prod-with-img">
                       @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
-                      <div>@if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif @if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#6b7280;">({{ $it['location'] }})</span>@endif
+                      <div>@if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif @if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#000;">({{ $it['location'] }})</span>@endif
                         @php $dlisted = \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null); @endphp
-                        @if($dlisted && count($d['items'] ?? []) > 1)<div style="font-size:11px;color:#6b7280;">{{ $dlisted }}</div>@endif
+                        @if($dlisted && count($d['items'] ?? []) > 1)<div style="font-size:11px;color:#000;">{{ $dlisted }}</div>@endif
                       </div>
                       </div>
                     @endforeach
@@ -791,7 +791,7 @@
           <span class="wo-pill" style="background:#fee2e2;color:#991b1b;">Discogs</span>
           Waiting on buyer / needs refund ({{ count($discogsWaiting) }})
         </h3>
-        <div style="font-size:13px;color:#6b7280;margin:-4px 0 10px;">We told these buyers we can't find the item and they haven't replied. Not to ship: refund or send a substitute on Discogs.</div>
+        <div style="font-size:13px;color:#000;margin:-4px 0 10px;">We told these buyers we can't find the item and they haven't replied. Not to ship: refund or send a substitute on Discogs.</div>
         <div class="wo-card">
           <div class="wo-scroll">
           <table class="wo-tbl">

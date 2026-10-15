@@ -2,7 +2,7 @@
      pick records nivessa.com/admin/warehouse writes, so earlier picks made
      there show here. Buttons save in place (no reload) via woPick(). --}}
 @php $pickDone = ['Picked', 'Packed', 'Shipped']; @endphp
-<div class="wo-pick-count" style="font-size:11px;font-weight:600;color:{{ ($pick['picked'] ?? 0) >= ($pick['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked <span class="n">{{ $pick['picked'] ?? 0 }}</span>/<span class="t">{{ $pick['total'] ?? 0 }}</span></div>
+<div class="wo-pick-count" style="font-size:11px;font-weight:600;color:{{ ($pick['picked'] ?? 0) >= ($pick['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pick['picked'] ?? 0 }}</span>/<span class="t">{{ $pick['total'] ?? 0 }}</span></div>
 @if(!empty($pick['order_id']) && !empty($pick['lines']))
   <div class="wo-pick" data-order="{{ $pick['order_id'] }}">
     @foreach($pick['lines'] as $pl)
