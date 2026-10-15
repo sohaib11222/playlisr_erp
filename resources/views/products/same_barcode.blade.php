@@ -39,10 +39,14 @@ tr.sb-group.done td { opacity: .4; }
     function stock(s) { var k = Object.keys(s || {}); return k.length ? k.map(function (x) { return x + ' ' + s[x]; }).join(', ') : 'none'; }
     function who(x) { return esc(x.who) + ', ' + esc(d8(x.created)) + ', ' + money(x.price) + ', stock ' + esc(stock(x.stock)); }
     function render() {
-        document.getElementById('sbList').innerHTML = groups.length ? '<table class="sb-table"><thead><tr><th>Record</th><th>Keep</th><th>Merge into it</th><th></th></tr></thead><tbody>'
+        function after(a) {
+            var k = Object.keys(a.stock || {});
+            return '<b>' + money(a.price) + '</b>, ' + (k.length ? k.map(function (x) { var v = a.stock[x]; return '<b>' + esc(x) + ' ' + v.qty + '</b> (' + (v.why === 'counted' ? 'Clarissa counted ' : 'last updated ') + esc(d8(v.at)) + ')'; }).join(', ') : 'no stock');
+        }
+        document.getElementById('sbList').innerHTML = groups.length ? '<table class="sb-table"><thead><tr><th>Record</th><th>After merge</th><th>The listings now</th><th></th></tr></thead><tbody>'
             + groups.map(function (g, gi) {
                 return '<tr class="sb-group" data-g="' + gi + '"><td><a href="/products/' + g.items[0].id + '/edit" target="_blank">' + esc(g.items[0].name) + '</a></td>'
-                    + '<td>' + who(g.items[0]) + '</td><td>' + g.items.slice(1).map(who).join('<br>') + '</td>'
+                    + '<td>' + after(g.after) + '</td><td style="font-size:12px;">' + g.items.map(who).join('<br>') + '</td>'
                     + '<td><button class="sb-btn" data-a="merge" type="button">Merge</button> <span class="sb-msg"></span></td></tr>';
             }).join('') + '</tbody></table>' : '<p>Nothing left.</p>';
         var b = document.getElementById('sbAll'); b.style.display = groups.length ? '' : 'none';
@@ -84,7 +88,7 @@ tr.sb-group.done td { opacity: .4; }
     });
     fetch('/products/same-barcode?json=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
         groups = j.groups || [];
-        document.getElementById('sbSub').textContent = groups.length + ' records were entered more than once with the same barcode. Merge keeps the first listing (its price and stock) and moves all sales onto it. You can undo any merge.';
+        document.getElementById('sbSub').textContent = groups.length + ' records were entered more than once with the same barcode. "After merge" is what the record will show: the price of the newest listing, and for stock Clarissa's count if she counted it, otherwise the number that was updated most recently. Check that column, then Merge. You can undo any merge.';
         render();
     });
 })();

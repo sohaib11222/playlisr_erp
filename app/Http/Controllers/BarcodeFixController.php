@@ -410,12 +410,14 @@ class BarcodeFixController extends Controller
         $by = array_filter($by, function ($g) { return count($g) > 1; });
         $ids = [];
         foreach ($by as $g) foreach ($g as $p) $ids[] = (int) $p->id;
-        $vinfo = []; $stock = []; $sold = [];
+        $vinfo = []; $stock = []; $sold = []; $vldAt = [];
+        $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
         foreach (array_chunk($ids, 1000) as $chunk) {
             foreach (\DB::table('variations')->whereIn('product_id', $chunk)->whereNull('deleted_at')->groupBy('product_id')
                 ->select('product_id', \DB::raw('MAX(sell_price_inc_tax) as price'), \DB::raw('MAX(updated_at) as upd'))->get() as $v) $vinfo[(int) $v->product_id] = $v;
             foreach (\DB::table('variation_location_details')->whereIn('product_id', $chunk)->select('product_id', 'location_id', 'qty_available', 'updated_at')->get() as $v) {
                 $stock[(int) $v->product_id][$locNames[$v->location_id] ?? $v->location_id] = (float) $v->qty_available;
+                $vldAt[(int) $v->product_id][(int) $v->location_id] = ['qty' => (float) $v->qty_available, 'at' => (string) $v->updated_at];
                 $vinfo['s' . $v->product_id] = max((string) ($vinfo['s' . $v->product_id] ?? ''), (string) $v->updated_at);
             }
             foreach (\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->whereIn('l.product_id', $chunk)
@@ -437,7 +439,25 @@ class BarcodeFixController extends Controller
                 $a24 = strpos($a['created'], '2024') === 0; $b24 = strpos($b['created'], '2024') === 0;
                 return [$a24, $b['upd_full']] <=> [$b24, $a['upd_full']];
             });
-            $groups[] = ['barcode' => explode('|', $key)[0], 'items' => $items];
+            // What the merged listing will show (same rule the merge uses):
+            // Clarissa's shelf count if there is one, else the stock number
+            // updated most recently at each store.
+            $after = [];
+            foreach ($locNames as $lid => $lname) {
+                $best = null; $why = null;
+                foreach ($items as $it) {
+                    $c = $counts[$lid . ':' . $it['id']] ?? null;
+                    if ($c && (!$best || $why !== 'counted' || $c['at'] > $best['at'])) { $best = ['qty' => (float) $c['qty'], 'at' => $c['at']]; $why = 'counted'; }
+                }
+                if (!$best) {
+                    foreach ($items as $it) {
+                        $v = $vldAt[$it['id']][$lid] ?? null;
+                        if ($v && (!$best || strcmp($v['at'], $best['at']) > 0)) { $best = $v; $why = 'latest update'; }
+                    }
+                }
+                if ($best) $after[$lname] = ['qty' => $best['qty'], 'why' => $why, 'at' => substr((string) $best['at'], 0, 10)];
+            }
+            $groups[] = ['barcode' => explode('|', $key)[0], 'items' => $items, 'after' => ['price' => $items[0]['price'], 'stock' => $after]];
         }
         usort($groups, function ($a, $b) { return strcmp($a['items'][0]['name'], $b['items'][0]['name']); });
         return response()->json(['groups' => $groups]);
