@@ -389,7 +389,7 @@
                 <strong>ERP</strong> = rang up · <strong>Clover</strong> = actually swiped - they should match.<br>
                 <strong>Diff / Over-swipe</strong> = Clover took more than was rung (the theft tell).<br>
                 <strong>Drawer</strong> = opening + cash − buys vs. what was counted at close.<br>
-                <strong>⚑ flags</strong> call out anything weird - over-swipes, drawer shorts, missing Clover, or a safe drop at a store with no safe.
+                <strong>⚑ flags</strong> call out anything weird - over-swipes, drawer shorts, or missing Clover.
             </div>
 
             {{-- Tender fix + done --}}

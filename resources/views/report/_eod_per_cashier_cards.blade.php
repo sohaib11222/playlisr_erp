@@ -9,7 +9,7 @@
      Sarah 2026-07-03: collapsed from full cards to one line per
      cashier. The always-visible row carries the money (ERP / Clover /
      diff / drawer) plus a FLAGS cluster that calls out anything weird -
-     e.g. a safe drop logged at a store with no safe (Pico). Click the
+     e.g. an over-swipe or a missing Clover sale. Click the
      row to expand the full breakdown, notes and ✓ sign-off.
 
      JS hooks preserved verbatim so the existing /reports/clover-eod/*
@@ -91,10 +91,9 @@
                         $locNameRaw = $loc['location_name'];
                         $isNoLoc = (strtolower($locNameRaw) === '(no location)' || stripos($locNameRaw, 'no location') !== false);
                         $locNameDisplay = $isNoLoc ? 'No location' : $locNameRaw;
-                        // Sarah 2026-07-03: Pico has no safe, so any safe drop
-                        // logged there is a data/process error worth flagging.
-                        // Everywhere else is assumed to have a safe.
-                        $storeHasSafe = stripos($locNameRaw, 'pico') === false;
+                        // Both stores have a safe now (Pico's installed
+                        // 2026-10-15), so safe drops are never flagged.
+                        $storeHasSafe = true;
                     @endphp
                     @foreach($loc['employees'] as $e)
                         @php

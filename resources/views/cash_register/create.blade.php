@@ -383,6 +383,9 @@
                  location the cashier picks below. --}}
             <script>
               window.crDepositSeqs = {!! json_encode($next_deposit_seqs ?? []) !!};
+              {{-- Cash the drawer keeps before a safe drop, per location:
+                   $200 at Pico (drawers run ~$40 median), $500 elsewhere. --}}
+              window.crSafeKeep = {!! json_encode(collect($business_locations ?? [])->map(function ($n) { return stripos((string) $n, 'pico') !== false ? 200 : 500; })) !!};
             </script>
 
             {{-- Capture the actual amount the cashier moved at open. Left
@@ -523,9 +526,13 @@
           if (slipEl) slipEl.textContent = '0';
           return;
         }
-        // Excess above $500, rounded down to the nearest $100.
-        // $1250 → $700 (leaves $550 in the drawer).
-        var toSafe = Math.floor((val - 500) / 100) * 100;
+        // Excess above the store's drawer keep ($500 Hollywood, $200
+        // Pico), rounded down to the nearest $100.
+        // $1250 at Hollywood → $700 (leaves $550 in the drawer).
+        var locEl = document.querySelector('[name="location_id"]');
+        var keepMap = window.crSafeKeep || {};
+        var keep = locEl && keepMap[locEl.value] != null ? keepMap[locEl.value] : 500;
+        var toSafe = Math.floor((val - keep) / 100) * 100;
         if (toSafe >= 100) {
           var label = '$' + toSafe.toLocaleString('en-US');
           amountEl.textContent = label;
@@ -573,6 +580,8 @@
           btn.classList.add('is-selected');
           locInput.value = btn.getAttribute('data-loc-id') || '';
           updateDepositSeq(locInput.value);
+          lastSeen = null;
+          recheck();
         });
       }
 
