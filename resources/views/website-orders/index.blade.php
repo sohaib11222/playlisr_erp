@@ -481,7 +481,7 @@
                         @if(!empty($locInfo['stores']))
                           @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
                         @elseif(!empty($locInfo['stocked']))
-                          <span class="st">{{ implode(', ', array_keys($locInfo['stocked'])) }}</span> <span class="q">(ordered the last 1 in stock, check the bins anyway)</span>
+                          <span class="st">{{ implode(', ', array_keys($locInfo['stocked'])) }}</span>
                         @else
                           <span class="none">Not set</span>
                         @endif
