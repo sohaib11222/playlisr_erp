@@ -101,8 +101,10 @@ class PicoPullsNotifier
                 $q = max(1, (int) ($it['quantity'] ?? 1));
                 $total += $q;
                 $pid = (int) ($it['product_id']['posProductId'] ?? 0);
-                if (self::isPico($it['ship_from'] ?? null, $stock[$pid] ?? null)) {
-                    $pico[] = ['name' => self::itemName($it), 'qty' => $q, 'bin' => $stock[$pid]['bin'] ?? ''];
+                $code = trim((string) ($it['product_id']['discogsLocation'] ?? '')) ?: ($stock[$pid]['bin'] ?? '');
+                $mapped = self::binStore($code);
+                if ($mapped !== null ? $mapped === 'pico' : self::isPico($it['ship_from'] ?? null, $stock[$pid] ?? null)) {
+                    $pico[] = ['name' => self::itemName($it), 'qty' => $q, 'bin' => $code];
                 }
             }
             if (!$pico) continue;
@@ -123,7 +125,8 @@ class PicoPullsNotifier
                 $total += $q;
                 $code = strtolower(trim((string) ($it['location'] ?? '')));
                 $pid = (int) ($it['erp_product_id'] ?? 0);
-                $isPico = $code !== '' ? strpos($code, 'pico') === 0 : self::isPico(null, $stock[$pid] ?? null);
+                $mapped = self::binStore($code);
+                $isPico = $mapped !== null ? $mapped === 'pico' : ($code !== '' ? strpos($code, 'pico') === 0 : self::isPico(null, $stock[$pid] ?? null));
                 if ($isPico) {
                     $pico[] = ['name' => (string) ($it['name'] ?? 'Item'), 'qty' => $q, 'bin' => $code !== '' ? $code : ($stock[$pid]['bin'] ?? '')];
                 }
@@ -182,6 +185,34 @@ class PicoPullsNotifier
         foreach ($r['items'] as $it) {
             $lines[] = '      ' . self::esc($it['name']) . ($it['qty'] > 1 ? ' x' . $it['qty'] : '') . ($it['bin'] !== '' ? ' · bin ' . self::esc($it['bin']) : '');
         }
+    }
+
+    /** Bin code => store from Warehouse Locations, loaded once per run. */
+    private static $binStores = null;
+
+    /**
+     * The store a bin code is mapped to in Warehouse Locations ('pico' or
+     * 'hollywood'), or null when the code isn't mapped. The bin map wins:
+     * most "Pico##" bins are at Hollywood (Sarah, 2026-10-15).
+     */
+    public static function binStore($code): ?string
+    {
+        $code = strtolower(trim((string) $code));
+        if ($code === '') return null;
+        if (self::$binStores === null) {
+            self::$binStores = [];
+            try {
+                $resp = \App\Services\WebsiteBridge::admin('GET', '/warehouse/locations?active=true', null, 30);
+                foreach (($resp['data'] ?? []) as $l) {
+                    $c = strtolower(trim((string) ($l['discogs_code'] ?? '')));
+                    $st = strtolower((string) ($l['store'] ?? ''));
+                    if ($c !== '' && in_array($st, ['pico', 'hollywood'], true)) self::$binStores[$c] = $st;
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('PicoPullsNotifier bin map failed: ' . $e->getMessage());
+            }
+        }
+        return self::$binStores[$code] ?? null;
     }
 
     /** Pico pull? ship_from wins; else the ERP has it at Pico only. */
