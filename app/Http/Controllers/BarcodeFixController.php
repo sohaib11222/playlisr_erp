@@ -327,7 +327,7 @@ class BarcodeFixController extends Controller
         $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
         $groups = [];
         foreach (\DB::table('products as p')->join('categories as c', 'c.id', '=', 'p.category_id')
-            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereRaw("LOWER(c.name) LIKE '%sealed%'")
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereRaw("LOWER(c.name) LIKE ?", [$request->query('kind') === 'used' ? '%used%' : '%sealed%'])
             ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.created_at', 'c.name as cat')->cursor() as $p) {
             if (empty($stock[(int) $p->id])) continue;
             $fam = $ica->formatFamily($p->cat);
@@ -379,6 +379,10 @@ class BarcodeFixController extends Controller
             return response($csv, 200)->header('Content-Type', 'text/csv')->header('Content-Disposition', 'attachment; filename="old-listings-with-stock.csv"');
         }
         if ($request->query('all')) return response()->json(['rows' => $rows]);
+        if ($request->query('summary')) {
+            $albums = []; foreach ($rows as $r) $albums[$r['store'] . '|' . $r['new_id']] = 1;
+            return response()->json(['extra_listings' => count($rows), 'records_affected' => count($albums), 'extra_copies' => $units]);
+        }
         return response()->json(['old_listings' => count($rows), 'old_copies' => $units, 'sample' => array_slice($rows, 0, 40)]);
     }
 
