@@ -52,7 +52,8 @@ class ReorderController extends Controller
         [$business_id, $locations, $locationId, $format, $since] = $this->params($request);
         if ($format === 'comics') {
             return view('report.reorder_comics', [
-                'data' => $locationId ? $this->svc->comicsAndMagazines($business_id, $locationId, 4) : ['comics' => [], 'magazines' => []],
+                'data' => $locationId ? $this->svc->comicsAndMagazines($business_id, $locationId) : ['comics' => [], 'magazines' => []],
+                'coverWeeks' => (float) $this->svc->loadState($business_id)['settings']['cover_weeks_comics'],
                 'lastSubmit' => collect($this->svc->loadState($business_id)['family_submits'][$locationId] ?? [])->last(),
                 'locations' => $locations,
                 'locationId' => $locationId,
@@ -315,6 +316,20 @@ class ReorderController extends Controller
         if (!preg_match('/^(comics|magazines):/', $key)) return response()->json(['ok' => false], 422);
         $this->svc->saveFamilyCount($business_id, $locationId, $key, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '');
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * "We order every N weeks" box at the top of the comics and sealed pages
+     * (Sarah 10/15). Sealed music keeps it as months of cover, as before.
+     */
+    public function saveOrderEvery(Request $request)
+    {
+        [$business_id, , $locationId, $format] = $this->params($request);
+        if ($format === 'other') abort(422);
+        $weeks = max(0.5, min(52, (float) $request->input('weeks')));
+        $key = $format === 'comics' ? 'cover_weeks_comics' : 'cover_months_' . $format;
+        $this->svc->saveSettings($business_id, [$key => $format === 'comics' ? $weeks : round($weeks / 4.345, 3)]);
+        return redirect()->action('ReorderController@index', array_filter(['location_id' => $locationId, 'format' => $format, 'since' => $request->input('since')]));
     }
 
     /** Per-row "Last ordered" date; blank clears it. */

@@ -26,6 +26,7 @@ class ReorderService
         'cover_months_vinyl' => 1.0,   // vinyl ordered less often: ~1 month of cover
         'cover_months_cd'    => 0.5,   // CDs ordered weekly: ~half a month
         'cover_months_cassette' => 3.0, // Clarissa's cassette sheet keeps 3 months
+        'cover_weeks_comics' => 4,     // comics + magazines ordered about monthly
         'abc_factor'         => ['A' => 1.25, 'B' => 1.0, 'C' => 0.75],
         'xyz_factor'         => ['X' => 1.0, 'Y' => 0.9, 'Z' => 0.75],
         'pace_weight_recent' => 0.4,   // 40% last 10 days, 60% this year's monthly avg
@@ -329,7 +330,7 @@ class ReorderService
     public function saveSettings(int $business_id, array $settings): void
     {
         $state = $this->loadState($business_id);
-        $state['settings'] = array_replace_recursive(self::DEFAULT_SETTINGS, $settings);
+        $state['settings'] = array_replace_recursive(self::DEFAULT_SETTINGS, $state['settings'], $settings);
         $this->saveState($business_id, $state);
     }
 
@@ -637,6 +638,14 @@ class ReorderService
 
             $monthly = $s['pace_weight_recent'] * ($a['d10'] / 10 * 30)
                 + (1 - $s['pace_weight_recent']) * ($a['ytd'] / $monthsElapsed);
+            // Sold out (Sarah 10/15): with none here and no sale in the last
+            // 10 days, the empty weeks aren't slow sales. Pace = this year's
+            // sales over the months up to the last sale.
+            $cnt = $state['counts'][$locationId . ':' . $pid] ?? null;
+            $haveNow = $cnt && Carbon::parse($cnt['at'])->gt(Carbon::now()->subDays((int) $s['count_fresh_days'])) ? (int) $cnt['qty'] : (int) ($erpStock[$pid] ?? 0);
+            if ($haveNow <= 0 && $a['last'] && $a['last'] < $tenAgo) {
+                $monthly = max($monthly, $a['ytd'] / max(1.0, $yearStart->diffInDays(Carbon::parse($a['last'])) / 30.4));
+            }
             $factor = ($s['abc_factor'][$abcCls] ?? 1.0) * ($s['xyz_factor'][$xyz] ?? 1.0);
             $suggested = (int) ceil(round($monthly * $cover * $factor, 2));
             $isCore = $grade === 'AX' || ($a['ytd'] >= 5 && count($a['months']) >= 3) || $a['ytd'] >= 8;
@@ -697,7 +706,6 @@ class ReorderService
                 'erp_stock' => $erpStock[$pid] ?? 0,
                 'on_order' => $onOrder[$pid] ?? 0,
                 'suggested' => $suggested,
-                'monthly_need' => round($monthly * $factor, 3),
                 'cant_order' => $cantOrder,
                 'erp_cost' => $cost ?: null,
                 'used_note' => null,
@@ -863,8 +871,9 @@ class ReorderService
      * A Books item counts as a comic only if it matches a series, says
      * "comic", or has an issue number (#12).
      */
-    public function comicsAndMagazines(int $business_id, int $locationId, int $coverWeeks = 4): array
+    public function comicsAndMagazines(int $business_id, int $locationId, ?float $coverWeeks = null): array
     {
+        $coverWeeks = $coverWeeks ?? (float) $this->loadState($business_id)['settings']['cover_weeks_comics'];
         $cats = Category::where('business_id', $business_id)->where('category_type', 'product')->where('parent_id', 0)
             ->where(function ($q) { $q->where('name', 'like', '%book%')->orWhere('name', 'like', '%comic%')->orWhere('name', 'like', '%magazine%'); })
             ->pluck('name', 'id')->all();
@@ -997,8 +1006,32 @@ class ReorderService
                 // Pace = the faster of the last 90 days and this year so far
                 // (Sarah 10/14: comics went a long time between orders, so
                 // empty bins made the last 90 days look slow).
-                $weeksYtd = max(1, Carbon::now()->startOfYear()->diffInDays(Carbon::now()) / 7);
-                $f['per_week'] = round(max($f['sold'] / ($days / 7), $f['sold_ytd'] / $weeksYtd), 1);
+                $c = $state['family_counts'][$locationId][$type . ':' . $fam] ?? null;
+                $f['count'] = $c ? (int) $c['qty'] : null;
+                $f['count_at'] = $c['at'] ?? null;
+                $have = $f['count'] !== null ? $f['count'] : $f['stock'];
+                $lo = $state['last_orders'][$locationId]['comics:' . $type . ':' . $fam]['date'] ?? null;
+                $f['last_order'] = $lo;
+                $f['daily'] = $dates[$type][$fam] ?? [];
+                $f['sold_since'] = null;
+                if ($lo) {
+                    $f['sold_since'] = 0;
+                    foreach ($f['daily'] as $d => $q) if ($d >= $lo) $f['sold_since'] += $q;
+                }
+                // Sold out (Sarah 10/15: "if something says 0, we might have
+                // sold out a long time ago"): nothing to sell after the last
+                // sale, so measure the pace only up to it.
+                $lastSale = $f['last'] ? substr($f['last'], 0, 10) : null;
+                $f['sold_out'] = $have <= 0 && $lastSale !== null;
+                $until = $f['sold_out'] ? Carbon::parse($lastSale) : Carbon::today();
+                $weeks90 = max(1, Carbon::now()->subDays($days)->startOfDay()->diffInDays($until, false) / 7);
+                $weeksYtd = max(1, Carbon::now()->startOfYear()->diffInDays($until, false) / 7);
+                $paces = [$f['sold'] / $weeks90, $f['sold_ytd'] / $weeksYtd];
+                // Sold since Last Ordered, until it ran out.
+                if ($f['sold_out'] && $lo && $lastSale > $lo) {
+                    $paces[] = $f['sold_since'] / max(1, Carbon::parse($lo)->diffInDays(Carbon::parse($lastSale)) / 7);
+                }
+                $f['per_week'] = round(max($paces), 1);
                 $f['revenue_ytd'] = $f['revenue_ytd'] ?? 0;
                 // Speed like Clarissa's sheet: average days between sales this year.
                 $d = array_keys($dates[$type][$fam] ?? []);
@@ -1017,25 +1050,9 @@ class ReorderService
                 $f['speed'] = $basis === null ? 'No data' : ($basis <= 15 ? 'Fast' : ($basis <= 50 ? 'Staple' : 'Mid'));
                 $f['days_since'] = $f['last'] ? Carbon::parse($f['last'])->diffInDays(Carbon::today()) : null;
                 $f['avg_price'] = $f['sold'] > 0 ? round($f['revenue'] / $f['sold'], 2) : null;
-                $f['target'] = (int) ceil($f['per_week'] * $coverWeeks);
-                $c = $state['family_counts'][$locationId][$type . ':' . $fam] ?? null;
-                $f['count'] = $c ? (int) $c['qty'] : null;
-                $f['count_at'] = $c['at'] ?? null;
-                $have = $f['count'] !== null ? $f['count'] : $f['stock'];
+                // Enough to last until the next order ("We order every N weeks").
+                $f['target'] = (int) ceil(round($f['per_week'] * $coverWeeks, 2));
                 $f['order'] = max(0, $f['target'] - $have);
-                // Last ordered typed in (Sarah 10/15, "cover the gap"): stock
-                // for as long as it's been since that order instead of 4
-                // weeks, minus what's here. Ordered 8 weeks ago -> 8 weeks.
-                $lo = $state['last_orders'][$locationId]['comics:' . $type . ':' . $fam]['date'] ?? null;
-                $f['last_order'] = $lo;
-                $f['daily'] = $dates[$type][$fam] ?? [];
-                $f['sold_since'] = null;
-                if ($lo) {
-                    $f['sold_since'] = 0;
-                    foreach ($f['daily'] as $d => $q) if ($d >= $lo) $f['sold_since'] += $q;
-                    $f['target'] = (int) ceil(round($f['per_week'] * Carbon::parse($lo)->diffInDays(Carbon::today()) / 7, 2));
-                    $f['order'] = max(0, $f['target'] - $have);
-                }
                 arsort($f['titles']);
                 $f['examples'] = implode('; ', array_slice(array_keys($f['titles']), 0, 4));
                 unset($f['titles']);
@@ -1316,16 +1333,10 @@ class ReorderService
         $r['last_order'] = null;
         $lo = !$this->asOf && $r['product_id'] ? ($state['last_orders'][$locationId][$this->format . ':p' . $r['product_id']]['date'] ?? null) : null;
         $r['sold_since_default'] = $r['sold_since'];
-        $r['suggested_default'] = $r['suggested'];
         if ($lo) {
             $r['last_order'] = $lo;
             $r['sold_since'] = 0;
             foreach ($r['daily'] ?? [] as $d => $q) if ($d >= $lo) $r['sold_since'] += $q;
-            // Cover the gap: should have enough for the time since that order.
-            if (isset($r['monthly_need'])) {
-                $gapMonths = Carbon::parse($lo)->diffInDays(Carbon::today()) / 30.4;
-                $r['suggested'] = min((int) ceil(round($r['monthly_need'] * $gapMonths, 2)), (int) $s['max_line_qty']);
-            }
         }
         $r['daily_sales'] = $r['daily'] ?? [];
         unset($r['daily']);

@@ -94,6 +94,11 @@
                     <a class="btn btn-default" href="{{ action('ReorderController@csv', array_merge($q, ['since' => $sinceParam])) }}"><i class="fa fa-download"></i> Download spreadsheet</a>
                 </div>
             </form>
+            <form method="POST" action="/reports/reorder/order-every" style="margin-top:10px; font-size:15px;">
+                <input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="location_id" value="{{ $locationId }}"><input type="hidden" name="format" value="{{ $format }}"><input type="hidden" name="since" value="{{ $sinceParam }}">
+                <b>We order every</b> <input type="number" name="weeks" min="0.5" max="52" step="0.5" value="{{ round($settings['cover_months_' . $format] * 4.345, 1) }}" class="form-control" style="display:inline-block; width:80px;"> weeks
+                <button class="btn btn-default btn-sm">Save</button> <span class="ro-muted">Should-have amounts last that long. Sold-out titles: pace counts only up to the last sale.</span>
+            </form>
             <p style="margin:10px 0 0;">
                 Counting sales since <b>{{ $since->format('D M j, g:ia') }}</b> <span class="ro-muted">({{ $since_source }})</span>.
                 <span id="ro-summary"></span>
@@ -161,7 +166,7 @@
                             <th data-sort="genrecol">Genre <span class="ro-arrow"></span></th>
                             <th data-sort="count" title="Type what's actually in the bin">Counted (in bin) <span class="ro-arrow"></span></th>
                             <th data-sort="order">Order <span class="ro-arrow"></span></th>
-                            <th data-sort="lastorder" title="When this title was last ordered. Blank = the date at the top. With a date, the order covers the time since then (ordered 2 months ago = 2 months' worth), minus what's in the bin">Last ordered <span class="ro-arrow"></span></th>
+                            <th data-sort="lastorder" title="When this title was last ordered. Blank = the date at the top. Changing it recounts Sold since last order and the Order">Last ordered <span class="ro-arrow"></span></th>
                             <th data-sort="why">Why <span class="ro-arrow"></span></th>
                             <th data-sort="since" title="Copies sold since the last order">Sold since last order <span class="ro-arrow"></span></th>
                             <th data-sort="ytd">Sold this year <span class="ro-arrow"></span></th>
@@ -194,8 +199,6 @@
                             data-erp="{{ $r['erp_stock'] }}"
                             data-since="{{ $r['sold_since'] }}"
                             data-since-default="{{ $r['sold_since_default'] }}"
-                            data-suggested-default="{{ $r['suggested_default'] }}"
-                            data-monthly="{{ $r['monthly_need'] ?? '' }}"
                             data-daily="{{ json_encode((object) ($r['daily_sales'] ?? [])) }}"
                             data-cant="{{ $r['cant_order'] ? 1 : 0 }}"
                             data-cost="{{ $r['best_cost'] ?? $r['ams_cost'] ?? $r['erp_cost'] ?? 0 }}">
@@ -352,8 +355,6 @@
     var BLANK = @json($settings['blank_count']);
     var BUDGET_LEFT = {{ $budget ? (float) $budget['new']['remaining'] : 0 }};
     var Q = @json($q);
-    var TODAY = @json(now()->toDateString());
-    var MAX_LINE = {{ (int) $settings['max_line_qty'] }};
     var SECTION = @json($section ?? null);
     var filter = SECTION ? 'all' : 'order';
     var sortKey = 'genre', sortDir = 1;
@@ -543,13 +544,6 @@
             if (lo) Object.keys(daily).forEach(function (d) { if (d >= lo) sold += +daily[d]; });
             else sold = +tr.dataset.sinceDefault;
             tr.dataset.since = sold;
-            // Cover the gap (ReorderService::finishRow): should have enough
-            // for the time since this order.
-            if (lo && tr.dataset.monthly !== '') {
-                var gapMonths = Math.max(0, Math.round((Date.parse(TODAY) - Date.parse(lo)) / 864e5)) / 30.4;
-                tr.dataset.suggested = Math.min(Math.ceil(Math.round(+tr.dataset.monthly * gapMonths * 100) / 100), MAX_LINE);
-            } else tr.dataset.suggested = tr.dataset.suggestedDefault;
-            tr.querySelector('.ro-order').parentNode.title = 'Should have ' + tr.dataset.suggested;
             tr.querySelector('.ro-since').textContent = sold || '';
             tr.querySelector('.ro-order').value = calc(tr);
             var loEl = e.target;

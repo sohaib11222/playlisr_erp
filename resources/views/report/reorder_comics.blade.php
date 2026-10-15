@@ -53,9 +53,15 @@
             <ol style="margin:8px 0 0; padding-left:22px; line-height:1.55;">
                 <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed: Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
                 <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
-                <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
-                <li><b>Last Ordered</b>: when this series was last ordered. # to Order then covers that long instead of 4 weeks: last ordered 8 weeks ago at 2 a week = 16, minus Qty in Stock.</li>
+                <li><b># to Order</b> = enough to last until the next order (<b>We order every</b>, at the top) at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
+                <li>Sold out (0 in stock): the pace only counts up to the last sale, since we had none to sell after that. Those rows say <i>sold out</i>.</li>
+                <li><b>Last Ordered</b>: when this series was last ordered. It shows what sold since, and if the series is sold out, how fast it sold before it ran out.</li>
             </ol></details>
+            <form method="POST" action="/reports/reorder/order-every" style="margin-top:10px; font-size:15px;">
+                <input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="location_id" value="{{ $locationId }}"><input type="hidden" name="format" value="comics">
+                <b>We order every</b> <input type="number" name="weeks" min="0.5" max="52" step="0.5" value="{{ $coverWeeks + 0 }}" class="form-control" style="display:inline-block; width:80px;"> weeks
+                <button class="btn btn-default btn-sm">Save</button> <span class="ro-muted">Order enough to last that long. Ordering less often means ordering more each time.</span>
+            </form>
             <div style="margin-top:10px;"><button type="button" class="btn btn-success" id="rcSubmit">Submit count</button>
                 <span id="rcSubmitMsg" style="margin-left:8px;">@if($lastSubmit)Last submitted {{ \Carbon\Carbon::parse($lastSubmit['at'])->format('n/j g:ia') }} by {{ $lastSubmit['by'] }}@endif</span></div>
         </div>
@@ -91,7 +97,7 @@
     @foreach(['comics' => 'Comic Books to Order', 'magazines' => 'Magazines to Order'] as $type => $label)
         <div class="box box-solid">
             <div class="box-header with-border">
-                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4, or since Last Ordered. <span id="rc-total-{{ $type }}"></span></small></h3>
+                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Ordering enough for {{ $coverWeeks + 0 }} weeks. <span id="rc-total-{{ $type }}"></span></small></h3>
             </div>
             <div class="box-body table-responsive">
                 <a href="#" class="rc-toggle">Show details</a>
@@ -121,7 +127,7 @@
                     @forelse($sections[$type] as $pub => $rows)
                         <tr class="rc-section"><td colspan="17" style="background:#eef3f8; font-weight:bold;">{{ $pub }}</td></tr>
                         @foreach($rows as $f)
-                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ (int) ceil($f['per_week'] * 4) }}" data-perweek="{{ $f['per_week'] }}" data-erp="{{ $f['stock'] }}" data-daily="{{ json_encode((object) $f['daily']) }}">
+                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ $f['target'] }}" data-erp="{{ $f['stock'] }}" data-daily="{{ json_encode((object) $f['daily']) }}">
                             <td><b>{{ $f['family'] }}</b></td>
                             <td>{{ $f['speed'] }}</td>
                             <td class="text-right">{{ $f['days_to_sell'] }}</td>
@@ -134,12 +140,12 @@
                             <td class="text-right">@if($f['avg_price'])${{ number_format($f['avg_price'], 2) }}@endif</td>
                             <td class="text-right">@if($f['avg_cost'] !== null)${{ number_format($f['avg_cost'], 2) }}@endif</td>
                             <td class="ro-muted">{{ $f['examples'] }}</td>
-                            <td class="text-right">{{ $f['per_week'] }}</td>
+                            <td class="text-right">{{ $f['per_week'] }}@if($f['sold_out'])<div class="ro-muted text-danger" title="0 in stock: pace counted only up to the last sale">sold out {{ \Carbon\Carbon::parse($f['last'])->format('M j') }}</div>@endif</td>
                             <td class="text-right">{{ $f['stock'] }}</td>
                             <td style="background:#fffbea;"><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
                                 title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
                             <td style="background:#fffbea; white-space:nowrap;"><input type="date" class="form-control rc-lastorder" style="width:150px; display:inline-block;" value="{{ $f['last_order'] }}" max="{{ now()->toDateString() }}">
-                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since, {{ round(\Carbon\Carbon::parse($f['last_order'])->diffInDays(today()) / 7) }} wks @endif</div></td>
+                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since @endif</div></td>
                             <td class="rc-order" style="background:#fffbea;">{{ $f['order'] }}</td>
                         </tr>
                         @endforeach
@@ -167,17 +173,14 @@
             if (el) el.textContent = 'to order: ' + sum;
         });
     }
-    var TODAY = @json(now()->toDateString());
-    function daysSince(d) { return Math.max(0, Math.round((Date.parse(TODAY) - Date.parse(d)) / 864e5)); }
-    // Same rule as ReorderService::comicsAndMagazines: with a Last Ordered
-    // date, cover the weeks since then instead of 4.
+    // Same rule as ReorderService::comicsAndMagazines. (A count of 0 can
+    // make a series "sold out" and speed up its pace: that shows on reload.)
     function recalc(tr) {
         var v = parseInt(tr.querySelector('.rc-count').value, 10), lo = tr.querySelector('.rc-lastorder').value;
         var sinceEl = tr.querySelector('.rc-since'), sold = 0, daily = JSON.parse(tr.dataset.daily || '{}');
         Object.keys(daily).forEach(function (d) { if (lo && d >= lo) sold += +daily[d]; });
-        var target = lo ? Math.ceil(Math.round(+tr.dataset.perweek * daysSince(lo) / 7 * 100) / 100) : +tr.dataset.target;
-        sinceEl.textContent = lo ? sold + ' sold since, ' + Math.round(daysSince(lo) / 7) + ' wks' : '';
-        tr.querySelector('.rc-order').textContent = Math.max(0, target - (isNaN(v) ? +tr.dataset.erp : v));
+        sinceEl.textContent = lo ? sold + ' sold since' : '';
+        tr.querySelector('.rc-order').textContent = Math.max(0, +tr.dataset.target - (isNaN(v) ? +tr.dataset.erp : v));
         totals();
     }
     document.querySelectorAll('.rc-lastorder').forEach(function (inp) {
