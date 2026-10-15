@@ -30,7 +30,7 @@
   .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
   .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .wo-tbl { width:100%; min-width:1080px; table-layout:fixed; border-collapse:collapse; }
+  .wo-tbl { width:100%; min-width:1240px; table-layout:fixed; border-collapse:collapse; }
   .wo-scroll { overflow-x:auto; }
   .wo-tbl td { overflow-wrap:anywhere; }
   .wo-tbl td.wo-actions-cell { overflow:visible; }
@@ -140,7 +140,7 @@
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
   .wo-detail-items th { color:#6b7280; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
-  .wo-pick { margin-top:6px; min-width:190px; text-align:left; }
+  .wo-pick { margin-top:6px; text-align:left; }
   .wo-pick-line { border:1px solid #e5e7eb; border-radius:7px; padding:5px 7px; margin-bottom:5px; background:#fff; }
   .wo-pick-line.is-done { background:#ecfdf5; border-color:#a7f3d0; }
   .wo-pick-line.is-missing { background:#fef2f2; border-color:#fecaca; }
@@ -325,6 +325,7 @@
             <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
+            <col style="width:150px">
             <col style="width:86px">
             <col style="width:92px">
             <col style="width:236px">
@@ -502,11 +503,7 @@
                     </div>
                   @endforeach
                 </td>
-                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
-                    @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
-                  @endif
-                </td>
+                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
                 <td class="wo-placed">
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
                   @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
@@ -540,6 +537,11 @@
                       </div>
                     </div>
                   </div>
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
+                    <div style="margin-top:8px;">
+                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
+                    </div>
+                  @endif
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
