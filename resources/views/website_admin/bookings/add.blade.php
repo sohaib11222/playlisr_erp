@@ -110,7 +110,7 @@
       Email the customer their confirmation and receipt
     </label>
 
-    <button type="submit" class="wb-btn wb-btn-primary" id="wba-submit" @if(count($venues) === 0) disabled @endif><i class="fa fa-calendar-plus-o"></i> Create booking</button>
+    <button type="submit" class="wb-btn wb-btn-primary" id="wba-submit" @if(count($venues) === 0) disabled @endif><i class="fa fa-calendar-plus"></i> Create booking</button>
   </form>
 </div>
 <script>

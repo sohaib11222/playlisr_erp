@@ -99,9 +99,9 @@
                 <span class="wb-pill {{ $pc }}" style="text-transform:none;">{{ $b['status'] }}</span>
               </div>
               <div class="meta">
-                <div><i class="fa fa-clock-o"></i> {{ $b['timeLabel'] }}</div>
+                <div><i class="fa fa-clock"></i> {{ $b['timeLabel'] }}</div>
                 <div><i class="fa fa-user"></i> {{ $b['customerName'] }}</div>
-                <div><i class="fa fa-usd"></i> {{ number_format($b['total'], 2) }}</div>
+                <div><i class="fa fa-dollar-sign"></i> {{ number_format($b['total'], 2) }}</div>
               </div>
               <a href="https://nivessa.com/bookings/{{ urlencode($b['bookingNumber']) }}" target="_blank" rel="noopener" class="wb-btn wb-btn-blue" style="width:100%; justify-content:center;"><i class="fa fa-eye"></i> View Details</a>
             </div>

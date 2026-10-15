@@ -65,11 +65,11 @@
           <div class="wbv-meta">
             <div><i class="fa fa-map-marker"></i> {{ $v['location']['city'] ?? '' }}, {{ $v['location']['state'] ?? '' }}</div>
             <div><i class="fa fa-users"></i> Up to {{ $v['capacity']['maxCapacity'] ?? '' }} guests</div>
-            <div><i class="fa fa-usd"></i> {{ $v['pricing']['hourlyRate'] ?? '' }}/hour</div>
+            <div><i class="fa fa-dollar-sign"></i> {{ $v['pricing']['hourlyRate'] ?? '' }}/hour</div>
           </div>
           <div class="wbv-actions">
             <a href="https://nivessa.com/venues/{{ urlencode($v['slug'] ?? $v['_id']) }}" target="_blank" rel="noopener" class="wb-btn wb-btn-sm"><i class="fa fa-eye"></i> View</a>
-            <a href="{{ route('wa.bookings.venueEdit', $v['_id']) }}" class="wb-btn wb-btn-sm wb-btn-blue"><i class="fa fa-pencil"></i> Edit</a>
+            <a href="{{ route('wa.bookings.venueEdit', $v['_id']) }}" class="wb-btn wb-btn-sm wb-btn-blue"><i class="fa fa-pencil-alt"></i> Edit</a>
             <form method="POST" action="{{ route('wa.bookings.venueDelete', $v['_id']) }}" onsubmit="return confirm('Are you sure you want to delete this venue?');">
               {{ csrf_field() }}
               <button type="submit" class="wb-btn wb-btn-sm wb-btn-danger" title="Delete venue"><i class="fa fa-trash"></i></button>

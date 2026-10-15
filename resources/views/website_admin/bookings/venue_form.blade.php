@@ -267,7 +267,7 @@
       row.className = 'wbf-am';
       row.innerHTML = '<span><strong>' + esc(a.name) + '</strong> ' +
         (a.included ? '<span style="color:#15803d;font-size:13px;">Included</span>' : '<span style="color:#4b5563;font-size:13px;">+$' + esc(a.additionalCost) + '</span>') +
-        '</span><button type="button" class="wb-btn wb-btn-sm wb-btn-danger" title="Remove"><i class="fa fa-times"></i></button>';
+        '</span><button type="button" class="wb-btn wb-btn-sm wb-btn-danger" title="Remove">Remove</button>';
       row.querySelector('button').addEventListener('click', function () { amenities.splice(i, 1); renderAll(); });
       box.appendChild(row);
     });
@@ -302,7 +302,7 @@
       var el = document.createElement('div');
       el.className = 'wbf-img';
       el.innerHTML = '<img src="' + esc(img.url || img.path) + '" alt="Venue ' + (i + 1) + '">' +
-        '<button type="button" class="rm" title="Remove image"><i class="fa fa-times"></i></button>' +
+        '<button type="button" class="rm" title="Remove image">Remove</button>' +
         (i === 0 ? '<span class="main">Main Image</span>' : '');
       el.querySelector('.rm').addEventListener('click', function () { removeImage(i); });
       box.appendChild(el);

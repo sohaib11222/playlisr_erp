@@ -18,7 +18,7 @@
     <div class="wb-links">
       <a href="{{ route('wa.bookings.calendar') }}" class="wb-btn wb-btn-blue"><i class="fa fa-calendar"></i> Calendar View</a>
       <a href="{{ route('wa.bookings.venues') }}" class="wb-btn"><i class="fa fa-building"></i> Manage Venues</a>
-      <a href="{{ route('wa.bookings.add') }}" class="wb-btn"><i class="fa fa-calendar-plus-o"></i> Add Missed Booking</a>
+      <a href="{{ route('wa.bookings.add') }}" class="wb-btn"><i class="fa fa-calendar-plus"></i> Add Missed Booking</a>
     </div>
   </div>
 
@@ -135,12 +135,12 @@
                       <form method="POST" action="{{ route('wa.bookings.status', $b['id']) }}">
                         {{ csrf_field() }}
                         <input type="hidden" name="status" value="cancelled">
-                        <button type="submit" class="wb-btn wb-btn-sm wb-btn-danger" title="Reject"><i class="fa fa-times"></i> Reject</button>
+                        <button type="submit" class="wb-btn wb-btn-sm wb-btn-danger" title="Reject">Reject</button>
                       </form>
                     @endif
-                    <a href="https://nivessa.com/bookings/{{ urlencode($b['bookingNumber']) }}" target="_blank" rel="noopener" class="wb-btn wb-btn-sm" title="View Details"><i class="fa fa-eye"></i></a>
-                    <button type="button" class="wb-btn wb-btn-sm" data-act="edit" title="Edit date / time"><i class="fa fa-pencil"></i></button>
-                    <button type="button" class="wb-btn wb-btn-sm" data-act="charge" title="Charge card on file (cleaning, damage, missing items)"><i class="fa fa-credit-card"></i></button>
+                    <a href="https://nivessa.com/bookings/{{ urlencode($b['bookingNumber']) }}" target="_blank" rel="noopener" class="wb-btn wb-btn-sm" title="View Details"><i class="fa fa-eye"></i> View</a>
+                    <button type="button" class="wb-btn wb-btn-sm" data-act="edit" title="Edit date / time"><i class="fa fa-pencil-alt"></i> Edit</button>
+                    <button type="button" class="wb-btn wb-btn-sm" data-act="charge" title="Charge card on file (cleaning, damage, missing items)"><i class="fa fa-credit-card"></i> Charge</button>
                     @if($b['depositStatus'] === 'held')
                       <button type="button" class="wb-btn wb-btn-sm wb-btn-danger" data-act="deposit" data-dep="capture" title="Capture the ${{ $depAmtLabel }} hold (charge them, left a mess)">Capture ${{ $depAmtLabel }}</button>
                       <button type="button" class="wb-btn wb-btn-sm" style="color:#15803d;" data-act="deposit" data-dep="release" title="Release the ${{ $depAmtLabel }} hold (clean, no charge)">Release</button>
@@ -154,7 +154,7 @@
                       <span class="wb-dep rel">${{ $depAmtLabel }} released</span>
                     @endif
                     <span class="wb-sep"></span>
-                    <button type="button" class="wb-btn wb-btn-sm" data-act="archive" title="Archive booking (requires confirmation)" style="color:#9ca3af;"><i class="fa fa-archive"></i></button>
+                    <button type="button" class="wb-btn wb-btn-sm" data-act="archive" title="Archive booking (requires confirmation)" style="color:#6b7280;"><i class="fa fa-archive"></i> Archive</button>
                   </div>
                 </td>
               </tr>
@@ -296,7 +296,7 @@
       if (inTab && match) shown++;
       var archBtn = tr.querySelector('[data-act="archive"]');
       if (archBtn) {
-        archBtn.innerHTML = isArch ? '<i class="fa fa-undo"></i>' : '<i class="fa fa-archive"></i>';
+        archBtn.innerHTML = isArch ? '<i class="fa fa-undo"></i> Restore' : '<i class="fa fa-archive"></i> Archive';
         archBtn.title = isArch ? 'Restore booking' : 'Archive booking (requires confirmation)';
       }
     });
