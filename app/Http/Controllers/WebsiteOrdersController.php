@@ -450,6 +450,35 @@ class WebsiteOrdersController extends Controller
         return redirect()->back()->with('status', 'Order status updated.');
     }
 
+    /**
+     * Mark a shipping order's lines picked / can't find / not picked, on the
+     * same warehouse pick list the website's /admin/warehouse page uses, so
+     * Nick's earlier picks there show here too (Sarah, 2026-10-15). $itemId
+     * "all" marks every line. Answers JSON when asked (the page's buttons),
+     * else redirects back.
+     */
+    public function pick(Request $request, string $orderId, string $itemId)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $status = (string) $request->input('status');
+        $ok = preg_match('/^[a-f0-9]{24}$/i', $orderId) && ($itemId === 'all' || preg_match('/^[a-f0-9]{24}$/i', $itemId))
+            && in_array($status, ['Picked', 'Not Picked', "Can't Find"], true);
+        $resp = !$ok ? ['success' => false, 'message' => 'That pick could not be saved.']
+            : $this->websiteApi('POST', $itemId === 'all' ? "/erp/picks/{$orderId}/all" : "/erp/picks/{$orderId}/items/{$itemId}", [
+                'status' => $status,
+                'notes' => $request->has('notes') ? (string) $request->input('notes') : null,
+                'changedBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
+            ]);
+        $saved = $resp !== null && ($resp['success'] ?? false) === true;
+        $message = $saved ? 'Saved.' : (($resp['message'] ?? null) ?: 'Could not reach the website to save the pick.');
+        if ($request->expectsJson()) {
+            return response()->json(['success' => $saved, 'message' => $message], $saved ? 200 : 422);
+        }
+        return redirect()->back()->with($saved ? 'status' : 'error', $saved ? 'Pick saved.' : $message);
+    }
+
     /** Re-send the ready-for-pickup email + text to a customer who hasn't come in (Sarah, 2026-10-08). */
     public function remind(Request $request, string $id)
     {

@@ -139,6 +139,17 @@
   .wo-detail-items { width:100%; border-collapse:collapse; margin-top:6px; }
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
   .wo-detail-items th { color:#6b7280; font-weight:700; font-size:11px; text-transform:uppercase; }
+  /* Pick list (Sarah, 2026-10-15) */
+  .wo-pick { margin-top:6px; min-width:190px; text-align:left; }
+  .wo-pick-line { border:1px solid #e5e7eb; border-radius:7px; padding:5px 7px; margin-bottom:5px; background:#fff; }
+  .wo-pick-line.is-done { background:#ecfdf5; border-color:#a7f3d0; }
+  .wo-pick-line.is-missing { background:#fef2f2; border-color:#fecaca; }
+  .wo-pick-name { font-size:12px; font-weight:600; color:#111827; line-height:1.3; }
+  .wo-pick-state { font-size:11px; color:#6b7280; margin:1px 0 4px; }
+  .wo-pick-btns { display:flex; gap:5px; }
+  .wo-pick-btns button, .wo-pick-all { font-size:12px; padding:5px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#374151; cursor:pointer; }
+  .wo-pick-btns button.go, .wo-pick-all { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
+  .wo-pick-btns button:disabled, .wo-pick-all:disabled { opacity:.5; cursor:wait; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -493,7 +504,7 @@
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
-                    <div style="font-size:11px;font-weight:600;color:{{ ($o['pick_progress']['picked'] ?? 0) >= ($o['pick_progress']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $o['pick_progress']['picked'] ?? 0 }}/{{ $o['pick_progress']['total'] ?? 0 }}</div>
+                    @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
                   @endif
                 </td>
                 <td class="wo-placed">
@@ -743,7 +754,7 @@
                   <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
                     @if(!empty($d['pick']))
-                      <div style="font-size:11px;font-weight:600;color:{{ ($d['pick']['picked'] ?? 0) >= ($d['pick']['total'] ?? 0) ? '#047857' : '#6b7280' }};">picked {{ $d['pick']['picked'] ?? 0 }}/{{ $d['pick']['total'] ?? 0 }}</div>
+                      @include('website-orders.partials.pick-list', ['pick' => $d['pick']])
                     @endif
                   </td>
                   <td class="wo-placed">@if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@endif</td>
@@ -979,6 +990,59 @@
     </script>
   @endif
 
+  {{-- Pick buttons: save to the website's pick list and update the row in place
+       so picking several items doesn't reload the page each tap. --}}
+  <script>
+    function woPick(btn, status, all) {
+      var box = btn.closest('.wo-pick');
+      var line = btn.closest('.wo-pick-line');
+      var url = '{{ url('/website-orders/pick') }}/' + box.dataset.order + '/' + (all ? 'all' : line.dataset.item);
+      var btns = (all ? box : line).querySelectorAll('button');
+      btns.forEach(function (b) { b.disabled = true; });
+      window.woPickQuietUntil = Date.now() + 30000;
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ status: status })
+      }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+        .then(function (res) {
+          if (!res.success) throw new Error(res.message || 'Not saved.');
+          var who = @json(trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username);
+          var lines = all ? box.querySelectorAll('.wo-pick-line:not(.is-missing)') : [line];
+          lines.forEach(function (l) { woPickPaint(l, status, who); });
+          woPickCount(box);
+        })
+        .catch(function (e) { alert('Pick not saved: ' + e.message); btns.forEach(function (b) { b.disabled = false; }); });
+    }
+    function woPickPaint(l, status, who) {
+      var done = status === 'Picked', missing = status === "Can't Find";
+      l.classList.toggle('is-done', done);
+      l.classList.toggle('is-missing', missing);
+      var now = new Date();
+      var when = (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
+      l.querySelector('.wo-pick-state').textContent = done ? 'Picked by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : 'Not picked');
+      var b = l.querySelector('.wo-pick-btns');
+      b.innerHTML = (done || missing)
+        ? '<button type="button">Undo</button>'
+        : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button>';
+      var bs = b.querySelectorAll('button');
+      if (done || missing) { bs[0].onclick = function () { woPick(this, 'Not Picked'); }; }
+      else { bs[0].onclick = function () { woPick(this, 'Picked'); }; bs[1].onclick = function () { woPick(this, "Can't Find"); }; }
+    }
+    function woPickCount(box) {
+      var picked = 0, total = 0;
+      box.querySelectorAll('.wo-pick-line').forEach(function (l) {
+        var q = parseInt(l.dataset.qty, 10) || 1;
+        total += q;
+        if (l.classList.contains('is-done')) picked += q;
+      });
+      var c = box.parentNode.querySelector('.wo-pick-count');
+      if (c) { c.querySelector('.n').textContent = picked; c.style.color = picked >= total ? '#047857' : '#6b7280'; }
+      var allBtn = box.querySelector('.wo-pick-all');
+      if (allBtn) { allBtn.hidden = picked >= total; allBtn.disabled = false; }
+    }
+  </script>
   {{-- Keep this page from going stale — it only pulled fresh data from the
        website on load/navigation, so a new order or a status change made on
        nivessa.com/admin/orders wouldn't show up until someone manually
@@ -993,6 +1057,7 @@
         if ((statusDialog && statusDialog.open) || (cancelDialog && cancelDialog.open)) return;
         var active = document.activeElement;
         if (active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName)) return;
+        if (Date.now() < (window.woPickQuietUntil || 0)) return;
         window.location.reload();
       }, 60000);
     })();

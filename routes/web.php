@@ -682,6 +682,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
     Route::post('/website-orders/{id}/item-store', 'WebsiteOrdersController@itemStore')->name('website-orders.itemStore');
     Route::post('/website-orders/{id}/remind', 'WebsiteOrdersController@remind')->name('website-orders.remind');
+    Route::post('/website-orders/pick/{orderId}/{itemId}', 'WebsiteOrdersController@pick')->name('website-orders.pick');
 
     // Customer email copy editor — moved here from nivessa.com's
     // /admin/email-templates so the ERP is the only place admin tooling
