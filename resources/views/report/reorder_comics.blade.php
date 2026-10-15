@@ -54,7 +54,7 @@
                 <li>Comics and magazines are grouped by series (Spider-Man, Batman, Playboy...). Speed: Fast = sells within about 2 weeks of buying it, Staple = 2 to 7 weeks, Mid = slower.</li>
                 <li>Count each series in the bins and type the total in <b>Qty in Stock</b>. It saves by itself.</li>
                 <li><b># to Order</b> = enough for 4 weeks at the current pace, minus Qty in Stock (or minus what the ERP says if you haven't counted yet).</li>
-                <li><b>Last Ordered</b>: when this series was last ordered. If you haven't counted it, # to Order becomes what sold since that date (never more than 4 weeks' worth).</li>
+                <li><b>Last Ordered</b>: when this series was last ordered. # to Order then covers that long instead of 4 weeks: last ordered 8 weeks ago at 2 a week = 16, minus Qty in Stock.</li>
             </ol></details>
             <div style="margin-top:10px;"><button type="button" class="btn btn-success" id="rcSubmit">Submit count</button>
                 <span id="rcSubmitMsg" style="margin-left:8px;">@if($lastSubmit)Last submitted {{ \Carbon\Carbon::parse($lastSubmit['at'])->format('n/j g:ia') }} by {{ $lastSubmit['by'] }}@endif</span></div>
@@ -91,7 +91,7 @@
     @foreach(['comics' => 'Comic Books to Order', 'magazines' => 'Magazines to Order'] as $type => $label)
         <div class="box box-solid">
             <div class="box-header with-border">
-                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4. <span id="rc-total-{{ $type }}"></span></small></h3>
+                <h3 class="box-title">{{ $label }} ({{ $storeName }}) <small>sales through {{ now()->format('n/j/Y') }}. Weeks of cover to order for: 4, or since Last Ordered. <span id="rc-total-{{ $type }}"></span></small></h3>
             </div>
             <div class="box-body table-responsive">
                 <a href="#" class="rc-toggle">Show details</a>
@@ -121,7 +121,7 @@
                     @forelse($sections[$type] as $pub => $rows)
                         <tr class="rc-section"><td colspan="17" style="background:#eef3f8; font-weight:bold;">{{ $pub }}</td></tr>
                         @foreach($rows as $f)
-                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ $f['target'] }}" data-erp="{{ $f['stock'] }}" data-daily="{{ json_encode((object) $f['daily']) }}">
+                        <tr data-key="{{ $type }}:{{ $f['family'] }}" data-target="{{ (int) ceil($f['per_week'] * 4) }}" data-perweek="{{ $f['per_week'] }}" data-erp="{{ $f['stock'] }}" data-daily="{{ json_encode((object) $f['daily']) }}">
                             <td><b>{{ $f['family'] }}</b></td>
                             <td>{{ $f['speed'] }}</td>
                             <td class="text-right">{{ $f['days_to_sell'] }}</td>
@@ -139,7 +139,7 @@
                             <td style="background:#fffbea;"><input type="number" min="0" class="form-control rc-num rc-count" value="{{ $f['count'] !== null ? $f['count'] : '' }}"
                                 title="{{ $f['count_at'] ? 'Counted ' . \Carbon\Carbon::parse($f['count_at'])->format('M j') : '' }}"> <span class="rc-saved"></span></td>
                             <td style="background:#fffbea; white-space:nowrap;"><input type="date" class="form-control rc-lastorder" style="width:150px; display:inline-block;" value="{{ $f['last_order'] }}" max="{{ now()->toDateString() }}">
-                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since @endif</div></td>
+                                <div class="ro-muted rc-since">@if($f['last_order']){{ $f['sold_since'] + 0 }} sold since, {{ round(\Carbon\Carbon::parse($f['last_order'])->diffInDays(today()) / 7) }} wks @endif</div></td>
                             <td class="rc-order" style="background:#fffbea;">{{ $f['order'] }}</td>
                         </tr>
                         @endforeach
@@ -167,17 +167,17 @@
             if (el) el.textContent = 'to order: ' + sum;
         });
     }
-    // Same rule as ReorderService::comicsAndMagazines.
+    var TODAY = @json(now()->toDateString());
+    function daysSince(d) { return Math.max(0, Math.round((Date.parse(TODAY) - Date.parse(d)) / 864e5)); }
+    // Same rule as ReorderService::comicsAndMagazines: with a Last Ordered
+    // date, cover the weeks since then instead of 4.
     function recalc(tr) {
         var v = parseInt(tr.querySelector('.rc-count').value, 10), lo = tr.querySelector('.rc-lastorder').value;
-        var target = +tr.dataset.target, sinceEl = tr.querySelector('.rc-since'), order;
-        var sold = 0, daily = JSON.parse(tr.dataset.daily || '{}');
+        var sinceEl = tr.querySelector('.rc-since'), sold = 0, daily = JSON.parse(tr.dataset.daily || '{}');
         Object.keys(daily).forEach(function (d) { if (lo && d >= lo) sold += +daily[d]; });
-        sinceEl.textContent = lo ? sold + ' sold since' : '';
-        if (!isNaN(v)) order = Math.max(0, target - v);
-        else if (lo) order = Math.min(sold, Math.max(target, 1));
-        else order = Math.max(0, target - +tr.dataset.erp);
-        tr.querySelector('.rc-order').textContent = order;
+        var target = lo ? Math.ceil(Math.round(+tr.dataset.perweek * daysSince(lo) / 7 * 100) / 100) : +tr.dataset.target;
+        sinceEl.textContent = lo ? sold + ' sold since, ' + Math.round(daysSince(lo) / 7) + ' wks' : '';
+        tr.querySelector('.rc-order').textContent = Math.max(0, target - (isNaN(v) ? +tr.dataset.erp : v));
         totals();
     }
     document.querySelectorAll('.rc-lastorder').forEach(function (inp) {

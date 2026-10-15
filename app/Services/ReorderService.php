@@ -697,6 +697,7 @@ class ReorderService
                 'erp_stock' => $erpStock[$pid] ?? 0,
                 'on_order' => $onOrder[$pid] ?? 0,
                 'suggested' => $suggested,
+                'monthly_need' => round($monthly * $factor, 3),
                 'cant_order' => $cantOrder,
                 'erp_cost' => $cost ?: null,
                 'used_note' => null,
@@ -1022,8 +1023,9 @@ class ReorderService
                 $f['count_at'] = $c['at'] ?? null;
                 $have = $f['count'] !== null ? $f['count'] : $f['stock'];
                 $f['order'] = max(0, $f['target'] - $have);
-                // Last ordered typed in, no count: order back what sold since
-                // then, up to the 4-week target (same rule as sealed music).
+                // Last ordered typed in (Sarah 10/15, "cover the gap"): stock
+                // for as long as it's been since that order instead of 4
+                // weeks, minus what's here. Ordered 8 weeks ago -> 8 weeks.
                 $lo = $state['last_orders'][$locationId]['comics:' . $type . ':' . $fam]['date'] ?? null;
                 $f['last_order'] = $lo;
                 $f['daily'] = $dates[$type][$fam] ?? [];
@@ -1031,7 +1033,8 @@ class ReorderService
                 if ($lo) {
                     $f['sold_since'] = 0;
                     foreach ($f['daily'] as $d => $q) if ($d >= $lo) $f['sold_since'] += $q;
-                    if ($f['count'] === null) $f['order'] = (int) min($f['sold_since'], max($f['target'], 1));
+                    $f['target'] = (int) ceil(round($f['per_week'] * Carbon::parse($lo)->diffInDays(Carbon::today()) / 7, 2));
+                    $f['order'] = max(0, $f['target'] - $have);
                 }
                 arsort($f['titles']);
                 $f['examples'] = implode('; ', array_slice(array_keys($f['titles']), 0, 4));
@@ -1313,10 +1316,16 @@ class ReorderService
         $r['last_order'] = null;
         $lo = !$this->asOf && $r['product_id'] ? ($state['last_orders'][$locationId][$this->format . ':p' . $r['product_id']]['date'] ?? null) : null;
         $r['sold_since_default'] = $r['sold_since'];
+        $r['suggested_default'] = $r['suggested'];
         if ($lo) {
             $r['last_order'] = $lo;
             $r['sold_since'] = 0;
             foreach ($r['daily'] ?? [] as $d => $q) if ($d >= $lo) $r['sold_since'] += $q;
+            // Cover the gap: should have enough for the time since that order.
+            if (isset($r['monthly_need'])) {
+                $gapMonths = Carbon::parse($lo)->diffInDays(Carbon::today()) / 30.4;
+                $r['suggested'] = min((int) ceil(round($r['monthly_need'] * $gapMonths, 2)), (int) $s['max_line_qty']);
+            }
         }
         $r['daily_sales'] = $r['daily'] ?? [];
         unset($r['daily']);
