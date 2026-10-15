@@ -81,6 +81,7 @@
   .wo-loc-line { min-height:64px; margin-bottom:4px; }
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
   .wo-loc .q { font-weight:400; color:#6b7280; }
+  .wo-loc .genre { display:block; margin-top:2px; padding:1px 6px; border-radius:5px; background:#eef2ff; color:#3730a3; font-weight:600; width:fit-content; }
   .wo-loc .bin { display:block; color:#4b5563; font-family:monospace; font-size:12px; }
   .wo-loc .none { color:#b91c1c; font-weight:600; }
   .wo-loc .na { color:#9ca3af; }
@@ -336,7 +337,7 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
-            <th>Location</th>
+            <th>Location / genre</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -482,6 +483,8 @@
                         @else
                           <span class="none">Not set</span>
                         @endif
+                        @php $locGenre = ($locInfo['genre'] ?? '') !== '' ? $locInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''); @endphp
+                        @if($locGenre !== '')<span class="genre">{{ $locGenre }}</span>@endif
                         @if($locInfo['bin'] !== '')<span class="bin">Bin {{ $locInfo['bin'] }}</span>@endif
                       @endif
                       @php

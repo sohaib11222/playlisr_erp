@@ -559,8 +559,10 @@ class WebsiteOrdersController extends Controller
             $rows = \DB::table('products as p')
                 ->leftJoin('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
                 ->leftJoin('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->leftJoin('categories as gc', 'gc.id', '=', 'p.category_id')
+                ->leftJoin('categories as gs', 'gs.id', '=', 'p.sub_category_id')
                 ->whereIn('p.id', array_keys($ids))
-                ->select('p.id', 'p.bin_position', 'p.listing_location', 'bl.name as loc_name', 'vld.qty_available')
+                ->select('p.id', 'p.bin_position', 'p.listing_location', 'gc.name as genre', 'gs.name as sub_genre', 'bl.name as loc_name', 'vld.qty_available')
                 ->get();
         } catch (\Throwable $e) {
             \Log::warning('website-orders erpLocations failed: ' . $e->getMessage());
@@ -573,7 +575,10 @@ class WebsiteOrdersController extends Controller
             if (!isset($map[$pid])) {
                 $bin = trim((string) ($r->bin_position ?? ''));
                 if ($bin === '') $bin = trim((string) ($r->listing_location ?? ''));
-                $map[$pid] = ['stores' => [], 'stocked' => [], 'bin' => $bin];
+                // Store bins are laid out by genre (the ERP category), so this is
+                // what the picker walks to (Sarah, 2026-10-15).
+                $genre = implode(' / ', array_filter([trim((string) ($r->genre ?? '')), trim((string) ($r->sub_genre ?? ''))]));
+                $map[$pid] = ['stores' => [], 'stocked' => [], 'bin' => $bin, 'genre' => $genre];
             }
             if (empty($r->loc_name)) continue;
             $qty = (float) ($r->qty_available ?? 0);
