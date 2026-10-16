@@ -633,6 +633,18 @@ class WebsiteOrdersController extends Controller
         $loc = $item['location'] ?? ($product['location'] ?? null);
         $zone = is_array($loc) ? trim((string) ($loc['zone'] ?? '')) : '';
         $code = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
+        // A stale Discogs bin can point at the other store (Boston LP 10/16: website
+        // said bin pico66 = Hollywood, ERP has it only at Pico, Used Rock). When the
+        // ERP stocks it only at the other store, the ERP wins.
+        if ($code !== '' && $zone !== '' && $erp) {
+            $codeStore = stripos($zone, 'pico') === 0 ? 'pico' : 'hollywood';
+            $erpStores = [];
+            foreach (array_keys($erp['stores'] ?: $erp['stocked'] ?: []) as $n) {
+                if (stripos($n, 'pico') !== false) $erpStores['pico'] = true;
+                elseif (stripos($n, 'hollywood') !== false || stripos($n, 'warehouse') !== false) $erpStores['hollywood'] = true;
+            }
+            if ($erpStores && !isset($erpStores[$codeStore])) $code = '';
+        }
         if ($code !== '') {
             $place = $zone === '' ? '' : (stripos($zone, 'pico') === 0 ? 'Pico Store' : 'Warehouse');
             return ['place' => $place, 'area' => preg_replace('/^hollywood\b/i', 'HW', $zone), 'genre' => '', 'bin' => $code];
