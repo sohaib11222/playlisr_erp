@@ -322,9 +322,11 @@ class WebsiteOrdersController extends Controller
         usort($rows, fn($a, $b) => [($a['order_status'] ?? '') === 'picked_up', strtotime($a['createdAt'] ?? '')]
             <=> [($b['order_status'] ?? '') === 'picked_up', strtotime($b['createdAt'] ?? '')]);
 
-        return array_map(function ($o) {
+        $erpLocations = self::erpLocations($rows);
+
+        return array_map(function ($o) use ($erpLocations) {
             $shipDates = [];
-            $items = array_map(function ($item) use (&$shipDates) {
+            $items = array_map(function ($item) use (&$shipDates, $erpLocations) {
                 $name = $item['product_name'] ?? (($item['is_gift_card'] ?? false) ? 'Gift Card' : 'Item');
                 $qty = (int) ($item['quantity'] ?? 1);
                 $product = $item['product_id'] ?? [];
@@ -344,6 +346,7 @@ class WebsiteOrdersController extends Controller
                     'label'      => "{$qty} x {$name}",
                     'qty'        => $qty,
                     'isPreorder' => $isPreorder,
+                    'spot'       => ($item['is_gift_card'] ?? false) ? '' : self::pullSpot($item, $erpLocations[(int) ($product['posProductId'] ?? 0)] ?? null),
                 ];
             }, $o['items'] ?? []);
 
@@ -360,6 +363,7 @@ class WebsiteOrdersController extends Controller
                 'email'       => $o['user_id']['email'] ?? '',
                 'phone'       => $o['contactNumber'] ?? '',
                 'items'       => array_map(fn($i) => $i['label'], $items),
+                'spots'       => array_map(fn($i) => $i['spot'], $items),
                 'unitCount'   => array_sum(array_map(fn($i) => $i['qty'], $items)),
                 'total'       => (float) ($o['total_amount'] ?? 0),
                 'location'    => $o['pickup_location'] ?? '',
@@ -568,6 +572,33 @@ class WebsiteOrdersController extends Controller
      * "Listed 3/14/2025 (7 months)" for an item, so staff know how long it's
      * been on the shelf and how hard to look (Sarah, 2026-10-13).
      */
+    /**
+     * Where to pull one order line, as one line of text, same as the Website
+     * Orders Location column: "Warehouse / HW Main Floor / Bin pico66" for a
+     * bin (Hollywood zones are areas of the Hollywood warehouse), else the
+     * store plus its genre bin, "Hollywood In Store / Vinyl - Sealed / Rock"
+     * (Sarah, 2026-10-16).
+     */
+    public static function pullSpot(array $item, ?array $erp): string
+    {
+        $product = $item['product_id'] ?? [];
+        $loc = $item['location'] ?? ($product['location'] ?? null);
+        $zone = is_array($loc) ? trim((string) ($loc['zone'] ?? '')) : '';
+        $bin = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
+        if ($bin !== '') {
+            if ($zone === '') return 'Bin ' . $bin;
+            $place = stripos($zone, 'pico') === 0 ? 'Pico Store' : 'Warehouse';
+            return $place . ' / ' . preg_replace('/^hollywood\b/i', 'HW', $zone) . ' / Bin ' . $bin;
+        }
+        if (!$erp) return $zone;
+        $stores = array_keys($erp['stores'] ?: $erp['stocked'] ?: []);
+        $parts = [implode(', ', $stores)];
+        if (($erp['bin'] ?? '') !== '') $parts[] = 'Bin ' . $erp['bin'];
+        $inStore = (bool) array_filter($stores, fn($n) => stripos($n, 'In Store') !== false);
+        if ($inStore && ($erp['genre'] ?? '') !== '') $parts[] = $erp['genre'];
+        return implode(' / ', array_filter($parts, fn($x) => $x !== ''));
+    }
+
     /** Value a row is sorted by for a column (website orders or Discogs rows). */
     /**
      * Where each ordered item physically is, from the ERP's own stock (the

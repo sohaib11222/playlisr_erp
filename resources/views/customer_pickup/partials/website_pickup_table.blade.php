@@ -87,6 +87,8 @@
                 <td data-order="{{ strtolower(implode(', ', $wp['items'])) }}" class="item-cell">
                     @forelse($wp['items'] as $itemLabel)
                         <div>{{ $itemLabel }}</div>
+                        {{-- Where to pull it (Warehouse / HW Main Floor / Bin, or the genre bin) --}}
+                        @if(!empty($wp['spots'][$loop->index]))<div style="font-size:12px;color:#000;margin:-2px 0 4px;">{{ $wp['spots'][$loop->index] }}</div>@endif
                     @empty
                         —
                     @endforelse
