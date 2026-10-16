@@ -1,0 +1,52 @@
+# READ-ONLY diagnostic: why /payroll returns 502 (log tails only).
+name: Diag payroll 502
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count staff with/without a phone number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            L=storage/logs/$(ls -t storage/logs | head -1); echo "LOG $L"
+            tail -c 3000000 $L | grep -n "production.ERROR" | tail -8 | cut -c1-1200
+            echo ---payroll; tail -c 3000000 $L | grep -i "payroll" | tail -5 | cut -c1-1500
+            echo ---fpm; for f in /var/log/php*fpm*.log /var/log/nginx/error.log ~/logs/*error* /www/playlist.nivessa.com/logs/*error*; do [ -r "$f" ] && { echo "== $f"; tail -n 15 "$f" | cut -c1-600; }; done
+            grep -rh "memory_limit\|max_execution_time\|request_terminate_timeout" /etc/php*/*/fpm/pool.d/*.conf /etc/php/*/fpm/php.ini 2>/dev/null | grep -v "^;" | head
