@@ -70,6 +70,20 @@ class RsdOrderController extends Controller
         return implode(' ', $t);
     }
 
+    /** Title words for loose matching: no asides, no filler words, '77 and 1977 both "77". */
+    protected static function titleTokens(string $t): array
+    {
+        $t = strtolower(preg_replace('/\(.*$/', '', $t));
+        $t = preg_replace("/'(\d\d)\b/", ' $1', $t);
+        $out = [];
+        foreach (preg_split('/[^a-z0-9]+/', $t) as $w) {
+            if ($w === '' || in_array($w, ['the', 'a', 'an', 'and', 'of', 'at', 'in', 'vol', 'volume', 'live', 'lp', 'or'], true)) continue;
+            if (preg_match('/^(19|20)(\d\d)$/', $w, $m)) $w = $m[2];
+            $out[$w] = true;
+        }
+        return array_keys($out);
+    }
+
     protected static function titleCore(string $t): string
     {
         $t = preg_replace('/\(.*$/', '', $t);
@@ -197,6 +211,7 @@ class RsdOrderController extends Controller
 
         $rows = [];
         $rsdListings = null;
+        $tokIndex = [];
         foreach ($todo as [$title, $artist, $hw, $pico, $fromSales]) {
             $sold = $sales[self::artistKey($artist)] ?? [];
             $key = self::key($artist, $title);
@@ -212,22 +227,41 @@ class RsdOrderController extends Controller
             if ($isRsd && empty($p['prices'])) {
                 if ($rsdListings === null) {
                     $rsdListings = [];
-                    foreach ($ica->searchSupplierFeeds($biz, 'rsd', 20000) as $e) {
-                        if (!preg_match('/\(RSD\)|\bRSD\b|record store day/i', (string) ($e['title'] ?? ''))) continue;
+                    foreach ($ica->searchSupplierFeeds($biz, '', 400000) as $e) {
+                        $e['_rsd'] = preg_match('/\(RSD\)|\bRSD\b|record store day|\(R$/i', (string) ($e['title'] ?? '')) === 1;
+                        $e['_tok'] = self::titleTokens((string) ($e['title'] ?? ''));
+                        if (!$e['_tok']) continue;
+                        $n = count($rsdListings);
                         $rsdListings[] = $e;
+                        foreach ($e['_tok'] as $w) $tokIndex[$w][] = $n;
                     }
                 }
-                $core = self::titleCore(preg_replace('/:.*$/', '', $title));
+                $mine = self::titleTokens($title);
                 $wantCd = $format === 'CD';
+                $aNorm = $ica->normalizeText((string) $artist);
                 $more = [];
-                foreach ($rsdListings as $e) {
-                    $hc = self::titleCore(preg_replace('/:.*$/', '', (string) $e['title']));
-                    if (strlen($core) < 5 || strlen($hc) < 5) continue;
-                    if (strpos($hc, $core) !== 0 && strpos($core, $hc) !== 0) continue;
-                    $isCd = preg_match('/\bCD\b/i', (string) $e['title'] . ' ' . (string) ($e['format'] ?? '')) === 1;
-                    if ($isCd !== $wantCd) continue;
-                    if (trim((string) ($e['artist_norm'] ?? '')) !== '' && !$ica->artistsCompatible($ica->normalizeText((string) $artist), (string) $e['artist_norm'])) continue;
-                    if (!empty($e['upc'])) $more[] = (string) $e['upc'];
+                // Candidates share this title's rarest word.
+                $rare = null;
+                foreach ($mine as $w) if ($rare === null || count($tokIndex[$w] ?? []) < count($tokIndex[$rare] ?? [])) $rare = $w;
+                $cands = $rare === null ? [] : ($tokIndex[$rare] ?? []);
+                foreach ([true, false] as $tagged) {
+                    foreach ($cands as $ci) {
+                        $e = $rsdListings[$ci];
+                        if ($e['_rsd'] !== $tagged || !$mine) continue;
+                        $isCd = preg_match('/\bCD\b/i', (string) $e['title'] . ' ' . (string) ($e['format'] ?? '')) === 1;
+                        if ($isCd !== $wantCd) continue;
+                        $small = count($mine) <= count($e['_tok']) ? $mine : $e['_tok'];
+                        $hit = count(array_intersect($mine, $e['_tok']));
+                        if ($hit < max(1, (int) ceil(0.8 * count($small)))) continue;
+                        $an = trim((string) ($e['artist_norm'] ?? ''));
+                        $artistOk = $an !== '' && ($ica->artistsCompatible($aNorm, $an)
+                            || count(array_intersect(array_filter(explode(' ', $aNorm), function ($w) { return strlen($w) >= 4; }), explode(' ', $an))) > 0);
+                        // Short titles and untagged listings need the artist to line up.
+                        if ((count($small) <= 2 || !$tagged) && !$artistOk) continue;
+                        if ($an !== '' && !$artistOk) continue;
+                        if (!empty($e['upc'])) $more[] = (string) $e['upc'];
+                    }
+                    if ($more) break;
                 }
                 if ($more) $p = $ica->rsdPrices($biz, $artist, $title, $format, array_values(array_unique(array_merge($upcs, $more))), $isRsd);
             }
