@@ -17,6 +17,8 @@
 .sc-item .t { flex: 1; font-size: 15px; }
 .sc-item .n { font-size: 22px; font-weight: 800; min-width: 34px; text-align: center; }
 .sc-item.seen { border-color: #2E6B2E; background: #F2FAF2; }
+.sc-item.none { border-color: #8E1B1B; background: #FBF1F1; }
+.sc-item.none .n { font-size: 15px; color: #8E1B1B; }
 .sc-pm { width: 44px; height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; font-size: 22px; font-weight: 700; cursor: pointer; }
 .sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #2B2620; margin: 16px 0 6px; }
 #scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; }
@@ -27,7 +29,7 @@
 <div class="sc-wrap">
     <a class="sc-small" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $kind }}">Back to bins</a>
     <h1>{{ $kindLabel }} / {{ $name }}</h1>
-    <div class="sc-small">{{ ucfirst($locations[$loc] ?? '') }}. The ERP expects {{ count($items) }} titles here. Scan each record (or type the artist and press Enter). For records without a barcode, tap + next to it in the list below.</div>
+    <div class="sc-small">{{ ucfirst($locations[$loc] ?? '') }}. The ERP expects {{ count($items) }} titles here. Scan each record (or type the artist and press Enter). For records without a barcode, tap + next to it in the list below. If a title isn't here, tap - so it shows None. Titles you don't touch are left as they are.</div>
     <div class="sc-scan">
         <input id="scQ" type="text" placeholder="Scan barcode or type artist / title" autofocus autocomplete="off">
         <button class="sc-btn light" id="scCamBtn" type="button">Camera</button>
@@ -51,34 +53,34 @@
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var LOC = {{ (int) $loc }};
     var items = @json($items);
-    var byId = {}, count = {}, extra = [];
+    var byId = {}, count = {}, touched = {}, extra = [];
     items.forEach(function (i) { byId[i.id] = i; count[i.id] = 0; });
     function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function label(i) { return (i.artist && (i.name || '').toLowerCase().indexOf(String(i.artist).toLowerCase()) === -1 ? i.artist + ' - ' : '') + i.name; }
     function row(i) {
-        var n = count[i.id] || 0;
-        return '<div class="sc-item' + (n ? ' seen' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">ERP ' + (i.erp != null ? i.erp : '-') + '</div></div>'
-            + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + n + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
+        var n = count[i.id] || 0, none = touched[i.id] && !n;
+        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
+            + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + (none ? 'None' : n) + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
     }
     function render() {
         document.getElementById('scList').innerHTML = items.map(row).join('');
         document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
         document.getElementById('scExtra').innerHTML = extra.map(row).join('');
-        var seen = items.filter(function (i) { return count[i.id] > 0; }).length;
-        document.getElementById('scProg').textContent = seen + ' of ' + items.length + ' found';
+        var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
+        document.getElementById('scProg').textContent = seen + ' of ' + items.length + ' found, ' + (items.length - done) + ' not counted yet';
     }
     // Draft kept on this device after every scan, so closing the tab, a
     // dead battery or a refresh never loses a half-counted bin (Sarah 10/14).
     var DRAFT = 'shelfcount:' + LOC + ':{{ $kind }}:{{ (int) request('sub') }}', saved = true;
     function keepDraft() {
         saved = false;
-        try { localStorage.setItem(DRAFT, JSON.stringify({ count: count, extra: extra, at: Date.now() })); } catch (e) {}
+        try { localStorage.setItem(DRAFT, JSON.stringify({ count: count, touched: touched, extra: extra, at: Date.now() })); } catch (e) {}
     }
     try {
         var dr = JSON.parse(localStorage.getItem(DRAFT) || 'null');
         if (dr && dr.count) {
-            Object.keys(dr.count).forEach(function (k) { count[k] = dr.count[k]; });
+            Object.keys(dr.count).forEach(function (k) { count[k] = dr.count[k]; if (dr.touched ? dr.touched[k] : dr.count[k] > 0) touched[k] = true; });
             (dr.extra || []).forEach(function (i) { if (!byId[i.id]) { byId[i.id] = i; extra.push(i); } });
             saved = false;
             setTimeout(function () { var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = 'Picked up where you left off (' + new Date(dr.at).toLocaleString() + ').'; }, 0);
@@ -88,9 +90,10 @@
     function bump(i, d) {
         if (!byId[i.id]) { byId[i.id] = i; extra.unshift(i); count[i.id] = 0; }
         count[i.id] = Math.max(0, (count[i.id] || 0) + d);
+        touched[i.id] = true;
         keepDraft();
         render();
-        var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : 'Removed: ') + label(i) + ' (' + count[i.id] + ')';
+        var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : (count[i.id] ? 'Removed: ' : 'None here: ')) + label(i) + (count[i.id] || d > 0 ? ' (' + count[i.id] + ')' : '');
     }
     document.querySelector('.sc-wrap').addEventListener('click', function (e) {
         var b = e.target.closest('.sc-pm'); if (b) { var id = b.closest('.sc-item').getAttribute('data-id'); bump(byId[id], parseInt(b.getAttribute('data-d'), 10)); return; }
@@ -131,15 +134,19 @@
         }).catch(function () { box.style.display = 'none'; cam = null; alert('Camera not available'); });
     });
     document.getElementById('scFinish').addEventListener('click', function () {
-        var missing = items.filter(function (i) { return (count[i.id] || 0) < i.erp; });
+        var missing = items.filter(function (i) { return touched[i.id] && (count[i.id] || 0) < i.erp; });
+        var skipped = items.filter(function (i) { return !touched[i.id]; });
         var rowsHtml = missing.map(function (i) { return '<tr><td>' + esc(label(i)) + '</td><td>ERP ' + i.erp + '</td><td class="miss">found ' + (count[i.id] || 0) + '</td></tr>'; }).join('');
-        document.getElementById('scSummary').innerHTML = '<div class="sc-h">Before saving</div><div>' + missing.length + ' titles have fewer copies than the ERP says. If you looked everywhere (wall, shelves above), press Save. Otherwise keep scanning.</div>'
-            + '<table class="sc-sum">' + rowsHtml + '</table><p><button class="sc-btn" id="scSave" type="button">Save counts for this bin</button> <span class="sc-small" id="scSaveMsg"></span></p>';
+        document.getElementById('scSummary').innerHTML = '<div class="sc-h">Before saving</div><div>' + missing.length + ' titles you counted have fewer copies than the ERP says. If you looked everywhere (wall, shelves above), press Save. Otherwise keep scanning.</div>'
+            + '<table class="sc-sum">' + rowsHtml + '</table>'
+            + (skipped.length ? '<p>' + skipped.length + ' titles were not counted (not scanned, no + or -). They stay as they are in the ERP and are not marked missing.</p>' : '')
+            + '<p><button class="sc-btn" id="scSave" type="button">Save counts for this bin</button> <span class="sc-small" id="scSaveMsg"></span></p>';
         document.getElementById('scSave').scrollIntoView({ behavior: 'smooth' });
         document.getElementById('scSave').addEventListener('click', save);
     });
     function save() {
-        var all = (save.retry || items.concat(extra)), i = 0, failed = [], msg = document.getElementById('scSaveMsg'), btn = document.getElementById('scSave');
+        // Only titles someone counted (Sarah 10/16: "what if she didnt count it yet?").
+        var all = (save.retry || items.concat(extra).filter(function (x) { return touched[x.id]; })), i = 0, failed = [], msg = document.getElementById('scSaveMsg'), btn = document.getElementById('scSave');
         btn.disabled = true;
         (function next() {
             if (i >= all.length) {

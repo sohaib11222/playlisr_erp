@@ -236,9 +236,11 @@ class ShelfCountController extends Controller
         $rows = array_values(array_filter(app(ReorderService::class)->loadMissing($business_id), function ($r) use ($loc, $cut) {
             return (int) $r['location_id'] === $loc && $r['at'] >= $cut;
         }));
+        $rows = $this->netMissing($business_id, $loc, (string) \DB::table('business_locations')->where('id', $loc)->value('name'), $rows);
         usort($rows, function ($a, $b) { return strcmp($b['at'], $a['at']); });
         $byArtist = [];
         foreach ($rows as $r) {
+            if ($r['units'] <= 0) continue;
             $a = trim((string) ($r['artist'] ?: '')) ?: '(no artist)';
             $x = &$byArtist[mb_strtolower($a)];
             $x['artist'] = $x['artist'] ?? $a;
@@ -249,5 +251,88 @@ class ShelfCountController extends Controller
         }
         usort($byArtist, function ($a, $b) { return $b['cost'] <=> $a['cost']; });
         return view('report.shelf_count_missing', ['locations' => $locations, 'loc' => $loc, 'rows' => $rows, 'byArtist' => $byArtist, 'days' => $days]);
+    }
+
+    /**
+     * Take out copies that weren't really missing (Sarah 10/16: "doesnt check
+     * out. what about manual orders?"):
+     *  - found on a later count of the same title (Axis Mundi: 9 short on
+     *    10/15, 12 found 10/16), most recent shortfall first;
+     *  - sold at this store as a manual register item in the 60 days before
+     *    the count, so the ERP never took that copy off.
+     * Also fills the artist from the title ("AVICII / TRUE") when the
+     * product has none.
+     */
+    protected function netMissing(int $business_id, int $loc, string $locName, array $rows): array
+    {
+        if (!$rows) return $rows;
+        $svc = app(ReorderService::class);
+        foreach ($rows as &$r) {
+            $r['found'] = 0; $r['manual'] = 0; $r['short'] = $r['units'];
+            $k = $svc->albumKey($r['artist'] ?? null, $r['name'] ?? '');
+            $r['key'] = $k;
+            if (trim((string) ($r['artist'] ?? '')) === '' && strpos($k, '|') > 0) {
+                foreach ([' / ', ' - ', ' – '] as $sep) {
+                    $p = mb_strpos((string) $r['name'], $sep);
+                    if ($p !== false) { $r['artist'] = trim(mb_substr($r['name'], 0, $p)); break; }
+                }
+            }
+        }
+        unset($r);
+
+        // Later counts that went up, per product at this store.
+        $pids = array_values(array_unique(array_map(function ($r) { return (int) $r['product_id']; }, $rows)));
+        $ups = [];
+        $acts = \DB::table('activity_log')->where('subject_type', 'App\\Product')->whereIn('subject_id', $pids)
+            ->where('description', 'stock_changed')->where('properties', 'like', '%bin count%')
+            ->where('created_at', '>=', min(array_column($rows, 'at')))->orderBy('created_at')->get(['subject_id', 'properties', 'created_at']);
+        foreach ($acts as $a) {
+            $note = (string) (json_decode($a->properties, true)['update_note'] ?? '');
+            if (!preg_match('/bin count: (.*): ([\d.]+) -> (\d+)\s*$/', $note, $m)) continue;
+            if ($locName !== '' && strcasecmp(trim($m[1]), $locName) !== 0) continue;
+            if ((float) $m[3] > (float) $m[2]) $ups[(int) $a->subject_id][] = ['at' => (string) $a->created_at, 'n' => (float) $m[3] - (float) $m[2]];
+        }
+        $idx = [];
+        foreach ($rows as $i => $r) $idx[(int) $r['product_id']][] = $i;
+        foreach ($ups as $pid => $list) {
+            foreach ($list as $u) {
+                $left = $u['n'];
+                $before = array_filter($idx[$pid] ?? [], function ($i) use ($rows, $u) { return $rows[$i]['at'] <= $u['at']; });
+                usort($before, function ($x, $y) use ($rows) { return strcmp($rows[$y]['at'], $rows[$x]['at']); });
+                foreach ($before as $i) {
+                    if ($left <= 0) break;
+                    $take = min($left, $rows[$i]['units']);
+                    $rows[$i]['units'] -= $take; $rows[$i]['found'] += $take; $left -= $take;
+                }
+            }
+        }
+
+        // Manual register items for the same album at this store.
+        $first = \Carbon\Carbon::parse(min(array_column($rows, 'at')))->subDays(60)->toDateTimeString();
+        $manual = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')->where('t.location_id', $loc)
+            ->where('t.transaction_date', '>=', $first)
+            ->where(function ($w) { $w->whereNull('l.product_id')->orWhere('l.product_id', 0); })->whereNotNull('l.product_name')
+            ->select('l.product_name', 'l.product_artist', 't.transaction_date', \DB::raw('l.quantity - l.quantity_returned as q'))->get();
+        $sold = [];
+        foreach ($manual as $m) {
+            $k = $svc->albumKey($m->product_artist, $m->product_name);
+            if (strpos($k, '|') > 0 && (float) $m->q > 0) $sold[$k][] = ['at' => (string) $m->transaction_date, 'q' => (float) $m->q];
+        }
+        $order = array_keys($rows);
+        usort($order, function ($x, $y) use ($rows) { return strcmp($rows[$x]['at'], $rows[$y]['at']); });
+        foreach ($order as $i) {
+            $k = $rows[$i]['key'];
+            if ($rows[$i]['units'] <= 0 || empty($sold[$k])) continue;
+            $from = \Carbon\Carbon::parse($rows[$i]['at'])->subDays(60)->toDateTimeString();
+            foreach ($sold[$k] as &$s) {
+                if ($rows[$i]['units'] <= 0) break;
+                if ($s['q'] <= 0 || $s['at'] < $from || $s['at'] > $rows[$i]['at']) continue;
+                $take = min($s['q'], $rows[$i]['units']);
+                $rows[$i]['units'] -= $take; $rows[$i]['manual'] += $take; $s['q'] -= $take;
+            }
+            unset($s);
+        }
+        return $rows;
     }
 }
