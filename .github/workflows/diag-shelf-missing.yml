@@ -1,0 +1,84 @@
+# READ-ONLY: dump the shelf-count Missing list with context.
+# cashier, same as the Hollywood look-up. Branch-only (not main) so
+# dispatching this doesn't touch main and trigger a production deploy
+# while stores are open.
+
+name: Diag shelf missing
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Dump missing list
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 60s
+          script: |
+            set +e
+            php artisan tinker --no-ansi <<'PHP'
+            $biz = 1;
+            $hw = (int) App\BusinessLocation::where('business_id',$biz)->where('name','like','%hollywood%')->where('name','not like','%warehouse%')->value('id');
+            echo "hollywood loc = $hw\n";
+            $rows = json_decode((string) @file_get_contents(storage_path('app/shelf-missing-'.$biz.'.json')), true) ?: [];
+            $cut = now()->subDays(90)->toDateTimeString();
+            $rows = array_values(array_filter($rows, fn($r) => (int)$r['location_id'] === $hw && $r['at'] >= $cut));
+            echo "rows=".count($rows)." units=".array_sum(array_column($rows,'units'))."\n";
+            $state = json_decode((string) @file_get_contents(storage_path('app/reorder-'.$biz.'.json')), true) ?: [];
+            $pids = array_values(array_unique(array_map(fn($r) => (int)$r['product_id'], $rows)));
+            $prod = DB::table('products')->whereIn('id',$pids)->get(['id','bin_position','listing_location','sku','artist','category_id'])->keyBy('id');
+            $vld = DB::table('variation_location_details')->whereIn('product_id',$pids)->get(['product_id','location_id','qty_available'])->groupBy('product_id');
+            // sales of these products at HW since their missing log (final + draft/quote/web)
+            $sold = DB::table('transaction_sell_lines as l')->join('transactions as t','t.id','=','l.transaction_id')
+              ->whereIn('l.product_id',$pids)->where('t.type','sell')->where('t.location_id',$hw)->where('t.transaction_date','>=',now()->subDays(120))
+              ->select('l.product_id','t.status','t.transaction_date','l.quantity')->get()->groupBy('product_id');
+            $acts = DB::table('activity_log')->where('subject_type','App\\Product')->whereIn('subject_id',$pids)->where('description','stock_changed')->where('created_at','>=',now()->subDays(100))
+              ->orderBy('id')->get(['subject_id','properties','created_at'])->groupBy('subject_id');
+            $by = []; $byWho = []; $zeroed = 0; $zeroUnits = 0; $binned = 0; $binUnits = 0;
+            foreach ($rows as $r) {
+              $pid = (int)$r['product_id']; $p = $prod[$pid] ?? null;
+              $c = $state['counts'][$hw.':'.$pid] ?? null;
+              $bin = $p ? trim((string)($p->bin_position ?: $p->listing_location)) : '';
+              if ($bin !== '') { $binned++; $binUnits += $r['units']; }
+              if ($c && (int)$c['qty'] === 0) { $zeroed++; $zeroUnits += $r['units']; }
+              $byWho[$r['by'].' '.substr($r['at'],0,10)] = ($byWho[$r['by'].' '.substr($r['at'],0,10)] ?? 0) + $r['units'];
+              $hist = collect($acts[$pid] ?? [])->map(fn($a) => substr($a->created_at,5,11).' '.preg_replace('/^.*?: (?=[\d.]+ ->)/','',(json_decode($a->properties,true)['update_note'] ?? '')))->implode(' | ');
+              $s = collect($sold[$pid] ?? [])->map(fn($x) => $x->status.':'.substr($x->transaction_date,5,5).'x'.(float)$x->quantity)->implode(',');
+              $now = collect($vld[$pid] ?? [])->map(fn($v) => $v->location_id.'='.(float)$v->qty_available)->implode(',');
+              echo implode("\t", [substr($r['at'],5,11), $r['by'], $pid, mb_substr($r['artist'] ?? '',0,18), mb_substr($r['name'],0,30), $r['format'], $r['genre'], 'miss='.$r['units'], '$'.$r['unit_cost'], 'cnt='.($c['qty'] ?? '-'), 'bin='.$bin, 'now='.$now, 'sells='.$s, 'hist='.mb_substr($hist,0,200)])."\n";
+            }
+            echo "\nzero-count rows=$zeroed units=$zeroUnits ; rows with a warehouse bin=$binned units=$binUnits\n";
+            print_r($byWho);
+            PHP
