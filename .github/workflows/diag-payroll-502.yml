@@ -1,4 +1,4 @@
-# READ-ONLY diagnostic: why /payroll returns 502 (log tails only).
+# READ-ONLY diagnostic: which roles Fatteen's ERP account has (read only).
 name: Diag payroll 502
 
 on:
@@ -45,8 +45,4 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            L=storage/logs/$(ls -t storage/logs | head -1); echo "LOG $L"
-            tail -c 3000000 $L | grep -n "production.ERROR" | tail -8 | cut -c1-1200
-            echo ---payroll; tail -c 3000000 $L | grep -i "payroll" | tail -5 | cut -c1-1500
-            echo ---fpm; for f in /var/log/php*fpm*.log /var/log/nginx/error.log ~/logs/*error* /www/playlist.nivessa.com/logs/*error*; do [ -r "$f" ] && { echo "== $f"; tail -n 15 "$f" | cut -c1-600; }; done
-            grep -rh "memory_limit\|max_execution_time\|request_terminate_timeout" /etc/php*/*/fpm/pool.d/*.conf /etc/php/*/fpm/php.ini 2>/dev/null | grep -v "^;" | head
+            php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach(App\User::where("first_name","like","%Nerdy%")->orWhere("last_name","like","%Nerdy%")->orWhere("first_name","like","%Fatteen%")->get() as $u) echo "USER ",$u->id," ",$u->first_name," ",$u->last_name," roles=",implode(",",$u->getRoleNames()->toArray()),"\n";'
