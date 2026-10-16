@@ -64,7 +64,7 @@ class WebsiteBookingsController extends Controller
 
         $stats = ['total' => count($bookings), 'pending' => 0, 'confirmed' => 0, 'completed' => 0, 'revenue' => 0.0];
         foreach ($bookings as $b) {
-            if (in_array($b['status'], ['pending', 'confirmed', 'completed'], true)) {
+            if (in_array($b['status'], ['pending', 'confirmed', 'completed'], true) && empty($b['expired'])) {
                 $stats[$b['status']]++;
             }
             if ($b['status'] === 'confirmed') {
@@ -562,6 +562,12 @@ class WebsiteBookingsController extends Controller
             'timeLabel'     => $this->fmtTime($bk['startTime'] ?? '') . ' - ' . $this->fmtTime($bk['endTime'] ?? ''),
             'total'         => (float) ($b['pricing']['total'] ?? 0),
             'status'        => (string) ($b['status'] ?? ''),
+            'paymentStatus' => (string) ($b['payment']['status'] ?? ''),
+            'paymentMethod' => (string) ($b['payment']['method'] ?? ''),
+            // A request nobody paid for whose date has passed: never a real
+            // booking, so it leaves Pending (Sarah, 2026-10-15).
+            'expired'       => ($b['status'] ?? '') === 'pending' && ($b['payment']['status'] ?? '') !== 'paid'
+                && $dateYmd !== '' && $dateYmd < \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d'),
             'depositStatus' => $deposit ? (string) ($deposit['status'] ?? 'none') : 'none',
             'depositAmount' => $deposit && isset($deposit['amount']) ? (float) $deposit['amount'] : 150.0,
             'hasDeposit'    => $deposit !== null,

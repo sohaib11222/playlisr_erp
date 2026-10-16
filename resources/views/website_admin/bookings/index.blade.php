@@ -108,7 +108,7 @@
                   'status' => $b['status'], 'depositAmount' => $depAmtLabel,
                 ];
               @endphp
-              <tr class="wb-row" data-id="{{ $b['id'] }}" data-status="{{ $b['status'] }}" data-search="{{ $search }}" data-b="{{ json_encode($dlg) }}">
+              <tr class="wb-row" data-id="{{ $b['id'] }}" data-status="{{ !empty($b['expired']) ? 'expired' : $b['status'] }}" data-search="{{ $search }}" data-b="{{ json_encode($dlg) }}">
                 <td>
                   <div class="wb-main">#{{ $b['bookingNumber'] }}</div>
                   <div class="wb-sub">{{ $b['title'] }}</div>
@@ -123,10 +123,18 @@
                   <div class="wb-sub">{{ $b['timeLabel'] }}</div>
                 </td>
                 <td class="wb-main">${{ number_format($b['total'], 2) }}</td>
-                <td><span class="wb-pill {{ $pillClass }}">{{ strtoupper($b['status']) }}</span></td>
+                <td>
+                  @if(!empty($b['expired']))
+                    <span class="wb-pill st-default">NEVER PAID</span>
+                  @else
+                    <span class="wb-pill {{ $pillClass }}">{{ strtoupper($b['status']) }}</span>
+                  @endif
+                  @php $payLabel = ['paid' => 'Paid', 'pending' => 'Not paid', 'failed' => 'Payment failed', 'refunded' => 'Refunded'][$b['paymentStatus']] ?? ($b['paymentStatus'] !== '' ? ucfirst($b['paymentStatus']) : 'Not paid'); @endphp
+                  <div class="wb-sub" style="margin-top:4px;color:{{ $b['paymentStatus'] === 'paid' ? '#15803d' : '#b91c1c' }};">{{ $payLabel }}@if($b['paymentMethod'] !== '') ({{ ucfirst($b['paymentMethod']) }}) @endif</div>
+                </td>
                 <td>
                   <div class="wb-actions">
-                    @if($b['status'] === 'pending')
+                    @if($b['status'] === 'pending' && empty($b['expired']))
                       <form method="POST" action="{{ route('wa.bookings.status', $b['id']) }}">
                         {{ csrf_field() }}
                         <input type="hidden" name="status" value="confirmed">
@@ -253,7 +261,7 @@
 (function () {
   var CSRF = '{{ csrf_token() }}';
   var KEY = 'nivessa.erp.archivedBookingIds.v1';
-  var BUCKETS = { pending: ['pending'], confirmed: ['confirmed'], completed: ['completed', 'cancelled', 'no-show'] };
+  var BUCKETS = { pending: ['pending'], confirmed: ['confirmed'], completed: ['completed', 'cancelled', 'no-show', 'expired'] };
   var URLS = {
     edit: '{{ url('/website-bookings') }}/ID/edit',
     charge: '{{ url('/website-bookings') }}/ID/charge',
