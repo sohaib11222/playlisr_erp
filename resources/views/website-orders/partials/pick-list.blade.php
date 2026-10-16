@@ -13,7 +13,6 @@
       @endphp
       <div class="wo-pick-line {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
         <div class="wo-pick-name">{{ \Illuminate\Support\Str::limit($pl['name'] ?? 'Item', 40) }} @if(($pl['quantity'] ?? 1) > 1) x{{ (int) $pl['quantity'] }} @endif</div>
-        @if(!empty($pickFind[(string) ($pl['item_id'] ?? '')]))<div class="wo-find" style="font-size:12px;margin:2px 0 3px;">{{ $pickFind[(string) $pl['item_id']] }}</div>@endif
         <div class="wo-pick-state">{{ $plDone ? $plStatus : ($plMissing ? "Can't find" : 'Not picked') }} @if(!empty($pl['picked_by'])) by {{ $pl['picked_by'] }} @endif @if(!empty($pl['picked_at'])) {{ date('n/j g:ia', strtotime($pl['picked_at'])) }} @endif</div>
         <div class="wo-pick-btns">
           @if($plDone || $plMissing)

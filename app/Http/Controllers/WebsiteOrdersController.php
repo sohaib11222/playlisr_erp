@@ -597,55 +597,6 @@ class WebsiteOrdersController extends Controller
         return $map;
     }
 
-    /**
-     * One plain line telling the picker where to walk for an order item:
-     * store + room, then the Kallax code, or the genre bin and the artist's
-     * letter (floor bins are alphabetical by artist). Nick was cancelling
-     * orders he couldn't find (Sarah, 2026-10-15).
-     */
-    public static function findIt(array $item, array $erpLocations): string
-    {
-        if (!empty($item['is_gift_card']) || (empty($item['product_id']) && !empty($item['gift_card_amount']))) return '';
-        $p = is_array($item['product_id'] ?? null) ? $item['product_id'] : [];
-        $loc = $item['location'] ?? ($p['location'] ?? null);
-        $zone = is_array($loc) ? trim((string) ($loc['zone'] ?? '')) : '';
-        $kallax = trim((string) ($item['discogs_code'] ?? ($p['discogsLocation'] ?? '')));
-        $info = $erpLocations[(int) ($p['posProductId'] ?? 0)] ?? null;
-
-        // Where: a Kallax room wins (bin map), then ERP stock, then the store it ships from.
-        $where = '';
-        if ($kallax !== '' && $zone !== '') $where = $zone;
-        elseif (!empty($info['stores'])) $where = implode(' or ', array_keys($info['stores']));
-        elseif (!empty($info['stocked'])) $where = implode(' or ', array_keys($info['stocked']));
-        elseif ($zone !== '') $where = $zone;
-        else {
-            $from = $item['ship_from'] ?? ($item['fulfill_from'] ?? '');
-            if ($from === 'pico') $where = 'Pico In Store';
-            elseif ($from === 'hollywood') $where = 'Hollywood In Store';
-        }
-
-        if ($kallax !== '') return trim($where . ', Kallax ' . $kallax, ', ');
-
-        $genre = ($info['genre'] ?? '') !== '' ? $info['genre'] : trim((string) ($p['genre'] ?? ''));
-        $artist = trim((string) (($p['artist'] ?? '') ?: ($item['product_artist'] ?? '')));
-        if ($artist === '') {
-            $name = (string) ($p['name'] ?? ($item['product_name'] ?? ''));
-            if (preg_match('/^(.+?)\s+[\x{2013}\x{2014}-]\s+/u', $name, $m)) $artist = trim($m[1]);
-        }
-        $letter = '';
-        if ($artist !== '') {
-            $a = preg_replace('/^the\s+/i', '', $artist);
-            $letter = mb_strtoupper(mb_substr($a, 0, 1));
-            if (preg_match('/[0-9]/', $letter)) $letter = '#';
-        }
-        $parts = array_filter([
-            $where,
-            $genre !== '' ? $genre . ' bin' : '',
-            $letter !== '' ? 'under ' . $letter . ' (' . $artist . ')' : '',
-        ]);
-        return implode(', ', $parts);
-    }
-
     /** ERP locations/genres by product id, so the Genre column can sort by what it shows. */
     protected static $sortGenres = [];
 

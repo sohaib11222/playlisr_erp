@@ -93,7 +93,6 @@
   .wo-tag { display:inline-block; margin-left:4px; padding:0 5px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; vertical-align:1px; }
   .wo-tag.media { color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; }
   .wo-tag.fmt { color:#000; border:1px solid #e5e7eb; font-weight:600; }
-  .wo-find { margin-top:5px; padding:4px 8px; border-radius:6px; background:#fef9c3; border:1px solid #fde68a; color:#000; font-size:13px; font-weight:700; line-height:1.35; }
   .wo-prod-price { font-size:12px; color:#000; }
   .wo-sla { display:inline-block; margin-top:4px; padding:1px 7px; border-radius:5px; font-size:10.5px; font-weight:700; }
   .wo-sla.ok { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
@@ -419,8 +418,6 @@
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
-                        @php $lineFind = $line['gift'] ? '' : \App\Http\Controllers\WebsiteOrdersController::findIt($lineItem, $erpLocations); @endphp
-                        @if($lineFind !== '')<div class="wo-find">Find it: {{ $lineFind }}</div>@endif
                       </div>
                     </div>
                   @endforeach
@@ -567,13 +564,7 @@
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
                     <div style="margin-top:8px;">
-                      @php
-                        $pickFind = [];
-                        foreach (($o['items'] ?? []) as $pfItem) {
-                          if (!empty($pfItem['_id'])) $pickFind[(string) $pfItem['_id']] = \App\Http\Controllers\WebsiteOrdersController::findIt($pfItem, $erpLocations);
-                        }
-                      @endphp
-                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress'], 'pickFind' => $pickFind])
+                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
                     </div>
                   @endif
                 </td>
