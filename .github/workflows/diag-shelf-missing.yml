@@ -49,6 +49,7 @@ jobs:
           command_timeout: 60s
           script: |
             set +e
+            cd /www/playlist.nivessa.com/app
             php artisan tinker --no-ansi <<'PHP'
             $biz = 1;
             $hw = (int) App\BusinessLocation::where('business_id',$biz)->where('name','like','%hollywood%')->where('name','not like','%warehouse%')->value('id');
