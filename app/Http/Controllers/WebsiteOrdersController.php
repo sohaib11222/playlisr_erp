@@ -492,7 +492,7 @@ class WebsiteOrdersController extends Controller
         }
         $status = (string) $request->input('status');
         $ok = preg_match('/^[a-f0-9]{24}$/i', $orderId) && ($itemId === 'all' || preg_match('/^[a-f0-9]{24}$/i', $itemId))
-            && in_array($status, ['Picked', 'Not Picked', "Can't Find"], true);
+            && in_array($status, ['Picked', 'Not Picked', "Can't Find", 'Pending Arrival'], true);
         $resp = !$ok ? ['success' => false, 'message' => 'That pick could not be saved.']
             : $this->websiteApi('POST', $itemId === 'all' ? "/erp/picks/{$orderId}/all" : "/erp/picks/{$orderId}/items/{$itemId}", [
                 'status' => $status,
@@ -670,17 +670,27 @@ class WebsiteOrdersController extends Controller
         foreach ($orders as $o) {
             if (!self::matchesTab($o, 'needs_action')) continue;
             $done = [];
+            $lines = []; // pick-list line by item name, for the Picked / Can't find buttons
             foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
-                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped'], true)) {
-                    $done[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
-                }
+                $k = strtolower(trim((string) ($pl['name'] ?? '')));
+                $lines[$k] = $pl;
+                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped'], true)) $done[$k] = true;
             }
             foreach (($o['items'] ?? []) as $it) {
                 if (!empty($it['is_gift_card']) || !empty($it['cancelled']) || (empty($it['product_id']) && !empty($it['gift_card_amount']))) continue;
                 $name = (string) ($it['product_id']['name'] ?? ($it['product_name'] ?? 'Item'));
                 if (isset($done[strtolower(trim($name))])) continue;
                 $parts = self::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
-                $out[] = ['order' => $o, 'item' => $it, 'name' => $name, 'parts' => $parts, 'store' => self::pullStore($parts['place'])];
+                $pl = $lines[strtolower(trim($name))] ?? null;
+                $out[] = [
+                    'order' => $o, 'item' => $it, 'name' => $name, 'parts' => $parts, 'store' => self::pullStore($parts['place']),
+                    'pick_order' => (string) ($o['pick_progress']['order_id'] ?? ''),
+                    'pick_item' => (string) ($pl['item_id'] ?? ''),
+                    'pick_status' => (string) ($pl['status'] ?? 'Not Picked'),
+                    // Full ERP genre ("Vinyl - Used / Rock") and format for the pick route
+                    'genre_full' => (string) (($erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)]['genre'] ?? '') ?: ($it['product_id']['genre'] ?? '')),
+                    'format' => trim(implode(' ', array_filter([self::mediaTypeLabel($it['product_id']['productType'] ?? null), (string) ($it['product_id']['format'] ?? '')]))),
+                ];
             }
         }
         return $out;
