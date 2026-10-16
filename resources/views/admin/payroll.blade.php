@@ -82,7 +82,7 @@
 <div class="payroll-v2">
 <section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
     <div>
-      <h1>Payroll <small>{{ \Carbon::parse($start)->format('M j') }} – {{ \Carbon::parse($end)->format('M j, Y') }}</small></h1>
+      <h1>Payroll <small>{{ \Carbon::parse($start)->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</small></h1>
       <p class="text-muted" style="margin-top:6px;max-width:900px;">
         What you owe everyone this period: hours pay (Clover, OT over {{ $hh($settings['daily_ot_after']) }}h/day at {{ $hh($settings['ot_multiplier']) }}x)
         plus sales &amp; listing commission owed. Everything else is tucked into the sections below.
@@ -113,7 +113,7 @@
     <a class="btn btn-default btn-sm" style="margin-left:6px;" href="{{ url('/payroll?start=' . $ps->copy()->subDays(14)->toDateString() . '&end=' . $ps->copy()->subDay()->toDateString()) }}">&lsaquo; Previous period</a>
     <a class="btn btn-default btn-sm" href="{{ url('/payroll?start=' . $ps->copy()->addDays(14)->toDateString() . '&end=' . $ps->copy()->addDays(27)->toDateString()) }}">Next period &rsaquo;</a>
     <span class="pull-right text-muted" style="font-size:12px;">
-      @if ($imported_at) {{ $row_count }} punches @if (($hours_source ?? '') === 'erp_time_clock') from the ERP time clock @endif loaded {{ \Carbon::parse($imported_at)->format('M j, g:ia') }} @else No hours loaded yet. Load them from the ERP time clock, or import from Clover below. @endif
+      @if ($imported_at) {{ $row_count }} punches @if (($hours_source ?? '') === 'erp_time_clock') from the ERP time clock @endif loaded {{ \Carbon::parse($imported_at)->format('m/d/y g:ia') }} @else No hours loaded yet. Load them from the ERP time clock, or import from Clover below. @endif
     </span>
   </form>
   <form method="POST" action="{{ url('/payroll/load-erp-hours') }}" style="margin-top:10px;">
@@ -183,7 +183,7 @@
 .pr-sheet-title { font-family: Calibri, Arial, sans-serif; font-weight:700; font-size:15px; margin:4px 0 8px; }
 </style>
 <div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
-  <div class="pr-sheet-title">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/Y') }} - {{ \Carbon::parse($end)->format('m/d/Y') }}</div>
+  <div class="pr-sheet-title">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</div>
   <table class="pr-sheet" id="owe-table">
     <thead><tr>
       <th>Listening<br>Parties</th>
@@ -258,32 +258,76 @@
   @endif
 </div></div>
 
-{{-- ============ SHEET VIEW: SHIFT LOG (the sheet's bottom blocks) ============ --}}
-<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
+{{-- ============ SHEET VIEW: SHIFT LOG (the sheet's bottom blocks, editable) ============ --}}
+<style>
+.pr-log input.pr-cell, .pr-log select.pr-cell { border:1px solid transparent; background:transparent; font:inherit; color:#1F1B16; padding:1px 3px; width:100%; }
+.pr-log input.pr-cell:hover, .pr-log select.pr-cell:hover { border-color:#c9c9c9; }
+.pr-log input.pr-cell:focus, .pr-log select.pr-cell:focus { border-color:#4A86E8; background:#fff; outline:none; }
+.pr-log input.pr-d { width:78px; } .pr-log input.pr-t { width:82px; } .pr-log input.pr-c { min-width:200px; }
+.pr-log tr.pr-add td { background:#F7F9FE; }
+.pr-log .pr-btn { border:1px solid #c9c9c9; background:#fff; border-radius:4px; font-size:11px; padding:1px 6px; cursor:pointer; color:#1F1B16; }
+</style>
+@php
+  $mdY = function ($v) { return $v ? \Carbon::parse($v)->format('m/d/y') : ''; };
+  $tm  = function ($v) { return $v ? \Carbon::parse($v)->format('g:i A') : ''; };
+  $locOpts = ['pico' => 'pico', 'hollywood' => 'hw'];
+@endphp
+<div class="box box-solid" id="shift-log"><div class="box-body" style="overflow-x:auto;">
+  <div class="pr-sheet-title">SHIFT LOG</div>
+  <p style="font-size:12px;margin:0 0 8px;color:#1F1B16;">
+    Hours fill in from the ERP time clock on their own. Click any date, time, store or comment to fix it, then Save that row.
+    @if (!empty($hours_doc['edited']))<strong>Edited by {{ $hours_doc['edited_by'] ?? '' }} {{ !empty($hours_doc['edited_at']) ? \Carbon::parse($hours_doc['edited_at'])->format('m/d/y g:ia') : '' }}</strong>, so it no longer updates from the time clock.@endif
+  </p>
   <table class="pr-sheet pr-log">
-    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th></tr></thead>
+    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th><th></th></tr></thead>
     <tbody>
     @foreach ($people as $p)
       @if (!empty($p['log']))
+        @php $pk = $p['key']; @endphp
         @foreach ($p['log'] as $lg)
+          @php $f = 'sh-' . $lg['idx']; @endphp
           <tr>
             <td class="pr-name">{{ $loop->first ? $p['first_name'] : '' }}</td>
             <td class="num">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
-            <td class="num">{{ \Carbon::parse($lg['day'])->format('d-M-y') }}</td>
-            <td class="num">{{ $lg['in'] ? \Carbon::parse($lg['in'])->format('g:i:s A') : '' }}</td>
-            <td class="num">{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('d-M-y') : '' }}</td>
-            <td class="num">{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:i:s A') : '' }}</td>
+            <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" value="{{ $tm($lg['in']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" value="{{ $mdY($lg['out']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" value="{{ $tm($lg['out']) }}"></td>
             <td class="num">{{ number_format($lg['hours'], 2) }}</td>
-            <td>{{ $lg['company'] === 'one' ? 'pico' : 'hw' }}</td>
-            <td>{{ $lg['comment'] }}</td>
+            <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" value="{{ $lg['comment'] }}"></td>
+            <td style="white-space:nowrap;">
+              <button form="{{ $f }}" type="submit" name="action" value="save" class="pr-btn">Save</button>
+              <button form="{{ $f }}" type="submit" name="action" value="delete" class="pr-btn" onclick="return confirm('Delete this shift?');">Delete</button>
+            </td>
           </tr>
         @endforeach
-        <tr><td colspan="9" style="border-left:0;border-right:0;height:10px;"></td></tr>
+        <tr class="pr-add">
+          @php $f = 'add-' . $pk; @endphp
+          <td style="font-size:11px;">+ add shift</td><td></td>
+          <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" placeholder="mm/dd/yy"></td>
+          <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" placeholder="3:00 PM"></td>
+          <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" placeholder="same day"></td>
+          <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" placeholder="8:00 PM"></td>
+          <td></td>
+          <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === ($p['home_company'] === 'one') ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
+          <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" placeholder="why it was added"></td>
+          <td><button form="{{ $f }}" type="submit" name="action" value="add" class="pr-btn">Add</button></td>
+        </tr>
+        <tr><td colspan="10" style="border-left:0;border-right:0;height:10px;"></td></tr>
       @endif
     @endforeach
     </tbody>
   </table>
-  <p style="font-size:12px;margin-top:6px;color:var(--pos-ink-2);">Fix a wrong or missing punch on <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>, then click "Load hours from ERP time clock" again.</p>
+  @foreach ($people as $p)
+    @foreach ($p['log'] ?? [] as $lg)
+      <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}"></form>
+    @endforeach
+    @if (!empty($p['log']))
+      <form id="add-{{ $p['key'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="name" value="{{ ucfirst($p['key']) }}"></form>
+    @endif
+  @endforeach
+  <p style="font-size:12px;margin-top:6px;color:#1F1B16;">Someone missing completely? Fix their punch on <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>.</p>
 </div></div>
 
 {{-- ============ EVERYTHING ELSE (collapsed) ============ --}}

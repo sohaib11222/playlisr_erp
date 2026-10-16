@@ -72,6 +72,7 @@ class PayrollController extends Controller
         $businessId = $request->session()->get('user.business_id');
 
         [$start, $end] = $this->resolvePeriod($request);
+        $this->autoLoadErpHours($businessId, $start, $end);
 
         [$people, $config, $hoursDoc, $run] = $this->assemble($businessId, $start, $end);
         $settings = $config['settings'];
@@ -108,6 +109,7 @@ class PayrollController extends Controller
             'freelancers'  => $freelancers,
             'freelancer_total' => $freelancerTotal,
             'imported_at'  => $hoursDoc['imported_at'] ?? null,
+            'hours_doc'    => $hoursDoc,
             'hours_source' => $hoursDoc['source'] ?? 'clover',
             'row_count'    => count($rows),
             'unmatched'    => $this->unmatchedNames($people),
@@ -550,6 +552,39 @@ class PayrollController extends Controller
             return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'The ERP time clock is not set up yet (the migration has not run). Use the Clover import for now.']);
         }
 
+        $got = $this->erpHoursRows($businessId, $start, $end);
+        if ($got === null) {
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'Could not read the ERP time clock. Use the Clover import for now.']);
+        }
+        [$rows, $missing, $config] = $got;
+
+        if (empty($rows)) {
+            $msg = 'No finished ERP clock-ins in this period yet.';
+            if ($missing) { $msg .= ' ' . $missing . ' punch(es) have no clock-out; fix them on Timecards.'; }
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => $msg]);
+        }
+
+        $this->saveConfig($config);
+        $this->saveHours($start, $end, [
+            'rows'        => $rows,
+            'source'      => 'erp_time_clock',
+            'imported_at' => now()->toDateTimeString(),
+            'imported_by' => $request->session()->get('user.id'),
+        ]);
+
+        $msg = 'Loaded ' . count($rows) . ' time clock punches for '
+            . count(array_unique(array_map(function ($r) { return $this->nameKey($r['name']); }, $rows))) . ' people.';
+        if ($missing) {
+            $msg .= ' Left out ' . $missing . ' punch(es) with no clock-out. Fix them on Timecards and load again.';
+        }
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Time clock punches for the period as hours rows (same shape as a
+    // Clover import). Returns [rows, missing clock-outs, config] or null if
+    // the time clock could not be read.
+    private function erpHoursRows($businessId, $start, $end)
+    {
         try {
             $punches = DB::table('time_clock_punches as p')
             ->leftJoin('users as u', 'u.id', '=', 'p.user_id')
@@ -564,7 +599,7 @@ class PayrollController extends Controller
             ->get(['p.*', 'u.first_name', 'u.last_name', 'l.name as location_name']);
         } catch (\Throwable $e) {
             \Log::warning('payroll load ERP hours failed: ' . $e->getMessage());
-            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'Could not read the ERP time clock. Use the Clover import for now.']);
+            return null;
         }
 
         $config = $this->loadConfig();
@@ -652,26 +687,92 @@ class PayrollController extends Controller
             }
         }
 
-        if (empty($rows)) {
-            $msg = 'No finished ERP clock-ins in this period yet.';
-            if ($missing) { $msg .= ' ' . $missing . ' punch(es) have no clock-out; fix them on Timecards.'; }
-            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => $msg]);
-        }
+        return [$rows, $missing, $config];
+    }
 
-        $this->saveConfig($config);
-        $this->saveHours($start, $end, [
-            'rows'        => $rows,
-            'source'      => 'erp_time_clock',
-            'imported_at' => now()->toDateTimeString(),
-            'imported_by' => $request->session()->get('user.id'),
-        ]);
-
-        $msg = 'Loaded ' . count($rows) . ' time clock punches for '
-            . count(array_unique(array_map(function ($r) { return $this->nameKey($r['name']); }, $rows))) . ' people.';
-        if ($missing) {
-            $msg .= ' Left out ' . $missing . ' punch(es) with no clock-out. Fix them on Timecards and load again.';
+    // Hours fill in by themselves from the ERP time clock: a period with no
+    // hours yet, or one still on untouched time clock hours, reloads when the
+    // page opens (at most every 5 min). Hand-edited or Clover-imported hours
+    // are never overwritten.
+    private function autoLoadErpHours($businessId, $start, $end)
+    {
+        try {
+            if (!\App\Services\TimeClockService::ready() || $start > now()->toDateString()) { return; }
+            $doc = $this->loadHours($start, $end);
+            $has = !empty($doc['rows']);
+            if ($has && (($doc['source'] ?? '') !== 'erp_time_clock' || !empty($doc['edited']))) { return; }
+            if ($has && !empty($doc['imported_at']) && \Carbon::parse($doc['imported_at'])->gt(now()->subMinutes(5))) { return; }
+            $got = $this->erpHoursRows($businessId, $start, $end);
+            if ($got === null || empty($got[0])) { return; }
+            $this->saveConfig($got[2]);
+            $this->saveHours($start, $end, [
+                'rows' => $got[0], 'source' => 'erp_time_clock', 'auto' => true,
+                'imported_at' => now()->toDateTimeString(), 'imported_by' => null,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('payroll auto-load hours failed: ' . $e->getMessage());
         }
-        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Edit, add or delete one shift-log row right on the payroll page (for
+    // Fatteen's review). Dates are typed mm/dd/yy, times like 3:31 PM. Once
+    // hours are edited by hand they stop auto-reloading from the time clock.
+    public function saveShift(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $doc = $this->loadHours($start, $end);
+        $rows = $doc['rows'] ?? [];
+        $action = (string) $request->input('action', 'save');
+        $idx = (int) $request->input('idx', -1);
+        $back = function ($ok, $msg) use ($start, $end) {
+            return redirect($this->url($start, $end) . '#shift-log')->with('status', ['success' => $ok ? 1 : 0, 'msg' => $msg]);
+        };
+
+        if ($action === 'delete') {
+            if (!isset($rows[$idx])) { return $back(false, 'That shift was not found. Reload the page and try again.'); }
+            $gone = $rows[$idx];
+            array_splice($rows, $idx, 1);
+            $msg = 'Deleted ' . $gone['name'] . "'s shift" . ($gone['in'] ? ' from ' . \Carbon::parse($gone['in'])->format('m/d/y g:ia') : '') . '.';
+        } else {
+            $parse = function ($d, $t) {
+                $d = trim((string) $d); $t = strtoupper(trim((string) $t));
+                if ($d === '' || $t === '') { return null; }
+                foreach (['m/d/y g:i A', 'm/d/y g:i:s A', 'm/d/Y g:i A', 'm/d/Y g:i:s A', 'm/d/y H:i', 'Y-m-d H:i', 'Y-m-d g:i A'] as $f) {
+                    try { $c = \Carbon::createFromFormat($f, $d . ' ' . $t); if ($c) { return $c; } } catch (\Throwable $e) {}
+                }
+                try { return \Carbon::parse($d . ' ' . $t); } catch (\Throwable $e) { return null; }
+            };
+            $in = $parse($request->input('in_date'), $request->input('in_time'));
+            $out = $parse($request->input('out_date') ?: $request->input('in_date'), $request->input('out_time'));
+            if (!$in || !$out) { return $back(false, 'Could not read that date or time. Use mm/dd/yy and a time like 3:31 PM.'); }
+            if ($out->lte($in)) { return $back(false, 'Clock out has to be after clock in.'); }
+            $hours = round(($out->timestamp - $in->timestamp) / 3600, 4);
+            if ($hours > 16) { return $back(false, 'That shift is over 16 hours. Check the dates.'); }
+            $row = [
+                'in' => $in->toDateTimeString(), 'out' => $out->toDateTimeString(), 'in_date' => $in->toDateString(),
+                'elapsed' => $hours, 'location' => (string) $request->input('location', ''),
+                'comment' => trim((string) $request->input('comment', '')),
+            ];
+            if ($action === 'add') {
+                $name = trim((string) $request->input('name', ''));
+                if ($name === '') { return $back(false, 'Pick who the shift is for.'); }
+                $rows[] = ['name' => $name] + $row;
+                $msg = 'Added a ' . number_format($hours, 2) . ' hr shift for ' . $name . ' on ' . $in->format('m/d/y') . '.';
+            } else {
+                if (!isset($rows[$idx])) { return $back(false, 'That shift was not found. Reload the page and try again.'); }
+                $rows[$idx] = array_merge($rows[$idx], $row);
+                unset($rows[$idx]['tc_flags']);
+                $msg = 'Saved ' . $rows[$idx]['name'] . "'s " . $in->format('m/d/y') . ' shift: ' . number_format($hours, 2) . ' hrs.';
+            }
+        }
+        $u = auth()->user();
+        $doc['rows'] = array_values($rows);
+        $doc['edited'] = true;
+        $doc['edited_at'] = now()->toDateTimeString();
+        $doc['edited_by'] = trim($u->first_name . ' ' . $u->last_name);
+        $this->saveHours($start, $end, $doc);
+        return $back(true, $msg);
     }
 
     // ---- Rate + settings editor -----------------------------------------
@@ -861,7 +962,7 @@ class PayrollController extends Controller
             $k = $this->nameKey($r['name']);
             if ($k === '' || !isset($byPerson[$k])) { continue; }
             $day = $r['in_date'] ?: ($r['in'] ? substr((string) $r['in'], 0, 10) : ('row-' . $idx));
-            $rowsByKey[$k][] = ['day' => $day, 'sort' => $day . ' ' . ($r['in'] ? substr((string) $r['in'], 11) : '00:00:00') . sprintf('%06d', $idx), 'r' => $r];
+            $rowsByKey[$k][] = ['idx' => $idx, 'day' => $day, 'sort' => $day . ' ' . ($r['in'] ? substr((string) $r['in'], 11) : '00:00:00') . sprintf('%06d', $idx), 'r' => $r];
         }
         foreach ($byPerson as $key => &$bp) {
             $rc = $rates[$key] ?? [];
@@ -883,7 +984,7 @@ class PayrollController extends Controller
                 $dayAcc[$day] = $before + $h;
                 if (!empty($r['in']) && (!isset($bp['first_in'][$day]) || $r['in'] < $bp['first_in'][$day])) { $bp['first_in'][$day] = $r['in']; }
                 $bp['log'][] = [
-                    'day' => $day, 'in' => $r['in'] ?? null, 'out' => $r['out'] ?? null, 'hours' => round($h, 2),
+                    'idx' => $it['idx'], 'day' => $day, 'in' => $r['in'] ?? null, 'out' => $r['out'] ?? null, 'hours' => round($h, 2),
                     'store' => (string) ($r['location'] ?? ''), 'company' => $co, 'comment' => (string) ($r['comment'] ?? ''),
                 ];
             }

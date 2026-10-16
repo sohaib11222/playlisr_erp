@@ -1514,6 +1514,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/payroll', 'PayrollController@index');
     Route::get('/payroll/export.csv', 'PayrollController@exportCsv');
     Route::post('/payroll/import-hours', 'PayrollController@importHours');
+    Route::post('/payroll/shift', 'PayrollController@saveShift');
     Route::post('/payroll/save-rates', 'PayrollController@saveRates');
     Route::post('/payroll/freelancer', 'PayrollController@saveFreelancer');
     Route::post('/payroll/freelancer/delete', 'PayrollController@deleteFreelancer');
