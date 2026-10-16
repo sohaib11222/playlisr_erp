@@ -184,7 +184,12 @@ class WebsiteOrdersController extends Controller
         });
 
         // Store filter needs each item's pull spot (same as the Location column)
-        $filterLocations = in_array($locationFilter, ['hollywood', 'pico'], true) ? self::erpLocations($allOrders) : [];
+        $filterLocations = self::erpLocations($allOrders);
+        // Items waiting to be pulled at each spot (Store filter + Pick route)
+        $pullCounts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
+        foreach (self::pendingPulls($allOrders, $filterLocations) as $pr) {
+            if (isset($pullCounts[$pr['store']])) $pullCounts[$pr['store']]++;
+        }
         $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
@@ -193,12 +198,10 @@ class WebsiteOrdersController extends Controller
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
-            if ($locationFilter === 'unknown') {
-                if (($o['fulfillment_method'] ?? null) !== 'pickup' || self::knownPickupLocation($o)) return false;
-            } elseif ($locationFilter !== '') {
-                // Pickup at that store, or any item to pull there (a shipping
-                // order with Pico items shows for Pico). Sarah, 2026-10-16.
-                $hit = ($o['fulfillment_method'] ?? null) === 'pickup' && ($o['pickup_location'] ?? '') === $locationFilter;
+            if (in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true)) {
+                // Any item to pull at that spot (Hollywood store, Pico, or the
+                // warehouse), shipping or pickup. Sarah, 2026-10-16.
+                $hit = false;
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
                     if (!empty($it['is_gift_card'])) continue;
@@ -209,6 +212,10 @@ class WebsiteOrdersController extends Controller
             if ($search !== '') {
                 $needle = strtolower($search);
                 $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
+                // Product name and artist too (Sarah, 2026-10-16)
+                foreach (($o['items'] ?? []) as $it) {
+                    $hay .= ' ' . strtolower(($it['product_id']['name'] ?? ($it['product_name'] ?? '')) . ' ' . ($it['product_id']['artist'] ?? ($it['product_artist'] ?? '')));
+                }
                 if (strpos($hay, $needle) === false) return false;
             }
             $createdAt = strtotime($o['createdAt'] ?? '') ?: 0;
@@ -291,6 +298,7 @@ class WebsiteOrdersController extends Controller
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'locationFilter' => $locationFilter,
+            'pullCounts' => $pullCounts,
             'unknownLocationCount' => $unknownLocationCount,
             'preorderSummary' => $preorderSummary,
             'deskNotes' => self::loadDeskNotes(),
@@ -636,12 +644,81 @@ class WebsiteOrdersController extends Controller
         return $out;
     }
 
-    /** Whether a pullParts() place is at the store ("pico"/"hollywood"); the warehouse is Hollywood's. */
+    /** Where a pullParts() place pulls from: "hollywood" (the store), "pico", "warehouse", or "". */
+    public static function pullStore(string $place): string
+    {
+        if (stripos($place, 'pico') !== false) return 'pico';
+        if (stripos($place, 'warehouse') !== false) return 'warehouse';
+        if (stripos($place, 'hollywood') !== false) return 'hollywood';
+        return '';
+    }
+
+    /** Whether a pullParts() place is at that pull spot (hollywood / pico / warehouse). */
     public static function placeIsStore(string $place, string $store): bool
     {
-        return $store === 'pico'
-            ? stripos($place, 'pico') !== false
-            : (stripos($place, 'hollywood') !== false || stripos($place, 'warehouse') !== false);
+        return self::pullStore($place) === $store;
+    }
+
+    /**
+     * Every item still to pull: open orders (the Needs Action rules, so no
+     * preorders, nothing already ready for pickup), not cancelled, not yet
+     * marked picked. Each row has the order, item, name and pull spot.
+     */
+    public static function pendingPulls(array $orders, array $erpLocations): array
+    {
+        $out = [];
+        foreach ($orders as $o) {
+            if (!self::matchesTab($o, 'needs_action')) continue;
+            $done = [];
+            foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
+                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped'], true)) {
+                    $done[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+                }
+            }
+            foreach (($o['items'] ?? []) as $it) {
+                if (!empty($it['is_gift_card']) || !empty($it['cancelled']) || (empty($it['product_id']) && !empty($it['gift_card_amount']))) continue;
+                $name = (string) ($it['product_id']['name'] ?? ($it['product_name'] ?? 'Item'));
+                if (isset($done[strtolower(trim($name))])) continue;
+                $parts = self::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
+                $out[] = ['order' => $o, 'item' => $it, 'name' => $name, 'parts' => $parts, 'store' => self::pullStore($parts['place'])];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Pick route (Sarah, 2026-10-16): everything still to pull at one spot,
+     * in walking order so the picker does one pass: area, then bin (or
+     * format, then genre, for store stock), then artist.
+     */
+    public function pickRoute(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $store = in_array($request->query('store'), ['hollywood', 'pico', 'warehouse'], true) ? $request->query('store') : 'warehouse';
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=completed');
+        $error = $resp === null || ($resp['success'] ?? true) === false;
+        $orders = $error ? [] : ($resp['data'] ?? []);
+        $all = self::pendingPulls($orders, self::erpLocations($orders));
+        $counts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
+        foreach ($all as $r) if (isset($counts[$r['store']])) $counts[$r['store']]++;
+        $rows = array_values(array_filter($all, fn($r) => $r['store'] === $store));
+        usort($rows, function ($a, $b) {
+            $ka = [strtolower($a['parts']['area']), strtolower($a['parts']['genre'] ?? ''), $a['parts']['bin'], strtolower((string) ($a['item']['product_id']['artist'] ?? ''))];
+            $kb = [strtolower($b['parts']['area']), strtolower($b['parts']['genre'] ?? ''), $b['parts']['bin'], strtolower((string) ($b['item']['product_id']['artist'] ?? ''))];
+            for ($i = 0; $i < 4; $i++) {
+                $c = strnatcasecmp($ka[$i], $kb[$i]);
+                if ($c !== 0) return $c;
+            }
+            return 0;
+        });
+        return view('website-orders.pick-route', [
+            'store' => $store,
+            'rows' => $rows,
+            'counts' => $counts,
+            'error' => $error ? (($resp['message'] ?? null) ?: 'Could not reach the website.') : null,
+        ]);
     }
 
     /** pullParts() as one line: "Warehouse / HW Main Floor / Bin pico66". */

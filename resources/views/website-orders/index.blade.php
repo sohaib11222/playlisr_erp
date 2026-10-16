@@ -295,9 +295,11 @@
         <label>Store</label>
         <select name="location" onchange="this.form.submit()">
           <option value="">All Stores</option>
-          <option value="hollywood" {{ $locationFilter === 'hollywood' ? 'selected' : '' }}>Hollywood</option>
-          <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico</option>
+          <option value="hollywood" {{ $locationFilter === 'hollywood' ? 'selected' : '' }}>Hollywood ({{ $pullCounts['hollywood'] ?? 0 }} to pull)</option>
+          <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico ({{ $pullCounts['pico'] ?? 0 }} to pull)</option>
+          <option value="warehouse" {{ $locationFilter === 'warehouse' ? 'selected' : '' }}>Warehouse ({{ $pullCounts['warehouse'] ?? 0 }} to pull)</option>
         </select>
+        <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : 'warehouse']) }}" style="display:inline-block;margin-top:4px;font-size:12px;font-weight:600;">Pick route</a>
       </div>
       <div class="wo-field">
         <label>From</label>
@@ -413,7 +415,7 @@
                 @php
                   // Store filter: show only the items that store pulls; the
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
-                  $woStore = in_array($locationFilter, ['hollywood', 'pico'], true) ? $locationFilter : null;
+                  $woStore = in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : null;
                   $lineShow = [];
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
@@ -445,7 +447,7 @@
                     </div>
                   @endforeach
                   @if($hiddenLines > 0)
-                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} {{ $hiddenLines === 1 ? 'item' : 'items' }} at {{ $woStore === 'pico' ? 'Hollywood' : 'Pico' }}</div>
+                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} {{ $hiddenLines === 1 ? 'item' : 'items' }} pulled from somewhere else</div>
                   @endif
                 </td>
                 <td class="wo-loc">
