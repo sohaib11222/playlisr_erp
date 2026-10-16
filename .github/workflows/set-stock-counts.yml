@@ -20,6 +20,10 @@ on:
         description: 'Location name to match (e.g. hollywood, pico)'
         required: true
         default: "hollywood"
+      merge_dupes:
+        description: 'UPC on several products? Put the count on one, zero the rest'
+        type: boolean
+        default: false
       commit:
         description: 'Actually write the counts? (leave unchecked for a dry run)'
         type: boolean
@@ -72,12 +76,14 @@ jobs:
             cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
             FILE="${{ github.event.inputs.file }}"
             LOC="${{ github.event.inputs.location }}"
+            EXTRA=""
+            if [ "${{ github.event.inputs.merge_dupes }}" = "true" ]; then EXTRA="--merge-dupes"; fi
             if [ "${{ github.event.inputs.commit }}" = "true" ]; then
               echo "=== COMMIT run — $FILE @ $LOC ==="
-              php artisan stock:set-counts "$FILE" --location="$LOC" --commit 2>&1
+              php artisan stock:set-counts "$FILE" --location="$LOC" $EXTRA --commit 2>&1
             else
               echo "=== DRY RUN — no changes — $FILE @ $LOC ==="
-              php artisan stock:set-counts "$FILE" --location="$LOC" 2>&1
+              php artisan stock:set-counts "$FILE" --location="$LOC" $EXTRA 2>&1
             fi
             code=$?
             echo "=== artisan exit code: $code ==="
