@@ -36,6 +36,20 @@ class WebsiteBookingsController extends Controller
 
     // ---------------------------------------------------------------- list
 
+    /** Unpaid booking requests, newest first, for Abandoned Carts > Venue bookings. */
+    public static function unpaidRequests(&$error = null): array
+    {
+        $resp = WebsiteBridge::admin('GET', '/bookings?' . http_build_query(['limit' => 1000, 'status' => 'pending']));
+        $error = empty($resp['success']) ? ($resp['message'] ?? 'Failed to load bookings') : null;
+        $raw = $error ? [] : (array) ($resp['data'] ?? $resp['bookings'] ?? []);
+        $self = app(self::class);
+        $rows = array_values(array_filter(array_map([$self, 'presentBooking'], array_values(array_filter($raw, 'is_array'))), function ($b) {
+            return !empty($b['expired']);
+        }));
+        usort($rows, function ($a, $b) { return strcmp($b['createdAt'] === '' ? '' : date('Y-m-d H:i', strtotime($b['createdAt'])), $a['createdAt'] === '' ? '' : date('Y-m-d H:i', strtotime($a['createdAt']))); });
+        return $rows;
+    }
+
     public function index(Request $request)
     {
         $this->guard();
@@ -61,6 +75,8 @@ class WebsiteBookingsController extends Controller
         $raw = $error ? [] : (array) ($resp['data'] ?? $resp['bookings'] ?? []);
 
         $bookings = array_map([$this, 'presentBooking'], array_values(array_filter($raw, 'is_array')));
+        $abandonedCount = count(array_filter($bookings, function ($b) { return !empty($b['expired']); }));
+        $bookings = array_values(array_filter($bookings, function ($b) { return empty($b['expired']); }));
 
         $stats = ['total' => count($bookings), 'pending' => 0, 'confirmed' => 0, 'completed' => 0, 'revenue' => 0.0];
         foreach ($bookings as $b) {
@@ -74,6 +90,7 @@ class WebsiteBookingsController extends Controller
 
         return view('website_admin.bookings.index', [
             'bookings'  => $bookings,
+            'abandonedCount' => $abandonedCount,
             'error'     => $error,
             'stats'     => $stats,
             'status'    => $status,
@@ -564,10 +581,11 @@ class WebsiteBookingsController extends Controller
             'status'        => (string) ($b['status'] ?? ''),
             'paymentStatus' => (string) ($b['payment']['status'] ?? ''),
             'paymentMethod' => (string) ($b['payment']['method'] ?? ''),
-            // A request nobody paid for whose date has passed: never a real
-            // booking, so it leaves Pending (Sarah, 2026-10-15).
-            'expired'       => ($b['status'] ?? '') === 'pending' && ($b['payment']['status'] ?? '') !== 'paid'
-                && $dateYmd !== '' && $dateYmd < \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d'),
+            // A request nobody paid for is an abandoned cart, not a booking:
+            // it lives on Abandoned Carts > Venue bookings (Sarah, 2026-10-15).
+            'expired'       => ($b['status'] ?? '') === 'pending' && ($b['payment']['status'] ?? '') !== 'paid',
+            'customerPhone' => (string) ($b['customer']['phone'] ?? ''),
+            'createdAt'     => !empty($b['createdAt']) ? \Carbon\Carbon::parse($b['createdAt'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') : '',
             'depositStatus' => $deposit ? (string) ($deposit['status'] ?? 'none') : 'none',
             'depositAmount' => $deposit && isset($deposit['amount']) ? (float) $deposit['amount'] : 150.0,
             'hasDeposit'    => $deposit !== null,

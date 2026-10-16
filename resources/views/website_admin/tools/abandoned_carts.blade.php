@@ -37,7 +37,12 @@
   <nav class="wt-nav">
     <a href="{{ route('wa.tools.abandonedCarts', ['tab' => 'checkouts', 'stale' => $stale]) }}" class="{{ $tab === 'checkouts' ? 'active' : '' }}">Unfinished checkouts</a>
     <a href="{{ route('wa.tools.abandonedCarts', ['tab' => 'live', 'stale' => $stale]) }}" class="{{ $tab === 'live' ? 'active' : '' }}">Live carts</a>
+    <a href="{{ route('wa.tools.abandonedCarts', ['tab' => 'bookings']) }}" class="{{ $tab === 'bookings' ? 'active' : '' }}">Venue bookings</a>
   </nav>
+
+  @if($tab === 'bookings')
+    @include('website_admin.tools._abandoned_bookings')
+  @else
 
   <p class="wt-note">
     @if($anon)
@@ -143,5 +148,6 @@
       @endif
     @endif
   </div>
+  @endif
 </div>
 @endsection

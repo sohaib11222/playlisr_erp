@@ -39,6 +39,9 @@
     <button type="button" class="wb-tab" data-tab="completed">Past <span class="wb-badge" data-count="completed">0</span></button>
     <button type="button" class="wb-tab" data-tab="archived">Archived <span class="wb-badge" data-count="archived">0</span></button>
   </div>
+  @if(!empty($abandonedCount))
+    <p class="wb-sub" style="margin:-6px 0 12px;">{{ $abandonedCount }} unpaid booking {{ $abandonedCount === 1 ? 'request is' : 'requests are' }} under <a href="{{ route('wa.tools.abandonedCarts', ['tab' => 'bookings']) }}">Abandoned Carts</a>, not here.</p>
+  @endif
 
   <div class="wb-banner ok" id="wb-caught-up" style="display:none;">No pending booking requests right now. You are caught up.</div>
 

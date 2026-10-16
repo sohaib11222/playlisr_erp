@@ -203,7 +203,16 @@ class WebsiteToolsController extends Controller
     {
         $this->guard();
 
-        $tab = $request->input('tab') === 'live' ? 'live' : 'checkouts';
+        $tab = in_array($request->input('tab'), ['live', 'bookings'], true) ? $request->input('tab') : 'checkouts';
+        if ($tab === 'bookings') {
+            $rows = \App\Http\Controllers\WebsiteAdmin\WebsiteBookingsController::unpaidRequests($error);
+            return view('website_admin.tools.abandoned_carts', [
+                'tab' => 'bookings', 'stale' => '30', 'staleOptions' => self::CART_STALE_OPTIONS,
+                'error' => $error, 'bookingRows' => $rows,
+                'rows' => [], 'allCount' => 0, 'summary' => ['count' => 0, 'totalValue' => 0],
+                'page' => 1, 'totalPages' => 1, 'timeField' => 'createdAt', 'updatedAt' => now(),
+            ]);
+        }
         $stale = (string) $request->input('stale', '30');
         if (!isset(self::CART_STALE_OPTIONS[$stale])) {
             $stale = '30';
