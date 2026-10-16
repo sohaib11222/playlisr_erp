@@ -484,7 +484,9 @@
                       @endif
                       @if($line['gift'])
                         <span class="na">Digital</span>
-                      @elseif(!$locInfo)
+                      @elseif(!$locInfo || ($wKallax !== '' && $wZone !== ''))
+                        {{-- A Kallax with a room is the real spot (the bin map wins over
+                             the ERP stock store, e.g. pico66 sits at Hollywood). --}}
                         @if($wKallax === '')<span class="na">@if($wZone !== ''){{ $wZone }}@else &mdash; @endif</span>@endif
                       @else
                         @if(!empty($locInfo['stores']))
