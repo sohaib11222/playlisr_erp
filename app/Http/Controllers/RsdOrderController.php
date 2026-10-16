@@ -212,6 +212,7 @@ class RsdOrderController extends Controller
         $rows = [];
         $rsdListings = null;
         $tokIndex = [];
+        $rsdTagged = [];
         foreach ($todo as [$title, $artist, $hw, $pico, $fromSales]) {
             $sold = $sales[self::artistKey($artist)] ?? [];
             $key = self::key($artist, $title);
@@ -233,6 +234,7 @@ class RsdOrderController extends Controller
                         if (!$e['_tok']) continue;
                         $n = count($rsdListings);
                         $rsdListings[] = $e;
+                        if ($e['_rsd']) $rsdTagged[] = $n;
                         foreach ($e['_tok'] as $w) $tokIndex[$w][] = $n;
                     }
                 }
@@ -242,8 +244,21 @@ class RsdOrderController extends Controller
                 $more = [];
                 // Candidates share this title's rarest word.
                 $rare = null;
-                foreach ($mine as $w) if ($rare === null || count($tokIndex[$w] ?? []) < count($tokIndex[$rare] ?? [])) $rare = $w;
-                $cands = $rare === null ? [] : ($tokIndex[$rare] ?? []);
+                foreach ($mine as $w) {
+                    if (empty($tokIndex[$w])) continue;
+                    if ($rare === null || count($tokIndex[$w]) < count($tokIndex[$rare])) $rare = $w;
+                }
+                $cands = $rare === null ? [] : $tokIndex[$rare];
+                // Plus every RSD-tagged listing whose squashed title starts the same
+                // ("SREMMLIFE2" vs "SREMMLIFE 2").
+                $core = self::titleCore(preg_replace('/:.*$/', '', $title));
+                if (strlen($core) >= 5) {
+                    foreach ($rsdTagged as $ci) {
+                        $hc = self::titleCore(preg_replace('/:.*$/', '', (string) $rsdListings[$ci]['title']));
+                        if (strlen($hc) >= 5 && (strpos($hc, $core) === 0 || strpos($core, $hc) === 0)) $cands[] = $ci;
+                    }
+                }
+                $cands = array_values(array_unique($cands));
                 foreach ([true] as $tagged) { // RSD-tagged listings only: untagged ones matched regular pressings
                     foreach ($cands as $ci) {
                         $e = $rsdListings[$ci];
@@ -252,7 +267,9 @@ class RsdOrderController extends Controller
                         if ($isCd !== $wantCd) continue;
                         $small = count($mine) <= count($e['_tok']) ? $mine : $e['_tok'];
                         $hit = count(array_intersect($mine, $e['_tok']));
-                        if ($hit < max(1, (int) ceil(0.8 * count($small)))) continue;
+                        $hc = self::titleCore(preg_replace('/:.*$/', '', (string) $e['title']));
+                        $prefix = strlen($core) >= 5 && strlen($hc) >= 5 && (strpos($hc, $core) === 0 || strpos($core, $hc) === 0);
+                        if (!$prefix && $hit < max(1, (int) ceil(0.8 * count($small)))) continue;
                         $an = trim((string) ($e['artist_norm'] ?? ''));
                         $artistOk = $an !== '' && ($ica->artistsCompatible($aNorm, $an)
                             || count(array_intersect(array_filter(explode(' ', $aNorm), function ($w) { return strlen($w) >= 4; }), explode(' ', $an))) > 0);
