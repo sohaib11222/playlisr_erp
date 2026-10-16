@@ -19,6 +19,11 @@ use Illuminate\Support\Facades\Storage;
  * A UPC that matches more than one variation is reported and SKIPPED — it's
  * never safe to guess which duplicate the counted copies belong to.
  *
+ * --merge-dupes (Sarah 2026-10-16) opts into resolving those instead: the
+ * whole count goes on ONE of the duplicates (the one already holding the most
+ * stock at that location, newest product on a tie) and every other duplicate
+ * is set to 0 there, so the location total matches the sheet.
+ *
  * Writes variation_location_details.qty_available directly (creating the row
  * at that location if the product never had one), same as stock:zero-supplier.
  * Dry-run by default; --commit writes a snapshot first (undo at
@@ -33,6 +38,7 @@ class SetStockCounts extends Command
                             {file : CSV path (relative to the app root) with upc,qty columns}
                             {--location=hollywood : Business location name to match}
                             {--business=1 : business_id}
+                            {--merge-dupes : When a UPC is on several products, put the count on one and zero the rest}
                             {--commit : Actually write the counts (default: dry-run)}';
 
     protected $description = 'Set qty_available at one location from a counted CSV of UPC + qty. Dry-run by default.';
@@ -43,6 +49,7 @@ class SetStockCounts extends Command
     {
         $businessId = (int) $this->option('business');
         $commit = (bool) $this->option('commit');
+        $mergeDupes = (bool) $this->option('merge-dupes');
         $path = base_path($this->argument('file'));
 
         if (!is_file($path)) {
@@ -74,6 +81,7 @@ class SetStockCounts extends Command
         $changes = [];
         $queue = [];
         $fuzzyQueue = [];
+        $dupeGroups = [];
 
         foreach ($counts as $c) {
             if ($c['upc'] === '') {
@@ -98,6 +106,10 @@ class SetStockCounts extends Command
                 $this->fuzzyOrReport($c, null, $businessId, $fuzzyQueue, $notFound);
                 continue;
             }
+            if ($matches->count() > 1 && $mergeDupes) {
+                $dupeGroups[] = ['count' => $c, 'matches' => $matches];
+                continue;
+            }
             if ($matches->count() > 1) {
                 $this->fuzzyOrReport($c, $matches, $businessId, $fuzzyQueue, $ambiguous);
                 continue;
@@ -105,8 +117,30 @@ class SetStockCounts extends Command
             $queue[] = ['count' => $c, 'match' => $matches->first(), 'how' => 'upc'];
         }
 
+        // Duplicates: the product already holding the most stock here gets the
+        // full count (newest product on a tie); the others are zeroed here.
+        $dupeVariations = [];
+        foreach ($dupeGroups as $g) {
+            $qtyHere = VariationLocationDetails::whereIn('variation_id', $g['matches']->pluck('variation_id'))
+                ->where('location_id', $location->id)
+                ->pluck('qty_available', 'variation_id');
+            $sorted = $g['matches']->sort(function ($a, $b) use ($qtyHere) {
+                $qa = (float) ($qtyHere[$a->variation_id] ?? 0);
+                $qb = (float) ($qtyHere[$b->variation_id] ?? 0);
+                return $qb <=> $qa ?: $b->product_id <=> $a->product_id;
+            })->values();
+            foreach ($sorted as $i => $m) {
+                $dupeVariations[$m->variation_id] = true;
+                if ($i === 0) {
+                    $queue[] = ['count' => $g['count'], 'match' => $m, 'how' => 'dupe-keep'];
+                } elseif ((float) ($qtyHere[$m->variation_id] ?? 0) != 0) {
+                    $queue[] = ['count' => ['qty' => 0.0] + $g['count'], 'match' => $m, 'how' => 'dupe-zero'];
+                }
+            }
+        }
+
         // A name match never overrides a product some other row hit by exact UPC.
-        $upcVariations = [];
+        $upcVariations = $dupeVariations;
         foreach ($queue as $q) {
             $upcVariations[$q['match']->variation_id] = true;
         }
@@ -191,8 +225,9 @@ class SetStockCounts extends Command
         $this->line('Already correct:   ' . $unchanged);
         $this->line(($commit ? 'Updated:           ' : 'Would update:      ') . count($changes));
         $this->line('  of which by name: ' . count(array_filter($changes, function ($ch) {
-            return $ch['how'] !== 'upc';
+            return strpos($ch['how'], 'name') === 0;
         })));
+        $this->line('Duplicate UPCs:    ' . count($dupeGroups) . ($mergeDupes ? ' (count on one, rest zeroed)' : ''));
         $this->line('UPC not found:     ' . count($notFound));
         $this->line('UPC on >1 product: ' . count($ambiguous) . ' (skipped, no name tiebreak)');
         $this->line('No UPC, no match:  ' . count($noUpc) . ' (skipped)');
