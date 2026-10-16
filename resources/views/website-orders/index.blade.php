@@ -67,8 +67,6 @@
   .wo-fm-pill.both-sep { background:#fef3c7; color:#92400e; margin-top:4px; }
   .wo-fm-pill.both-comb { background:#ffedd5; color:#9a3412; margin-top:4px; }
   .wo-shipfrom { font-size:11px; color:#000; margin-top:3px; }
-  .wo-mvstore { display:inline; margin-left:6px; }
-  .wo-mvstore button { background:none; border:0; padding:0; font-size:11px; color:#2563eb; text-decoration:underline; cursor:pointer; }
 
   .wo-prod-line { font-size:13.5px; color:#111827; line-height:1.35; margin-bottom:6px; word-break:break-word; }
   .wo-prod-line:last-child { margin-bottom:0; }
@@ -480,7 +478,13 @@
                     @endphp
                     <div class="wo-loc-line">
                       @if(!$line['gift'] && $wKallax !== '')
-                        <span class="kallax">Kallax {{ $wKallax }}</span>@if($wZone !== '')<span class="zone">{{ $wZone }}</span>@endif
+                        {{-- Warehouse / HW Main Floor / Bin pico66: Hollywood zones are
+                             areas of the Hollywood warehouse (Sarah, 2026-10-16). --}}
+                        @if($wZone !== '')
+                          <span class="st" style="display:block;">{{ stripos($wZone, 'pico') === 0 ? 'Pico Store' : 'Warehouse' }}</span>
+                          <span class="zone">{{ preg_replace('/^hollywood\b/i', 'HW', $wZone) }}</span>
+                        @endif
+                        <span class="kallax">Bin {{ $wKallax }}</span>
                       @endif
                       @if($line['gift'])
                         <span class="na">Digital</span>
@@ -497,22 +501,8 @@
                           <span class="none">Not set</span>
                         @endif
                         @if($locInfo['bin'] !== '')<span class="bin">Bin {{ $locInfo['bin'] }}</span>@endif
-                      @endif
-                      @php
-                        // Wrong store in the ERP (e.g. a "pico" bin that sits at Hollywood):
-                        // move who pulls this line (Sarah, 2026-10-14).
-                        $mvItem = $o['items'][$loop->index] ?? [];
-                        $mvPid = $mvItem['product_id']['_id'] ?? null;
-                        $mvFrom = $mvItem['ship_from'] ?? ($mvItem['fulfill_from'] ?? null);
-                        $mvTo = $mvFrom === 'pico' ? 'hollywood' : 'pico';
-                      @endphp
-                      @if(!$line['gift'] && $mvPid && ($o['fulfillment_method'] ?? null) === 'shipping' && !in_array($status, ['shipped', 'delivered', 'cancelled'], true))
-                        <form method="POST" action="{{ route('website-orders.itemStore', ['id' => $o['_id']]) }}" class="wo-mvstore">
-                          {{ csrf_field() }}
-                          <input type="hidden" name="product_id" value="{{ $mvPid }}">
-                          <input type="hidden" name="store" value="{{ $mvTo }}">
-                          <button type="submit" title="The item is actually at {{ $mvTo === 'pico' ? 'Pico' : 'Hollywood' }}">Pull from {{ $mvTo === 'pico' ? 'Pico' : 'Hollywood' }} instead</button>
-                        </form>
+                        {{-- In-store stock sits in the genre bins (Vinyl - Sealed / Rock). --}}
+                        @if(($locInfo['genre'] ?? '') !== '' && collect(array_keys($locInfo['stores'] ?: $locInfo['stocked'] ?: []))->contains(fn($n) => stripos($n, 'In Store') !== false))<span class="zone">{{ $locInfo['genre'] }}</span>@endif
                       @endif
                     </div>
                   @endforeach
