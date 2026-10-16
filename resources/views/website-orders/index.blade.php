@@ -82,6 +82,8 @@
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
   .wo-loc .q { font-weight:400; color:#000; }
   .wo-genre .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
+  .wo-loc .kallax { display:block; width:fit-content; margin-bottom:2px; padding:2px 7px; border-radius:5px; background:#fef3c7; color:#000; font-family:monospace; font-size:13.5px; font-weight:700; }
+  .wo-loc .zone { display:block; color:#000; font-size:12px; margin-bottom:3px; }
   .wo-loc .bin { display:block; color:#000; font-family:monospace; font-size:12px; }
   .wo-loc .none { color:#b91c1c; font-weight:600; }
   .wo-loc .na { color:#000; }
@@ -471,12 +473,22 @@
                     @php
                       $locPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
                       $locInfo = $locPid ? ($erpLocations[$locPid] ?? null) : null;
+                      // Kallax code + room from the website's own location (the same
+                      // "Discogs code" the Details row shows), so pulls from a Kallax
+                      // don't hide behind Details (Sarah, 2026-10-15).
+                      $wItem = $o['items'][$loop->index] ?? [];
+                      $wLoc = $wItem['location'] ?? ($wItem['product_id']['location'] ?? null);
+                      $wZone = is_array($wLoc) ? trim((string) ($wLoc['zone'] ?? '')) : '';
+                      $wKallax = trim((string) ($wItem['discogs_code'] ?? ($wItem['product_id']['discogsLocation'] ?? '')));
                     @endphp
                     <div class="wo-loc-line">
+                      @if(!$line['gift'] && $wKallax !== '')
+                        <span class="kallax">Kallax {{ $wKallax }}</span>@if($wZone !== '')<span class="zone">{{ $wZone }}</span>@endif
+                      @endif
                       @if($line['gift'])
                         <span class="na">Digital</span>
                       @elseif(!$locInfo)
-                        <span class="na">&mdash;</span>
+                        @if($wKallax === '')<span class="na">@if($wZone !== ''){{ $wZone }}@else &mdash; @endif</span>@endif
                       @else
                         @if(!empty($locInfo['stores']))
                           @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
