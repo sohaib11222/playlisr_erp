@@ -126,6 +126,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Product</th>
                         <th>SKU</th>
                         <th>Qty</th>
+                        <th>Price</th>
                         <th>Expected Pickup</th>
                         <th>Paid?</th>
                         <th>Status</th>
@@ -257,6 +258,7 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 { data: 'product_name', name: 'products.name', defaultContent: '-' },
                 { data: 'sub_sku', name: 'variations.sub_sku', defaultContent: '-' },
                 { data: 'quantity', name: 'quantity' },
+                { data: 'price', name: 'variations.sell_price_inc_tax', searchable: false },
                 { data: 'expected_pickup_date', name: 'expected_pickup_date' },
                 { data: 'is_paid_label', name: 'customer_pickups.is_paid', orderable: true, searchable: false },
                 { data: 'status', name: 'status' },

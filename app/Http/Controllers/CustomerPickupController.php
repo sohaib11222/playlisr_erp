@@ -40,6 +40,7 @@ class CustomerPickupController extends Controller
                     'contacts.mobile',
                     'products.name as product_name',
                     'variations.sub_sku',
+                    'variations.sell_price_inc_tax as unit_price',
                     'business_locations.name as location_name',
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(picked_up_users.first_name,''), ' ', COALESCE(picked_up_users.last_name,''))), ''), picked_up_users.username) as picked_up_cashier_name"),
                     DB::raw("COALESCE(NULLIF(TRIM(CONCAT(COALESCE(creator_users.first_name,''), ' ', COALESCE(creator_users.last_name,''))), ''), creator_users.username) as created_by_name")
@@ -111,6 +112,9 @@ class CustomerPickupController extends Controller
                 ->editColumn('quantity', function ($row) {
                     // Integer only — no decimals ever
                     return (int) $row->quantity;
+                })
+                ->addColumn('price', function ($row) {
+                    return $row->unit_price !== null ? '$' . number_format((float) $row->unit_price, 2) : '-';
                 })
                 ->editColumn('expected_pickup_date', function ($row) {
                     // Guard against null / zero-dates (previous rows showed -0001-11-30
