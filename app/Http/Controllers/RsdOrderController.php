@@ -244,7 +244,7 @@ class RsdOrderController extends Controller
                 $rare = null;
                 foreach ($mine as $w) if ($rare === null || count($tokIndex[$w] ?? []) < count($tokIndex[$rare] ?? [])) $rare = $w;
                 $cands = $rare === null ? [] : ($tokIndex[$rare] ?? []);
-                foreach ([true, false] as $tagged) {
+                foreach ([true] as $tagged) { // RSD-tagged listings only: untagged ones matched regular pressings
                     foreach ($cands as $ci) {
                         $e = $rsdListings[$ci];
                         if ($e['_rsd'] !== $tagged || !$mine) continue;
