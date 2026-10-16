@@ -152,7 +152,7 @@ class WebsiteOrdersController extends Controller
                 continue;
             }
 
-            if (in_array($status, self::TABS['needs_action']['statuses'], true)) $tabCounts['needs_action']++;
+            if (in_array($status, self::TABS['needs_action']['statuses'], true) && !($fm === 'shipping' && self::allPicked($o))) $tabCounts['needs_action']++;
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
                 $tabCounts[self::allPicked($o) ? 'ready_ship' : 'to_ship']++;
             }
@@ -959,6 +959,8 @@ class WebsiteOrdersController extends Controller
         }
         // To Ship holds orders still being pulled; fully picked ones are Ready to Ship
         if ($tab === 'to_ship' && self::allPicked($order)) return false;
+        // Fully picked shipping orders live in Ready to Ship only
+        if ($tab === 'needs_action' && $fm === 'shipping' && self::allPicked($order)) return false;
         if ($tab === 'ready_ship' && !self::allPicked($order)) return false;
 
         return $statusOk && $fulfillmentOk;
