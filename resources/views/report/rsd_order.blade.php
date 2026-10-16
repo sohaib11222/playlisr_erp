@@ -52,6 +52,7 @@
                     </select>
                 </div>
             </div>
+            <p class="rsd-muted" style="margin:10px 0 0; font-size:13px;">Cart starts at 2 copies per request (3 per request once a store has 3+ asks), plus 1 for every 5 copies of that artist the store sold in the last 12 months. Titles nobody asked for show up when we sold 3+ of that artist.</p>
             <p style="margin:10px 0 0; font-size:15px;">
                 <b>Hollywood cart:</b> {{ $carts['hollywood']['qty'] }} copies, {{ $money($carts['hollywood']['cost']) }}.
                 &nbsp; <b>Pico cart:</b> {{ $carts['pico']['qty'] }} copies, {{ $money($carts['pico']['cost']) }}.
@@ -66,8 +67,10 @@
                     <tr>
                         <th>Album</th>
                         <th class="n hw">Hollywood customer requests</th>
+                        <th class="n hw">Hollywood sold this artist, last 12 months</th>
                         <th class="n hw">Hollywood cart</th>
                         <th class="n pico">Pico customer requests</th>
+                        <th class="n pico">Pico sold this artist, last 12 months</th>
                         <th class="n pico">Pico cart</th>
                         <th>Cheapest price</th>
                     </tr>
@@ -79,10 +82,12 @@
                         <td>
                             <span class="rsd-artist">{{ $r['artist'] }}</span><br>{{ $r['title'] }}
                             @if(!$r['is_rsd']) <span class="rsd-tag">Regular release</span> @endif
+                            @if($r['from_sales']) <span class="rsd-tag" style="background:#1565c0">From our sales</span> @endif
                         </td>
                         @foreach(['hollywood' => 'hw', 'pico' => 'pico'] as $st => $cls)
                             @php $c = $r['carts'][$st]; @endphp
                             <td class="n {{ $cls }}"><input type="number" min="0" class="rsd-num rsd-req" data-field="{{ $st }}" value="{{ $r[$cls] }}"></td>
+                            <td class="n {{ $cls }}">{{ $c['sold'] ?: '' }}@if($c['sold_rsd'])<div class="rsd-muted">{{ $c['sold_rsd'] }} were RSD</div>@endif</td>
                             <td class="n {{ $cls }}">
                                 <input type="number" min="0" class="form-control input-sm rsd-num rsd-qty" data-store="{{ $st }}" value="{{ $c['qty'] }}" data-suggested="{{ $c['suggested'] }}">
                                 @if($c['ordered'])<div class="rsd-muted">ordered {{ \Carbon\Carbon::parse($c['ordered']['at'])->format('M j') }}</div>@endif

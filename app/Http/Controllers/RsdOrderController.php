@@ -42,10 +42,99 @@ class RsdOrderController extends Controller
         return substr(md5($n($artist) . '|' . $n($title)), 0, 12);
     }
 
-    /** Generous: everything asked for, plus half again (at least one extra). */
-    public static function suggested(int $requested): int
+    /**
+     * Sarah 10/16: order a LOT of the most requested titles, and use our own
+     * sales to decide the rest. Requests: 2 per ask, 3 per ask once a title
+     * has 3+ asks at that store. Sales: +1 for every 5 copies of that artist
+     * the store sold in the last 12 months (needs 3+, max +6).
+     */
+    public static function suggested(int $requested, int $sold = 0): int
     {
-        return $requested <= 0 ? 0 : $requested + max(1, (int) ceil($requested / 2));
+        $req = $requested <= 0 ? 0 : $requested * ($requested >= 3 ? 3 : 2);
+        return $req + self::salesBump($sold);
+    }
+
+    public static function salesBump(int $sold): int
+    {
+        return $sold >= 3 ? min(6, (int) ceil($sold / 5)) : 0;
+    }
+
+    /** "JEPSEN,CARLY RAE", "Carly Rae Jepsen" and "The Doors"/"Doors" all give the same key. */
+    public static function artistKey(string $a): string
+    {
+        $a = strtolower(trim($a));
+        if (preg_match('/^([^,]+),\s*([^,]+)$/', $a, $m) && strpos($a, ' & ') === false) $a = $m[2] . ' ' . $m[1];
+        $a = str_replace('&', ' and ', $a);
+        $t = array_filter(preg_split('/[^a-z0-9]+/', $a), function ($w) { return $w !== '' && $w !== 'the'; });
+        sort($t);
+        return implode(' ', $t);
+    }
+
+    protected static function titleCore(string $t): string
+    {
+        $t = preg_replace('/\(.*$/', '', $t);
+        return preg_replace('/[^a-z0-9]+/', '', strtolower($t));
+    }
+
+    /**
+     * Copies of each RSD artist sold per store in the last 12 months (all
+     * formats, new and used) plus how many of those were RSD releases.
+     * Matches the artist column and the legacy "Title / Artist" names.
+     */
+    protected function artistSales(int $biz, array $artists): array
+    {
+        $want = [];
+        foreach ($artists as $a) {
+            $k = self::artistKey($a);
+            if ($k === '' || in_array($k, ['artists various', 'various'], true)) continue;
+            $want[$k] = true;
+        }
+        if (empty($want)) return [];
+        return \Cache::remember('rsd-order-artist-sales-' . $biz . '-' . md5(implode('|', array_keys($want))), 6 * 3600, function () use ($biz, $want) {
+            $locs = \App\BusinessLocation::forDropdown($biz, false)->toArray();
+            $storeOf = [];
+            foreach ($locs as $id => $name) {
+                if (stripos($name, 'pico') !== false) $storeOf[$id] = 'pico';
+                elseif (stripos($name, 'hollywood') !== false) $storeOf[$id] = 'hollywood';
+            }
+            $terms = [];
+            foreach (array_keys($want) as $k) {
+                $w = explode(' ', $k);
+                usort($w, function ($x, $y) { return strlen($y) <=> strlen($x); });
+                $terms[$w[0]] = true;
+            }
+            $rows = \DB::table('transaction_sell_lines as l')
+                ->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                ->join('products as p', 'p.id', '=', 'l.product_id')
+                ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')
+                ->whereIn('t.location_id', array_keys($storeOf) ?: [0])
+                ->where('t.transaction_date', '>=', now()->subYear())
+                ->where(function ($q) use ($terms) {
+                    foreach (array_keys($terms) as $w) {
+                        $q->orWhere('p.artist', 'like', '%' . $w . '%')->orWhere('p.name', 'like', '%' . $w . '%');
+                    }
+                })
+                ->groupBy('p.id', 'p.name', 'p.artist', 't.location_id')
+                ->selectRaw('p.name, p.artist, t.location_id, SUM(l.quantity - COALESCE(l.quantity_returned, 0)) as q')
+                ->get();
+            $out = [];
+            foreach ($rows as $r) {
+                $st = $storeOf[$r->location_id] ?? null;
+                if (!$st || (float) $r->q <= 0) continue;
+                $cands = [(string) $r->artist];
+                foreach ([' / ', ' - '] as $sep) {
+                    $parts = explode($sep, (string) $r->name);
+                    if (count($parts) > 1) { $cands[] = $parts[0]; $cands[] = end($parts); }
+                }
+                foreach (array_unique(array_map([self::class, 'artistKey'], $cands)) as $k) {
+                    if (!isset($want[$k])) continue;
+                    $out[$k][$st] = ($out[$k][$st] ?? 0) + (int) round($r->q);
+                    if (preg_match('/\bRSD\b|record store day/i', (string) $r->name)) $out[$k]['rsd_' . $st] = ($out[$k]['rsd_' . $st] ?? 0) + (int) round($r->q);
+                    break;
+                }
+            }
+            return $out;
+        });
     }
 
     protected function store(Request $request): string
@@ -80,17 +169,35 @@ class RsdOrderController extends Controller
         $suppliers = [];
         foreach ($ica->knownSuppliers() as $k => $meta) $suppliers[$k] = $meta['label'] ?? $k;
 
-        $rows = [];
+        $list = (array) config('rsd_order.list', []);
+        try {
+            $sales = $this->artistSales($biz, array_merge(array_column($reqRows, 1), array_column($list, 0)));
+        } catch (\Throwable $e) {
+            \Log::warning('rsd-order artist sales: ' . $e->getMessage());
+            $sales = [];
+        }
+        $fmtOf = function ($t) { return preg_match('/\bCD\b/i', $t) ? 'cd' : 'vinyl'; };
+        $seen = [];
+        $todo = [];
         foreach ($reqRows as $r) {
             [$title, $artist, $hw, $pico, $none] = array_pad(array_values($r), 5, 0);
             // Sarah 10/12: a request with no store goes to Hollywood.
             $hw = (int) $hw + (int) $none;
-            $none = 0;
-            $mine = $store === 'hollywood' ? (int) $hw : (int) $pico;
-            $other = $store === 'hollywood' ? (int) $pico : (int) $hw;
-            $none = (int) $none;
-            $requested = $mine;
-            if ((int) $hw + (int) $pico + $none <= 0) continue;
+            if ($hw + (int) $pico <= 0) continue;
+            $seen[self::artistKey($artist) . '|' . self::titleCore($title) . '|' . $fmtOf($title)] = true;
+            $todo[] = [$title, $artist, $hw, (int) $pico, false];
+        }
+        // Titles nobody asked for yet: show them when our sales say they'll move.
+        foreach ($list as [$a, $t, $f]) {
+            if (isset($seen[self::artistKey($a) . '|' . self::titleCore($t) . '|' . $fmtOf($f)])) continue;
+            $s = $sales[self::artistKey($a)] ?? [];
+            if (self::salesBump((int) ($s['hollywood'] ?? 0)) + self::salesBump((int) ($s['pico'] ?? 0)) <= 0) continue;
+            $todo[] = [mb_strtoupper($t . ($f !== '' ? ' (' . $f . ')' : '') . ' (RSD)'), mb_strtoupper($a), 0, 0, true];
+        }
+
+        $rows = [];
+        foreach ($todo as [$title, $artist, $hw, $pico, $fromSales]) {
+            $sold = $sales[self::artistKey($artist)] ?? [];
             $key = self::key($artist, $title);
             $isRsd = stripos($title, 'NOT RSD') === false;
             $format = preg_match('/\(CD\)|\bCD\b/i', $title) ? 'CD' : 'LP';
@@ -118,15 +225,17 @@ class RsdOrderController extends Controller
             $carts = [];
             foreach (['hollywood' => (int) $hw, 'pico' => (int) $pico] as $st => $req) {
                 $q = $state['qty'][$st][$key] ?? null;
-                $sug = self::suggested($req);
+                $sug = self::suggested($req, (int) ($sold[$st] ?? 0));
                 $carts[$st] = ['requested' => $req, 'suggested' => $sug, 'qty' => $q === null ? $sug : (int) $q,
-                    'edited' => $q !== null, 'ordered' => $state['ordered'][$st][$key] ?? null];
+                    'edited' => $q !== null, 'ordered' => $state['ordered'][$st][$key] ?? null,
+                    'sold' => (int) ($sold[$st] ?? 0), 'sold_rsd' => (int) ($sold['rsd_' . $st] ?? 0)];
             }
             $rows[] = [
                 'key' => $key,
                 'title' => trim(preg_replace('/\s*\((RSD|NOT RSD - REGULAR RELEASE)\)\s*$/i', '', $title)),
                 'artist' => $artist,
                 'is_rsd' => $isRsd,
+                'from_sales' => $fromSales,
                 'hw' => (int) $hw,
                 'pico' => (int) $pico,
                 'carts' => $carts,
@@ -136,7 +245,9 @@ class RsdOrderController extends Controller
             ];
         }
         usort($rows, function ($a, $b) {
-            return [$b['hw'] + $b['pico'], $a['artist']] <=> [$a['hw'] + $a['pico'], $b['artist']];
+            $sa = $a['carts']['hollywood']['suggested'] + $a['carts']['pico']['suggested'];
+            $sb = $b['carts']['hollywood']['suggested'] + $b['carts']['pico']['suggested'];
+            return [$b['hw'] + $b['pico'], $sb, $a['artist']] <=> [$a['hw'] + $a['pico'], $sa, $b['artist']];
         });
 
         // One cart per store, split by distributor: each title goes to its cheapest one.
@@ -194,6 +305,18 @@ class RsdOrderController extends Controller
             if ($col === 2) $r[4] = 0; // the Hollywood box already includes no-store requests
             $rows[$i] = $r;
             $found = true;
+        }
+        if (!$found && $col !== null && $val > 0) {
+            // A "from our sales" row (full RSD list) getting its first request.
+            foreach ((array) config('rsd_order.list', []) as [$la, $lt, $lf]) {
+                $t = mb_strtoupper($lt . ($lf !== '' ? ' (' . $lf . ')' : '') . ' (RSD)');
+                if (self::key(mb_strtoupper($la), $t) !== $key) continue;
+                $row = [$t, mb_strtoupper($la), 0, 0, 0];
+                $row[$col] = $val;
+                $rows[] = $row;
+                $found = true;
+                break;
+            }
         }
         if (!$found) return response()->json(['success' => false, 'msg' => 'Title not found']);
         $state['requests'] = ['rows' => array_values($rows), 'as_of' => now()->toDateString()];
