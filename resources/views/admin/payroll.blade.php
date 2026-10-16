@@ -246,6 +246,7 @@
     {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
     <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-save"></i> Save notes</button>
     <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm">Verify commissions</a>
+    <a href="{{ url('/payroll?start=' . urlencode($start) . '&end=' . urlencode($end) . '&fresh=1') }}" class="btn btn-default btn-sm" title="Commissions are cached for 10 minutes">Refresh commissions</a>
     <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export for QuickBooks</a>
   </form>
   @if ($can_see_rates)

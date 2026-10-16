@@ -337,7 +337,9 @@ class PayrollController extends Controller
     private function attachParty(array $people, $businessId)
     {
         try {
-            $shares = app(ListingCommissionController::class)->unpaidPartySharesByUser($businessId);
+            $shares = $this->cachedPull('party', $businessId, function () use ($businessId) {
+                return app(ListingCommissionController::class)->unpaidPartySharesByUser($businessId);
+            });
         } catch (\Throwable $e) {
             \Log::warning('payroll party pull failed: ' . $e->getMessage());
             $shares = [];
@@ -1138,7 +1140,21 @@ class PayrollController extends Controller
     // Per-user commission: owed + cumulative earned for both listing and sales,
     // straight from ListingCommissionController so it reconciles with the
     // Commissions Owed page. Keyed by ERP user_id.
+    // The commission pulls take ~15s (same math as the Commissions page), so
+    // payroll caches them for 10 minutes; ?fresh=1 recomputes right away.
+    private function cachedPull($key, $businessId, callable $fn)
+    {
+        $ck = 'payroll:' . $key . ':' . $businessId;
+        if (request()->input('fresh')) { \Cache::forget($ck); }
+        return \Cache::remember($ck, 600, $fn);
+    }
+
     private function commissionByUser($businessId)
+    {
+        return $this->cachedPull('comm', $businessId, function () use ($businessId) { return $this->commissionByUserFresh($businessId); });
+    }
+
+    private function commissionByUserFresh($businessId)
     {
         $out = [];
         try {
