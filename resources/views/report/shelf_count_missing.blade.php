@@ -12,7 +12,8 @@
 .sc-pill.on { background: #E8F0F8; color: #13507a !important; border-color: #1b6ca8; }
 .sc-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #E6DCCF; font-size: 14px; }
 .sc-table th { text-align: left; background: #FAF6EE; padding: 8px 10px; font-size: 13px; color: #2B2620; }
-.sc-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; }
+.sc-table td { padding: 8px 10px; border-top: 1px solid #F3ECE1; vertical-align: top; }
+.sc-table td:last-child { min-width: 260px; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'missing'])
@@ -39,21 +40,21 @@
         @endforelse
     </tbody></table>
     <h2>Every missing count</h2>
-    <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had more by</th><th>Found later</th><th>Sold as manual item</th><th>Missing</th><th>Cost</th><th>Counted by</th></tr></thead><tbody>
+    <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had more by</th><th>Found later</th><th>Sold as manual item</th><th>Missing</th><th>Cost</th><th>Counted by</th><th>Likely reason</th></tr></thead><tbody>
         @foreach ($rows as $r)
             @continue($r['units'] <= 0 && empty($r['found']) && empty($r['manual']))
             @continue(!empty($r['unsure']))
             <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('m/d/y') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
-                <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['short'] ?? $r['units'] }}</td><td>{{ !empty($r['found']) ? $r['found'] : '' }}</td><td>{{ !empty($r['manual']) ? $r['manual'] : '' }}</td><td>{{ $r['units'] }}</td><td>${{ number_format($r['units'] * $r['unit_cost'], 2) }}</td><td>{{ $r['by'] }}</td></tr>
+                <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['short'] ?? $r['units'] }}</td><td>{{ !empty($r['found']) ? $r['found'] : '' }}</td><td>{{ !empty($r['manual']) ? $r['manual'] : '' }}</td><td>{{ $r['units'] }}</td><td>${{ number_format($r['units'] * $r['unit_cost'], 2) }}</td><td>{{ $r['by'] }}</td><td>{{ $r['reason'] ?? '' }}</td></tr>
         @endforeach
     </tbody></table>
     @if (count($recount))
     <h2>Recount these ({{ count($recount) }} titles, {{ array_sum(array_column($recount, 'unsure')) }} copies)</h2>
     <p class="sc-sub">Saved as 0 before 10/16, when Save also zeroed titles nobody had scanned. They may never have been counted, and the ERP now shows 0 for them. Count these bins again to know for sure.</p>
-    <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had</th><th>Counted by</th></tr></thead><tbody>
+    <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had</th><th>Counted by</th><th>Likely reason</th></tr></thead><tbody>
         @foreach ($recount as $r)
             <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('m/d/y') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
-                <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['unsure'] }}</td><td>{{ $r['by'] }}</td></tr>
+                <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['unsure'] }}</td><td>{{ $r['by'] }}</td><td>{{ $r['reason'] ?? '' }}</td></tr>
         @endforeach
     </tbody></table>
     @endif

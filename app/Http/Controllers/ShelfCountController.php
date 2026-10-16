@@ -238,7 +238,9 @@ class ShelfCountController extends Controller
         $rows = array_values(array_filter(app(ReorderService::class)->loadMissing($business_id), function ($r) use ($loc, $cut) {
             return (int) $r['location_id'] === $loc && $r['at'] >= $cut;
         }));
-        $rows = $this->netMissing($business_id, $loc, (string) \DB::table('business_locations')->where('id', $loc)->value('name'), $rows);
+        $locName = (string) \DB::table('business_locations')->where('id', $loc)->value('name');
+        $rows = $this->netMissing($business_id, $loc, $locName, $rows);
+        $rows = $this->reasons($business_id, $loc, $locName, $rows);
         usort($rows, function ($a, $b) { return strcmp($b['at'], $a['at']); });
         $byArtist = [];
         foreach ($rows as $r) {
@@ -347,6 +349,100 @@ class ShelfCountController extends Controller
             }
             unset($s);
         }
+        return $rows;
+    }
+
+    /**
+     * A likely reason next to each row so it can be looked into (Sarah 10/16:
+     * "put reason next to it pls so we can investigate"). Compares what the
+     * ERP had with what really came in and went out at this store before the
+     * count, plus hand stock edits, a fresh delivery, and other ERP entries
+     * for the same album.
+     */
+    protected function reasons(int $business_id, int $loc, string $locName, array $rows): array
+    {
+        if (!$rows) return $rows;
+        $svc = app(ReorderService::class);
+        $pids = array_values(array_unique(array_map(function ($r) { return (int) $r['product_id']; }, $rows)));
+        $ev = [];
+        $add = function ($list, $kind) use (&$ev) {
+            foreach ($list as $x) $ev[(int) $x->product_id][] = ['at' => (string) $x->d, 'kind' => $kind, 'q' => (float) $x->q];
+        };
+        $add(\DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->whereIn('l.product_id', $pids)->where('t.location_id', $loc)
+            ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])->whereNotIn('t.status', ['ordered', 'pending', 'draft'])
+            ->select('l.product_id', 't.transaction_date as d', \DB::raw('l.quantity - COALESCE(l.quantity_returned, 0) as q'))->get(), 'in');
+        $add(\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->whereIn('l.product_id', $pids)->where('t.location_id', $loc)->where('t.type', 'sell')->where('t.status', 'final')
+            ->select('l.product_id', 't.transaction_date as d', \DB::raw('l.quantity - l.quantity_returned as q'))->get(), 'sold');
+        $add(\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->whereIn('l.product_id', $pids)->where('t.location_id', $loc)->where('t.type', 'sell_transfer')
+            ->select('l.product_id', 't.transaction_date as d', 'l.quantity as q')->get(), 'out');
+        $add(\DB::table('stock_adjustment_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->whereIn('l.product_id', $pids)->where('t.location_id', $loc)->where('t.type', 'stock_adjustment')
+            ->select('l.product_id', 't.transaction_date as d', 'l.quantity as q')->get(), 'out');
+
+        // Stock changes in the activity log: bin counts (for what the ERP had)
+        // and hand edits (Set Current Stock, imports) at this store.
+        $counts = []; $edits = [];
+        $otherLocs = \DB::table('business_locations')->where('business_id', $business_id)->where('id', '!=', $loc)->pluck('name')->all();
+        $acts = \DB::table('activity_log as a')->leftJoin('users as u', 'u.id', '=', 'a.causer_id')
+            ->where('a.subject_type', 'App\\Product')->whereIn('a.subject_id', $pids)->where('a.description', 'stock_changed')
+            ->orderBy('a.created_at')->get(['a.subject_id', 'a.properties', 'a.created_at', 'u.first_name']);
+        foreach ($acts as $a) {
+            $note = (string) (json_decode($a->properties, true)['update_note'] ?? '');
+            if (preg_match('/bin count: (.*): ([\d.]+) -> (\d+)\s*$/', $note, $m)) {
+                if ($locName === '' || strcasecmp(trim($m[1]), $locName) === 0) $counts[(int) $a->subject_id][] = ['t' => strtotime((string) $a->created_at), 'before' => (float) $m[2]];
+                continue;
+            }
+            $elsewhere = false;
+            foreach ($otherLocs as $n) { if ($n !== '' && stripos($note, $n) !== false && stripos($note, $locName) === false) $elsewhere = true; }
+            if ($elsewhere) continue;
+            $edits[(int) $a->subject_id][] = ['at' => (string) $a->created_at, 'who' => (string) $a->first_name, 'note' => trim(preg_replace('/^.*? - /', '', $note, 1))];
+        }
+
+        // Other ERP entries for the same album and format with stock here.
+        $mine = \DB::table('products')->whereIn('id', $pids)->get(['id', 'category_id'])->keyBy('id');
+        $cats = array_values(array_unique(array_filter($mine->pluck('category_id')->all())));
+        $sibs = [];
+        if ($cats) {
+            foreach (\DB::table('products as p')->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
+                ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->whereIn('p.category_id', $cats)->where('v.qty_available', '>', 0)
+                ->groupBy('p.id', 'p.name', 'p.artist', 'p.category_id')->select('p.id', 'p.name', 'p.artist', 'p.category_id', \DB::raw('SUM(v.qty_available) as q'))->get() as $p) {
+                $k = $svc->albumKey($p->artist, $p->name);
+                if (strpos($k, '|') !== false) $sibs[$p->category_id . '#' . $k][] = ['id' => (int) $p->id, 'q' => (float) $p->q];
+            }
+        }
+
+        $d8 = function ($t) { return \Carbon\Carbon::parse($t)->format('m/d/y'); };
+        foreach ($rows as &$r) {
+            $pid = (int) $r['product_id'];
+            $t = strtotime($r['at']);
+            $before = null;
+            foreach ($counts[$pid] ?? [] as $c) { if (abs($c['t'] - $t) <= 5) { $before = $c['before']; break; } }
+            $in = $sold = $out = 0; $lastIn = null; $lastSold = null;
+            foreach ($ev[$pid] ?? [] as $e) {
+                if ($e['at'] > $r['at']) continue;
+                if ($e['kind'] === 'in') { $in += $e['q']; if (!$lastIn || $e['at'] > $lastIn['at']) $lastIn = $e; }
+                elseif ($e['kind'] === 'sold') { $sold += $e['q']; if (!$lastSold || $e['at'] > $lastSold) $lastSold = $e['at']; }
+                else $out += $e['q'];
+            }
+            $expected = $in - $sold - $out;
+            $why = [];
+            if ($before !== null && $before > $expected + 0.5) {
+                $why[] = 'ERP had ' . $before . ' but only ' . $in . ' came in and ' . ($sold + $out) . ' went out, so about ' . min($before - max(0, $expected), $before) . ' were never really here (bad data, not theft)';
+            }
+            $edit = null;
+            foreach ($edits[$pid] ?? [] as $e) { if ($e['at'] <= $r['at']) $edit = $e; }
+            if ($edit) $why[] = 'Stock was set by hand on ' . $d8($edit['at']) . ($edit['who'] ? ' by ' . $edit['who'] : '') . ': ' . mb_substr($edit['note'], 0, 80);
+            if ($lastIn && $t - strtotime($lastIn['at']) <= 14 * 86400) $why[] = 'Received ' . $lastIn['q'] . ' on ' . $d8($lastIn['at']) . ', may not be on the shelf yet';
+            $cat = $mine[$pid]->category_id ?? null;
+            $other = array_values(array_filter($sibs[$cat . '#' . ($r['key'] ?? '')] ?? [], function ($x) use ($pid) { return $x['id'] !== $pid; }));
+            if ($other) $why[] = 'Same album has another ERP entry with ' . array_sum(array_column($other, 'q')) . ' here (#' . implode(', #', array_column($other, 'id')) . '), copies may have been scanned under it';
+            if (!$why) $why[] = 'Nothing explains it: ' . $in . ' came in, ' . $sold . ' sold' . ($lastSold ? ' (last ' . $d8($lastSold) . ')' : '') . '. Possible theft';
+            $r['reason'] = implode('. ', $why) . '.';
+        }
+        unset($r);
         return $rows;
     }
 }
