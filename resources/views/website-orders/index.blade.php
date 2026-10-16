@@ -399,8 +399,21 @@
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
+                @php
+                  // Store filter: show only the items that store pulls; the
+                  // rest become "+N at Hollywood" (Sarah, 2026-10-16).
+                  $woStore = in_array($locationFilter, ['hollywood', 'pico'], true) ? $locationFilter : null;
+                  $lineShow = [];
+                  foreach ($cancelLines as $i => $l) {
+                    $it = $o['items'][$i] ?? [];
+                    $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
+                    $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
+                  }
+                  $hiddenLines = count(array_filter($lineShow, fn($v) => !$v));
+                @endphp
                 <td>
                   @foreach($cancelLines as $line)
+                    @continue(!$lineShow[$loop->index])
                     @php
                       $lineItem = $o['items'][$loop->index] ?? [];
                       $lineArtist = $line['gift'] ? null : (($lineItem['product_id']['artist'] ?? null) ?: ($lineItem['product_artist'] ?? null));
@@ -420,11 +433,15 @@
                       </div>
                     </div>
                   @endforeach
+                  @if($hiddenLines > 0)
+                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} {{ $hiddenLines === 1 ? 'item' : 'items' }} at {{ $woStore === 'pico' ? 'Hollywood' : 'Pico' }}</div>
+                  @endif
                 </td>
                 <td class="wo-loc">
                   {{-- One block per product, kept level with its product by
                        woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
                   @foreach($cancelLines as $line)
+                    @continue(!$lineShow[$loop->index])
                     @php
                       $wItem = $o['items'][$loop->index] ?? [];
                       $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
@@ -440,8 +457,6 @@
                         @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
                         @if(($pull['genre'] ?? '') !== '')<span class="area">{{ $pull['genre'] }}</span>@endif
                         @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
-                        {{-- Warehouse stock is pulled by bin; say so when none was saved --}}
-                        @if($pull['bin'] === '' && stripos($pull['place'], 'Warehouse') !== false)<span class="none" style="display:block;">No bin saved</span>@endif
                       @endif
                     </div>
                   @endforeach

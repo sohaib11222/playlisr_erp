@@ -199,10 +199,7 @@ class WebsiteOrdersController extends Controller
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
                     if (!empty($it['is_gift_card'])) continue;
-                    $place = self::pullParts($it, $filterLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place'];
-                    $hit = $locationFilter === 'pico'
-                        ? stripos($place, 'pico') !== false
-                        : (stripos($place, 'hollywood') !== false || stripos($place, 'warehouse') !== false);
+                    $hit = self::placeIsStore(self::pullParts($it, $filterLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place'], $locationFilter);
                 }
                 if (!$hit) return false;
             }
@@ -612,7 +609,8 @@ class WebsiteOrdersController extends Controller
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
         // Store stock: the genre bin on two lines, "Vinyl - Used" then
         // "R&B, Soul & Funk" (ERP category / sub-category).
-        $genre = $inStore ? explode(' / ', (string) ($erp['genre'] ?? ''), 2) : [];
+        // Same for warehouse stock with no bin (sealed stock sits by genre too).
+        $genre = ($inStore || ($erp['bin'] ?? '') === '') ? explode(' / ', (string) ($erp['genre'] ?? ''), 2) : [];
         return [
             'place' => implode(' or ', $places),
             'area'  => trim($genre[0] ?? ''),
@@ -632,6 +630,14 @@ class WebsiteOrdersController extends Controller
             $out[$name] = self::pullSpot($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
         }
         return $out;
+    }
+
+    /** Whether a pullParts() place is at the store ("pico"/"hollywood"); the warehouse is Hollywood's. */
+    public static function placeIsStore(string $place, string $store): bool
+    {
+        return $store === 'pico'
+            ? stripos($place, 'pico') !== false
+            : (stripos($place, 'hollywood') !== false || stripos($place, 'warehouse') !== false);
     }
 
     /** pullParts() as one line: "Warehouse / HW Main Floor / Bin pico66". */
