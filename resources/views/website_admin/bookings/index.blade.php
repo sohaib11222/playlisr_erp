@@ -36,7 +36,6 @@
   <div class="wb-tabs" id="wb-tabs">
     <button type="button" class="wb-tab active" data-tab="pending">Pending <span class="wb-badge" data-count="pending">0</span></button>
     <button type="button" class="wb-tab" data-tab="confirmed">Confirmed <span class="wb-badge" data-count="confirmed">0</span></button>
-    <button type="button" class="wb-tab" data-tab="completed">Past <span class="wb-badge" data-count="completed">0</span></button>
     <button type="button" class="wb-tab" data-tab="archived">Archived <span class="wb-badge" data-count="archived">0</span></button>
   </div>
   @if(!empty($abandonedCount))
@@ -111,7 +110,7 @@
                   'status' => $b['status'], 'depositAmount' => $depAmtLabel,
                 ];
               @endphp
-              <tr class="wb-row" data-id="{{ $b['id'] }}" data-status="{{ !empty($b['expired']) ? 'expired' : $b['status'] }}" data-search="{{ $search }}" data-b="{{ json_encode($dlg) }}">
+              <tr class="wb-row" data-id="{{ $b['id'] }}" data-status="{{ !empty($b['expired']) ? 'expired' : $b['status'] }}" data-past="{{ !empty($b['isPast']) || in_array($b['status'], ['completed', 'cancelled', 'no-show'], true) ? 1 : 0 }}" data-search="{{ $search }}" data-b="{{ json_encode($dlg) }}">
                 <td>
                   <div class="wb-main">#{{ $b['bookingNumber'] }}</div>
                   <div class="wb-sub">{{ $b['title'] }}</div>
@@ -295,7 +294,8 @@
     var shown = 0;
     rows.forEach(function (tr) {
       var id = tr.getAttribute('data-id'), st = tr.getAttribute('data-status');
-      var isArch = archived.has(id);
+      var isPast = tr.getAttribute('data-past') === '1';
+      var isArch = isPast || archived.has(id);
       if (isArch) counts.archived++;
       else if (BUCKETS.pending.indexOf(st) >= 0) counts.pending++;
       else if (BUCKETS.confirmed.indexOf(st) >= 0) counts.confirmed++;
@@ -306,6 +306,7 @@
       tr.style.display = inTab && match ? '' : 'none';
       if (inTab && match) shown++;
       var archBtn = tr.querySelector('[data-act="archive"]');
+      if (archBtn) archBtn.style.display = isPast ? 'none' : '';
       if (archBtn) {
         archBtn.innerHTML = isArch ? '<i class="fa fa-undo"></i> Restore' : '<i class="fa fa-archive"></i> Archive';
         archBtn.title = isArch ? 'Restore booking' : 'Archive booking (requires confirmation)';
@@ -323,7 +324,7 @@
       empty.style.display = shown ? 'none' : '';
       wrap.style.display = shown ? '' : 'none';
       document.getElementById('wb-empty-title').textContent = activeTab === 'archived' ? 'Nothing archived' : 'No bookings found';
-      document.getElementById('wb-empty-sub').textContent = activeTab === 'archived' ? 'Archived bookings will appear here.' : 'Try adjusting your filters.';
+      document.getElementById('wb-empty-sub').textContent = activeTab === 'archived' ? 'Past and archived bookings will appear here.' : 'Try adjusting your filters.';
     }
   }
 

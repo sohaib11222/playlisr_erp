@@ -77,6 +77,21 @@ class WebsiteBookingsController extends Controller
         $bookings = array_map([$this, 'presentBooking'], array_values(array_filter($raw, 'is_array')));
         $abandonedCount = count(array_filter($bookings, function ($b) { return !empty($b['expired']); }));
         $bookings = array_values(array_filter($bookings, function ($b) { return empty($b['expired']); }));
+        // Upcoming soonest first, then past ones newest first; past dates live
+        // in the Archived tab (Sarah, 2026-10-16).
+        $today = \Carbon\Carbon::now('America/Los_Angeles')->format('Y-m-d');
+        foreach ($bookings as &$bk) {
+            $bk['isPast'] = $bk['dateYmd'] !== '' && $bk['dateYmd'] < $today;
+        }
+        unset($bk);
+        usort($bookings, function ($a, $b) {
+            if ($a['isPast'] !== $b['isPast']) {
+                return $a['isPast'] ? 1 : -1;
+            }
+            $ka = $a['dateYmd'] . ' ' . $a['start24'];
+            $kb = $b['dateYmd'] . ' ' . $b['start24'];
+            return $a['isPast'] ? strcmp($kb, $ka) : strcmp($ka, $kb);
+        });
 
         $stats = ['total' => count($bookings), 'pending' => 0, 'confirmed' => 0, 'completed' => 0, 'revenue' => 0.0];
         foreach ($bookings as $b) {
