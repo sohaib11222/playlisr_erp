@@ -1520,6 +1520,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/payroll/unhide', 'PayrollController@unhide');
     Route::post('/payroll/save-run', 'PayrollController@saveRun');
     Route::post('/payroll/load-erp-hours', 'PayrollController@loadErpHours');
+    Route::post('/payroll/commission-mode', 'PayrollController@saveCommissionMode');
+    Route::post('/payroll/adjust', 'PayrollController@saveAdjustment');
+    Route::post('/payroll/adjust/delete', 'PayrollController@deleteAdjustment');
 
     // Time clock admin (Sarah 2026-10-13), admin-only in the controller.
     Route::get('/reports/timecards', 'TimeClockController@timecards');

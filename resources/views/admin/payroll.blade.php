@@ -136,45 +136,102 @@
   </div>
 @endif
 
+{{-- ============ COMMISSIONS THIS RUN ============ --}}
+@php
+    $commPeople = array_values(array_filter($people, function ($p) { return !empty($p['user_id']) && ($p['sales_comm'] + $p['listing_comm'] + $p['party_comm']) > 0.004; }));
+    $incUids = array_flip(array_map('intval', $run['include_uids'] ?? []));
+@endphp
+<div class="box box-solid">
+  <div class="box-header"><span class="box-title">Commissions this run</span></div>
+  <div class="box-body">
+    <form method="POST" action="{{ url('/payroll/commission-mode') }}">
+      {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--pos-ink);font-weight:700;">
+        <input type="checkbox" name="include_commissions" value="1" {{ !empty($run['include_commissions']) ? 'checked' : '' }}> Pay everyone's commissions this run (month-end payroll)
+      </label>
+      @if (!empty($commPeople))
+        <div style="margin:8px 0 4px;font-size:12.5px;color:var(--pos-ink-2);">Or only these people:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;">
+          @foreach ($commPeople as $cp)
+            <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--pos-ink);font-weight:500;">
+              <input type="checkbox" name="include_uids[]" value="{{ $cp['user_id'] }}" {{ isset($incUids[(int) $cp['user_id']]) ? 'checked' : '' }}>
+              {{ $cp['first_name'] }} (${{ $fmt($cp['sales_comm'] + $cp['listing_comm'] + $cp['party_comm']) }})
+            </label>
+          @endforeach
+        </div>
+      @endif
+      <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Save</button>
+      <span style="font-size:12px;margin-left:6px;color:var(--pos-ink-2);">Commissions not ticked stay owed and show as "next run". After payroll, record exactly what was paid on <a href="{{ url('/admin/listing-commissions') }}" target="_blank">Commissions</a>.</span>
+    </form>
+  </div>
+</div>
+
 {{-- ============ THE ONE TABLE: WHAT I OWE ============ --}}
 @php $cols = $can_see_rates ? 10 : 8; @endphp
 <div class="box box-solid">
   <div class="box-header"><span class="box-title">What I owe — {{ \Carbon::parse($start)->format('M j') }} to {{ \Carbon::parse($end)->format('M j, Y') }}</span></div>
   <div class="box-body">
-    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Click <strong>First name</strong> or <strong>Last name</strong> to sort. Notes = auto commission + late info; the editable Notes column is yours to jot anything — click <strong>Save notes</strong> below.</p>
+    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Hours are the sum of each person's shift log (click <strong>Shift log</strong>). Pico hours go on Nivessa One, Hollywood and warehouse hours on Nivessa Two. <strong>Check</strong> items are things to look at before you pay.</p>
     <div class="table-responsive">
     <table class="table table-condensed table-bordered" id="owe-table">
       <thead>
         <tr>
           <th class="pr-sortable" onclick="payrollSort('first')" style="cursor:pointer;">First name <span class="pr-arrow">⇅</span></th>
           <th class="pr-sortable" onclick="payrollSort('last')" style="cursor:pointer;">Last name <span class="pr-arrow">⇅</span></th>
-          <th>Store</th><th class="text-right">Hours</th>
+          <th class="text-right">Pico hrs</th><th class="text-right">HW hrs</th>
           @if ($can_see_rates)<th class="text-right">Wages</th>@endif
-          <th class="text-right">Sales comm</th><th class="text-right">Listing comm</th>
+          <th class="text-right">Commission</th><th class="text-right">Adjustments</th>
           @if ($can_see_rates)<th class="text-right">Total owed</th>@endif
-          <th>Notes</th>
+          <th>Notes &amp; checks</th>
           <th>Notes (editable)</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         @forelse ($people as $p)
+          @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; @endphp
           <tr class="pr-person-row {{ $p['has_hours'] ? '' : 'text-muted' }}"
               data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
             <td>
               <strong>{{ $p['first_name'] }}</strong>
               @unless($p['has_hours'])<br><small>commission only</small>@endunless
+              @if (($p['paid_by'] ?? 'qb') === 'zelle')<br><small>paid by Zelle</small>@endif
             </td>
             <td>{{ $p['last_name'] }}</td>
-            <td>{{ $p['store'] }}</td>
-            <td class="text-right">{{ $p['total_hours'] ? $hh($p['total_hours']) : '' }}@if($p['ot_hours'])<br><small class="text-muted">{{ $hh($p['ot_hours']) }} OT</small>@endif</td>
+            <td class="text-right">{{ $p['one_hours'] ? $hh($p['one_hours']) : '' }}@if(!empty($p['co']['one']['ot']))<br><small>{{ $hh($p['co']['one']['ot']) }} OT</small>@endif</td>
+            <td class="text-right">{{ $p['two_hours'] ? $hh($p['two_hours']) : '' }}@if(!empty($p['co']['two']['ot']))<br><small>{{ $hh($p['co']['two']['ot']) }} OT</small>@endif</td>
             @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
-            <td class="text-right">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
-            <td class="text-right">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
+            <td class="text-right">
+              @if ($commAmt > 0.004)
+                @if ($p['comm_included'])${{ $fmt($commAmt) }}@else<span style="color:var(--pos-ink-2);">${{ $fmt($commAmt) }}<br><small>next run</small></span>@endif
+              @endif
+            </td>
+            <td class="text-right" style="font-size:12px;">
+              @foreach ($p['adjustments'] as $a)
+                <div>{{ \App\Http\Controllers\PayrollController::ADJ_TYPES[$a['type']] ?? $a['type'] }}: {{ $a['type'] === 'hours_offset' ? $hh($a['hours']) . ' hrs' : '$' . $fmt($a['amount']) }} <small>({{ $a['company'] === 'one' ? 'Pico' : 'HW' }})</small></div>
+              @endforeach
+            </td>
             @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
-            <td class="text-muted" style="font-size:11.5px;line-height:1.35;min-width:220px;">
+            <td style="font-size:11.5px;line-height:1.35;min-width:240px;color:var(--pos-ink-2);">
               @if(!empty($p['memo'])){{ $p['memo'] }}@endif
+              @if(!empty($p['party_lines']))<div style="margin-top:3px;">Listening party: @foreach ($p['party_lines'] as $pl){{ $pl['label'] }} ${{ $fmt($pl['amount']) }}@if(!$loop->last); @endif @endforeach</div>@endif
+              @if(!empty($p['checks']))<div style="margin-top:3px;color:#8A3A2E;"><strong>Check:</strong> {{ implode('; ', $p['checks']) }}</div>@endif
               @if(!empty($p['flags']))<div style="margin-top:3px;color:#8a6d3b;">Flags: {{ implode('; ', $p['flags']) }}</div>@endif
+              @if(!empty($p['log']))
+                <details style="margin-top:4px;"><summary style="cursor:pointer;font-weight:700;color:var(--pos-ink);">Shift log ({{ count($p['log']) }})</summary>
+                  <table class="table table-condensed" style="margin-top:4px;font-size:11.5px;">
+                    @foreach ($p['log'] as $lg)
+                      <tr>
+                        <td>{{ \Carbon::parse($lg['day'])->format('m/d/y') }}</td>
+                        <td>{{ $lg['in'] ? \Carbon::parse($lg['in'])->format('g:ia') : '' }}-{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:ia') : '' }}</td>
+                        <td class="text-right">{{ $hh($lg['hours']) }}</td>
+                        <td>{{ $lg['company'] === 'one' ? 'Pico' : 'HW' }}</td>
+                        <td>{{ $lg['comment'] }}</td>
+                      </tr>
+                    @endforeach
+                  </table>
+                </details>
+              @endif
             </td>
             <td style="min-width:190px;"><input form="notes-form" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" class="form-control input-sm" placeholder="Add a note"></td>
             <td class="text-center">
@@ -209,13 +266,13 @@
         <tr>
           <td colspan="4">Total owed everyone</td>
           <td class="text-right">${{ $fmt($totals['wages']) }}</td>
-          <td class="text-right">${{ $fmt($totals['sales_comm']) }}</td>
-          <td class="text-right">${{ $fmt($totals['listing_comm']) }}</td>
+          <td class="text-right">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
+          <td class="text-right">${{ $fmt($totals['adj_total']) }}</td>
           <td class="text-right" style="font-size:15px;">${{ $fmt($owedAll) }}</td>
           <td></td><td></td><td></td>
         </tr>
         @if (!empty($freelancers))
-        <tr><td colspan="7" class="text-right text-muted" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td><td></td></tr>
+        <tr><td colspan="7" class="text-right" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td><td></td></tr>
         @endif
       </tfoot>
       @endif
@@ -257,30 +314,92 @@
   </form>
 </div></details>
 
-<details class="pr-more"><summary>What to enter in QuickBooks</summary><div class="pr-body">
+<details class="pr-more" open><summary>What to enter in QuickBooks (one block per company)</summary><div class="pr-body">
   <div style="margin-bottom:10px;">
     <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export CSV</a>
-    <button type="button" class="btn btn-default btn-sm" onclick="payrollCopyTable('qb-table')"><i class="fa fa-copy"></i> Copy table</button>
-    <span class="text-muted" style="margin-left:8px;font-size:12px;">Enter hours as payroll; sales &amp; listing commission as separate pay items. Freelancers are paid outside QB.</span>
+    <span style="margin-left:8px;font-size:12px;color:var(--pos-ink-2);">Columns follow QuickBooks' Run payroll order. Paste the numbers into each company's draft; check each person's Gross matches.</span>
   </div>
-  <div class="table-responsive">
-  <table class="table table-condensed table-bordered" id="qb-table">
-    <thead><tr><th>Name</th><th class="text-right">Regular hrs</th><th class="text-right">OT hrs</th><th class="text-right">Sales commission</th><th class="text-right">Listing commission</th></tr></thead>
+  @foreach ($qb as $co => $block)
+    <h4 style="font-weight:800;margin:14px 0 6px;">{{ $block['label'] }}</h4>
+    @if (empty($block['rows']) && empty($block['zelle']))
+      <p style="color:var(--pos-ink-2);">Nothing for this company.</p>
+    @else
+    <div class="table-responsive">
+    <table class="table table-condensed table-bordered" id="qb-table-{{ $co }}">
+      <thead><tr><th>Name</th><th class="text-right">Regular hrs</th><th class="text-right">Manager hrs</th><th class="text-right">OT hrs</th><th class="text-right">Listening party</th><th class="text-right">Listing comm</th><th class="text-right">Sales comm</th><th class="text-right">Back pay</th><th class="text-right">Bonus</th><th class="text-right">Other</th>@if ($can_see_rates)<th class="text-right">Gross</th>@endif</tr></thead>
+      <tbody>
+        @foreach ($block['rows'] as $r)
+          @php $mgr = $r['pay_type'] === 'manager'; @endphp
+          <tr>
+            <td>{{ $r['name'] }}</td>
+            <td class="text-right">{{ !$mgr && $r['reg'] ? $hh($r['reg']) : '' }}</td>
+            <td class="text-right">{{ $mgr && $r['reg'] ? $hh($r['reg']) : '' }}</td>
+            <td class="text-right">{{ $r['ot'] ? $hh($r['ot']) : '' }}</td>
+            <td class="text-right">{{ $r['party'] ? $fmt($r['party']) : '' }}</td>
+            <td class="text-right">{{ $r['listing'] ? $fmt($r['listing']) : '' }}</td>
+            <td class="text-right">{{ $r['sales'] ? $fmt($r['sales']) : '' }}</td>
+            <td class="text-right">{{ $r['back_pay'] ? $fmt($r['back_pay']) : '' }}</td>
+            <td class="text-right">{{ $r['bonus'] ? $fmt($r['bonus']) : '' }}</td>
+            <td class="text-right">{{ $r['other'] ? $fmt($r['other']) : '' }}</td>
+            @if ($can_see_rates)<td class="text-right"><strong>{{ $fmt($r['gross']) }}</strong></td>@endif
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+    </div>
+    <button type="button" class="btn btn-default btn-xs" onclick="payrollCopyTable('qb-table-{{ $co }}')"><i class="fa fa-copy"></i> Copy {{ $block['label'] }}</button>
+    @if (!empty($block['zelle']))
+      <div style="margin-top:8px;font-size:12.5px;"><strong>Paid outside QuickBooks (Zelle):</strong>
+        @foreach ($block['zelle'] as $z){{ $z['name'] }} {{ $hh($z['reg'] + $z['ot']) }} hrs @if ($can_see_rates) (${{ $fmt($z['gross']) }})@endif @if(!$loop->last); @endif @endforeach
+      </div>
+    @endif
+    @endif
+  @endforeach
+</div></details>
+
+<details class="pr-more" {{ !empty(array_filter($people, function ($p) { return !empty($p['adjustments']); })) ? 'open' : '' }}><summary>Back pay, bonuses &amp; overpay offsets</summary><div class="pr-body">
+  <p style="font-size:12.5px;color:var(--pos-ink-2);margin-bottom:8px;">One-off amounts for this pay run, booked to the company that owes them. To take back an overpay, use <strong>Hours offset</strong> with negative hours (fewer hours on this check, so taxes stay right); a negative back pay or bonus covers any cents left over.</p>
+  @php $allAdj = []; foreach ($people as $p) { foreach ($p['adjustments'] as $a) { $allAdj[] = $a + ['who' => $p['name']]; } } @endphp
+  @if (!empty($allAdj))
+  <table class="table table-condensed table-bordered" style="margin-bottom:12px;">
+    <thead><tr><th>Person</th><th>Company</th><th>Type</th><th class="text-right">Amount / hours</th><th>Note</th><th></th></tr></thead>
     <tbody>
-      @foreach ($people as $p)
-        @if ($p['reg_hours'] || $p['ot_hours'] || $p['sales_comm'] || $p['listing_comm'])
+      @foreach ($allAdj as $a)
         <tr>
-          <td>{{ $p['name'] }}</td>
-          <td class="text-right">{{ $hh($p['reg_hours']) }}</td>
-          <td class="text-right">{{ $hh($p['ot_hours']) }}</td>
-          <td class="text-right">{{ $p['sales_comm'] ? $fmt($p['sales_comm']) : '' }}</td>
-          <td class="text-right">{{ $p['listing_comm'] ? $fmt($p['listing_comm']) : '' }}</td>
+          <td>{{ $a['who'] }}</td>
+          <td>{{ $companies[$a['company']] ?? $a['company'] }}</td>
+          <td>{{ \App\Http\Controllers\PayrollController::ADJ_TYPES[$a['type']] ?? $a['type'] }}</td>
+          <td class="text-right">{{ $a['type'] === 'hours_offset' ? $hh($a['hours']) . ' hrs' : '$' . $fmt($a['amount']) }}</td>
+          <td>{{ $a['note'] }}</td>
+          <td class="text-right">
+            <form method="POST" action="{{ url('/payroll/adjust/delete') }}" style="display:inline;">
+              {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="id" value="{{ $a['id'] }}">
+              <button type="submit" class="btn btn-xs btn-danger">Remove</button>
+            </form>
+          </td>
         </tr>
-        @endif
       @endforeach
     </tbody>
   </table>
-  </div>
+  @endif
+  <form method="POST" action="{{ url('/payroll/adjust') }}" id="adj-form">
+    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="name" id="adj-name" value="">
+    <div class="row">
+      <div class="col-sm-3"><label>Person</label>
+        <select name="who" class="form-control input-sm" required onchange="document.getElementById('adj-name').value=this.options[this.selectedIndex].text">
+          <option value="">Pick a person</option>
+          @foreach ($people as $p)<option value="{{ !empty($p['user_id']) ? 'uid:' . $p['user_id'] : 'key:' . $p['key'] }}">{{ $p['name'] }}</option>@endforeach
+          @foreach ($erp_users as $eu)<option value="uid:{{ $eu['id'] }}">{{ $eu['name'] }} (not on this run)</option>@endforeach
+        </select>
+      </div>
+      <div class="col-sm-2"><label>Company</label><select name="company" class="form-control input-sm">@foreach ($companies as $ck => $cl)<option value="{{ $ck }}">{{ $cl }}</option>@endforeach</select></div>
+      <div class="col-sm-2"><label>Type</label><select name="type" class="form-control input-sm">@foreach (\App\Http\Controllers\PayrollController::ADJ_TYPES as $tk => $tl)<option value="{{ $tk }}">{{ $tl }}</option>@endforeach</select></div>
+      <div class="col-sm-1"><label>Amount $</label><input name="amount" type="number" step="0.01" class="form-control input-sm"></div>
+      <div class="col-sm-1"><label>Hours</label><input name="hours" type="number" step="0.01" class="form-control input-sm"></div>
+      <div class="col-sm-3"><label>Note (why)</label><input name="note" class="form-control input-sm" placeholder="e.g. 7/1 min wage back pay"></div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Add</button>
+  </form>
 </div></details>
 
 @php $memoPeople = array_filter($people, function ($p) { return !empty($p['memo']); }); @endphp
@@ -379,7 +498,7 @@
     <p class="text-muted" style="margin-bottom:6px;">Hourly rate per person. Leave ERP user blank to auto-match by first name; set it only to fix an ambiguous name.</p>
     <div class="table-responsive">
     <table class="table table-condensed table-bordered">
-      <thead><tr><th>Person</th><th style="width:160px;">Hourly rate</th><th style="width:160px;">Store</th><th style="width:240px;">Linked ERP user (for commissions)</th></tr></thead>
+      <thead><tr><th>Person</th><th style="width:140px;">Hourly rate</th><th style="width:120px;">Store</th><th style="width:170px;">Company</th><th style="width:120px;">QB pay type</th><th style="width:110px;">Paid by</th><th style="width:220px;">Linked ERP user (for commissions)</th></tr></thead>
       <tbody>
         @foreach ($people as $p)
           @if ($p['has_hours'])
@@ -387,6 +506,10 @@
             <td><strong>{{ $p['name'] }}</strong></td>
             <td><div class="input-group input-group-sm"><span class="input-group-addon">$</span><input name="rate[{{ $p['key'] }}]" type="number" step="0.01" value="{{ $p['rate'] ?: '' }}" class="form-control"></div></td>
             <td><input name="store[{{ $p['key'] }}]" value="{{ $p['store'] }}" class="form-control input-sm"></td>
+            @php $rc = $p['rate_cfg'] ?? []; @endphp
+            <td><select name="company[{{ $p['key'] }}]" class="form-control input-sm"><option value="auto">By store worked</option>@foreach ($companies as $ck => $cl)<option value="{{ $ck }}" {{ ($rc['company'] ?? 'auto') === $ck ? 'selected' : '' }}>Always {{ $cl }}</option>@endforeach</select></td>
+            <td><select name="pay_type[{{ $p['key'] }}]" class="form-control input-sm"><option value="regular">Regular</option><option value="manager" {{ ($p['pay_type'] ?? '') === 'manager' ? 'selected' : '' }}>Manager</option></select></td>
+            <td><select name="paid_by[{{ $p['key'] }}]" class="form-control input-sm"><option value="qb">QuickBooks</option><option value="zelle" {{ ($p['paid_by'] ?? '') === 'zelle' ? 'selected' : '' }}>Zelle</option></select></td>
             <td>
               <select name="user_id[{{ $p['key'] }}]" class="form-control input-sm">
                 <option value="">Auto-match by name{{ $p['user_id'] ? '' : ' (unmatched)' }}</option>

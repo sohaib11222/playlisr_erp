@@ -73,44 +73,25 @@ class PayrollController extends Controller
 
         [$start, $end] = $this->resolvePeriod($request);
 
-        $config   = $this->loadConfig();
+        [$people, $config, $hoursDoc, $run] = $this->assemble($businessId, $start, $end);
         $settings = $config['settings'];
-        $rates    = $config['rates'];        // name_key => ['rate','user_id','store','display_name']
-
-        $hoursDoc = $this->loadHours($start, $end);
         $rows     = $hoursDoc['rows'] ?? [];
 
-        // Commission per user, from the Commissions Owed engine so the numbers
-        // line up: owed (still owe now) + cumulative earned. Plus the last
-        // commission payout and last paycheck for history columns.
-        $comm      = $this->commissionByUser($businessId);   // uid => {listing_owed, listing_earned, sales_owed, sales_earned}
-        $lastPaid  = $this->lastCommissionPaidByUser();      // uid => {amount, at}
-        $lastCheck = $this->lastPaycheckMap($start);         // ['byUid'=>[], 'byKey'=>[]]
-
-        // Sling schedule for the window, indexed by erp_user_id + date, for late
-        // detection.
-        $schedule = $this->scheduleIndex($start, $end);
-
-        // Build one person row per distinct imported name.
-        $people = $this->buildPeople($rows, $rates, $settings, $schedule);
-
-        // Attach commissions + history, and append commission-only people.
-        $people = $this->attachCommissions($people, $comm, $lastPaid, $lastCheck, $businessId);
-
-        // Drop people who no longer work here (hidden list).
-        $people = $this->filterHidden($people, $config['hidden'] ?? []);
-
-        // Totals (after hiding departed staff).
+        // Totals (after hiding departed staff). Commission totals only count
+        // what this run actually pays (month-end, or the people ticked).
         $totals = [
             'reg_hours'   => round(array_sum(array_column($people, 'reg_hours')), 2),
             'ot_hours'    => round(array_sum(array_column($people, 'ot_hours')), 2),
             'dt_hours'    => round(array_sum(array_column($people, 'dt_hours')), 2),
             'wages'       => round(array_sum(array_column($people, 'wages')), 2),
-            'sales_comm'  => round(array_sum(array_column($people, 'sales_comm')), 2),
-            'listing_comm'=> round(array_sum(array_column($people, 'listing_comm')), 2),
+            'sales_comm'  => round(array_sum(array_map(function ($p) { return $p['comm_included'] ? $p['sales_comm'] : 0; }, $people)), 2),
+            'listing_comm'=> round(array_sum(array_map(function ($p) { return $p['comm_included'] ? $p['listing_comm'] : 0; }, $people)), 2),
+            'party_comm'  => round(array_sum(array_map(function ($p) { return $p['comm_included'] ? $p['party_comm'] : 0; }, $people)), 2),
+            'adj_total'   => round(array_sum(array_column($people, 'adj_dollars')), 2),
             'comm_earned' => round(array_sum(array_column($people, 'comm_earned')), 2),
             'grand_total' => round(array_sum(array_column($people, 'grand_total')), 2),
             'flags'       => array_sum(array_map(function ($p) { return count($p['flags']); }, $people)),
+            'checks'      => array_sum(array_map(function ($p) { return count($p['checks']); }, $people)),
         ];
 
         $freelancers = $this->computeFreelancers($config['freelancers']);
@@ -122,6 +103,8 @@ class PayrollController extends Controller
             'settings'     => $settings,
             'people'       => $people,
             'totals'       => $totals,
+            'qb'           => $this->qbBlocks($people),
+            'run'          => $run,
             'freelancers'  => $freelancers,
             'freelancer_total' => $freelancerTotal,
             'imported_at'  => $hoursDoc['imported_at'] ?? null,
@@ -134,7 +117,306 @@ class PayrollController extends Controller
             'last_run_at'  => $this->lastRunSavedAt($start, $end),
             'erp_users'    => $this->erpUserOptions($businessId),
             'notes'        => $this->loadNotes($start, $end),
+            'companies'    => self::COMPANIES,
         ]);
+    }
+
+    // ---- One pay run, end to end (Sarah 2026-10-15) ----------------------
+    //
+    // Everything the payroll Google Sheet did, on one page:
+    //   - hours per person split by COMPANY (Pico hours -> Nivessa One, Hollywood
+    //     and warehouse -> Nivessa Two; a per-person override pins everyone's
+    //     hours to one company, e.g. Luis is Nivessa Two only), with daily OT
+    //     going to whichever store the hours past 8 were worked at;
+    //   - the per-day shift log (the sheet's bottom blocks), so totals are
+    //     always the sum of the actual punches;
+    //   - one-off ADJUSTMENTS per person and company: back pay, bonus, other $,
+    //     or an hours offset (how an overpay is taken back: fewer hours on the
+    //     next check, per QuickBooks support);
+    //   - commissions only on the month-end run, or for people ticked by hand;
+    //   - cross-checks against the register log and the Sling schedule;
+    //   - one QuickBooks block per company in QB's own pay-type order.
+    const COMPANIES = [
+        'one' => 'Nivessa One (Pico)',
+        'two' => 'Nivessa Two (Hollywood)',
+    ];
+
+    private function assemble($businessId, $start, $end)
+    {
+        $config   = $this->loadConfig();
+        $hoursDoc = $this->loadHours($start, $end);
+        $run      = $this->loadRun($start, $end);
+        $schedule = $this->scheduleIndex($start, $end);
+
+        $people = $this->buildPeople($hoursDoc['rows'] ?? [], $config['rates'], $config['settings'], $schedule);
+        $people = $this->attachCommissions($people, $this->commissionByUser($businessId), $this->lastCommissionPaidByUser(), $this->lastPaycheckMap($start), $businessId);
+        $people = $this->attachParty($people, $businessId);
+        $people = $this->filterHidden($people, $config['hidden'] ?? []);
+        $people = $this->applyRun($people, $run, $config['rates'], $config['settings']);
+        $people = $this->attachChecks($people, $businessId, $start, $end);
+        return [$people, $config, $hoursDoc, $run];
+    }
+
+    // Which company a punch's hours belong to. A person override wins.
+    private function companyFor(array $rc, $location)
+    {
+        $ov = $rc['company'] ?? 'auto';
+        if (isset(self::COMPANIES[$ov])) { return $ov; }
+        return stripos((string) $location, 'pico') !== false ? 'one' : 'two';
+    }
+
+    // ---- Run file: commissions switch + adjustments ----------------------
+
+    private function runFile($start, $end) { return 'payroll/run-' . $start . '_' . $end . '.json'; }
+
+    private function loadRun($start, $end)
+    {
+        $default = ['include_commissions' => false, 'include_uids' => [], 'adjustments' => []];
+        $f = $this->runFile($start, $end);
+        if (!Storage::disk('local')->exists($f)) { return $default; }
+        $d = json_decode(Storage::disk('local')->get($f), true);
+        return is_array($d) ? array_merge($default, $d) : $default;
+    }
+
+    private function saveRunFile($start, $end, array $run)
+    {
+        Storage::disk('local')->put($this->runFile($start, $end), json_encode($run, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    public function saveCommissionMode(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $run = $this->loadRun($start, $end);
+        $run['include_commissions'] = (bool) $request->input('include_commissions');
+        $run['include_uids'] = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('include_uids', [])))));
+        $this->saveRunFile($start, $end, $run);
+        $msg = $run['include_commissions'] ? 'Commissions are included for everyone this run.'
+            : (count($run['include_uids']) ? 'Commissions included only for the people ticked.' : 'No commissions this run (paid at month-end).');
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    const ADJ_TYPES = [
+        'back_pay'     => 'Back pay',
+        'bonus'        => 'Bonus',
+        'hours_offset' => 'Hours offset (overpay)',
+        'other'        => 'Other pay',
+    ];
+
+    public function saveAdjustment(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $who = (string) $request->input('who', '');       // "uid:12" or "key:andy"
+        $type = (string) $request->input('type', '');
+        $co = (string) $request->input('company', '');
+        if (!isset(self::ADJ_TYPES[$type]) || !isset(self::COMPANIES[$co]) || $who === '') {
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => 'Pick a person, a company and a type.']);
+        }
+        $amount = round((float) $request->input('amount', 0), 2);
+        $hours  = round((float) $request->input('hours', 0), 2);
+        if ($type === 'hours_offset' ? $hours == 0.0 : $amount == 0.0) {
+            return redirect($this->url($start, $end))->with('status', ['success' => 0, 'msg' => $type === 'hours_offset' ? 'Enter the hours (negative takes hours off).' : 'Enter an amount.']);
+        }
+        [$kind, $val] = array_pad(explode(':', $who, 2), 2, '');
+        $run = $this->loadRun($start, $end);
+        $run['adjustments'][] = [
+            'id'      => bin2hex(random_bytes(6)),
+            'user_id' => $kind === 'uid' ? (int) $val : null,
+            'key'     => $kind === 'key' ? $this->nameKey($val) : '',
+            'name'    => trim((string) $request->input('name', '')),
+            'company' => $co,
+            'type'    => $type,
+            'amount'  => $type === 'hours_offset' ? 0.0 : $amount,
+            'hours'   => $type === 'hours_offset' ? $hours : 0.0,
+            'note'    => mb_substr(trim((string) $request->input('note', '')), 0, 300),
+            'added_by'=> $request->session()->get('user.id'),
+            'added_at'=> now()->toDateTimeString(),
+        ];
+        $this->saveRunFile($start, $end, $run);
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Added ' . strtolower(self::ADJ_TYPES[$type]) . '.']);
+    }
+
+    public function deleteAdjustment(Request $request)
+    {
+        $this->ensureAdmin();
+        [$start, $end] = $this->resolvePeriod($request);
+        $id = preg_replace('/[^a-f0-9]/', '', (string) $request->input('id'));
+        $run = $this->loadRun($start, $end);
+        $run['adjustments'] = array_values(array_filter($run['adjustments'], function ($a) use ($id) { return ($a['id'] ?? '') !== $id; }));
+        $this->saveRunFile($start, $end, $run);
+        return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Removed that adjustment.']);
+    }
+
+    // Commission switch + adjustments folded into each person, then wages and
+    // the grand total recomputed per company.
+    private function applyRun(array $people, array $run, array $rates, array $settings)
+    {
+        $incAll = !empty($run['include_commissions']);
+        $incUids = array_flip(array_map('intval', $run['include_uids'] ?? []));
+        $mult = (float) $settings['ot_multiplier'];
+
+        foreach ($people as &$p) {
+            $p['comm_included'] = $incAll || (!empty($p['user_id']) && isset($incUids[(int) $p['user_id']]));
+            $p['adjustments'] = [];
+            foreach ($run['adjustments'] ?? [] as $a) {
+                $hit = (!empty($a['user_id']) && (int) $a['user_id'] === (int) ($p['user_id'] ?? 0))
+                    || (empty($a['user_id']) && !empty($a['key']) && $a['key'] === $p['key']);
+                if ($hit) { $p['adjustments'][] = $a; }
+            }
+
+            // Per-company pay lines, in QB's pay-type order.
+            $lines = [];
+            foreach (self::COMPANIES as $co => $label) {
+                $lines[$co] = [
+                    'reg' => (float) ($p['co'][$co]['reg'] ?? 0), 'ot' => (float) ($p['co'][$co]['ot'] ?? 0),
+                    'party' => 0.0, 'listing' => 0.0, 'sales' => 0.0, 'back_pay' => 0.0, 'bonus' => 0.0, 'other' => 0.0,
+                ];
+            }
+            $adjDollars = 0.0;
+            foreach ($p['adjustments'] as $a) {
+                $co = $a['company'];
+                if (!isset($lines[$co])) { continue; }
+                if ($a['type'] === 'hours_offset') { $lines[$co]['reg'] += (float) $a['hours']; continue; }
+                $lines[$co][$a['type']] += (float) $a['amount'];
+                $adjDollars += (float) $a['amount'];
+            }
+            if ($p['comm_included']) {
+                $home = $p['home_company'];
+                $lines[$home]['listing'] += $p['listing_comm'];
+                $lines[$home]['sales'] += $p['sales_comm'];
+                foreach ($p['party_lines'] as $pl) { $lines[$pl['company']]['party'] += $pl['amount']; }
+            }
+
+            $rate = (float) $p['rate'];
+            $wages = 0.0; $gross = [];
+            foreach ($lines as $co => &$l) {
+                foreach ($l as $k => $v) { $l[$k] = round($v, 2); }
+                $w = $l['reg'] * $rate + $l['ot'] * $rate * $mult;
+                $wages += $w;
+                $gross[$co] = round($w + $l['party'] + $l['listing'] + $l['sales'] + $l['back_pay'] + $l['bonus'] + $l['other'], 2);
+            }
+            unset($l);
+            $p['lines'] = $lines;
+            $p['gross_by_company'] = $gross;
+            $p['adj_dollars'] = round($adjDollars, 2);
+            $p['wages'] = round($wages, 2);
+            $p['grand_total'] = round(array_sum($gross), 2);
+            $p['pay_type'] = $rates[$p['key']]['pay_type'] ?? 'regular';
+            $p['paid_by'] = $rates[$p['key']]['paid_by'] ?? 'qb';
+            $p['rate_cfg'] = $rates[$p['key']] ?? [];
+        }
+        unset($p);
+        return $people;
+    }
+
+    // What to type into QuickBooks, one block per company. Anyone paid by
+    // Zelle is listed separately (they never go through QB payroll).
+    private function qbBlocks(array $people)
+    {
+        $out = [];
+        foreach (self::COMPANIES as $co => $label) {
+            $rows = []; $zelle = [];
+            foreach ($people as $p) {
+                $l = $p['lines'][$co] ?? null;
+                if (!$l) { continue; }
+                $any = false;
+                foreach ($l as $v) { if (abs($v) > 0.004) { $any = true; break; } }
+                if (!$any) { continue; }
+                $row = ['name' => $p['name'], 'pay_type' => $p['pay_type'], 'gross' => $p['gross_by_company'][$co] ?? 0] + $l;
+                if ($p['paid_by'] === 'zelle') { $zelle[] = $row; } else { $rows[] = $row; }
+            }
+            usort($rows, function ($a, $b) { return strcmp($a['name'], $b['name']); });
+            $out[$co] = ['label' => $label, 'rows' => $rows, 'zelle' => $zelle];
+        }
+        return $out;
+    }
+
+    // Listening-party shares this payroll would pay, per person, each tied to
+    // the company of the store the party was at.
+    private function attachParty(array $people, $businessId)
+    {
+        try {
+            $shares = app(ListingCommissionController::class)->unpaidPartySharesByUser($businessId);
+        } catch (\Throwable $e) {
+            \Log::warning('payroll party pull failed: ' . $e->getMessage());
+            $shares = [];
+        }
+        foreach ($people as &$p) {
+            $p['party_comm'] = 0.0;
+            $p['party_lines'] = [];
+            $uid = (int) ($p['user_id'] ?? 0);
+            if ($uid && isset($shares[$uid])) {
+                foreach ($shares[$uid]['parties'] as $pt) {
+                    $p['party_lines'][] = [
+                        'company' => stripos((string) $pt['store'], 'pico') !== false ? 'one' : 'two',
+                        'amount'  => round((float) $pt['amount'], 2),
+                        'label'   => $pt['event'] . ' (' . $pt['store'] . ', ' . \Carbon::parse($pt['date'])->format('m/d/y') . ')',
+                    ];
+                }
+                $p['party_comm'] = round((float) $shares[$uid]['amount'], 2);
+            }
+        }
+        unset($p);
+        return $people;
+    }
+
+    // Cross-checks that caught real mistakes on the 10/1-10/14 run: punches
+    // left open, a register opened well before the clock-in (Zak 10/9), a
+    // register run with no clock-in at all, and a Sling shift nobody clocked.
+    private function attachChecks(array $people, $businessId, $start, $end)
+    {
+        $byUid = [];
+        foreach ($people as $i => $p) { if (!empty($p['user_id'])) { $byUid[(int) $p['user_id']] = $i; } }
+        foreach ($people as &$p) { $p['checks'] = $p['checks'] ?? []; }
+        unset($p);
+        if (empty($byUid)) { return $people; }
+
+        try {
+            if (\App\Services\TimeClockService::ready()) {
+                $open = DB::table('time_clock_punches')->where('business_id', $businessId)->whereNull('voided_at')
+                    ->whereNull('clock_out_at')->whereBetween('clock_in_at', [$start . ' 00:00:00', $end . ' 23:59:59'])
+                    ->get(['user_id', 'clock_in_at']);
+                foreach ($open as $o) {
+                    if (isset($byUid[(int) $o->user_id])) {
+                        $people[$byUid[(int) $o->user_id]]['checks'][] = 'No clock-out on ' . \Carbon::parse($o->clock_in_at)->format('m/d/y g:ia') . ' (not counted until fixed on Timecards)';
+                    }
+                }
+            }
+        } catch (\Throwable $e) { \Log::warning('payroll open-punch check failed: ' . $e->getMessage()); }
+
+        try {
+            $regs = DB::table('cash_registers')->where('business_id', $businessId)->whereNotNull('user_id')
+                ->whereBetween('created_at', [$start . ' 00:00:00', $end . ' 23:59:59'])
+                ->get(['user_id', 'created_at', 'closed_at']);
+            foreach ($regs as $r) {
+                $uid = (int) $r->user_id;
+                if (!isset($byUid[$uid])) { continue; }
+                $i = $byUid[$uid];
+                $day = substr((string) $r->created_at, 0, 10);
+                $firstIn = $people[$i]['first_in'][$day] ?? null;
+                $openT = \Carbon::parse($r->created_at);
+                if (!$firstIn) {
+                    if (!empty($people[$i]['has_hours'])) {
+                        $people[$i]['checks'][] = 'Ran a register ' . $openT->format('m/d/y g:ia') . ($r->closed_at ? '-' . \Carbon::parse($r->closed_at)->format('g:ia') : '') . ' but has no hours that day';
+                    }
+                } elseif ($openT->lt(\Carbon::parse($firstIn)->subMinutes(20))) {
+                    $people[$i]['checks'][] = $openT->format('m/d/y') . ': register opened ' . $openT->format('g:ia') . ', first clock-in ' . \Carbon::parse($firstIn)->format('g:ia');
+                }
+            }
+        } catch (\Throwable $e) { \Log::warning('payroll register check failed: ' . $e->getMessage()); }
+
+        $today = now()->toDateString();
+        foreach ($byUid as $uid => $i) {
+            foreach ($this->scheduleCache[$uid] ?? [] as $day => $s) {
+                if ($day > $end || $day >= $today) { continue; }
+                if (!isset($people[$i]['first_in'][$day]) && !empty($people[$i]['has_hours'])) {
+                    $people[$i]['checks'][] = \Carbon::parse($day)->format('m/d/y') . ': on the Sling schedule ' . \Carbon::parse($s['start'])->format('g:ia')
+                        . ($s['end'] ? '-' . \Carbon::parse($s['end'])->format('g:ia') : '') . ' but no hours';
+                }
+            }
+        }
+        return $people;
     }
 
     // Free-text notes per person per period (Fatteen can jot anything). Keyed by
@@ -412,6 +694,12 @@ class PayrollController extends Controller
             $config['rates'][$key]['rate']    = round((float) $rate, 4);
             $config['rates'][$key]['user_id'] = ($inUsers[$key] ?? '') !== '' ? (int) $inUsers[$key] : null;
             $config['rates'][$key]['store']   = trim((string) ($inStores[$key] ?? $config['rates'][$key]['store'] ?? ''));
+            $co = (string) (((array) $request->input('company', []))[$key] ?? 'auto');
+            $config['rates'][$key]['company'] = isset(self::COMPANIES[$co]) ? $co : 'auto';
+            $pt = (string) (((array) $request->input('pay_type', []))[$key] ?? 'regular');
+            $config['rates'][$key]['pay_type'] = $pt === 'manager' ? 'manager' : 'regular';
+            $pb = (string) (((array) $request->input('paid_by', []))[$key] ?? 'qb');
+            $config['rates'][$key]['paid_by'] = $pb === 'zelle' ? 'zelle' : 'qb';
         }
 
         // OT / grace settings.
@@ -486,12 +774,8 @@ class PayrollController extends Controller
         $businessId = $request->session()->get('user.business_id');
         [$start, $end] = $this->resolvePeriod($request);
 
-        $config   = $this->loadConfig();
-        $hoursDoc = $this->loadHours($start, $end);
-        $schedule = $this->scheduleIndex($start, $end);
-        $people   = $this->buildPeople($hoursDoc['rows'] ?? [], $config['rates'], $config['settings'], $schedule);
-        $people   = $this->attachCommissions($people, $this->commissionByUser($businessId), $this->lastCommissionPaidByUser(), $this->lastPaycheckMap($start), $businessId);
-        $people   = $this->filterHidden($people, $config['hidden'] ?? []);
+        [$people] = $this->assemble($businessId, $start, $end);
+        $qb = $this->qbBlocks($people);
 
         $filename = 'payroll-qb-' . $start . '_to_' . $end . '.csv';
         $headers = [
@@ -499,17 +783,19 @@ class PayrollController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        return response()->stream(function () use ($people) {
+        return response()->stream(function () use ($qb) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Name', 'Regular Hours', 'OT Hours', 'Sales Commission', 'Listing Commission']);
-            foreach ($people as $p) {
-                fputcsv($out, [
-                    $p['name'],
-                    number_format($p['reg_hours'], 2, '.', ''),
-                    number_format($p['ot_hours'], 2, '.', ''),
-                    number_format($p['sales_comm'], 2, '.', ''),
-                    number_format($p['listing_comm'], 2, '.', ''),
-                ]);
+            fputcsv($out, ['Company', 'Paid by', 'Name', 'Regular Hours', 'Manager Hours', 'OT Hours', 'Listening Party Commission', 'Listing Commission', 'Sales Commission', 'Back Pay', 'Bonus', 'Other Pay']);
+            $n = function ($v) { return number_format((float) $v, 2, '.', ''); };
+            foreach ($qb as $co => $block) {
+                foreach (['QuickBooks' => $block['rows'], 'Zelle' => $block['zelle']] as $by => $rows) {
+                    foreach ($rows as $r) {
+                        $mgr = $r['pay_type'] === 'manager';
+                        fputcsv($out, [$block['label'], $by, $r['name'],
+                            $mgr ? '' : $n($r['reg']), $mgr ? $n($r['reg']) : '', $n($r['ot']),
+                            $n($r['party']), $n($r['listing']), $n($r['sales']), $n($r['back_pay']), $n($r['bonus']), $n($r['other'])]);
+                    }
+                }
             }
             fclose($out);
         }, 200, $headers);
@@ -562,12 +848,59 @@ class PayrollController extends Controller
             }
         }
 
+        // Per-company split + shift log. Rows are walked in time order per day:
+        // the first 8h of a day are regular, anything after is OT, and each
+        // slice lands on the company of the store it was worked at.
+        $otAfter = (float) $settings['daily_ot_after'];
+        if ($otAfter <= 0) { $otAfter = 8; }
+        $rowsByKey = [];
+        foreach ($rows as $idx => $r) {
+            if ($this->looksLikeDate($r['name']) || is_numeric(trim((string) $r['name']))) { continue; }
+            $k = $this->nameKey($r['name']);
+            if ($k === '' || !isset($byPerson[$k])) { continue; }
+            $day = $r['in_date'] ?: ($r['in'] ? substr((string) $r['in'], 0, 10) : ('row-' . $idx));
+            $rowsByKey[$k][] = ['day' => $day, 'sort' => $day . ' ' . ($r['in'] ? substr((string) $r['in'], 11) : '00:00:00') . sprintf('%06d', $idx), 'r' => $r];
+        }
+        foreach ($byPerson as $key => &$bp) {
+            $rc = $rates[$key] ?? [];
+            $bp['co'] = [];
+            foreach (array_keys(self::COMPANIES) as $c) { $bp['co'][$c] = ['reg' => 0.0, 'ot' => 0.0]; }
+            $bp['log'] = [];
+            $bp['first_in'] = [];
+            $list = $rowsByKey[$key] ?? [];
+            usort($list, function ($a, $b) { return strcmp($a['sort'], $b['sort']); });
+            $dayAcc = [];
+            foreach ($list as $it) {
+                $r = $it['r']; $day = $it['day'];
+                $h = (float) $r['elapsed'];
+                $co = $this->companyFor($rc, $r['location'] ?? '');
+                $before = $dayAcc[$day] ?? 0.0;
+                $regPart = max(0.0, min($h, $otAfter - $before));
+                $bp['co'][$co]['reg'] += $regPart;
+                $bp['co'][$co]['ot'] += $h - $regPart;
+                $dayAcc[$day] = $before + $h;
+                if (!empty($r['in']) && (!isset($bp['first_in'][$day]) || $r['in'] < $bp['first_in'][$day])) { $bp['first_in'][$day] = $r['in']; }
+                $bp['log'][] = [
+                    'day' => $day, 'in' => $r['in'] ?? null, 'out' => $r['out'] ?? null, 'hours' => round($h, 2),
+                    'store' => (string) ($r['location'] ?? ''), 'company' => $co, 'comment' => (string) ($r['comment'] ?? ''),
+                ];
+            }
+        }
+        unset($bp);
+
         $people = [];
         foreach ($byPerson as $key => $p) {
             $reg = $ot = $dt = 0.0;
             foreach ($p['days'] as $dayHours) {
                 [$dReg, $dOt, $dDt] = $this->splitDay((float) $dayHours, $settings);
                 $reg += $dReg; $ot += $dOt; $dt += $dDt;
+            }
+            // Home company: a person override, else wherever most hours were.
+            $rcHome = $rates[$key]['company'] ?? 'auto';
+            if (isset(self::COMPANIES[$rcHome])) {
+                $home = $rcHome;
+            } else {
+                $home = (($p['co']['one']['reg'] + $p['co']['one']['ot']) > ($p['co']['two']['reg'] + $p['co']['two']['ot'])) ? 'one' : 'two';
             }
             $rate = (float) $p['rate'];
             $wages = $reg * $rate
@@ -597,6 +930,12 @@ class PayrollController extends Controller
                 'grand_total'  => round($wages, 2),
                 'flags'        => $p['flags'],
                 'has_hours'    => true,
+                'co'           => $p['co'],
+                'log'          => $p['log'],
+                'first_in'     => $p['first_in'],
+                'home_company' => $home,
+                'one_hours'    => round($p['co']['one']['reg'] + $p['co']['one']['ot'], 2),
+                'two_hours'    => round($p['co']['two']['reg'] + $p['co']['two']['ot'], 2),
             ];
         }
         return $people;
@@ -741,6 +1080,9 @@ class PayrollController extends Controller
                 'name' => $nm,
                 'first_name' => $cfn,
                 'last_name' => $cln,
+                'co' => ['one' => ['reg' => 0, 'ot' => 0], 'two' => ['reg' => 0, 'ot' => 0]],
+                'log' => [], 'first_in' => [], 'one_hours' => 0, 'two_hours' => 0,
+                'home_company' => stripos((string) ($u->location ?? ''), 'pico') !== false ? 'one' : 'two',
                 'user_id' => $uid, 'store' => '', 'rate' => 0,
                 'reg_hours' => 0, 'ot_hours' => 0, 'dt_hours' => 0, 'total_hours' => 0,
                 'wages' => 0, 'sales_comm' => $owedS, 'listing_comm' => $owedL,
@@ -931,12 +1273,7 @@ class PayrollController extends Controller
         [$start, $end] = $this->resolvePeriod($request);
         $businessId = $request->session()->get('user.business_id');
 
-        $config   = $this->loadConfig();
-        $hoursDoc = $this->loadHours($start, $end);
-        $schedule = $this->scheduleIndex($start, $end);
-        $people   = $this->buildPeople($hoursDoc['rows'] ?? [], $config['rates'], $config['settings'], $schedule);
-        $people   = $this->attachCommissions($people, $this->commissionByUser($businessId), $this->lastCommissionPaidByUser(), $this->lastPaycheckMap($start), $businessId);
-        $people   = $this->filterHidden($people, $config['hidden'] ?? []);
+        [$people] = $this->assemble($businessId, $start, $end);
 
         $snap = [];
         foreach ($people as $p) {
