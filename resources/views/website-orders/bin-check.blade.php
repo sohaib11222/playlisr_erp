@@ -1,0 +1,67 @@
+@extends('layouts.app')
+
+@section('title', 'Bin Store Check')
+
+@section('content')
+<style>
+  .bc-wrap { padding:20px; max-width:1100px; }
+  .bc-wrap h1 { font-size:22px; margin:0 0 6px; }
+  .bc-wrap p.lead { color:#374151; margin:0 0 18px; }
+  .bc-wrap h2 { font-size:17px; margin:26px 0 8px; }
+  .bc-wrap table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+  .bc-wrap th, .bc-wrap td { border-bottom:1px solid #e5e7eb; padding:7px 8px; text-align:left; color:#111827; }
+  .bc-wrap th { background:#f9fafb; font-weight:600; }
+  .bc-btn { background:#2563eb; color:#fff; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+  .alert-ok { background:#ecfdf5; color:#065f46; padding:10px 12px; border-radius:6px; margin-bottom:12px; }
+  .alert-err { background:#fef2f2; color:#991b1b; padding:10px 12px; border-radius:6px; margin-bottom:12px; }
+</style>
+<div class="bc-wrap">
+  <h1>Bin Store Check</h1>
+  <p class="lead">Which store has each record, by the bin map in <a href="{{ url('/website-admin/warehouse/locations') }}">Warehouse Locations</a>. Most Pico## bins are at Hollywood.</p>
+  @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
+  @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
+
+  <h2>Open orders pulled from the wrong store ({{ count($orderFixes) }})</h2>
+  @if($orderError)<div class="alert-err">{{ $orderError }}</div>@endif
+  @if(count($orderFixes))
+    <form method="POST" action="{{ route('website-orders.binCheckApply') }}" style="margin-bottom:10px;">
+      {{ csrf_field() }}
+      <button type="submit" class="bc-btn">Fix these {{ count($orderFixes) }} order lines</button>
+    </form>
+    <table>
+      <tr><th>Order</th><th>Buyer</th><th>Item</th><th>Bin</th><th>Now</th><th>Should be</th></tr>
+      @foreach($orderFixes as $f)
+        <tr>
+          <td><a href="{{ url('/website-orders?tab=to_ship&q=' . $f['orderId']) }}">#{{ $f['orderNumber'] ?? '' }}</a></td>
+          <td>{{ $f['buyer'] }}</td>
+          <td>@if(!empty($f['posProductId']))<a href="{{ url('/products/' . $f['posProductId'] . '/edit') }}">{{ $f['name'] }}</a>@else{{ $f['name'] }}@endif</td>
+          <td>{{ $f['bin'] }}</td>
+          <td>{{ $f['from'] ? ucfirst($f['from']) : 'Not set' }}</td>
+          <td>{{ ucfirst($f['to']) }}</td>
+        </tr>
+      @endforeach
+    </table>
+  @elseif(!$orderError)
+    <p>None. Every open order is pulled from the store its bin is in.</p>
+  @endif
+
+  <h2>In-stock records in a Hollywood bin but filed under Pico ({{ count($products) }})</h2>
+  @if($productError)<div class="alert-err">{{ $productError }}</div>@endif
+  @if(count($products))
+    <p>These show as Pico stock in the ERP, so their sales are booked at Pico. Move them to Hollywood.</p>
+    <table>
+      <tr><th>Record</th><th>Bin</th><th>ERP store</th><th>Price</th></tr>
+      @foreach($products as $p)
+        <tr>
+          <td>@if(!empty($p['posProductId']))<a href="{{ url('/products/' . $p['posProductId'] . '/edit') }}">{{ $p['name'] }}</a>@else{{ $p['name'] }}@endif</td>
+          <td>{{ $p['bin'] }}</td>
+          <td>{{ $p['erpStore'] }}</td>
+          <td>${{ number_format((float) ($p['price'] ?? 0), 2) }}</td>
+        </tr>
+      @endforeach
+    </table>
+  @elseif(!$productError)
+    <p>None.</p>
+  @endif
+</div>
+@endsection

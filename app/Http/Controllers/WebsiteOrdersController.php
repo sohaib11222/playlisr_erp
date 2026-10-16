@@ -514,6 +514,35 @@ class WebsiteOrdersController extends Controller
         return redirect()->back()->with('status', $archived ? 'Order archived.' : 'Order restored.');
     }
 
+    /** Bin map vs. store: open order lines to fix + misfiled records (Sarah, 2026-10-16). */
+    public function binCheck(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $o = $this->websiteApi('GET', '/erp/bin-store/orders', null, 60);
+        $p = $this->websiteApi('GET', '/erp/bin-store/products', null, 90);
+        return view('website-orders.bin-check', [
+            'orderFixes' => ($o['success'] ?? false) ? ($o['data'] ?? []) : [],
+            'orderError' => ($o['success'] ?? false) ? null : (($o['message'] ?? null) ?: 'Could not reach the website.'),
+            'products' => ($p['success'] ?? false) ? ($p['data'] ?? []) : [],
+            'productError' => ($p['success'] ?? false) ? null : (($p['message'] ?? null) ?: 'Could not reach the website.'),
+        ]);
+    }
+
+    public function binCheckApply(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('POST', '/erp/bin-store/orders/apply', [], 120);
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return redirect()->route('website-orders.binCheck')->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website to fix the orders.');
+        }
+        $n = (int) ($resp['changed'] ?? 0);
+        return redirect()->route('website-orders.binCheck')->with('status', "Fixed {$n} order line" . ($n === 1 ? '' : 's') . '. The old store is saved on each line.');
+    }
+
     /** Move one shipping line to the store that really has it (Sarah, 2026-10-14). */
     public function itemStore(Request $request, string $id)
     {
