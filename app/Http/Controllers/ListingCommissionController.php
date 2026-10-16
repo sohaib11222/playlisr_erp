@@ -2222,6 +2222,33 @@ class ListingCommissionController extends Controller
             ->with('status', ['success' => 1, 'msg' => 'Payout undone — those sales are owed again.']);
     }
 
+    // Listing owed exactly as the Commissions page's "Listing owed" / Pay now
+    // computes it: everything earned on qualifying sold lines since the program
+    // start minus every listing dollar paid (manual payments included), floored
+    // at 0. summaryByUser's line-based "owed" ignores manual payments that carry
+    // no line ids, so it overstated owed for anyone paid that way (Payroll page
+    // showed Zak $374 vs $64 here, 2026-10-15). uid => ['owed','earned','paid'].
+    public function listingNetByUser($businessId)
+    {
+        $paidByUser = [];
+        foreach ($this->loadPayouts() as $pp) {
+            $uid = (int) ($pp['user_id'] ?? 0);
+            if ($uid > 0) { $paidByUser[$uid] = ($paidByUser[$uid] ?? 0) + (float) ($pp['amount'] ?? 0); }
+        }
+        $earned = [];
+        foreach ($this->ownedSoldLines($businessId, self::DEFAULT_FROM, []) as $row) {
+            $uid = (int) $row->user_id;
+            $earned[$uid] = ($earned[$uid] ?? 0) + (float) $row->sale_amount * self::RATE;
+        }
+        $out = [];
+        foreach (array_unique(array_merge(array_keys($earned), array_keys($paidByUser))) as $uid) {
+            $e = round($earned[$uid] ?? 0, 2);
+            $p = round($paidByUser[$uid] ?? 0, 2);
+            $out[$uid] = ['owed' => max(0, round($e - $p, 2)), 'earned' => $e, 'paid' => $p];
+        }
+        return $out;
+    }
+
     // Per-user listing-commission summary since $from, keyed by user_id:
     // owed (unpaid, current formula), paid (actual dollars from the payout
     // ledger), and earned = owed + paid. Reuses the exact same owed/paid

@@ -1142,9 +1142,10 @@ class PayrollController extends Controller
     {
         $out = [];
         try {
-            foreach (app(ListingCommissionController::class)->summaryByUser($businessId) as $uid => $s) {
+            // Same listing owed as the Commissions page (earned minus paid).
+            foreach (app(ListingCommissionController::class)->listingNetByUser($businessId) as $uid => $s) {
                 $uid = (int) $uid;
-                $out[$uid] = (object) ['listing_owed' => (float) $s->owed, 'listing_earned' => (float) $s->earned, 'sales_owed' => 0.0, 'sales_earned' => 0.0];
+                $out[$uid] = (object) ['listing_owed' => (float) $s['owed'], 'listing_earned' => (float) $s['earned'], 'sales_owed' => 0.0, 'sales_earned' => 0.0];
             }
         } catch (\Throwable $e) {
             \Log::warning('payroll listing pull failed: ' . $e->getMessage());
