@@ -401,7 +401,7 @@
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
                 <td>
-                  @foreach($cancelLines->take(3) as $line)
+                  @foreach($cancelLines as $line)
                     @php
                       $lineItem = $o['items'][$loop->index] ?? [];
                       $lineArtist = $line['gift'] ? null : (($lineItem['product_id']['artist'] ?? null) ?: ($lineItem['product_artist'] ?? null));
@@ -421,9 +421,6 @@
                       </div>
                     </div>
                   @endforeach
-                  @if($cancelLines->count() > 3)
-                    <div class="wo-prod-more">+{{ $cancelLines->count() - 3 }} more</div>
-                  @endif
                 </td>
                 <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
                 <td>
@@ -468,8 +465,8 @@
                   @endif
                 </td>
                 <td class="wo-loc">
-                  {{-- One line per product shown in the Product column (same first 3). --}}
-                  @foreach($cancelLines->take(3) as $line)
+                  {{-- One line per product shown in the Product column (every item, so pickers see each Kallax). --}}
+                  @foreach($cancelLines as $line)
                     @php
                       $locPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
                       $locInfo = $locPid ? ($erpLocations[$locPid] ?? null) : null;
@@ -520,7 +517,7 @@
                 </td>
                 <td class="wo-genre">
                   {{-- Store bins are laid out by genre: one line per product, lined up with Location. --}}
-                  @foreach($cancelLines->take(3) as $line)
+                  @foreach($cancelLines as $line)
                     @php
                       $gPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
                       $gInfo = $gPid ? ($erpLocations[$gPid] ?? null) : null;
