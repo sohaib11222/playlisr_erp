@@ -134,6 +134,11 @@
   .wo-btn-primary:hover { background:#1f2937; }
   .wo-btn-danger { color:#b91c1c; border-color:#fecaca; }
   .wo-btn-danger:hover { background:#fef2f2; }
+  /* Cancel box buttons: solid and obvious (Sarah, 2026-10-16) */
+  #wo-cancel-form .wo-dialog-actions .wo-btn { font-size:15px; font-weight:700; padding:11px 14px; }
+  #wo-cancel-form .wo-dialog-actions .wo-btn:not(.wo-btn-danger) { background:#111827; border-color:#111827; color:#fff; }
+  #wo-cancel-form .wo-dialog-actions .wo-btn-danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+  #wo-cancel-form .wo-dialog-actions .wo-btn-danger:disabled { background:#fecaca; border-color:#fecaca; color:#7f1d1d; cursor:not-allowed; }
 
   .wo-dialog { border:none; border-radius:12px; padding:0; max-width:420px; width:calc(100vw - 32px); box-shadow:0 10px 40px rgba(0,0,0,.2); }
   .wo-dialog::backdrop { background:rgba(17,24,39,.45); }
@@ -398,6 +403,9 @@
                   'price' => (float) ($it['price'] ?? 0),
                   'cancelled' => !empty($it['cancelled']),
                   'gift' => ($it['is_gift_card'] ?? false) === true || (empty($it['product_id']) && !empty($it['gift_card_amount'])),
+                  // Where it is (shown in the cancel box) and which store's package it ships in
+                  'spot' => empty($it['product_id']) ? '' : \App\Http\Controllers\WebsiteOrdersController::pullSpot($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null),
+                  'store' => (string) ($it['ship_from'] ?? ''),
                 ])->values();
               @endphp
               @php
@@ -549,7 +557,7 @@
                           <button type="submit" class="wo-more-item">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                         </form>
                         @if(!$isArchived)
-                          <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-who="{{ $customerName }}" data-num="{{ $o['orderNumber'] ?? '' }}" data-total="{{ number_format((float) ($o['total_amount'] ?? 0), 2, '.', '') }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
+                          <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-who="{{ $customerName }}" data-num="{{ $o['orderNumber'] ?? '' }}" data-total="{{ number_format((float) ($o['total_amount'] ?? 0), 2, '.', '') }}" data-split="{{ (!empty($o['ships_from_both_stores']) && ($o['ship_mode'] ?? 'separate') !== 'combine' && ($o['fulfillment_method'] ?? '') === 'shipping') ? '1' : '0' }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                         @endif
                       </div>
                     </div>
@@ -1017,7 +1025,7 @@
         if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Cancel & refund'; }
         lines.forEach(function (l) {
           var row = document.createElement('label');
-          row.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;font-weight:400;margin:0;';
+          row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;text-transform:none;font-weight:400;margin:0;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;';
           var cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.name = 'item_ids[]';
@@ -1027,6 +1035,13 @@
           var text = document.createElement('span');
           text.textContent = l.name + (l.qty > 1 ? ' x' + l.qty : '') + ' ($' + (l.price * l.qty).toFixed(2) + ')' +
             (l.cancelled ? ' - already cancelled' : l.gift ? ' - gift card, can\'t cancel here' : '');
+          if (l.spot) {
+            var where = document.createElement('span');
+            where.style.cssText = 'display:block;font-size:12px;color:#000;font-weight:600;';
+            where.textContent = l.spot;
+            text.appendChild(where);
+          }
+          cb.dataset.store = l.store || '';
           cb.addEventListener('change', woCancelReady);
           row.appendChild(cb);
           row.appendChild(text);
@@ -1034,6 +1049,7 @@
         });
         var src = btn || document.querySelector('button.wo-more-item.danger[data-order="' + orderId + '"]');
         form.dataset.total = (src && src.dataset.total) || '';
+        form.dataset.split = (src && src.dataset.split) || '0';
         document.getElementById('wo-cancel-who').textContent = 'Customer: ' + ((src && src.dataset.who) || '?') +
           ((src && src.dataset.num) ? '  ·  Order #' + src.dataset.num : '') + '  ·  Paid $' + (form.dataset.total || '?');
         document.getElementById('wo-cancel-typed').value = '';
@@ -1199,7 +1215,19 @@
     var el = document.getElementById('wo-cancel-sum');
     if (!picked.length) el.textContent = 'Nothing ticked yet.';
     else if (picked.length >= active) el.textContent = 'Whole order: the customer gets back everything they paid ($' + (form.dataset.total || '?') + ', including tax and shipping).';
-    else el.textContent = 'Part of the order: ' + picked.length + ' item(s), $' + sum.toFixed(2) + ' plus their tax goes back. Shipping is not refunded and the rest still ships.';
+    else {
+      // Separate packages: a store whose items are all ticked doesn't ship, so its shipping goes back too
+      var storeOut = [];
+      if (form.dataset.split === '1') {
+        ['hollywood', 'pico'].forEach(function (st) {
+          var all = form.querySelectorAll('input[name="item_ids[]"]:not(:disabled)[data-store="' + st + '"]');
+          var on = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)[data-store="' + st + '"]');
+          if (all.length && on.length === all.length) storeOut.push(st === 'pico' ? 'Pico' : 'Hollywood');
+        });
+      }
+      el.textContent = 'Part of the order: ' + picked.length + ' item(s), $' + sum.toFixed(2) + ' plus their tax goes back. ' +
+        (storeOut.length ? 'The ' + storeOut.join(' and ') + ' package no longer ships, so its shipping (if they paid any) is refunded too. The rest still ships.' : 'Shipping stays, since the rest still ships.');
+    }
     var typed = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
     var btn = form.querySelector('button[type="submit"]');
     if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length);
