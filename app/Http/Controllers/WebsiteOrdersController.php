@@ -775,12 +775,14 @@ class WebsiteOrdersController extends Controller
         $counts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
         foreach ($all as $r) if (isset($counts[$r['store']])) $counts[$r['store']]++;
         $rows = array_values(array_filter($all, fn($r) => $r['store'] === $store));
-        // Store routes walk by genre (bins are laid out by genre), then format, then
-        // artist A-Z; the warehouse walks by area then bin (Sarah, 2026-10-16).
+        // Store routes walk by genre (bins are laid out by genre), the warehouse
+        // by area then bin; inside each, newest orders first (Sarah, 2026-10-16).
         usort($rows, function ($a, $b) use ($store) {
+            // Within a genre/bin, newest orders first (Sarah, 2026-10-16)
+            $newest = fn($r) => sprintf('%012d', 9999999999 - (strtotime($r['order']['createdAt'] ?? '') ?: 0));
             $key = fn($r) => $store === 'warehouse'
-                ? [strtolower($r['parts']['area']), $r['parts']['bin'], '', strtolower((string) ($r['item']['product_id']['artist'] ?? ''))]
-                : [strtolower(self::routeGenre($r)), strtolower($r['parts']['area']), $r['parts']['bin'], strtolower((string) ($r['item']['product_id']['artist'] ?? ''))];
+                ? [strtolower($r['parts']['area']), $r['parts']['bin'], $newest($r), strtolower((string) ($r['item']['product_id']['artist'] ?? ''))]
+                : [strtolower(self::routeGenre($r)), $r['parts']['bin'], $newest($r), strtolower((string) ($r['item']['product_id']['artist'] ?? ''))];
             $ka = $key($a);
             $kb = $key($b);
             for ($i = 0; $i < 4; $i++) {
