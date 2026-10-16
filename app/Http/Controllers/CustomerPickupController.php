@@ -125,6 +125,10 @@ class CustomerPickupController extends Controller
                     $t = $row->expected_pickup_time ? ' ' . $row->expected_pickup_time : '';
                     return trim($d . $t) ?: '-';
                 })
+                ->editColumn('notes', function ($row) {
+                    $n = trim((string) $row->notes);
+                    return $n === '' ? '-' : nl2br(e($n));
+                })
                 ->addColumn('is_paid_label', function ($row) {
                     return $row->is_paid
                         ? '<span class="label label-success">Paid</span>'
@@ -154,7 +158,7 @@ class CustomerPickupController extends Controller
                     }
                     return $parts ? implode('<br>', $parts) : '-';
                 })
-                ->rawColumns(['action', 'status', 'is_paid_label', 'picked_up_info', 'created_info'])
+                ->rawColumns(['action', 'status', 'notes', 'is_paid_label', 'picked_up_info', 'created_info'])
                 ->make(true);
         }
 
