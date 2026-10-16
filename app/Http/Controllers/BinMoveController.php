@@ -1,0 +1,219 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Transaction;
+use App\Utils\ProductUtil;
+use App\Utils\TransactionUtil;
+use DB;
+use Illuminate\Http\Request;
+
+/**
+ * Move records that sit in Hollywood bins but are stocked at Pico in the ERP
+ * over to Hollywood (Sarah, 2026-10-16: Pico has no bins like that). One real
+ * stock transfer, so Stock History keeps it. A snapshot of the stock before
+ * is saved, and Undo transfers the same qty back.
+ */
+class BinMoveController extends Controller
+{
+    protected $productUtil;
+    protected $transactionUtil;
+
+    public function __construct(ProductUtil $productUtil, TransactionUtil $transactionUtil)
+    {
+        $this->productUtil = $productUtil;
+        $this->transactionUtil = $transactionUtil;
+    }
+
+    protected function guard()
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+    }
+
+    public static function canUndo(): bool
+    {
+        foreach (glob(self::snapDir() . '/bin-move-*.json') ?: [] as $f) {
+            $s = json_decode((string) @file_get_contents($f), true);
+            if (!empty($s['transfer_id']) && empty($s['undone_by'])) return true;
+        }
+        return false;
+    }
+
+    protected static function snapDir(): string
+    {
+        $d = storage_path('admin-snapshots');
+        if (!is_dir($d)) @mkdir($d, 0775, true);
+        return $d;
+    }
+
+    protected function locationIds(int $businessId): array
+    {
+        $locs = DB::table('business_locations')->where('business_id', $businessId)->pluck('name', 'id');
+        $pico = $hw = null;
+        foreach ($locs as $id => $name) {
+            if (stripos($name, 'warehouse') !== false) continue;
+            if ($pico === null && stripos($name, 'pico') !== false) $pico = (int) $id;
+            if ($hw === null && stripos($name, 'hollywood') !== false) $hw = (int) $id;
+        }
+        return [$pico, $hw];
+    }
+
+    /** Pico stock lines for these ERP product ids. */
+    protected function picoLines(array $ids, int $pico): array
+    {
+        if (!$ids) return [];
+        return DB::table('variation_location_details as vld')
+            ->join('variations as v', 'v.id', '=', 'vld.variation_id')
+            ->join('products as p', 'p.id', '=', 'vld.product_id')
+            ->whereIn('vld.product_id', $ids)
+            ->where('vld.location_id', $pico)
+            ->where('vld.qty_available', '>', 0)
+            ->where('p.enable_stock', 1)
+            ->select('vld.product_id', 'vld.variation_id', 'vld.qty_available', 'v.default_purchase_price', 'p.name')
+            ->get()->map(function ($r) { return (array) $r; })->all();
+    }
+
+    /** Transfer lines from one location to another as one completed stock transfer. */
+    protected function transfer(int $businessId, int $from, int $to, array $lines, string $note): Transaction
+    {
+        $userId = auth()->user()->id;
+        $refCount = $this->productUtil->setAndGetReferenceCount('stock_transfer', $businessId);
+        $base = [
+            'business_id' => $businessId,
+            'location_id' => $from,
+            'type' => 'sell_transfer',
+            'status' => 'final',
+            'payment_status' => 'paid',
+            'ref_no' => $this->productUtil->generateReferenceNumber('stock_transfer', $refCount, $businessId),
+            'transaction_date' => \Carbon::now()->toDateTimeString(),
+            'additional_notes' => $note,
+            'shipping_charges' => 0,
+            'created_by' => $userId,
+        ];
+        $total = 0;
+        $sell = [];
+        $purchase = [];
+        foreach ($lines as $l) {
+            $qty = (float) $l['qty'];
+            $price = (float) ($l['price'] ?? 0);
+            $total += $qty * $price;
+            $sell[] = ['product_id' => $l['product_id'], 'variation_id' => $l['variation_id'], 'quantity' => $qty,
+                'item_tax' => 0, 'tax_id' => null, 'unit_price' => $price, 'unit_price_inc_tax' => $price];
+            $purchase[] = ['product_id' => $l['product_id'], 'variation_id' => $l['variation_id'], 'quantity' => $qty,
+                'item_tax' => 0, 'tax_id' => null, 'purchase_price' => $price, 'purchase_price_inc_tax' => $price];
+        }
+        $base['final_total'] = $total;
+        $base['total_before_tax'] = $total;
+
+        $sellT = Transaction::create($base);
+        $p = $base;
+        $p['type'] = 'purchase_transfer';
+        $p['location_id'] = $to;
+        $p['transfer_parent_id'] = $sellT->id;
+        $p['status'] = 'received';
+        $purchaseT = Transaction::create($p);
+
+        $this->transactionUtil->createOrUpdateSellLines($sellT, $sell, $from, false, null, [], false);
+        $purchaseT->purchase_lines()->createMany($purchase);
+
+        foreach ($lines as $l) {
+            $this->productUtil->decreaseProductQuantity($l['product_id'], $l['variation_id'], $from, (float) $l['qty']);
+            $this->productUtil->updateProductQuantity($to, $l['product_id'], $l['variation_id'], (float) $l['qty'], 0, null, false);
+            DB::table('product_locations')->updateOrInsert(['product_id' => $l['product_id'], 'location_id' => $to], []);
+        }
+        $this->productUtil->adjustStockOverSelling($purchaseT);
+        // Cost mapping only; old records often have no purchase lines, which must not block the move.
+        try {
+            $this->transactionUtil->mapPurchaseSell(
+                ['id' => $businessId, 'accounting_method' => session('business.accounting_method'), 'location_id' => $from],
+                $sellT->fresh()->sell_lines,
+                'purchase'
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('BinMove mapPurchaseSell skipped: ' . $e->getMessage());
+        }
+        $this->transactionUtil->activityLog($sellT, 'added');
+        return $sellT;
+    }
+
+    public function move(Request $request)
+    {
+        $this->guard();
+        $businessId = (int) $request->session()->get('user.business_id');
+        [$pico, $hw] = $this->locationIds($businessId);
+        if (!$pico || !$hw) {
+            return redirect()->route('website-orders.binCheck')->with('error', 'Could not find the Pico and Hollywood locations.');
+        }
+
+        // The same list the page showed, fetched fresh from the website.
+        $resp = app(WebsiteOrdersController::class)->bridgeGet('/erp/bin-store/products', 90);
+        if (!($resp['success'] ?? false)) {
+            return redirect()->route('website-orders.binCheck')->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website.');
+        }
+        $ids = array_values(array_unique(array_filter(array_map(function ($r) { return (int) ($r['posProductId'] ?? 0); }, $resp['data'] ?? []))));
+        $rows = $this->picoLines($ids, $pico);
+        if (!$rows) {
+            return redirect()->route('website-orders.binCheck')->with('status', 'Nothing to move: none of these have Pico stock in the ERP.');
+        }
+        $lines = array_map(function ($r) {
+            return ['product_id' => (int) $r['product_id'], 'variation_id' => (int) $r['variation_id'], 'qty' => (float) $r['qty_available'],
+                'price' => (float) ($r['default_purchase_price'] ?? 0), 'name' => $r['name']];
+        }, $rows);
+
+        $stamp = date('Ymd-His');
+        $snapFile = self::snapDir() . "/bin-move-{$stamp}.json";
+        $before = DB::table('variation_location_details')->whereIn('variation_id', array_column($lines, 'variation_id'))
+            ->whereIn('location_id', [$pico, $hw])->get(['product_id', 'variation_id', 'location_id', 'qty_available']);
+        file_put_contents($snapFile, json_encode(['at' => $stamp, 'by' => auth()->user()->id, 'from' => $pico, 'to' => $hw,
+            'lines' => $lines, 'vld_before' => $before], JSON_PRETTY_PRINT));
+
+        try {
+            DB::beginTransaction();
+            $t = $this->transfer($businessId, $pico, $hw, $lines, 'Bin Store Check: records in Hollywood bins that were stocked at Pico');
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Log::error('BinMove failed: ' . $e->getMessage() . ' ' . $e->getFile() . ':' . $e->getLine());
+            return redirect()->route('website-orders.binCheck')->with('error', 'Move failed, nothing changed: ' . $e->getMessage());
+        }
+
+        $snap = json_decode(file_get_contents($snapFile), true);
+        $snap['transfer_id'] = $t->id;
+        $snap['ref_no'] = $t->ref_no;
+        file_put_contents($snapFile, json_encode($snap, JSON_PRETTY_PRINT));
+
+        $n = count($lines);
+        return redirect()->route('website-orders.binCheck')->with('status', "Moved {$n} record" . ($n === 1 ? '' : 's') . " to Hollywood (stock transfer {$t->ref_no}).");
+    }
+
+    /** Undo the last move: transfer the same qty back to Pico. */
+    public function undo(Request $request)
+    {
+        $this->guard();
+        $files = glob(self::snapDir() . '/bin-move-*.json') ?: [];
+        rsort($files);
+        $file = null;
+        foreach ($files as $f) {
+            $s = json_decode(file_get_contents($f), true);
+            if (!empty($s['transfer_id']) && empty($s['undone_by'])) { $file = $f; break; }
+        }
+        if (!$file) {
+            return redirect()->route('website-orders.binCheck')->with('error', 'No move to undo.');
+        }
+        $s = json_decode(file_get_contents($file), true);
+        $businessId = (int) $request->session()->get('user.business_id');
+        try {
+            DB::beginTransaction();
+            $t = $this->transfer($businessId, (int) $s['to'], (int) $s['from'], $s['lines'], 'Undo of Bin Store Check move ' . ($s['ref_no'] ?? ''));
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect()->route('website-orders.binCheck')->with('error', 'Undo failed, nothing changed: ' . $e->getMessage());
+        }
+        $s['undone_by'] = $t->ref_no;
+        file_put_contents($file, json_encode($s, JSON_PRETTY_PRINT));
+        return redirect()->route('website-orders.binCheck')->with('status', 'Undone: moved them back to Pico (' . $t->ref_no . ').');
+    }
+}

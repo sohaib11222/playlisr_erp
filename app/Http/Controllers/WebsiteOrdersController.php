@@ -553,6 +553,7 @@ class WebsiteOrdersController extends Controller
             'orderError' => ($o['success'] ?? false) ? null : (($o['message'] ?? null) ?: 'Could not reach the website.'),
             'products' => ($p['success'] ?? false) ? ($p['data'] ?? []) : [],
             'productError' => ($p['success'] ?? false) ? null : (($p['message'] ?? null) ?: 'Could not reach the website.'),
+            'canUndo' => \App\Http\Controllers\BinMoveController::canUndo(),
         ]);
     }
 

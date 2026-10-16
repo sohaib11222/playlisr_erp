@@ -20,6 +20,12 @@
   <p class="lead">Which store has each record, by the bin map in <a href="{{ url('/website-admin/warehouse/locations') }}">Warehouse Locations</a>. Most Pico## bins are at Hollywood.</p>
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
+  @if($canUndo)
+    <form method="POST" action="{{ route('website-orders.binMoveUndo') }}" style="margin-bottom:12px;" onsubmit="this.querySelector('button').disabled=true;">
+      {{ csrf_field() }}
+      <button type="submit" class="bc-btn" style="background:#fff;color:#2563eb;border:1px solid #2563eb;">Undo last move to Hollywood</button>
+    </form>
+  @endif
 
   <h2>Open orders pulled from the wrong store ({{ count($orderFixes) }})</h2>
   @if($orderError)<div class="alert-err">{{ $orderError }}</div>@endif
@@ -48,7 +54,12 @@
   <h2>In-stock records in a Hollywood bin but filed under Pico ({{ count($products) }})</h2>
   @if($productError)<div class="alert-err">{{ $productError }}</div>@endif
   @if(count($products))
-    <p>These show as Pico stock in the ERP, so their sales are booked at Pico. Move them to Hollywood.</p>
+    <p>These show as Pico stock in the ERP, so their sales are booked at Pico. Pico has no bins like these, so they belong at Hollywood.</p>
+    <form method="POST" action="{{ route('website-orders.binMove') }}" style="margin-bottom:10px;" onsubmit="this.querySelector('button').disabled=true;">
+      {{ csrf_field() }}
+      <button type="submit" class="bc-btn">Move these {{ count($products) }} to Hollywood</button>
+      <span style="margin-left:8px;color:#374151;">One stock transfer from Pico to Hollywood. A backup is saved and it can be undone.</span>
+    </form>
     <table>
       <tr><th>Record</th><th>Bin</th><th>ERP store</th><th>Price</th></tr>
       @foreach($products as $p)
