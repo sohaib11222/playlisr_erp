@@ -271,11 +271,15 @@ class PhoneClockController extends Controller
                 \Log::warning('time clock schedule check failed: ' . $e->getMessage());
                 $sched = ['ok' => true, 'no_data' => true, 'late_min' => null, 'sched_start' => null];
             }
-            if (!$sched['ok']) {
+            if (!$sched['ok'] && !empty($sched['early'])) {
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => false, 'name' => $first,
-                    'msg' => !empty($sched['early'])
-                        ? 'You can clock in ' . TC::scheduleWindow() . ' minutes before your shift.'
-                        : 'You are not on the schedule here right now.'];
+                    'msg' => 'You can clock in ' . TC::scheduleWindow() . ' minutes before your shift.'];
+            }
+            // Not on Sling at all (Sarah 10/16: someone came in to help on a
+            // day off): let them clock in, flag it for Fatteen for payroll.
+            if (!$sched['ok']) {
+                $sched['ok'] = true;
+                $sched['unscheduled'] = true;
             }
         }
 

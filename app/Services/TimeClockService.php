@@ -1339,6 +1339,27 @@ class TimeClockService
         });
     }
 
+    /** Fatteen does payroll; unscheduled clock-ins are DMed to him. */
+    const PAYROLL_SLACK_ID = 'U07QEGGQ7B2';
+
+    /**
+     * Clock-in with no Sling shift (Sarah 10/16): allowed, but DM Fatteen so
+     * payroll checks it. Sent after the response; failures only log.
+     */
+    public static function flagUnscheduled($user, string $store): void
+    {
+        $name = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: self::displayName($user);
+        $text = $name . ' clocked in at ' . self::now()->format('g:i A') . ' on ' . self::now()->format('m/d/y')
+            . ($store !== '' ? ' at ' . $store : '') . ' but is not on Sling for this time. Please check it for payroll: '
+            . url('/reports/timecards');
+        app()->terminating(function () use ($text) {
+            $r = self::slackDm(self::PAYROLL_SLACK_ID, $text);
+            if (!$r['ok']) {
+                \Log::warning('time clock: unscheduled clock-in DM failed: ' . $r['error']);
+            }
+        });
+    }
+
     /** DM $text to Slack user $slackId via nivessa.com. ['ok' => bool, 'error' => code]. Never logs $text. */
     public static function slackDm(string $slackId, string $text): array
     {
@@ -1715,6 +1736,9 @@ class TimeClockService
             self::touchAutoIp($where['location_id'], $ip);
         }
         self::announceClockIn($user, $store);
+        if ($sched && !empty($sched['unscheduled'])) {
+            self::flagUnscheduled($user, $store);
+        }
         ShippingShiftNotifier::onClock($user, 'in');
         // Store verification stays silent for staff; admins see it on Timecards.
         $msg = 'Clocked in at ' . self::now()->format('g:i A') . ($store !== '' ? ' at ' . $store : '') . '.';

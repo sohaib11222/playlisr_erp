@@ -125,9 +125,13 @@ class TimeClockController extends Controller
      */
     private $stayed = [];
 
+    /** Punch ids clocked in with no Sling shift: [punch id => true]. */
+    private $unscheduled = [];
+
     private function loadStayed($rows): void
     {
         $this->stayed = [];
+        $this->unscheduled = [];
         if (!count($rows)) {
             return;
         }
@@ -136,7 +140,7 @@ class TimeClockController extends Controller
             $to = \Carbon::parse($rows->max('clock_in_at'))->addDay()->format('Y-m-d H:i:s');
             $cache = [];
             foreach ($rows as $p) {
-                if (!$p->clock_out_at || $p->voided_at) {
+                if ($p->voided_at) {
                     continue;
                 }
                 $store = $p->location_name ? TC::shortStoreName((string) $p->location_name) : '';
@@ -144,7 +148,14 @@ class TimeClockController extends Controller
                 if (!isset($cache[$k])) {
                     $cache[$k] = TC::scheduleBlocks((int) $p->user_id, $from, $to, $store);
                 }
-                $bf = TC::blockFlags($cache[$k], (string) $p->clock_in_at, (string) $p->clock_out_at);
+                $bf = TC::blockFlags($cache[$k], (string) $p->clock_in_at, $p->clock_out_at ? (string) $p->clock_out_at : null);
+                if (!$bf['block'] && in_array($p->clock_in_source, ['phone', 'computer'], true)
+                    && !isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
+                    $this->unscheduled[(int) $p->id] = true;
+                }
+                if (!$p->clock_out_at) {
+                    continue;
+                }
                 if ($bf['stayed_min']) {
                     $this->stayed[(int) $p->id] = $bf['stayed_min'];
                 }
@@ -184,6 +195,7 @@ class TimeClockController extends Controller
         if (in_array($p->clock_in_source, ['phone', 'computer'], true) && isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
             $flags[] = 'No schedule data';
         }
+        if (isset($this->unscheduled[(int) $p->id])) { $flags[] = 'Not on Sling, check for payroll'; }
         if ($p->out_verify === 'none') { $flags[] = 'Clock-out not verified at store'; }
         $p->stayed_min = $this->stayed[(int) $p->id] ?? null;
         if ($p->stayed_min) { $flags[] = 'Stayed ' . $p->stayed_min . ' min past shift'; }
