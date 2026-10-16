@@ -229,7 +229,8 @@ class WebsiteOrdersController extends Controller
             if ($search !== '') {
                 $needle = strtolower($search);
                 $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
-                // Product name and artist too (Sarah, 2026-10-16)
+                // Shipping name (the Buyer column often shows it), product name and artist (Sarah, 2026-10-16)
+                $hay .= ' ' . strtolower((string) ($o['shippingAddress'][0]['name'] ?? ''));
                 foreach (($o['items'] ?? []) as $it) {
                     $hay .= ' ' . strtolower(($it['product_id']['name'] ?? ($it['product_name'] ?? '')) . ' ' . ($it['product_id']['artist'] ?? ($it['product_artist'] ?? '')));
                 }
