@@ -191,9 +191,9 @@
   @else
     @php
       $tabDefs = [
+        'ready_ship'      => ['label' => 'Ready to Ship'],
         'needs_action'    => ['label' => 'Needs Action', 'hot' => true],
         'to_ship'         => ['label' => 'To Ship'],
-        'ready_ship'      => ['label' => 'Ready to Ship'],
         'pickup'          => ['label' => 'Pickup'],
         'ready_pickup'    => ['label' => 'Ready for Pickup'],
         'preorder_ship'   => ['label' => 'Preorder · To Ship'],
