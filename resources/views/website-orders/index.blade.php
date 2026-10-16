@@ -75,12 +75,11 @@
   .wo-prod-more { font-size:12px; color:#000; margin-top:4px; }
 
   .wo-total { font-weight:600; color:#000; }
-  .wo-pull { margin:4px 0 2px; padding:4px 8px; border-left:3px solid #f59e0b; background:#fffbeb; border-radius:4px; font-size:13px; color:#000; line-height:1.45; max-width:340px; }
-  .wo-pull .lbl { font-weight:700; text-transform:uppercase; font-size:11px; letter-spacing:.03em; margin-right:2px; }
-  .wo-pull .bin { font-weight:700; background:#fde68a; padding:0 5px; border-radius:3px; }
-  .wo-pull .none { color:#b91c1c; font-weight:600; }
+  .wo-loc .place { display:block; font-weight:700; font-size:14px; color:#000; }
+  .wo-loc .area { display:block; font-size:13px; color:#000; }
+  .wo-loc .binv { display:block; width:fit-content; max-width:220px; margin-top:2px; padding:2px 7px; border-radius:5px; background:#fde68a; color:#000; font-size:13.5px; font-weight:700; }
   .wo-loc { font-size:12.5px; line-height:1.35; min-width:110px; }
-  .wo-loc-line { min-height:64px; margin-bottom:4px; }
+  .wo-loc-line { margin-bottom:4px; box-sizing:border-box; }
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
   .wo-loc .q { font-weight:400; color:#000; }
   .wo-genre .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
@@ -342,6 +341,7 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
+            <th>Location</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -418,21 +418,6 @@
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
-                        {{-- Where to pull THIS item, right under it so nobody has to
-                             line up columns (Sarah, 2026-10-16). See pullParts(). --}}
-                        @if(!$line['gift'])
-                          @php $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts($lineItem, $lineErp ? ($erpLocations[(int) $lineErp] ?? null) : null); @endphp
-                          <div class="wo-pull">
-                            <span class="lbl">Pull from:</span>
-                            @if($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
-                              <span class="none">Not set</span>
-                            @else
-                              @if($pull['place'] !== '')<strong>{{ $pull['place'] }}</strong>@endif
-                              @if($pull['area'] !== '')<span>&middot; {{ $pull['area'] }}</span>@endif
-                              @if($pull['bin'] !== '')<span>&middot;</span> <span class="bin">Bin {{ $pull['bin'] }}</span>@endif
-                            @endif
-                          </div>
-                        @endif
                       </div>
                     </div>
                   @endforeach
@@ -479,6 +464,28 @@
                     @endif
                   @endif
                 </td>
+                <td class="wo-loc">
+                  {{-- One block per product, kept level with its product by
+                       woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
+                  @foreach($cancelLines as $line)
+                    @php
+                      $wItem = $o['items'][$loop->index] ?? [];
+                      $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
+                      $pull = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($wItem, $locPid ? ($erpLocations[$locPid] ?? null) : null);
+                    @endphp
+                    <div class="wo-loc-line">
+                      @if($line['gift'])
+                        <span class="na">Digital</span>
+                      @elseif($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
+                        <span class="none">Not set</span>
+                      @else
+                        @if($pull['place'] !== '')<span class="place">{{ $pull['place'] }}</span>@endif
+                        @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
+                        @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
+                      @endif
+                    </div>
+                  @endforeach
+                </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
                 <td class="wo-placed">
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
@@ -521,7 +528,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
@@ -1041,4 +1048,27 @@
     })();
   </script>
 </div>
+
+<script>
+  // Keep each Location block level with its product in the Product column
+  // (items have different heights, so the columns drifted apart).
+  function woAlignLoc() {
+    document.querySelectorAll('tr.wo-row').forEach(function (tr) {
+      var prods = tr.querySelectorAll('.wo-prod-line');
+      var locs = tr.querySelectorAll('td.wo-loc .wo-loc-line');
+      locs.forEach(function (l) { l.style.minHeight = ''; l.style.marginTop = ''; });
+      if (!prods.length || prods.length !== locs.length) return;
+      var base = locs[0].parentNode.getBoundingClientRect().top;
+      locs.forEach(function (l, i) {
+        var pr = prods[i].getBoundingClientRect();
+        var lr = l.getBoundingClientRect();
+        var shift = pr.top - lr.top;
+        if (shift > 0) l.style.marginTop = shift + 'px';
+        l.style.minHeight = pr.height + 'px';
+      });
+    });
+  }
+  window.addEventListener('load', woAlignLoc);
+  window.addEventListener('resize', woAlignLoc);
+</script>
 @endsection
