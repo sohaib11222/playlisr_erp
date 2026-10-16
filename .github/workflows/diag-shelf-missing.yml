@@ -66,7 +66,7 @@ jobs:
             $net = $m->invoke($c, $biz, $hw, (string) DB::table('business_locations')->where('id',$hw)->value('name'), $rows);
             $u = $f = $mn = $cost = 0; $art = [];
             foreach ($net as $r) { $u += $r['units']; $f += $r['found']; $mn += $r['manual']; $cost += $r['units']*$r['unit_cost']; if ($r['units']>0) { $a = trim((string)$r['artist']) ?: '(no artist)'; $art[$a] = ($art[$a] ?? 0) + $r['units']*$r['unit_cost']; } }
-            echo "net units=$u found=$f manual=$mn cost=".round($cost,2)."\n";
+            $us = array_sum(array_column($net,"unsure")); echo "unsure=$us net units=$u found=$f manual=$mn cost=".round($cost,2)."\n";
             arsort($art); print_r(array_slice($art,0,12,true));
             foreach ($net as $r) if ($r['found'] || $r['manual']) echo $r['product_id']."\t".$r['name']."\tshort=".$r['short']."\tfound=".$r['found']."\tmanual=".$r['manual']."\tnet=".$r['units']."\n";
             PHP
