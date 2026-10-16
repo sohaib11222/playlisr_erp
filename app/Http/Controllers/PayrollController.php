@@ -1561,16 +1561,20 @@ class PayrollController extends Controller
     }
 
     // Resolve the pay period from the request, defaulting to the last complete
-    // two weeks (Thu-start bi-weekly like the sheet's 4/30-5/13 window).
+    // bi-weekly period (anchored on 10/1-10/14/2026).
     private function resolvePeriod(Request $request)
     {
         $start = (string) $request->input('start', '');
         $end   = (string) $request->input('end', '');
         $ok = function ($d) { return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d); };
         if ($ok($start) && $ok($end)) { return [$start, $end]; }
-        $endD   = \Carbon::now()->subDay();
-        $startD = $endD->copy()->subDays(13);
-        return [$startD->toDateString(), $endD->toDateString()];
+        // Bi-weekly periods anchored on 10/1/2026-10/14/2026. Default = the
+        // most recent period that has fully ended (the one being paid).
+        $anchor = \Carbon::parse('2026-10-01')->startOfDay();
+        $today  = \Carbon::now()->startOfDay();
+        $n = (int) floor($anchor->diffInDays($today, false) / 14);
+        $startD = $anchor->copy()->addDays(14 * ($n - 1));
+        return [$startD->toDateString(), $startD->copy()->addDays(13)->toDateString()];
     }
 
     private function url($start, $end)

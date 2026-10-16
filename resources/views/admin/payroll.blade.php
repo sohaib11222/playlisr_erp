@@ -109,6 +109,9 @@
     <span style="margin-right:6px;">to</span>
     <input type="date" name="end" value="{{ $end }}" class="form-control input-sm" style="margin-right:12px;">
     <button class="btn btn-primary btn-sm" type="submit">Load</button>
+    @php $ps = \Carbon::parse($start); @endphp
+    <a class="btn btn-default btn-sm" style="margin-left:6px;" href="{{ url('/payroll?start=' . $ps->copy()->subDays(14)->toDateString() . '&end=' . $ps->copy()->subDay()->toDateString()) }}">&lsaquo; Previous period</a>
+    <a class="btn btn-default btn-sm" href="{{ url('/payroll?start=' . $ps->copy()->addDays(14)->toDateString() . '&end=' . $ps->copy()->addDays(27)->toDateString()) }}">Next period &rsaquo;</a>
     <span class="pull-right text-muted" style="font-size:12px;">
       @if ($imported_at) {{ $row_count }} punches @if (($hours_source ?? '') === 'erp_time_clock') from the ERP time clock @endif loaded {{ \Carbon::parse($imported_at)->format('M j, g:ia') }} @else No hours loaded yet. Load them from the ERP time clock, or import from Clover below. @endif
     </span>
@@ -166,139 +169,121 @@
   </div>
 </div>
 
-{{-- ============ THE ONE TABLE: WHAT I OWE ============ --}}
-@php $cols = $can_see_rates ? 10 : 8; @endphp
-<div class="box box-solid">
-  <div class="box-header"><span class="box-title">What I owe — {{ \Carbon::parse($start)->format('M j') }} to {{ \Carbon::parse($end)->format('M j, Y') }}</span></div>
-  <div class="box-body">
-    <p class="text-muted" style="font-size:12px;margin-bottom:8px;">Hours are the sum of each person's shift log (click <strong>Shift log</strong>). Pico hours go on Nivessa One, Hollywood and warehouse hours on Nivessa Two. <strong>Check</strong> items are things to look at before you pay.</p>
-    <div class="table-responsive">
-    <table class="table table-condensed table-bordered" id="owe-table">
-      <thead>
-        <tr>
-          <th class="pr-sortable" onclick="payrollSort('first')" style="cursor:pointer;">First name <span class="pr-arrow">⇅</span></th>
-          <th class="pr-sortable" onclick="payrollSort('last')" style="cursor:pointer;">Last name <span class="pr-arrow">⇅</span></th>
-          <th class="text-right">Pico hrs</th><th class="text-right">HW hrs</th>
-          @if ($can_see_rates)<th class="text-right">Wages</th>@endif
-          <th class="text-right">Commission</th><th class="text-right">Adjustments</th>
-          @if ($can_see_rates)<th class="text-right">Total owed</th>@endif
-          <th>Notes &amp; checks</th>
-          <th>Notes (editable)</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @forelse ($people as $p)
-          @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; @endphp
-          <tr class="pr-person-row {{ $p['has_hours'] ? '' : 'text-muted' }}"
-              data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
-            <td>
-              <strong>{{ $p['first_name'] }}</strong>
-              @unless($p['has_hours'])<br><small>commission only</small>@endunless
-              @if (($p['paid_by'] ?? 'qb') === 'zelle')<br><small>paid by Zelle</small>@endif
-            </td>
-            <td>{{ $p['last_name'] }}</td>
-            <td class="text-right">{{ $p['one_hours'] ? $hh($p['one_hours']) : '' }}@if(!empty($p['co']['one']['ot']))<br><small>{{ $hh($p['co']['one']['ot']) }} OT</small>@endif</td>
-            <td class="text-right">{{ $p['two_hours'] ? $hh($p['two_hours']) : '' }}@if(!empty($p['co']['two']['ot']))<br><small>{{ $hh($p['co']['two']['ot']) }} OT</small>@endif</td>
-            @if ($can_see_rates)<td class="text-right">{{ $p['wages'] ? '$' . $fmt($p['wages']) : '' }}</td>@endif
-            <td class="text-right">
-              @if ($commAmt > 0.004)
-                @if ($p['comm_included'])${{ $fmt($commAmt) }}@else<span style="color:var(--pos-ink-2);">${{ $fmt($commAmt) }}<br><small>next run</small></span>@endif
-              @endif
-            </td>
-            <td class="text-right" style="font-size:12px;">
-              @foreach ($p['adjustments'] as $a)
-                <div>{{ \App\Http\Controllers\PayrollController::ADJ_TYPES[$a['type']] ?? $a['type'] }}: {{ $a['type'] === 'hours_offset' ? $hh($a['hours']) . ' hrs' : '$' . $fmt($a['amount']) }} <small>({{ $a['company'] === 'one' ? 'Pico' : 'HW' }})</small></div>
-              @endforeach
-            </td>
-            @if ($can_see_rates)<td class="text-right"><strong>${{ $fmt($p['grand_total']) }}</strong></td>@endif
-            <td style="font-size:11.5px;line-height:1.35;min-width:240px;color:var(--pos-ink-2);">
-              @if(!empty($p['memo'])){{ $p['memo'] }}@endif
-              @if(!empty($p['party_lines']))<div style="margin-top:3px;">Listening party: @foreach ($p['party_lines'] as $pl){{ $pl['label'] }} ${{ $fmt($pl['amount']) }}@if(!$loop->last); @endif @endforeach</div>@endif
-              @if(!empty($p['checks']))<div style="margin-top:3px;color:#8A3A2E;"><strong>Check:</strong> {{ implode('; ', $p['checks']) }}</div>@endif
-              @if(!empty($p['flags']))<div style="margin-top:3px;color:#8a6d3b;">Flags: {{ implode('; ', $p['flags']) }}</div>@endif
-              @if(!empty($p['log']))
-                <details style="margin-top:4px;"><summary style="cursor:pointer;font-weight:700;color:var(--pos-ink);">Shift log ({{ count($p['log']) }})</summary>
-                  <table class="table table-condensed" style="margin-top:4px;font-size:11.5px;">
-                    @foreach ($p['log'] as $lg)
-                      <tr>
-                        <td>{{ \Carbon::parse($lg['day'])->format('m/d/y') }}</td>
-                        <td>{{ $lg['in'] ? \Carbon::parse($lg['in'])->format('g:ia') : '' }}-{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:ia') : '' }}</td>
-                        <td class="text-right">{{ $hh($lg['hours']) }}</td>
-                        <td>{{ $lg['company'] === 'one' ? 'Pico' : 'HW' }}</td>
-                        <td>{{ $lg['comment'] }}</td>
-                      </tr>
-                    @endforeach
-                  </table>
-                </details>
-              @endif
-            </td>
-            <td style="min-width:190px;"><input form="notes-form" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" class="form-control input-sm" placeholder="Add a note"></td>
-            <td class="text-center">
-              <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;"
-                    onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
-                {{ csrf_field() }}
-                <input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-                <input type="hidden" name="user_id" value="{{ $p['user_id'] }}"><input type="hidden" name="key" value="{{ $p['key'] }}"><input type="hidden" name="name" value="{{ $p['name'] }}">
-                <button type="submit" class="btn btn-xs btn-default" title="Hide (left the company)">Hide</button>
-              </form>
-            </td>
-          </tr>
-        @empty
-          <tr><td colspan="{{ $cols + 1 }}" class="text-center text-muted" style="padding:24px;">No hours loaded for this period. Use “Load hours from ERP time clock” above, or import from Clover below.</td></tr>
-        @endforelse
-
-        @if ($can_see_rates && !empty($freelancers))
-          <tr class="pr-freelancer-sep"><td colspan="{{ $cols + 1 }}" style="background:var(--pos-surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--pos-ink-3);">Freelancers / contractors</td></tr>
-          @foreach ($freelancers as $f)
-            <tr>
-              <td><strong>{{ $f['name'] }}</strong> <small class="text-muted">({{ ucfirst($f['model'] ?? 'flat') }}@if(!empty($f['method'])), {{ $f['method'] }}@endif)</small></td>
-              <td colspan="6" class="text-muted"><small>{{ $f['note'] ?? '' }}</small></td>
-              <td class="text-right"><strong>${{ $fmt($f['amount']) }}</strong></td>
-              <td></td><td></td>
-              <td class="text-center">@if (!empty($f['paid']))<span class="label label-success">paid</span>@else<span class="label label-default">unpaid</span>@endif</td>
-            </tr>
-          @endforeach
+{{-- ============ SHEET VIEW: SUMMARY (like the payroll Google Sheet) ============ --}}
+<style>
+.pr-sheet { font-family: Calibri, "Inter Tight", Arial, sans-serif; font-size:13px; border-collapse:collapse; background:#fff; }
+.pr-sheet th, .pr-sheet td { border:1px solid #c9c9c9; padding:3px 7px; white-space:nowrap; color:#1F1B16; }
+.pr-sheet thead th { background:#000; color:#fff; font-weight:700; text-align:center; vertical-align:middle; white-space:normal; line-height:1.15; }
+.pr-sheet td.num { text-align:right; }
+.pr-sheet tr.pr-tot td { font-weight:700; border-top:2px solid #000; }
+.pr-sheet.pr-log thead th { background:#4A86E8; color:#fff; }
+.pr-sheet.pr-log td.pr-name { font-weight:700; }
+.pr-sheet .pr-check { color:#8A3A2E; font-size:12px; white-space:normal; max-width:320px; }
+.pr-sheet input.pr-note { border:0; width:100%; min-width:180px; font:inherit; background:transparent; }
+.pr-sheet-title { font-family: Calibri, Arial, sans-serif; font-weight:700; font-size:15px; margin:4px 0 8px; }
+</style>
+<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
+  <div class="pr-sheet-title">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/Y') }} - {{ \Carbon::parse($end)->format('m/d/Y') }}</div>
+  <table class="pr-sheet" id="owe-table">
+    <thead><tr>
+      <th>Listening<br>Parties</th>
+      <th class="pr-sortable" onclick="payrollSort('first')" style="cursor:pointer;">SUMMARY</th>
+      <th>Pico<br>Hours</th><th>HW<br>Hours</th><th>Total<br>Hours</th>
+      <th>Sales<br>Commission</th><th>Listing<br>Commission</th><th>Listening Party<br>Commission</th><th>Total<br>commission owed</th>
+      <th>Back pay /<br>adjustments</th>
+      @if ($can_see_rates)<th>Total Owed<br>pre tax</th><th>Last Payroll<br>Amount</th>@endif
+      <th>Store</th><th>Notes</th><th>Check</th><th></th>
+    </tr></thead>
+    <tbody>
+    @forelse ($people as $p)
+      @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $muted = !$p['comm_included'] ? 'color:#8E8273;' : ''; @endphp
+      <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
+        <td style="white-space:normal;font-size:12px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if(!$loop->last), @endif @endforeach</td>
+        <td><strong>{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</strong>@if (($p['paid_by'] ?? 'qb') === 'zelle') <small>(Zelle)</small>@endif</td>
+        <td class="num">{{ $p['one_hours'] ? number_format($p['one_hours'], 2) : '' }}</td>
+        <td class="num">{{ $p['two_hours'] ? number_format($p['two_hours'], 2) : '' }}</td>
+        <td class="num"><strong>{{ ($p['one_hours'] + $p['two_hours']) ? number_format($p['one_hours'] + $p['two_hours'], 2) : '' }}</strong>@if (($p['co']['one']['ot'] ?? 0) + ($p['co']['two']['ot'] ?? 0) > 0)<br><small>{{ number_format($p['co']['one']['ot'] + $p['co']['two']['ot'], 2) }} OT</small>@endif</td>
+        <td class="num" style="{{ $muted }}">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
+        <td class="num" style="{{ $muted }}">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
+        <td class="num" style="{{ $muted }}">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
+        <td class="num" style="{{ $muted }}">@if ($commAmt > 0.004)<strong>${{ $fmt($commAmt) }}</strong>@if (!$p['comm_included'])<br><small>next run</small>@endif @endif</td>
+        <td class="num" style="font-size:12px;">@foreach ($p['adjustments'] as $a)<div>{{ $a['type'] === 'hours_offset' ? $hh($a['hours']) . ' hrs' : '$' . $fmt($a['amount']) }} <small>{{ $a['company'] === 'one' ? 'Pico' : 'HW' }}</small></div>@endforeach</td>
+        @if ($can_see_rates)
+          <td class="num"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
+          <td class="num"><em>{{ isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</em></td>
         @endif
-      </tbody>
-      @if ($can_see_rates && (!empty($people) || !empty($freelancers)))
-      <tfoot style="font-weight:700;">
-        <tr>
-          <td colspan="4">Total owed everyone</td>
-          <td class="text-right">${{ $fmt($totals['wages']) }}</td>
-          <td class="text-right">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
-          <td class="text-right">${{ $fmt($totals['adj_total']) }}</td>
-          <td class="text-right" style="font-size:15px;">${{ $fmt($owedAll) }}</td>
-          <td></td><td></td><td></td>
-        </tr>
-        @if (!empty($freelancers))
-        <tr><td colspan="7" class="text-right" style="font-weight:400;">includes freelancers</td><td class="text-right">${{ $fmt($freelancer_total) }}</td><td></td><td></td><td></td></tr>
-        @endif
-      </tfoot>
-      @endif
-    </table>
-    </div>
+        <td>{{ trim(($p['one_hours'] > 0 ? 'pico ' : '') . ($p['two_hours'] > 0 ? 'hw' : '')) ?: $p['store'] }}</td>
+        <td><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" placeholder=""></td>
+        <td class="pr-check">{{ implode('; ', array_merge($p['checks'] ?? [], $p['flags'] ?? [])) }}</td>
+        <td>
+          <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;" onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
+            {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+            <input type="hidden" name="user_id" value="{{ $p['user_id'] }}"><input type="hidden" name="key" value="{{ $p['key'] }}"><input type="hidden" name="name" value="{{ $p['name'] }}">
+            <button type="submit" class="btn btn-xs btn-default" title="Hide (left the company)">Hide</button>
+          </form>
+        </td>
+      </tr>
+    @empty
+      <tr><td colspan="16" style="text-align:center;padding:20px;">No hours loaded for this period yet. Click "Load hours from ERP time clock" above.</td></tr>
+    @endforelse
+    </tbody>
+    @if (!empty($people))
+    <tfoot><tr class="pr-tot">
+      <td></td><td>TOTAL</td>
+      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')), 2) }}</td>
+      <td class="num">{{ number_format(array_sum(array_column($people, 'two_hours')), 2) }}</td>
+      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')) + array_sum(array_column($people, 'two_hours')), 2) }}</td>
+      <td class="num">${{ $fmt($totals['sales_comm']) }}</td><td class="num">${{ $fmt($totals['listing_comm']) }}</td><td class="num">${{ $fmt($totals['party_comm']) }}</td>
+      <td class="num">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
+      <td class="num">${{ $fmt($totals['adj_total']) }}</td>
+      @if ($can_see_rates)<td class="num">${{ $fmt($totals['grand_total']) }}</td><td></td>@endif
+      <td></td><td></td><td></td><td></td>
+    </tr></tfoot>
+    @endif
+  </table>
 
-    <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}" style="margin-top:10px;">
+  <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}" style="margin-top:10px;">
+    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-save"></i> Save notes</button>
+    <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm">Verify commissions</a>
+    <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export for QuickBooks</a>
+  </form>
+  @if ($can_see_rates)
+    <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline-block;margin-top:6px;" onsubmit="return confirm('Save this pay run as the last-paycheck reference for next period?');">
       {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-      <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-save"></i> Save notes</button>
-      <span class="text-muted" style="font-size:12px;margin-left:6px;">Saves the editable Notes column for this period (shared).</span>
+      <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-save"></i> Save pay run</button>
+      <span style="font-size:12px;margin-left:6px;">@if($last_run_at)Saved {{ \Carbon::parse($last_run_at)->format('m/d/y g:ia') }}@endif</span>
     </form>
+  @endif
+</div></div>
 
-    <div style="margin-top:12px;">
-      <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm"><i class="fa fa-external-link"></i> Verify commissions</a>
-      <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export for QuickBooks</a>
-      @if ($can_see_rates)
-        <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline;"
-              onsubmit="return confirm('Save this pay run as the last-paycheck reference for next period?');">
-          {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-          <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-save"></i> Save pay run</button>
-        </form>
-        <span class="text-muted" style="font-size:12px;margin-left:6px;">@if($last_run_at)Saved {{ \Carbon::parse($last_run_at)->format('M j, g:ia') }}@endif</span>
+{{-- ============ SHEET VIEW: SHIFT LOG (the sheet's bottom blocks) ============ --}}
+<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
+  <table class="pr-sheet pr-log">
+    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th></tr></thead>
+    <tbody>
+    @foreach ($people as $p)
+      @if (!empty($p['log']))
+        @foreach ($p['log'] as $lg)
+          <tr>
+            <td class="pr-name">{{ $loop->first ? $p['first_name'] : '' }}</td>
+            <td class="num">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
+            <td class="num">{{ \Carbon::parse($lg['day'])->format('d-M-y') }}</td>
+            <td class="num">{{ $lg['in'] ? \Carbon::parse($lg['in'])->format('g:i:s A') : '' }}</td>
+            <td class="num">{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('d-M-y') : '' }}</td>
+            <td class="num">{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:i:s A') : '' }}</td>
+            <td class="num">{{ number_format($lg['hours'], 2) }}</td>
+            <td>{{ $lg['company'] === 'one' ? 'pico' : 'hw' }}</td>
+            <td>{{ $lg['comment'] }}</td>
+          </tr>
+        @endforeach
+        <tr><td colspan="9" style="border-left:0;border-right:0;height:10px;"></td></tr>
       @endif
-    </div>
-  </div>
-</div>
+    @endforeach
+    </tbody>
+  </table>
+  <p style="font-size:12px;margin-top:6px;color:var(--pos-ink-2);">Fix a wrong or missing punch on <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>, then click "Load hours from ERP time clock" again.</p>
+</div></div>
 
 {{-- ============ EVERYTHING ELSE (collapsed) ============ --}}
 
