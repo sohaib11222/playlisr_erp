@@ -8,7 +8,7 @@
      does one pass instead of running around. Built by
      WebsiteOrdersController::pickRoute(). --}}
 <style>
-  .pr-wrap { padding:20px; max-width:1100px; }
+  .pr-wrap { padding:20px; max-width:1400px; }
   .pr-wrap h1 { font-size:22px; margin:0 0 6px; color:#000; }
   .pr-wrap p.lead { color:#000; margin:0 0 14px; }
   .pr-tabs { display:flex; gap:8px; margin:0 0 16px; flex-wrap:wrap; }
@@ -50,12 +50,18 @@
   @elseif(empty($rows))
     <div class="pr-empty">Nothing to pull here right now.</div>
   @else
-    @php $groups = collect($rows)->groupBy(fn($r) => $r['parts']['area'] !== '' ? $r['parts']['area'] : 'No area saved'); $n = 0; @endphp
+    @php
+      // Store: one section per genre (bins are by genre). Warehouse: per area.
+      $groups = collect($rows)->groupBy(fn($r) => $store === 'warehouse'
+        ? ($r['parts']['area'] !== '' ? $r['parts']['area'] : 'No area saved')
+        : \App\Http\Controllers\WebsiteOrdersController::routeGenre($r));
+      $n = 0;
+    @endphp
     @foreach($groups as $area => $areaRows)
       <div class="pr-area">{{ $area }} ({{ count($areaRows) }})</div>
       <table style="table-layout:fixed;">
-        <colgroup><col style="width:250px"><col style="width:40px"><col style="width:130px"><col><col style="width:150px"><col style="width:170px"><col style="width:50px"><col style="width:170px"></colgroup>
-        <thead><tr><th></th><th>#</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Order</th></tr></thead>
+        <colgroup><col style="width:250px"><col style="width:36px"><col style="width:76px"><col style="width:120px"><col><col style="width:140px"><col style="width:160px"><col style="width:44px"><col style="width:90px"><col style="width:150px"></colgroup>
+        <thead><tr><th></th><th>#</th><th>Photo</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Ordered</th><th>Customer</th></tr></thead>
         <tbody>
           @foreach($areaRows as $r)
             @php
@@ -79,12 +85,15 @@
                 @endif
               </td>
               <td class="pr-n">{{ $n }}</td>
+              @php $img = $it['product_id']['image'] ?? ($it['product_image'] ?? null); @endphp
+              <td>@if($img)<img src="{{ $img }}" alt="" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px;display:block;">@else &mdash; @endif</td>
               <td>@if($spot !== '')<span class="{{ $store === 'warehouse' ? 'pr-bin' : '' }}">{{ $store === 'warehouse' ? 'Bin ' . $spot : $spot }}</span>@else &mdash; @endif</td>
               <td><strong>{{ $r['name'] }}</strong>@if(!empty($it['product_id']['artist']))<br>{{ $it['product_id']['artist'] }}@endif</td>
               <td>{{ $r['format'] !== '' ? $r['format'] : '—' }}</td>
               <td>{{ $r['genre_full'] !== '' ? $r['genre_full'] : '—' }}</td>
               <td>{{ (int) ($it['quantity'] ?? 1) }}</td>
-              <td>{{ $who }}<br><span style="font-size:12px;">{{ $how }} &middot; {{ !empty($o['createdAt']) ? date('m/d/y', strtotime($o['createdAt'])) : '' }}</span></td>
+              <td>{{ !empty($o['createdAt']) ? date('m/d/y', strtotime($o['createdAt'])) : '—' }}</td>
+              <td>{{ $who }}<br><span style="font-size:12px;">{{ $how }}</span></td>
             </tr>
           @endforeach
         </tbody>

@@ -690,6 +690,17 @@ class WebsiteOrdersController extends Controller
         return $out;
     }
 
+    /** Genre heading for a store pick-route row: the genre bin, else the full ERP genre. */
+    public static function routeGenre(array $r): string
+    {
+        $g = trim((string) ($r['parts']['genre'] ?? ''));
+        if ($g === '' && ($r['genre_full'] ?? '') !== '') {
+            $bits = explode(' / ', $r['genre_full'], 2);
+            $g = trim($bits[1] ?? $bits[0]);
+        }
+        return $g !== '' ? ucwords($g) : 'No genre saved';
+    }
+
     /** Whether a pullParts() place is at that pull spot (hollywood / pico / warehouse). */
     public static function placeIsStore(string $place, string $store): bool
     {
@@ -752,9 +763,14 @@ class WebsiteOrdersController extends Controller
         $counts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
         foreach ($all as $r) if (isset($counts[$r['store']])) $counts[$r['store']]++;
         $rows = array_values(array_filter($all, fn($r) => $r['store'] === $store));
-        usort($rows, function ($a, $b) {
-            $ka = [strtolower($a['parts']['area']), strtolower($a['parts']['genre'] ?? ''), $a['parts']['bin'], strtolower((string) ($a['item']['product_id']['artist'] ?? ''))];
-            $kb = [strtolower($b['parts']['area']), strtolower($b['parts']['genre'] ?? ''), $b['parts']['bin'], strtolower((string) ($b['item']['product_id']['artist'] ?? ''))];
+        // Store routes walk by genre (bins are laid out by genre), then format, then
+        // artist A-Z; the warehouse walks by area then bin (Sarah, 2026-10-16).
+        usort($rows, function ($a, $b) use ($store) {
+            $key = fn($r) => $store === 'warehouse'
+                ? [strtolower($r['parts']['area']), $r['parts']['bin'], '', strtolower((string) ($r['item']['product_id']['artist'] ?? ''))]
+                : [strtolower(self::routeGenre($r)), strtolower($r['parts']['area']), $r['parts']['bin'], strtolower((string) ($r['item']['product_id']['artist'] ?? ''))];
+            $ka = $key($a);
+            $kb = $key($b);
             for ($i = 0; $i < 4; $i++) {
                 $c = strnatcasecmp($ka[$i], $kb[$i]);
                 if ($c !== 0) return $c;
