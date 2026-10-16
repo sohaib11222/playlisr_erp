@@ -20,6 +20,8 @@ use Illuminate\Http\Request;
 class ShelfCountController extends Controller
 {
     const DUE_DAYS = 28;
+    /** Deploy time of the fix that stopped bin Save from zeroing uncounted titles. */
+    const SAVE_ONLY_COUNTED_FROM = '2026-10-16 12:14:00';
 
     protected function location(Request $request): array
     {
@@ -268,7 +270,7 @@ class ShelfCountController extends Controller
         if (!$rows) return $rows;
         $svc = app(ReorderService::class);
         foreach ($rows as &$r) {
-            $r['found'] = 0; $r['manual'] = 0; $r['short'] = $r['units'];
+            $r['found'] = 0; $r['manual'] = 0; $r['unsure'] = 0; $r['short'] = $r['units'];
             $k = $svc->albumKey($r['artist'] ?? null, $r['name'] ?? '');
             $r['key'] = $k;
             if (trim((string) ($r['artist'] ?? '')) === '' && strpos($k, '|') > 0) {
@@ -282,7 +284,7 @@ class ShelfCountController extends Controller
 
         // Later counts that went up, per product at this store.
         $pids = array_values(array_unique(array_map(function ($r) { return (int) $r['product_id']; }, $rows)));
-        $ups = [];
+        $ups = []; $zeros = [];
         $acts = \DB::table('activity_log')->where('subject_type', 'App\\Product')->whereIn('subject_id', $pids)
             ->where('description', 'stock_changed')->where('properties', 'like', '%bin count%')
             ->where('created_at', '>=', min(array_column($rows, 'at')))->orderBy('created_at')->get(['subject_id', 'properties', 'created_at']);
@@ -291,7 +293,19 @@ class ShelfCountController extends Controller
             if (!preg_match('/bin count: (.*): ([\d.]+) -> (\d+)\s*$/', $note, $m)) continue;
             if ($locName !== '' && strcasecmp(trim($m[1]), $locName) !== 0) continue;
             if ((float) $m[3] > (float) $m[2]) $ups[(int) $a->subject_id][] = ['at' => (string) $a->created_at, 'n' => (float) $m[3] - (float) $m[2]];
+            if ((int) $m[3] === 0) $zeros[(int) $a->subject_id][] = strtotime((string) $a->created_at);
         }
+        // Before the 10/16 fix, saving a bin saved every title nobody had
+        // scanned as 0. Those zeros can't be told apart from a real "none
+        // here", so they go on a recount list instead of the totals.
+        foreach ($rows as &$r) {
+            if ($r['at'] >= self::SAVE_ONLY_COUNTED_FROM) continue;
+            $t = strtotime($r['at']);
+            foreach ($zeros[(int) $r['product_id']] ?? [] as $z) {
+                if (abs($z - $t) <= 5) { $r['unsure'] = $r['units']; $r['units'] = 0; break; }
+            }
+        }
+        unset($r);
         $idx = [];
         foreach ($rows as $i => $r) $idx[(int) $r['product_id']][] = $i;
         foreach ($ups as $pid => $list) {

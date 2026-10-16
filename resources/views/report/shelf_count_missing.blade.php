@@ -20,9 +20,10 @@
     @php
         $tu = array_sum(array_column($rows, 'units')); $tc = array_sum(array_map(function ($r) { return $r['units'] * $r['unit_cost']; }, $rows));
         $tf = array_sum(array_column($rows, 'found')); $tm = array_sum(array_column($rows, 'manual'));
+        $recount = array_values(array_filter($rows, function ($r) { return !empty($r['unsure']); }));
     @endphp
     <p class="sc-sub">Copies the ERP had that weren't on the shelf when counted, last {{ $days }} days: {{ $tu }} copies, about ${{ number_format($tc, 2) }} at cost.</p>
-    <p class="sc-sub">How it's worked out: when a title is counted lower than the ERP, the difference is logged here. Already taken out: {{ $tf }} copies found on a later count, and {{ $tm }} copies rung as a manual item at the register (the ERP never took those off). Since 10/16, a title is only logged if someone counted it; before that, saving a bin also logged titles nobody had scanned yet. Some of what's left is old bad ERP data rather than theft, especially big numbers on a section's first count.</p>
+    <p class="sc-sub">How it's worked out: when a title is counted lower than the ERP, the difference is logged here. Already taken out: {{ $tf }} copies found on a later count, and {{ $tm }} copies rung as a manual item at the register (the ERP never took those off). Before 10/16, saving a bin also saved titles nobody had scanned as 0, so those are not counted here; they are on the recount list at the bottom. Some of what's left is old bad ERP data rather than theft, especially big numbers on a section's first count.</p>
     <div class="sc-bar">
         @foreach ($locations as $id => $n)
             <a class="sc-pill {{ $id == $loc ? 'on' : '' }}" href="?location_id={{ $id }}&days={{ $days }}">{{ $n }}</a>
@@ -41,9 +42,20 @@
     <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had more by</th><th>Found later</th><th>Sold as manual item</th><th>Missing</th><th>Cost</th><th>Counted by</th></tr></thead><tbody>
         @foreach ($rows as $r)
             @continue($r['units'] <= 0 && empty($r['found']) && empty($r['manual']))
+            @continue(!empty($r['unsure']))
             <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('m/d/y') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
                 <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['short'] ?? $r['units'] }}</td><td>{{ !empty($r['found']) ? $r['found'] : '' }}</td><td>{{ !empty($r['manual']) ? $r['manual'] : '' }}</td><td>{{ $r['units'] }}</td><td>${{ number_format($r['units'] * $r['unit_cost'], 2) }}</td><td>{{ $r['by'] }}</td></tr>
         @endforeach
     </tbody></table>
+    @if (count($recount))
+    <h2>Recount these ({{ count($recount) }} titles, {{ array_sum(array_column($recount, 'unsure')) }} copies)</h2>
+    <p class="sc-sub">Saved as 0 before 10/16, when Save also zeroed titles nobody had scanned. They may never have been counted, and the ERP now shows 0 for them. Count these bins again to know for sure.</p>
+    <table class="sc-table"><thead><tr><th>When</th><th>Title</th><th>Section</th><th>ERP had</th><th>Counted by</th></tr></thead><tbody>
+        @foreach ($recount as $r)
+            <tr><td>{{ \Carbon\Carbon::parse($r['at'])->format('m/d/y') }}</td><td><a href="/products/{{ $r['product_id'] }}/edit" target="_blank">{{ $r['name'] }}</a></td>
+                <td>{{ $r['format'] }}{{ $r['genre'] ? ' / ' . $r['genre'] : '' }}</td><td>{{ $r['unsure'] }}</td><td>{{ $r['by'] }}</td></tr>
+        @endforeach
+    </tbody></table>
+    @endif
 </div>
 @endsection
