@@ -193,6 +193,7 @@
       $tabDefs = [
         'needs_action'    => ['label' => 'Needs Action', 'hot' => true],
         'to_ship'         => ['label' => 'To Ship'],
+        'ready_ship'      => ['label' => 'Ready to Ship'],
         'pickup'          => ['label' => 'Pickup'],
         'ready_pickup'    => ['label' => 'Ready for Pickup'],
         'preorder_ship'   => ['label' => 'Preorder · To Ship'],
@@ -576,7 +577,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action'], true))
                     <div style="margin-top:4px;">
                       @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
                     </div>

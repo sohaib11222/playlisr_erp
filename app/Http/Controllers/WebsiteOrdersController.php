@@ -52,6 +52,8 @@ class WebsiteOrdersController extends Controller
         'pickup'          => ['label' => 'Pickup',            'statuses' => ['processing', 'pending', 'flag', ''], 'fulfillment' => 'pickup'],
         // Pulled and waiting for the customer (Sarah, 2026-10-16)
         'ready_pickup'    => ['label' => 'Ready for Pickup',  'statuses' => ['ready_for_pickup'], 'fulfillment' => 'pickup'],
+        // Every item picked, just needs packing and a label (Sarah, 2026-10-16)
+        'ready_ship'      => ['label' => 'Ready to Ship',     'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
         'completed'       => ['label' => 'Completed',         'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
@@ -113,7 +115,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -152,7 +154,7 @@ class WebsiteOrdersController extends Controller
 
             if (in_array($status, self::TABS['needs_action']['statuses'], true)) $tabCounts['needs_action']++;
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
-                $tabCounts['to_ship']++;
+                $tabCounts[self::allPicked($o) ? 'ready_ship' : 'to_ship']++;
             }
             if ($fm === 'pickup' && $status === 'ready_for_pickup') $tabCounts['ready_pickup']++;
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
@@ -952,11 +954,21 @@ class WebsiteOrdersController extends Controller
         if ($tab === 'preorder_ship' || $tab === 'preorder_pickup') {
             return $isPreorder && $statusOk && $fulfillmentOk;
         }
-        if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup', 'ready_pickup'], true)) {
+        if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup', 'ready_pickup', 'ready_ship'], true)) {
             return false;
         }
+        // To Ship holds orders still being pulled; fully picked ones are Ready to Ship
+        if ($tab === 'to_ship' && self::allPicked($order)) return false;
+        if ($tab === 'ready_ship' && !self::allPicked($order)) return false;
 
         return $statusOk && $fulfillmentOk;
+    }
+
+    /** Every pickable item on the order is marked Picked (or further along). */
+    public static function allPicked(array $o): bool
+    {
+        $p = $o['pick_progress'] ?? null;
+        return is_array($p) && (int) ($p['total'] ?? 0) > 0 && (int) ($p['picked'] ?? 0) >= (int) $p['total'];
     }
 
     public static function knownPickupLocation(array $o): bool
