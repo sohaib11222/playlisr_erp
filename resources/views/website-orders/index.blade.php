@@ -536,6 +536,7 @@
                     {{-- Toggles the details row right after this order's row (not by id:
                          two orders could end up with the same short id). --}}
                     <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
+                    <button type="button" class="wo-btn" title="Copy a link to this order (for Slack)" onclick="woCopyLink(this, '{{ url('/website-orders') }}?order={{ $o['_id'] }}')">Copy link</button>
                     <div class="wo-more">
                       <button type="button" class="wo-btn wo-more-btn" title="More actions" aria-label="More actions" onclick="woToggleMore(this, event)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
                       <div class="wo-more-menu">
@@ -1162,6 +1163,17 @@
         woNoteClose(btn);
       })
       .catch(function (e) { btn.disabled = false; alert('Note not saved: ' + e.message); });
+  }
+</script>
+<script>
+  // Copy a link to one order, e.g. to paste in Slack (Sarah, 2026-10-16)
+  function woCopyLink(btn, url) {
+    var done = function () { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = t; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy this link:', url); });
+    } else {
+      window.prompt('Copy this link:', url);
+    }
   }
 </script>
 @endsection

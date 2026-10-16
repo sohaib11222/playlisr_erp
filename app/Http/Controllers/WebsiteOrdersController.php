@@ -96,6 +96,20 @@ class WebsiteOrdersController extends Controller
         $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
         $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
 
+        // Link to one order (?order=<id>), e.g. pasted in Slack (Sarah, 2026-10-16):
+        // open the tab it lives in and show just that order.
+        $linkOrder = (string) $request->query('order', '');
+        if (preg_match('/^[a-f0-9]{24}$/i', $linkOrder)) {
+            foreach ($allOrders as $lo) {
+                if (($lo['_id'] ?? '') !== $linkOrder) continue;
+                foreach (array_merge(array_keys(self::TABS), ['archived']) as $t) {
+                    if (self::matchesTab($lo, $t)) { $activeTab = $t; break; }
+                }
+                break;
+            }
+            $search = $linkOrder;
+        }
+
         $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
