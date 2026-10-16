@@ -180,7 +180,9 @@ class WebsiteOrdersController extends Controller
             return $ta === $tb ? strcasecmp($a['name'], $b['name']) : $ta <=> $tb;
         });
 
-        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter) {
+        // Store filter needs each item's pull spot (same as the Location column)
+        $filterLocations = in_array($locationFilter, ['hollywood', 'pico'], true) ? self::erpLocations($allOrders) : [];
+        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
@@ -188,9 +190,21 @@ class WebsiteOrdersController extends Controller
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
-            if ($locationFilter !== '') {
-                if (($o['fulfillment_method'] ?? null) !== 'pickup') return false;
-                if ($locationFilter === 'unknown' ? self::knownPickupLocation($o) : ($o['pickup_location'] ?? '') !== $locationFilter) return false;
+            if ($locationFilter === 'unknown') {
+                if (($o['fulfillment_method'] ?? null) !== 'pickup' || self::knownPickupLocation($o)) return false;
+            } elseif ($locationFilter !== '') {
+                // Pickup at that store, or any item to pull there (a shipping
+                // order with Pico items shows for Pico). Sarah, 2026-10-16.
+                $hit = ($o['fulfillment_method'] ?? null) === 'pickup' && ($o['pickup_location'] ?? '') === $locationFilter;
+                foreach (($o['items'] ?? []) as $it) {
+                    if ($hit) break;
+                    if (!empty($it['is_gift_card'])) continue;
+                    $place = self::pullParts($it, $filterLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place'];
+                    $hit = $locationFilter === 'pico'
+                        ? stripos($place, 'pico') !== false
+                        : (stripos($place, 'hollywood') !== false || stripos($place, 'warehouse') !== false);
+                }
+                if (!$hit) return false;
             }
             if ($search !== '') {
                 $needle = strtolower($search);

@@ -235,7 +235,7 @@
     @endif
 
     @if(($unknownLocationCount ?? 0) > 0)
-      <div class="wo-banner overdue"><strong>{{ $unknownLocationCount }} pickup {{ $unknownLocationCount === 1 ? 'order has' : 'orders have' }} no pickup location set.</strong> Choose <a href="{{ route('website-orders.index', ['tab' => $activeTab, 'location' => 'unknown']) }}">No Location Set</a> in the Pickup location filter to find {{ $unknownLocationCount === 1 ? 'it' : 'them' }}.</div>
+      <div class="wo-banner overdue"><strong>{{ $unknownLocationCount }} pickup {{ $unknownLocationCount === 1 ? 'order has' : 'orders have' }} no pickup location set.</strong> Choose <a href="{{ route('website-orders.index', ['tab' => $activeTab, 'location' => 'unknown']) }}">Pickup, No Store Set</a> in the Store filter to find {{ $unknownLocationCount === 1 ? 'it' : 'them' }}.</div>
     @endif
     @if(in_array($activeTab, ['preorder_ship', 'preorder_pickup'], true) && !empty($preorderSummary))
       <div class="wo-card" style="margin-bottom:16px;border-color:#fed7aa;">
@@ -291,12 +291,12 @@
         </select>
       </div>
       <div class="wo-field">
-        <label>Pickup location</label>
+        <label>Store</label>
         <select name="location" onchange="this.form.submit()">
-          <option value="">All Locations</option>
+          <option value="">All Stores</option>
           <option value="hollywood" {{ $locationFilter === 'hollywood' ? 'selected' : '' }}>Hollywood</option>
           <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico</option>
-          <option value="unknown" {{ $locationFilter === 'unknown' ? 'selected' : '' }}>No Location Set ({{ $unknownLocationCount }})</option>
+          <option value="unknown" {{ $locationFilter === 'unknown' ? 'selected' : '' }}>Pickup, No Store Set ({{ $unknownLocationCount }})</option>
         </select>
       </div>
       <div class="wo-field">
