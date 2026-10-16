@@ -446,6 +446,7 @@ class PayrollController extends Controller
             if ($k !== '' && $v !== '') { $out[$k] = mb_substr($v, 0, 500); }
         }
         Storage::disk('local')->put($this->notesFile($start, $end), json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        if ($request->ajax()) { return response()->json(['ok' => true]); }
         return redirect($this->url($start, $end))->with('status', ['success' => 1, 'msg' => 'Saved notes.']);
     }
 
@@ -725,7 +726,8 @@ class PayrollController extends Controller
         $rows = $doc['rows'] ?? [];
         $action = (string) $request->input('action', 'save');
         $idx = (int) $request->input('idx', -1);
-        $back = function ($ok, $msg) use ($start, $end) {
+        $back = function ($ok, $msg, $hours = null) use ($start, $end, $request) {
+            if ($request->ajax()) { return response()->json(['ok' => (bool) $ok, 'msg' => $msg, 'hours' => $hours]); }
             return redirect($this->url($start, $end) . '#shift-log')->with('status', ['success' => $ok ? 1 : 0, 'msg' => $msg]);
         };
 
@@ -772,7 +774,7 @@ class PayrollController extends Controller
         $doc['edited_at'] = now()->toDateTimeString();
         $doc['edited_by'] = trim($u->first_name . ' ' . $u->last_name);
         $this->saveHours($start, $end, $doc);
-        return $back(true, $msg);
+        return $back(true, $msg, isset($hours) ? round($hours, 2) : null);
     }
 
     // ---- Rate + settings editor -----------------------------------------

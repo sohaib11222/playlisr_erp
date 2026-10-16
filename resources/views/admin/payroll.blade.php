@@ -80,19 +80,66 @@
 @endphp
 
 <div class="payroll-v2">
-<section class="content-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
-    <div>
-      <h1>Payroll <small>{{ \Carbon::parse($start)->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</small></h1>
-      <p class="text-muted" style="margin-top:6px;max-width:900px;">
-        What you owe everyone this period: hours pay (Clover, OT over {{ $hh($settings['daily_ot_after']) }}h/day at {{ $hh($settings['ot_multiplier']) }}x)
-        plus sales &amp; listing commission owed. Everything else is tucked into the sections below.
-      </p>
-    </div>
+<style>
+.pr-top { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:6px 0 4px; }
+.pr-top h1 { margin:0; font-size:26px; font-weight:800; }
+.pr-nav { display:inline-flex; align-items:center; gap:6px; font-size:18px; font-weight:700; color:#1F1B16; }
+.pr-nav a { display:inline-block; border:1px solid #c9c9c9; border-radius:6px; padding:2px 10px; color:#1F1B16; background:#fff; text-decoration:none; }
+.pr-nav a:hover { background:#f2f2f2; }
+.pr-sub { font-size:13px; color:#1F1B16; margin-bottom:12px; }
+.pr-sheet { font-family: Calibri, "Inter Tight", Arial, sans-serif; font-size:13px; border-collapse:collapse; background:#fff; }
+.pr-sheet th, .pr-sheet td { border:1px solid #c9c9c9; padding:4px 8px; white-space:nowrap; color:#1F1B16; }
+.pr-sheet thead th { background:#000; color:#fff; font-weight:700; text-align:center; vertical-align:middle; white-space:normal; line-height:1.15; }
+.pr-sheet td.num { text-align:right; }
+.pr-sheet tr.pr-tot td { font-weight:700; border-top:2px solid #000; }
+.pr-sheet.pr-log thead th { background:#4A86E8; }
+.pr-sheet.pr-log td.pr-name { font-weight:700; }
+.pr-sheet input.pr-note { border:1px solid transparent; width:100%; min-width:200px; font:inherit; background:transparent; padding:1px 3px; }
+.pr-sheet input.pr-note:hover, .pr-sheet input.pr-note:focus { border-color:#4A86E8; background:#fff; outline:none; }
+.pr-sheet-title { font-family: Calibri, Arial, sans-serif; font-weight:700; font-size:15px; margin:0 0 8px; }
+.pr-log input.pr-cell, .pr-log select.pr-cell { border:1px solid transparent; background:transparent; font:inherit; color:#1F1B16; padding:1px 3px; width:100%; }
+.pr-log input.pr-cell:hover, .pr-log select.pr-cell:hover { border-color:#c9c9c9; }
+.pr-log input.pr-cell:focus, .pr-log select.pr-cell:focus { border-color:#4A86E8; background:#fff; outline:none; }
+.pr-log input.pr-d { width:78px; } .pr-log input.pr-t { width:82px; } .pr-log input.pr-c { min-width:200px; }
+.pr-log tr.pr-add td { background:#F7F9FE; }
+.pr-log .pr-x { border:0; background:none; color:#8A3A2E; cursor:pointer; font-size:14px; padding:0 4px; }
+.pr-log tr.is-saving td { background:#FFFBE6; } .pr-log tr.is-saved td { background:#EAF6EC; } .pr-log tr.is-error td { background:#FBEAEA; }
+.pr-checks { background:#FFF9DB; border:1px solid #E6CE5A; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#1F1B16; }
+.pr-checks ul { margin:4px 0 0 18px; padding:0; }
+</style>
+@php
+  $ps = \Carbon::parse($start);
+  $prevUrl = url('/payroll?start=' . $ps->copy()->subDays(14)->toDateString() . '&end=' . $ps->copy()->subDay()->toDateString());
+  $nextUrl = url('/payroll?start=' . $ps->copy()->addDays(14)->toDateString() . '&end=' . $ps->copy()->addDays(27)->toDateString());
+  $mdY = function ($v) { return $v ? \Carbon::parse($v)->format('m/d/y') : ''; };
+  $tm  = function ($v) { return $v ? \Carbon::parse($v)->format('g:i A') : ''; };
+  $locOpts = ['pico' => 'pico', 'hollywood' => 'hw'];
+  $checkList = [];
+  foreach ($people as $p) { foreach ($p['checks'] ?? [] as $c) { $checkList[] = $p['first_name'] . ': ' . $c; } }
+@endphp
+
+<section class="content-header">
+  <div class="pr-top">
+    <h1>Payroll</h1>
+    <span class="pr-nav"><a href="{{ $prevUrl }}" title="Previous pay period">&lsaquo;</a> {{ $ps->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }} <a href="{{ $nextUrl }}" title="Next pay period">&rsaquo;</a></span>
+    <span style="flex:1"></span>
     <button type="button" class="pr-pin-btn {{ $pinAlready ? 'is-on' : '' }}" data-pin-url="{{ $pinUrl }}" data-pin-label="Payroll"
             title="{{ $pinAlready ? 'Pinned to your sidebar' : 'Pin this page to your sidebar' }}">
         <i class="fa {{ $pinAlready ? 'fa-star' : 'fa-star-o' }}"></i>
         <span class="pin-text">{{ $pinAlready ? 'Pinned' : 'Star to sidebar' }}</span>
     </button>
+  </div>
+  <div class="pr-sub">
+    @if (!empty($hours_doc['edited']))
+      Hours edited by {{ $hours_doc['edited_by'] ?? '' }} on {{ !empty($hours_doc['edited_at']) ? \Carbon::parse($hours_doc['edited_at'])->format('m/d/y g:ia') : '' }}.
+    @elseif ($imported_at && ($hours_source ?? '') === 'erp_time_clock')
+      Hours come from the ERP time clock and update by themselves (last {{ \Carbon::parse($imported_at)->format('m/d/y g:ia') }}).
+    @elseif ($imported_at)
+      Hours imported {{ \Carbon::parse($imported_at)->format('m/d/y g:ia') }}.
+    @else
+      No hours yet for this period.
+    @endif
+  </div>
 </section>
 
 <section class="content">
@@ -101,62 +148,132 @@
   <div class="alert {{ session('status')['success'] ? 'alert-success' : 'alert-danger' }}">{{ session('status')['msg'] }}</div>
 @endif
 
-{{-- Period + import (one compact row) --}}
-<div class="box box-solid"><div class="box-body">
-  <form method="GET" action="{{ url('/payroll') }}" class="form-inline" style="margin-bottom:0;">
-    <label style="margin-right:6px;">Pay period</label>
-    <input type="date" name="start" value="{{ $start }}" class="form-control input-sm" style="margin-right:6px;">
-    <span style="margin-right:6px;">to</span>
-    <input type="date" name="end" value="{{ $end }}" class="form-control input-sm" style="margin-right:12px;">
-    <button class="btn btn-primary btn-sm" type="submit">Load</button>
-    @php $ps = \Carbon::parse($start); @endphp
-    <a class="btn btn-default btn-sm" style="margin-left:6px;" href="{{ url('/payroll?start=' . $ps->copy()->subDays(14)->toDateString() . '&end=' . $ps->copy()->subDay()->toDateString()) }}">&lsaquo; Previous period</a>
-    <a class="btn btn-default btn-sm" href="{{ url('/payroll?start=' . $ps->copy()->addDays(14)->toDateString() . '&end=' . $ps->copy()->addDays(27)->toDateString()) }}">Next period &rsaquo;</a>
-    <span class="pull-right text-muted" style="font-size:12px;">
-      @if ($imported_at) {{ $row_count }} punches @if (($hours_source ?? '') === 'erp_time_clock') from the ERP time clock @endif loaded {{ \Carbon::parse($imported_at)->format('m/d/y g:ia') }} @else No hours loaded yet. Load them from the ERP time clock, or import from Clover below. @endif
-    </span>
-  </form>
-  <form method="POST" action="{{ url('/payroll/load-erp-hours') }}" style="margin-top:10px;">
-    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-    <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-clock-o"></i> Load hours from ERP time clock</button>
-    <span class="text-muted" style="font-size:12px;margin-left:6px;">Uses this period's punches from <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>. Replaces any hours loaded for this period. Clover import below still works.</span>
-  </form>
-</div></div>
-
 @if ($can_see_rates && !empty($unmatched))
-  <div class="alert alert-warning">
-    <strong>Needs setup before these are correct:</strong>
-    <ul style="margin:6px 0 0 18px;">
-      @foreach ($unmatched as $u)
-        <li>{{ $u['name'] }} —
-          @if ($u['no_rate']) <span style="color:#a94442;">no hourly rate set</span>@endif
-          @if ($u['no_rate'] && $u['no_user']) &middot; @endif
-          @if ($u['no_user']) <span style="color:#8a6d3b;">not linked to an ERP user (commissions won't attach)</span>@endif
-        </li>
-      @endforeach
-    </ul>
-    Set rates &amp; links in <strong>Rates &amp; settings</strong> below.
+  <div class="pr-checks"><strong>Set up first:</strong>
+    @foreach ($unmatched as $u){{ $u['name'] }} ({{ $u['no_rate'] ? 'no hourly rate' : '' }}{{ $u['no_rate'] && $u['no_user'] ? ', ' : '' }}{{ $u['no_user'] ? 'not linked to an ERP login' : '' }})@if (!$loop->last); @endif @endforeach.
+    Fix in Rates &amp; settings at the bottom.
   </div>
 @endif
 
-{{-- ============ COMMISSIONS THIS RUN ============ --}}
+@if (!empty($checkList))
+  <div class="pr-checks"><strong>Check before paying</strong>
+    <ul>@foreach ($checkList as $c)<li>{{ $c }}</li>@endforeach</ul>
+  </div>
+@endif
+
+{{-- ============ SUMMARY (same columns as the payroll Google Sheet) ============ --}}
+<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
+  <div class="pr-sheet-title">PAYROLL SUMMARY {{ $ps->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</div>
+  <table class="pr-sheet" id="owe-table">
+    <thead><tr>
+      <th>Listening<br>Parties</th><th>Name</th><th>Total<br>Hours</th>
+      <th>Sales<br>Commission</th><th>Listing<br>Commission</th><th>Listening Party<br>Commission</th><th>Total<br>commission owed</th>
+      @if ($can_see_rates)<th>Total Owed<br>pre tax</th><th>Last Payroll<br>Amount</th>@endif
+      <th>Store</th><th>Notes</th>
+    </tr></thead>
+    <tbody>
+    @forelse ($people as $p)
+      @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $hrs = $p['one_hours'] + $p['two_hours']; @endphp
+      <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
+        <td style="white-space:normal;font-size:12px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if (!$loop->last), @endif @endforeach</td>
+        <td><strong>{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</strong>@if (($p['paid_by'] ?? 'qb') === 'zelle') (Zelle)@endif</td>
+        <td class="num"><strong>{{ $hrs ? number_format($hrs, 2) : '' }}</strong></td>
+        <td class="num">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
+        <td class="num">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
+        <td class="num">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
+        <td class="num">@if ($commAmt > 0.004)<strong>${{ $fmt($commAmt) }}</strong>@if (!$p['comm_included']) (next run)@endif @endif</td>
+        @if ($can_see_rates)
+          <td class="num"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
+          <td class="num">{{ isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
+        @endif
+        <td>{{ trim(($p['one_hours'] > 0 ? 'pico ' : '') . ($p['two_hours'] > 0 ? 'hw' : '')) }}</td>
+        <td><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}"></td>
+      </tr>
+    @empty
+      <tr><td colspan="11" style="text-align:center;padding:20px;">No hours yet for this period.</td></tr>
+    @endforelse
+    </tbody>
+    @if (!empty($people))
+    <tfoot><tr class="pr-tot">
+      <td></td><td>TOTAL</td>
+      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')) + array_sum(array_column($people, 'two_hours')), 2) }}</td>
+      <td class="num">${{ $fmt($totals['sales_comm']) }}</td><td class="num">${{ $fmt($totals['listing_comm']) }}</td><td class="num">${{ $fmt($totals['party_comm']) }}</td>
+      <td class="num">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
+      @if ($can_see_rates)<td class="num">${{ $fmt($totals['grand_total']) }}</td><td></td>@endif
+      <td></td><td></td>
+    </tr></tfoot>
+    @endif
+  </table>
+  <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
+  <p style="font-size:12px;margin:8px 0 0;color:#1F1B16;">Notes save by themselves. Commissions marked "next run" are owed but not paid this period.</p>
+</div></div>
+
+{{-- ============ SHIFT LOG (the sheet's bottom blocks; edits save by themselves) ============ --}}
+<div class="box box-solid" id="shift-log"><div class="box-body" style="overflow-x:auto;">
+  <div class="pr-sheet-title">SHIFT LOG</div>
+  <p style="font-size:12px;margin:0 0 8px;color:#1F1B16;">Click a date, time, store or comment to fix it. It saves when you click away.</p>
+  <table class="pr-sheet pr-log">
+    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th><th></th></tr></thead>
+    <tbody>
+    @foreach ($people as $p)
+      @if (!empty($p['log']))
+        @foreach ($p['log'] as $lg)
+          @php $f = 'sh-' . $lg['idx']; @endphp
+          <tr class="pr-shift" data-person="{{ $p['key'] }}" data-form="{{ $f }}">
+            <td class="pr-name">{{ $loop->first ? $p['first_name'] : '' }}</td>
+            <td class="num pr-ptotal" data-person="{{ $p['key'] }}">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
+            <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" value="{{ $tm($lg['in']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" value="{{ $mdY($lg['out']) }}"></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" value="{{ $tm($lg['out']) }}"></td>
+            <td class="num pr-el">{{ number_format($lg['hours'], 2) }}</td>
+            <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
+            <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" value="{{ $lg['comment'] }}"></td>
+            <td><button form="{{ $f }}" type="submit" name="action" value="delete" class="pr-x" title="Delete this shift" onclick="return confirm('Delete this shift?');">&times;</button></td>
+          </tr>
+        @endforeach
+        <tr><td colspan="10" style="border-left:0;border-right:0;height:8px;padding:0;"></td></tr>
+      @endif
+    @endforeach
+    <tr class="pr-add">
+      <td><select form="add-shift" class="pr-cell" name="name"><option value="">+ Add a shift for...</option>@foreach ($people as $p)<option value="{{ ucfirst($p['key']) }}">{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</option>@endforeach</select></td>
+      <td></td>
+      <td><input form="add-shift" class="pr-cell pr-d" name="in_date" placeholder="mm/dd/yy"></td>
+      <td><input form="add-shift" class="pr-cell pr-t" name="in_time" placeholder="3:00 PM"></td>
+      <td><input form="add-shift" class="pr-cell pr-d" name="out_date" placeholder="same day"></td>
+      <td><input form="add-shift" class="pr-cell pr-t" name="out_time" placeholder="8:00 PM"></td>
+      <td></td>
+      <td><select form="add-shift" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}">{{ $ll }}</option>@endforeach</select></td>
+      <td><input form="add-shift" class="pr-cell pr-c" name="comment" placeholder="why it was added"></td>
+      <td><button form="add-shift" type="submit" name="action" value="add" class="btn btn-primary btn-xs">Add</button></td>
+    </tr>
+    </tbody>
+  </table>
+  @foreach ($people as $p)
+    @foreach ($p['log'] ?? [] as $lg)
+      <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}"></form>
+    @endforeach
+  @endforeach
+  <form id="add-shift" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
+</div></div>
+
+<div style="margin:18px 0 8px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#1F1B16;">MORE TOOLS</div>
+
+<details class="pr-more"><summary>Pay commissions this run?</summary><div class="pr-body">
 @php
     $commPeople = array_values(array_filter($people, function ($p) { return !empty($p['user_id']) && ($p['sales_comm'] + $p['listing_comm'] + $p['party_comm']) > 0.004; }));
     $incUids = array_flip(array_map('intval', $run['include_uids'] ?? []));
 @endphp
-<div class="box box-solid">
-  <div class="box-header"><span class="box-title">Commissions this run</span></div>
-  <div class="box-body">
     <form method="POST" action="{{ url('/payroll/commission-mode') }}">
       {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--pos-ink);font-weight:700;">
+      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:#1F1B16;font-weight:700;">
         <input type="checkbox" name="include_commissions" value="1" {{ !empty($run['include_commissions']) ? 'checked' : '' }}> Pay everyone's commissions this run (month-end payroll)
       </label>
       @if (!empty($commPeople))
-        <div style="margin:8px 0 4px;font-size:12.5px;color:var(--pos-ink-2);">Or only these people:</div>
+        <div style="margin:8px 0 4px;font-size:13px;color:#1F1B16;">Or only these people:</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px 16px;">
           @foreach ($commPeople as $cp)
-            <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--pos-ink);font-weight:500;">
+            <label style="text-transform:none;letter-spacing:0;font-size:13px;color:#1F1B16;font-weight:500;">
               <input type="checkbox" name="include_uids[]" value="{{ $cp['user_id'] }}" {{ isset($incUids[(int) $cp['user_id']]) ? 'checked' : '' }}>
               {{ $cp['first_name'] }} (${{ $fmt($cp['sales_comm'] + $cp['listing_comm'] + $cp['party_comm']) }})
             </label>
@@ -164,173 +281,42 @@
         </div>
       @endif
       <button type="submit" class="btn btn-primary btn-sm" style="margin-top:8px;">Save</button>
-      <span style="font-size:12px;margin-left:6px;color:var(--pos-ink-2);">Commissions not ticked stay owed and show as "next run". After payroll, record exactly what was paid on <a href="{{ url('/admin/listing-commissions') }}" target="_blank">Commissions</a>.</span>
+      <a href="{{ url('/payroll?start=' . urlencode($start) . '&end=' . urlencode($end) . '&fresh=1') }}" class="btn btn-default btn-sm" style="margin-top:8px;">Recalculate commissions</a>
+      <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm" style="margin-top:8px;">Open Commissions page</a>
     </form>
-  </div>
-</div>
+</div></details>
 
-{{-- ============ SHEET VIEW: SUMMARY (like the payroll Google Sheet) ============ --}}
-<style>
-.pr-sheet { font-family: Calibri, "Inter Tight", Arial, sans-serif; font-size:13px; border-collapse:collapse; background:#fff; }
-.pr-sheet th, .pr-sheet td { border:1px solid #c9c9c9; padding:3px 7px; white-space:nowrap; color:#1F1B16; }
-.pr-sheet thead th { background:#000; color:#fff; font-weight:700; text-align:center; vertical-align:middle; white-space:normal; line-height:1.15; }
-.pr-sheet td.num { text-align:right; }
-.pr-sheet tr.pr-tot td { font-weight:700; border-top:2px solid #000; }
-.pr-sheet.pr-log thead th { background:#4A86E8; color:#fff; }
-.pr-sheet.pr-log td.pr-name { font-weight:700; }
-.pr-sheet .pr-check { color:#8A3A2E; font-size:12px; white-space:normal; max-width:320px; }
-.pr-sheet input.pr-note { border:0; width:100%; min-width:180px; font:inherit; background:transparent; }
-.pr-sheet-title { font-family: Calibri, Arial, sans-serif; font-weight:700; font-size:15px; margin:4px 0 8px; }
-</style>
-<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
-  <div class="pr-sheet-title">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</div>
-  <table class="pr-sheet" id="owe-table">
-    <thead><tr>
-      <th>Listening<br>Parties</th>
-      <th class="pr-sortable" onclick="payrollSort('first')" style="cursor:pointer;">SUMMARY</th>
-      <th>Pico<br>Hours</th><th>HW<br>Hours</th><th>Total<br>Hours</th>
-      <th>Sales<br>Commission</th><th>Listing<br>Commission</th><th>Listening Party<br>Commission</th><th>Total<br>commission owed</th>
-      <th>Back pay /<br>adjustments</th>
-      @if ($can_see_rates)<th>Total Owed<br>pre tax</th><th>Last Payroll<br>Amount</th>@endif
-      <th>Store</th><th>Notes</th><th>Check</th><th></th>
-    </tr></thead>
-    <tbody>
-    @forelse ($people as $p)
-      @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $muted = !$p['comm_included'] ? 'color:#8E8273;' : ''; @endphp
-      <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
-        <td style="white-space:normal;font-size:12px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if(!$loop->last), @endif @endforeach</td>
-        <td><strong>{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</strong>@if (($p['paid_by'] ?? 'qb') === 'zelle') <small>(Zelle)</small>@endif</td>
-        <td class="num">{{ $p['one_hours'] ? number_format($p['one_hours'], 2) : '' }}</td>
-        <td class="num">{{ $p['two_hours'] ? number_format($p['two_hours'], 2) : '' }}</td>
-        <td class="num"><strong>{{ ($p['one_hours'] + $p['two_hours']) ? number_format($p['one_hours'] + $p['two_hours'], 2) : '' }}</strong>@if (($p['co']['one']['ot'] ?? 0) + ($p['co']['two']['ot'] ?? 0) > 0)<br><small>{{ number_format($p['co']['one']['ot'] + $p['co']['two']['ot'], 2) }} OT</small>@endif</td>
-        <td class="num" style="{{ $muted }}">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
-        <td class="num" style="{{ $muted }}">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
-        <td class="num" style="{{ $muted }}">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
-        <td class="num" style="{{ $muted }}">@if ($commAmt > 0.004)<strong>${{ $fmt($commAmt) }}</strong>@if (!$p['comm_included'])<br><small>next run</small>@endif @endif</td>
-        <td class="num" style="font-size:12px;">@foreach ($p['adjustments'] as $a)<div>{{ $a['type'] === 'hours_offset' ? $hh($a['hours']) . ' hrs' : '$' . $fmt($a['amount']) }} <small>{{ $a['company'] === 'one' ? 'Pico' : 'HW' }}</small></div>@endforeach</td>
-        @if ($can_see_rates)
-          <td class="num"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
-          <td class="num"><em>{{ isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</em></td>
-        @endif
-        <td>{{ trim(($p['one_hours'] > 0 ? 'pico ' : '') . ($p['two_hours'] > 0 ? 'hw' : '')) ?: $p['store'] }}</td>
-        <td><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" placeholder=""></td>
-        <td class="pr-check">{{ implode('; ', array_merge($p['checks'] ?? [], $p['flags'] ?? [])) }}</td>
-        <td>
-          <form method="POST" action="{{ url('/payroll/hide') }}" style="display:inline;" onsubmit="return confirm('Hide {{ $p['name'] }} from payroll? (For people who no longer work here.)');">
-            {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-            <input type="hidden" name="user_id" value="{{ $p['user_id'] }}"><input type="hidden" name="key" value="{{ $p['key'] }}"><input type="hidden" name="name" value="{{ $p['name'] }}">
-            <button type="submit" class="btn btn-xs btn-default" title="Hide (left the company)">Hide</button>
-          </form>
-        </td>
-      </tr>
-    @empty
-      <tr><td colspan="16" style="text-align:center;padding:20px;">No hours loaded for this period yet. Click "Load hours from ERP time clock" above.</td></tr>
-    @endforelse
-    </tbody>
-    @if (!empty($people))
-    <tfoot><tr class="pr-tot">
-      <td></td><td>TOTAL</td>
-      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')), 2) }}</td>
-      <td class="num">{{ number_format(array_sum(array_column($people, 'two_hours')), 2) }}</td>
-      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')) + array_sum(array_column($people, 'two_hours')), 2) }}</td>
-      <td class="num">${{ $fmt($totals['sales_comm']) }}</td><td class="num">${{ $fmt($totals['listing_comm']) }}</td><td class="num">${{ $fmt($totals['party_comm']) }}</td>
-      <td class="num">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
-      <td class="num">${{ $fmt($totals['adj_total']) }}</td>
-      @if ($can_see_rates)<td class="num">${{ $fmt($totals['grand_total']) }}</td><td></td>@endif
-      <td></td><td></td><td></td><td></td>
-    </tr></tfoot>
-    @endif
-  </table>
-
-  <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}" style="margin-top:10px;">
+<details class="pr-more"><summary>Reload hours from the time clock</summary><div class="pr-body">
+  <form method="POST" action="{{ url('/payroll/load-erp-hours') }}">
     {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-    <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-save"></i> Save notes</button>
-    <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm">Verify commissions</a>
-    <a href="{{ url('/payroll?start=' . urlencode($start) . '&end=' . urlencode($end) . '&fresh=1') }}" class="btn btn-default btn-sm" title="Commissions are cached for 10 minutes">Refresh commissions</a>
-    <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export for QuickBooks</a>
+    <p style="font-size:13px;color:#1F1B16;">Replaces this period's hours with the ERP time clock punches, including any edits made in the shift log above.</p>
+    <button type="submit" class="btn btn-default btn-sm" onclick="return confirm('Replace this period\'s hours with the time clock punches? Edits made above will be lost.');">Reload hours</button>
   </form>
-  @if ($can_see_rates)
-    <form method="POST" action="{{ url('/payroll/save-run') }}" style="display:inline-block;margin-top:6px;" onsubmit="return confirm('Save this pay run as the last-paycheck reference for next period?');">
-      {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
-      <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-save"></i> Save pay run</button>
-      <span style="font-size:12px;margin-left:6px;">@if($last_run_at)Saved {{ \Carbon::parse($last_run_at)->format('m/d/y g:ia') }}@endif</span>
-    </form>
-  @endif
-</div></div>
+  <form method="GET" action="{{ url('/payroll') }}" class="form-inline" style="margin-top:12px;">
+    <span style="font-size:13px;color:#1F1B16;margin-right:6px;">Or open custom dates</span>
+    <input type="date" name="start" value="{{ $start }}" class="form-control input-sm"> to <input type="date" name="end" value="{{ $end }}" class="form-control input-sm">
+    <button class="btn btn-default btn-sm" type="submit">Open</button>
+  </form>
+</div></details>
 
-{{-- ============ SHEET VIEW: SHIFT LOG (the sheet's bottom blocks, editable) ============ --}}
-<style>
-.pr-log input.pr-cell, .pr-log select.pr-cell { border:1px solid transparent; background:transparent; font:inherit; color:#1F1B16; padding:1px 3px; width:100%; }
-.pr-log input.pr-cell:hover, .pr-log select.pr-cell:hover { border-color:#c9c9c9; }
-.pr-log input.pr-cell:focus, .pr-log select.pr-cell:focus { border-color:#4A86E8; background:#fff; outline:none; }
-.pr-log input.pr-d { width:78px; } .pr-log input.pr-t { width:82px; } .pr-log input.pr-c { min-width:200px; }
-.pr-log tr.pr-add td { background:#F7F9FE; }
-.pr-log .pr-btn { border:1px solid #c9c9c9; background:#fff; border-radius:4px; font-size:11px; padding:1px 6px; cursor:pointer; color:#1F1B16; }
-</style>
-@php
-  $mdY = function ($v) { return $v ? \Carbon::parse($v)->format('m/d/y') : ''; };
-  $tm  = function ($v) { return $v ? \Carbon::parse($v)->format('g:i A') : ''; };
-  $locOpts = ['pico' => 'pico', 'hollywood' => 'hw'];
-@endphp
-<div class="box box-solid" id="shift-log"><div class="box-body" style="overflow-x:auto;">
-  <div class="pr-sheet-title">SHIFT LOG</div>
-  <p style="font-size:12px;margin:0 0 8px;color:#1F1B16;">
-    Hours fill in from the ERP time clock on their own. Click any date, time, store or comment to fix it, then Save that row.
-    @if (!empty($hours_doc['edited']))<strong>Edited by {{ $hours_doc['edited_by'] ?? '' }} {{ !empty($hours_doc['edited_at']) ? \Carbon::parse($hours_doc['edited_at'])->format('m/d/y g:ia') : '' }}</strong>, so it no longer updates from the time clock.@endif
-  </p>
-  <table class="pr-sheet pr-log">
-    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th><th></th></tr></thead>
-    <tbody>
-    @foreach ($people as $p)
-      @if (!empty($p['log']))
-        @php $pk = $p['key']; @endphp
-        @foreach ($p['log'] as $lg)
-          @php $f = 'sh-' . $lg['idx']; @endphp
-          <tr>
-            <td class="pr-name">{{ $loop->first ? $p['first_name'] : '' }}</td>
-            <td class="num">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
-            <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" value="{{ $tm($lg['in']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" value="{{ $mdY($lg['out']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" value="{{ $tm($lg['out']) }}"></td>
-            <td class="num">{{ number_format($lg['hours'], 2) }}</td>
-            <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" value="{{ $lg['comment'] }}"></td>
-            <td style="white-space:nowrap;">
-              <button form="{{ $f }}" type="submit" name="action" value="save" class="pr-btn">Save</button>
-              <button form="{{ $f }}" type="submit" name="action" value="delete" class="pr-btn" onclick="return confirm('Delete this shift?');">Delete</button>
-            </td>
-          </tr>
-        @endforeach
-        <tr class="pr-add">
-          @php $f = 'add-' . $pk; @endphp
-          <td style="font-size:11px;">+ add shift</td><td></td>
-          <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" placeholder="mm/dd/yy"></td>
-          <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" placeholder="3:00 PM"></td>
-          <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" placeholder="same day"></td>
-          <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" placeholder="8:00 PM"></td>
-          <td></td>
-          <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === ($p['home_company'] === 'one') ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
-          <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" placeholder="why it was added"></td>
-          <td><button form="{{ $f }}" type="submit" name="action" value="add" class="pr-btn">Add</button></td>
-        </tr>
-        <tr><td colspan="10" style="border-left:0;border-right:0;height:10px;"></td></tr>
-      @endif
-    @endforeach
-    </tbody>
-  </table>
-  @foreach ($people as $p)
-    @foreach ($p['log'] ?? [] as $lg)
-      <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}"></form>
-    @endforeach
-    @if (!empty($p['log']))
-      <form id="add-{{ $p['key'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="name" value="{{ ucfirst($p['key']) }}"></form>
-    @endif
-  @endforeach
-  <p style="font-size:12px;margin-top:6px;color:#1F1B16;">Someone missing completely? Fix their punch on <a href="{{ url('/reports/timecards') . '?start=' . urlencode($start) . '&end=' . urlencode($end) }}" target="_blank">Timecards</a>.</p>
-</div></div>
+@if ($can_see_rates)
+<details class="pr-more"><summary>Save this pay run (used for "Last Payroll Amount" next time)</summary><div class="pr-body">
+  <form method="POST" action="{{ url('/payroll/save-run') }}">
+    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+    <button type="submit" class="btn btn-default btn-sm">Save pay run</button>
+    <span style="font-size:12px;margin-left:6px;">@if ($last_run_at)Saved {{ \Carbon::parse($last_run_at)->format('m/d/y g:ia') }}@endif</span>
+  </form>
+</div></details>
+@endif
 
-{{-- ============ EVERYTHING ELSE (collapsed) ============ --}}
+<details class="pr-more"><summary>Remove someone who left</summary><div class="pr-body">
+  <form method="POST" action="{{ url('/payroll/hide') }}" class="form-inline" onsubmit="var o=this.who.selectedOptions[0];this.user_id.value=o.dataset.uid;this.key.value=o.dataset.key;this.name.value=o.text;return !!o.dataset.key;">
+    {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}">
+    <input type="hidden" name="user_id"><input type="hidden" name="key"><input type="hidden" name="name">
+    <select name="who" class="form-control input-sm"><option value="">Pick a person</option>@foreach ($people as $p)<option data-uid="{{ $p['user_id'] }}" data-key="{{ $p['key'] }}">{{ $p['name'] }}</option>@endforeach</select>
+    <button type="submit" class="btn btn-default btn-sm">Remove from payroll</button>
+  </form>
+</div></details>
 
 <details class="pr-more"><summary>Import hours from Clover</summary><div class="pr-body">
   <form method="POST" action="{{ url('/payroll/import-hours') }}" enctype="multipart/form-data">
@@ -344,7 +330,7 @@
   </form>
 </div></details>
 
-<details class="pr-more" open><summary>What to enter in QuickBooks (one block per company)</summary><div class="pr-body">
+<details class="pr-more"><summary>QuickBooks numbers (one block per company)</summary><div class="pr-body">
   <div style="margin-bottom:10px;">
     <a href="{{ url('/payroll/export.csv?start=' . urlencode($start) . '&end=' . urlencode($end)) }}" class="btn btn-success btn-sm"><i class="fa fa-download"></i> Export CSV</a>
     <span style="margin-left:8px;font-size:12px;color:var(--pos-ink-2);">Columns follow QuickBooks' Run payroll order. Paste the numbers into each company's draft; check each person's Gross matches.</span>
@@ -433,7 +419,7 @@
 </div></details>
 
 @php $memoPeople = array_filter($people, function ($p) { return !empty($p['memo']); }); @endphp
-<details class="pr-more"><summary>Paycheck memos — commission explanation</summary><div class="pr-body">
+<details class="pr-more"><summary>Paycheck memos: commission explanation</summary><div class="pr-body">
   <div style="margin-bottom:10px;">
     <a href="{{ url('/admin/listing-commissions') }}" target="_blank" class="btn btn-default btn-sm"><i class="fa fa-external-link"></i> Verify in Commissions Owed report</a>
     <button type="button" class="btn btn-default btn-sm" onclick="payrollCopyMemos()"><i class="fa fa-copy"></i> Copy memos</button>
@@ -471,7 +457,7 @@
 </div></details>
 @endif
 
-<details class="pr-more"><summary>Freelancers / contractors — add &amp; edit</summary><div class="pr-body">
+<details class="pr-more"><summary>Freelancers and contractors</summary><div class="pr-body">
   <p class="text-muted" style="margin-bottom:8px;">Paid outside QuickBooks payroll. Hourly / per-unit compute automatically; flat is a fixed amount. They also show in the main table above.</p>
   <table class="table table-condensed table-bordered">
     <thead><tr><th>Name</th><th>Model</th><th class="text-right">Amount</th><th>Method</th><th>Paid</th><th></th></tr></thead>
@@ -658,6 +644,44 @@ function payrollSort(col) {
     fetch('{{ url('/sidebar-favorites/toggle') }}', { method: 'POST', credentials: 'same-origin',
       headers: { 'X-CSRF-TOKEN': tokenEl ? tokenEl.getAttribute('content') : '', 'X-Requested-With': 'XMLHttpRequest' }, body: body
     }).then(function (r) { return r.json(); }).then(function (d) { if (d && d.ok) { paint(d.starred); } }).catch(function () {});
+  });
+})();
+</script>
+<script>
+// Shift log + notes save by themselves (no Save buttons).
+(function () {
+  function post(form, extra) {
+    var fd = new FormData(form);
+    Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
+    return fetch(form.getAttribute('action'), { method: 'POST', body: fd, credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, msg: 'Could not save. Reload and try again.' }; }); });
+  }
+  function personTotal(key) {
+    var sum = 0;
+    document.querySelectorAll('tr.pr-shift[data-person="' + key + '"] .pr-el').forEach(function (td) { sum += parseFloat(td.textContent) || 0; });
+    var first = document.querySelector('tr.pr-shift[data-person="' + key + '"] .pr-ptotal strong');
+    if (first) { first.textContent = sum.toFixed(2); }
+  }
+  document.querySelectorAll('tr.pr-shift').forEach(function (tr) {
+    var form = document.getElementById(tr.dataset.form);
+    tr.querySelectorAll('input, select').forEach(function (el) {
+      el.addEventListener('change', function () {
+        tr.className = tr.className.replace(/ ?is-(saving|saved|error)/g, '') + ' is-saving';
+        post(form, { action: 'save' }).then(function (j) {
+          tr.className = tr.className.replace(/ ?is-saving/, '') + (j.ok ? ' is-saved' : ' is-error');
+          if (j.ok) { tr.querySelector('.pr-el').textContent = Number(j.hours).toFixed(2); personTotal(tr.dataset.person); }
+          else { alert(j.msg); }
+        });
+      });
+    });
+  });
+  var nf = document.getElementById('notes-form');
+  document.querySelectorAll('input.pr-note').forEach(function (el) {
+    el.addEventListener('change', function () {
+      el.style.background = '#FFFBE6';
+      post(nf).then(function (j) { el.style.background = j.ok ? '#EAF6EC' : '#FBEAEA'; });
+    });
   });
 })();
 </script>
