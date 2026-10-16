@@ -440,6 +440,8 @@
                         @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
                         @if(($pull['genre'] ?? '') !== '')<span class="area">{{ $pull['genre'] }}</span>@endif
                         @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
+                        {{-- Warehouse stock is pulled by bin; say so when none was saved --}}
+                        @if($pull['bin'] === '' && stripos($pull['place'], 'Warehouse') !== false)<span class="none" style="display:block;">No bin saved</span>@endif
                       @endif
                     </div>
                   @endforeach
