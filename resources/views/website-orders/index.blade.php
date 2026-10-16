@@ -479,7 +479,7 @@
                       @else
                         @if($pull['place'] !== '')<span class="st" style="display:block;">{{ $pull['place'] }}</span>@endif
                         @if($pull['area'] !== '')<span class="zone">{{ $pull['area'] }}</span>@endif
-                        @if($pull['bin'] !== '')<span class="kallax">Bin {{ $pull['bin'] }}</span>@endif
+                        @if($pull['bin'] !== '')<span class="kallax" @if($pull['area'] === '') style="font-family:inherit;" @endif>Bin {{ $pull['bin'] }}</span>@endif
                       @endif
                     </div>
                   @endforeach
@@ -520,7 +520,7 @@
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
                     <div style="margin-top:8px;">
-                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress'], 'spots' => \App\Http\Controllers\WebsiteOrdersController::spotsByName($o, $erpLocations)])
+                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
                     </div>
                   @endif
                 </td>
