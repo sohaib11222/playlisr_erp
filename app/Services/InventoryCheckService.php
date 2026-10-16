@@ -1602,6 +1602,12 @@ class InventoryCheckService
         return $this->titleKeyCandidates($artist, $title);
     }
 
+    /** Every distributor listing (compact index rows). */
+    public function allFeedListings(int $business_id): array
+    {
+        return $this->supplierIndex($business_id)['compact'];
+    }
+
     public function normalizeText($s): string
     {
         return $this->normalizeMatchText($s);

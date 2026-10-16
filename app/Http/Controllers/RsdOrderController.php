@@ -227,7 +227,7 @@ class RsdOrderController extends Controller
             if ($isRsd && empty($p['prices'])) {
                 if ($rsdListings === null) {
                     $rsdListings = [];
-                    foreach ($ica->searchSupplierFeeds($biz, '', 400000) as $e) {
+                    foreach ($ica->allFeedListings($biz) as $e) {
                         $e['_rsd'] = preg_match('/\(RSD\)|\bRSD\b|record store day|\(R$/i', (string) ($e['title'] ?? '')) === 1;
                         $e['_tok'] = self::titleTokens((string) ($e['title'] ?? ''));
                         if (!$e['_tok']) continue;
