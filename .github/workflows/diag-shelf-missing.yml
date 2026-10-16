@@ -6,7 +6,8 @@
 name: Diag shelf missing
 
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [diag/shelf-missing]
 
 concurrency:
   group: production-diag
