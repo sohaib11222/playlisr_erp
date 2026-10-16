@@ -315,7 +315,6 @@
           <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico ({{ $pullCounts['pico'] ?? 0 }} to pull)</option>
           <option value="warehouse" {{ $locationFilter === 'warehouse' ? 'selected' : '' }}>Warehouse ({{ $pullCounts['warehouse'] ?? 0 }} to pull)</option>
         </select>
-        <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : 'warehouse']) }}" style="display:inline-block;margin-top:4px;font-size:12px;font-weight:600;">Pick route</a>
       </div>
       <div class="wo-field">
         <label>From</label>
