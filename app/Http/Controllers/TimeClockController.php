@@ -149,8 +149,7 @@ class TimeClockController extends Controller
                     $cache[$k] = TC::scheduleBlocks((int) $p->user_id, $from, $to, $store);
                 }
                 $bf = TC::blockFlags($cache[$k], (string) $p->clock_in_at, $p->clock_out_at ? (string) $p->clock_out_at : null);
-                if (!$bf['block'] && in_array($p->clock_in_source, ['phone', 'computer'], true)
-                    && !isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
+                if (!$bf['block'] && !isset($this->noSchedDates[substr((string) $p->clock_in_at, 0, 10)])) {
                     $this->unscheduled[(int) $p->id] = true;
                 }
                 if (!$p->clock_out_at) {
