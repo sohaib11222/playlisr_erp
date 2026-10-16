@@ -43,15 +43,12 @@ class RsdOrderController extends Controller
     }
 
     /**
-     * Sarah 10/16: order a LOT of the most requested titles, and use our own
-     * sales to decide the rest. Requests: 2 per ask, 3 per ask once a title
-     * has 3+ asks at that store. Sales: +1 for every 5 copies of that artist
-     * the store sold in the last 12 months (needs 3+, max +6).
+     * Sarah 10/16 (final): double the customer requests plus 2, per store.
+     * A store nobody asked at goes by our sales of that artist instead.
      */
     public static function suggested(int $requested, int $sold = 0): int
     {
-        $req = $requested <= 0 ? 0 : $requested * ($requested >= 3 ? 3 : 2);
-        return $req + self::salesBump($sold);
+        return $requested > 0 ? $requested * 2 + 2 : self::salesBump($sold);
     }
 
     public static function salesBump(int $sold): int

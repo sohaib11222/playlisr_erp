@@ -52,7 +52,7 @@
                     </select>
                 </div>
             </div>
-            <p class="rsd-muted" style="margin:10px 0 0; font-size:13px;">Cart starts at 2 copies per request (3 per request once a store has 3+ asks), plus 1 for every 5 copies of that artist the store sold in the last 12 months. Titles nobody asked for show up when we sold 3+ of that artist.</p>
+            <p class="rsd-muted" style="margin:10px 0 0; font-size:13px;">Cart starts at double the customer requests plus 2 at each store. Where a store has no requests, it gets 1 copy for every 5 of that artist the store sold in the last 12 months (needs 3+ sold, max 6).</p>
             <p style="margin:10px 0 0; font-size:15px;">
                 <b>Hollywood cart:</b> {{ $carts['hollywood']['qty'] }} copies, {{ $money($carts['hollywood']['cost']) }}.
                 &nbsp; <b>Pico cart:</b> {{ $carts['pico']['qty'] }} copies, {{ $money($carts['pico']['cost']) }}.
