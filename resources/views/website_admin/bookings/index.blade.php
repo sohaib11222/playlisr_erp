@@ -27,7 +27,7 @@
 
   <div class="wb-stats">
     <div class="wb-stat"><div class="l">Total Bookings</div><div class="v">{{ $stats['total'] }}</div></div>
-    <div class="wb-stat"><div class="l">Upcoming</div><div class="v ok">{{ collect($bookings)->filter(function ($b) { return empty($b['isPast']) && in_array($b['status'], ['pending', 'confirmed'], true); })->count() }}</div></div>
+    <div class="wb-stat"><div class="l">Upcoming</div><div class="v ok" data-count="confirmed">{{ collect($bookings)->filter(function ($b) { return empty($b['isPast']) && in_array($b['status'], ['pending', 'confirmed'], true); })->count() }}</div></div>
     <div class="wb-stat"><div class="l">Completed</div><div class="v blue">{{ $stats['completed'] }}</div></div>
     <div class="wb-stat"><div class="l">Revenue</div><div class="v ok">${{ number_format($stats['revenue'], 0) }}</div></div>
   </div>
@@ -310,8 +310,9 @@
       }
     });
     Object.keys(counts).forEach(function (k) {
-      var el = document.querySelector('[data-count="' + k + '"]');
-      if (el) { el.textContent = counts[k]; el.classList.toggle('hot', k === 'pending' && counts[k] > 0); }
+      document.querySelectorAll('[data-count="' + k + '"]').forEach(function (el) {
+        el.textContent = counts[k]; el.classList.toggle('hot', k === 'pending' && counts[k] > 0);
+      });
     });
     document.querySelectorAll('.wb-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === activeTab); });
     var caught = document.getElementById('wb-caught-up');
