@@ -61,35 +61,13 @@ jobs:
             $cut = now()->subDays(90)->toDateTimeString();
             $rows = array_values(array_filter($rows, fn($r) => (int)$r['location_id'] === $hw && $r['at'] >= $cut));
             echo "rows=".count($rows)." units=".array_sum(array_column($rows,'units'))."\n";
-            $svc = app(App\Services\ReorderService::class);
-            $pids = array_values(array_unique(array_map(fn($r) => (int)$r['product_id'], $rows)));
-            $all = DB::table('products as p')->leftJoin('variation_location_details as v', function($j) use ($hw){ $j->on('v.product_id','=','p.id')->where('v.location_id','=',$hw); })
-              ->where('p.business_id',$biz)->where('p.is_inactive',0)
-              ->select('p.id','p.name','p.artist','p.product_custom_field1 as cf1','p.category_id',DB::raw('SUM(v.qty_available) as q'))->groupBy('p.id','p.name','p.artist','p.product_custom_field1','p.category_id')->get();
-            $byKey = []; $meta = [];
-            foreach ($all as $p) { $k = $svc->albumKey($p->cf1 ?: $p->artist, $p->name); $meta[$p->id] = [$k, $p]; if ($k !== '') $byKey[$k][] = (int)$p->id; }
-            $acts = DB::table('activity_log')->where('subject_type','App\\Product')->where('description','stock_changed')->where('created_at','>=','2026-10-14')
-              ->where('properties','like','%bin count%')->get(['subject_id','properties','created_at'])->groupBy('subject_id');
-            $manual = DB::table('transaction_sell_lines as l')->join('transactions as t','t.id','=','l.transaction_id')
-              ->where('t.business_id',$biz)->where('t.type','sell')->where('t.status','final')->where('t.location_id',$hw)->where('t.transaction_date','>=',now()->subDays(120))
-              ->where(function($w){ $w->whereNull('l.product_id')->orWhere('l.product_id',0); })->whereNotNull('l.product_name')
-              ->select('l.product_name','l.product_artist',DB::raw('SUM(l.quantity-l.quantity_returned) as q'))->groupBy('l.product_name','l.product_artist')->get();
-            $manK = []; foreach ($manual as $m) { $k = $svc->albumKey($m->product_artist, $m->product_name); if ($k !== '') $manK[$k] = ($manK[$k] ?? 0) + (float)$m->q; }
-            echo "manual line titles 120d at HW: ".count($manual)."\n";
-            $dup = [0,0,0]; $man = [0,0,0]; $cf = [0,0];
-            foreach ($rows as $r) {
-              $pid = (int)$r['product_id']; [$k, $p] = $meta[$pid] ?? ['', null];
-              if ($p && trim((string)$p->artist) === '' && trim((string)$p->cf1) !== '') { $cf[0]++; $cf[1] += $r['units']; }
-              $sib = array_values(array_diff($byKey[$k] ?? [], [$pid]));
-              $sibUp = [];
-              foreach ($sib as $s) foreach (($acts[$s] ?? []) as $a) { $n = json_decode($a->properties,true)['update_note'] ?? ''; if (preg_match('/([\d.]+) -> (\d+)\s*$/',$n,$mm) && (float)$mm[2] > (float)$mm[1]) $sibUp[] = $s.':'.$mm[1].'->'.$mm[2]; }
-              if ($sib) { $dup[0]++; $dup[1] += $r['units']; $dup[2] += $r['units']*$r['unit_cost']; }
-              $mq = $manK[$k] ?? 0;
-              if ($mq > 0) { $man[0]++; $man[1] += min($mq,$r['units']); $man[2] += min($mq,$r['units'])*$r['unit_cost']; }
-              if ($sib || $mq > 0) echo implode("\t", [$pid, mb_substr($r['name'],0,34), 'miss='.$r['units'], 'key='.$k, 'sibs='.implode(',',array_map(fn($s)=>$s.'('.(float)($meta[$s][1]->q ?? 0).')',$sib)), 'sibUp='.implode(',',$sibUp), 'manual120d='.$mq])."\n";
-            }
-            echo "\nrows with another ERP entry for same album: rows={$dup[0]} units={$dup[1]} cost=".round($dup[2],2)."\n";
-            echo "rows where same album was rung as a manual item (120d): rows={$man[0]} units<= {$man[1]} cost=".round($man[2],2)."\n";
-            echo "rows with artist only in custom field: rows={$cf[0]} units={$cf[1]}\n";
+            $c = app(App\Http\Controllers\ShelfCountController::class);
+            $m = new ReflectionMethod($c, 'netMissing'); $m->setAccessible(true);
+            $net = $m->invoke($c, $biz, $hw, (string) DB::table('business_locations')->where('id',$hw)->value('name'), $rows);
+            $u = $f = $mn = $cost = 0; $art = [];
+            foreach ($net as $r) { $u += $r['units']; $f += $r['found']; $mn += $r['manual']; $cost += $r['units']*$r['unit_cost']; if ($r['units']>0) { $a = trim((string)$r['artist']) ?: '(no artist)'; $art[$a] = ($art[$a] ?? 0) + $r['units']*$r['unit_cost']; } }
+            echo "net units=$u found=$f manual=$mn cost=".round($cost,2)."\n";
+            arsort($art); print_r(array_slice($art,0,12,true));
+            foreach ($net as $r) if ($r['found'] || $r['manual']) echo $r['product_id']."\t".$r['name']."\tshort=".$r['short']."\tfound=".$r['found']."\tmanual=".$r['manual']."\tnet=".$r['units']."\n";
             PHP
             php /tmp/diag_shelf_missing.php; rm -f /tmp/diag_shelf_missing.php
