@@ -196,6 +196,7 @@ class RsdOrderController extends Controller
         }
 
         $rows = [];
+        $rsdListings = null;
         foreach ($todo as [$title, $artist, $hw, $pico, $fromSales]) {
             $sold = $sales[self::artistKey($artist)] ?? [];
             $key = self::key($artist, $title);
@@ -205,6 +206,31 @@ class RsdOrderController extends Controller
             $saved = (array) ($state['prices'][$key] ?? []);
             foreach ($saved as $sv) if (!empty($sv['upc'])) $upcs[] = $sv['upc'];
             $p = $ica->rsdPrices($biz, $artist, $title, $format, array_values(array_unique($upcs)), $isRsd);
+            // Distributors name some RSD titles differently ("SREMMLIFE 2",
+            // "TEENAGER OF THE YEAR: LIVE", "WE ARE THE WORLD®"): fall back to
+            // any RSD-tagged listing whose title starts the same way, same format.
+            if ($isRsd && empty($p['prices'])) {
+                if ($rsdListings === null) {
+                    $rsdListings = [];
+                    foreach ($ica->searchSupplierFeeds($biz, 'rsd', 20000) as $e) {
+                        if (!preg_match('/\(RSD\)|\bRSD\b|record store day/i', (string) ($e['title'] ?? ''))) continue;
+                        $rsdListings[] = $e;
+                    }
+                }
+                $core = self::titleCore(preg_replace('/:.*$/', '', $title));
+                $wantCd = $format === 'CD';
+                $more = [];
+                foreach ($rsdListings as $e) {
+                    $hc = self::titleCore(preg_replace('/:.*$/', '', (string) $e['title']));
+                    if (strlen($core) < 5 || strlen($hc) < 5) continue;
+                    if (strpos($hc, $core) !== 0 && strpos($core, $hc) !== 0) continue;
+                    $isCd = preg_match('/\bCD\b/i', (string) $e['title'] . ' ' . (string) ($e['format'] ?? '')) === 1;
+                    if ($isCd !== $wantCd) continue;
+                    if (trim((string) ($e['artist_norm'] ?? '')) !== '' && !$ica->artistsCompatible($ica->normalizeText((string) $artist), (string) $e['artist_norm'])) continue;
+                    if (!empty($e['upc'])) $more[] = (string) $e['upc'];
+                }
+                if ($more) $p = $ica->rsdPrices($biz, $artist, $title, $format, array_values(array_unique(array_merge($upcs, $more))), $isRsd);
+            }
             // Prices pulled live from a distributor site for this page win
             // until the nightly feed has a newer one.
             foreach ($saved as $k => $sv) {

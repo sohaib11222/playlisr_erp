@@ -1602,6 +1602,11 @@ class InventoryCheckService
         return $this->titleKeyCandidates($artist, $title);
     }
 
+    public function normalizeText($s): string
+    {
+        return $this->normalizeMatchText($s);
+    }
+
     public function artistsCompatible(string $a, string $b): bool
     {
         return $this->artistMatches($a, $b);
