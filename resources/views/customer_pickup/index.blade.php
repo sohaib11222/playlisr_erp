@@ -130,7 +130,6 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         <th>Expected Pickup</th>
                         <th>Paid?</th>
                         <th>Status</th>
-                        <th>Notes</th>
                         <th>Picked Up By</th>
                         <th>Created By</th>
                         <th>Action</th>
@@ -263,7 +262,6 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                 { data: 'expected_pickup_date', name: 'expected_pickup_date' },
                 { data: 'is_paid_label', name: 'customer_pickups.is_paid', orderable: true, searchable: false },
                 { data: 'status', name: 'status' },
-                { data: 'notes', name: 'customer_pickups.notes', orderable: false, defaultContent: '-' },
                 { data: 'picked_up_info', name: 'picked_up_info', orderable: false, searchable: false },
                 { data: 'created_info', name: 'created_info', orderable: false, searchable: false },
                 { data: 'action', name: 'action', orderable: false, searchable: false },
@@ -370,6 +368,23 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
                         }
                     });
                 }
+            });
+        });
+
+        // Not Interested / Back on Shelf: one click, no confirm dialog.
+        $(document).on('click', '.pickup_status_post', function(e) {
+            e.preventDefault();
+            var $b = $(this).prop('disabled', true);
+            $.ajax({
+                method: 'POST',
+                url: $b.attr('data-href'),
+                data: { _token: $('meta[name="csrf-token"]').attr('content') || '' },
+                dataType: 'json',
+                success: function(result) {
+                    if (result.success) { toastr.success(result.msg); } else { toastr.error(result.msg); }
+                    pickup_table.ajax.reload();
+                },
+                error: function() { toastr.error('Could not update this hold.'); $b.prop('disabled', false); }
             });
         });
 

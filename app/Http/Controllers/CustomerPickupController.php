@@ -20,7 +20,7 @@ class CustomerPickupController extends Controller
     public function index()
     {
         $business_id = request()->session()->get('user.business_id');
-        $statuses = ['on_order' => 'On Order (AMS)', 'ready' => 'Ready for Pickup', 'picked_up' => 'Picked Up', 'cancelled' => 'Cancelled'];
+        $statuses = ['on_order' => 'On Order (AMS)', 'ready' => 'Ready for Pickup', 'put_back' => 'Put Back on Shelf', 'picked_up' => 'Picked Up', 'cancelled' => 'Cancelled'];
 
         if (request()->ajax()) {
             // AMS overlay: ids still inbound show as "On Order" instead of Ready.
@@ -54,7 +54,8 @@ class CustomerPickupController extends Controller
                     $pickups->whereIn('customer_pickups.id', $onOrderIds ?: [0]);
                 } elseif ($reqStatus === 'ready') {
                     // "Ready" means actually-in-hand: hide still-inbound AMS orders.
-                    $pickups->where('customer_pickups.status', 'ready');
+                    // Put-back rows stay listed until someone reshelves them.
+                    $pickups->whereIn('customer_pickups.status', ['ready', 'put_back']);
                     if (!empty($onOrderIds)) {
                         $pickups->whereNotIn('customer_pickups.id', $onOrderIds);
                     }
@@ -79,8 +80,13 @@ class CustomerPickupController extends Controller
                         $html .= '<button type="button" class="btn btn-danger btn-xs delete_pickup" data-href="' . action('CustomerPickupController@destroy', [$row->id]) . '"><i class="fa fa-trash"></i></button>';
                     } elseif ($row->status == 'ready') {
                         $html .= '<button type="button" class="btn btn-success btn-xs mark_picked_up" data-href="' . action('CustomerPickupController@markPickedUp', [$row->id]) . '"><i class="fa fa-check"></i> Picked Up</button>';
+                        $html .= '<button type="button" class="btn btn-default btn-xs pickup_status_post" data-href="' . action('CustomerPickupController@markPutBack', [$row->id]) . '">Not Interested</button>';
                         $html .= '<a href="' . action('CustomerPickupController@edit', [$row->id]) . '" class="btn btn-warning btn-xs"><i class="fa fa-edit"></i></a>';
                         $html .= '<button type="button" class="btn btn-danger btn-xs delete_pickup" data-href="' . action('CustomerPickupController@destroy', [$row->id]) . '"><i class="fa fa-trash"></i></button>';
+                    }
+
+                    if ($row->status == 'put_back') {
+                        $html .= '<button type="button" class="btn btn-success btn-xs pickup_status_post" data-href="' . action('CustomerPickupController@markShelved', [$row->id]) . '"><i class="fa fa-check"></i> Back on Shelf</button>';
                     }
 
                     $html .= '</div>';
@@ -102,6 +108,7 @@ class CustomerPickupController extends Controller
                         'ready' => '<span class="label label-warning">Ready for Pickup</span>',
                         'picked_up' => '<span class="label label-success">Picked Up</span>',
                         'cancelled' => '<span class="label label-danger">Cancelled</span>',
+                        'put_back' => '<span class="label" style="background:#c62828;">Put Back on Shelf</span><br><small>Not interested</small>',
                     ];
                     return $labels[$row->status] ?? $row->status;
                 })
@@ -124,10 +131,6 @@ class CustomerPickupController extends Controller
                     $d = $hasDate ? \Carbon::parse($raw)->format('n/j/y') : '';
                     $t = $row->expected_pickup_time ? ' ' . $row->expected_pickup_time : '';
                     return trim($d . $t) ?: '-';
-                })
-                ->editColumn('notes', function ($row) {
-                    $n = trim((string) $row->notes);
-                    return $n === '' ? '-' : nl2br(e($n));
                 })
                 ->addColumn('is_paid_label', function ($row) {
                     return $row->is_paid
@@ -158,7 +161,7 @@ class CustomerPickupController extends Controller
                     }
                     return $parts ? implode('<br>', $parts) : '-';
                 })
-                ->rawColumns(['action', 'status', 'notes', 'is_paid_label', 'picked_up_info', 'created_info'])
+                ->rawColumns(['action', 'status', 'is_paid_label', 'picked_up_info', 'created_info'])
                 ->make(true);
         }
 
@@ -544,6 +547,35 @@ class CustomerPickupController extends Controller
         }
 
         return $output;
+    }
+
+    /** Customer passed on a held item: flag it for staff to reshelve. */
+    public function markPutBack($id)
+    {
+        return $this->moveStatus($id, 'ready', 'put_back', 'Marked Put Back on Shelf');
+    }
+
+    /** Staff reshelved a put-back item; it leaves the Ready list. */
+    public function markShelved($id)
+    {
+        return $this->moveStatus($id, 'put_back', 'cancelled', 'Back on shelf');
+    }
+
+    protected function moveStatus($id, string $from, string $to, string $msg): array
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $pickup = CustomerPickup::where('business_id', $business_id)->findOrFail($id);
+            if ($pickup->status != $from) {
+                return ['success' => false, 'msg' => 'This hold has already changed. Refresh the page.'];
+            }
+            $pickup->status = $to;
+            $pickup->save();
+            return ['success' => true, 'msg' => $msg];
+        } catch (\Exception $e) {
+            \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
+            return ['success' => false, 'msg' => __('messages.something_went_wrong')];
+        }
     }
 
     /**

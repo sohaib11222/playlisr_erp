@@ -260,6 +260,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/customer-pickups/for-contact/{contact_id}', 'CustomerPickupController@forContact');
     Route::post('/customer-pickups/{id}/mark-picked-up', 'CustomerPickupController@markPickedUp');
     Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
+    Route::post('/customer-pickups/{id}/put-back', 'CustomerPickupController@markPutBack');
+    Route::post('/customer-pickups/{id}/shelved', 'CustomerPickupController@markShelved');
 
     // In Store Orders — quick walk-in log: customer name, item, price paid,
     // paid/unpaid, notify when ready. Free-text customer, not tied to the
