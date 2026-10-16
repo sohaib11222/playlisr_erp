@@ -1041,17 +1041,17 @@ class WebsiteOrdersController extends Controller
         $reason = (string) $request->input('reason');
         $note = trim((string) $request->input('note'));
         if (!array_key_exists($reason, self::REASONS)) {
-            return redirect()->route('website-orders.index')->with('error', 'Pick a valid cancellation reason.');
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', 'Pick a valid cancellation reason.');
         }
         if ($reason === 'other' && $note === '') {
-            return redirect()->route('website-orders.index')->with('error', "A note is required when reason is 'Other'.");
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', "A note is required when reason is 'Other'.");
         }
 
         // Item-level cancel: the dialog sends the ticked lines. An empty
         // pick when there were items to pick is a mistake, not "everything".
         $itemIds = array_values(array_filter((array) $request->input('item_ids', []), 'is_string'));
         if ($request->input('item_select') === '1' && empty($itemIds)) {
-            return redirect()->route('website-orders.index')->with('error', 'Tick at least one item to cancel.');
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', 'Tick at least one item to cancel.');
         }
 
         // The cancel runs the refund (up to 3 Stripe calls), the customer
@@ -1067,13 +1067,13 @@ class WebsiteOrdersController extends Controller
         ], 45);
 
         if ($resp === null) {
-            return redirect()->route('website-orders.index')->with('error', 'Could not reach the website to cancel the order.');
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', 'Could not reach the website to cancel the order.');
         }
         if (!empty($resp['timedOut'])) {
-            return redirect()->route('website-orders.index')->with('error', 'The website took too long to answer, so the cancel may have gone through. Reload the page and check the order. If it still shows, press Cancel order again; it will not refund twice.');
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', 'The website took too long to answer, so the cancel may have gone through. Reload the page and check the order. If it still shows, press Cancel order again; it will not refund twice.');
         }
         if (($resp['success'] ?? false) !== true) {
-            return redirect()->route('website-orders.index')->with('error', $resp['message'] ?? 'Cancellation failed.');
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', $resp['message'] ?? 'Cancellation failed.');
         }
 
         // Say what happened to the money, not just "cancelled".
@@ -1085,7 +1085,7 @@ class WebsiteOrdersController extends Controller
         }
         $needsAttention = $refundReason !== '' && !in_array($refundReason, ['ok', 'not_charged', 'free_order', 'already_refunded'], true);
 
-        return redirect()->route('website-orders.index')->with($needsAttention ? 'error' : 'status', $message);
+        return redirect()->route('website-orders.index', ['order' => $id])->with($needsAttention ? 'error' : 'status', $message);
     }
 
     /**

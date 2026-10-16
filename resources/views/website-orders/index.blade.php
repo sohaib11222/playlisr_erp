@@ -547,7 +547,7 @@
                           <button type="submit" class="wo-more-item">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                         </form>
                         @if(!$isArchived)
-                          <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
+                          <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-who="{{ $customerName }}" data-num="{{ $o['orderNumber'] ?? '' }}" data-total="{{ number_format((float) ($o['total_amount'] ?? 0), 2, '.', '') }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                         @endif
                       </div>
                     </div>
@@ -880,23 +880,29 @@
       <form method="POST" id="wo-cancel-form" class="wo-dialog-body"
             onsubmit="return woConfirmCancel(this);">
         {{ csrf_field() }}
-        <h3>Cancel order</h3>
-        <p style="margin:0 0 10px;font-size:13px;color:#991b1b;">Tick the items to cancel. They're refunded with their tax, and the customer gets an email with the reason.</p>
-        <label>Items to cancel</label>
+        <h3>Cancel &amp; refund</h3>
+        {{-- Made deliberately hard to do by accident (Sarah, 2026-10-16): who,
+             how much, and a typed CANCEL before the button works. --}}
+        <div id="wo-cancel-who" style="margin:0 0 10px;padding:8px 10px;background:#f3f4f6;border-radius:6px;font-size:14px;color:#000;"></div>
+        <div style="margin:0 0 12px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#7f1d1d;">This <strong>refunds the customer's card right away</strong> and <strong>emails them</strong>. It can't be undone.</div>
+        <label>1. Tick the items to cancel</label>
         <div id="wo-cancel-items" style="display:grid;gap:6px;margin-bottom:12px;font-size:14px;"></div>
         <input type="hidden" name="item_select" id="wo-cancel-item-select" value="0">
-        <label>Reason</label>
+        <div id="wo-cancel-sum" style="margin:-4px 0 12px;font-size:14px;font-weight:700;color:#000;">Nothing ticked yet.</div>
+        <label>2. Reason (goes in the customer's email)</label>
         <select name="reason" required>
           <option value="">Choose a reason…</option>
           @foreach($reasons as $key => $label)
             <option value="{{ $key }}">{{ $label }}</option>
           @endforeach
         </select>
-        <label>Note (required if Other)</label>
+        <label>3. Note (required if Other, shown to the customer)</label>
         <input type="text" name="note" placeholder="Optional detail for the customer email">
+        <label>4. Type CANCEL to confirm</label>
+        <input type="text" id="wo-cancel-typed" autocomplete="off" placeholder="CANCEL" oninput="woCancelReady()">
         <div class="wo-dialog-actions">
-          <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Never mind</button>
-          <button type="submit" class="wo-btn wo-btn-danger">Cancel order</button>
+          <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Keep the order</button>
+          <button type="submit" class="wo-btn wo-btn-danger" disabled>Cancel &amp; refund</button>
         </div>
       </form>
     </dialog>
@@ -974,12 +980,9 @@
         // never cancelled or refunded here).
         var active = parseInt(form.dataset.active || '0', 10);
         var giftLeft = parseInt(form.dataset.giftLeft || '0', 10);
-        var whole = !boxes.length || picked.length === active;
-        var ok = confirm(whole
-          ? 'Cancel the whole order, refund the customer and email them? This can\'t be undone from here.'
-          : (picked.length === open.length && giftLeft
-              ? 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The gift card on this order is not refunded and stays active.'
-              : 'Cancel ' + picked.length + ' item(s), refund them and email the customer? The rest of the order still goes out.'));
+        // Typed CANCEL replaces the browser pop-up (Sarah, 2026-10-16)
+        var ok = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
+        if (!ok) { alert('Type CANCEL in step 4 to confirm.'); return false; }
         if (ok) {
           // One submit only: a second click used to send a second cancel.
           var btn = form.querySelector('button[type="submit"]');
@@ -1009,7 +1012,7 @@
         form.dataset.active = String(lines.filter(function (l) { return !l.cancelled; }).length);
         form.dataset.giftLeft = String(lines.filter(function (l) { return !l.cancelled && l.gift; }).length);
         var submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Cancel order'; }
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Cancel & refund'; }
         lines.forEach(function (l) {
           var row = document.createElement('label');
           row.style.cssText = 'display:flex;gap:8px;align-items:center;text-transform:none;font-weight:400;margin:0;';
@@ -1022,10 +1025,17 @@
           var text = document.createElement('span');
           text.textContent = l.name + (l.qty > 1 ? ' x' + l.qty : '') + ' ($' + (l.price * l.qty).toFixed(2) + ')' +
             (l.cancelled ? ' - already cancelled' : l.gift ? ' - gift card, can\'t cancel here' : '');
+          cb.addEventListener('change', woCancelReady);
           row.appendChild(cb);
           row.appendChild(text);
           box.appendChild(row);
         });
+        var src = btn || document.querySelector('button.wo-more-item.danger[data-order="' + orderId + '"]');
+        form.dataset.total = (src && src.dataset.total) || '';
+        document.getElementById('wo-cancel-who').textContent = 'Customer: ' + ((src && src.dataset.who) || '?') +
+          ((src && src.dataset.num) ? '  ·  Order #' + src.dataset.num : '') + '  ·  Paid $' + (form.dataset.total || '?');
+        document.getElementById('wo-cancel-typed').value = '';
+        woCancelReady();
         document.getElementById('wo-cancel-dialog').showModal();
       }
     </script>
@@ -1174,6 +1184,23 @@
     } else {
       window.prompt('Copy this link:', url);
     }
+  }
+</script>
+<script>
+  // Cancel box: plain-words refund summary, button only after CANCEL is typed
+  function woCancelReady() {
+    var form = document.getElementById('wo-cancel-form');
+    var picked = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)');
+    var active = parseInt(form.dataset.active || '0', 10);
+    var sum = 0;
+    picked.forEach(function (cb) { var m = cb.parentNode.textContent.match(/\$([0-9.]+)/); if (m) sum += parseFloat(m[1]); });
+    var el = document.getElementById('wo-cancel-sum');
+    if (!picked.length) el.textContent = 'Nothing ticked yet.';
+    else if (picked.length >= active) el.textContent = 'Whole order: the customer gets back everything they paid ($' + (form.dataset.total || '?') + ', including tax and shipping).';
+    else el.textContent = 'Part of the order: ' + picked.length + ' item(s), $' + sum.toFixed(2) + ' plus their tax goes back. Shipping is not refunded and the rest still ships.';
+    var typed = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length);
   }
 </script>
 @endsection
