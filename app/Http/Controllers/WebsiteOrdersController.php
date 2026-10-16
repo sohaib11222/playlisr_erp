@@ -71,7 +71,8 @@ class WebsiteOrdersController extends Controller
             $activeTab = 'needs_action';
         }
         $statusFilter = (string) $request->query('status', '');
-        $paymentStatusFilter = (string) $request->query('payment_status', 'completed');
+        // An order link (?order=) shows the order whatever its payment status (refunded too)
+        $paymentStatusFilter = (string) $request->query('payment_status', preg_match('/^[a-f0-9]{24}$/i', (string) $request->query('order', '')) ? 'all' : 'completed');
         $search = trim((string) $request->query('q', ''));
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
