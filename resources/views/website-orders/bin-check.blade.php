@@ -74,5 +74,24 @@
   @elseif(!$productError)
     <p>None.</p>
   @endif
+
+  @if(!empty($origins))
+    <h2>Where the moved records came from ({{ count($origins) }})</h2>
+    <p>The first time each one got stock in the ERP.</p>
+    <table>
+      <tr><th>Record</th><th>Created</th><th>Created by</th><th>First stock</th><th>At</th><th>By</th><th>Note</th></tr>
+      @foreach($origins as $r)
+        <tr>
+          <td><a href="{{ url('/products/' . $r['id'] . '/edit') }}">{{ $r['name'] }}</a></td>
+          <td>{{ $r['created'] ? date('m/d/y', strtotime($r['created'])) : '' }}</td>
+          <td>{{ $r['created_by'] }}</td>
+          <td>{{ $r['how'] }}</td>
+          <td>{{ $r['where'] }}</td>
+          <td>{{ $r['by'] }}</td>
+          <td>{{ $r['note'] }}</td>
+        </tr>
+      @endforeach
+    </table>
+  @endif
 </div>
 @endsection

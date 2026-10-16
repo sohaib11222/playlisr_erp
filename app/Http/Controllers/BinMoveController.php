@@ -41,6 +41,52 @@ class BinMoveController extends Controller
         return false;
     }
 
+    /**
+     * Read-only: for the records in the last move, the first time stock was
+     * added (opening stock, purchase, transfer), at which location, by whom.
+     * Shows how Hollywood-bin records ended up stocked at Pico.
+     */
+    public static function lastMoveOrigins(): array
+    {
+        $files = glob(self::snapDir() . '/bin-move-*.json') ?: [];
+        rsort($files);
+        if (!$files) return [];
+        $s = json_decode((string) @file_get_contents($files[0]), true);
+        $ids = array_values(array_unique(array_map(function ($l) { return (int) $l['product_id']; }, $s['lines'] ?? [])));
+        if (!$ids) return [];
+        $rows = DB::table('purchase_lines as pl')
+            ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->whereIn('pl.product_id', $ids)
+            ->whereIn('t.type', ['opening_stock', 'purchase', 'purchase_transfer'])
+            ->orderBy('t.transaction_date')
+            ->get(['pl.product_id', 't.type', 't.transaction_date', 't.ref_no', 't.additional_notes', 'bl.name as loc', 'u.first_name', 'u.last_name']);
+        $first = [];
+        foreach ($rows as $r) {
+            if (!isset($first[$r->product_id])) $first[$r->product_id] = $r;
+        }
+        $products = DB::table('products as p')->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->whereIn('p.id', $ids)->get(['p.id', 'p.name', 'p.created_at', 'p.bin_position', 'p.listing_location', 'u.first_name', 'u.last_name']);
+        $out = [];
+        foreach ($products as $p) {
+            $f = $first[$p->id] ?? null;
+            $out[] = [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'created' => $p->created_at,
+                'created_by' => trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? '')),
+                'bin' => trim((string) ($p->bin_position ?: $p->listing_location)),
+                'how' => $f ? str_replace('_', ' ', $f->type) : 'no stock entry',
+                'where' => $f->loc ?? '',
+                'by' => $f ? trim(($f->first_name ?? '') . ' ' . ($f->last_name ?? '')) : '',
+                'note' => $f ? mb_substr((string) $f->additional_notes, 0, 80) : '',
+            ];
+        }
+        usort($out, function ($a, $b) { return strcmp((string) $a['created'], (string) $b['created']); });
+        return $out;
+    }
+
     protected static function snapDir(): string
     {
         $d = storage_path('admin-snapshots');

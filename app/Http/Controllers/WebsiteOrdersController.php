@@ -554,6 +554,7 @@ class WebsiteOrdersController extends Controller
             'products' => ($p['success'] ?? false) ? ($p['data'] ?? []) : [],
             'productError' => ($p['success'] ?? false) ? null : (($p['message'] ?? null) ?: 'Could not reach the website.'),
             'canUndo' => \App\Http\Controllers\BinMoveController::canUndo(),
+            'origins' => (function () { try { return \App\Http\Controllers\BinMoveController::lastMoveOrigins(); } catch (\Throwable $e) { \Log::warning('bin origins: ' . $e->getMessage()); return []; } })(),
         ]);
     }
 
