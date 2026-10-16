@@ -353,7 +353,7 @@ class WebsiteBookingsController extends Controller
     public function venues(Request $request)
     {
         $this->guard();
-        $venues = $this->fetchVenues($error);
+        $venues = $this->fetchVenues($error, true);
         $venues = array_map(function ($v) {
             $v['_img'] = !empty($v['images'][0]) ? $this->imageUrl($v['images'][0]) : null;
             return $v;
@@ -521,9 +521,10 @@ class WebsiteBookingsController extends Controller
         ];
     }
 
-    protected function fetchVenues(&$error = null)
+    /** $all: include inactive venues (Manage Venues and edit), not just bookable ones. */
+    protected function fetchVenues(&$error = null, bool $all = false)
     {
-        $resp = WebsiteBridge::admin('GET', '/venues');
+        $resp = WebsiteBridge::admin('GET', $all ? '/venues/all' : '/venues');
         if (empty($resp['success'])) {
             $error = $resp['message'] ?? 'Failed to load venues';
             return [];
@@ -535,7 +536,7 @@ class WebsiteBookingsController extends Controller
 
     protected function findVenue($id, &$error = null)
     {
-        foreach ($this->fetchVenues($error) as $v) {
+        foreach ($this->fetchVenues($error, true) as $v) {
             if (($v['_id'] ?? null) === $id) {
                 return $v;
             }

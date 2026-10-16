@@ -209,7 +209,7 @@
         <input type="checkbox" name="isActive" value="1" @if($isActive) checked @endif>
         Venue is active and available for booking
       </label>
-      <div class="wb-hint">The website hides inactive venues from its venue list, so an inactive venue will not show on the Manage Venues page afterwards.</div>
+      <div class="wb-hint">Inactive venues are hidden from customers on the website but stay here so you can turn them back on.</div>
     </div>
 
     <div class="wbf-foot">
