@@ -324,6 +324,7 @@
         <div class="wo-scroll">
         <table class="wo-tbl">
           <colgroup>
+            <col style="width:100px">
             <col style="width:15%">
             <col>
             <col style="width:220px">
@@ -331,10 +332,10 @@
             <col style="width:118px">
             <col style="width:112px">
             <col style="width:86px">
-            <col style="width:92px">
             <col style="width:236px">
           </colgroup>
           <thead><tr>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
             <th>Location</th>
@@ -342,7 +343,6 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
-            <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
           </tr></thead>
           <tbody>
@@ -395,6 +395,17 @@
                 $rowListed = \App\Http\Controllers\WebsiteOrdersController::listedShort($rowListedDates->first());
               @endphp
               <tr class="wo-row">
+                <td class="wo-placed">
+                  @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
+                  @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
+                    @if($rowIsPreorder)
+                      <span class="wo-sla pre">not in stock yet</span>
+                    @else
+                      @php $slaH = \App\Http\Controllers\WebsiteOrdersController::hoursSinceStatic($o['createdAt'] ?? null); @endphp
+                      <span class="wo-sla {{ $slaH >= 48 ? 'over' : ($slaH >= 24 ? 'warn' : 'ok') }}">{{ $slaH }}h{{ $slaH >= 48 ? ' · OVERDUE' : ($slaH >= 24 ? ' · pull soon' : '') }}</span>
+                    @endif
+                  @endif
+                </td>
                 <td>
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
@@ -504,17 +515,6 @@
                   @endif
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
-                <td class="wo-placed">
-                  @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
-                  @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
-                    @if($rowIsPreorder)
-                      <span class="wo-sla pre">not in stock yet</span>
-                    @else
-                      @php $slaH = \App\Http\Controllers\WebsiteOrdersController::hoursSinceStatic($o['createdAt'] ?? null); @endphp
-                      <span class="wo-sla {{ $slaH >= 48 ? 'over' : ($slaH >= 24 ? 'warn' : 'ok') }}">{{ $slaH }}h{{ $slaH >= 48 ? ' · OVERDUE' : ($slaH >= 24 ? ' · pull soon' : '') }}</span>
-                    @endif
-                  @endif
-                </td>
                 <td class="wo-actions-cell">
                   <div class="wo-row-actions">
                     <button type="button" class="wo-btn wo-btn-primary"

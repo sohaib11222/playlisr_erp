@@ -604,7 +604,8 @@ class WebsiteOrdersController extends Controller
         }
         if (!$erp) return ['place' => '', 'area' => $zone, 'genre' => '', 'bin' => ''];
         $places = array_map(function ($n) {
-            return str_ireplace(' In Store', ' Store', $n);
+            // One name for the warehouse everywhere (bin items say "Warehouse")
+            return stripos($n, 'warehouse') !== false ? 'Warehouse' : str_ireplace(' In Store', ' Store', $n);
         }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
         // Store stock: the genre bin on two lines, "Vinyl - Used" then
