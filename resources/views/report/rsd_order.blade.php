@@ -166,6 +166,25 @@
         data._token = CSRF;
         return $.post(url, data);
     }
+    // Click a column header to sort (click again to flip). Number boxes sort by their value.
+    $('#rsd-table thead th').css('cursor', 'pointer').attr('title', 'Click to sort').on('click', function () {
+        var th = $(this), i = th.index(), dir = th.data('dir') === 'desc' ? 'asc' : 'desc';
+        $('#rsd-table thead th').removeData('dir').find('.rsd-arrow').remove();
+        th.data('dir', dir).append('<span class="rsd-arrow"> ' + (dir === 'desc' ? '&#9660;' : '&#9650;') + '</span>');
+        var val = function (tr) {
+            var td = $(tr).children().eq(i), inp = td.find('input');
+            var s = inp.length ? inp.val() : td.text().trim();
+            var n = parseFloat(String(s).replace(/[$,]/g, ''));
+            return isNaN(n) ? (i === 0 ? s.toLowerCase() : (dir === 'desc' ? -1 : 1e9)) : n;
+        };
+        var rows = $('#rsd-table tbody tr').get();
+        rows.sort(function (a, b) {
+            var x = val(a), y = val(b);
+            var c = (typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y));
+            return dir === 'desc' ? -c : c;
+        });
+        $('#rsd-table tbody').append(rows);
+    });
     var timers = {};
     $('#rsd-table').on('change', '.rsd-req', function () {
         var el = $(this);
