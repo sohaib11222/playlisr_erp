@@ -103,16 +103,16 @@
 
   .wo-route-btn { align-self:center; padding:10px 18px; border-radius:8px; background:#1e40af; color:#fff !important; font-weight:700; font-size:15px; text-decoration:none; white-space:nowrap; }
   .ev-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
-  .wo-onote { margin-top:8px; }
+  .wo-onote { margin-top:4px; }
   .wo-onote-show { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 8px; margin-bottom:5px; }
   .wo-onote-show .txt { font-size:13px; color:#000; white-space:pre-wrap; font-weight:600; }
   .wo-onote-show .by { font-size:11px; color:#000; margin-top:2px; }
-  .wo-onote-open { font-size:12px; padding:4px 9px; border:1px dashed #9ca3af; border-radius:6px; background:#fff; color:#000; cursor:pointer; }
+  .wo-onote-open { font-size:11px; padding:1px 6px; border:none; background:none; color:#1e40af; text-decoration:underline; cursor:pointer; }
   .wo-onote-edit textarea { width:100%; font-size:13px; padding:6px; border:1px solid #d1d5db; border-radius:6px; margin-bottom:5px; color:#000; }
   .wo-row-actions { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:5px; position:relative; }
   .wo-row-actions .wo-btn-primary { padding:0 9px; }
   .wo-row-actions form { margin:0; }
-  .wo-row-actions .wo-btn { display:inline-flex; align-items:center; justify-content:center; width:auto; height:30px; padding:0 10px; font-size:12.5px; }
+  .wo-row-actions .wo-btn { display:inline-flex; align-items:center; justify-content:center; width:auto; height:26px; padding:0 8px; font-size:12px; }
   .wo-more { position:relative; }
   .wo-more-btn { width:30px !important; padding:0 !important; }
   .wo-more-btn svg { width:16px; height:16px; fill:#374151; }
@@ -152,15 +152,17 @@
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
   .wo-detail-items th { color:#000; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
-  .wo-pick { margin-top:6px; text-align:left; }
-  .wo-pick-line { border:1px solid #e5e7eb; border-radius:7px; padding:5px 7px; margin-bottom:5px; background:#fff; }
+  /* Compact pick checklist: one line per item, buttons on the right (Sarah, 2026-10-16) */
+  .wo-pick { margin-top:4px; text-align:left; }
+  .wo-pick-line { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:6px; align-items:center; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; margin-bottom:3px; background:#fff; }
   .wo-pick-line.is-done { background:#ecfdf5; border-color:#a7f3d0; }
   .wo-pick-line.is-missing { background:#fef2f2; border-color:#fecaca; }
-  .wo-pick-name { font-size:12px; font-weight:600; color:#111827; line-height:1.3; }
-  .wo-pick-state { font-size:11px; color:#000; margin:1px 0 4px; }
-  .wo-pick-btns { display:flex; gap:5px; }
-  .wo-pick-btns button, .wo-pick-all { font-size:12px; padding:5px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#000; cursor:pointer; }
+  .wo-pick-name { grid-column:1; font-size:12px; font-weight:600; color:#000; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wo-pick-state { grid-column:1; font-size:10.5px; color:#000; margin:0; line-height:1.2; }
+  .wo-pick-btns { grid-column:2; grid-row:1 / span 2; display:flex; gap:3px; }
+  .wo-pick-btns button, .wo-pick-all { font-size:11px; padding:2px 7px; border:1px solid #d1d5db; border-radius:5px; background:#fff; color:#000; cursor:pointer; white-space:nowrap; }
   .wo-pick-btns button.go, .wo-pick-all { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
+  .wo-pick-all { margin-top:2px; }
   .wo-pick-btns button:disabled, .wo-pick-all:disabled { opacity:.5; cursor:wait; }
 </style>
 
@@ -567,7 +569,7 @@
                     </div>
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
-                    <div style="margin-top:8px;">
+                    <div style="margin-top:4px;">
                       @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
                     </div>
                   @endif
@@ -1072,7 +1074,7 @@
       l.classList.toggle('is-missing', missing);
       var now = new Date();
       var when = (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
-      l.querySelector('.wo-pick-state').textContent = done ? 'Picked by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : 'Not picked');
+      l.querySelector('.wo-pick-state').textContent = done ? 'Picked by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : '');
       var b = l.querySelector('.wo-pick-btns');
       b.innerHTML = (done || missing)
         ? '<button type="button">Undo</button>'
