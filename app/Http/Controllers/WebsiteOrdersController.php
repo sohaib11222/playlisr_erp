@@ -638,6 +638,7 @@ class WebsiteOrdersController extends Controller
         if (!$erp) return ['place' => '', 'area' => $zone, 'genre' => '', 'bin' => ''];
         $places = array_map(function ($n) {
             // One name for the warehouse everywhere (bin items say "Warehouse")
+            if (stripos($n, 'discogs') !== false) return 'Discogs listing (spot not saved)';
             return stripos($n, 'warehouse') !== false ? 'Warehouse' : str_ireplace(' In Store', ' Store', $n);
         }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
@@ -819,7 +820,9 @@ class WebsiteOrdersController extends Controller
             if (empty($r->loc_name)) continue;
             $qty = (float) ($r->qty_available ?? 0);
             $name = (string) $r->loc_name;
-            if (stripos($name, 'warehouse') !== false) $label = 'Hollywood Warehouse';
+            // "Discogs Warehouse" is where Discogs imports are filed in the ERP, not a real room
+            if (stripos($name, 'discogs') !== false) $label = 'Discogs listing';
+            elseif (stripos($name, 'warehouse') !== false) $label = 'Hollywood Warehouse';
             elseif (stripos($name, 'pico') !== false) $label = 'Pico In Store';
             elseif (stripos($name, 'hollywood') !== false) $label = 'Hollywood In Store';
             else $label = $name;
