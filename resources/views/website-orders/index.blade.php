@@ -563,6 +563,13 @@
                       </div>
                     </div>
                   </div>
+                  {{-- Internal refund reasons (for Jon), saved from the cancel box --}}
+                  @foreach(($o['refund_notes'] ?? []) as $rn)
+                    <div class="wo-onote-show" style="background:#fee2e2;border-color:#fecaca;">
+                      <div class="txt">Refund reason: {{ $rn['text'] ?? '' }}</div>
+                      <div class="by">@if(!empty($rn['items'])){{ implode(', ', $rn['items']) }} &middot; @endif{{ $rn['by'] ?? '' }} @if(!empty($rn['at'])){{ \Carbon\Carbon::parse($rn['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
+                    </div>
+                  @endforeach
                   {{-- Note on this one order (Sarah, 2026-10-16), saved to the website order --}}
                   @php $oNote = $o['staff_note'] ?? []; $oNoteText = trim((string) ($oNote['text'] ?? '')); @endphp
                   <div class="wo-onote" data-id="{{ $o['_id'] }}">
@@ -932,7 +939,10 @@
         </select>
         <label>3. Note (required if Other, shown to the customer)</label>
         <input type="text" name="note" placeholder="Optional detail for the customer email">
-        <label>4. Type CANCEL to confirm</label>
+        <label>4. Reason for Jon (internal, NOT sent to the customer)</label>
+        <textarea name="internal_note" id="wo-cancel-internal" rows="3" placeholder="What happened and why we refunded, e.g. couldn't find it at Pico after checking the bins twice" oninput="woCancelReady()" style="width:100%;font-size:14px;padding:8px;border:1px solid #d1d5db;border-radius:6px;color:#000;"></textarea>
+        <input type="hidden" name="item_names" id="wo-cancel-item-names" value="">
+        <label>5. Type CANCEL to confirm</label>
         <input type="text" id="wo-cancel-typed" autocomplete="off" placeholder="CANCEL" oninput="woCancelReady()">
         <div class="wo-dialog-actions">
           <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Keep the order</button>
@@ -1016,7 +1026,9 @@
         var giftLeft = parseInt(form.dataset.giftLeft || '0', 10);
         // Typed CANCEL replaces the browser pop-up (Sarah, 2026-10-16)
         var ok = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
-        if (!ok) { alert('Type CANCEL in step 4 to confirm.'); return false; }
+        if ((document.getElementById('wo-cancel-internal').value || '').trim().length < 10) { alert('Write the reason for Jon in step 4.'); return false; }
+        if (!ok) { alert('Type CANCEL in step 5 to confirm.'); return false; }
+        document.getElementById('wo-cancel-item-names').value = Array.prototype.map.call(picked, function (cb) { return cb.parentNode.querySelector('span').childNodes[0].textContent.trim(); }).join('||');
         if (ok) {
           // One submit only: a second click used to send a second cancel.
           var btn = form.querySelector('button[type="submit"]');
@@ -1077,6 +1089,7 @@
         document.getElementById('wo-cancel-who').textContent = 'Customer: ' + ((src && src.dataset.who) || '?') +
           ((src && src.dataset.num) ? '  ·  Order #' + src.dataset.num : '') + '  ·  Paid $' + (form.dataset.total || '?');
         document.getElementById('wo-cancel-typed').value = '';
+        document.getElementById('wo-cancel-internal').value = '';
         woCancelReady();
         document.getElementById('wo-cancel-dialog').showModal();
       }
@@ -1109,19 +1122,19 @@
         .catch(function (e) { alert('Pick not saved: ' + e.message); btns.forEach(function (b) { b.disabled = false; }); });
     }
     function woPickPaint(l, status, who) {
-      var done = status === 'Picked', missing = status === "Can't Find";
+      var done = status === 'Picked' || status === 'Dropshipped', missing = status === "Can't Find";
       l.classList.toggle('is-done', done);
       l.classList.toggle('is-missing', missing);
       var now = new Date();
       var when = (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
-      l.querySelector('.wo-pick-state').textContent = done ? 'Picked by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : '');
+      l.querySelector('.wo-pick-state').textContent = done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') + ' by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : '');
       var b = l.querySelector('.wo-pick-btns');
       b.innerHTML = (done || missing)
         ? '<button type="button">Undo</button>'
-        : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button>';
+        : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button><button type="button">Dropshipped</button>';
       var bs = b.querySelectorAll('button');
       if (done || missing) { bs[0].onclick = function () { woPick(this, 'Not Picked'); }; }
-      else { bs[0].onclick = function () { woPick(this, 'Picked'); }; bs[1].onclick = function () { woPick(this, "Can't Find"); }; }
+      else { bs[0].onclick = function () { woPick(this, 'Picked'); }; bs[1].onclick = function () { woPick(this, "Can't Find"); }; bs[2].onclick = function () { woPick(this, 'Dropshipped'); }; }
     }
     function woPickCount(box) {
       var picked = 0, total = 0;
@@ -1254,7 +1267,8 @@
     }
     var typed = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
     var btn = form.querySelector('button[type="submit"]');
-    if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length);
+    var why = (document.getElementById('wo-cancel-internal').value || '').trim().length >= 10;
+    if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length && why);
   }
 </script>
 @endsection

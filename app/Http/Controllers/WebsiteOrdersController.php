@@ -514,7 +514,7 @@ class WebsiteOrdersController extends Controller
         }
         $status = (string) $request->input('status');
         $ok = preg_match('/^[a-f0-9]{24}$/i', $orderId) && ($itemId === 'all' || preg_match('/^[a-f0-9]{24}$/i', $itemId))
-            && in_array($status, ['Picked', 'Not Picked', "Can't Find", 'Pending Arrival'], true);
+            && in_array($status, ['Picked', 'Not Picked', "Can't Find", 'Pending Arrival', 'Dropshipped'], true);
         $resp = !$ok ? ['success' => false, 'message' => 'That pick could not be saved.']
             : $this->websiteApi('POST', $itemId === 'all' ? "/erp/picks/{$orderId}/all" : "/erp/picks/{$orderId}/items/{$itemId}", [
                 'status' => $status,
@@ -695,7 +695,7 @@ class WebsiteOrdersController extends Controller
     {
         $out = [];
         foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
-            if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find"], true)) {
+            if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) {
                 $out[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
             }
         }
@@ -735,7 +735,7 @@ class WebsiteOrdersController extends Controller
                 $k = strtolower(trim((string) ($pl['name'] ?? '')));
                 $lines[$k] = $pl;
                 // Picked, or marked Can't Find: off the queue (Sarah, 2026-10-16)
-                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find"], true)) $done[$k] = true;
+                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) $done[$k] = true;
             }
             foreach (($o['items'] ?? []) as $it) {
                 if (!empty($it['is_gift_card']) || !empty($it['cancelled']) || (empty($it['product_id']) && !empty($it['gift_card_amount']))) continue;
@@ -1133,6 +1133,11 @@ class WebsiteOrdersController extends Controller
         if ($reason === 'other' && $note === '') {
             return redirect()->route('website-orders.index', ['order' => $id])->with('error', "A note is required when reason is 'Other'.");
         }
+        // Internal reason for Jon (never sent to the customer), required (Sarah, 2026-10-16)
+        $internal = trim((string) $request->input('internal_note'));
+        if (mb_strlen($internal) < 10) {
+            return redirect()->route('website-orders.index', ['order' => $id])->with('error', 'Write the reason for Jon (what happened and why we refunded) before cancelling. Nothing was cancelled.');
+        }
 
         // Item-level cancel: the dialog sends the ticked lines. An empty
         // pick when there were items to pick is a mistake, not "everything".
@@ -1162,6 +1167,13 @@ class WebsiteOrdersController extends Controller
         if (($resp['success'] ?? false) !== true) {
             return redirect()->route('website-orders.index', ['order' => $id])->with('error', $resp['message'] ?? 'Cancellation failed.');
         }
+
+        // Save the internal reason on the order (shown on the order for Jon)
+        $this->websiteApi('POST', "/erp/orders/{$id}/refund-note", [
+            'text' => mb_substr($internal, 0, 4000),
+            'changedBy' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username,
+            'items' => array_values(array_filter(array_map('trim', explode('||', (string) $request->input('item_names', ''))))),
+        ]);
 
         // Say what happened to the money, not just "cancelled".
         $refundLine = (string) ($resp['refundSummary'] ?? '');

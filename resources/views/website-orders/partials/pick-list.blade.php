@@ -1,7 +1,7 @@
 {{-- Pick list for one shipping order (Sarah, 2026-10-15): the same warehouse
      pick records nivessa.com/admin/warehouse writes, so earlier picks made
      there show here. Buttons save in place (no reload) via woPick(). --}}
-@php $pickDone = ['Picked', 'Packed', 'Shipped']; @endphp
+@php $pickDone = ['Picked', 'Packed', 'Shipped', 'Dropshipped']; @endphp
 <div class="wo-pick-count" style="font-size:11px;font-weight:600;color:{{ ($pick['picked'] ?? 0) >= ($pick['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pick['picked'] ?? 0 }}</span>/<span class="t">{{ $pick['total'] ?? 0 }}</span></div>
 @if(!empty($pick['order_id']) && !empty($pick['lines']))
   <div class="wo-pick" data-order="{{ $pick['order_id'] }}">
@@ -20,6 +20,7 @@
           @else
             <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button>
             <button type="button" onclick="woPick(this, 'Can\'t Find')">Can't find</button>
+            <button type="button" onclick="woPick(this, 'Dropshipped')" title="Bought from another seller and sent straight to the customer">Dropshipped</button>
           @endif
         </div>
       </div>

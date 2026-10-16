@@ -78,7 +78,7 @@
                   @if($r['pick_status'] === "Can't Find" || $r['pick_status'] === 'Pending Arrival')
                     <span class="pr-state {{ $r['pick_status'] === 'Pending Arrival' ? 'wait' : 'miss' }}">{{ $r['pick_status'] === 'Pending Arrival' ? 'Pending arrival' : "Can't find" }}</span> <button type="button" onclick="prPick(this, 'Not Picked')">Undo</button>
                   @else
-                    <button type="button" class="go" onclick="prPick(this, 'Picked')">Picked</button><button type="button" onclick="prPick(this, &quot;Can't Find&quot;)">Can't find</button><button type="button" onclick="prPick(this, 'Pending Arrival')">Pending arrival</button>
+                    <button type="button" class="go" onclick="prPick(this, 'Picked')">Picked</button><button type="button" onclick="prPick(this, &quot;Can't Find&quot;)">Can't find</button><button type="button" onclick="prPick(this, 'Pending Arrival')">Pending arrival</button><button type="button" onclick="prPick(this, 'Dropshipped')">Dropshipped</button>
                   @endif
                 @else
                   <span class="pr-state">Not on pick list</span>
@@ -115,16 +115,16 @@
     }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
       .then(function (res) {
         if (!res.success) throw new Error(res.message || 'Not saved.');
-        var done = status === 'Picked', missing = status === "Can't Find", wait = status === 'Pending Arrival';
+        var done = status === 'Picked' || status === 'Dropshipped', missing = status === "Can't Find", wait = status === 'Pending Arrival';
         tr.classList.toggle('is-done', done);
         tr.classList.toggle('is-missing', missing);
         tr.classList.toggle('is-wait', wait);
         td.innerHTML = (done || missing || wait)
-          ? '<span class="pr-state ' + (done ? 'done' : (wait ? 'wait' : 'miss')) + '">' + (done ? 'Picked' : (wait ? 'Pending arrival' : "Can't find")) + '</span> <button type="button">Undo</button>'
-          : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button><button type="button">Pending arrival</button>';
+          ? '<span class="pr-state ' + (done ? 'done' : (wait ? 'wait' : 'miss')) + '">' + (done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') : (wait ? 'Pending arrival' : "Can't find")) + '</span> <button type="button">Undo</button>'
+          : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button><button type="button">Pending arrival</button><button type="button">Dropshipped</button>';
         var bs = td.querySelectorAll('button');
         if (done || missing || wait) { bs[0].onclick = function () { prPick(this, 'Not Picked'); }; }
-        else { bs[0].onclick = function () { prPick(this, 'Picked'); }; bs[1].onclick = function () { prPick(this, "Can't Find"); }; bs[2].onclick = function () { prPick(this, 'Pending Arrival'); }; }
+        else { bs[0].onclick = function () { prPick(this, 'Picked'); }; bs[1].onclick = function () { prPick(this, "Can't Find"); }; bs[2].onclick = function () { prPick(this, 'Pending Arrival'); }; bs[3].onclick = function () { prPick(this, 'Dropshipped'); }; }
       })
       .catch(function (e) { alert('Pick not saved: ' + e.message); td.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); });
   }
