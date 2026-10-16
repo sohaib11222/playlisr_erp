@@ -543,7 +543,7 @@
                           <button type="submit" class="wo-more-item">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                         </form>
                         @if(!$isArchived)
-                          <button type="button" class="wo-more-item danger" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
+                          <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                         @endif
                       </div>
                     </div>
@@ -957,7 +957,11 @@
         var boxes = form.querySelectorAll('input[name="item_ids[]"]');
         var picked = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)');
         var open = form.querySelectorAll('input[name="item_ids[]"]:not(:disabled)');
-        if (boxes.length && !picked.length) {
+        if (!boxes.length) {
+          alert('The items did not load, so nothing was cancelled. Reload the page and try again.');
+          return false;
+        }
+        if (!picked.length) {
           alert('Tick at least one item to cancel.');
           return false;
         }
@@ -988,8 +992,14 @@
         var lines = [];
         try { lines = JSON.parse((btn && btn.getAttribute('data-lines')) || '[]'); } catch (e) {}
         if (!btn) {
-          var b = document.querySelector('button[onclick^="woOpenCancel(\'' + orderId + '\'"]');
+          // From Update status -> Cancelled: find this order's Cancel button for its items
+          var b = document.querySelector('button.wo-more-item.danger[data-order="' + orderId + '"]');
           try { lines = JSON.parse((b && b.getAttribute('data-lines')) || '[]'); } catch (e) {}
+        }
+        if (!lines.length) {
+          // Never open the dialog without the items: it would cancel the whole order.
+          alert('Could not load this order\'s items. Reload the page and use the order\'s ... menu > Cancel order.');
+          return;
         }
         document.getElementById('wo-cancel-item-select').value = lines.length ? '1' : '0';
         form.dataset.active = String(lines.filter(function (l) { return !l.cancelled; }).length);
