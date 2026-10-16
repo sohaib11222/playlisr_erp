@@ -440,6 +440,7 @@
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
                     // Store queue hides items already picked or marked Can't Find
+                    if ($woStore && !empty($it['cancelled'])) { $lineShow[$i] = false; continue; }
                     if ($woStore && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
                     $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
                     $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
@@ -469,7 +470,7 @@
                     </div>
                   @endforeach
                   @if($hiddenLines > 0)
-                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked or can't find)</div>
+                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked, can't find or cancelled)</div>
                   @endif
                 </td>
                 <td class="wo-loc">

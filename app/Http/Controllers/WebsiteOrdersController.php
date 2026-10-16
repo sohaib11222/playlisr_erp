@@ -103,6 +103,8 @@ class WebsiteOrdersController extends Controller
         if (preg_match('/^[a-f0-9]{24}$/i', $linkOrder)) {
             foreach ($allOrders as $lo) {
                 if (($lo['_id'] ?? '') !== $linkOrder) continue;
+                // Keep the normal Completed view (and counts) unless this order needs All
+                if (($lo['payment_status'] ?? '') === 'completed' && !$request->has('payment_status')) $paymentStatusFilter = 'completed';
                 foreach (array_merge(array_keys(self::TABS), ['archived']) as $t) {
                     if (self::matchesTab($lo, $t)) { $activeTab = $t; break; }
                 }
@@ -220,7 +222,7 @@ class WebsiteOrdersController extends Controller
                 $offQueue = self::offQueueNames($o);
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
-                    if (!empty($it['is_gift_card'])) continue;
+                    if (!empty($it['is_gift_card']) || !empty($it['cancelled'])) continue;
                     if (isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) continue;
                     $hit = self::placeIsStore(self::pullParts($it, $filterLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place'], $locationFilter);
                 }
