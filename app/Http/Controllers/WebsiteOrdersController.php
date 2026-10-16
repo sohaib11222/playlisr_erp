@@ -47,9 +47,11 @@ class WebsiteOrdersController extends Controller
     // into its own bucket, since there's nothing to action until the
     // stock actually arrives (see matchesTab()).
     const TABS = [
-        'needs_action'    => ['label' => 'Needs Action',      'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
+        'needs_action'    => ['label' => 'Needs Action',      'statuses' => ['processing', 'flag', 'pending', ''], 'fulfillment' => null],
         'to_ship'         => ['label' => 'To Ship',           'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
-        'pickup'          => ['label' => 'Pickup',            'statuses' => ['processing', 'ready_for_pickup', 'pending', 'flag', ''], 'fulfillment' => 'pickup'],
+        'pickup'          => ['label' => 'Pickup',            'statuses' => ['processing', 'pending', 'flag', ''], 'fulfillment' => 'pickup'],
+        // Pulled and waiting for the customer (Sarah, 2026-10-16)
+        'ready_pickup'    => ['label' => 'Ready for Pickup',  'statuses' => ['ready_for_pickup'], 'fulfillment' => 'pickup'],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
         'completed'       => ['label' => 'Completed',         'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
@@ -94,7 +96,7 @@ class WebsiteOrdersController extends Controller
         $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
         $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -135,6 +137,7 @@ class WebsiteOrdersController extends Controller
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
                 $tabCounts['to_ship']++;
             }
+            if ($fm === 'pickup' && $status === 'ready_for_pickup') $tabCounts['ready_pickup']++;
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
                 $tabCounts['pickup']++;
                 if (self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS) {
@@ -824,7 +827,7 @@ class WebsiteOrdersController extends Controller
         if ($tab === 'preorder_ship' || $tab === 'preorder_pickup') {
             return $isPreorder && $statusOk && $fulfillmentOk;
         }
-        if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup'], true)) {
+        if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup', 'ready_pickup'], true)) {
             return false;
         }
 

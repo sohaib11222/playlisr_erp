@@ -178,6 +178,7 @@
         'needs_action'    => ['label' => 'Needs Action', 'hot' => true],
         'to_ship'         => ['label' => 'To Ship'],
         'pickup'          => ['label' => 'Pickup'],
+        'ready_pickup'    => ['label' => 'Ready for Pickup'],
         'preorder_ship'   => ['label' => 'Preorder · To Ship'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup'],
         'completed'       => ['label' => 'Completed'],
