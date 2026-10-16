@@ -628,6 +628,29 @@
                         @if(!empty($addr['fullAddress']))
                           <div style="margin-top:8px;"><button type="button" class="wo-btn" style="width:auto;display:inline-block;font-size:12px;padding:4px 10px;" data-addr="{{ $addrText }}" onclick="woCopyAddr(this)">Copy address</button></div>
                         @endif
+                        {{-- Ship instead of pickup, or fix the address (Sarah, 2026-10-16) --}}
+                        @php $isPickupO = ($o['fulfillment_method'] ?? null) === 'pickup'; @endphp
+                        <details style="margin-top:8px;">
+                          <summary style="cursor:pointer;font-size:12px;color:#4a6fa5;">{{ $isPickupO ? 'Ship instead / edit address' : 'Edit address' }}</summary>
+                          <form method="POST" action="{{ route('website-orders.saveFulfillment', ['id' => $o['_id']]) }}" style="display:grid;gap:6px;margin-top:8px;max-width:340px;">
+                            {{ csrf_field() }}
+                            <select name="method" style="padding:6px;">
+                              <option value="shipping" {{ $isPickupO ? '' : 'selected' }}>Ship it (no shipping charge)</option>
+                              <option value="hollywood" {{ $isPickupO && ($o['pickup_location'] ?? '') === 'hollywood' ? 'selected' : '' }}>Pickup at Hollywood</option>
+                              <option value="pico" {{ $isPickupO && ($o['pickup_location'] ?? '') === 'pico' ? 'selected' : '' }}>Pickup at Pico</option>
+                            </select>
+                            <input name="name" placeholder="Name" value="{{ $addr['name'] ?? ($o['display_name'] ?? ($o['user_id']['name'] ?? '')) }}" style="padding:6px;">
+                            <input name="fullAddress" placeholder="Street address" value="{{ $addr['fullAddress'] ?? '' }}" style="padding:6px;">
+                            <input name="apartment" placeholder="Apt / unit" value="{{ $addr['apartment'] ?? '' }}" style="padding:6px;">
+                            <div style="display:flex;gap:6px;">
+                              <input name="city" placeholder="City" value="{{ $addr['city'] ?? '' }}" style="padding:6px;flex:2;min-width:0;">
+                              <input name="state" placeholder="State" value="{{ $addr['state'] ?? '' }}" style="padding:6px;flex:1;min-width:0;">
+                              <input name="zipCode" placeholder="Zip" value="{{ $addr['zipCode'] ?? '' }}" style="padding:6px;flex:1;min-width:0;">
+                            </div>
+                            <input name="country" placeholder="Country" value="{{ $addr['country'] ?? 'US' }}" style="padding:6px;">
+                            <button type="submit" class="wo-btn wo-btn-primary" style="width:auto;">Save</button>
+                          </form>
+                        </details>
                       </div>
                     @endif
                     <div style="flex:1 1 100%;">

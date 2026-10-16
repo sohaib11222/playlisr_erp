@@ -1032,6 +1032,42 @@ class WebsiteOrdersController extends Controller
         return is_array($d) ? $d : ['text' => '', 'by' => null, 'at' => null];
     }
 
+    /**
+     * Ship or pick up, plus the shipping address (Sarah, 2026-10-16: switch a
+     * pickup to free courtesy shipping and fill in the address the customer
+     * texts back). Switching to shipping never charges the customer.
+     */
+    public function saveFulfillment(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) {
+            return redirect()->back()->with('error', 'Bad order id.');
+        }
+        $choice = (string) $request->input('method');
+        $method = $choice === 'shipping' ? 'shipping' : 'pickup';
+        $u = auth()->user();
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/fulfillment", [
+            'method' => $method,
+            'pickupLocation' => in_array($choice, ['hollywood', 'pico'], true) ? $choice : null,
+            'address' => [
+                'name' => (string) $request->input('name'),
+                'fullAddress' => (string) $request->input('fullAddress'),
+                'apartment' => (string) $request->input('apartment'),
+                'city' => (string) $request->input('city'),
+                'state' => (string) $request->input('state'),
+                'zipCode' => (string) $request->input('zipCode'),
+                'country' => (string) $request->input('country'),
+            ],
+            'changedBy' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null),
+        ]);
+        $ok = $resp !== null && ($resp['success'] ?? false) === true;
+        return redirect()->back()->with($ok ? 'status' : 'error', $ok
+            ? ($method === 'shipping' ? 'Saved. This order ships (no shipping charge).' : 'Saved. This order is a pickup.')
+            : (($resp['message'] ?? null) ?: 'Could not reach the website to save.'));
+    }
+
     /** Note on one website order (Sarah, 2026-10-16). JSON: { text }. */
     public function saveOrderNote(Request $request, string $id)
     {
