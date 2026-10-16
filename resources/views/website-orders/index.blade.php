@@ -101,6 +101,14 @@
   .wo-sla.over { color:#b91c1c; background:#fee2e2; border:1px solid #fecaca; }
   .wo-sla.pre { color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; font-weight:600; }
 
+  .wo-route-btn { align-self:center; padding:10px 18px; border-radius:8px; background:#1e40af; color:#fff !important; font-weight:700; font-size:15px; text-decoration:none; white-space:nowrap; }
+  .ev-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  .wo-onote { margin-top:8px; }
+  .wo-onote-show { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 8px; margin-bottom:5px; }
+  .wo-onote-show .txt { font-size:13px; color:#000; white-space:pre-wrap; font-weight:600; }
+  .wo-onote-show .by { font-size:11px; color:#000; margin-top:2px; }
+  .wo-onote-open { font-size:12px; padding:4px 9px; border:1px dashed #9ca3af; border-radius:6px; background:#fff; color:#000; cursor:pointer; }
+  .wo-onote-edit textarea { width:100%; font-size:13px; padding:6px; border:1px solid #d1d5db; border-radius:6px; margin-bottom:5px; color:#000; }
   .wo-row-actions { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:5px; position:relative; }
   .wo-row-actions .wo-btn-primary { padding:0 9px; }
   .wo-row-actions form { margin:0; }
@@ -162,6 +170,7 @@
       <h1>Orders</h1>
       <p class="sub">Fulfillment for nivessa.com orders — the ERP's replacement for the website's own Orders page.</p>
     </div>
+    <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : 'hollywood']) }}" class="wo-route-btn">Pick Route &rarr;</a>
   </div>
 
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
@@ -537,6 +546,20 @@
                           <button type="button" class="wo-more-item danger" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                         @endif
                       </div>
+                    </div>
+                  </div>
+                  {{-- Note on this one order (Sarah, 2026-10-16), saved to the website order --}}
+                  @php $oNote = $o['staff_note'] ?? []; $oNoteText = trim((string) ($oNote['text'] ?? '')); @endphp
+                  <div class="wo-onote" data-id="{{ $o['_id'] }}">
+                    <div class="wo-onote-show" @if($oNoteText === '') hidden @endif>
+                      <div class="txt">{{ $oNoteText }}</div>
+                      <div class="by">@if(!empty($oNote['by'])){{ $oNote['by'] }} @endif @if(!empty($oNote['at'])){{ \Carbon\Carbon::parse($oNote['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
+                    </div>
+                    <button type="button" class="wo-onote-open" onclick="woNoteOpen(this)">{{ $oNoteText === '' ? '+ Add note' : 'Edit note' }}</button>
+                    <div class="wo-onote-edit" hidden>
+                      <textarea rows="3" maxlength="2000">{{ $oNoteText }}</textarea>
+                      <button type="button" class="wo-btn wo-btn-primary" onclick="woNoteSave(this)">Save note</button>
+                      <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
@@ -1089,5 +1112,43 @@
   }
   window.addEventListener('load', woAlignLoc);
   window.addEventListener('resize', woAlignLoc);
+</script>
+<script>
+  // Per-order notes (Sarah, 2026-10-16): saved on the website order via WebsiteOrdersController::saveOrderNote
+  function woNoteOpen(btn) {
+    var box = btn.closest('.wo-onote');
+    box.querySelector('.wo-onote-edit').hidden = false;
+    btn.hidden = true;
+    window.woPickQuietUntil = Date.now() + 10 * 60000;
+    box.querySelector('textarea').focus();
+  }
+  function woNoteClose(btn) {
+    var box = btn.closest('.wo-onote');
+    box.querySelector('.wo-onote-edit').hidden = true;
+    box.querySelector('.wo-onote-open').hidden = false;
+    window.woPickQuietUntil = 0;
+  }
+  function woNoteSave(btn) {
+    var box = btn.closest('.wo-onote');
+    var text = box.querySelector('textarea').value;
+    btn.disabled = true;
+    fetch('{{ url('/website-orders') }}/' + box.dataset.id + '/note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ text: text })
+    }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res.success) throw new Error(res.message || 'Not saved.');
+        var show = box.querySelector('.wo-onote-show');
+        show.querySelector('.txt').textContent = text.trim();
+        show.querySelector('.by').textContent = res.by || '';
+        show.hidden = text.trim() === '';
+        box.querySelector('.wo-onote-open').textContent = text.trim() === '' ? '+ Add note' : 'Edit note';
+        woNoteClose(btn);
+      })
+      .catch(function (e) { btn.disabled = false; alert('Note not saved: ' + e.message); });
+  }
 </script>
 @endsection

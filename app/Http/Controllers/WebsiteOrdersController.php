@@ -951,6 +951,29 @@ class WebsiteOrdersController extends Controller
         return is_array($d) ? $d : ['text' => '', 'by' => null, 'at' => null];
     }
 
+    /** Note on one website order (Sarah, 2026-10-16). JSON: { text }. */
+    public function saveOrderNote(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) {
+            return response()->json(['success' => false, 'message' => 'Bad order id.'], 422);
+        }
+        $u = auth()->user();
+        $by = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null);
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/staff-note", [
+            'text' => mb_substr((string) $request->input('text', ''), 0, 2000),
+            'changedBy' => $by,
+        ]);
+        $ok = $resp !== null && ($resp['success'] ?? false) === true;
+        return response()->json([
+            'success' => $ok,
+            'message' => $ok ? 'Saved.' : (($resp['message'] ?? null) ?: 'Could not reach the website to save the note.'),
+            'by' => $ok ? ($by . ' ' . now()->setTimezone('America/Los_Angeles')->format('m/d/y g:ia')) : null,
+        ], $ok ? 200 : 422);
+    }
+
     public function saveNotes(Request $request)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
