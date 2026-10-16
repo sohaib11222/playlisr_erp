@@ -326,11 +326,10 @@
           <colgroup>
             <col style="width:15%">
             <col>
+            <col style="width:220px">
             <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
-            <col style="width:150px">
-            <col style="width:140px">
             <col style="width:86px">
             <col style="width:92px">
             <col style="width:236px">
@@ -338,10 +337,10 @@
           <thead><tr>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
+            <th>Location</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
-            <th>Location</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -422,6 +421,29 @@
                     </div>
                   @endforeach
                 </td>
+                <td class="wo-loc">
+                  {{-- One block per product, kept level with its product by
+                       woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
+                  @foreach($cancelLines as $line)
+                    @php
+                      $wItem = $o['items'][$loop->index] ?? [];
+                      $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
+                      $pull = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($wItem, $locPid ? ($erpLocations[$locPid] ?? null) : null);
+                    @endphp
+                    <div class="wo-loc-line">
+                      @if($line['gift'])
+                        <span class="na">Digital</span>
+                      @elseif($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
+                        <span class="none">Not set</span>
+                      @else
+                        @if($pull['place'] !== '')<span class="place">{{ $pull['place'] }}</span>@endif
+                        @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
+                        @if(($pull['genre'] ?? '') !== '')<span class="area">{{ $pull['genre'] }}</span>@endif
+                        @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
+                      @endif
+                    </div>
+                  @endforeach
+                </td>
                 <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
@@ -463,28 +485,6 @@
                       <div class="wo-shipfrom">Ships from {{ $woShipStores->first() === 'pico' ? 'Pico' : 'Hollywood' }}</div>
                     @endif
                   @endif
-                </td>
-                <td class="wo-loc">
-                  {{-- One block per product, kept level with its product by
-                       woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
-                  @foreach($cancelLines as $line)
-                    @php
-                      $wItem = $o['items'][$loop->index] ?? [];
-                      $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
-                      $pull = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($wItem, $locPid ? ($erpLocations[$locPid] ?? null) : null);
-                    @endphp
-                    <div class="wo-loc-line">
-                      @if($line['gift'])
-                        <span class="na">Digital</span>
-                      @elseif($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
-                        <span class="none">Not set</span>
-                      @else
-                        @if($pull['place'] !== '')<span class="place">{{ $pull['place'] }}</span>@endif
-                        @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
-                        @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
-                      @endif
-                    </div>
-                  @endforeach
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
                 <td class="wo-placed">

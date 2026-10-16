@@ -577,9 +577,9 @@ class WebsiteOrdersController extends Controller
      * clear"): place, area, bin. A bin-map code is the real spot; Hollywood
      * zones are areas of the Hollywood warehouse, so pico115 in "Hollywood
      * Main Floor" is Warehouse / HW Main Floor / Bin pico115. Store stock
-     * sits in the genre bins: Hollywood Store / Bin Vinyl - Sealed / Rock.
+     * sits in the genre bins: Hollywood Store / Vinyl - Used / R&B, Soul & Funk.
      *
-     * @return array{place:string, area:string, bin:string}
+     * @return array{place:string, area:string, genre:string, bin:string}
      */
     public static function pullParts(array $item, ?array $erp): array
     {
@@ -589,15 +589,22 @@ class WebsiteOrdersController extends Controller
         $code = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
         if ($code !== '') {
             $place = $zone === '' ? '' : (stripos($zone, 'pico') === 0 ? 'Pico Store' : 'Warehouse');
-            return ['place' => $place, 'area' => preg_replace('/^hollywood\b/i', 'HW', $zone), 'bin' => $code];
+            return ['place' => $place, 'area' => preg_replace('/^hollywood\b/i', 'HW', $zone), 'genre' => '', 'bin' => $code];
         }
-        if (!$erp) return ['place' => '', 'area' => $zone, 'bin' => ''];
+        if (!$erp) return ['place' => '', 'area' => $zone, 'genre' => '', 'bin' => ''];
         $places = array_map(function ($n) {
             return str_ireplace(' In Store', ' Store', $n);
         }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
-        $bin = ($erp['bin'] ?? '') !== '' ? $erp['bin'] : ($inStore ? ($erp['genre'] ?? '') : '');
-        return ['place' => implode(' or ', $places), 'area' => '', 'bin' => $bin];
+        // Store stock: the genre bin on two lines, "Vinyl - Used" then
+        // "R&B, Soul & Funk" (ERP category / sub-category).
+        $genre = $inStore ? explode(' / ', (string) ($erp['genre'] ?? ''), 2) : [];
+        return [
+            'place' => implode(' or ', $places),
+            'area'  => trim($genre[0] ?? ''),
+            'genre' => trim($genre[1] ?? ''),
+            'bin'   => (string) ($erp['bin'] ?? ''),
+        ];
     }
 
     /** Pull spot per item name (lowercase), for the pick checklist. */
@@ -617,7 +624,7 @@ class WebsiteOrdersController extends Controller
     public static function pullSpot(array $item, ?array $erp): string
     {
         $p = self::pullParts($item, $erp);
-        return implode(' / ', array_filter([$p['place'], $p['area'], $p['bin'] !== '' ? 'Bin ' . $p['bin'] : ''], fn($x) => $x !== ''));
+        return implode(' / ', array_filter([$p['place'], $p['area'], $p['genre'], $p['bin'] !== '' ? 'Bin ' . $p['bin'] : ''], fn($x) => $x !== ''));
     }
 
     /** Value a row is sorted by for a column (website orders or Discogs rows). */
