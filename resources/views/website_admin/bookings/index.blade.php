@@ -27,22 +27,19 @@
 
   <div class="wb-stats">
     <div class="wb-stat"><div class="l">Total Bookings</div><div class="v">{{ $stats['total'] }}</div></div>
-    <div class="wb-stat"><div class="l">Pending</div><div class="v pending">{{ $stats['pending'] }}</div></div>
-    <div class="wb-stat"><div class="l">Confirmed</div><div class="v ok">{{ $stats['confirmed'] }}</div></div>
+    <div class="wb-stat"><div class="l">Upcoming</div><div class="v ok">{{ collect($bookings)->filter(function ($b) { return empty($b['isPast']) && in_array($b['status'], ['pending', 'confirmed'], true); })->count() }}</div></div>
     <div class="wb-stat"><div class="l">Completed</div><div class="v blue">{{ $stats['completed'] }}</div></div>
     <div class="wb-stat"><div class="l">Revenue</div><div class="v ok">${{ number_format($stats['revenue'], 0) }}</div></div>
   </div>
 
   <div class="wb-tabs" id="wb-tabs">
-    <button type="button" class="wb-tab active" data-tab="pending">Pending <span class="wb-badge" data-count="pending">0</span></button>
-    <button type="button" class="wb-tab" data-tab="confirmed">Confirmed <span class="wb-badge" data-count="confirmed">0</span></button>
+    <button type="button" class="wb-tab active" data-tab="confirmed">Upcoming <span class="wb-badge" data-count="confirmed">0</span></button>
     <button type="button" class="wb-tab" data-tab="archived">Archived <span class="wb-badge" data-count="archived">0</span></button>
   </div>
   @if(!empty($abandonedCount))
     <p class="wb-sub" style="margin:-6px 0 12px;">{{ $abandonedCount }} unpaid booking {{ $abandonedCount === 1 ? 'request is' : 'requests are' }} under <a href="{{ route('wa.tools.abandonedCarts', ['tab' => 'bookings']) }}">Abandoned Carts</a>, not here.</p>
   @endif
 
-  <div class="wb-banner ok" id="wb-caught-up" style="display:none;">No pending booking requests right now. You are caught up.</div>
 
   <form method="GET" action="{{ route('wa.bookings.index') }}" class="wb-filters">
     <div class="wb-field grow">
@@ -263,13 +260,13 @@
 (function () {
   var CSRF = '{{ csrf_token() }}';
   var KEY = 'nivessa.erp.archivedBookingIds.v1';
-  var BUCKETS = { pending: ['pending'], confirmed: ['confirmed'], completed: ['completed', 'cancelled', 'no-show', 'expired'] };
+  var BUCKETS = { pending: [], confirmed: ['confirmed', 'pending'], completed: ['completed', 'cancelled', 'no-show', 'expired'] };
   var URLS = {
     edit: '{{ url('/website-bookings') }}/ID/edit',
     charge: '{{ url('/website-bookings') }}/ID/charge',
     deposit: '{{ url('/website-bookings') }}/ID/deposit/ACT'
   };
-  var activeTab = 'pending';
+  var activeTab = 'confirmed';
   var rows = Array.prototype.slice.call(document.querySelectorAll('tr.wb-row'));
 
   function loadArchived() {
@@ -323,7 +320,7 @@
     if (empty && wrap) {
       empty.style.display = shown ? 'none' : '';
       wrap.style.display = shown ? '' : 'none';
-      document.getElementById('wb-empty-title').textContent = activeTab === 'archived' ? 'Nothing archived' : 'No bookings found';
+      document.getElementById('wb-empty-title').textContent = activeTab === 'archived' ? 'Nothing archived' : 'No upcoming bookings';
       document.getElementById('wb-empty-sub').textContent = activeTab === 'archived' ? 'Past and archived bookings will appear here.' : 'Try adjusting your filters.';
     }
   }
