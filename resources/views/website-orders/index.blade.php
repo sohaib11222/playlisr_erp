@@ -80,7 +80,7 @@
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
   .wo-loc .q { font-weight:400; color:#000; }
   .wo-genre .genre { display:block; margin:0 0 4px; padding:2px 7px; border-radius:5px; background:#eef2ff; color:#000; font-size:13.5px; font-weight:700; width:fit-content; }
-  .wo-loc .kallax { display:block; width:fit-content; margin-bottom:2px; padding:2px 7px; border-radius:5px; background:#fef3c7; color:#000; font-family:monospace; font-size:13.5px; font-weight:700; }
+  .wo-loc .kallax { display:block; width:fit-content; max-width:220px; margin-bottom:2px; padding:2px 7px; border-radius:5px; background:#fef3c7; color:#000; font-family:monospace; font-size:13.5px; font-weight:700; }
   .wo-loc .zone { display:block; color:#000; font-size:12px; margin-bottom:3px; }
   .wo-loc .bin { display:block; color:#000; font-family:monospace; font-size:12px; }
   .wo-loc .none { color:#b91c1c; font-weight:600; }
@@ -338,8 +338,7 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
-            <th>Location</th>
-            <th>@include('website-orders.partials.sort-th', ['label' => 'Genre', 'key' => 'genre'])</th>
+            <th>Pull from</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -463,59 +462,26 @@
                   @endif
                 </td>
                 <td class="wo-loc">
-                  {{-- One line per product shown in the Product column (every item, so pickers see each Kallax). --}}
+                  {{-- One "pull from" block per product, lined up with the Product
+                       column: place, area, bin (Sarah, 2026-10-16: "needs to be
+                       VERY clear"). See WebsiteOrdersController::pullParts. --}}
                   @foreach($cancelLines as $line)
                     @php
-                      $locPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
-                      $locInfo = $locPid ? ($erpLocations[$locPid] ?? null) : null;
-                      // Kallax code + room from the website's own location (the same
-                      // "Discogs code" the Details row shows), so pulls from a Kallax
-                      // don't hide behind Details (Sarah, 2026-10-15).
                       $wItem = $o['items'][$loop->index] ?? [];
-                      $wLoc = $wItem['location'] ?? ($wItem['product_id']['location'] ?? null);
-                      $wZone = is_array($wLoc) ? trim((string) ($wLoc['zone'] ?? '')) : '';
-                      $wKallax = trim((string) ($wItem['discogs_code'] ?? ($wItem['product_id']['discogsLocation'] ?? '')));
+                      $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
+                      $pull = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($wItem, $locPid ? ($erpLocations[$locPid] ?? null) : null);
                     @endphp
                     <div class="wo-loc-line">
-                      @if(!$line['gift'] && $wKallax !== '')
-                        {{-- Warehouse / HW Main Floor / Bin pico66: Hollywood zones are
-                             areas of the Hollywood warehouse (Sarah, 2026-10-16). --}}
-                        @if($wZone !== '')
-                          <span class="st" style="display:block;">{{ stripos($wZone, 'pico') === 0 ? 'Pico Store' : 'Warehouse' }}</span>
-                          <span class="zone">{{ preg_replace('/^hollywood\b/i', 'HW', $wZone) }}</span>
-                        @endif
-                        <span class="kallax">Bin {{ $wKallax }}</span>
-                      @endif
                       @if($line['gift'])
                         <span class="na">Digital</span>
-                      @elseif(!$locInfo || ($wKallax !== '' && $wZone !== ''))
-                        {{-- A Kallax with a room is the real spot (the bin map wins over
-                             the ERP stock store, e.g. pico66 sits at Hollywood). --}}
-                        @if($wKallax === '')<span class="na">@if($wZone !== ''){{ $wZone }}@else &mdash; @endif</span>@endif
+                      @elseif($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
+                        <span class="none">Not set</span>
                       @else
-                        @if(!empty($locInfo['stores']))
-                          @foreach($locInfo['stores'] as $locName => $locQty)<span class="st">{{ $locName }}@if($locQty > 1) <span class="q">({{ (int) $locQty }})</span>@endif</span>@if(!$loop->last), @endif @endforeach
-                        @elseif(!empty($locInfo['stocked']))
-                          <span class="st">{{ implode(', ', array_keys($locInfo['stocked'])) }}</span>
-                        @else
-                          <span class="none">Not set</span>
-                        @endif
-                        @if($locInfo['bin'] !== '')<span class="bin">Bin {{ $locInfo['bin'] }}</span>@endif
-                        {{-- In-store stock sits in the genre bins (Vinyl - Sealed / Rock). --}}
-                        @if(($locInfo['genre'] ?? '') !== '' && collect(array_keys($locInfo['stores'] ?: $locInfo['stocked'] ?: []))->contains(fn($n) => stripos($n, 'In Store') !== false))<span class="zone">{{ $locInfo['genre'] }}</span>@endif
+                        @if($pull['place'] !== '')<span class="st" style="display:block;">{{ $pull['place'] }}</span>@endif
+                        @if($pull['area'] !== '')<span class="zone">{{ $pull['area'] }}</span>@endif
+                        @if($pull['bin'] !== '')<span class="kallax">Bin {{ $pull['bin'] }}</span>@endif
                       @endif
                     </div>
-                  @endforeach
-                </td>
-                <td class="wo-genre">
-                  {{-- Store bins are laid out by genre: one line per product, lined up with Location. --}}
-                  @foreach($cancelLines as $line)
-                    @php
-                      $gPid = $line['gift'] ? 0 : (int) ($o['items'][$loop->index]['product_id']['posProductId'] ?? 0);
-                      $gInfo = $gPid ? ($erpLocations[$gPid] ?? null) : null;
-                      $gName = $line['gift'] ? '' : ((($gInfo['genre'] ?? '') !== '') ? $gInfo['genre'] : ($o['items'][$loop->index]['product_id']['genre'] ?? ''));
-                    @endphp
-                    <div class="wo-loc-line">@if($gName !== '')<span class="genre">{{ $gName }}</span>@else &mdash; @endif</div>
                   @endforeach
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
@@ -554,13 +520,13 @@
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'preorder_ship', 'needs_action'], true))
                     <div style="margin-top:8px;">
-                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
+                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress'], 'spots' => \App\Http\Controllers\WebsiteOrdersController::spotsByName($o, $erpLocations)])
                     </div>
                   @endif
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="10">
+                <td colspan="9">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>

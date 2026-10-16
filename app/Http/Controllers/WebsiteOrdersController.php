@@ -573,30 +573,51 @@ class WebsiteOrdersController extends Controller
      * been on the shelf and how hard to look (Sarah, 2026-10-13).
      */
     /**
-     * Where to pull one order line, as one line of text, same as the Website
-     * Orders Location column: "Warehouse / HW Main Floor / Bin pico66" for a
-     * bin (Hollywood zones are areas of the Hollywood warehouse), else the
-     * store plus its genre bin, "Hollywood In Store / Vinyl - Sealed / Rock"
-     * (Sarah, 2026-10-16).
+     * Where to pull one order line (Sarah, 2026-10-16: "needs to be VERY
+     * clear"): place, area, bin. A bin-map code is the real spot; Hollywood
+     * zones are areas of the Hollywood warehouse, so pico115 in "Hollywood
+     * Main Floor" is Warehouse / HW Main Floor / Bin pico115. Store stock
+     * sits in the genre bins: Hollywood Store / Bin Vinyl - Sealed / Rock.
+     *
+     * @return array{place:string, area:string, bin:string}
      */
-    public static function pullSpot(array $item, ?array $erp): string
+    public static function pullParts(array $item, ?array $erp): array
     {
         $product = $item['product_id'] ?? [];
         $loc = $item['location'] ?? ($product['location'] ?? null);
         $zone = is_array($loc) ? trim((string) ($loc['zone'] ?? '')) : '';
-        $bin = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
-        if ($bin !== '') {
-            if ($zone === '') return 'Bin ' . $bin;
-            $place = stripos($zone, 'pico') === 0 ? 'Pico Store' : 'Warehouse';
-            return $place . ' / ' . preg_replace('/^hollywood\b/i', 'HW', $zone) . ' / Bin ' . $bin;
+        $code = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
+        if ($code !== '') {
+            $place = $zone === '' ? '' : (stripos($zone, 'pico') === 0 ? 'Pico Store' : 'Warehouse');
+            return ['place' => $place, 'area' => preg_replace('/^hollywood\b/i', 'HW', $zone), 'bin' => $code];
         }
-        if (!$erp) return $zone;
-        $stores = array_keys($erp['stores'] ?: $erp['stocked'] ?: []);
-        $parts = [implode(', ', $stores)];
-        if (($erp['bin'] ?? '') !== '') $parts[] = 'Bin ' . $erp['bin'];
-        $inStore = (bool) array_filter($stores, fn($n) => stripos($n, 'In Store') !== false);
-        if ($inStore && ($erp['genre'] ?? '') !== '') $parts[] = $erp['genre'];
-        return implode(' / ', array_filter($parts, fn($x) => $x !== ''));
+        if (!$erp) return ['place' => '', 'area' => $zone, 'bin' => ''];
+        $places = array_map(function ($n) {
+            return str_ireplace(' In Store', ' Store', $n);
+        }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
+        $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
+        $bin = ($erp['bin'] ?? '') !== '' ? $erp['bin'] : ($inStore ? ($erp['genre'] ?? '') : '');
+        return ['place' => implode(' or ', $places), 'area' => '', 'bin' => $bin];
+    }
+
+    /** Pull spot per item name (lowercase), for the pick checklist. */
+    public static function spotsByName(array $order, array $erpLocations): array
+    {
+        $out = [];
+        foreach (($order['items'] ?? []) as $it) {
+            if (!empty($it['is_gift_card'])) continue;
+            $name = strtolower(trim((string) ($it['product_name'] ?? ($it['product_id']['name'] ?? ''))));
+            if ($name === '') continue;
+            $out[$name] = self::pullSpot($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
+        }
+        return $out;
+    }
+
+    /** pullParts() as one line: "Warehouse / HW Main Floor / Bin pico66". */
+    public static function pullSpot(array $item, ?array $erp): string
+    {
+        $p = self::pullParts($item, $erp);
+        return implode(' / ', array_filter([$p['place'], $p['area'], $p['bin'] !== '' ? 'Bin ' . $p['bin'] : ''], fn($x) => $x !== ''));
     }
 
     /** Value a row is sorted by for a column (website orders or Discogs rows). */
