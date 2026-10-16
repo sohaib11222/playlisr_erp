@@ -426,8 +426,11 @@
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
                   $woStore = in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : null;
                   $lineShow = [];
+                  $offQueue = $woStore ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o) : [];
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
+                    // Store queue hides items already picked or marked Can't Find
+                    if ($woStore && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
                     $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
                     $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
                   }
@@ -456,7 +459,7 @@
                     </div>
                   @endforeach
                   @if($hiddenLines > 0)
-                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} {{ $hiddenLines === 1 ? 'item' : 'items' }} pulled from somewhere else</div>
+                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked or can't find)</div>
                   @endif
                 </td>
                 <td class="wo-loc">

@@ -202,9 +202,11 @@ class WebsiteOrdersController extends Controller
                 // Any item to pull at that spot (Hollywood store, Pico, or the
                 // warehouse), shipping or pickup. Sarah, 2026-10-16.
                 $hit = false;
+                $offQueue = self::offQueueNames($o);
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
                     if (!empty($it['is_gift_card'])) continue;
+                    if (isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) continue;
                     $hit = self::placeIsStore(self::pullParts($it, $filterLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place'], $locationFilter);
                 }
                 if (!$hit) return false;
@@ -655,6 +657,18 @@ class WebsiteOrdersController extends Controller
         return '';
     }
 
+    /** Item names (lowercase) that are off the pull queue: picked, or marked Can't Find. */
+    public static function offQueueNames(array $o): array
+    {
+        $out = [];
+        foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
+            if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find"], true)) {
+                $out[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+            }
+        }
+        return $out;
+    }
+
     /** Whether a pullParts() place is at that pull spot (hollywood / pico / warehouse). */
     public static function placeIsStore(string $place, string $store): bool
     {
@@ -676,7 +690,8 @@ class WebsiteOrdersController extends Controller
             foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
                 $k = strtolower(trim((string) ($pl['name'] ?? '')));
                 $lines[$k] = $pl;
-                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped'], true)) $done[$k] = true;
+                // Picked, or marked Can't Find: off the queue (Sarah, 2026-10-16)
+                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find"], true)) $done[$k] = true;
             }
             foreach (($o['items'] ?? []) as $it) {
                 if (!empty($it['is_gift_card']) || !empty($it['cancelled']) || (empty($it['product_id']) && !empty($it['gift_card_amount']))) continue;
