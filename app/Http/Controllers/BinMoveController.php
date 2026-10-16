@@ -238,6 +238,19 @@ class BinMoveController extends Controller
         return redirect()->route('website-orders.binCheck')->with('status', "Moved {$n} record" . ($n === 1 ? '' : 's') . " to Hollywood (stock transfer {$r['ref']}).");
     }
 
+    /** Run the daily bin:move-to-hollywood job now, exactly as the scheduler does. */
+    public function runDaily(Request $request)
+    {
+        $this->guard();
+        try {
+            \Artisan::call('bin:move-to-hollywood');
+            $out = trim(\Artisan::output());
+        } catch (\Throwable $e) {
+            return redirect()->route('website-orders.binCheck')->with('error', 'Daily check failed: ' . $e->getMessage());
+        }
+        return redirect()->route('website-orders.binCheck')->with('status', 'Daily check ran: ' . ($out !== '' ? $out : 'no output') . '.');
+    }
+
     /** Undo the last move: transfer the same qty back to Pico. */
     public function undo(Request $request)
     {

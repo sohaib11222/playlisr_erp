@@ -691,6 +691,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/bin-check/apply', 'WebsiteOrdersController@binCheckApply')->name('website-orders.binCheckApply');
     Route::post('/website-orders/bin-check/move', 'BinMoveController@move')->name('website-orders.binMove');
     Route::post('/website-orders/bin-check/undo', 'BinMoveController@undo')->name('website-orders.binMoveUndo');
+    Route::post('/website-orders/bin-check/run-daily', 'BinMoveController@runDaily')->name('website-orders.binRunDaily');
     Route::post('/website-orders/notes', 'WebsiteOrdersController@saveNotes')->name('website-orders.saveNotes');
     Route::post('/website-orders/discogs/{id}/ship', 'WebsiteOrdersController@shipDiscogs')->name('website-orders.shipDiscogs');
     Route::post('/website-orders/{id}/cancel', 'WebsiteOrdersController@cancel')->name('website-orders.cancel');

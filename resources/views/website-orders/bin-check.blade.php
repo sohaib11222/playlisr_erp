@@ -20,6 +20,11 @@
   <p class="lead">Which store has each record, by the bin map in <a href="{{ url('/website-admin/warehouse/locations') }}">Warehouse Locations</a>. Most Pico## bins are at Hollywood.</p>
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
+  <form method="POST" action="{{ route('website-orders.binRunDaily') }}" style="margin-bottom:12px;display:inline-block;margin-right:8px;" onsubmit="this.querySelector('button').disabled=true;">
+    {{ csrf_field() }}
+    <button type="submit" class="bc-btn">Run the daily check now</button>
+  </form>
+  <span style="color:#374151;">Runs by itself every day at 7:30 AM.</span>
   @if($canUndo)
     <form method="POST" action="{{ route('website-orders.binMoveUndo') }}" style="margin-bottom:12px;" onsubmit="this.querySelector('button').disabled=true;">
       {{ csrf_field() }}
