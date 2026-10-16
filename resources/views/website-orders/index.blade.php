@@ -75,6 +75,10 @@
   .wo-prod-more { font-size:12px; color:#000; margin-top:4px; }
 
   .wo-total { font-weight:600; color:#000; }
+  .wo-pull { margin:4px 0 2px; padding:4px 8px; border-left:3px solid #f59e0b; background:#fffbeb; border-radius:4px; font-size:13px; color:#000; line-height:1.45; max-width:340px; }
+  .wo-pull .lbl { font-weight:700; text-transform:uppercase; font-size:11px; letter-spacing:.03em; margin-right:2px; }
+  .wo-pull .bin { font-weight:700; background:#fde68a; padding:0 5px; border-radius:3px; }
+  .wo-pull .none { color:#b91c1c; font-weight:600; }
   .wo-loc { font-size:12.5px; line-height:1.35; min-width:110px; }
   .wo-loc-line { min-height:64px; margin-bottom:4px; }
   .wo-loc .st { font-weight:600; color:#111827; white-space:nowrap; }
@@ -338,7 +342,6 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
-            <th>Pull from</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
             <th>Actions</th>
@@ -415,6 +418,21 @@
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                        {{-- Where to pull THIS item, right under it so nobody has to
+                             line up columns (Sarah, 2026-10-16). See pullParts(). --}}
+                        @if(!$line['gift'])
+                          @php $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts($lineItem, $lineErp ? ($erpLocations[(int) $lineErp] ?? null) : null); @endphp
+                          <div class="wo-pull">
+                            <span class="lbl">Pull from:</span>
+                            @if($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
+                              <span class="none">Not set</span>
+                            @else
+                              @if($pull['place'] !== '')<strong>{{ $pull['place'] }}</strong>@endif
+                              @if($pull['area'] !== '')<span>&middot; {{ $pull['area'] }}</span>@endif
+                              @if($pull['bin'] !== '')<span>&middot;</span> <span class="bin">Bin {{ $pull['bin'] }}</span>@endif
+                            @endif
+                          </div>
+                        @endif
                       </div>
                     </div>
                   @endforeach
@@ -461,29 +479,6 @@
                     @endif
                   @endif
                 </td>
-                <td class="wo-loc">
-                  {{-- One "pull from" block per product, lined up with the Product
-                       column: place, area, bin (Sarah, 2026-10-16: "needs to be
-                       VERY clear"). See WebsiteOrdersController::pullParts. --}}
-                  @foreach($cancelLines as $line)
-                    @php
-                      $wItem = $o['items'][$loop->index] ?? [];
-                      $locPid = $line['gift'] ? 0 : (int) ($wItem['product_id']['posProductId'] ?? 0);
-                      $pull = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($wItem, $locPid ? ($erpLocations[$locPid] ?? null) : null);
-                    @endphp
-                    <div class="wo-loc-line">
-                      @if($line['gift'])
-                        <span class="na">Digital</span>
-                      @elseif($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
-                        <span class="none">Not set</span>
-                      @else
-                        @if($pull['place'] !== '')<span class="st" style="display:block;">{{ $pull['place'] }}</span>@endif
-                        @if($pull['area'] !== '')<span class="zone">{{ $pull['area'] }}</span>@endif
-                        @if($pull['bin'] !== '')<span class="kallax" @if($pull['area'] === '') style="font-family:inherit;" @endif>Bin {{ $pull['bin'] }}</span>@endif
-                      @endif
-                    </div>
-                  @endforeach
-                </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
                 <td class="wo-placed">
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
@@ -526,7 +521,7 @@
                 </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
-                <td colspan="9">
+                <td colspan="8">
                   <div class="wo-detail-grid">
                     <div>
                       <h5>Order</h5>
