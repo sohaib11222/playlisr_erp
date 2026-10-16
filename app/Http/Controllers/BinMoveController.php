@@ -122,9 +122,8 @@ class BinMoveController extends Controller
     }
 
     /** Transfer lines from one location to another as one completed stock transfer. */
-    protected function transfer(int $businessId, int $from, int $to, array $lines, string $note): Transaction
+    protected function transfer(int $businessId, int $from, int $to, array $lines, string $note, int $userId): Transaction
     {
-        $userId = auth()->user()->id;
         $refCount = $this->productUtil->setAndGetReferenceCount('stock_transfer', $businessId);
         $base = [
             'business_id' => $businessId,
@@ -173,36 +172,32 @@ class BinMoveController extends Controller
         // Cost mapping only; old records often have no purchase lines, which must not block the move.
         try {
             $this->transactionUtil->mapPurchaseSell(
-                ['id' => $businessId, 'accounting_method' => session('business.accounting_method'), 'location_id' => $from],
+                ['id' => $businessId, 'accounting_method' => session('business.accounting_method') ?: (DB::table('business')->where('id', $businessId)->value('accounting_method') ?: 'fifo'), 'location_id' => $from],
                 $sellT->fresh()->sell_lines,
                 'purchase'
             );
         } catch (\Throwable $e) {
             \Log::warning('BinMove mapPurchaseSell skipped: ' . $e->getMessage());
         }
-        $this->transactionUtil->activityLog($sellT, 'added');
+        try { $this->transactionUtil->activityLog($sellT, 'added'); } catch (\Throwable $e) {}
         return $sellT;
     }
 
-    public function move(Request $request)
+    /**
+     * Move every in-stock record in a Hollywood bin that the ERP has at Pico.
+     * Used by the button and the daily bin:move-to-hollywood job.
+     * Returns ['moved' => n, 'ref' => ref_no|null, 'error' => string|null].
+     */
+    public function runMove(int $businessId, int $userId, string $note): array
     {
-        $this->guard();
-        $businessId = (int) $request->session()->get('user.business_id');
         [$pico, $hw] = $this->locationIds($businessId);
-        if (!$pico || !$hw) {
-            return redirect()->route('website-orders.binCheck')->with('error', 'Could not find the Pico and Hollywood locations.');
-        }
+        if (!$pico || !$hw) return ['moved' => 0, 'ref' => null, 'error' => 'Could not find the Pico and Hollywood locations.'];
 
-        // The same list the page showed, fetched fresh from the website.
         $resp = app(WebsiteOrdersController::class)->bridgeGet('/erp/bin-store/products', 90);
-        if (!($resp['success'] ?? false)) {
-            return redirect()->route('website-orders.binCheck')->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website.');
-        }
+        if (!($resp['success'] ?? false)) return ['moved' => 0, 'ref' => null, 'error' => ($resp['message'] ?? null) ?: 'Could not reach the website.'];
         $ids = array_values(array_unique(array_filter(array_map(function ($r) { return (int) ($r['posProductId'] ?? 0); }, $resp['data'] ?? []))));
         $rows = $this->picoLines($ids, $pico);
-        if (!$rows) {
-            return redirect()->route('website-orders.binCheck')->with('status', 'Nothing to move: none of these have Pico stock in the ERP.');
-        }
+        if (!$rows) return ['moved' => 0, 'ref' => null, 'error' => null];
         $lines = array_map(function ($r) {
             return ['product_id' => (int) $r['product_id'], 'variation_id' => (int) $r['variation_id'], 'qty' => (float) $r['qty_available'],
                 'price' => (float) ($r['default_purchase_price'] ?? 0), 'name' => $r['name']];
@@ -212,26 +207,35 @@ class BinMoveController extends Controller
         $snapFile = self::snapDir() . "/bin-move-{$stamp}.json";
         $before = DB::table('variation_location_details')->whereIn('variation_id', array_column($lines, 'variation_id'))
             ->whereIn('location_id', [$pico, $hw])->get(['product_id', 'variation_id', 'location_id', 'qty_available']);
-        file_put_contents($snapFile, json_encode(['at' => $stamp, 'by' => auth()->user()->id, 'from' => $pico, 'to' => $hw,
+        file_put_contents($snapFile, json_encode(['at' => $stamp, 'by' => $userId, 'from' => $pico, 'to' => $hw,
             'lines' => $lines, 'vld_before' => $before], JSON_PRETTY_PRINT));
 
         try {
             DB::beginTransaction();
-            $t = $this->transfer($businessId, $pico, $hw, $lines, 'Bin Store Check: records in Hollywood bins that were stocked at Pico');
+            $t = $this->transfer($businessId, $pico, $hw, $lines, $note, $userId);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
             \Log::error('BinMove failed: ' . $e->getMessage() . ' ' . $e->getFile() . ':' . $e->getLine());
-            return redirect()->route('website-orders.binCheck')->with('error', 'Move failed, nothing changed: ' . $e->getMessage());
+            return ['moved' => 0, 'ref' => null, 'error' => 'Move failed, nothing changed: ' . $e->getMessage()];
         }
 
         $snap = json_decode(file_get_contents($snapFile), true);
         $snap['transfer_id'] = $t->id;
         $snap['ref_no'] = $t->ref_no;
         file_put_contents($snapFile, json_encode($snap, JSON_PRETTY_PRINT));
+        return ['moved' => count($lines), 'ref' => $t->ref_no, 'error' => null];
+    }
 
-        $n = count($lines);
-        return redirect()->route('website-orders.binCheck')->with('status', "Moved {$n} record" . ($n === 1 ? '' : 's') . " to Hollywood (stock transfer {$t->ref_no}).");
+    public function move(Request $request)
+    {
+        $this->guard();
+        $r = $this->runMove((int) $request->session()->get('user.business_id'), (int) auth()->user()->id,
+            'Bin Store Check: records in Hollywood bins that were stocked at Pico');
+        if ($r['error']) return redirect()->route('website-orders.binCheck')->with('error', $r['error']);
+        if (!$r['moved']) return redirect()->route('website-orders.binCheck')->with('status', 'Nothing to move: none of these have Pico stock in the ERP.');
+        $n = $r['moved'];
+        return redirect()->route('website-orders.binCheck')->with('status', "Moved {$n} record" . ($n === 1 ? '' : 's') . " to Hollywood (stock transfer {$r['ref']}).");
     }
 
     /** Undo the last move: transfer the same qty back to Pico. */
@@ -252,7 +256,7 @@ class BinMoveController extends Controller
         $businessId = (int) $request->session()->get('user.business_id');
         try {
             DB::beginTransaction();
-            $t = $this->transfer($businessId, (int) $s['to'], (int) $s['from'], $s['lines'], 'Undo of Bin Store Check move ' . ($s['ref_no'] ?? ''));
+            $t = $this->transfer($businessId, (int) $s['to'], (int) $s['from'], $s['lines'], 'Undo of Bin Store Check move ' . ($s['ref_no'] ?? ''), (int) auth()->user()->id);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();

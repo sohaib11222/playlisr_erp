@@ -129,6 +129,13 @@ class Kernel extends ConsoleKernel
         // Nick's Sling shift ends (9 AM on his days off); his End Shift
         // posts it sooner. Reads sling_shifts only; the website posts once
         // per day (Sarah, 2026-10-12).
+        // Hollywood-bin records stocked at Pico -> Hollywood, before Pico
+        // pulls go out (Sarah, 2026-10-16).
+        $schedule->command('bin:move-to-hollywood')
+            ->dailyAt('07:30')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(30);
+
         $schedule->command('shipping:summary-watch')
             ->everyFiveMinutes()
             ->between('8:55', '23:59')
