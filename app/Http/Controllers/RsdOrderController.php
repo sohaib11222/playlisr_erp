@@ -250,19 +250,28 @@ class RsdOrderController extends Controller
             return [$b['hw'] + $b['pico'], $sb, $a['artist']] <=> [$a['hw'] + $a['pico'], $sa, $b['artist']];
         });
 
-        // One cart per store, split by distributor: each title goes to its cheapest one.
+        // One cart per store, split by distributor (each title across its two cheapest, see below).
         $carts = [];
         foreach (array_keys(self::STORES) as $st) {
             $carts[$st] = ['byDist' => [], 'unpriced' => [], 'qty' => 0, 'cost' => 0.0];
             foreach ($rows as $r) {
                 $q = $r['carts'][$st]['qty'];
                 if ($q <= 0) continue;
-                $line = $r + ['qty' => $q];
                 $carts[$st]['qty'] += $q;
                 if ($r['best']) {
-                    $carts[$st]['byDist'][$r['best']['supplier_key']][] = $line;
-                    $carts[$st]['cost'] += $q * $r['best']['cost'];
+                    // Sarah 10/16: RSD titles are allocated, so split each title
+                    // between the two cheapest distributors that carry it
+                    // (cheapest gets the extra copy on odd counts).
+                    $opts = array_values(array_filter($r['prices'], function ($e) { return $e['in_stock'] !== false && (float) $e['cost'] > 0; }));
+                    usort($opts, function ($x, $y) { return $x['cost'] <=> $y['cost']; });
+                    if (empty($opts)) $opts = [$r['best']];
+                    $split = ($q >= 2 && count($opts) >= 2) ? [[$opts[0], (int) ceil($q / 2)], [$opts[1], (int) floor($q / 2)]] : [[$opts[0], $q]];
+                    foreach ($split as [$e, $n]) {
+                        $carts[$st]['byDist'][$e['supplier_key']][] = $r + ['qty' => $n];
+                        $carts[$st]['cost'] += $n * $e['cost'];
+                    }
                 } else {
+                    $line = $r + ['qty' => $q];
                     $carts[$st]['unpriced'][] = $line;
                 }
             }
