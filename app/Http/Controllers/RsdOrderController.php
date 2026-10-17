@@ -48,6 +48,7 @@ class RsdOrderController extends Controller
      */
     public static function suggested(int $requested, int $sold = 0): int
     {
+        if ($requested === 1) return 3; // Sarah 10/16: one request = that copy + 2
         return $requested > 0 ? $requested * 2 + 2 : self::salesBump($sold);
     }
 
