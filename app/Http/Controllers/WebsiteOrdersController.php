@@ -250,6 +250,14 @@ class WebsiteOrdersController extends Controller
             usort($orders, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
         }
 
+        // Priority shipping (2026-10-19): the customer paid for USPS Priority
+        // Mail, so those orders go to the top of the list, order otherwise kept.
+        $isPriorityOrder = fn($o) => ($o['ship_speed'] ?? null) === 'priority' && ($o['fulfillment_method'] ?? '') !== 'pickup';
+        $orders = array_merge(
+            array_values(array_filter($orders, $isPriorityOrder)),
+            array_values(array_filter($orders, fn($o) => !$isPriorityOrder($o)))
+        );
+
         // Discogs orders waiting to ship sit on the To Ship tab too, so Nick
         // marks everything shipped in one place (Sarah, 2026-10-12).
         $discogsToShip = [];

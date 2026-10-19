@@ -563,6 +563,9 @@
                     <span class="wo-fm-pill pickup" @if(!\App\Http\Controllers\WebsiteOrdersController::knownPickupLocation($o)) style="background:#fee2e2;color:#991b1b;" @endif>Pickup ({{ \App\Http\Controllers\WebsiteOrdersController::pickupLocationLabel($o) }})</span>
                   @else
                     <span class="wo-fm-pill shipping">Shipping</span>
+                    @if(($o['ship_speed'] ?? null) === 'priority')
+                      <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;" title="Customer paid for USPS Priority Mail. Pull it first, ship in 1 business day, buy a Priority Mail label.">PRIORITY: ship Priority Mail</span>
+                    @endif
                     @php
                       // Two store carts: which store(s) this order ships from.
                       $woShipStores = collect($o['items'] ?? [])
