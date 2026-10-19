@@ -158,11 +158,11 @@
   .wo-detail-items th { color:#000; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
   /* Pick buttons beside each item in Location (Sarah, 2026-10-19): one row, equal, solid */
-  .wo-pick-inline { display:block; border:none !important; padding:0 !important; margin:6px 0 0; background:none !important; }
+  .wo-pick-inline { display:block !important; border:none !important; padding:0 !important; margin:6px 0 0; background:none !important; }
   .wo-pick-inline .wo-pick-state { font-size:12.5px; font-weight:700; margin:0 0 4px; }
   .wo-pick-inline.is-done .wo-pick-state { color:#047857; }
   .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c; }
-  .wo-pick-inline .wo-pick-btns { display:flex; gap:4px; flex-wrap:nowrap; }
+  .wo-pick-inline .wo-pick-btns { display:flex; gap:4px; flex-wrap:nowrap; grid-column:auto; grid-row:auto; }
   .wo-pick-inline .wo-pick-btns button { flex:1 1 0; min-width:0; font-size:12px; font-weight:700; padding:7px 4px; border-radius:6px; white-space:nowrap; border:1px solid #111827; background:#fff; color:#000; }
   .wo-pick-inline .wo-pick-btns button.go { background:#047857; border-color:#047857; color:#fff; }
   .wo-pick-inline .wo-pick-btns button.cf { background:#fff; border-color:#b91c1c; color:#b91c1c; }
