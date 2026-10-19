@@ -23,6 +23,9 @@ class PicoPullsNotifier
     /** @return array ['posted' => bool, 'reason' => string] */
     public static function post(string $when = ''): array
     {
+        // Turned off 2026-10-18 (Sarah: "pls stop these updates, long and confusing").
+        // build() still feeds the preview page; nothing is posted to #pico.
+        return ['posted' => false, 'reason' => 'Pico pulls posts are turned off'];
         try {
             $text = self::build($when);
             if ($text === null) {
