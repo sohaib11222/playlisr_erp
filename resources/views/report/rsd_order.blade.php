@@ -13,9 +13,17 @@
                     $byReq = $rows;
                     usort($byReq, function ($a, $b) { return ($b['hw'] + $b['pico']) <=> ($a['hw'] + $a['pico']); });
                     $topKeys = array_flip(array_column(array_slice(array_filter($byReq, function ($r) { return $r['hw'] + $r['pico'] > 0; }), 0, 10), 'key'));
+                    // Sarah 10/19: Grateful Dead fans buy a lot, so Dead titles get the heavy
+                    // amount too (at least 6 where nobody asked). One request on a title that
+                    // isn't popular (not top 10, store sold under 10 of the artist) = 2 copies.
                     $propose = function ($r, $st) use ($topKeys) {
                         $req = $st === 'hollywood' ? $r['hw'] : $r['pico'];
-                        return (isset($topKeys[$r['key']]) && $req > 0) ? $req * 3 + 3 : $r['carts'][$st]['qty'];
+                        $cart = $r['carts'][$st]['qty'];
+                        $dead = stripos($r['artist'], 'grateful dead') !== false;
+                        if ($dead) return $req > 0 ? $req * 3 + 3 : max(6, $cart);
+                        if (isset($topKeys[$r['key']]) && $req > 0) return $req * 3 + 3;
+                        if ($req === 1 && $r['carts'][$st]['sold'] < 10) return 2;
+                        return $cart;
                     };
                     $propTot = ['hollywood' => [0, 0.0], 'pico' => [0, 0.0]];
                     foreach ($rows as $r) foreach (['hollywood', 'pico'] as $st) {
@@ -74,7 +82,7 @@
                 <b>Hollywood cart:</b> {{ $carts['hollywood']['qty'] }} copies, {{ $money($carts['hollywood']['cost']) }}.
                 &nbsp; <b>Pico cart:</b> {{ $carts['pico']['qty'] }} copies, {{ $money($carts['pico']['cost']) }}.
             </p>
-            <p style="margin:4px 0 0; font-size:15px;"><b>Proposed:</b> Hollywood {{ $propTot['hollywood'][0] }} copies, {{ $money($propTot['hollywood'][1]) }}. &nbsp; Pico {{ $propTot['pico'][0] }} copies, {{ $money($propTot['pico'][1]) }}. <span class="rsd-muted">(Not applied. Blue = changed.)</span></p>
+            <p style="margin:4px 0 0; font-size:15px;"><b>Proposed:</b> Hollywood {{ $propTot['hollywood'][0] }} copies, {{ $money($propTot['hollywood'][1]) }}. &nbsp; Pico {{ $propTot['pico'][0] }} copies, {{ $money($propTot['pico'][1]) }}. <span class="rsd-muted">(Not applied. Blue = changed. Top 10 most requested and Grateful Dead: 3x requests + 3, Dead at least 6. One request on a less popular title, under 10 sold of that artist: 2.)</span></p>
         </div>
     </div>
 
@@ -87,11 +95,11 @@
                         <th class="n hw">Hollywood customer requests</th>
                         <th class="n hw">Hollywood sold this artist, last 12 months</th>
                         <th class="n hw">Hollywood cart</th>
-                        <th class="n hw">Hollywood proposed (top 10 x3 + 3)</th>
+                        <th class="n hw">Hollywood proposed</th>
                         <th class="n pico">Pico customer requests</th>
                         <th class="n pico">Pico sold this artist, last 12 months</th>
                         <th class="n pico">Pico cart</th>
-                        <th class="n pico">Pico proposed (top 10 x3 + 3)</th>
+                        <th class="n pico">Pico proposed</th>
                         <th>Cheapest price</th>
                     </tr>
                 </thead>
