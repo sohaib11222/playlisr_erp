@@ -178,7 +178,11 @@ class PhoneClockController extends Controller
             if ($device && (int) $device->user->id !== (int) $who['user']->id) {
                 return $this->json(['ok' => false, 'msg' => 'This phone is set up for ' . trim((string) $device->user->first_name) . ', so it can only clock them.']);
             }
-            return $this->json($this->toggle($request, $who['user'], 'computer', null));
+            // After "Are you sure?" the page sends what they picked (Sarah
+            // 10/19: Quenton clocked in on his phone, then his PIN on the
+            // computer clocked him right back out).
+            $want = in_array($request->input('want'), ['in', 'out'], true) ? $request->input('want') : null;
+            return $this->json($this->toggle($request, $who['user'], 'computer', null, $want, $want === null));
         } catch (\Throwable $e) {
             \Log::warning('computer clock punch failed: ' . $e->getMessage());
             return $this->json(['ok' => false, 'msg' => 'That did not go through. Please try again.']);
@@ -212,15 +216,15 @@ class PhoneClockController extends Controller
      * once can't open two punches. $want (phone) guards against a stale
      * screen: if the person is already in that state, nothing changes.
      */
-    private function toggle(Request $request, $user, string $source, ?int $deviceId, ?string $want = null): array
+    private function toggle(Request $request, $user, string $source, ?int $deviceId, ?string $want = null, bool $askFirst = false): array
     {
-        $r = TC::withUserLock((int) $user->id, function () use ($request, $user, $source, $deviceId, $want) {
-            return $this->toggleLocked($request, $user, $source, $deviceId, $want);
+        $r = TC::withUserLock((int) $user->id, function () use ($request, $user, $source, $deviceId, $want, $askFirst) {
+            return $this->toggleLocked($request, $user, $source, $deviceId, $want, $askFirst);
         });
         return $r ?: ['ok' => false, 'msg' => 'That did not go through, try again.'];
     }
 
-    private function toggleLocked(Request $request, $user, string $source, ?int $deviceId, ?string $want): array
+    private function toggleLocked(Request $request, $user, string $source, ?int $deviceId, ?string $want, bool $askFirst = false): array
     {
         $userId = (int) $user->id;
         $businessId = (int) ($user->business_id ?: TC::businessId());
@@ -238,6 +242,32 @@ class PhoneClockController extends Controller
                     ->where('clock_out_at', '>=', $guard)->exists();
             if ($recent) {
                 $want = $open ? 'in' : 'out';
+            }
+        }
+
+        // Store computer: a PIN that would flip a fresh state asks first
+        // (Sarah 10/19). Clocked in under 30 minutes ago (often on their
+        // phone), or clocked out under 30 minutes ago (register close at
+        // 1 AM, then the PIN to "clock out" clocked them back in).
+        if ($askFirst && $want === null) {
+            $since = TC::now()->subMinutes(TC::CONFIRM_FLIP_MIN)->format('Y-m-d H:i:s');
+            if ($open && $open->clock_in_at >= $since) {
+                $st = TC::status($businessId, $userId);
+                return ['ok' => true, 'confirm' => true, 'name' => $first, 'action' => 'in',
+                    'headline' => $first . ", you're already clocked in.", 'detail' => 'Since ' . $st['since'] . ($st['store'] !== '' ? ' at ' . $st['store'] : ''),
+                    'stay' => 'Stay clocked in', 'flip' => 'Clock out', 'flip_want' => 'out', 'status' => $st];
+            }
+            if (!$open) {
+                $last = \DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
+                    ->whereNotNull('clock_out_at')->where('clock_out_at', '>=', $since)
+                    ->orderBy('clock_out_at', 'desc')->first(['clock_out_at', 'clock_out_source']);
+                if ($last) {
+                    $how = in_array($last->clock_out_source, ['register_close', 'end_shift'], true) ? ' when you closed out' : '';
+                    $st = TC::status($businessId, $userId);
+                    return ['ok' => true, 'confirm' => true, 'name' => $first, 'action' => 'out',
+                        'headline' => $first . ", you're already clocked out.", 'detail' => 'At ' . \Carbon::parse($last->clock_out_at, TC::TZ)->format('g:i A') . $how . ', ' . $st['today_text'] . ' this shift',
+                        'stay' => 'Done', 'flip' => 'Clock back in', 'flip_want' => 'in', 'status' => $st];
+                }
             }
         }
 
@@ -294,14 +324,14 @@ class PhoneClockController extends Controller
             TC::clockOut($userId, $source, $request, true);
             $st = TC::status($businessId, $userId);
             return ['ok' => true, 'name' => $first, 'action' => 'out', 'time' => $time,
-                'headline' => $first . ", you're clocked out.", 'detail' => $time . ', ' . $st['today_text'] . ' today',
+                'headline' => $first . ", you're clocked out.", 'detail' => $time . ', ' . $st['today_text'] . ' this shift',
                 'msg' => 'Clocked out at ' . $time . '.', 'status' => $st];
         }
         // Stale screen or repeat: already in the state they asked for.
         $st = TC::status($businessId, $userId);
         return ['ok' => true, 'name' => $first, 'action' => $open ? 'in' : 'out', 'time' => $time,
             'headline' => $first . ($open ? ", you're already clocked in." : ", you're already clocked out."),
-            'detail' => $open ? 'Since ' . $st['since'] : $st['today_text'] . ' today',
+            'detail' => $open ? 'Since ' . $st['since'] : $st['today_text'] . ' this shift',
             'msg' => '', 'status' => $st];
     }
 

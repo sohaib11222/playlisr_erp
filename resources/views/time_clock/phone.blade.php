@@ -62,6 +62,10 @@
   .overlay.out { background: #f5f5f5; color: #111; }
   .overlay .h { font-size: clamp(40px, 8vw, 96px); font-weight: 800; line-height: 1.1; }
   .overlay .d { font-size: clamp(28px, 5vw, 60px); margin-top: 20px; font-weight: 600; }
+  .ovbtns { display: flex; gap: 20px; margin-top: 40px; flex-wrap: wrap; justify-content: center; }
+  .ovbtn { font-size: clamp(26px, 4vw, 44px); font-weight: 800; border-radius: 20px; padding: 22px 40px; border: 3px solid #111; cursor: pointer; }
+  .ovbtn.stay { background: #111; color: #fff; }
+  .ovbtn.flip { background: #fff; color: #111; }
   .notready { text-align: center; font-size: 24px; line-height: 1.45; margin-top: 30px; }
   .hidden { display: none !important; }
   .block { background: #3f1515; color: #fee2e2; border-radius: 18px; padding: 18px; margin: 12px 0; font-size: 22px; line-height: 1.4; text-align: center; }
@@ -158,7 +162,7 @@
   @endif
 </div>
 
-<div id="overlay" class="overlay"><div class="h" id="ovH"></div><div class="d" id="ovD"></div></div>
+<div id="overlay" class="overlay"><div class="h" id="ovH"></div><div class="d" id="ovD"></div><div id="ovBtns" class="ovbtns hidden"><button type="button" id="ovStay" class="ovbtn stay"></button><button type="button" id="ovFlip" class="ovbtn flip"></button></div></div>
 
 @if ($ready)
 <script>
@@ -277,13 +281,15 @@
       hideBlock();
       var url = MODE === 'computer' ? '/clock/computer' : '/clock/pin';
       var geoP = MODE === 'computer' ? getGeo() : Promise.resolve({});
+      var typed = pin;
       geoP.then(function (geo) {
-        geo.pin = pin;
+        geo.pin = typed;
         return post(url, geo, false);
       }).then(function (j) {
         pin = ''; draw();
         if (j && j.blocked) { showBlock(j); setBusy(false); return; }
         if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work, try again.'; setBusy(false); return; }
+        if (MODE === 'computer' && j.confirm) { askFlip(j, typed); return; }
         if (MODE === 'computer') {
           document.getElementById('ovH').textContent = j.headline || '';
           document.getElementById('ovD').textContent = j.detail || '';
@@ -296,6 +302,49 @@
         pin = ''; draw();
         msg.textContent = 'No connection, try again.';
         setBusy(false);
+      });
+    }
+    // Store computer: "already clocked in/out" with Stay / Flip buttons.
+    // The PIN is kept only until a button is tapped or 15 seconds pass.
+    var ovBtns = document.getElementById('ovBtns'), ovStay = document.getElementById('ovStay'), ovFlip = document.getElementById('ovFlip');
+    var flipPin = '', flipWant = '', flipTimer = null;
+    function closeAsk() {
+      if (flipTimer) { clearTimeout(flipTimer); flipTimer = null; }
+      flipPin = ''; flipWant = '';
+      ovBtns.className = 'ovbtns hidden';
+      overlay.className = 'overlay';
+      setBusy(false);
+    }
+    function askFlip(j, typed) {
+      flipPin = typed; flipWant = j.flip_want;
+      document.getElementById('ovH').textContent = j.headline || '';
+      document.getElementById('ovD').textContent = j.detail || '';
+      ovStay.textContent = j.stay || 'OK';
+      ovFlip.textContent = j.flip || '';
+      ovBtns.className = 'ovbtns';
+      overlay.className = 'overlay show ' + (j.action === 'out' ? 'out' : 'in');
+      flipTimer = setTimeout(closeAsk, 15000);
+    }
+    if (ovStay) {
+      ovStay.addEventListener('click', closeAsk);
+      ovFlip.addEventListener('click', function () {
+        var p = flipPin, w = flipWant;
+        if (flipTimer) { clearTimeout(flipTimer); flipTimer = null; }
+        flipPin = ''; flipWant = '';
+        ovBtns.className = 'ovbtns hidden';
+        overlay.className = 'overlay';
+        if (!p) { setBusy(false); return; }
+        getGeo().then(function (geo) {
+          geo.pin = p; geo.want = w;
+          return post('/clock/computer', geo, false);
+        }).then(function (j) {
+          if (j && j.blocked) { showBlock(j); setBusy(false); return; }
+          if (!j || !j.ok) { msg.textContent = (j && j.msg) || 'That did not work, try again.'; setBusy(false); return; }
+          document.getElementById('ovH').textContent = j.headline || '';
+          document.getElementById('ovD').textContent = j.detail || '';
+          overlay.className = 'overlay show ' + (j.action === 'out' ? 'out' : 'in');
+          setTimeout(function () { overlay.className = 'overlay'; setBusy(false); }, 3000);
+        }).catch(function () { msg.textContent = 'No connection, try again.'; setBusy(false); });
       });
     }
     function press(k) {

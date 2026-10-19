@@ -61,6 +61,11 @@ class TimeClockService
     // Store computer: the same PIN again within this many seconds of a punch
     // shows the current state instead of flipping it (double taps, retries).
     const TOGGLE_GUARD_SEC = 60;
+    // Store computer asks before undoing a punch this fresh (Sarah 10/19).
+    const CONFIRM_FLIP_MIN = 30;
+    // A work day runs 5 AM to 5 AM, so a night shift's hours don't restart
+    // at midnight on the clock screen (Sarah 10/19, Quenton 8 PM - 1 AM).
+    const DAY_START_HOUR = 5;
     const STORE_IP_MAX_FAILS = 30;
     const GLOBAL_DAY_MAX_FAILS = 300;
 
@@ -1542,10 +1547,18 @@ class TimeClockService
             ->first();
     }
 
-    /** Hours worked today (open punch counted up to now). */
+    /** Start of the work day: 5 AM today, or 5 AM yesterday before 5 AM. */
+    public static function workdayStart(): \Carbon\Carbon
+    {
+        $now = self::now();
+        $start = $now->copy()->startOfDay()->addHours(self::DAY_START_HOUR);
+        return $now->lt($start) ? $start->subDay() : $start;
+    }
+
+    /** Hours worked this work day (open punch counted up to now). */
     public static function todayHours(int $userId): float
     {
-        $start = self::now()->startOfDay();
+        $start = self::workdayStart();
         $sec = 0;
         foreach (DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
             ->where(function ($q) use ($start) {
@@ -1594,7 +1607,7 @@ class TimeClockService
         if (!$open) {
             $last = DB::table('time_clock_punches')->where('user_id', $userId)->whereNull('voided_at')
                 ->whereNotNull('clock_out_at')
-                ->where('clock_out_at', '>=', self::now()->startOfDay()->format('Y-m-d H:i:s'))
+                ->where('clock_out_at', '>=', self::workdayStart()->format('Y-m-d H:i:s'))
                 ->orderBy('clock_out_at', 'desc')->first();
             if ($last) {
                 $out['last_out'] = \Carbon::parse($last->clock_out_at, self::TZ)->format('g:i A');
