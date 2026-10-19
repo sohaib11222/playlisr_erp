@@ -155,107 +155,149 @@
   </div>
 @endif
 
-@if (!empty($checkList))
-  <div class="pr-checks"><strong>Check before paying</strong>
-    <ul>@foreach ($checkList as $c)<li>{{ $c }}</li>@endforeach</ul>
-  </div>
-@endif
 
-{{-- ============ SUMMARY (same columns as the payroll Google Sheet) ============ --}}
-<div class="box box-solid"><div class="box-body" style="overflow-x:auto;">
-  <div class="pr-sheet-title">PAYROLL SUMMARY {{ $ps->format('m/d/y') }} - {{ \Carbon::parse($end)->format('m/d/y') }}</div>
-  <table class="pr-sheet" id="owe-table">
-    <thead><tr>
-      <th>Listening<br>Parties</th><th>Name</th><th>Total<br>Hours</th>
-      <th>Sales<br>Commission</th><th>Listing<br>Commission</th><th>Listening Party<br>Commission</th><th>Total<br>commission owed</th>
-      @if ($can_see_rates)<th>Total Owed<br>pre tax</th><th>Last Payroll<br>Amount</th>@endif
-      <th>Store</th><th>Notes</th>
-    </tr></thead>
-    <tbody>
-    @forelse ($people as $p)
-      @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $hrs = $p['one_hours'] + $p['two_hours']; @endphp
-      <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
-        <td style="white-space:normal;font-size:12px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if (!$loop->last), @endif @endforeach</td>
-        <td><strong>{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</strong>@if (($p['paid_by'] ?? 'qb') === 'zelle') (Zelle)@endif</td>
-        <td class="num"><strong>{{ $hrs ? number_format($hrs, 2) : '' }}</strong></td>
-        <td class="num">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
-        <td class="num">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
-        <td class="num">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
-        <td class="num">@if ($commAmt > 0.004)<strong>${{ $fmt($commAmt) }}</strong>@if (!$p['comm_included']) (next run)@endif @endif</td>
-        @if ($can_see_rates)
-          <td class="num"><strong>${{ $fmt($p['grand_total']) }}</strong></td>
-          <td class="num">{{ isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
-        @endif
-        <td>{{ trim(($p['one_hours'] > 0 ? 'pico ' : '') . ($p['two_hours'] > 0 ? 'hw' : '')) }}</td>
-        <td><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}"></td>
-      </tr>
-    @empty
-      <tr><td colspan="11" style="text-align:center;padding:20px;">No hours yet for this period.</td></tr>
-    @endforelse
-    </tbody>
-    @if (!empty($people))
-    <tfoot><tr class="pr-tot">
-      <td></td><td>TOTAL</td>
-      <td class="num">{{ number_format(array_sum(array_column($people, 'one_hours')) + array_sum(array_column($people, 'two_hours')), 2) }}</td>
-      <td class="num">${{ $fmt($totals['sales_comm']) }}</td><td class="num">${{ $fmt($totals['listing_comm']) }}</td><td class="num">${{ $fmt($totals['party_comm']) }}</td>
-      <td class="num">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
-      @if ($can_see_rates)<td class="num">${{ $fmt($totals['grand_total']) }}</td><td></td>@endif
-      <td></td><td></td>
-    </tr></tfoot>
-    @endif
-  </table>
-  <form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
-  <p style="font-size:12px;margin:8px 0 0;color:#1F1B16;">Notes save by themselves. Commissions marked "next run" are owed but not paid this period.</p>
-</div></div>
 
-{{-- ============ SHIFT LOG (the sheet's bottom blocks; edits save by themselves) ============ --}}
-<div class="box box-solid" id="shift-log"><div class="box-body" style="overflow-x:auto;">
-  <div class="pr-sheet-title">SHIFT LOG</div>
-  <p style="font-size:12px;margin:0 0 8px;color:#1F1B16;">Click a date, time, store or comment to fix it. It saves when you click away.</p>
-  <table class="pr-sheet pr-log">
-    <thead><tr><th>Name</th><th>Total Hours</th><th>Clock In Date</th><th>Clock In Time</th><th>Clock Out Date</th><th>Clock Out Time</th><th>Elapsed Hours</th><th>Location</th><th>Comments</th><th></th></tr></thead>
-    <tbody>
-    @foreach ($people as $p)
-      @if (!empty($p['log']))
-        @foreach ($p['log'] as $lg)
-          @php $f = 'sh-' . $lg['idx']; @endphp
-          <tr class="pr-shift" data-person="{{ $p['key'] }}" data-form="{{ $f }}">
-            <td class="pr-name">{{ $loop->first ? $p['first_name'] : '' }}</td>
-            <td class="num pr-ptotal" data-person="{{ $p['key'] }}">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
-            <td><input form="{{ $f }}" class="pr-cell pr-d" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-t" name="in_time" value="{{ $tm($lg['in']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-d" name="out_date" value="{{ $mdY($lg['out']) }}"></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-t" name="out_time" value="{{ $tm($lg['out']) }}"></td>
-            <td class="num pr-el">{{ number_format($lg['hours'], 2) }}</td>
-            <td><select form="{{ $f }}" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
-            <td><input form="{{ $f }}" class="pr-cell pr-c" name="comment" value="{{ $lg['comment'] }}"></td>
-            <td><button form="{{ $f }}" type="submit" name="action" value="delete" class="pr-x" title="Delete this shift" onclick="return confirm('Delete this shift?');">&times;</button></td>
-          </tr>
-        @endforeach
-        <tr><td colspan="10" style="border-left:0;border-right:0;height:8px;padding:0;"></td></tr>
-      @endif
-    @endforeach
-    <tr class="pr-add">
-      <td><select form="add-shift" class="pr-cell" name="name"><option value="">+ Add a shift for...</option>@foreach ($people as $p)<option value="{{ ucfirst($p['key']) }}">{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</option>@endforeach</select></td>
-      <td></td>
-      <td><input form="add-shift" class="pr-cell pr-d" name="in_date" placeholder="mm/dd/yy"></td>
-      <td><input form="add-shift" class="pr-cell pr-t" name="in_time" placeholder="3:00 PM"></td>
-      <td><input form="add-shift" class="pr-cell pr-d" name="out_date" placeholder="same day"></td>
-      <td><input form="add-shift" class="pr-cell pr-t" name="out_time" placeholder="8:00 PM"></td>
-      <td></td>
-      <td><select form="add-shift" class="pr-cell" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}">{{ $ll }}</option>@endforeach</select></td>
-      <td><input form="add-shift" class="pr-cell pr-c" name="comment" placeholder="why it was added"></td>
-      <td><button form="add-shift" type="submit" name="action" value="add" class="btn btn-primary btn-xs">Add</button></td>
+{{-- ============ THE SHEET: one grid like the payroll Google Sheet tab ============ --}}
+@php
+  $sheetPeople = array_values(array_filter($people, function ($p) {
+      return ($p['one_hours'] + $p['two_hours']) > 0 || $p['grand_total'] > 0.004;
+  }));
+  usort($sheetPeople, function ($a, $b) {
+      $ra = (($a['paid_by'] ?? 'qb') === 'zelle' ? 2 : 0) + (($a['home_company'] ?? 'two') === 'one' ? 0 : 1);
+      $rb = (($b['paid_by'] ?? 'qb') === 'zelle' ? 2 : 0) + (($b['home_company'] ?? 'two') === 'one' ? 0 : 1);
+      return $ra === $rb ? strcmp($a['first_name'], $b['first_name']) : $ra <=> $rb;
+  });
+  $adjRows = [];
+  foreach ($people as $p) { foreach ($p['adjustments'] ?? [] as $aj) { $adjRows[] = ['name' => $p['first_name'], 'a' => $aj]; } }
+  $cols = ['A','B','C','D','E','F','G','H','I','J','K'];
+  $rn = 0;
+@endphp
+<style>
+.gs-wrap { display:flex; gap:28px; align-items:flex-start; background:#fff; border:1px solid #c7c7c7; padding:0; overflow-x:auto; }
+.gs { font-family: Calibri, Carlito, Arial, sans-serif; font-size:13px; border-collapse:collapse; color:#000; }
+.gs td, .gs th { border:1px solid #e2e2e2; padding:2px 6px; height:21px; white-space:nowrap; }
+.gs .rh { background:#f8f9fa; color:#5f6368; font-size:11px; text-align:center; width:34px; border-color:#c7c7c7; }
+.gs .ch { background:#f8f9fa; color:#5f6368; font-size:11px; font-weight:400; text-align:center; border-color:#c7c7c7; height:18px; }
+.gs .hd { background:#000; color:#fff; font-weight:700; text-align:center; white-space:normal; line-height:1.15; border-color:#000; }
+.gs .bl { background:#4a86e8; color:#fff; font-weight:700; text-align:center; border-color:#4a86e8; }
+.gs .n { text-align:right; } .gs .c { text-align:center; } .gs .b { font-weight:700; } .gs .i { font-style:italic; }
+.gs .tt { font-weight:700; border-top:1px solid #000; }
+.gs input, .gs select { border:0; background:transparent; font:inherit; color:#000; padding:0; margin:0; width:100%; outline:none; -webkit-appearance:none; appearance:none; }
+.gs input:focus, .gs select:focus { box-shadow:inset 0 0 0 2px #1a73e8; background:#fff; }
+.gs td.n input { text-align:right; } .gs td.c input, .gs td.c select { text-align:center; text-align-last:center; }
+.gs input::placeholder { color:#9aa0a6; }
+.gs .x { visibility:hidden; border:0; background:none; color:#c5221f; cursor:pointer; padding:0 2px; font-size:13px; }
+.gs tr:hover .x { visibility:visible; }
+.gs tr.is-saving td { background:#fff8e1; } .gs tr.is-saved td { background:#e6f4ea; } .gs tr.is-error td { background:#fce8e6; }
+.gs-side { padding-top:40px; }
+.gs-side .gs { margin-bottom:24px; }
+</style>
+<div class="gs-wrap">
+<table class="gs" id="owe-table">
+  <tr><td class="rh"></td>@foreach ($cols as $cl)<td class="ch">{{ $cl }}</td>@endforeach</tr>
+  <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
+  <tr><td class="rh">{{ ++$rn }}</td><td></td><td colspan="5" class="b">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/Y') }} - {{ \Carbon::parse($end)->format('m/d/Y') }}</td><td colspan="5"></td></tr>
+  <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
+  <tr>
+    <td class="rh">{{ ++$rn }}</td>
+    <td class="hd">Listening<br>Parties</td><td class="hd">SUMMARY</td><td class="hd">TOTAL HOURS<br>{{ \Carbon::parse($start)->format('n/j') }}-{{ \Carbon::parse($end)->format('n/j') }}</td>
+    <td class="hd">Sales<br>Commission</td><td class="hd">Listing<br>Commission</td><td class="hd">Listening Party<br>Commission</td><td class="hd">Total<br>commission<br>owed</td>
+    <td class="hd">Total Owed<br>pre tax</td><td class="hd">Last Payroll<br>Amount</td><td class="hd">Store</td><td class="hd">Notes</td>
+  </tr>
+  @foreach ($sheetPeople as $p)
+    @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $hrs = $p['one_hours'] + $p['two_hours']; @endphp
+    <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
+      <td class="rh">{{ ++$rn }}</td>
+      <td style="white-space:normal;max-width:130px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if (!$loop->last), @endif @endforeach</td>
+      <td class="b">{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</td>
+      <td class="n">{{ $hrs ? number_format($hrs, 2) : '' }}</td>
+      <td class="n">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
+      <td class="n">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
+      <td class="n">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
+      <td class="n b">{{ $commAmt > 0.004 ? '$' . $fmt($commAmt) : '$0.00' }}</td>
+      <td class="n b">{{ $can_see_rates ? '$' . $fmt($p['grand_total']) : '' }}</td>
+      <td class="n i">{{ $can_see_rates && isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
+      <td class="c">{{ trim(($p['two_hours'] > 0 ? 'hw ' : '') . ($p['one_hours'] > 0 ? 'pico' : '')) }}@if (($p['paid_by'] ?? 'qb') === 'zelle') (Zelle)@endif</td>
+      <td style="min-width:220px;"><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}"></td>
     </tr>
-    </tbody>
-  </table>
-  @foreach ($people as $p)
-    @foreach ($p['log'] ?? [] as $lg)
-      <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}"></form>
-    @endforeach
   @endforeach
-  <form id="add-shift" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
-</div></div>
+  <tr>
+    <td class="rh">{{ ++$rn }}</td><td></td><td></td>
+    <td class="n tt">{{ number_format(array_sum(array_map(function ($p) { return $p['one_hours'] + $p['two_hours']; }, $sheetPeople)), 2) }}</td>
+    <td></td><td></td><td></td>
+    <td class="n tt">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
+    <td class="n tt">{{ $can_see_rates ? '$' . $fmt($totals['grand_total']) : '' }}</td>
+    <td></td><td></td><td></td>
+  </tr>
+  <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
+  <tr id="shift-log">
+    <td class="rh">{{ ++$rn }}</td>
+    <td class="bl"></td><td class="bl">Name</td><td class="bl">Total Hours</td><td class="bl">Clock In Date</td><td class="bl">Clock In Time</td><td class="bl">Clock Out Date</td>
+    <td class="bl">Clock Out Time</td><td class="bl">Elapsed Hours</td><td class="bl">Location</td><td class="bl">Comments</td><td></td>
+  </tr>
+  @foreach ($sheetPeople as $p)
+    @if (!empty($p['log']))
+      @foreach ($p['log'] as $lg)
+        @php $f = 'sh-' . $lg['idx']; @endphp
+        <tr class="pr-shift" data-person="{{ $p['key'] }}" data-form="{{ $f }}">
+          <td class="rh">{{ ++$rn }}</td>
+          <td></td>
+          <td class="b">{{ $loop->first ? $p['first_name'] : '' }}</td>
+          <td class="n b pr-ptotal">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
+          <td class="n"><input form="{{ $f }}" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}" style="width:70px;"></td>
+          <td class="n"><input form="{{ $f }}" name="in_time" value="{{ $lg['in'] ? \Carbon::parse($lg['in'])->format('g:i:s A') : '' }}" style="width:88px;"></td>
+          <td class="n"><input form="{{ $f }}" name="out_date" value="{{ $mdY($lg['out']) }}" style="width:70px;"></td>
+          <td class="n"><input form="{{ $f }}" name="out_time" value="{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:i:s A') : '' }}" style="width:88px;"></td>
+          <td class="n pr-el">{{ number_format($lg['hours'], 2) }}</td>
+          <td class="c"><select form="{{ $f }}" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
+          <td style="min-width:180px;"><input form="{{ $f }}" name="comment" value="{{ $lg['comment'] }}"></td>
+          <td><button form="{{ $f }}" type="submit" name="action" value="delete" class="x" title="Delete this shift" onclick="return confirm('Delete this shift?');">&times;</button></td>
+        </tr>
+      @endforeach
+      <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
+    @endif
+  @endforeach
+  <tr class="pr-add">
+    <td class="rh">{{ ++$rn }}</td><td></td>
+    <td><select form="add-shift" name="name" style="color:#1a73e8;"><option value="">+ Add shift</option>@foreach ($sheetPeople as $p)<option value="{{ ucfirst($p['key']) }}">{{ $p['first_name'] }}</option>@endforeach</select></td>
+    <td></td>
+    <td class="n"><input form="add-shift" name="in_date" placeholder="mm/dd/yy" style="width:70px;"></td>
+    <td class="n"><input form="add-shift" name="in_time" placeholder="3:00 PM" style="width:88px;"></td>
+    <td class="n"><input form="add-shift" name="out_date" placeholder="same day" style="width:70px;"></td>
+    <td class="n"><input form="add-shift" name="out_time" placeholder="8:00 PM" style="width:88px;"></td>
+    <td></td>
+    <td class="c"><select form="add-shift" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}">{{ $ll }}</option>@endforeach</select></td>
+    <td><input form="add-shift" name="comment" placeholder="why it was added"></td>
+    <td><button form="add-shift" type="submit" name="action" value="add" style="border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:3px;font-size:12px;padding:0 6px;">Add</button></td>
+  </tr>
+</table>
+
+<div class="gs-side">
+  @if (!empty($checkList))
+  <table class="gs">
+    <tr><td class="hd" style="text-align:left;">CHECK BEFORE PAYING</td></tr>
+    @foreach ($checkList as $c)<tr><td style="white-space:normal;max-width:340px;">{{ $c }}</td></tr>@endforeach
+  </table>
+  @endif
+  @if (!empty($adjRows))
+  <table class="gs">
+    <tr><td class="hd">BACK PAY / ADJUSTMENTS</td><td class="hd">Amount</td><td class="hd">Store</td><td class="hd">Note</td></tr>
+    @foreach ($adjRows as $ar)
+      <tr><td class="b">{{ $ar['name'] }}</td><td class="n">{{ $ar['a']['type'] === 'hours_offset' ? $hh($ar['a']['hours']) . ' hrs' : '$' . $fmt($ar['a']['amount']) }}</td><td class="c">{{ $ar['a']['company'] === 'one' ? 'pico' : 'hw' }}</td><td style="white-space:normal;max-width:240px;">{{ $ar['a']['note'] ?? '' }}</td></tr>
+    @endforeach
+  </table>
+  @endif
+</div>
+</div>
+
+@foreach ($people as $p)
+  @foreach ($p['log'] ?? [] as $lg)
+    <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}"></form>
+  @endforeach
+@endforeach
+<form id="add-shift" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
+<form id="notes-form" method="POST" action="{{ url('/payroll/save-notes') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"></form>
+<p style="font-size:12px;margin:8px 0 0;color:#000;">Click any cell in the shift log or Notes to change it; it saves when you click away. Commission is paid once a month, so until then it is owed but not in Total Owed.</p>
 
 <div style="margin:18px 0 8px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#1F1B16;">MORE TOOLS</div>
 
