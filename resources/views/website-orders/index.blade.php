@@ -345,7 +345,14 @@
     </form>
 
     @if(empty($orders))
-      <div class="ev-card"><div class="empty">No orders in this view.</div></div>
+      <div class="ev-card"><div class="empty">No orders in this view.
+        {{-- Store filter on a tab with nothing to pull: point to where the pulls are (Sarah, 2026-10-19) --}}
+        @if(in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) && $activeTab !== 'needs_action' && ($pullCounts[$locationFilter] ?? 0) > 0)
+          <div style="margin-top:10px;font-size:15px;font-weight:700;color:#000;">{{ ucfirst($locationFilter) }} has {{ $pullCounts[$locationFilter] }} items to pull on the Needs Action tab.
+            <a href="{{ route('website-orders.index', ['tab' => 'needs_action', 'location' => $locationFilter]) }}" style="display:inline-block;margin-left:8px;padding:8px 14px;border-radius:6px;background:#1e40af;color:#fff;text-decoration:none;">Show them</a>
+          </div>
+        @endif
+      </div></div>
     @else
       <div class="wo-card">
         <div class="wo-scroll">
