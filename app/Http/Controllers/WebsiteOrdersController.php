@@ -729,6 +729,8 @@ class WebsiteOrdersController extends Controller
         $out = [];
         foreach ($orders as $o) {
             if (!self::matchesTab($o, 'needs_action')) continue;
+            // Only paid orders are real pulls (unpaid checkouts showed up under "All Payment Status")
+            if (($o['payment_status'] ?? '') !== 'completed') continue;
             $done = [];
             $lines = []; // pick-list line by item name, for the Picked / Can't find buttons
             foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
