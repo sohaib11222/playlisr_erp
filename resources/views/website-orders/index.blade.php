@@ -157,15 +157,16 @@
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
   .wo-detail-items th { color:#000; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
-  /* Pick buttons beside each item in Location (Sarah, 2026-10-19) */
-  .wo-pick-inline { display:block; border:none; padding:0; margin:6px 0 0; background:none; }
-  .wo-pick-inline.is-done, .wo-pick-inline.is-missing { background:none; }
-  .wo-pick-inline .wo-pick-state { font-size:12px; font-weight:700; margin:0 0 3px; }
+  /* Pick buttons beside each item in Location (Sarah, 2026-10-19): one row, equal, solid */
+  .wo-pick-inline { display:block; border:none !important; padding:0 !important; margin:6px 0 0; background:none !important; }
+  .wo-pick-inline .wo-pick-state { font-size:12.5px; font-weight:700; margin:0 0 4px; }
   .wo-pick-inline.is-done .wo-pick-state { color:#047857; }
   .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c; }
-  .wo-pick-inline .wo-pick-btns { display:flex; flex-wrap:wrap; gap:4px; }
-  .wo-pick-inline .wo-pick-btns button { font-size:12.5px; padding:5px 10px; }
-  .wo-pick-inline .wo-pick-btns button.ds { font-size:11px; padding:3px 6px; }
+  .wo-pick-inline .wo-pick-btns { display:flex; gap:4px; flex-wrap:nowrap; }
+  .wo-pick-inline .wo-pick-btns button { flex:1 1 0; min-width:0; font-size:12px; font-weight:700; padding:7px 4px; border-radius:6px; white-space:nowrap; border:1px solid #111827; background:#fff; color:#000; }
+  .wo-pick-inline .wo-pick-btns button.go { background:#047857; border-color:#047857; color:#fff; }
+  .wo-pick-inline .wo-pick-btns button.cf { background:#fff; border-color:#b91c1c; color:#b91c1c; }
+  .wo-pick-inline .wo-pick-btns button.ds { background:#fff; border-color:#1e40af; color:#1e40af; }
   /* Compact pick checklist: one line per item, buttons on the right (Sarah, 2026-10-16) */
   .wo-pick { margin-top:4px; text-align:left; }
   .wo-pick-line { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:6px; align-items:center; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; margin-bottom:3px; background:#fff; }
@@ -361,7 +362,7 @@
             <col style="width:100px">
             <col style="width:15%">
             <col>
-            <col style="width:220px">
+            <col style="width:260px">
             <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
@@ -530,7 +531,7 @@
                             @if($plDone || $plMissing)
                               <button type="button" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
-                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
                             @endif
                           </div>
                         </div>
@@ -1172,7 +1173,7 @@
       var b = l.querySelector('.wo-pick-btns');
       b.innerHTML = (done || missing)
         ? '<button type="button">Undo</button>'
-        : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button><button type="button">Dropshipped</button>';
+        : '<button type="button" class="go">Picked</button><button type="button" class="cf">Can\'t find</button><button type="button" class="ds">Dropshipped</button>';
       var bs = b.querySelectorAll('button');
       if (done || missing) { bs[0].onclick = function () { woPick(this, 'Not Picked'); }; }
       else { bs[0].onclick = function () { woPick(this, 'Picked'); }; bs[1].onclick = function () { woPick(this, "Can't Find"); }; bs[2].onclick = function () { woPick(this, 'Dropshipped'); }; }
