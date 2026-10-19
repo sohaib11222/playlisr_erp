@@ -25,11 +25,24 @@
                         if ($req === 1 && $r['carts'][$st]['sold'] < 10) return 2;
                         return $cart;
                     };
+                    // Same split as the carts: half to each of the two cheapest distributors.
+                    $split = function ($r, $q) {
+                        $opts = array_values(array_filter($r['prices'], function ($e) { return $e['in_stock'] !== false && (float) $e['cost'] > 0; }));
+                        usort($opts, function ($x, $y) { return $x['cost'] <=> $y['cost']; });
+                        if (!$opts || $q <= 0) return [];
+                        if ($q >= 2 && count($opts) >= 2) return [[$opts[0], (int) ceil($q / 2)], [$opts[1], (int) floor($q / 2)]];
+                        return [[$opts[0], $q]];
+                    };
                     $propTot = ['hollywood' => [0, 0.0], 'pico' => [0, 0.0]];
+                    $propDist = ['hollywood' => [], 'pico' => []];
                     foreach ($rows as $r) foreach (['hollywood', 'pico'] as $st) {
                         $q = $propose($r, $st);
                         $propTot[$st][0] += $q;
-                        if ($r['best']) $propTot[$st][1] += $q * $r['best']['cost'];
+                        foreach ($split($r, $q) as [$e, $n]) {
+                            $propTot[$st][1] += $n * $e['cost'];
+                            $k = $e['supplier_key'];
+                            $propDist[$st][$k] = [($propDist[$st][$k][0] ?? 0) + $n, ($propDist[$st][$k][1] ?? 0) + $n * $e['cost'], $e['supplier_label']];
+                        }
                     }
                 @endphp
 <style>
@@ -82,7 +95,8 @@
                 <b>Hollywood cart:</b> {{ $carts['hollywood']['qty'] }} copies, {{ $money($carts['hollywood']['cost']) }}.
                 &nbsp; <b>Pico cart:</b> {{ $carts['pico']['qty'] }} copies, {{ $money($carts['pico']['cost']) }}.
             </p>
-            <p style="margin:4px 0 0; font-size:15px;"><b>Proposed:</b> Hollywood {{ $propTot['hollywood'][0] }} copies, {{ $money($propTot['hollywood'][1]) }}. &nbsp; Pico {{ $propTot['pico'][0] }} copies, {{ $money($propTot['pico'][1]) }}. <span class="rsd-muted">(Not applied. Blue = changed. Top 10 most requested and Grateful Dead: 3x requests + 3, Dead at least 6. One request on a less popular title, under 10 sold of that artist: 2.)</span></p>
+            <p style="margin:4px 0 0; font-size:15px;"><b>Proposed:</b> Hollywood {{ $propTot['hollywood'][0] }} copies, {{ $money($propTot['hollywood'][1]) }}. &nbsp; Pico {{ $propTot['pico'][0] }} copies, {{ $money($propTot['pico'][1]) }}. <br>@foreach(['hollywood' => 'Hollywood', 'pico' => 'Pico'] as $st => $lbl)<span style="margin-right:18px">{{ $lbl }}: @foreach($propDist[$st] as $k => [$n, $cost, $label]){!! $dist($k, $label) !!} {{ $n }} copies {{ $money($cost) }} &nbsp;@endforeach</span>@endforeach
+            <br><span class="rsd-muted">(Not applied. Underlined = changed. Top 10 most requested and Grateful Dead: 3x requests + 3, Dead at least 6. One request on a less popular title, under 10 sold of that artist: 2.)</span></p>
         </div>
     </div>
 
@@ -121,7 +135,9 @@
                                 @if($c['ordered'])<div class="rsd-muted">ordered {{ \Carbon\Carbon::parse($c['ordered']['at'])->format('M j') }}</div>@endif
                             </td>
                             @php $pq = $propose($r, $st); @endphp
-                            <td class="n {{ $cls }}" @if($pq !== $c['qty']) style="font-weight:bold;color:#1565c0" @endif>{{ $pq }}</td>
+                            <td class="n {{ $cls }}"><span @if($pq !== $c['qty']) style="font-weight:bold;text-decoration:underline" @endif>{{ $pq }}</span>
+                                @foreach($split($r, $pq) as [$e, $n])<div style="font-size:12px">{!! $dist($e['supplier_key'], $e['supplier_label']) !!} {{ $n }}</div>@endforeach
+                            </td>
                         @endforeach
                         <td>
                             @if($r['best'])
