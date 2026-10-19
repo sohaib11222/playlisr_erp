@@ -157,6 +157,15 @@
   .wo-detail-items td, .wo-detail-items th { padding:5px 10px 5px 0; font-size:13px; text-align:left; }
   .wo-detail-items th { color:#000; font-weight:700; font-size:11px; text-transform:uppercase; }
   /* Pick list (Sarah, 2026-10-15) */
+  /* Pick buttons beside each item in Location (Sarah, 2026-10-19) */
+  .wo-pick-inline { display:block; border:none; padding:0; margin:6px 0 0; background:none; }
+  .wo-pick-inline.is-done, .wo-pick-inline.is-missing { background:none; }
+  .wo-pick-inline .wo-pick-state { font-size:12px; font-weight:700; margin:0 0 3px; }
+  .wo-pick-inline.is-done .wo-pick-state { color:#047857; }
+  .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c; }
+  .wo-pick-inline .wo-pick-btns { display:flex; flex-wrap:wrap; gap:4px; }
+  .wo-pick-inline .wo-pick-btns button { font-size:12.5px; padding:5px 10px; }
+  .wo-pick-inline .wo-pick-btns button.ds { font-size:11px; padding:3px 6px; }
   /* Compact pick checklist: one line per item, buttons on the right (Sarah, 2026-10-16) */
   .wo-pick { margin-top:4px; text-align:left; }
   .wo-pick-line { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:6px; align-items:center; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; margin-bottom:3px; background:#fff; }
@@ -473,7 +482,14 @@
                     <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked, can't find or cancelled)</div>
                   @endif
                 </td>
-                <td class="wo-loc">
+                @php
+                  // Pick buttons sit beside each item (Sarah, 2026-10-19: the
+                  // separate checklist cut names to one letter). Matched by name.
+                  $pickLines = [];
+                  foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
+                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action'], true);
+                @endphp
+                <td class="wo-loc @if($pickable) wo-pick @endif" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
                   {{-- One block per product, kept level with its product by
                        woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
                   @foreach($cancelLines as $line)
@@ -493,6 +509,24 @@
                         @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
                         @if(($pull['genre'] ?? '') !== '')<span class="area">{{ $pull['genre'] }}</span>@endif
                         @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
+                      @endif
+                      @php $pl = (!$pickable || $line['gift'] || $line['cancelled']) ? null : ($pickLines[strtolower(trim((string) $line['name']))] ?? null); @endphp
+                      @if($pl)
+                        @php
+                          $plStatus = $pl['status'] ?? 'Not Picked';
+                          $plDone = in_array($plStatus, ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true);
+                          $plMissing = $plStatus === "Can't Find";
+                        @endphp
+                        <div class="wo-pick-line wo-pick-inline {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
+                          <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : '')) }}</div>
+                          <div class="wo-pick-btns">
+                            @if($plDone || $plMissing)
+                              <button type="button" onclick="woPick(this, 'Not Picked')">Undo</button>
+                            @else
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
+                            @endif
+                          </div>
+                        </div>
                       @endif
                     </div>
                   @endforeach
@@ -585,9 +619,9 @@
                     </div>
                   </div>
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action'], true))
-                    <div style="margin-top:4px;">
-                      @include('website-orders.partials.pick-list', ['pick' => $o['pick_progress']])
-                    </div>
+                    @php $pp = $o['pick_progress']; @endphp
+                    {{-- Pick buttons are beside each item in Location; just the count here --}}
+                    <div class="wo-pick-count" style="margin-top:6px;font-size:12px;font-weight:700;color:{{ ($pp['picked'] ?? 0) >= ($pp['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pp['picked'] ?? 0 }}</span>/<span class="t">{{ $pp['total'] ?? 0 }}</span></div>
                   @endif
                 </td>
               </tr>
@@ -1144,7 +1178,7 @@
         if (l.classList.contains('is-done')) picked += q;
       });
       var c = box.parentNode.querySelector('.wo-pick-count');
-      if (c) { c.querySelector('.n').textContent = picked; c.style.color = picked >= total ? '#047857' : '#6b7280'; }
+      if (c) { c.querySelector('.n').textContent = picked; c.style.color = picked >= total ? '#047857' : '#000'; }
       var allBtn = box.querySelector('.wo-pick-all');
       if (allBtn) { allBtn.hidden = picked >= total; allBtn.disabled = false; }
     }
