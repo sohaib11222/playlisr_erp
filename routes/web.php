@@ -991,6 +991,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     // Store-credit reconciliation dashboard: compares ERP vs website backend
     // balances by customer email and lets admins resolve legacy mismatches.
+    // One-time move of old web sales off throwaway Website Customer contacts.
+    Route::get('/admin/web-order-contacts', 'WebOrderContactsController@index');
+    Route::post('/admin/web-order-contacts/apply', 'WebOrderContactsController@apply');
+
     Route::get('/admin/store-credit-sync', 'StoreCreditSyncController@index');
     Route::post('/admin/store-credit-sync/reconcile', 'StoreCreditSyncController@reconcile');
 

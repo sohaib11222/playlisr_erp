@@ -1296,6 +1296,12 @@ class WebsiteOrdersController extends Controller
         return $this->websiteApi('GET', $path, null, $timeout);
     }
 
+    /** Bridge POST for other ERP pages (web-order contact backfill). */
+    public function bridgePost(string $path, array $body, int $timeout = 20): ?array
+    {
+        return $this->websiteApi('POST', $path, $body, $timeout);
+    }
+
     protected function websiteApi(string $method, string $path, array $body = null, int $timeout = 10): ?array
     {
         $key = $this->erpApiKey();
