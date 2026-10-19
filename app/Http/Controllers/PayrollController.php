@@ -731,8 +731,16 @@ class PayrollController extends Controller
             return redirect($this->url($start, $end) . '#shift-log')->with('status', ['success' => $ok ? 1 : 0, 'msg' => $msg]);
         };
 
+        // Overnight shift shown as one row: its second piece (after midnight)
+        // is replaced by the edited whole shift, or deleted with it.
+        $idx2 = $request->input('idx2', '') !== '' ? (int) $request->input('idx2') : -1;
+        $dropSecond = function (array $rows) use ($idx2, $idx) {
+            if ($idx2 >= 0 && $idx2 !== $idx && isset($rows[$idx2])) { unset($rows[$idx2]); }
+            return $rows;
+        };
         if ($action === 'delete') {
             if (!isset($rows[$idx])) { return $back(false, 'That shift was not found. Reload the page and try again.'); }
+            $rows = $dropSecond($rows); $rows = array_values($rows); $idx = $idx - ($idx2 >= 0 && $idx2 < $idx ? 1 : 0);
             $gone = $rows[$idx];
             array_splice($rows, $idx, 1);
             $msg = 'Deleted ' . $gone['name'] . "'s shift" . ($gone['in'] ? ' from ' . \Carbon::parse($gone['in'])->format('m/d/y g:ia') : '') . '.';
@@ -765,6 +773,7 @@ class PayrollController extends Controller
                 if (!isset($rows[$idx])) { return $back(false, 'That shift was not found. Reload the page and try again.'); }
                 $rows[$idx] = array_merge($rows[$idx], $row);
                 unset($rows[$idx]['tc_flags']);
+                $rows = $dropSecond($rows);
                 $msg = 'Saved ' . $rows[$idx]['name'] . "'s " . $in->format('m/d/y') . ' shift: ' . number_format($hours, 2) . ' hrs.';
             }
         }
@@ -985,6 +994,16 @@ class PayrollController extends Controller
                 $bp['co'][$co]['ot'] += $h - $regPart;
                 $dayAcc[$day] = $before + $h;
                 if (!empty($r['in']) && (!isset($bp['first_in'][$day]) || $r['in'] < $bp['first_in'][$day])) { $bp['first_in'][$day] = $r['in']; }
+                // An overnight shift is stored as two pieces (split at midnight
+                // so each day's OT is right). Show it as ONE row like the sheet.
+                $lastI = count($bp['log']) - 1;
+                if ($lastI >= 0 && empty($r['in']) && empty($bp['log'][$lastI]['out']) && !isset($bp['log'][$lastI]['idx2'])) {
+                    $bp['log'][$lastI]['out'] = $r['out'] ?? null;
+                    $bp['log'][$lastI]['hours'] = round($bp['log'][$lastI]['hours'] + $h, 2);
+                    $bp['log'][$lastI]['idx2'] = $it['idx'];
+                    $bp['log'][$lastI]['comment'] = trim(str_replace('split at midnight', '', $bp['log'][$lastI]['comment']));
+                    continue;
+                }
                 $bp['log'][] = [
                     'idx' => $it['idx'], 'day' => $day, 'in' => $r['in'] ?? null, 'out' => $r['out'] ?? null, 'hours' => round($h, 2),
                     'store' => (string) ($r['location'] ?? ''), 'company' => $co, 'comment' => (string) ($r['comment'] ?? ''),

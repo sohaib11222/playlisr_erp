@@ -1694,6 +1694,42 @@ class ListingCommissionController extends Controller
                 ];
             }
         }
+        return $this->applyManualPartyCredits($businessId, $out, $pStart);
+    }
+
+    // A party share paid with "Record payment" (Listening party $) is logged on
+    // the day it was paid, not on the party's date, so it never matched the
+    // party and kept showing as owed every payroll (Andy's Remi Wolf $5.87,
+    // paid 10/15). Those payments now count as a credit for that person and
+    // clear their oldest unpaid shares first.
+    private function applyManualPartyCredits($businessId, array $out, $pStart)
+    {
+        $partyDates = [];
+        foreach (\App\Http\Controllers\EventsController::load($businessId)['items'] ?? [] as $it) {
+            if (($it['eventType'] ?? '') === 'listening_party' && !empty($it['date'])) { $partyDates[(string) $it['date']] = true; }
+        }
+        $credit = [];
+        foreach ($this->loadSalesPayouts() as $row) {
+            if (stripos((string) ($row['note'] ?? ''), 'Listening party') !== 0) { continue; }
+            $uid = (int) ($row['user_id'] ?? 0);
+            $d = substr((string) ($row['from_date'] ?? $row['marked_at'] ?? ''), 0, 10);
+            if ($uid <= 0 || $d === '' || isset($partyDates[$d]) || $d < $pStart) { continue; }
+            $credit[$uid] = ($credit[$uid] ?? 0) + (float) ($row['amount'] ?? 0);
+        }
+        foreach ($credit as $uid => $c) {
+            if (!isset($out[$uid]) || $c <= 0.004) { continue; }
+            $parties = $out[$uid]['parties'];
+            usort($parties, function ($a, $b) { return strcmp($a['date'], $b['date']); });
+            $keep = [];
+            foreach ($parties as $pt) {
+                if ($c >= $pt['amount'] - 0.005) { $c -= $pt['amount']; continue; }
+                if ($c > 0.004) { $pt['amount'] = round($pt['amount'] - $c, 2); $c = 0; }
+                $keep[] = $pt;
+            }
+            if (empty($keep)) { unset($out[$uid]); continue; }
+            $out[$uid]['parties'] = $keep;
+            $out[$uid]['amount'] = round(array_sum(array_column($keep, 'amount')), 2);
+        }
         return $out;
     }
 
