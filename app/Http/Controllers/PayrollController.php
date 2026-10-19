@@ -382,6 +382,8 @@ class PayrollController extends Controller
                     ->whereNull('clock_out_at')->whereBetween('clock_in_at', [$start . ' 00:00:00', $end . ' 23:59:59'])
                     ->get(['user_id', 'clock_in_at']);
                 foreach ($open as $o) {
+                    // Clocked in today = still on shift, not a problem yet.
+                    if (substr((string) $o->clock_in_at, 0, 10) >= now()->toDateString()) { continue; }
                     if (isset($byUid[(int) $o->user_id])) {
                         $people[$byUid[(int) $o->user_id]]['checks'][] = 'No clock-out on ' . \Carbon::parse($o->clock_in_at)->format('m/d/y g:ia') . ' (not counted until fixed on Timecards)';
                     }
@@ -398,6 +400,7 @@ class PayrollController extends Controller
                 if (!isset($byUid[$uid])) { continue; }
                 $i = $byUid[$uid];
                 $day = substr((string) $r->created_at, 0, 10);
+                if ($day >= now()->toDateString()) { continue; } // today's shift isn't finished yet
                 $firstIn = $people[$i]['first_in'][$day] ?? null;
                 $openT = \Carbon::parse($r->created_at);
                 if (!$firstIn) {
@@ -414,6 +417,9 @@ class PayrollController extends Controller
         foreach ($byUid as $uid => $i) {
             foreach ($this->scheduleCache[$uid] ?? [] as $day => $s) {
                 if ($day > $end || $day >= $today) { continue; }
+                // Under an hour on Sling = a quick check-in (Zak's weekend
+                // 2:45-3:15), not a shift anyone clocks in for.
+                if (!empty($s['start']) && !empty($s['end']) && strtotime($s['end']) - strtotime($s['start']) < 3600) { continue; }
                 if (!isset($people[$i]['first_in'][$day]) && !empty($people[$i]['has_hours'])) {
                     $people[$i]['checks'][] = \Carbon::parse($day)->format('m/d/y') . ': on the Sling schedule ' . \Carbon::parse($s['start'])->format('g:ia')
                         . ($s['end'] ? '-' . \Carbon::parse($s['end'])->format('g:ia') : '') . ' but no hours';
