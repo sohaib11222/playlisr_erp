@@ -7,6 +7,23 @@
     $dist = function ($key, $label) use ($distColor) { return '<span style="color:' . ($distColor[$key] ?? '#555') . ';font-weight:600">' . e($label) . '</span>'; };
     $money = function ($v) { return $v === null ? '' : '$' . number_format((float) $v, 2); };
 @endphp
+@php
+                    // Proposal (Sarah 10/19, not applied): the 10 most requested titles get
+                    // 3x requests + 3 per store; everything else keeps its cart.
+                    $byReq = $rows;
+                    usort($byReq, function ($a, $b) { return ($b['hw'] + $b['pico']) <=> ($a['hw'] + $a['pico']); });
+                    $topKeys = array_flip(array_column(array_slice(array_filter($byReq, function ($r) { return $r['hw'] + $r['pico'] > 0; }), 0, 10), 'key'));
+                    $propose = function ($r, $st) use ($topKeys) {
+                        $req = $st === 'hollywood' ? $r['hw'] : $r['pico'];
+                        return (isset($topKeys[$r['key']]) && $req > 0) ? $req * 3 + 3 : $r['carts'][$st]['qty'];
+                    };
+                    $propTot = ['hollywood' => [0, 0.0], 'pico' => [0, 0.0]];
+                    foreach ($rows as $r) foreach (['hollywood', 'pico'] as $st) {
+                        $q = $propose($r, $st);
+                        $propTot[$st][0] += $q;
+                        if ($r['best']) $propTot[$st][1] += $q * $r['best']['cost'];
+                    }
+                @endphp
 <style>
     .ro-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
     .ro-bar .form-group { margin:0; }
@@ -57,6 +74,7 @@
                 <b>Hollywood cart:</b> {{ $carts['hollywood']['qty'] }} copies, {{ $money($carts['hollywood']['cost']) }}.
                 &nbsp; <b>Pico cart:</b> {{ $carts['pico']['qty'] }} copies, {{ $money($carts['pico']['cost']) }}.
             </p>
+            <p style="margin:4px 0 0; font-size:15px;"><b>Proposed:</b> Hollywood {{ $propTot['hollywood'][0] }} copies, {{ $money($propTot['hollywood'][1]) }}. &nbsp; Pico {{ $propTot['pico'][0] }} copies, {{ $money($propTot['pico'][1]) }}. <span class="rsd-muted">(Not applied. Blue = changed.)</span></p>
         </div>
     </div>
 
@@ -69,9 +87,11 @@
                         <th class="n hw">Hollywood customer requests</th>
                         <th class="n hw">Hollywood sold this artist, last 12 months</th>
                         <th class="n hw">Hollywood cart</th>
+                        <th class="n hw">Hollywood proposed (top 10 x3 + 3)</th>
                         <th class="n pico">Pico customer requests</th>
                         <th class="n pico">Pico sold this artist, last 12 months</th>
                         <th class="n pico">Pico cart</th>
+                        <th class="n pico">Pico proposed (top 10 x3 + 3)</th>
                         <th>Cheapest price</th>
                     </tr>
                 </thead>
@@ -92,6 +112,8 @@
                                 <input type="number" min="0" class="form-control input-sm rsd-num rsd-qty" data-store="{{ $st }}" value="{{ $c['qty'] }}" data-suggested="{{ $c['suggested'] }}">
                                 @if($c['ordered'])<div class="rsd-muted">ordered {{ \Carbon\Carbon::parse($c['ordered']['at'])->format('M j') }}</div>@endif
                             </td>
+                            @php $pq = $propose($r, $st); @endphp
+                            <td class="n {{ $cls }}" @if($pq !== $c['qty']) style="font-weight:bold;color:#1565c0" @endif>{{ $pq }}</td>
                         @endforeach
                         <td>
                             @if($r['best'])
