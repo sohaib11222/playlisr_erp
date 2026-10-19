@@ -307,6 +307,14 @@ class ContactController extends ApiController
             }
         }
 
+        // Exact email match (case-insensitive). The website looks customers up
+        // this way before creating one; `name` never matched emails, so every
+        // web order line made a new duplicate contact.
+        $email = trim((string) request()->get('email', ''));
+        if ($email !== '') {
+            $query->whereRaw('LOWER(contacts.email) = ?', [strtolower($email)]);
+        }
+
         $search = request()->only(['name', 'biz_name', 'mobile_num', 'contact_id']);
         if (! empty($search)) {
             $query->where(function ($query) use ($search) {
