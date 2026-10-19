@@ -57,11 +57,23 @@ class PayrollController extends Controller
         $this->businessUtil = $businessUtil;
     }
 
+    // Payroll is only for Sarah, Jon and Fatteen (his ERP login is
+    // "Nerdy-Solutions", user #10) - Sarah 2026-10-19.
     private function ensureAdmin()
     {
-        if (!auth()->check() || !$this->businessUtil->is_admin(auth()->user())) {
-            abort(403, 'Payroll is admin-only.');
+        if (!$this->isPayrollUser()) {
+            abort(403, 'Payroll is only open to Sarah, Jon and Fatteen.');
         }
+    }
+
+    private function isPayrollUser()
+    {
+        $u = auth()->user();
+        if (!$u) { return false; }
+        if ((int) $u->id === 10) { return true; }
+        $first = strtolower(trim((string) $u->first_name));
+        $last  = strtolower(trim((string) $u->last_name));
+        return $last === 'hedvat' && in_array($first, ['sarah', 'jon', 'jonathan'], true);
     }
 
     // ---- Main page -------------------------------------------------------
@@ -479,12 +491,7 @@ class PayrollController extends Controller
     // hours + commissions into QuickBooks without seeing what people are paid.
     private function canSeeRates()
     {
-        $u = auth()->user();
-        if (!$u) { return false; }
-        $first = strtolower(trim((string) $u->first_name));
-        $last  = strtolower(trim((string) $u->last_name));
-        if ($first === 'jonathan' && $last === 'hedvat') { return true; }
-        return in_array($first, ['jon', 'jonathan', 'sarah'], true);
+        return $this->isPayrollUser();
     }
 
     // ---- Hours import ----------------------------------------------------

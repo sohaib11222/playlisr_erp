@@ -200,50 +200,52 @@
 .gs .x { visibility:hidden; border:0; background:none; color:#c5221f; cursor:pointer; padding:0 2px; font-size:13px; }
 .gs tr:hover .x { visibility:visible; }
 .gs tr.is-saving td { background:#fff8e1; } .gs tr.is-saved td { background:#e6f4ea; } .gs tr.is-error td { background:#fce8e6; }
-.gs-side { padding-top:40px; }
+.gs .rh { display:none; }
+.gs input.gs-note { border:1px solid #c7c7c7; border-radius:4px; padding:3px 6px; background:#fff; }
+.gs input.gs-note:focus { border-color:#1a73e8; box-shadow:0 0 0 2px #d2e3fc; }
+.gs td, .gs th { padding:4px 8px; }
+.gs-wrap { flex-direction:column; padding:12px; }
+.gs-side { order:-1; display:flex; gap:20px; flex-wrap:wrap; }
+.gs-side .gs { margin-bottom:0; }
 .gs-side .gs { margin-bottom:24px; }
 </style>
 <div class="gs-wrap">
 <table class="gs" id="owe-table">
-  <tr><td class="rh"></td>@foreach ($cols as $cl)<td class="ch">{{ $cl }}</td>@endforeach</tr>
-  <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
-  <tr><td class="rh">{{ ++$rn }}</td><td></td><td colspan="5" class="b">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/Y') }} - {{ \Carbon::parse($end)->format('m/d/Y') }}</td><td colspan="5"></td></tr>
-  <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
+    <tr><td class="rh">{{ ++$rn }}</td><td colspan="11" class="b" style="font-size:16px;border:0;padding:6px 6px 10px;">PAYROLL SUMMARY {{ \Carbon::parse($start)->format('m/d/Y') }} - {{ \Carbon::parse($end)->format('m/d/Y') }}</td></tr>
   <tr>
     <td class="rh">{{ ++$rn }}</td>
-    <td class="hd">Listening<br>Parties</td><td class="hd">SUMMARY</td><td class="hd">TOTAL HOURS<br>{{ \Carbon::parse($start)->format('n/j') }}-{{ \Carbon::parse($end)->format('n/j') }}</td>
-    <td class="hd">Sales<br>Commission</td><td class="hd">Listing<br>Commission</td><td class="hd">Listening Party<br>Commission</td><td class="hd">Total<br>commission<br>owed</td>
-    <td class="hd">Total Owed<br>pre tax</td><td class="hd">Last Payroll<br>Amount</td><td class="hd">Store</td><td class="hd">Notes</td>
+    <td class="hd">Name</td><td class="hd">Hours</td>
+    <td class="hd">Sales<br>commission</td><td class="hd">Listing<br>commission</td><td class="hd">Listening party<br>commission</td><td class="hd">Total<br>commission</td>
+    <td class="hd" style="background:#1a73e8;border-color:#1a73e8;">PAY THIS<br>PAYROLL<br><span style="font-weight:400;font-size:11px;">before tax</span></td><td class="hd">Last<br>paycheck</td><td class="hd">Store</td><td class="hd">Notes</td>
   </tr>
   @foreach ($sheetPeople as $p)
     @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $hrs = $p['one_hours'] + $p['two_hours']; @endphp
     <tr class="pr-person-row" data-first="{{ strtolower($p['first_name']) }}" data-last="{{ strtolower($p['last_name']) }}">
       <td class="rh">{{ ++$rn }}</td>
-      <td style="white-space:normal;max-width:130px;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if (!$loop->last), @endif @endforeach</td>
       <td class="b">{{ $p['first_name'] }} {{ mb_substr($p['last_name'], 0, 1) }}</td>
       <td class="n">{{ $hrs ? number_format($hrs, 2) : '' }}</td>
       <td class="n">{{ $p['sales_comm'] ? '$' . $fmt($p['sales_comm']) : '' }}</td>
       <td class="n">{{ $p['listing_comm'] ? '$' . $fmt($p['listing_comm']) : '' }}</td>
-      <td class="n">{{ $p['party_comm'] ? '$' . $fmt($p['party_comm']) : '' }}</td>
-      <td class="n b">{{ $commAmt > 0.004 ? '$' . $fmt($commAmt) : '$0.00' }}</td>
-      <td class="n b">{{ $can_see_rates ? '$' . $fmt($p['grand_total']) : '' }}</td>
-      <td class="n i">{{ $can_see_rates && isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
+      <td class="n">@if ($p['party_comm']){{ '$' . $fmt($p['party_comm']) }}<div style="font-size:11px;white-space:normal;max-width:150px;text-align:right;">@foreach ($p['party_lines'] as $pl){{ preg_replace('/ (Advance )?Listening Party.*/i', '', $pl['label']) }}@if (!$loop->last), @endif @endforeach</div>@endif</td>
+      <td class="n b">{{ $commAmt > 0.004 ? '$' . $fmt($commAmt) : '' }}</td>
+      <td class="n b" style="background:#e8f0fe;font-size:14px;">{{ $can_see_rates ? '$' . $fmt($p['grand_total']) : '' }}</td>
+      <td class="n">{{ $can_see_rates && isset($p['last_paycheck']) && $p['last_paycheck'] !== null ? '$' . $fmt($p['last_paycheck']) : '' }}</td>
       <td class="c">{{ trim(($p['two_hours'] > 0 ? 'hw ' : '') . ($p['one_hours'] > 0 ? 'pico' : '')) }}@if (($p['paid_by'] ?? 'qb') === 'zelle') (Zelle)@endif</td>
-      <td style="min-width:220px;"><input form="notes-form" class="pr-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}"></td>
+      <td style="min-width:240px;padding:3px 6px;"><input form="notes-form" class="pr-note gs-note" name="notes[{{ $p['key'] }}]" value="{{ $notes[$p['key']] ?? '' }}" placeholder="Add a note"></td>
     </tr>
   @endforeach
   <tr>
-    <td class="rh">{{ ++$rn }}</td><td></td><td></td>
+    <td class="rh">{{ ++$rn }}</td><td class="b">TOTAL</td>
     <td class="n tt">{{ number_format(array_sum(array_map(function ($p) { return $p['one_hours'] + $p['two_hours']; }, $sheetPeople)), 2) }}</td>
     <td></td><td></td><td></td>
     <td class="n tt">${{ $fmt($totals['sales_comm'] + $totals['listing_comm'] + $totals['party_comm']) }}</td>
-    <td class="n tt">{{ $can_see_rates ? '$' . $fmt($totals['grand_total']) : '' }}</td>
+    <td class="n tt" style="background:#e8f0fe;font-size:14px;">{{ $can_see_rates ? '$' . $fmt($totals['grand_total']) : '' }}</td>
     <td></td><td></td><td></td>
   </tr>
   <tr><td class="rh">{{ ++$rn }}</td><td colspan="11"></td></tr>
   <tr id="shift-log">
     <td class="rh">{{ ++$rn }}</td>
-    <td class="bl"></td><td class="bl">Name</td><td class="bl">Total Hours</td><td class="bl">Clock In Date</td><td class="bl">Clock In Time</td><td class="bl">Clock Out Date</td>
+    <td class="bl">Name</td><td class="bl">Total Hours</td><td class="bl">Clock In Date</td><td class="bl">Clock In Time</td><td class="bl">Clock Out Date</td>
     <td class="bl">Clock Out Time</td><td class="bl">Elapsed Hours</td><td class="bl">Location</td><td class="bl">Comments</td><td></td>
   </tr>
   @foreach ($sheetPeople as $p)
@@ -252,7 +254,6 @@
         @php $f = 'sh-' . $lg['idx']; @endphp
         <tr class="pr-shift" data-person="{{ $p['key'] }}" data-form="{{ $f }}">
           <td class="rh">{{ ++$rn }}</td>
-          <td></td>
           <td class="b">{{ $loop->first ? $p['first_name'] : '' }}</td>
           <td class="n b pr-ptotal">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
           <td class="n"><input form="{{ $f }}" name="in_date" value="{{ $mdY($lg['in'] ?: $lg['day']) }}" style="width:70px;"></td>
@@ -269,7 +270,7 @@
     @endif
   @endforeach
   <tr class="pr-add">
-    <td class="rh">{{ ++$rn }}</td><td></td>
+    <td class="rh">{{ ++$rn }}</td>
     <td><select form="add-shift" name="name" style="color:#1a73e8;"><option value="">+ Add shift</option>@foreach ($sheetPeople as $p)<option value="{{ ucfirst($p['key']) }}">{{ $p['first_name'] }}</option>@endforeach</select></td>
     <td></td>
     <td class="n"><input form="add-shift" name="in_date" placeholder="mm/dd/yy" style="width:70px;"></td>
