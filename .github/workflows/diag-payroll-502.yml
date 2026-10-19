@@ -1,4 +1,4 @@
-# READ-ONLY diagnostic: which roles Fatteen's ERP account has (read only).
+# READ-ONLY diagnostic: which users can open /payroll (read only).
 name: Diag payroll 502
 
 on:
@@ -45,4 +45,4 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach(App\User::where("first_name","like","%Nerdy%")->orWhere("last_name","like","%Nerdy%")->orWhere("first_name","like","%Fatteen%")->get() as $u) echo "USER ",$u->id," ",$u->first_name," ",$u->last_name," roles=",implode(",",$u->getRoleNames()->toArray()),"\n";'
+            php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); $c=app(App\Http\Controllers\PayrollController::class); $m=new ReflectionMethod($c,"isPayrollUser"); $m->setAccessible(true); $yes=[]; $no=0; foreach (App\User::whereNull("deleted_at")->get() as $u) { Auth::setUser($u); if ($m->invoke($c)) { $yes[]=$u->id." ".$u->first_name." ".$u->last_name." (".($u->allow_login?"login on":"login off").")"; } else { $no++; } } echo "ALLOWED: ".implode(" | ",$yes)."\n"; echo "BLOCKED users: ".$no."\n"; foreach (App\User::where("last_name","like","%hedvat%")->orWhere("id",10)->get() as $u) echo "HEDVAT/10: ".$u->id." ".$u->first_name." ".$u->last_name."\n";'
