@@ -68,12 +68,10 @@ class PayrollController extends Controller
 
     private function isPayrollUser()
     {
+        // Exact accounts, not names, so a renamed login can never get in:
+        // 1 = Jonathan Hedvat, 8 = Sarah Hedvat, 10 = Fatteen (Nerdy-Solutions).
         $u = auth()->user();
-        if (!$u) { return false; }
-        if ((int) $u->id === 10) { return true; }
-        $first = strtolower(trim((string) $u->first_name));
-        $last  = strtolower(trim((string) $u->last_name));
-        return $last === 'hedvat' && in_array($first, ['sarah', 'jon', 'jonathan'], true);
+        return $u && in_array((int) $u->id, [1, 8, 10], true);
     }
 
     // ---- Main page -------------------------------------------------------

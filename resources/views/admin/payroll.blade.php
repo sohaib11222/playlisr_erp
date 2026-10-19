@@ -216,7 +216,7 @@
     <td class="rh">{{ ++$rn }}</td>
     <td class="hd">Name</td><td class="hd">Hours</td>
     <td class="hd">Sales<br>commission</td><td class="hd">Listing<br>commission</td><td class="hd">Listening party<br>commission</td><td class="hd">Total<br>commission</td>
-    <td class="hd" style="background:#1a73e8;border-color:#1a73e8;">PAY THIS<br>PAYROLL<br><span style="font-weight:400;font-size:11px;">before tax</span></td><td class="hd">Last<br>paycheck</td><td class="hd">Store</td><td class="hd">Notes</td>
+    <td class="hd" style="background:#1a73e8;border-color:#1a73e8;">Total pay<br><span style="font-weight:400;font-size:11px;">hours + commission</span></td><td class="hd">Last<br>paycheck</td><td class="hd">Store</td><td class="hd">Notes</td>
   </tr>
   @foreach ($sheetPeople as $p)
     @php $commAmt = $p['sales_comm'] + $p['listing_comm'] + $p['party_comm']; $hrs = $p['one_hours'] + $p['two_hours']; @endphp
