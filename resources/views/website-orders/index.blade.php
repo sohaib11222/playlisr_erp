@@ -167,6 +167,7 @@
   .wo-pick-inline .wo-pick-btns button.go { background:#047857; border-color:#047857; color:#fff; }
   .wo-pick-inline .wo-pick-btns button.cf { background:#fff; border-color:#b91c1c; color:#b91c1c; }
   .wo-pick-inline .wo-pick-btns button.ds { background:#fff; border-color:#1e40af; color:#1e40af; }
+  .wo-pick-inline .wo-pick-btns button.undo { flex:0 0 auto; font-size:11px; font-weight:600; padding:2px 10px; border-color:#9ca3af; color:#374151; }
   /* Compact pick checklist: one line per item, buttons on the right (Sarah, 2026-10-16) */
   .wo-pick { margin-top:4px; text-align:left; }
   .wo-pick-line { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:6px; align-items:center; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; margin-bottom:3px; background:#fff; }
@@ -529,7 +530,7 @@
                           <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : '')) }}</div>
                           <div class="wo-pick-btns">
                             @if($plDone || $plMissing)
-                              <button type="button" onclick="woPick(this, 'Not Picked')">Undo</button>
+                              <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
                             @endif
@@ -1172,7 +1173,7 @@
       l.querySelector('.wo-pick-state').textContent = done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') + ' by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : '');
       var b = l.querySelector('.wo-pick-btns');
       b.innerHTML = (done || missing)
-        ? '<button type="button">Undo</button>'
+        ? '<button type="button" class="undo">Undo</button>'
         : '<button type="button" class="go">Picked</button><button type="button" class="cf">Can\'t find</button><button type="button" class="ds">Dropshipped</button>';
       var bs = b.querySelectorAll('button');
       if (done || missing) { bs[0].onclick = function () { woPick(this, 'Not Picked'); }; }
