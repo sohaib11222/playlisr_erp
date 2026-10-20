@@ -34,11 +34,14 @@
   <div class="box box-solid"><div class="box-header"><h3 class="box-title">2. Store credit code used online that the store credit here never covered ({{ count($maybeTwice) }})</h3></div>
   <div class="box-body">
     <p>These customers used a return or refund credit code online, but this system never took it off their store credit. That usually means the credit had already been spent in store, so it was spent twice.</p>
-    <table class="table table-striped"><thead><tr><th>Customer</th><th>Web order</th><th>Date</th><th>Code</th><th>Used online</th><th>Store credit now</th></tr></thead><tbody>
+    <table class="table table-striped"><thead><tr><th>Customer</th><th>Web order</th><th>Date</th><th>Code</th><th>What the code was</th><th>Used online</th><th>Store credit now</th><th>Store credit history here</th></tr></thead><tbody>
     @forelse ($maybeTwice as $r)
-      <tr><td>{!! $who($r) !!}</td><td>#{{ $r['orderNumber'] }}</td><td>{{ $date($r['date']) }}</td><td>{{ $r['code'] }}</td><td><strong>{{ $money($r['amount']) }}</strong></td><td>{{ $r['contact'] ? $money($r['contact']->balance) : 'No customer here' }}</td></tr>
+      <tr><td>{!! $who($r) !!}</td><td>#{{ $r['orderNumber'] }}</td><td>{{ $date($r['date']) }}</td><td>{{ $r['code'] }}</td><td>{{ $r['description'] }}</td><td><strong>{{ $money($r['amount']) }}</strong></td><td>{{ $r['contact'] ? $money($r['contact']->balance) : 'No customer here' }}</td>
+        <td style="white-space:pre-line;font-size:12px;max-width:360px">@if ($r['contact']){{ trim((string) ($r['contact']->balance_notes ?? '')) ?: 'No notes' }}
+@foreach (\App\StoreCreditLog::where('contact_id', $r['contact']->id)->orderBy('id')->get() as $log){{ $log->created_at }} {{ $log->source }} {{ $money($log->amount) }}
+@endforeach @endif</td></tr>
     @empty
-      <tr><td colspan="6">Nobody found.</td></tr>
+      <tr><td colspan="8">Nobody found.</td></tr>
     @endforelse
     </tbody></table>
   </div></div>
@@ -46,9 +49,9 @@
   <div class="box box-solid"><div class="box-header"><h3 class="box-title">3. Open credit codes worth more than their store credit ({{ count($exposure) }})</h3></div>
   <div class="box-body">
     <p>These codes could still be used online for more than the customer has left. The fix lowers them automatically the next time their store credit changes.</p>
-    <table class="table table-striped"><thead><tr><th>Customer</th><th>Codes</th><th>Codes total</th><th>Store credit here</th><th>Over by</th></tr></thead><tbody>
+    <table class="table table-striped"><thead><tr><th>Customer</th><th>Codes (what they were)</th><th>Codes total</th><th>Store credit here</th><th>Over by</th></tr></thead><tbody>
     @forelse ($exposure as $r)
-      <tr><td>{!! $who($r) !!}</td><td>@foreach ($r['codes'] as $c){{ $c['code'] }} ({{ $money($c['balance']) }})<br>@endforeach</td><td>{{ $money($r['total']) }}</td><td>{{ $r['erpBalance'] === null ? 'No customer here' : $money($r['erpBalance']) }}</td><td><strong>{{ $money($r['over']) }}</strong></td></tr>
+      <tr><td>{!! $who($r) !!}</td><td>@foreach ($r['codes'] as $c){{ $c['code'] }} ({{ $money($c['balance']) }}) {{ $c['description'] }}<br>@endforeach</td><td>{{ $money($r['total']) }}</td><td>{{ $r['erpBalance'] === null ? 'No customer here' : $money($r['erpBalance']) }}</td><td><strong>{{ $money($r['over']) }}</strong></td></tr>
     @empty
       <tr><td colspan="5">Nobody found.</td></tr>
     @endforelse
