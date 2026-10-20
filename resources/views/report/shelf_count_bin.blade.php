@@ -8,7 +8,7 @@
 .sc-small { color: #2B2620; font-size: 13px; }
 .sc-scan { display: flex; gap: 8px; margin: 12px 0 6px; position: sticky; top: 0; background: #F7F4EE; padding: 8px 0; z-index: 5; }
 .sc-scan input { flex: 1; height: 52px; font-size: 20px; border: 2px solid #1F1B16; border-radius: 12px; padding: 0 14px; }
-.sc-btn { border: 0; border-radius: 10px; padding: 0 16px; height: 52px; font-weight: 700; background: #1F1B16; color: #FFE8A3; cursor: pointer; }
+.sc-btn { border: 0; border-radius: 10px; padding: 0 20px; height: 52px; font-size: 17px; font-weight: 700; background: #2E6B2E; color: #fff; cursor: pointer; }
 .sc-btn.light { background: #F1EADF; color: #1F1B16; }
 .sc-flash { min-height: 24px; font-size: 15px; font-weight: 600; }
 .sc-flash.bad { color: #8E1B1B; }
@@ -22,7 +22,8 @@
 .sc-pm { width: 44px; height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; font-size: 22px; font-weight: 700; cursor: pointer; }
 .sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #2B2620; margin: 16px 0 6px; }
 #scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; }
-.sc-bottom { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #E6DCCF; padding: 10px 16px; display: flex; gap: 10px; justify-content: center; z-index: 10; }
+.sc-bottom { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 2px solid #2E6B2E; padding: 10px 16px; display: flex; gap: 14px; justify-content: center; align-items: center; z-index: 10; }
+#scProg { font-size: 15px; color: #1F1B16; }
 .sc-sum td { padding: 6px 8px; border-top: 1px solid #F3ECE1; font-size: 14px; }
 .miss { color: #8E1B1B; font-weight: 700; }
 </style>
@@ -46,7 +47,7 @@
     <div id="scExtra"></div>
     <div id="scSummary"></div>
 </div>
-<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Count complete</button></div>
+<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Done: review and save</button></div>
 @endsection
 
 @section('javascript')
@@ -85,7 +86,7 @@
         document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
         document.getElementById('scExtra').innerHTML = extra.map(row).join('');
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
-        document.getElementById('scProg').textContent = seen + ' of ' + items.length + ' found, ' + (items.length - done) + ' not counted yet';
+        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Not saved until you tap Done, then Save.';
     }
     // Draft kept on this device after every scan, so closing the tab, a
     // dead battery or a refresh never loses a half-counted bin (Sarah 10/14).
