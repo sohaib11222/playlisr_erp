@@ -169,13 +169,16 @@
   /* Pick list (Sarah, 2026-10-15) */
   /* Pick buttons beside each item in Location (Sarah, 2026-10-19): one row, equal, solid */
   .wo-pick-inline { display:block !important; border:none !important; padding:0 !important; margin:6px 0 0; background:none !important; }
-  .wo-pick-inline .wo-pick-state { font-size:12.5px; font-weight:700; margin:0 0 4px; }
-  .wo-pick-inline.is-done .wo-pick-state { color:#047857; }
-  .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c; }
+  /* Status chip so picked vs not picked is obvious at a glance (Sarah, 2026-10-20) */
+  .wo-pick-inline .wo-pick-state { display:inline-block; font-size:12px; font-weight:700; margin:0 0 6px; padding:3px 9px; border-radius:999px; background:#fef3c7; color:#92400e; }
+  .wo-pick-inline.is-done .wo-pick-state { background:#dcfce7; color:#047857; }
+  .wo-pick-inline.is-missing .wo-pick-state { background:#fee2e2; color:#b91c1c; }
+  .wo-pick-inline.is-done { background:#f0fdf4 !important; border-radius:6px; padding:4px 6px !important; }
   .wo-pick-inline .wo-pick-btns { display:flex; gap:4px; flex-wrap:nowrap; grid-column:auto; grid-row:auto; }
-  .wo-pick-inline .wo-pick-btns button { flex:1 1 0; min-width:0; font-size:12px; font-weight:700; padding:7px 4px; border-radius:6px; white-space:nowrap; border:1px solid #111827; background:#fff; color:#000; }
+  .wo-pick-inline .wo-pick-btns button { flex:1 1 auto; min-width:0; font-size:12.5px; font-weight:700; padding:8px 10px; border-radius:6px; white-space:nowrap; border:1.5px solid #111827; background:#fff; color:#000; cursor:pointer; }
   .wo-pick-inline .wo-pick-btns { flex-wrap:wrap; }
-  .wo-pick-inline .wo-pick-btns button.go { background:#047857; border-color:#047857; color:#fff; }
+  .wo-pick-inline .wo-pick-btns button.go { background:#fff; border-color:#047857; color:#047857; }
+  .wo-pick-inline .wo-pick-btns button.go:hover { background:#047857; color:#fff; }
   .wo-pick-inline .wo-pick-btns button.cf { background:#fff; border-color:#b91c1c; color:#b91c1c; }
   .wo-pick-inline .wo-pick-btns button.ds { background:#fff; border-color:#1e40af; color:#1e40af; }
   .wo-pick-inline .wo-pick-btns button.undo { flex:0 0 auto; font-size:11px; font-weight:600; padding:2px 10px; border-color:#9ca3af; color:#374151; }
@@ -581,7 +584,7 @@
                           $plMissing = $plStatus === "Can't Find";
                         @endphp
                         <div class="wo-pick-line wo-pick-inline {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
-                          <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : '')) }}</div>
+                          <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : 'Not picked yet')) }}</div>
                           <div class="wo-pick-btns">
                             @if($plMissing && $activeTab === 'recheck_hw')
                               {{-- Pico couldn't find it: Hollywood checks its own bins (Sarah, 2026-10-20) --}}
@@ -602,7 +605,7 @@
                             @elseif($plDone || $plMissing)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
-                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Mark picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
                             @endif
                           </div>
                         </div>
@@ -1277,11 +1280,11 @@
       l.classList.toggle('is-missing', missing);
       var now = new Date();
       var when = (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
-      l.querySelector('.wo-pick-state').textContent = done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') + ' by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : '');
+      l.querySelector('.wo-pick-state').textContent = done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') + ' by ' + who + ' ' + when : (missing ? "Can't find (" + who + ')' : 'Not picked yet');
       var b = l.querySelector('.wo-pick-btns');
       b.innerHTML = (done || missing)
         ? '<button type="button" class="undo">Undo</button>'
-        : '<button type="button" class="go">Picked</button><button type="button" class="cf">Can\'t find</button><button type="button" class="ds">Dropshipped</button>';
+        : '<button type="button" class="go">Mark picked</button><button type="button" class="cf">Can\'t find</button><button type="button" class="ds">Dropshipped</button>';
       var bs = b.querySelectorAll('button');
       if (done || missing) { bs[0].onclick = function () { woPick(this, 'Not Picked'); }; }
       else { bs[0].onclick = function () { woPick(this, 'Picked'); }; bs[1].onclick = function () { woPick(this, "Can't Find"); }; bs[2].onclick = function () { woPick(this, 'Dropshipped'); }; }
