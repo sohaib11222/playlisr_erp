@@ -40,8 +40,8 @@ class ShelfCountController extends Controller
     /**
      * Web priority (Sarah 10/20, after the age rule was dropped): products
      * ordered online in the last 90 days, and how many of those orders had
-     * the item cancelled or marked Can't Find. Bins holding them are flagged
-     * High priority until they're counted (order on the page stays the same). Cached an hour (one website call).
+     * the item cancelled or marked Can't Find. See markPriority() for which
+     * bins get flagged; the order on the page stays the same. Cached an hour (one website call).
      */
     protected function webDemand(): array
     {
@@ -65,6 +65,16 @@ class ShelfCountController extends Controller
             }
             return $out;
         });
+    }
+
+    /**
+     * High priority (Sarah 10/20): a cancel or can't find since the last
+     * count, or 3+ online orders. One stray order isn't enough to flag.
+     */
+    protected static function markPriority(array $bins): array
+    {
+        foreach ($bins as &$b) $b['priority'] = ($b['web_bad'] ?? 0) >= 1 || ($b['web'] ?? 0) >= 3;
+        return $bins;
     }
 
     /** Add a product's online orders since its last count to its bin. */
@@ -151,7 +161,7 @@ class ShelfCountController extends Controller
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
-        $bins = array_values($bins);
+        $bins = self::markPriority(array_values($bins));
         usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
     }
@@ -189,7 +199,7 @@ class ShelfCountController extends Controller
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
-        $bins = array_values($bins);
+        $bins = self::markPriority(array_values($bins));
         usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
         if ($request->input('kind') === 'all') {
             return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
@@ -204,7 +214,7 @@ class ShelfCountController extends Controller
             $t['kind'] = $b['kind']; $t['name'] = $kinds[$b['kind']] ?? $b['kind'];
             $t['shelves'] = ($t['shelves'] ?? 0) + 1; $t['titles'] = ($t['titles'] ?? 0) + $b['titles'];
             if (!empty($b['last']) && $b['last'] >= $cut) $t['done'] = ($t['done'] ?? 0) + 1;
-            if (!empty($b['web'])) $t['priority'] = ($t['priority'] ?? 0) + 1;
+            if (!empty($b['priority'])) $t['priority'] = ($t['priority'] ?? 0) + 1;
             if (!empty($b['last']) && (!isset($t['last']) || $b['last'] > $t['last'])) $t['last'] = $b['last'];
             unset($t);
         }
