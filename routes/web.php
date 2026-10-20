@@ -1225,6 +1225,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Audit log of store credit issued by employees. Parses the full
     // balance_notes history and flags credits given WITHOUT a purchase form.
     Route::get('/admin/store-credit-log', 'StoreCreditLogController@index');
+    Route::get('/admin/merge-customers', 'CustomerMergeController@index');
+    Route::post('/admin/merge-customers/run', 'CustomerMergeController@merge');
+    Route::post('/admin/merge-customers/undo', 'CustomerMergeController@undo');
 
     // eBay seller OAuth — required to read /sell/fulfillment/v1/order.
     // Tokens land in business.api_settings.ebay_seller (no migration).
