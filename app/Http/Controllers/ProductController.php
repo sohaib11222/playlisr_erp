@@ -779,7 +779,8 @@ class ProductController extends Controller
                 ->addColumn(
                     'product_locations',
                     function ($row) {
-                        return $row->product_locations->implode('name', ', ');
+                        // Store names are saved lowercase ("pico"); show them capitalized
+                        return $row->product_locations->map(fn($l) => ucwords((string) $l->name))->implode(', ');
                     }
                 )
                 ->addColumn('total_sold', function ($q) use ($soldTotalsMap) {

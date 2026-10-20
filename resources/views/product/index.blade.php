@@ -127,7 +127,7 @@
                         <button type="button" class="pf-pill" data-value="">All stores</button>
                         @foreach($business_locations as $loc_id => $loc_name)
                             @if($loc_id !== 'none')
-                                <button type="button" class="pf-pill" data-value="{{ $loc_id }}">{{ $loc_name }}</button>
+                                <button type="button" class="pf-pill" data-value="{{ $loc_id }}">{{ ucwords($loc_name) }}</button>
                             @endif
                         @endforeach
                     </div>
