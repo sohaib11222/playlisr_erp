@@ -1,0 +1,51 @@
+# READ-ONLY diagnostic: why the #pico morning pull post did not send (reads a state file and the log).
+name: Diag morning pulls
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Read morning pulls state and log (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "STATE:"; cat storage/app/shipping-shift/morning-pulls.json; echo
+            echo "LOG:"; grep -h "Morning pulls\|pulls:morning-post\|MorningPullsNotifier" storage/logs/laravel*.log 2>/dev/null | tail -20
+            echo "SCHEDULE:"; grep -h "pulls:morning-post" storage/logs/*.log 2>/dev/null | tail -5
+            php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach (App\Services\TimeClockService::locations(App\Services\TimeClockService::businessId()) as $id=>$n) echo "LOC $id $n\n"; echo "PUNCHES TODAY: ", DB::table("time_clock_punches")->where("clock_in_at", ">=", date("Y-m-d"))->select("location_id", DB::raw("count(*) c"))->groupBy("location_id")->get()->toJson(), "\n";'
