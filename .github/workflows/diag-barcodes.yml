@@ -1,0 +1,71 @@
+# READ-ONLY diagnostic: how many ERP products have no real barcode (SELECTs only).
+name: Diag barcode count
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Count products without a barcode (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            cat > /tmp/diag-barcodes.php <<'PHP'
+            <?php
+            require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            // Real barcode = 8-14 digits (UPC/EAN) and not the product's own id.
+            $sql = "SELECT COALESCE(c.name,'(no category)') cat,
+                      COUNT(*) total,
+                      SUM(NOT (p.sku REGEXP '^[0-9]{8,14}$') OR p.sku = p.id OR p.sku = LPAD(p.id, LENGTH(p.sku), '0')) no_barcode,
+                      SUM((NOT (p.sku REGEXP '^[0-9]{8,14}$') OR p.sku = p.id OR p.sku = LPAD(p.id, LENGTH(p.sku), '0')) AND COALESCE(s.qty,0) > 0) no_barcode_in_stock,
+                      SUM(COALESCE(s.qty,0) > 0) in_stock
+                    FROM products p
+                    LEFT JOIN categories c ON c.id = p.category_id
+                    LEFT JOIN (SELECT product_id, SUM(qty_available) qty FROM variation_location_details GROUP BY product_id) s ON s.product_id = p.id
+                    WHERE p.is_inactive = 0 AND p.not_for_selling = 0
+                    GROUP BY cat ORDER BY no_barcode DESC";
+            $t = ['total'=>0,'no_barcode'=>0,'no_barcode_in_stock'=>0,'in_stock'=>0];
+            foreach (DB::select($sql) as $r) {
+              foreach ($t as $k => $v) $t[$k] += $r->$k;
+              if ($r->total >= 50) echo str_pad(substr($r->cat,0,28),30), " total ", $r->total, " | no barcode ", $r->no_barcode, " | no barcode in stock ", $r->no_barcode_in_stock, " of ", $r->in_stock, " in stock\n";
+            }
+            echo "ALL ACTIVE: ", json_encode($t), "\n";
+            PHP
+            sed -i 's/^            //' /tmp/diag-barcodes.php
+            php /tmp/diag-barcodes.php
+            rm -f /tmp/diag-barcodes.php
