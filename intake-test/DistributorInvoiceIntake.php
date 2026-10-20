@@ -255,7 +255,13 @@ class DistributorInvoiceIntake
                 $ts = preg_match('/Date\((\d+)\)/', (string) ($row['InvoiceDate'] ?? ''), $m) ? (int) ($m[1] / 1000) : strtotime((string) ($row['InvoiceDate'] ?? ''));
                 if ($ts && $ts < $since) continue;
                 $inv = str_pad((string) ($row['InvoiceNumber'] ?? ''), 7, '0', STR_PAD_LEFT);
-                if ($this->alreadyHandled('ams', $inv)) continue;
+                if ($this->alreadyHandled('ams', $inv)) {
+                    if ($this->needsCatchUp('ams', $inv)) {
+                        list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
+                        if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->catchUp('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
+                    }
+                    continue;
+                }
                 $seenKey = 'ams:' . $inv;
                 if (isset($this->seen()[$seenKey])) continue; // failed before and was alerted; manual upload fixes it
                 list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
@@ -359,6 +365,83 @@ class DistributorInvoiceIntake
             ->where(function ($q) use ($key) {
                 $q->where('ref_no', 'like', '%' . $key . '%')->orWhere('additional_notes', 'like', '%' . $key . '%');
             })->exists();
+    }
+
+    // Invoices imported before 10/20/2026 dropped every UPC that wasn't in the
+    // catalog yet. Those sidecars have no 'new_products' key; each one gets a
+    // single catch-up pass.
+    private function needsCatchUp($distributor, $invoice)
+    {
+        $path = DistributorInvoiceImport::sidecarPath($distributor, DistributorInvoiceImport::invoiceKey($distributor, $invoice));
+        if (!Storage::disk('local')->exists($path)) return false;
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        return !array_key_exists('new_products', $sc) && empty($sc['catch_up_at']) && !empty($sc['transaction_id']);
+    }
+
+    // Add the lines an earlier import dropped: titles still not in the
+    // catalog, and catalog titles that are on neither that invoice's purchase
+    // nor any other purchase from the supplier/store (e.g. the desk's same-day
+    // manual purchase). They go on one extra purchase "<ref>-B".
+    private function catchUp($distributor, $invoice, $pdf, $source)
+    {
+        $inv = DistributorInvoiceImport::invoiceKey($distributor, $invoice);
+        $path = DistributorInvoiceImport::sidecarPath($distributor, $inv);
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        $own = DB::table('transactions')->where('id', (int) $sc['transaction_id'])->first(['id', 'location_id', 'contact_id', 'transaction_date']);
+        $p = DistributorInvoiceParser::parse($distributor, $pdf);
+        if (!$own || !$p['items'] || $p['goods_matches'] === false) {
+            $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'skipped', 'source' => $source, 'msg' => 'Catch-up skipped: ' . (!$own ? 'its purchase is gone.' : 'the PDF could not be read cleanly.')]);
+            $this->markCatchUp($path, $sc, null);
+            return;
+        }
+        $ownVids = DB::table('purchase_lines')->where('transaction_id', $own->id)->pluck('variation_id')->map(function ($v) { return (int) $v; })->all();
+        $lines = array_map(function ($it) {
+            return ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'] ?? '',
+                    'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
+        }, $p['items']);
+        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10));
+        $take = []; $noCategory = [];
+        foreach ($preview as $l) {
+            if ($l['matched'] && (in_array((int) $l['variation_id'], $ownVids, true) || $l['existing'])) continue;
+            if (!$l['matched'] && empty($l['new_product']['category_id'])) { $noCategory[] = $l['upc'] . ' ' . $l['description']; continue; }
+            $take[] = ['variation_id' => $l['variation_id'], 'qty' => $l['qty'], 'unit_price' => $l['unit_price'], 'upc' => $l['upc'],
+                       'description' => $l['description'], 'new_product' => $l['matched'] ? null : $l['new_product']];
+        }
+        if ($this->dry) {
+            $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'dry-run catch-up', 'source' => $source,
+                'msg' => sprintf('Purchase #%d is missing %d line(s) (%d new products); %d need a category.', $own->id, count($take),
+                    count(array_filter($take, function ($t) { return !empty($t['new_product']); })), count($noCategory))]);
+            return;
+        }
+        $txId = null;
+        if ($take) {
+            $ownStatus = DB::table('transactions')->where('id', $own->id)->value('status');
+            $notes = DistributorInvoiceImport::config($distributor)['label'] . ' invoice ' . $inv . ': lines left off purchase #' . $own->id . ' by the old importer, added automatically'
+                . ($ownStatus === 'received' ? '. That box was already received with #' . $own->id . ', so count these before receiving.' : '');
+            try {
+                $res = DistributorInvoiceImport::apply($distributor, $this->business_id, $this->user_id, $own->location_id, $own->contact_id, $inv,
+                    substr($own->transaction_date, 0, 10), $notes, $take, ['ref_suffix' => '-B', 'sidecar' => false]);
+                $txId = $res['transaction']->id;
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'imported', 'source' => $source, 'transaction_id' => $txId,
+                    'msg' => sprintf('Catch-up purchase #%d: %d line(s) missing from #%d, %d new products.', $txId, $res['lines'], $own->id, count($res['created_products']))]);
+            } catch (\Throwable $e) {
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => 'Catch-up failed: ' . $e->getMessage()]);
+                $this->alert($distributor, $inv, 'Adding the lines missing from purchase #' . $own->id . ' failed: ' . $e->getMessage());
+                return; // retried next run
+            }
+        }
+        if ($noCategory) {
+            $this->alert($distributor, $inv, 'These lines are still missing from purchase #' . $own->id . ' because their format has no category: ' . implode('; ', $noCategory) . '.');
+        }
+        $this->markCatchUp($path, $sc, $txId);
+    }
+
+    private function markCatchUp($path, array $sc, $txId)
+    {
+        if ($this->dry) return;
+        $sc['catch_up_at'] = now()->toDateTimeString();
+        $sc['catch_up_tx'] = $txId;
+        Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
     }
 
     private function importPdf($distributor, $pdf, $source, $expectedInvoice, $seenKey)
