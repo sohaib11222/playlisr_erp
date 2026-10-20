@@ -1543,11 +1543,20 @@ class WebsiteOrdersController extends Controller
         return $this->websiteApi('POST', $path, $body, $timeout);
     }
 
-    /** Newest paid orders incl. archived, for read-only reports (website stock rule check). */
+    /**
+     * Newest paid orders incl. archived, for read-only reports (website stock
+     * rule check, Shelf Count priority). Fully cancelled orders are marked
+     * payment_status "refunded", so both are pulled (500 newest of each).
+     */
     public function recentPaidOrders(): array
     {
-        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=500&payment_status=completed&includeArchived=1', null, 60);
-        return ($resp === null || ($resp['success'] ?? true) === false) ? [] : ($resp['data'] ?? []);
+        $out = [];
+        foreach (['completed', 'refunded'] as $ps) {
+            $resp = $this->websiteApi('GET', '/erp/orders/console?limit=500&payment_status=' . $ps . '&includeArchived=1', null, 60);
+            if ($resp === null || ($resp['success'] ?? true) === false) continue;
+            foreach (($resp['data'] ?? []) as $o) $out[(string) ($o['_id'] ?? count($out))] = $o;
+        }
+        return array_values($out);
     }
 
     protected function websiteApi(string $method, string $path, array $body = null, int $timeout = 10): ?array

@@ -45,7 +45,7 @@ class ShelfCountController extends Controller
      */
     protected function webDemand(): array
     {
-        return \Cache::remember('shelf_count_web_demand', 3600, function () {
+        return \Cache::remember('shelf_count_web_demand_v2', 3600, function () {
             $cut = now()->subDays(90)->toDateTimeString();
             $out = [];
             foreach (app(\App\Http\Controllers\WebsiteOrdersController::class)->recentPaidOrders() as $o) {
