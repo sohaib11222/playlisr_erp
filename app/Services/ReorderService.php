@@ -156,6 +156,8 @@ class ReorderService
             $before = (float) $existing->sum('qty_available');
             if ((int) round($before) === $qty) {
                 DB::rollBack();
+                // Still push: a first count puts older store stock back on the website.
+                try { (new NivessaStockNotifier())->push([$productId]); } catch (\Throwable $e) {}
                 return ['updated' => false, 'before' => $before, 'after' => $qty, 'note' => 'already matches'];
             }
             if ($existing->count() > 1) {
@@ -1086,6 +1088,14 @@ class ReorderService
             $sel[] = DB::raw('MAX(t.transaction_date) as last_at');
         }
         return $q->select($sel)->get();
+    }
+
+    /** Website stock rule cutoff (see WebsiteStockRule). */
+    public function saveWebsiteTrustedFrom(int $business_id, string $from): void
+    {
+        $state = $this->loadState($business_id);
+        $state['website_trusted_from'] = $from;
+        $this->saveState($business_id, $state);
     }
 
     public function saveFamilyCount(int $business_id, int $locationId, string $key, ?int $qty, string $by): void

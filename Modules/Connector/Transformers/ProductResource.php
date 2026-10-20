@@ -55,6 +55,17 @@ class ProductResource extends JsonResource
                     }
                 }
 
+                // Website stock rule: old uncounted store copies read 0
+                // (raw_stock=1 returns the ERP number untouched).
+                if (! request()->input('raw_stock') && ! empty($v['variation_location_details'])) {
+                    foreach ($v['variation_location_details'] as $u => $w) {
+                        $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['erp_qty_available'] = $w['qty_available'];
+                        $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['qty_available'] = \App\Services\WebsiteStockRule::qty(
+                            (int) $array['business_id'], (int) $w['location_id'], (int) $array['id'], $w['qty_available'], $array['category']['name'] ?? null
+                        );
+                    }
+                }
+
                 if (isset($v['group_prices'])) {
                     $array['product_variations'][$key]['variations'][$k]['selling_price_group'] = $v['group_prices'];
                     unset($array['product_variations'][$key]['variations'][$k]['group_prices']);

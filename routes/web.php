@@ -602,6 +602,52 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         ksort($out);
         return response()->json(['days' => $days, 'groups' => $out]);
     });
+    // Website stock rule (Sarah + Jon 10/20): store copies only sell online
+    // when counted or bought since the cutoff. GET = when purchase tracking
+    // started (purchases per month) + what the rule hides. ?apply=1 pushes the
+    // hidden products to the website so they come off now; ?from=YYYY-MM-DD
+    // moves the cutoff.
+    Route::get('/products/website-stock-rule', function (\Illuminate\Http\Request $request) {
+        @set_time_limit(600);
+        $biz = (int) $request->session()->get('user.business_id');
+        if (!auth()->user() || !auth()->user()->can('product.update')) abort(403);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('from'))) {
+            app(\App\Services\ReorderService::class)->saveWebsiteTrustedFrom($biz, $request->query('from') . ' 00:00:00');
+        }
+        $from = \App\Services\WebsiteStockRule::from($biz);
+        $months = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->groupBy('m', 't.type')
+            ->select(\DB::raw("DATE_FORMAT(t.transaction_date, '%Y-%m') as m"), 't.type', \DB::raw('COUNT(DISTINCT t.id) as purchases'), \DB::raw('COUNT(*) as lines'), \DB::raw('SUM(l.quantity) as units'))
+            ->orderBy('m')->get();
+        $locations = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id');
+        $boughtSince = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->where('t.transaction_date', '>=', $from)->distinct()->pluck('l.product_id')->flip()->all();
+        $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
+        $groups = [];
+        $hiddenIds = [];
+        foreach (\DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->join('business_locations as bl', 'bl.id', '=', 'v.location_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)->where('bl.name', 'not like', '%warehouse%')
+            ->groupBy('p.id', 'v.location_id', 'c.name', 'bl.name')->select('p.id', 'v.location_id', 'c.name as cat', 'bl.name as loc', \DB::raw('SUM(v.qty_available) as q'))->cursor() as $r) {
+            if (preg_match('/comic|magazine/i', (string) $r->cat)) continue;
+            $c = $counts[$r->location_id . ':' . $r->id] ?? null;
+            $why = ($c && ($c['at'] ?? '') >= $from) ? 'counted' : (isset($boughtSince[$r->id]) ? 'bought since cutoff' : 'hidden');
+            $g = stripos((string) $r->cat, 'used') !== false ? 'used' : 'new/other';
+            $k = $r->loc . ' | ' . $g . ' | ' . $why;
+            $groups[$k]['listings'] = ($groups[$k]['listings'] ?? 0) + 1;
+            $groups[$k]['copies'] = ($groups[$k]['copies'] ?? 0) + (float) $r->q;
+            if ($why === 'hidden') $hiddenIds[(int) $r->id] = true;
+        }
+        ksort($groups);
+        $pushed = 0;
+        if ($request->query('apply')) {
+            foreach (array_chunk(array_keys($hiddenIds), 200) as $chunk) {
+                (new \App\Services\NivessaStockNotifier())->push($chunk);
+                $pushed += count($chunk);
+            }
+        }
+        return response()->json(['cutoff' => $from, 'hidden_products' => count($hiddenIds), 'pushed_to_website' => $pushed, 'store_stock' => $groups, 'locations' => $locations, 'purchases_by_month' => $months]);
+    });
     // Read-only: website sales last N days split by used/sealed and by how
     // old the copy was when it sold (what a website age rule would block).
     Route::get('/products/web-sales-age', function (\Illuminate\Http\Request $request) {
