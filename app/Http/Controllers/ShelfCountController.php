@@ -273,13 +273,13 @@ class ShelfCountController extends Controller
             ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
             ->where(function ($q) use ($kind) { $this->kindQuery($q, $kind); })
             ->where(function ($q) use ($sub) { $sub ? $q->where('p.sub_category_id', $sub) : $q->whereNull('p.sub_category_id')->orWhere('p.sub_category_id', 0); })
-            ->select('p.id', 'p.name', 'p.artist', 'p.sku', \DB::raw('SUM(v.qty_available) as qty'))
-            ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku')
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position', \DB::raw('SUM(v.qty_available) as qty'))
+            ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position')
             ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->get();
         $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No sub-category';
         $labels = $this->kinds($business_id);
         return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
-            'name' => $name, 'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'erp' => (float) $i->qty]; })->values()]);
+            'name' => $name, 'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty]; })->values()]);
     }
 
     /** Barcode (or words) -> product, for the scan box. */

@@ -37,7 +37,10 @@
     <div id="scCam"></div>
     <div class="sc-flash" id="scFlash"></div>
     <div id="scChoices"></div>
-    <div class="sc-h">In this bin (ERP list, by artist)</div>
+    <div class="sc-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">In this bin (ERP list)
+        <select id="scSort" style="height:36px;font-size:15px;border:1px solid #E1D7C4;border-radius:8px;padding:0 8px;font-weight:400;">
+            <option value="artist">Sort: Artist</option><option value="title">Sort: Title</option><option value="bin">Sort: Bin spot</option>
+        </select></div>
     <div id="scList"></div>
     <div class="sc-h" id="scExtraH" style="display:none;">Found here but the ERP had it somewhere else</div>
     <div id="scExtra"></div>
@@ -60,9 +63,23 @@
     function label(i) { return (i.artist && (i.name || '').toLowerCase().indexOf(String(i.artist).toLowerCase()) === -1 ? i.artist + ' - ' : '') + i.name; }
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
-        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
+        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
             + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + (none ? 'None' : n) + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
     }
+    // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
+    // title or bin spot. Choice remembered on this device.
+    var SORT_KEY = 'shelfcount:sort';
+    function sortKey(i, by) {
+        var a = String(i.artist || i.name || ''), t = String(i.name || '');
+        return (by === 'title' ? t : by === 'bin' ? (i.bin || '~') + ' ' + a : a + ' ' + t).toLowerCase().replace(/^the\s+/, '');
+    }
+    function sortItems(by) {
+        items.sort(function (x, y) { return sortKey(x, by).localeCompare(sortKey(y, by), undefined, { numeric: true }); });
+    }
+    var sortSel = document.getElementById('scSort');
+    try { sortSel.value = localStorage.getItem(SORT_KEY) || 'artist'; } catch (e) {}
+    sortItems(sortSel.value);
+    sortSel.addEventListener('change', function () { try { localStorage.setItem(SORT_KEY, sortSel.value); } catch (e) {} sortItems(sortSel.value); render(); });
     function render() {
         document.getElementById('scList').innerHTML = items.map(row).join('');
         document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
