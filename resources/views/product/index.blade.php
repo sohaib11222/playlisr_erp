@@ -460,6 +460,13 @@
             });
             $(document).on('change', '#location_id, #product_list_filter_active_state, #product_list_filter_stock', syncFilterPills);
             syncFilterPills();
+            // Start on "Any time" when no date range is set (load-time picker
+            // init clears the preset highlight).
+            setTimeout(function() {
+                if (!$('#product_list_filter_created_date_range').val() && !$('#product_list_date_presets .is-active').length) {
+                    $('#product_list_date_presets .date-preset-btn[data-preset="all"]').addClass('is-active');
+                }
+            }, 0);
 
             $(document).on('click', '#product_filters_clear', function() {
                 $('#location_id').val('');
