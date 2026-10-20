@@ -38,13 +38,12 @@
     <a class="sc-small" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $kind }}">Back to bins</a>
     <h1>{{ $kindLabel }} / {{ $name }}</h1>
     <div class="sc-how">
-        <b>How to count this bin ({{ ucfirst($locations[$loc] ?? '') }}, {{ count($items) }} titles)</b>
+        <b>How to count ({{ count($items) }} titles)</b>
         <ol>
-            <li>Set Sort to match how the bin is filed (usually Artist).</li>
-            <li>Flip through the bin and follow along in the list. No need to pull records out or scan.</li>
-            <li>Titles with 1 or 2 copies: if they're all there, tap <b>All here</b>. 3 or more copies: count them, type the number in the box and press Enter (it jumps to the next title). Not there at all: tap <b>None</b>. To fix a mistake, type the right number.</li>
-            <li>A record in the bin that isn't on the list: scan its barcode into the box below (or tap Camera and point the phone at the barcode). It's added right away.</li>
-            <li>When you finish (or need to stop), tap the green <b>Done: review and save</b> at the bottom, then <b>Save counts for this bin</b>. Titles you didn't touch stay as they are, so you can finish the rest another day.</li>
+            <li>Go down the list as you flip through the bin.</li>
+            <li>Tap <b>All here</b>, tap <b>None</b>, or type how many you see.</li>
+            <li>Record not on the list? Scan it.</li>
+            <li>Tap the green <b>Done</b> button at the bottom, then <b>Save</b>.</li>
         </ol>
     </div>
     <div class="sc-scan">
