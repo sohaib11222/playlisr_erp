@@ -31,7 +31,7 @@
                 <b>{{ $t['name'] }}</b>
                 <div class="sh-bar"><span style="width:{{ $pct }}%"></span></div>
                 <span class="sh-small">{{ $t['done'] ?? 0 }}/{{ $t['shelves'] }} shelves{{ !empty($t['last']) ? ', last ' . \Carbon\Carbon::parse($t['last'])->format('m/d/y') : ', never' }}</span>
-                @if (!empty($t['priority']))<br><span class="sh-small" style="color:#123E6B;font-weight:700">{{ $t['priority'] }} to count first (online orders)</span>@endif
+                @if (!empty($t['priority']))<br><span class="sh-small" style="color:#8E1B1B;font-weight:700">{{ $t['priority'] }} high priority {{ $t['priority'] == 1 ? 'shelf' : 'shelves' }}</span>@endif
             </a>
         @endforeach
     </div>

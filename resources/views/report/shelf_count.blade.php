@@ -12,19 +12,19 @@
 .sc-bin b { font-size: 16px; }
 .sc-small { color: #2B2620; font-size: 13px; }
 .sc-due { color: #8E1B1B; font-weight: 700; font-size: 13px; }
-.sc-web { display: inline-block; margin-top: 4px; background: #DCEBFA; color: #123E6B; border-radius: 6px; padding: 2px 8px; font-size: 13px; font-weight: 700; }
+.sc-web { display: inline-block; margin-top: 4px; background: #FBE3E3; color: #8E1B1B; border-radius: 6px; padding: 2px 8px; font-size: 13px; font-weight: 700; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
-    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins with online orders since their last count are on top, then the ones not counted the longest. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
+    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins not counted the longest are on top. High priority = sold online since its last count. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
     </form>
     @foreach ($bins as $b)
         <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
-            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span>@if (!empty($b['web']))<br><span class="sc-web">Count first: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }} since last count</span>@endif</span>
+            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span>@if (!empty($b['web']))<br><span class="sc-web">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }} since last count</span>@endif</span>
             <span>@if (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}</span>@else<span class="sc-due">Never counted</span>@endif</span>
         </a>
     @endforeach

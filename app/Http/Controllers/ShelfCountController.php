@@ -40,8 +40,8 @@ class ShelfCountController extends Controller
     /**
      * Web priority (Sarah 10/20, after the age rule was dropped): products
      * ordered online in the last 90 days, and how many of those orders had
-     * the item cancelled or marked Can't Find. Bins holding them go on top
-     * until they're counted. Cached an hour (one website call).
+     * the item cancelled or marked Can't Find. Bins holding them are flagged
+     * High priority until they're counted (order on the page stays the same). Cached an hour (one website call).
      */
     protected function webDemand(): array
     {
@@ -73,12 +73,6 @@ class ShelfCountController extends Controller
         if (!$web || ($count && ($count['at'] ?? '') >= $web['at'])) return;
         $b['web'] = ($b['web'] ?? 0) + $web['orders'];
         $b['web_bad'] = ($b['web_bad'] ?? 0) + $web['bad'];
-    }
-
-    /** Web priority bins first (most cancels, then most orders), else the usual order. */
-    protected static function webFirst(array $a, array $b): int
-    {
-        return [-($a['web_bad'] ?? 0), -($a['web'] ?? 0)] <=> [-($b['web_bad'] ?? 0), -($b['web'] ?? 0)];
     }
 
     /** Last count time per product at this store. */
@@ -157,7 +151,7 @@ class ShelfCountController extends Controller
             unset($b);
         }
         $bins = array_values($bins);
-        usort($bins, function ($a, $b) { return self::webFirst($a, $b) ?: [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
+        usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
     }
 
@@ -195,7 +189,7 @@ class ShelfCountController extends Controller
             unset($b);
         }
         $bins = array_values($bins);
-        usort($bins, function ($a, $b) { return self::webFirst($a, $b) ?: [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
+        usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
         if ($request->input('kind') === 'all') {
             return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
                 'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
