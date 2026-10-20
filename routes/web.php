@@ -435,6 +435,20 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/old-listings-with-stock', 'BarcodeFixController@staleScan');
     Route::get('/products/old-listings-with-stock/preview', 'BarcodeFixController@oldPreview');
     Route::get('/products/same-barcode', 'BarcodeFixController@sameBarcode');
+    // Read-only (Sarah 10/19, cancelled web orders "sold in store"): every
+    // ERP sale of these products since a date, with store, time and who rang it.
+    Route::get('/products/sales-of', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->query('ids'))));
+        $rows = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])->where('t.type', 'sell')
+            ->where('t.transaction_date', '>=', $request->query('since', '2026-09-01'))
+            ->select('l.product_id', 't.id', 't.transaction_date', 't.created_at', 't.status', 't.import_source', 'bl.name as store', \DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as who"), 'l.quantity')
+            ->orderBy('t.transaction_date')->get();
+        $stock = \DB::table('products')->whereIn('id', $ids ?: [0])->select('id', 'name', 'created_at')->get()->keyBy('id');
+        return response()->json(['sales' => $rows, 'products' => $stock]);
+    });
     Route::match(['get', 'post'], '/products/fix-barcodes/restock', 'BarcodeFixController@restock');
     Route::post('/products/fix-barcodes/{id}/save', 'BarcodeFixController@save');
     Route::post('/products/fix-barcodes/{id}/merge', 'BarcodeFixController@merge');
