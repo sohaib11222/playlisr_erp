@@ -655,7 +655,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage(), 'line' => $e->getLine()], 500);
         }
-        return response()->json(['cutoff' => $from, 'hidden_products' => count($hiddenIds), 'pushed_to_website' => $pushed, 'store_stock' => $groups, 'locations' => $locations, 'purchases_by_month' => $months]);
+        return response()->json(['cutoff' => $from, 'hidden_products' => count($hiddenIds), 'pushed_to_website' => $pushed, 'sample_hidden' => array_slice(array_keys($hiddenIds), 0, 5), 'store_stock' => $groups, 'locations' => $locations, 'purchases_by_month' => $months]);
     });
     // Read-only: website sales last N days split by used/sealed and by how
     // old the copy was when it sold (what a website age rule would block).
