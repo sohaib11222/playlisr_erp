@@ -19,9 +19,12 @@
   .wo-dg-pick .wo-pick-btns button { flex:1 1 auto; font-size:12px; font-weight:700; padding:6px 8px; border:1.5px solid #111827; border-radius:6px; background:#fff; color:#000; }
   .wo-dg-pick .wo-pick-btns button.go { border-color:#047857; color:#047857; background:#fff; }
   .wo-prog-wrap { margin-top:8px; width:150px; }
-  .wo-prog { height:8px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
-  .wo-prog span { display:block; height:100%; background:#f59e0b; border-radius:999px; }
-  .wo-prog-wrap.full .wo-prog span { background:#047857; }
+  .wo-prog { display:flex; height:8px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-prog span { display:block; height:100%; }
+  .wo-prog span.p { background:#047857; }
+  .wo-prog span.c { background:#dc2626; }
+  .wo-prog-sub { font-size:11.5px; font-weight:600; color:#000; }
+  .wo-prog-sub .cf { color:#b91c1c; }
   .wo-prog-lbl { font-size:12px; font-weight:700; color:#000; margin-top:3px; }
   .wo-prog-wrap.full .wo-prog-lbl { color:#047857; }
   .wo-prog-wrap.part .wo-prog-lbl { color:#92400e; }
@@ -744,11 +747,18 @@
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
-                    @php $ppN = (int) ($pp['picked'] ?? 0); $ppT = max(1, (int) ($pp['total'] ?? 0)); $ppPct = (int) round(100 * min($ppN, $ppT) / $ppT); @endphp
+                    @php
+                      $ppN = (int) ($pp['picked'] ?? 0); $ppT = max(1, (int) ($pp['total'] ?? 0)); $ppPct = (int) round(100 * min($ppN, $ppT) / $ppT);
+                      // Can't find shows in red on the same bar (Sarah, 2026-10-20)
+                      $ppCf = 0; foreach (($pp['lines'] ?? []) as $ppl) if (($ppl['status'] ?? '') === "Can't Find") $ppCf += max(1, (int) ($ppl['quantity'] ?? 1));
+                      $ppCfPct = (int) round(100 * min($ppCf, $ppT - min($ppN, $ppT)) / $ppT);
+                      $ppLeft = max(0, (int) ($pp['total'] ?? 0) - $ppN - $ppCf);
+                    @endphp
                     {{-- Progress bar: none / partly / all picked at a glance (Sarah, 2026-10-20) --}}
                     <div class="wo-pick-count wo-prog-wrap {{ $ppN >= $ppT ? 'full' : ($ppN > 0 ? 'part' : 'none') }}">
-                      <div class="wo-prog"><span style="width:{{ $ppPct }}%"></span></div>
+                      <div class="wo-prog"><span class="p" style="width:{{ $ppPct }}%"></span><span class="c" style="width:{{ $ppCfPct }}%"></span></div>
                       <div class="wo-prog-lbl"><span class="n">{{ $ppN }}</span> of <span class="t">{{ (int) ($pp['total'] ?? 0) }}</span> picked</div>
+                      <div class="wo-prog-sub"><span class="cf">{{ $ppCf ? $ppCf . " can't find" : '' }}</span><span class="left">{{ $ppLeft ? ($ppCf ? ' · ' : '') . $ppLeft . ' left' : '' }}</span></div>
                     </div>
                   @endif
                 </td>
@@ -1323,8 +1333,15 @@
       var c = box.parentNode.querySelector('.wo-pick-count');
       if (c) {
         c.querySelector('.n').textContent = picked;
-        var bar = c.querySelector('.wo-prog span');
-        if (bar) bar.style.width = (total ? Math.round(100 * Math.min(picked, total) / total) : 0) + '%';
+        var missing = 0;
+        box.querySelectorAll('.wo-pick-line.is-missing').forEach(function (l) { missing += parseInt(l.dataset.qty, 10) || 1; });
+        var bp = c.querySelector('.wo-prog .p'), bc = c.querySelector('.wo-prog .c');
+        if (bp) bp.style.width = (total ? Math.round(100 * Math.min(picked, total) / total) : 0) + '%';
+        if (bc) bc.style.width = (total ? Math.round(100 * Math.min(missing, total - Math.min(picked, total)) / total) : 0) + '%';
+        var left = Math.max(0, total - picked - missing);
+        var sc = c.querySelector('.wo-prog-sub .cf'), sl = c.querySelector('.wo-prog-sub .left');
+        if (sc) sc.textContent = missing ? missing + " can't find" : '';
+        if (sl) sl.textContent = left ? (missing ? ' · ' : '') + left + ' left' : '';
         c.classList.toggle('full', picked >= total);
         c.classList.toggle('part', picked > 0 && picked < total);
         c.classList.toggle('none', picked === 0);
