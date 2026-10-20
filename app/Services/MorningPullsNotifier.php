@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Schema;
  * working that morning on what they have to pull and from where").
  * Replaces the long shipping summary, the #pico pull list and the per-order
  * "New order to ship" posts. Hollywood Store + Warehouse go to #shipping,
- * Pico to #pico. Posted once a day, when the first person clocks in at that
- * store, tagging only them; by 11 AM it goes out anyway, tagging whoever
+ * Pico to #pico. Posted once a day: #shipping when Nick clocks in (tagging
+ * him), #pico when the first person clocks in at Pico (tagging them); by 11 AM it goes out anyway, tagging whoever
  * Sling has there. Same items as the Pick Route / store "to pull" counts.
  * Never throws.
  */
@@ -36,7 +36,8 @@ class MorningPullsNotifier
         $state = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
         foreach (self::STORES as $store => $cfg) {
             if (($state[$store] ?? '') === $now->toDateString()) continue;
-            $who = self::clockedIn($store);
+            // #shipping goes out on Nick's clock-in (onNickClockIn); this is only the 11 AM fallback
+            $who = $store === 'hollywood' ? [] : self::clockedIn($store);
             if (!$who) {
                 if ($now->hour < 11) continue; // wait for the morning person to clock in
                 $who = self::scheduled($store);
@@ -55,6 +56,28 @@ class MorningPullsNotifier
             $out[$store] = $text === null ? 'nothing to pull' : ($ok ? 'posted' : 'post failed');
         }
         return $out;
+    }
+
+    /**
+     * Nick clocked in (the line in #payroll-updates): post the #shipping list
+     * tagging him, once a day (Sarah, 2026-10-19). Never throws.
+     */
+    public static function onNickClockIn(int $userId): void
+    {
+        try {
+            $now = \Carbon::now('America/Los_Angeles');
+            $file = storage_path('app/shipping-shift/morning-pulls.json');
+            $state = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
+            if (($state['hollywood'] ?? '') === $now->toDateString()) return;
+            $text = self::build('hollywood', [$userId]);
+            if ($text === null || self::send('shipping', $text)) {
+                $state['hollywood'] = $now->toDateString();
+                if (!is_dir(dirname($file))) @mkdir(dirname($file), 0775, true);
+                @file_put_contents($file, json_encode($state));
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Morning pulls on Nick clock-in failed: ' . $e->getMessage());
+        }
     }
 
     /** Message text for one store, or null when nothing is waiting there. */

@@ -33,9 +33,14 @@ class ShippingShiftNotifier
             }
             $first = trim((string) ($user->first_name ?? '')) ?: 'Nick';
             $note = $first . ' clocked ' . $what . ' ' . \Carbon::now('America/Los_Angeles')->format('g:i A');
-            app()->terminating(function () use ($what, $note) {
-                self::postSummary('clock_' . $what, true, $note);
-                PicoPullsNotifier::post($note);
+            // Old summary + Pico list are off (10/18); his clock-in now sends
+            // the #shipping morning list tagging him (Sarah, 2026-10-19).
+            if ($what !== 'in') {
+                return;
+            }
+            $uid = (int) ($user->id ?? 0);
+            app()->terminating(function () use ($uid) {
+                MorningPullsNotifier::onNickClockIn($uid);
             });
         } catch (\Throwable $e) {
             \Log::warning('shipping summary on clock ' . $what . ' failed: ' . $e->getMessage());
