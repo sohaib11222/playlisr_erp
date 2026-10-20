@@ -515,16 +515,19 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
                     'reason' => $o['cancel_reason'] ?? null, 'wid' => $it['product_id'] ?? null, 'name' => trim(($it['product_artist'] ?? '') . ' - ' . ($it['product_name'] ?? '')), 'price' => $it['price'] ?? null, 'sku' => $it['product_sku'] ?? null];
             }
         }
-        $cache = storage_path('app/cancel-dig-pos.json');
+        $cache = storage_path('app/cancel-dig-pos-v2.json');
         $map = is_file($cache) ? (json_decode((string) file_get_contents($cache), true) ?: []) : [];
         foreach ($rows as &$r) {
             $w = (string) $r['wid'];
             if (!preg_match('/^[a-f0-9]{24}$/', $w)) continue;
             if (!array_key_exists($w, $map)) {
                 $ctx = stream_context_create(['http' => ['timeout' => 8, 'header' => "User-Agent: NivessaERP\r\n"]]);
-                $h = @file_get_contents('https://nivessa.com/products/' . $w, false, $ctx);
-                $pid = ($h && preg_match('/posProductId\\\\?"\s*:\s*\\\\?"?(\d+)/', $h, $m)) ? (int) $m[1] : null;
-                $src = ($h && preg_match('/\\\\?"source\\\\?"\s*:\s*\\\\?"([a-z_]+)/', $h, $m2)) ? $m2[1] : null;
+                $h = @file_get_contents('https://nivessa.com/api/v1/product/single/' . $w, false, $ctx);
+                $jj = $h ? json_decode($h, true) : null;
+                $pd = $jj['data'] ?? ($jj['product'] ?? $jj);
+                if (isset($pd[0]) && is_array($pd[0])) $pd = $pd[0];
+                $pid = isset($pd['posProductId']) && (int) $pd['posProductId'] > 0 ? (int) $pd['posProductId'] : null;
+                $src = $pd['source'] ?? ($h ? 'fetched' : 'fetch failed');
                 $map[$w] = ['pid' => $pid, 'src' => $src];
             }
             $r['pid'] = $map[$w]['pid']; $r['src'] = $map[$w]['src'];
