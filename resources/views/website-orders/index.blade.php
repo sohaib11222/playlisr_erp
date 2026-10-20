@@ -10,7 +10,7 @@
 
 <style>
   .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
-  .wo-tab { position:relative; padding:12px 18px; font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
+  .wo-tab { position:relative; padding:10px 12px; font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
   .wo-tab:hover { color:#111827; }
   .wo-tab.active { color:#111827; }
   .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#111827; border-radius:2px 2px 0 0; }
@@ -213,9 +213,9 @@
       $tabDefs = [
         'ready_ship'      => ['label' => 'Ready to Ship', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
         'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        'ready_pickup'    => ['label' => 'Ready for Pickup'],
+        'ready_pickup'    => ['label' => 'Ready for Pickup', 'split' => ['hollywood' => 'HW', 'pico' => 'Pico']],
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
-        'refunded'        => ['label' => 'Refunded'],
+        'refunded'        => ['label' => 'Refunded', 'nocount' => true],
         'preorders'       => ['label' => 'Preorders'],
         'completed'       => ['label' => 'Completed'],
       ];
@@ -247,7 +247,7 @@
         <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key])) }}"
            class="wo-tab {{ $activeTab === $key ? 'active' : '' }}">
           {{ $def['label'] }}
-          <span class="wo-badge {{ $badgeClass }}">{{ $count }}</span>
+          @if(empty($def['nocount']))<span class="wo-badge {{ $badgeClass }}">{{ $count }}</span>@endif
         </a>
         @endif
       @endforeach
@@ -304,16 +304,6 @@
         </table>
       </div>
     @endif
-    <details class="wo-notes" style="margin-bottom:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;" {{ trim($deskNotes['text'] ?? '') !== '' ? 'open' : '' }}>
-      <summary style="cursor:pointer;font-size:13.5px;font-weight:600;color:#92400e;">Notes for the orders desk
-        @if(!empty($deskNotes['at']))<span style="font-weight:400;color:#a16207;font-size:12px;"> &middot; saved {{ \Carbon\Carbon::parse($deskNotes['at'])->setTimezone('America/Los_Angeles')->format('n/j g:ia') }}{{ !empty($deskNotes['by']) ? ' by ' . $deskNotes['by'] : '' }}</span>@endif
-      </summary>
-      <form method="POST" action="{{ route('website-orders.saveNotes') }}" style="margin-top:8px;">
-        {{ csrf_field() }}
-        <textarea name="notes" rows="3" placeholder="Add notes for the orders desk..." style="width:100%;box-sizing:border-box;font-size:13.5px;padding:8px;border:1px solid #fde68a;border-radius:8px;background:#fff;resize:vertical;">{{ $deskNotes['text'] ?? '' }}</textarea>
-        <button type="submit" class="wo-btn" style="width:auto;display:inline-block;margin-top:6px;background:#d97706;border-color:#d97706;color:#fff;">Save notes</button>
-      </form>
-    </details>
     <form method="GET" action="{{ route('website-orders.index') }}" class="wo-filters">
       <input type="hidden" name="tab" value="{{ $activeTab }}">
       <div class="wo-field">
@@ -456,6 +446,11 @@
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
                   @php $due = ($rowIsPreorder && !$rowShipDate) ? null : \App\Http\Controllers\WebsiteOrdersController::dueDate($o, $rowIsPreorder ? $rowShipDate : null); @endphp
                   @if($due)<span class="wo-due {{ $due[1] }}">{{ $due[0] }}</span>@endif
+                  @if($activeTab === 'refunded')
+                    @php [$rfAmt, $rfAt, $rfWhy] = \App\Http\Controllers\WebsiteOrdersController::refundSummary($o); @endphp
+                    <span style="display:block;margin-top:5px;font-size:12px;font-weight:700;color:#6b21a8;">Refunded{{ $rfAmt > 0 ? ' $' . number_format($rfAmt, 2) : '' }}{{ $rfAt ? ' on ' . date('m/d/y', strtotime($rfAt)) : '' }}</span>
+                    @if($rfWhy !== '')<span style="display:block;font-size:12px;color:#000;">{{ \Illuminate\Support\Str::limit($rfWhy, 90) }}</span>@endif
+                  @endif
                   @if($activeTab === 'cant_find')
                     @php [$cfN, $cfAll] = \App\Http\Controllers\WebsiteOrdersController::cantFindCount($o); @endphp
                     <span style="display:block;margin-top:5px;font-size:12px;font-weight:700;color:#b91c1c;">{{ $cfN >= $cfAll ? 'Whole order' : 'Part of order' }}: {{ $cfN }} of {{ $cfAll }} can't find</span>

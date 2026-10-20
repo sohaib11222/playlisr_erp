@@ -121,7 +121,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'needs_action_warehouse' => 0, 'needs_action_hollywood' => 0, 'preorders' => 0, 'cant_find' => 0, 'refunded' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'needs_action_warehouse' => 0, 'needs_action_hollywood' => 0, 'preorders' => 0, 'cant_find' => 0, 'refunded' => 0, 'ready_pickup_hollywood' => 0, 'ready_pickup_pico' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -166,7 +166,11 @@ class WebsiteOrdersController extends Controller
                 $tabCounts[self::allPicked($o) ? 'ready_ship' : 'to_ship']++;
                 if (self::allPicked($o)) $tabCounts['ready_ship_' . (self::shipStore($o) === 'pico' ? 'pico' : 'hw')]++;
             }
-            if ($fm === 'pickup' && $status === 'ready_for_pickup') $tabCounts['ready_pickup']++;
+            if ($fm === 'pickup' && $status === 'ready_for_pickup') {
+                $tabCounts['ready_pickup']++;
+                // Split by pickup store (Sarah, 2026-10-20)
+                $tabCounts['ready_pickup_' . (($o['pickup_location'] ?? '') === 'pico' ? 'pico' : 'hollywood')]++;
+            }
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
                 $tabCounts['pickup']++;
                 if (self::hoursSince($o['createdAt'] ?? null) >= self::PICKUP_SLA_OVERDUE_HOURS) {
@@ -239,7 +243,9 @@ class WebsiteOrdersController extends Controller
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
-            if ($activeTab === 'ready_ship' && in_array($locationFilter, ['hw', 'pico'], true)) {
+            if ($activeTab === 'ready_pickup' && in_array($locationFilter, ['hollywood', 'pico'], true)) {
+                if ((($o['pickup_location'] ?? '') === 'pico' ? 'pico' : 'hollywood') !== $locationFilter) return false;
+            } elseif ($activeTab === 'ready_ship' && in_array($locationFilter, ['hw', 'pico'], true)) {
                 // All picked: split by the store that ships it
                 if ((self::shipStore($o) === 'pico' ? 'pico' : 'hw') !== $locationFilter) return false;
             } elseif (in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) {
@@ -1056,6 +1062,19 @@ class WebsiteOrdersController extends Controller
         if (in_array($o['cancel_refund']['status'] ?? null, ['ok', 'manual'], true)) return true;
         foreach (($o['item_cancellations'] ?? []) as $c) if (in_array($c['refund_status'] ?? null, ['ok', 'manual'], true)) return true;
         return false;
+    }
+
+    /** What was refunded: [total dollars, last date, reason]. */
+    public static function refundSummary(array $o): array
+    {
+        $total = 0.0;
+        $last = null;
+        foreach (($o['refund_log'] ?? []) as $r) { $total += ((float) ($r['cents'] ?? 0)) / 100; $last = max($last, (string) ($r['at'] ?? '')); }
+        foreach (($o['external_refunds'] ?? []) as $r) { $total += ((float) ($r['cents'] ?? 0)) / 100; $last = max($last, (string) ($r['created_at'] ?? '')); }
+        if ($total <= 0 && !empty($o['cancel_refund']['amount'])) $total = (float) $o['cancel_refund']['amount'];
+        $notes = $o['refund_notes'] ?? [];
+        $reason = $notes ? (string) (end($notes)['text'] ?? '') : (string) ($o['cancel_reason'] ?? '');
+        return [$total, $last ?: null, $reason];
     }
 
     /** [can't-find lines, live lines] for the "whole order or not" label. */
