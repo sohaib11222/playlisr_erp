@@ -575,6 +575,32 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->select('l.product_id as pid', 't.status', 't.transaction_date as d')->get();
         return response()->json(compact('log', 'returns', 'deletedSales'));
     });
+    // Read-only (Sarah 10/19, website safety rule sizing): in-stock listings
+    // split by whether they arrived or were shelf-counted in the last N days.
+    Route::get('/products/stock-age', function (\Illuminate\Http\Request $request) {
+        @set_time_limit(300);
+        $biz = (int) $request->session()->get('user.business_id');
+        $days = max(1, (int) $request->query('days', 90));
+        $cut = now()->subDays($days)->toDateTimeString();
+        $counted = [];
+        foreach ((app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? []) as $k => $c) {
+            if (($c['at'] ?? '') >= $cut) $counted[(int) explode(':', $k)[1]] = true;
+        }
+        $lastIn = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->groupBy('l.product_id')->select('l.product_id', \DB::raw('MAX(t.transaction_date) as d'))->pluck('d', 'product_id')->all();
+        $out = [];
+        foreach (\DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('p.business_id', $biz)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
+            ->groupBy('p.id', 'c.name')->select('p.id', 'c.name as cat', \DB::raw('SUM(v.qty_available) as q'))->cursor() as $r) {
+            $fresh = isset($counted[(int) $r->id]) || (($lastIn[$r->id] ?? '') >= $cut);
+            $g = preg_match('/vinyl|\\bcds?\\b|cassette|7"|45/i', (string) $r->cat) ? ((stripos((string) $r->cat, 'used') !== false) ? 'used music' : 'new music') : 'other';
+            $k = $g . ' | ' . ($fresh ? 'recent' : 'older');
+            $out[$k]['listings'] = ($out[$k]['listings'] ?? 0) + 1;
+            $out[$k]['copies'] = ($out[$k]['copies'] ?? 0) + (float) $r->q;
+        }
+        ksort($out);
+        return response()->json(['days' => $days, 'groups' => $out]);
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
