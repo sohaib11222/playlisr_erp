@@ -505,6 +505,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // boomboxes, turntables) to an "Audio Gear" category. Before the resource.
     Route::get('/products/fix-audio-gear', 'AudioGearFixController@apply')->name('products.fix-audio-gear');
 
+    Route::get('/products/sealed-barcodes', 'SealedBarcodeController@index');
+    Route::post('/products/sealed-barcodes/apply', 'SealedBarcodeController@apply');
     Route::resource('products', 'ProductController');
 
     Route::post('/import-purchase-products', 'PurchaseController@importPurchaseProducts');
