@@ -252,6 +252,16 @@ class WebsiteOrdersController extends Controller
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
             if ($cancelledSince && (strtotime($o['cancelled_at'] ?? '') ?: 0) < $cancelledSince) return false;
             if (!self::matchesTab($o, $activeTab)) return false;
+            // Need to Pull: drop orders with nothing left to pull (all picked / can't find)
+            if (in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true)) {
+                $off = self::offQueueNames($o);
+                $left = false;
+                foreach (($o['items'] ?? []) as $it) {
+                    if (!empty($it['cancelled']) || !empty($it['is_gift_card']) || empty($it['product_id'])) continue;
+                    if (!isset($off[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $left = true; break; }
+                }
+                if (!$left) return false;
+            }
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
             if ($activeTab === 'ready_pickup' && in_array($locationFilter, ['hollywood', 'pico'], true)) {
