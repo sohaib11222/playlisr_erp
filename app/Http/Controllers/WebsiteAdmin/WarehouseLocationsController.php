@@ -116,6 +116,7 @@ class WarehouseLocationsController extends Controller
             return redirect()->back()->with('error', $err);
         }
         $resp = WebsiteBridge::admin('POST', '/warehouse/locations', $p);
+        \Cache::forget('products_index_bin_map'); // Products list Location column picks it up now
         $ok = ($resp['success'] ?? false) === true;
         return redirect()->back()->with($ok ? 'status' : 'error', $ok ? "Added location {$p['discogs_code']}." : ($resp['message'] ?? 'Could not add the location.'));
     }
@@ -129,6 +130,7 @@ class WarehouseLocationsController extends Controller
         }
         $old = trim((string) $request->input('old_code'));
         $resp = WebsiteBridge::admin('PUT', '/warehouse/locations/' . rawurlencode($id), $p);
+        \Cache::forget('products_index_bin_map'); // Products list Location column picks it up now
         $ok = ($resp['success'] ?? false) === true;
         $msg = $old !== '' && strcasecmp($old, $p['discogs_code']) !== 0
             ? "Changed code {$old} to {$p['discogs_code']}. Change it on Discogs too."
@@ -140,6 +142,7 @@ class WarehouseLocationsController extends Controller
     {
         $this->guard();
         $resp = WebsiteBridge::admin('DELETE', '/warehouse/locations/' . rawurlencode($id));
+        \Cache::forget('products_index_bin_map'); // Products list Location column picks it up now
         $ok = ($resp['success'] ?? false) === true;
         return redirect()->back()->with($ok ? 'status' : 'error', $ok ? 'Location deleted. It is now inactive.' : ($resp['message'] ?? 'Could not delete the location.'));
     }
@@ -164,6 +167,7 @@ class WarehouseLocationsController extends Controller
                 return redirect()->back()->with('error', 'Nothing to import. Upload the CSV again.');
             }
             $resp = WebsiteBridge::admin('POST', '/warehouse/locations/bulk-import', ['locations' => $rows], 120);
+            \Cache::forget('products_index_bin_map'); // Products list Location column picks it up now
             if (!($resp['success'] ?? false)) {
                 return redirect()->back()->with('error', $resp['message'] ?? 'Import failed.');
             }
@@ -247,6 +251,7 @@ class WarehouseLocationsController extends Controller
         }
         $dry = $request->input('mode') === 'preview';
         $resp = WebsiteBridge::admin('POST', '/warehouse/locations/auto-create', ['locations' => $chosen, 'dry_run' => $dry], 120);
+        \Cache::forget('products_index_bin_map'); // Products list Location column picks it up now
         if (!($resp['success'] ?? false)) {
             return redirect()->back()->with('error', $resp['message'] ?? 'Could not create the mappings.');
         }
