@@ -147,7 +147,9 @@ class DistributorInvoiceAuditController extends Controller
             $invTotal = isset($r['total']) && $r['total'] !== null ? round((float) $r['total'], 2) : null;
             if (!$tx->count()) $flag = 'gap';
             elseif ($missing) $flag = 'missing_lines';
-            elseif ($invTotal !== null && abs($erpTotal - $invTotal) > 1.00) $flag = 'total_differs';
+            // Totals only mean something when the invoice has its own purchase;
+            // with registered lines the line check above is the real test.
+            elseif (empty($r['lines']) && $tx->count() === 1 && $invTotal !== null && abs($erpTotal - $invTotal) > 1.00) $flag = 'total_differs';
             else $flag = 'ok';
 
             $store = $r['store'] ?? null;
