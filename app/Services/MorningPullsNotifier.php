@@ -148,7 +148,9 @@ class MorningPullsNotifier
             $recent = array_values(array_filter($rows, fn($r) => (strtotime($r['order']['createdAt'] ?? '') ?: 0) >= $monthStart));
             $older = count($rows) - count($recent);
             if (!$recent) $recent = $rows;
-            $lines[] = '*<' . self::ROUTE_URL . 'hollywood|Pull these from the store for Nick to ship (' . count($recent) . ')>*' . ($older && $recent !== $rows ? ' ' . \Carbon::now('America/Los_Angeles')->format('F') . ' orders:' : ' newest first:');
+            // One clear ask in place of "here is what to do today" (Sarah, 2026-10-19)
+            $n = min(count($recent), $cfg['newest']);
+            $lines[1] = ($tags ? implode(' ', $tags) . ' ' : '') . 'please pull these *<' . self::ROUTE_URL . 'hollywood|' . $n . ' product' . ($n === 1 ? '' : 's') . '>* from the store for Nick to ship:';
             foreach (array_slice($recent, 0, $cfg['newest']) as $r) {
                 $spot = self::spot($r);
                 $lines[] = '• ' . ($spot !== '' ? '*' . self::esc($spot) . '*: ' : '') . self::esc(self::itemName($r)) . ' (' . self::orderRef($r['order']) . ')';
