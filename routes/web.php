@@ -615,9 +615,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             app(\App\Services\ReorderService::class)->saveWebsiteTrustedFrom($biz, $request->query('from') . ' 00:00:00');
         }
         $from = \App\Services\WebsiteStockRule::from($biz);
+        if ($request->query('sample')) {
+            $p = \App\Product::where('business_id', $biz)->where('id', (int) $request->query('sample'))
+                ->with(['product_variations.variations.variation_location_details', 'category', 'product_locations'])->get();
+            return \Modules\Connector\Transformers\ProductResource::collection($p);
+        }
         $months = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
             ->where('t.business_id', $biz)->groupBy('m', 't.type')
-            ->select(\DB::raw("DATE_FORMAT(t.transaction_date, '%Y-%m') as m"), 't.type', \DB::raw('COUNT(DISTINCT t.id) as purchases'), \DB::raw('COUNT(*) as lines'), \DB::raw('SUM(l.quantity) as units'))
+            ->select(\DB::raw("DATE_FORMAT(t.transaction_date, '%Y-%m') as m"), 't.type', \DB::raw('COUNT(DISTINCT t.id) as purchases'), \DB::raw('COUNT(*) as line_count'), \DB::raw('SUM(l.quantity) as units'))
             ->orderBy('m')->get();
         $locations = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id');
         $boughtSince = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
