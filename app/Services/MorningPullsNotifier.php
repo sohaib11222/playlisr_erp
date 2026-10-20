@@ -143,13 +143,19 @@ class MorningPullsNotifier
         }
         if ($rows && !empty($cfg['newest'])) {
             $lines[] = '';
-            $lines[] = '*<' . self::ROUTE_URL . 'hollywood|Pull these from the store for Nick to ship (' . count($rows) . ')>*' . ' newest first:';
-            foreach (array_slice($rows, 0, $cfg['newest']) as $r) {
+            // This month's orders only, so it isn't overwhelming (Sarah, 2026-10-19)
+            $monthStart = \Carbon::now('America/Los_Angeles')->startOfMonth()->timestamp;
+            $recent = array_values(array_filter($rows, fn($r) => (strtotime($r['order']['createdAt'] ?? '') ?: 0) >= $monthStart));
+            $older = count($rows) - count($recent);
+            if (!$recent) $recent = $rows;
+            $lines[] = '*<' . self::ROUTE_URL . 'hollywood|Pull these from the store for Nick to ship (' . count($recent) . ')>*' . ($older && $recent !== $rows ? ' ' . \Carbon::now('America/Los_Angeles')->format('F') . ' orders:' : ' newest first:');
+            foreach (array_slice($recent, 0, $cfg['newest']) as $r) {
                 $spot = self::spot($r);
                 $lines[] = '• ' . ($spot !== '' ? '*' . self::esc($spot) . '*: ' : '') . self::esc(self::itemName($r)) . ' (' . self::orderRef($r['order']) . ')';
             }
-            if (count($rows) > $cfg['newest']) {
-                $lines[] = '<' . self::ROUTE_URL . 'hollywood|+' . (count($rows) - $cfg['newest']) . ' more on the Pick Route>';
+            $more = max(0, count($recent) - $cfg['newest']) + ($recent !== $rows ? $older : 0);
+            if ($more) {
+                $lines[] = '<' . self::ROUTE_URL . 'hollywood|+' . $more . ' older on the Pick Route>';
             }
             $rows = [];
         }
