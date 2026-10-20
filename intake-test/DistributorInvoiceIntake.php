@@ -45,7 +45,7 @@ class DistributorInvoiceIntake
         $this->user_id = (int) optional(DB::table('users')->where('business_id', $this->business_id)->orderBy('id')->first())->id;
     }
 
-    // ---- settings (Slack webhook, AMS Hollywood login, mailbox override) ----
+    // ---- settings (Slack webhook, second AMS login, mailbox override) ----
 
     public static function settings()
     {
@@ -72,13 +72,18 @@ class DistributorInvoiceIntake
     public static function status()
     {
         $s = self::settings();
-        $ams = app(InventoryCheckService::class)->loadSupplierCredentials((int) optional(DB::table('business')->orderBy('id')->first())->id, 'ams');
+        try {
+            $c = (new \App\Services\SupplierFetchers\AmsFetcher())->readCredentials();
+            $amsMain = (string) $c['AMS_PORTAL_ACCOUNT'];
+        } catch (\Throwable $e) {
+            $amsMain = null;
+        }
         $mailUser = !empty($s['mail_user']) ? $s['mail_user'] : config('inventory_check.email.username');
         $mailPass = !empty($s['mail_pass']) ? $s['mail_pass'] : config('inventory_check.email.password');
         return [
             'slack' => !empty($s['slack_webhook']),
-            'ams_main' => (env('AMS_PORTAL_USER') || !empty($ams['PORTAL_USER'])) ? (env('AMS_PORTAL_ACCOUNT') ?: ($ams['PORTAL_ACCOUNT'] ?? ($ams['PORTAL_USER'] ?? ''))) : null,
-            'ams_hw' => !empty($s['ams_hw_user']) ? ($s['ams_hw_account'] ?? '131715') : null,
+            'ams_main' => $amsMain,
+            'ams2' => !empty($s['ams2_user']) ? ($s['ams2_account'] ?? '') : null,
             'mailbox' => ($mailUser && $mailPass) ? $mailUser : null,
         ];
     }
@@ -189,17 +194,18 @@ class DistributorInvoiceIntake
     private function amsLogins()
     {
         $out = [];
-        $ams = app(InventoryCheckService::class)->loadSupplierCredentials($this->business_id, 'ams');
-        $user = env('AMS_PORTAL_USER') ?: ($ams['PORTAL_USER'] ?? null);
-        $pass = env('AMS_PORTAL_PASS') ?: ($ams['PORTAL_PASS'] ?? null);
-        if ($user && $pass) {
-            $acct = env('AMS_PORTAL_ACCOUNT') ?: ($ams['PORTAL_ACCOUNT'] ?? $user);
-            $out[] = ['account' => (string) $acct, 'user' => $user, 'pass' => $pass, 'label' => 'account ' . $acct];
+        // The login the price pull uses (Inventory Check Assistant > AMS > Credentials).
+        try {
+            $c = (new \App\Services\SupplierFetchers\AmsFetcher())->readCredentials();
+            $out[] = ['account' => (string) $c['AMS_PORTAL_ACCOUNT'], 'user' => $c['AMS_PORTAL_USER'], 'pass' => $c['AMS_PORTAL_PASS'], 'label' => 'account ' . $c['AMS_PORTAL_ACCOUNT']];
+        } catch (\Throwable $e) {
+            // no main AMS login saved
         }
+        // The other AMS account, saved on the audit page.
         $s = self::settings();
-        if (!empty($s['ams_hw_user']) && !empty($s['ams_hw_pass'])) {
-            $acct = $s['ams_hw_account'] ?? '131715';
-            $out[] = ['account' => (string) $acct, 'user' => $s['ams_hw_user'], 'pass' => $s['ams_hw_pass'], 'label' => 'account ' . $acct];
+        if (!empty($s['ams2_user']) && !empty($s['ams2_pass'])) {
+            $acct = $s['ams2_account'] ?? '';
+            $out[] = ['account' => (string) $acct, 'user' => $s['ams2_user'], 'pass' => $s['ams2_pass'], 'label' => 'account ' . $acct];
         }
         return $out;
     }
@@ -230,12 +236,14 @@ class DistributorInvoiceIntake
         try {
             $base = 'https://www.allmediasupply.com';
             $this->curl($jar, 'GET', $base . '/Account/LogOn');
-            list(, $home) = $this->curl($jar, 'POST', $base . '/Account/LogOn', http_build_query([
+            // Same login as AmsFetcher (the price pull), which works server-side.
+            $this->curl($jar, 'POST', $base . '/Account/LogOn', http_build_query([
                 'AccountNumber' => $login['account'], 'UserName' => $login['user'], 'Password' => $login['pass'],
+                'RememberMe' => 'false', 'ReturnUrl' => '',
             ]), ['Content-Type: application/x-www-form-urlencoded']);
-            if (stripos($home, 'Sign out') === false) {
-                list(, $home) = $this->curl($jar, 'GET', $base . '/');
-                if (stripos($home, 'Sign out') === false) throw new \RuntimeException('login failed (check the saved AMS login)');
+            list(, $home) = $this->curl($jar, 'GET', $base . '/');
+            if (stripos($home, 'Sign out') === false && stripos($home, 'logout') === false) {
+                throw new \RuntimeException('login failed (check the saved AMS login)');
             }
             list($code, $json) = $this->curl($jar, 'POST', $base . '/Account/Invoices_Read',
                 'sort=InvoiceDate-desc&page=1&pageSize=60&group=&filter=',
