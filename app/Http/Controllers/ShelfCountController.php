@@ -162,7 +162,11 @@ class ShelfCountController extends Controller
             unset($b);
         }
         $bins = self::markPriority(array_values($bins));
-        usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
+        // High priority first (Sarah 10/20 "sort by priority"), then oldest count.
+        usort($bins, function ($a, $b) {
+            return [empty($a['priority']), -($a['web_bad'] ?? 0), -($a['web'] ?? 0), $a['last'] ?? '', $a['name']]
+                <=> [empty($b['priority']), -($b['web_bad'] ?? 0), -($b['web'] ?? 0), $b['last'] ?? '', $b['name']];
+        });
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
     }
 

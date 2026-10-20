@@ -19,7 +19,7 @@
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
-    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Bins not counted the longest are on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
+    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. High priority bins are on top, then the ones not counted the longest. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
