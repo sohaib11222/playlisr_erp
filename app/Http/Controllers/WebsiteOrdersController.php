@@ -56,6 +56,8 @@ class WebsiteOrdersController extends Controller
         'ready_ship'      => ['label' => 'Ready to Ship',     'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
         // An item marked Can't Find: decide refund or other fix (Sarah, 2026-10-19)
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
+        // Ship + pickup preorders in one tab (Sarah, 2026-10-19: simplify)
+        'preorders'       => ['label' => 'Preorders', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
         'completed'       => ['label' => 'Completed',         'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
@@ -117,7 +119,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'cant_find' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'preorders' => 0, 'cant_find' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -146,6 +148,7 @@ class WebsiteOrdersController extends Controller
             // buckets — nothing for staff to action until the street date,
             // so they're excluded from Needs Action/To Ship/Pickup below.
             if (self::orderHasPreorderItem($o)) {
+                if (in_array($status, self::TABS['preorders']['statuses'], true) && in_array($fm, ['shipping', 'pickup'], true)) $tabCounts['preorders']++;
                 if ($fm === 'shipping' && in_array($status, self::TABS['preorder_ship']['statuses'], true)) {
                     $tabCounts['preorder_ship']++;
                 }
@@ -158,6 +161,7 @@ class WebsiteOrdersController extends Controller
             if (in_array($status, self::TABS['needs_action']['statuses'], true) && !($fm === 'shipping' && self::allPicked($o))) $tabCounts['needs_action']++;
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
                 $tabCounts[self::allPicked($o) ? 'ready_ship' : 'to_ship']++;
+                if (self::allPicked($o)) $tabCounts['ready_ship_' . (self::shipStore($o) === 'pico' ? 'pico' : 'hw')]++;
             }
             if ($fm === 'pickup' && $status === 'ready_for_pickup') $tabCounts['ready_pickup']++;
             if ($fm === 'pickup' && in_array($status, self::TABS['pickup']['statuses'], true)) {
@@ -209,9 +213,17 @@ class WebsiteOrdersController extends Controller
         $filterLocations = self::erpLocations($allOrders);
         // Items waiting to be pulled at each spot (Store filter + Pick route)
         $pullCounts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
+        $needBy = ['hw' => [], 'pico' => []];
         foreach (self::pendingPulls($allOrders, $filterLocations) as $pr) {
             if (isset($pullCounts[$pr['store']])) $pullCounts[$pr['store']]++;
+            // Need to Pull split by store: HW = Hollywood store + warehouse
+            if ($paymentStatusFilter === 'all' || ($pr['order']['payment_status'] ?? '') === $paymentStatusFilter) {
+                $k = $pr['store'] === 'pico' ? 'pico' : (in_array($pr['store'], ['hollywood', 'warehouse'], true) ? 'hw' : null);
+                if ($k) $needBy[$k][(string) ($pr['order']['_id'] ?? '')] = true;
+            }
         }
+        $tabCounts['needs_action_hw'] = count($needBy['hw']);
+        $tabCounts['needs_action_pico'] = count($needBy['pico']);
         $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
@@ -220,7 +232,10 @@ class WebsiteOrdersController extends Controller
             if (!self::matchesTab($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
-            if (in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true)) {
+            if ($activeTab === 'ready_ship' && in_array($locationFilter, ['hw', 'pico'], true)) {
+                // All picked: split by the store that ships it
+                if ((self::shipStore($o) === 'pico' ? 'pico' : 'hw') !== $locationFilter) return false;
+            } elseif (in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) {
                 // Any item to pull at that spot (Hollywood store, Pico, or the
                 // warehouse), shipping or pickup. Sarah, 2026-10-16.
                 $hit = false;
@@ -723,6 +738,8 @@ class WebsiteOrdersController extends Controller
     /** Whether a pullParts() place is at that pull spot (hollywood / pico / warehouse). */
     public static function placeIsStore(string $place, string $store): bool
     {
+        // "hw" = Hollywood store + the Hollywood warehouse
+        if ($store === 'hw') return in_array(self::pullStore($place), ['hollywood', 'warehouse'], true);
         return self::pullStore($place) === $store;
     }
 
@@ -991,7 +1008,7 @@ class WebsiteOrdersController extends Controller
         // in preorder_ship/preorder_pickup, never in the regular buckets.
         if ($tab === 'cant_find') return $statusOk && self::hasCantFind($order);
         $isPreorder = self::orderHasPreorderItem($order);
-        if ($tab === 'preorder_ship' || $tab === 'preorder_pickup') {
+        if ($tab === 'preorder_ship' || $tab === 'preorder_pickup' || $tab === 'preorders') {
             return $isPreorder && $statusOk && $fulfillmentOk;
         }
         if ($isPreorder && in_array($tab, ['needs_action', 'to_ship', 'pickup', 'ready_pickup', 'ready_ship'], true)) {
@@ -1004,6 +1021,16 @@ class WebsiteOrdersController extends Controller
         if ($tab === 'ready_ship' && !self::allPicked($order)) return false;
 
         return $statusOk && $fulfillmentOk;
+    }
+
+    /** Store that ships the order: Pico when every live item ships from Pico, else Hollywood. */
+    public static function shipStore(array $o): string
+    {
+        $from = [];
+        foreach (($o['items'] ?? []) as $it) {
+            if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
+        }
+        return ($from && !array_diff($from, ['pico'])) ? 'pico' : 'hollywood';
     }
 
     /** matchesTab() for other classes (the morning Slack post). */

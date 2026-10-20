@@ -191,7 +191,7 @@
       <h1>Orders</h1>
       <p class="sub">Fulfillment for nivessa.com orders — the ERP's replacement for the website's own Orders page.</p>
     </div>
-    <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : 'hollywood']) }}" class="wo-route-btn">Pick Route &rarr;</a>
+    <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : ($locationFilter === 'hw' ? 'hollywood' : 'hollywood')]) }}" class="wo-route-btn">Pick Route &rarr;</a>
   </div>
 
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
@@ -204,18 +204,17 @@
     </div>
   @else
     @php
+      // Simplified tabs (Sarah, 2026-10-19). Ready to Ship and Need to Pull
+      // are split HW / Pico; old tab links (to_ship, pickup, ...) still work.
       $tabDefs = [
-        'ready_ship'      => ['label' => 'Ready to Ship'],
-        'needs_action'    => ['label' => 'Needs Action', 'hot' => true],
-        'to_ship'         => ['label' => 'To Ship'],
-        'pickup'          => ['label' => 'Pickup'],
+        'ready_ship'      => ['label' => 'Ready to Ship', 'split' => true],
+        'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => true],
         'ready_pickup'    => ['label' => 'Ready for Pickup'],
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
-        'preorder_ship'   => ['label' => 'Preorder · To Ship'],
-        'preorder_pickup' => ['label' => 'Preorder · Pickup'],
+        'preorders'       => ['label' => 'Preorders'],
         'completed'       => ['label' => 'Completed'],
-        'archived'        => ['label' => 'Archived'],
       ];
+      if (!isset($tabDefs[$activeTab])) $tabDefs[$activeTab] = ['label' => $activeTab === 'archived' ? 'Archived' : (\App\Http\Controllers\WebsiteOrdersController::TABS[$activeTab]['label'] ?? $activeTab)];
       $baseQuery = array_filter([
         'status' => $statusFilter,
         'payment_status' => $paymentStatusFilter,
@@ -232,11 +231,20 @@
           $count = $tabCounts[$key] ?? 0;
           $badgeClass = ($key === 'pickup' && ($tabCounts['pickup_overdue'] ?? 0) > 0) ? 'overdue' : ((($def['hot'] ?? false) && $count > 0) ? 'hot' : '');
         @endphp
+        @if(!empty($def['split']))
+          <span class="wo-tab {{ $activeTab === $key ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
+            <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}" style="color:inherit;text-decoration:none;">{{ $def['label'] }}</a>
+            @foreach(['hw' => 'HW', 'pico' => 'Pico'] as $lk => $ll)
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-badge {{ $badgeClass }}" style="text-decoration:none;{{ $activeTab === $key && $locationFilter === $lk ? 'outline:2px solid #1e40af;' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}</a>
+            @endforeach
+          </span>
+        @else
         <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key])) }}"
            class="wo-tab {{ $activeTab === $key ? 'active' : '' }}">
           {{ $def['label'] }}
           <span class="wo-badge {{ $badgeClass }}">{{ $count }}</span>
         </a>
+        @endif
       @endforeach
     </div>
 
@@ -270,7 +278,7 @@
     @if(($unknownLocationCount ?? 0) > 0)
       <div class="wo-banner overdue"><strong>{{ $unknownLocationCount }} pickup {{ $unknownLocationCount === 1 ? 'order has' : 'orders have' }} no pickup location set.</strong></div>
     @endif
-    @if(in_array($activeTab, ['preorder_ship', 'preorder_pickup'], true) && !empty($preorderSummary))
+    @if(in_array($activeTab, ['preorder_ship', 'preorder_pickup', 'preorders'], true) && !empty($preorderSummary))
       <div class="wo-card" style="margin-bottom:16px;border-color:#fed7aa;">
         <div style="padding:8px 12px;background:#ffedd5;color:#9a3412;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total preorders per album (ship + pickup combined)</div>
         <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
@@ -327,6 +335,7 @@
         <label>Store</label>
         <select name="location" onchange="this.form.submit()">
           <option value="">All Stores</option>
+          <option value="hw" {{ $locationFilter === 'hw' ? 'selected' : '' }}>HW (store + warehouse)</option>
           <option value="hollywood" {{ $locationFilter === 'hollywood' ? 'selected' : '' }}>Hollywood ({{ $pullCounts['hollywood'] ?? 0 }} to pull)</option>
           <option value="pico" {{ $locationFilter === 'pico' ? 'selected' : '' }}>Pico ({{ $pullCounts['pico'] ?? 0 }} to pull)</option>
           <option value="warehouse" {{ $locationFilter === 'warehouse' ? 'selected' : '' }}>Warehouse ({{ $pullCounts['warehouse'] ?? 0 }} to pull)</option>
@@ -354,7 +363,7 @@
       <div class="ev-card"><div class="empty">No orders in this view.
         {{-- Store filter on a tab with nothing to pull: point to where the pulls are (Sarah, 2026-10-19) --}}
         @if(in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) && $activeTab !== 'needs_action' && ($pullCounts[$locationFilter] ?? 0) > 0)
-          <div style="margin-top:10px;font-size:15px;font-weight:700;color:#000;">{{ ucfirst($locationFilter) }} has {{ $pullCounts[$locationFilter] }} items to pull on the Needs Action tab.
+          <div style="margin-top:10px;font-size:15px;font-weight:700;color:#000;">{{ ucfirst($locationFilter) }} has {{ $pullCounts[$locationFilter] }} items on the Need to Pull tab.
             <a href="{{ route('website-orders.index', ['tab' => 'needs_action', 'location' => $locationFilter]) }}" style="display:inline-block;margin-left:8px;padding:8px 14px;border-radius:6px;background:#1e40af;color:#fff;text-decoration:none;">Show them</a>
           </div>
         @endif
@@ -458,7 +467,7 @@
                 @php
                   // Store filter: show only the items that store pulls; the
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
-                  $woStore = in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : null;
+                  $woStore = ($activeTab !== 'ready_ship' && in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) ? $locationFilter : null;
                   $lineShow = [];
                   $cfTab = $activeTab === 'cant_find'; // only the Can't Find lines
                   $offQueue = ($woStore || $cfTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
@@ -503,7 +512,7 @@
                   // separate checklist cut names to one letter). Matched by name.
                   $pickLines = [];
                   foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
-                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action', 'cant_find'], true);
+                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find'], true);
                 @endphp
                 <td class="wo-loc @if($pickable) wo-pick @endif" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
                   {{-- One block per product, kept level with its product by
@@ -645,7 +654,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action', 'cant_find'], true))
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
                     <div class="wo-pick-count" style="margin-top:6px;font-size:12px;font-weight:700;color:{{ ($pp['picked'] ?? 0) >= ($pp['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pp['picked'] ?? 0 }}</span>/<span class="t">{{ $pp['total'] ?? 0 }}</span></div>
