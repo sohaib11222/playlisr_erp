@@ -41,10 +41,32 @@ jobs:
             <?php
             require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
             foreach (['RawImapClient','PdfTextExtractor','DistributorInvoiceParser','DistributorInvoiceIntake'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
-            $r = (new App\Services\DistributorInvoiceIntake())->run(60, null, true);
-            foreach ($r as $e) echo "[" . ($e['status'] ?? '') . "] " . strtoupper($e['distributor'] ?? '') . " " . ($e['invoice'] ?? '') . " | " . ($e['msg'] ?? '') . "\n";
-            echo "entries: " . count($r) . "\n";
-            echo json_encode(App\Services\DistributorInvoiceIntake::status()) . "\n";
+            $ams = app(App\Services\InventoryCheckService::class)->loadSupplierCredentials(1, 'ams');
+            $jar = tempnam('/tmp', 'amsd'); $base = 'https://www.allmediasupply.com';
+            $c = function ($m, $u, $b = null, $h = []) use ($jar) { $ch = curl_init($u); curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_TIMEOUT=>60, CURLOPT_USERAGENT=>'Mozilla/5.0', CURLOPT_COOKIEJAR=>$jar, CURLOPT_COOKIEFILE=>$jar, CURLOPT_HTTPHEADER=>$h]); if ($m==='POST') { curl_setopt($ch, CURLOPT_POST, 1); curl_setopt($ch, CURLOPT_POSTFIELDS, $b); } $r = curl_exec($ch); curl_close($ch); return $r; };
+            $c('GET', $base.'/Account/LogOn');
+            $home = $c('POST', $base.'/Account/LogOn', http_build_query(['AccountNumber'=>$ams['PORTAL_ACCOUNT'] ?? '', 'UserName'=>$ams['PORTAL_USER'] ?? '', 'Password'=>$ams['PORTAL_PASS'] ?? '']), ['Content-Type: application/x-www-form-urlencoded']);
+            echo "signed in: " . (stripos($home, 'Sign out') !== false ? 'yes' : 'no') . "\n";
+            $j = json_decode($c('POST', $base.'/Account/Invoices_Read', 'sort=InvoiceDate-desc&page=1&pageSize=60&group=&filter=', ['Content-Type: application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With: XMLHttpRequest']), true);
+            echo "total invoices: " . ($j['Total'] ?? '?') . "\n";
+            $since = strtotime('2026-08-21');
+            foreach (($j['Data'] ?? []) as $i => $row) {
+              $ts = preg_match('/Date\((\d+)\)/', $row['InvoiceDate'], $m) ? (int)($m[1]/1000) : 0;
+              if ($ts < $since) continue;
+              $inv = str_pad((string)$row['InvoiceNumber'], 7, '0', STR_PAD_LEFT);
+              $side = Storage::disk('local')->exists("ams-imports/$inv.json");
+              $line = date('Y-m-d', $ts) . " $inv acct {$row['AccountNumber']} sidecar " . ($side ? 'yes' : 'NO');
+              if ($i < 6 || !$side) {
+                $pdf = $c('GET', $base.'/Account/GetDocument/'.(int)$row['DocumentId']);
+                $p = App\Services\DistributorInvoiceParser::parse('ams', $pdf);
+                $line .= " | parsed {$p['header']['invoice']} {$p['header']['date']} acct " . ($p['header']['account'] ?? '?') . " lines " . count($p['items']) . " sum {$p['sum']} goods " . ($p['totals']['goods'] ?? '?') . " match " . var_export($p['goods_matches'], true);
+                foreach ($p['items'] as $it) if (strpos($it['upc'], '5061110805478') !== false || stripos($it['description'], 'GONG') === 0) $line .= " | GONG: " . json_encode($it);
+                $types = []; foreach ($p['items'] as $it) $types[$it['prodType']] = ($types[$it['prodType']] ?? 0) + 1; $line .= ' types ' . json_encode($types);
+                if ($side) { $sc = json_decode(Storage::disk('local')->get("ams-imports/$inv.json"), true); $tx = DB::table('purchase_lines')->where('transaction_id', $sc['transaction_id'] ?? 0)->count(); $line .= " | ERP tx {$sc['transaction_id']} lines $tx (missing " . (count($p['items']) - $tx) . ")"; }
+              }
+              echo $line . "\n";
+            }
+            @unlink($jar);
             PHP
             php /tmp/nivessa-diag/run.php 2>&1 | grep -v Deprecated | head -120
             rm -rf /tmp/nivessa-diag
