@@ -1396,14 +1396,19 @@
       var prods = tr.querySelectorAll('.wo-prod-line');
       var locs = tr.querySelectorAll('td.wo-loc .wo-loc-line');
       locs.forEach(function (l) { l.style.minHeight = ''; l.style.marginTop = ''; });
+      prods.forEach(function (p) { p.style.minHeight = ''; p.style.marginTop = ''; });
       if (!prods.length || prods.length !== locs.length) return;
-      var base = locs[0].parentNode.getBoundingClientRect().top;
+      // Line each product up with its location: whichever side is lower or
+      // taller pushes the other, so pick buttons sit beside their item.
       locs.forEach(function (l, i) {
         var pr = prods[i].getBoundingClientRect();
         var lr = l.getBoundingClientRect();
         var shift = pr.top - lr.top;
         if (shift > 0) l.style.marginTop = shift + 'px';
-        l.style.minHeight = pr.height + 'px';
+        else if (shift < 0) prods[i].style.marginTop = (-shift) + 'px';
+        var h = Math.max(prods[i].getBoundingClientRect().height, l.getBoundingClientRect().height);
+        l.style.minHeight = h + 'px';
+        prods[i].style.minHeight = h + 'px';
       });
     });
   }
