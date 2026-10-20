@@ -364,8 +364,8 @@ class ProductController extends Controller
                 }
                 if (!$spots) { return '--'; }
                 return implode('', array_map(function ($sp) {
-                    return '<div style="margin-bottom:6px; line-height:1.3; min-width:120px;"><div style="font-weight:700; font-size:16px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[0]) . '</div>'
-                        . ($sp[1] !== '' ? '<div style="font-size:14px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[1]) . '</div>' : '') . '</div>';
+                    return '<div style="margin-bottom:6px; line-height:1.3; min-width:120px;"><div style="font-weight:700; font-size:20px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[0]) . '</div>'
+                        . ($sp[1] !== '' ? '<div style="font-size:16px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[1]) . '</div>' : '') . '</div>';
                 }, $spots));
             };
 
