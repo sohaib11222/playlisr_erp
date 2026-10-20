@@ -561,6 +561,14 @@
                         <div style="font-size:11px;color:#9a3412;margin-top:3px;">Ships {{ gmdate('M j, Y', strtotime($rowShipDate)) }}</div>
                       @endif
                     </div>
+                  @else
+                    @php
+                      // Released preorders keep their street date (Sarah, 2026-10-19: show it on Ready for Pickup)
+                      $streetDates = collect($o['items'] ?? [])->pluck('product_id.preorderShipDate')->filter()->sort()->values();
+                    @endphp
+                    @if($streetDates->isNotEmpty())
+                      <div style="font-size:12px;color:#000;margin-top:5px;font-weight:600;">Street date {{ gmdate('m/d/y', strtotime($streetDates->first())) }}</div>
+                    @endif
                   @endif
                 </td>
                 <td>
