@@ -26,13 +26,26 @@
 #scProg { font-size: 15px; color: #1F1B16; }
 .sc-sum td { padding: 6px 8px; border-top: 1px solid #F3ECE1; font-size: 14px; }
 .miss { color: #8E1B1B; font-weight: 700; }
+.sc-how { background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; padding: 10px 14px; margin: 8px 0; font-size: 15px; color: #1F1B16; }
+.sc-how ol { margin: 6px 0 0 18px; padding: 0; }
+.sc-how li { margin-bottom: 4px; }
+.sc-all { height: 44px; border-radius: 10px; border: 1px solid #2E6B2E; background: #fff; color: #2E6B2E; font-size: 14px; font-weight: 700; padding: 0 10px; cursor: pointer; margin-right: 6px; }
 </style>
 <div class="sc-wrap">
     <a class="sc-small" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $kind }}">Back to bins</a>
     <h1>{{ $kindLabel }} / {{ $name }}</h1>
-    <div class="sc-small">{{ ucfirst($locations[$loc] ?? '') }}. The ERP expects {{ count($items) }} titles here. Scan each record (or type the artist and press Enter). For records without a barcode, tap + next to it in the list below. If a title isn't here, tap - so it shows None. Titles you don't touch are left as they are.</div>
+    <div class="sc-how">
+        <b>How to count this bin ({{ ucfirst($locations[$loc] ?? '') }}, {{ count($items) }} titles)</b>
+        <ol>
+            <li>Set Sort to match how the bin is filed (usually Artist).</li>
+            <li>Flip through the bin and follow along in the list. No need to pull records out or scan.</li>
+            <li>If the copies match the ERP number, tap <b>All here</b>. If not, use <b>+</b> and <b>-</b> to set how many are there. Not there at all: tap <b>-</b> until it says None.</li>
+            <li>A record in the bin that isn't on the list: type the artist in the box below and tap it to add it.</li>
+            <li>When you finish (or need to stop), tap the green <b>Done: review and save</b> at the bottom, then <b>Save counts for this bin</b>. Titles you didn't touch stay as they are, so you can finish the rest another day.</li>
+        </ol>
+    </div>
     <div class="sc-scan">
-        <input id="scQ" type="text" placeholder="Scan barcode or type artist / title" autofocus autocomplete="off">
+        <input id="scQ" type="text" placeholder="Type artist / title to add a record (or scan)" autocomplete="off">
         <button class="sc-btn light" id="scCamBtn" type="button">Camera</button>
     </div>
     <div id="scCam"></div>
@@ -65,6 +78,7 @@
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
         return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
+            + (i.erp > 0 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
             + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + (none ? 'None' : n) + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
     }
     // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
@@ -114,6 +128,7 @@
         var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : (count[i.id] ? 'Removed: ' : 'None here: ')) + label(i) + (count[i.id] || d > 0 ? ' (' + count[i.id] + ')' : '');
     }
     document.querySelector('.sc-wrap').addEventListener('click', function (e) {
+        var all = e.target.closest('.sc-all'); if (all) { var ai = byId[all.closest('.sc-item').getAttribute('data-id')]; bump(ai, Math.round(ai.erp) - (count[ai.id] || 0)); return; }
         var b = e.target.closest('.sc-pm'); if (b) { var id = b.closest('.sc-item').getAttribute('data-id'); bump(byId[id], parseInt(b.getAttribute('data-d'), 10)); return; }
         var c = e.target.closest('.sc-choice'); if (c) { var x = JSON.parse(c.getAttribute('data-i')); bump(byId[x.id] || x, 1); document.getElementById('scChoices').innerHTML = ''; document.getElementById('scQ').focus(); }
     });
