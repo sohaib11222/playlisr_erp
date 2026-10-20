@@ -1526,6 +1526,13 @@ class WebsiteOrdersController extends Controller
         return $this->websiteApi('POST', $path, $body, $timeout);
     }
 
+    /** Newest paid orders incl. archived, for read-only reports (website stock rule check). */
+    public function recentPaidOrders(): array
+    {
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=500&payment_status=completed&includeArchived=1', null, 60);
+        return ($resp === null || ($resp['success'] ?? true) === false) ? [] : ($resp['data'] ?? []);
+    }
+
     protected function websiteApi(string $method, string $path, array $body = null, int $timeout = 10): ?array
     {
         $key = $this->erpApiKey();

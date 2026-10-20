@@ -657,6 +657,68 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         }
         return response()->json(['cutoff' => $from, 'hidden_products' => count($hiddenIds), 'pushed_to_website' => $pushed, 'sample_hidden' => array_slice(array_keys($hiddenIds), 0, 5), 'store_stock' => $groups, 'locations' => $locations, 'purchases_by_month' => $months]);
     });
+    // Read-only (Sarah 10/20): would the website stock rule have stopped the
+    // recent web order problems (cancelled lines, Can't Find), and how many
+    // good store sales would it have blocked? Judged as of each order's date.
+    Route::get('/products/website-stock-rule/check', function (\Illuminate\Http\Request $request) {
+        @set_time_limit(300);
+        $biz = (int) $request->session()->get('user.business_id');
+        $from = \App\Services\WebsiteStockRule::from($biz);
+        $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
+        $orders = app(\App\Http\Controllers\WebsiteOrdersController::class)->recentPaidOrders();
+        $ids = [];
+        foreach ($orders as $o) foreach (($o['items'] ?? []) as $it) { $pid = (int) ($it['product_id']['posProductId'] ?? 0); if ($pid) $ids[$pid] = true; }
+        $ids = array_keys($ids);
+        $stocked = [];
+        foreach (\DB::table('variation_location_details as v')->join('business_locations as bl', 'bl.id', '=', 'v.location_id')->whereIn('v.product_id', $ids ?: [0])
+            ->select('v.product_id', 'v.location_id', 'bl.name')->get() as $r) {
+            $stocked[(int) $r->product_id][(int) $r->location_id] = (string) $r->name;
+        }
+        $buys = [];
+        foreach (\DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->whereIn('l.product_id', $ids ?: [0])
+            ->where('t.type', 'purchase')->where('t.transaction_date', '>=', $from)->select('l.product_id', 't.transaction_date')->get() as $r) {
+            $buys[(int) $r->product_id][] = (string) $r->transaction_date;
+        }
+        $cats = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->whereIn('p.id', $ids ?: [0])->pluck('c.name', 'p.id')->all();
+        $out = ['orders_checked' => count($orders), 'oldest_order' => null, 'problems' => [], 'good_store_sales' => ['kept' => 0, 'would_block' => 0], 'problem_items' => []];
+        foreach ($orders as $o) {
+            $at = date('Y-m-d H:i:s', strtotime($o['createdAt'] ?? 'now'));
+            if (!$out['oldest_order'] || $at < $out['oldest_order']) $out['oldest_order'] = $at;
+            $cantFind = [];
+            foreach (($o['pick_progress']['lines'] ?? []) as $pl) if (($pl['status'] ?? '') === "Can't Find") $cantFind[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+            $orderCancelled = ($o['order_status'] ?? '') === 'cancelled';
+            foreach (($o['items'] ?? []) as $it) {
+                if (!empty($it['is_gift_card'])) continue;
+                $pid = (int) ($it['product_id']['posProductId'] ?? 0);
+                $name = trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? '')));
+                $problem = !empty($it['cancelled']) || $orderCancelled ? 'cancelled' : (isset($cantFind[strtolower($name)]) ? "can't find" : null);
+                $locs = $pid ? ($stocked[$pid] ?? []) : [];
+                $storeLocs = array_filter($locs, function ($n) { return stripos($n, 'warehouse') === false; });
+                if (!$pid || !$locs) $src = 'discogs/other';
+                elseif (!$storeLocs) $src = 'warehouse';
+                else $src = 'store';
+                $verdict = null;
+                if ($src === 'store') {
+                    if (preg_match('/comic|magazine/i', (string) ($cats[$pid] ?? ''))) $verdict = 'kept (comic/magazine)';
+                    else {
+                        $ok = false;
+                        foreach ($storeLocs as $lid => $n) { $c = $counts[$lid . ':' . $pid]['at'] ?? ''; if ($c >= $from && $c <= $at) $ok = true; }
+                        foreach ($buys[$pid] ?? [] as $d) if ($d <= $at) $ok = true;
+                        $verdict = $ok ? 'kept' : 'would hide';
+                    }
+                }
+                if ($problem) {
+                    $k = $problem . ' | ' . $src . ($verdict ? ' | ' . $verdict : '');
+                    $out['problems'][$k] = ($out['problems'][$k] ?? 0) + 1;
+                    $out['problem_items'][] = ['order' => $o['orderId'] ?? ($o['_id'] ?? ''), 'date' => substr($at, 0, 10), 'item' => $name, 'cat' => $cats[$pid] ?? null, 'problem' => $problem, 'source' => $src, 'rule' => $verdict, 'reason' => $o['cancel_reason'] ?? null];
+                } elseif ($src === 'store') {
+                    $out['good_store_sales'][$verdict === 'would hide' ? 'would_block' : 'kept']++;
+                }
+            }
+        }
+        ksort($out['problems']);
+        return response()->json($out);
+    });
     // Read-only: website sales last N days split by used/sealed and by how
     // old the copy was when it sold (what a website age rule would block).
     Route::get('/products/web-sales-age', function (\Illuminate\Http\Request $request) {
