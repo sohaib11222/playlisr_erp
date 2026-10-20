@@ -110,8 +110,9 @@ class MorningPullsNotifier
         if ($r['store'] === 'warehouse') {
             return implode(' / ', array_filter([$p['area'], $p['bin'] !== '' ? 'Bin ' . $p['bin'] : ''], fn($x) => $x !== ''));
         }
-        if (($p['genre'] ?? '') !== '') return $p['genre'];
+        // "Vinyl - Used / Rock": format section + genre bin (Sarah, 2026-10-14)
         if ($r['genre_full'] !== '') return $r['genre_full'];
+        if (($p['genre'] ?? '') !== '') return $p['genre'];
         return $p['bin'] !== '' ? 'Bin ' . $p['bin'] : '';
     }
 
@@ -205,6 +206,7 @@ class MorningPullsNotifier
         $p = is_array($r['item']['product_id'] ?? null) ? $r['item']['product_id'] : [];
         $name = trim($r['name']);
         $artist = trim((string) ($p['artist'] ?? ''));
+        if (strcasecmp($artist, 'Unknown Artist') === 0) $artist = '';
         $q = max(1, (int) ($r['item']['quantity'] ?? 1));
         return (($artist !== '' && stripos($name, $artist) === false) ? "{$artist} - {$name}" : $name) . ($q > 1 ? " x{$q}" : '');
     }
