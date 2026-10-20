@@ -77,7 +77,7 @@ class DistributorInvoiceAuditController extends Controller
         foreach ($this->loadRegistry() as $k => $r) {
             $invoices[$k] = $r + ['source' => $r['source'] ?? 'registry'];
         }
-        foreach (['ams' => 'ams-imports', 'alliance' => 'alliance-imports'] as $dist => $dir) {
+        foreach (['ams' => 'ams-imports', 'alliance' => 'alliance-imports', 'redeye' => 'redeye-imports'] as $dist => $dir) {
             foreach (Storage::disk('local')->files($dir) as $f) {
                 $j = json_decode(Storage::disk('local')->get($f), true) ?: [];
                 $inv = $j['invoice'] ?? basename($f, '.json');

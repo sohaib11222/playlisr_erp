@@ -44,6 +44,17 @@ class DistributorInvoiceImport
             'supplier_like' => ['Alliance Entertainment'],
             'accounts' => ['048452' => 'hollywood', '065706' => 'pico'],
         ],
+        // Redeye sends no PDF invoice we receive; orders are logged from the
+        // order confirmation email (lines posted to the import endpoints).
+        'redeye' => [
+            'label' => 'Redeye',
+            'long' => 'Redeye Worldwide',
+            'ref' => 'REDEYE-',
+            'dir' => 'redeye-imports',
+            'action' => 'redeye-invoice-import',
+            'supplier_like' => ['Redeye Worldwide'],
+            'accounts' => ['54497' => 'hollywood'],
+        ],
     ];
 
     // Category names new products can land in (top-level, product type).

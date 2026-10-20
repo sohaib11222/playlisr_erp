@@ -63,6 +63,16 @@ class AmsInvoiceImportController extends Controller
         return $this->runApply($request, 'alliance');
     }
 
+    public function redeyePreview(Request $request)
+    {
+        return $this->runPreview($request, 'redeye');
+    }
+
+    public function redeyeApply(Request $request)
+    {
+        return $this->runApply($request, 'redeye');
+    }
+
     private function showPage($distributor)
     {
         if (!$this->canAccess()) {

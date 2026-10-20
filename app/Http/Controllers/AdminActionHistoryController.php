@@ -243,14 +243,14 @@ class AdminActionHistoryController extends Controller
         // already-imported sidecar so it can be re-imported. Refuses if the
         // purchase was received since (stock involved — delete it from
         // Purchases instead).
-        if ($action === 'ams-invoice-import' || $action === 'alliance-invoice-import') {
+        if (in_array($action, ['ams-invoice-import', 'alliance-invoice-import', 'redeye-invoice-import'], true)) {
             if (empty($data['transaction_id'])) {
                 return redirect('/admin/admin-action-history')
                     ->with('status', ['success' => 0, 'msg' => 'Snapshot missing transaction id.']);
             }
             list($ok, $msg) = \App\Services\DistributorInvoiceImport::undo($data);
             if ($ok) {
-                $distributor = $action === 'ams-invoice-import' ? 'ams' : 'alliance';
+                $distributor = substr($action, 0, strpos($action, '-'));
                 $invoice = $data['invoice'] ?? '';
                 $sidecar = $invoice !== '' ? \App\Services\DistributorInvoiceImport::sidecarPath($distributor, $invoice) : null;
                 if ($sidecar && Storage::disk('local')->exists($sidecar)) {
