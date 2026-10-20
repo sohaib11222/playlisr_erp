@@ -19,6 +19,8 @@
 .sc-item.seen { border-color: #2E6B2E; background: #F2FAF2; }
 .sc-item.none { border-color: #8E1B1B; background: #FBF1F1; }
 .sc-item.none .n { font-size: 15px; color: #8E1B1B; }
+.sc-n { width: 64px; height: 44px; border-radius: 10px; border: 2px solid #1F1B16; font-size: 20px; font-weight: 800; text-align: center; }
+.sc-item.none .sc-n { border-color: #8E1B1B; color: #8E1B1B; }
 .sc-pm { width: 44px; height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; font-size: 22px; font-weight: 700; cursor: pointer; }
 .sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #2B2620; margin: 16px 0 6px; }
 #scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; }
@@ -40,7 +42,7 @@
         <ol>
             <li>Set Sort to match how the bin is filed (usually Artist).</li>
             <li>Flip through the bin and follow along in the list. No need to pull records out or scan.</li>
-            <li>Titles with 1 or 2 copies: if they're all there, tap <b>All here</b>. 3 or more copies: tap <b>+</b> once per copy you see. Use <b>-</b> to fix a mistake. Not there at all: tap <b>None</b>.</li>
+            <li>Titles with 1 or 2 copies: if they're all there, tap <b>All here</b>. 3 or more copies: count them and type the number in the box. Not there at all: tap <b>None</b>. To fix a mistake, type the right number.</li>
             <li>A record in the bin that isn't on the list: type the artist in the box below and tap it to add it.</li>
             <li>When you finish (or need to stop), tap the green <b>Done: review and save</b> at the bottom, then <b>Save counts for this bin</b>. Titles you didn't touch stay as they are, so you can finish the rest another day.</li>
         </ol>
@@ -81,7 +83,7 @@
         return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
             + (i.erp > 0 && i.erp <= 2 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
             + (!none ? '<button class="sc-all sc-zero" type="button">None</button>' : '')
-            + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + (none ? 'None' : n) + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
+            + '<input class="sc-n" type="number" inputmode="numeric" min="0" step="1" aria-label="Copies here" placeholder="#" value="' + (touched[i.id] ? n : '') + '"></div>';
     }
     // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
     // title or bin spot. Choice remembered on this device.
@@ -98,7 +100,10 @@
     sortItems(sortSel.value);
     sortSel.addEventListener('change', function () { try { localStorage.setItem(SORT_KEY, sortSel.value); } catch (e) {} sortItems(sortSel.value); render(); });
     function render() {
+        // Keep the cursor in the box she moved to while the list redraws.
+        var ae = document.activeElement, keep = ae && ae.classList && ae.classList.contains('sc-n') ? ae.closest('.sc-item').getAttribute('data-id') : null;
         document.getElementById('scList').innerHTML = items.map(row).join('');
+        if (keep) setTimeout(function () { var el = document.querySelector('.sc-item[data-id="' + keep + '"] .sc-n'); if (el) el.focus(); }, 0);
         document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
         document.getElementById('scExtra').innerHTML = extra.map(row).join('');
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
@@ -129,6 +134,17 @@
         render();
         var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : (count[i.id] ? 'Removed: ' : 'None here: ')) + label(i) + (count[i.id] || d > 0 ? ' (' + count[i.id] + ')' : '');
     }
+    // Type the number of copies on the shelf (Sarah 10/20: "key in instead of + and -").
+    document.querySelector('.sc-wrap').addEventListener('change', function (e) {
+        var inp = e.target.closest('.sc-n'); if (!inp) return;
+        var it = byId[inp.closest('.sc-item').getAttribute('data-id')];
+        if (inp.value === '') { delete touched[it.id]; count[it.id] = 0; keepDraft(); render(); return; }
+        var v = Math.max(0, parseInt(inp.value, 10) || 0);
+        bump(it, v - (count[it.id] || 0));
+    });
+    document.querySelector('.sc-wrap').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.closest('.sc-n')) e.target.blur();
+    });
     document.querySelector('.sc-wrap').addEventListener('click', function (e) {
         var z = e.target.closest('.sc-zero'); if (z) { var zi = byId[z.closest('.sc-item').getAttribute('data-id')]; count[zi.id] = 0; bump(zi, 0); return; }
         var all = e.target.closest('.sc-all'); if (all) { var ai = byId[all.closest('.sc-item').getAttribute('data-id')]; bump(ai, Math.round(ai.erp) - (count[ai.id] || 0)); return; }
