@@ -210,6 +210,7 @@
         'to_ship'         => ['label' => 'To Ship'],
         'pickup'          => ['label' => 'Pickup'],
         'ready_pickup'    => ['label' => 'Ready for Pickup'],
+        'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
         'preorder_ship'   => ['label' => 'Preorder · To Ship'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup'],
         'completed'       => ['label' => 'Completed'],
@@ -459,12 +460,13 @@
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
                   $woStore = in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : null;
                   $lineShow = [];
-                  $offQueue = $woStore ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o) : [];
+                  $cfTab = $activeTab === 'cant_find'; // only the Can't Find lines
+                  $offQueue = ($woStore || $cfTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
                     // Store queue hides items already picked or marked Can't Find
                     if ($woStore && !empty($it['cancelled'])) { $lineShow[$i] = false; continue; }
-                    if ($woStore && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
+                    if (($woStore || $cfTab) && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
                     $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
                     $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
                   }
@@ -501,7 +503,7 @@
                   // separate checklist cut names to one letter). Matched by name.
                   $pickLines = [];
                   foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
-                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action'], true);
+                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action', 'cant_find'], true);
                 @endphp
                 <td class="wo-loc @if($pickable) wo-pick @endif" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
                   {{-- One block per product, kept level with its product by
@@ -635,7 +637,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action'], true))
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'needs_action', 'cant_find'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
                     <div class="wo-pick-count" style="margin-top:6px;font-size:12px;font-weight:700;color:{{ ($pp['picked'] ?? 0) >= ($pp['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pp['picked'] ?? 0 }}</span>/<span class="t">{{ $pp['total'] ?? 0 }}</span></div>

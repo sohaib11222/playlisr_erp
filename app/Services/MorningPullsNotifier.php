@@ -66,17 +66,41 @@ class MorningPullsNotifier
             throw new \RuntimeException('could not load website orders');
         }
         $orders = $web['data'] ?? [];
-        $rows = array_values(array_filter(WO::pendingPulls($orders, WO::erpLocations($orders)), function ($r) use ($cfg) {
-            // Pending arrival isn't on the shelf yet
-            return in_array($r['store'], $cfg['places'], true) && $r['pick_status'] !== 'Pending Arrival';
+        $all = WO::pendingPulls($orders, WO::erpLocations($orders));
+        $rows = array_values(array_filter($all, fn($r) => in_array($r['store'], $cfg['places'], true) && $r['pick_status'] !== 'Pending Arrival'));
+        // Marked Pending Arrival: check if it came in (e.g. distributor CDs)
+        $waiting = array_values(array_filter($all, fn($r) => in_array($r['store'], $cfg['places'], true) && $r['pick_status'] === 'Pending Arrival'));
+        // Every item picked: pack and ship. Pico ships its own; the rest is Hollywood's.
+        $ready = array_values(array_filter($orders, function ($o) use ($store) {
+            if (($o['payment_status'] ?? '') !== 'completed' || !WO::inTab($o, 'ready_ship')) return false;
+            $from = [];
+            foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
+            return ($from && !array_diff($from, ['pico']) ? 'pico' : 'hollywood') === $store;
         }));
-        if (!$rows) return null;
+        if (!$rows && !$waiting && !$ready) return null;
 
         $tags = self::tags($userIds);
         $now = \Carbon::now('America/Los_Angeles');
-        $lines = ['*' . $cfg['label'] . ' pulls for ' . $now->format('D m/d/y') . '*'];
-        $lines[] = ($tags ? implode(' ', $tags) . ' ' : '') . 'please pull these today and tap Picked or Can\'t find on the Pick Route.';
+        $lines = ['*' . $cfg['label'] . ' for ' . $now->format('D m/d/y') . '*'];
+        $lines[] = ($tags ? implode(' ', $tags) . ' ' : '') . 'here is what to do today. Tap Picked or Can\'t find on the Pick Route as you go.';
+
+        if ($ready) {
+            usort($ready, fn($a, $b) => strcmp((string) ($a['createdAt'] ?? ''), (string) ($b['createdAt'] ?? '')));
+            $lines[] = '';
+            $lines[] = '*Ship these (all picked)* (' . count($ready) . ')';
+            foreach ($ready as $o) {
+                $n = 0;
+                foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $n += max(1, (int) ($it['quantity'] ?? 1));
+                $lines[] = '• ' . self::orderRef($o) . ' · ' . $n . ' item' . ($n === 1 ? '' : 's')
+                    . (($o['ship_speed'] ?? null) === 'priority' ? ' · *PRIORITY*' : '') . self::late($o) . self::note($o);
+            }
+        }
+
         $shown = 0;
+        if ($rows) {
+            $lines[] = '';
+            $lines[] = '*Pull these* (' . count($rows) . ')';
+        }
         foreach ($cfg['places'] as $place) {
             $here = array_values(array_filter($rows, fn($r) => $r['store'] === $place));
             if (!$here) continue;
@@ -84,23 +108,46 @@ class MorningPullsNotifier
             usort($here, function ($a, $b) {
                 return strnatcasecmp(self::spot($a), self::spot($b));
             });
-            $lines[] = '';
-            $lines[] = '*' . self::PLACE_LABEL[$place] . '* (' . count($here) . ') <' . self::ROUTE_URL . $place . '|Pick Route>';
+            $lines[] = '_' . self::PLACE_LABEL[$place] . '_ (' . count($here) . ') <' . self::ROUTE_URL . $place . '|Pick Route>';
             foreach ($here as $r) {
                 if ($shown >= self::MAX_LINES) break 2;
                 $shown++;
-                $o = $r['order'];
-                $due = WO::dueDate($o);
-                $late = $due && $due[1] === 'over' ? ' *LATE*' : '';
                 $spot = self::spot($r);
                 $lines[] = '• ' . ($spot !== '' ? '*' . self::esc($spot) . '*: ' : '') . self::esc(self::itemName($r))
-                    . ' (#' . ($o['orderNumber'] ?? '') . ' ' . self::esc(self::buyer($o)) . ')' . $late;
+                    . ' (' . self::orderRef($r['order']) . ')' . self::late($r['order']);
             }
         }
         if ($shown < count($rows)) {
             $lines[] = '+' . (count($rows) - $shown) . ' more on the Pick Route';
         }
+
+        if ($waiting) {
+            $lines[] = '';
+            $lines[] = '*Pending arrival: check if these came in* (' . count($waiting) . ')';
+            foreach ($waiting as $r) {
+                $lines[] = '• ' . self::esc(self::itemName($r)) . ' (' . self::orderRef($r['order']) . ')' . self::note($r['order']);
+            }
+        }
         return implode("\n", $lines);
+    }
+
+    /** "<link|#724> John Iuele" */
+    private static function orderRef(array $o): string
+    {
+        return '<https://playlist.nivessa.com/website-orders?order=' . ($o['_id'] ?? '') . '|#' . ($o['orderNumber'] ?? '') . '> ' . self::esc(self::buyer($o));
+    }
+
+    private static function late(array $o): string
+    {
+        $due = WO::dueDate($o);
+        return $due && $due[1] === 'over' ? ' *LATE*' : '';
+    }
+
+    /** The order's staff note, e.g. "Alec shipped the Pico part 10/19". */
+    private static function note(array $o): string
+    {
+        $t = trim((string) ($o['staff_note']['text'] ?? ''));
+        return $t !== '' ? "\n      Note: " . self::esc(mb_strimwidth(preg_replace('/\s+/', ' ', $t), 0, 200, '...')) : '';
     }
 
     /** "HW Main Floor / Bin pico19" (warehouse) or "Vinyl - Used / Rock" (store). */

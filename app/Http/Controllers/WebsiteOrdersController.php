@@ -54,6 +54,8 @@ class WebsiteOrdersController extends Controller
         'ready_pickup'    => ['label' => 'Ready for Pickup',  'statuses' => ['ready_for_pickup'], 'fulfillment' => 'pickup'],
         // Every item picked, just needs packing and a label (Sarah, 2026-10-16)
         'ready_ship'      => ['label' => 'Ready to Ship',     'statuses' => ['processing', 'pending', 'flag', ''],                     'fulfillment' => 'shipping'],
+        // An item marked Can't Find: decide refund or other fix (Sarah, 2026-10-19)
+        'cant_find'       => ['label' => "Can't Find: Decide Refund", 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
         'completed'       => ['label' => 'Completed',         'statuses' => ['shipped', 'picked_up', 'delivered', 'email_sent', 'cancelled'], 'fulfillment' => null],
@@ -115,7 +117,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'cant_find' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -138,6 +140,7 @@ class WebsiteOrdersController extends Controller
                 continue;
             }
             if (in_array($status, self::TABS['completed']['statuses'], true)) $tabCounts['completed']++;
+            if (self::matchesTab($o, 'cant_find')) $tabCounts['cant_find']++;
 
             // Preorder orders (any item not in stock yet) get their own
             // buckets — nothing for staff to action until the street date,
@@ -221,7 +224,7 @@ class WebsiteOrdersController extends Controller
                 // Any item to pull at that spot (Hollywood store, Pico, or the
                 // warehouse), shipping or pickup. Sarah, 2026-10-16.
                 $hit = false;
-                $offQueue = self::offQueueNames($o);
+                $offQueue = self::offQueueNames($o, $activeTab === 'cant_find');
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
                     if (!empty($it['is_gift_card']) || !empty($it['cancelled'])) continue;
@@ -690,12 +693,16 @@ class WebsiteOrdersController extends Controller
         return '';
     }
 
-    /** Item names (lowercase) that are off the pull queue: picked, or marked Can't Find. */
-    public static function offQueueNames(array $o): array
+    /**
+     * Item names (lowercase) that are off the pull queue: picked, or marked
+     * Can't Find. On the Can't Find tab it's the reverse: everything except
+     * the Can't Find lines is hidden.
+     */
+    public static function offQueueNames(array $o, bool $cantFindTab = false): array
     {
         $out = [];
         foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
-            if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) {
+            if ($cantFindTab ? ($pl['status'] ?? '') !== "Can't Find" : in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) {
                 $out[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
             }
         }
@@ -982,6 +989,7 @@ class WebsiteOrdersController extends Controller
 
         // Same carve-out as the website: preorder orders only ever show up
         // in preorder_ship/preorder_pickup, never in the regular buckets.
+        if ($tab === 'cant_find') return $statusOk && self::hasCantFind($order);
         $isPreorder = self::orderHasPreorderItem($order);
         if ($tab === 'preorder_ship' || $tab === 'preorder_pickup') {
             return $isPreorder && $statusOk && $fulfillmentOk;
@@ -996,6 +1004,25 @@ class WebsiteOrdersController extends Controller
         if ($tab === 'ready_ship' && !self::allPicked($order)) return false;
 
         return $statusOk && $fulfillmentOk;
+    }
+
+    /** matchesTab() for other classes (the morning Slack post). */
+    public static function inTab(array $order, string $tab): bool
+    {
+        return self::matchesTab($order, $tab);
+    }
+
+    /** Some item still on the order (not cancelled) is marked Can't Find. */
+    public static function hasCantFind(array $o): bool
+    {
+        $live = [];
+        foreach (($o['items'] ?? []) as $it) {
+            if (empty($it['cancelled'])) $live[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))] = true;
+        }
+        foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
+            if (($pl['status'] ?? '') === "Can't Find" && isset($live[strtolower(trim((string) ($pl['name'] ?? '')))])) return true;
+        }
+        return false;
     }
 
     /** Every pickable item on the order is marked Picked (or further along). */
