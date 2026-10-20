@@ -89,10 +89,10 @@ class Kernel extends ConsoleKernel
 
         // Distributor invoices -> ERP purchases with no one uploading them:
         // AMS portal (both accounts) + Alliance e-invoice emails, every 3
-        // hours 9am-9pm PT (Sarah 10/20). Each run only downloads invoices it
+        // hours 7am-7pm PT (Sarah 10/20). Each run only downloads invoices it
         // hasn't seen; problems post to Slack and show on the invoice audit.
         $schedule->command('distributor-invoices:pull')
-            ->cron('0 9,12,15,18,21 * * *')
+            ->cron('0 7,10,13,16,19 * * *')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(25);
 

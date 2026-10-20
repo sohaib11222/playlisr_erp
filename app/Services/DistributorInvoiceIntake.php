@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Automatic distributor invoice intake (distributor-invoices:pull, every 3
- * hours, 9am to 9pm PT). Nobody has to upload invoices:
+ * hours, 7am to 7pm PT). Nobody has to upload invoices:
  *
  *   - AMS: logs into allmediasupply.com for each account we have a login for
  *     (Pico 131507 = the ICA "ams" credentials, Hollywood 131715 = the login
