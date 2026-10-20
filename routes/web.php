@@ -601,6 +601,31 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         ksort($out);
         return response()->json(['days' => $days, 'groups' => $out]);
     });
+    // Read-only: website sales last N days split by used/sealed and by how
+    // old the copy was when it sold (what a website age rule would block).
+    Route::get('/products/web-sales-age', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $since = now()->subDays((int) $request->query('days', 90))->toDateTimeString();
+        $webUser = (int) \DB::table('users')->where('business_id', $biz)->whereRaw("LOWER(first_name)='jonathan' AND LOWER(last_name)='hedvat'")->value('id');
+        $rows = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('products as p', 'p.id', '=', 'l.product_id')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')->where('t.created_by', $webUser)->where('t.transaction_date', '>=', $since)
+            ->whereNotNull('l.product_id')
+            ->select('l.product_id', 't.transaction_date as d', 'c.name as cat', 'l.unit_price_inc_tax as price', 'l.quantity as q')->get();
+        $ids = $rows->pluck('product_id')->unique()->all();
+        $buys = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.transaction_date as d')->get()->groupBy('product_id');
+        $out = [];
+        foreach ($rows as $r) {
+            $prior = collect($buys[$r->product_id] ?? [])->filter(function ($b) use ($r) { return $b->d < $r->d; })->max('d');
+            $old = !$prior || strtotime($r->d) - strtotime($prior) > 90 * 86400;
+            $g = stripos((string) $r->cat, 'used') !== false ? 'used' : (stripos((string) $r->cat, 'sealed') !== false ? 'sealed' : 'other');
+            $k = $g . ' | ' . ($old ? 'copy older than 3 months' : 'copy newer');
+            $out[$k]['items'] = ($out[$k]['items'] ?? 0) + (float) $r->q;
+            $out[$k]['dollars'] = round(($out[$k]['dollars'] ?? 0) + $r->price * $r->q, 2);
+        }
+        ksort($out);
+        return response()->json($out);
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
