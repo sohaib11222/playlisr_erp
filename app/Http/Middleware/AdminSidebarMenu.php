@@ -497,6 +497,16 @@ class AdminSidebarMenu
                                 'Import AMS Invoice',
                                 ['icon' => 'fa fas fa-file-pdf-o', 'active' => request()->segment(2) == 'ams-invoice-import']
                             );
+                            $sub->url(
+                                action('AmsInvoiceImportController@allianceIndex'),
+                                'Import Alliance Invoice',
+                                ['icon' => 'fa fas fa-file-pdf-o', 'active' => request()->segment(2) == 'alliance-invoice-import']
+                            );
+                            $sub->url(
+                                action('DistributorInvoiceAuditController@index'),
+                                'Distributor Invoice Audit',
+                                ['icon' => 'fa fas fa-check-square-o', 'active' => request()->segment(2) == 'distributor-invoice-audit']
+                            );
                         }
                         if (auth()->user()->can('purchase.view') || auth()->user()->can('view_own_purchase')) {
                             $sub->url(

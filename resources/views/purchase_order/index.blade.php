@@ -58,6 +58,8 @@
                 <div class="box-tools">
                     <a class="btn btn-block btn-success" href="{{action('AmsInvoiceImportController@index')}}" style="margin-bottom:5px;font-weight:600;">
                     <i class="fa fa-file-pdf-o"></i> Import AMS Invoice</a>
+                    <a class="btn btn-block btn-success" href="{{action('AmsInvoiceImportController@allianceIndex')}}" style="margin-bottom:5px;font-weight:600;">
+                    <i class="fa fa-file-pdf-o"></i> Import Alliance Invoice (PDF)</a>
                     <a class="btn btn-block btn-primary" href="{{action('PurchaseOrderController@create')}}">
                     <i class="fa fa-plus"></i> @lang('messages.add')</a>
                 </div>

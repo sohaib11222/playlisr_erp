@@ -234,44 +234,31 @@ class AdminActionHistoryController extends Controller
             return $this->undoBackfillGenre($data, $key);
         }
 
-        // ams-invoice-import: snapshot holds the purchase transaction id created
-        // from an AMS PDF (no 'rows'). These are logged at status=ordered (never
-        // received), so there's no stock to reverse — undo just deletes the
-        // purchase lines then the transaction, scoped to type=purchase, and
-        // clears the invoice's already-imported sidecar so it can be re-imported.
-        // Skips if the purchase is already gone, and refuses if it was somehow
-        // received since (stock would be involved — delete it from Purchases).
-        if ($action === 'ams-invoice-import') {
-            $txId = $data['transaction_id'] ?? null;
-            if (!$txId) {
+        // ams-invoice-import / alliance-invoice-import: snapshot holds the
+        // purchase transaction id created from a distributor PDF (no 'rows')
+        // and, since 10/2026, the products the import created for new titles.
+        // Purchases are logged at status=ordered (never received), so there's
+        // no stock to reverse: undo deletes the purchase + lines, removes the
+        // created products nothing else has touched, and clears the invoice's
+        // already-imported sidecar so it can be re-imported. Refuses if the
+        // purchase was received since (stock involved — delete it from
+        // Purchases instead).
+        if ($action === 'ams-invoice-import' || $action === 'alliance-invoice-import') {
+            if (empty($data['transaction_id'])) {
                 return redirect('/admin/admin-action-history')
                     ->with('status', ['success' => 0, 'msg' => 'Snapshot missing transaction id.']);
             }
-            $purchase = DB::table('transactions')->where('id', $txId)->where('type', 'purchase')->first();
-            if (!$purchase) {
-                return redirect('/admin/admin-action-history')
-                    ->with('status', ['success' => 0, 'msg' => "Purchase #{$txId} already gone — nothing to undo."]);
-            }
-            if (($purchase->status ?? '') === 'received') {
-                return redirect('/admin/admin-action-history')
-                    ->with('status', ['success' => 0, 'msg' => "Purchase #{$txId} was received (stock involved) — delete it from the Purchases page instead."]);
-            }
-            DB::beginTransaction();
-            try {
-                $lines = DB::table('purchase_lines')->where('transaction_id', $txId)->delete();
-                DB::table('transactions')->where('id', $txId)->where('type', 'purchase')->delete();
-                DB::commit();
-            } catch (\Throwable $e) {
-                DB::rollBack();
-                return redirect('/admin/admin-action-history')
-                    ->with('status', ['success' => 0, 'msg' => 'Undo failed, nothing changed: ' . $e->getMessage()]);
-            }
-            $invoice = $data['invoice'] ?? '';
-            if ($invoice !== '' && Storage::disk('local')->exists("ams-imports/{$invoice}.json")) {
-                Storage::disk('local')->delete("ams-imports/{$invoice}.json");
+            list($ok, $msg) = \App\Services\DistributorInvoiceImport::undo($data);
+            if ($ok) {
+                $distributor = $action === 'ams-invoice-import' ? 'ams' : 'alliance';
+                $invoice = $data['invoice'] ?? '';
+                $sidecar = $invoice !== '' ? \App\Services\DistributorInvoiceImport::sidecarPath($distributor, $invoice) : null;
+                if ($sidecar && Storage::disk('local')->exists($sidecar)) {
+                    Storage::disk('local')->delete($sidecar);
+                }
             }
             return redirect('/admin/admin-action-history')
-                ->with('status', ['success' => 1, 'msg' => "Deleted purchase #{$txId} + {$lines} line(s) from AMS import (snapshot {$key})."]);
+                ->with('status', ['success' => $ok ? 1 : 0, 'msg' => $msg . ($ok ? " (snapshot {$key})" : '')]);
         }
 
         if (empty($data['rows'])) {

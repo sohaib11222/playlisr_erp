@@ -2058,6 +2058,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/ams-invoice-import', 'AmsInvoiceImportController@index');
     Route::post('/admin/ams-invoice-import/preview', 'AmsInvoiceImportController@preview');
     Route::post('/admin/ams-invoice-import/apply', 'AmsInvoiceImportController@apply');
+    Route::get('/admin/alliance-invoice-import', 'AmsInvoiceImportController@allianceIndex');
+    Route::post('/admin/alliance-invoice-import/preview', 'AmsInvoiceImportController@alliancePreview');
+    Route::post('/admin/alliance-invoice-import/apply', 'AmsInvoiceImportController@allianceApply');
+    // Every distributor invoice vs. its ERP purchase, gaps flagged.
+    Route::get('/reports/distributor-invoice-audit', 'DistributorInvoiceAuditController@index');
+    Route::post('/reports/distributor-invoice-audit/register', 'DistributorInvoiceAuditController@register');
 
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,
