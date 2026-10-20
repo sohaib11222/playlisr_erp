@@ -43,13 +43,6 @@ jobs:
             foreach (['RawImapClient','PdfTextExtractor','DistributorInvoiceParser','DistributorInvoiceImport','DistributorInvoiceIntake'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
             $r = (new App\Services\DistributorInvoiceIntake())->run(60, null, true);
             foreach ($r as $e) echo "[" . ($e['status'] ?? '') . "] " . strtoupper($e['distributor'] ?? '') . " " . ($e['invoice'] ?? '') . " | " . ($e['msg'] ?? '') . "\n";
-            echo "== beabadoobee\n";
-            foreach (DB::table('variations as v')->join('products as p','p.id','=','v.product_id')->whereIn('v.sub_sku',['5060257966189','060257966189','5060257966165','5060257966271'])->orWhere('p.name','like','%beabadoobee%')->get(['p.id','p.name','v.id as vid','v.sub_sku','p.created_at','p.is_inactive']) as $x) {
-              $pl = DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->where('pl.variation_id',$x->vid)->get(['t.id','t.type','t.status','t.ref_no','t.transaction_date','t.location_id','pl.quantity']);
-              $st = DB::table('variation_location_details')->where('variation_id',$x->vid)->pluck('qty_available','location_id');
-              $sold = DB::table('transaction_sell_lines')->where('variation_id',$x->vid)->sum('quantity');
-              echo "$x->id | $x->name | $x->sub_sku | created " . substr($x->created_at,0,10) . " | stock " . json_encode($st) . " sold $sold | purchases " . json_encode($pl) . "\n";
-            }
             PHP
             php /tmp/nivessa-diag/run.php 2>&1 | grep -v Deprecated | head -120
             rm -rf /tmp/nivessa-diag

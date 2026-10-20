@@ -222,9 +222,10 @@ class DistributorInvoiceImport
 
             // Best product for this UPC: active over inactive, then the one in
             // the invoice's category, then the code as printed, then newest.
-            $best = null; $bestScore = null;
+            $best = null; $bestScore = null; $allVids = [];
             foreach (self::upcCandidates($upc) as $rank => $cand) {
                 foreach ($rowsBySku[$cand] ?? [] as $r) {
+                    $allVids[] = (int) $r->variation_id;
                     $score = [(int) !$r->is_inactive, (int) ($catId && (int) $r->category_id === $catId), -$rank, (int) $r->product_id];
                     if ($bestScore === null || $score > $bestScore) { $best = $r; $bestScore = $score; }
                 }
@@ -246,6 +247,9 @@ class DistributorInvoiceImport
                 'current_cost' => $best && $best->default_purchase_price !== null ? round((float) $best->default_purchase_price, 2) : null,
                 'existing' => [],
                 'new_product' => null,
+                // Every product carrying this UPC (the catalog has duplicates),
+                // so "already on a purchase" checks catch any of them.
+                'upc_variation_ids' => array_values(array_unique($allVids)),
             ];
             if (!$best) {
                 $nm = self::nameFromDescription($desc);
@@ -265,7 +269,9 @@ class DistributorInvoiceImport
         // invoice date (a pre-logged order or a floor receipt) — those lines
         // start unticked so the invoice doesn't double them. Other invoice
         // imports (ref AMS- / ALLIANCE-) don't count: a restock is a new line.
-        $vids = array_values(array_filter(array_column($out, 'variation_id')));
+        $vids = [];
+        foreach ($out as $l) foreach ($l['upc_variation_ids'] as $v) $vids[] = $v;
+        $vids = array_values(array_unique($vids));
         if ($vids && $supplier_id && $location_id) {
             $d = self::normalizeDate($invoiceDate);
             $from = date('Y-m-d', strtotime($d . ' -60 days'));
@@ -295,8 +301,8 @@ class DistributorInvoiceImport
                 ];
             }
             foreach ($out as &$line) {
-                if ($line['variation_id'] && isset($byVid[$line['variation_id']])) {
-                    $line['existing'] = $byVid[$line['variation_id']];
+                foreach ($line['upc_variation_ids'] as $v) {
+                    if (isset($byVid[$v])) $line['existing'] = array_merge($line['existing'], $byVid[$v]);
                 }
             }
             unset($line);

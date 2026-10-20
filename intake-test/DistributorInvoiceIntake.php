@@ -395,6 +395,7 @@ class DistributorInvoiceIntake
             return;
         }
         $ownVids = DB::table('purchase_lines')->where('transaction_id', $own->id)->pluck('variation_id')->map(function ($v) { return (int) $v; })->all();
+        $ownVids = array_flip($ownVids);
         $lines = array_map(function ($it) {
             return ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'] ?? '',
                     'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
@@ -402,7 +403,9 @@ class DistributorInvoiceIntake
         $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10));
         $take = []; $noCategory = [];
         foreach ($preview as $l) {
-            if ($l['matched'] && (in_array((int) $l['variation_id'], $ownVids, true) || $l['existing'])) continue;
+            $onOwn = false;
+            foreach ($l['upc_variation_ids'] as $v) if (isset($ownVids[$v])) { $onOwn = true; break; }
+            if ($l['matched'] && ($onOwn || $l['existing'])) continue;
             if (!$l['matched'] && empty($l['new_product']['category_id'])) { $noCategory[] = $l['upc'] . ' ' . $l['description']; continue; }
             $take[] = ['variation_id' => $l['variation_id'], 'qty' => $l['qty'], 'unit_price' => $l['unit_price'], 'upc' => $l['upc'],
                        'description' => $l['description'], 'new_product' => $l['matched'] ? null : $l['new_product']];
