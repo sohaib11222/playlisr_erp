@@ -512,12 +512,17 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             if (($o['order_status'] ?? '') !== 'cancelled') continue;
             foreach (($o['items'] ?? []) as $it) {
                 $rows[] = ['order' => $o['orderNumber'] ?? null, 'ordered' => substr((string) ($o['createdAt'] ?? ''), 0, 19), 'cancelled' => substr((string) ($o['cancelled_at'] ?? ($o['updatedAt'] ?? '')), 0, 19),
-                    'reason' => $o['cancel_reason'] ?? null, 'wid' => $it['product_id'] ?? null, 'name' => trim(($it['product_artist'] ?? '') . ' - ' . ($it['product_name'] ?? '')), 'price' => $it['price'] ?? null, 'sku' => $it['product_sku'] ?? null];
+                    'reason' => $o['cancel_reason'] ?? null, 'wid' => is_array($it['product_id'] ?? null) ? ($it['product_id']['_id'] ?? null) : ($it['product_id'] ?? null),
+                    'pid' => is_array($it['product_id'] ?? null) && !empty($it['product_id']['posProductId']) ? (int) $it['product_id']['posProductId'] : null,
+                    'preorder' => is_array($it['product_id'] ?? null) ? !empty($it['product_id']['isPreorder']) : null,
+                    'wloc' => is_array($it['product_id'] ?? null) ? ($it['product_id']['location'] ?? null) : null,
+                    'wtype' => is_array($it['product_id'] ?? null) ? ($it['product_id']['productType'] ?? null) : null, 'name' => trim(($it['product_artist'] ?? '') . ' - ' . ($it['product_name'] ?? '')), 'price' => $it['price'] ?? null, 'sku' => $it['product_sku'] ?? null];
             }
         }
         $cache = storage_path('app/cancel-dig-pos-v2.json');
         $map = is_file($cache) ? (json_decode((string) file_get_contents($cache), true) ?: []) : [];
         foreach ($rows as &$r) {
+            if (!empty($r['pid'])) continue;
             $w = (string) $r['wid'];
             if (!preg_match('/^[a-f0-9]{24}$/', $w)) continue;
             if (!array_key_exists($w, $map)) {
