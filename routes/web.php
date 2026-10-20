@@ -679,14 +679,23 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->where('t.type', 'purchase')->where('t.transaction_date', '>=', $from)->select('l.product_id', 't.transaction_date')->get() as $r) {
             $buys[(int) $r->product_id][] = (string) $r->transaction_date;
         }
-        $cats = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->whereIn('p.id', $ids ?: [0])->pluck('c.name', 'p.id')->all();
         $out = ['orders_checked' => count($orders), 'oldest_order' => null, 'problems' => [], 'good_store_sales' => ['kept' => 0, 'would_block' => 0], 'problem_items' => []];
+        // Stock from before tracking (opening stock or a buy before the cutoff):
+        // a later buy of the same album doesn't vouch for those older copies.
+        $preStock = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->whereIn('l.product_id', $ids ?: [0])
+            ->where(function ($q) use ($from) { $q->where('t.type', 'opening_stock')->orWhere('t.transaction_date', '<', $from); })
+            ->distinct()->pluck('l.product_id')->flip()->all();
+        $cats = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->whereIn('p.id', $ids ?: [0])->pluck('c.name', 'p.id')->all();
+        $out['by_history'] = [];
+        $out['orders_by_month'] = [];
+
         foreach ($orders as $o) {
             $at = date('Y-m-d H:i:s', strtotime($o['createdAt'] ?? 'now'));
             if (!$out['oldest_order'] || $at < $out['oldest_order']) $out['oldest_order'] = $at;
             $cantFind = [];
             foreach (($o['pick_progress']['lines'] ?? []) as $pl) if (($pl['status'] ?? '') === "Can't Find") $cantFind[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
             $orderCancelled = ($o['order_status'] ?? '') === 'cancelled';
+            $orderHasProblem = $orderCancelled;
             foreach (($o['items'] ?? []) as $it) {
                 if (!empty($it['is_gift_card'])) continue;
                 $pid = (int) ($it['product_id']['posProductId'] ?? 0);
@@ -707,6 +716,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
                         $verdict = $ok ? 'kept' : 'would hide';
                     }
                 }
+                if ($problem) $orderHasProblem = true;
+                if ($src === 'store') {
+                    $bought = false;
+                    foreach ($buys[$pid] ?? [] as $d) if ($d <= $at) $bought = true;
+                    $h = !$bought ? 'old only' : (isset($preStock[$pid]) ? 'old + bought since' : 'bought since only');
+                    $h .= stripos((string) ($cats[$pid] ?? ''), 'used') !== false ? ' | used' : ' | new';
+                    $out['by_history'][$h][$problem ? 'problems' : 'fine'] = ($out['by_history'][$h][$problem ? 'problems' : 'fine'] ?? 0) + 1;
+                }
                 if ($problem) {
                     $k = $problem . ' | ' . $src . ($verdict ? ' | ' . $verdict : '');
                     $out['problems'][$k] = ($out['problems'][$k] ?? 0) + 1;
@@ -715,7 +732,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
                     $out['good_store_sales'][$verdict === 'would hide' ? 'would_block' : 'kept']++;
                 }
             }
+            $m = substr($at, 0, 7);
+            $out['orders_by_month'][$m]['orders'] = ($out['orders_by_month'][$m]['orders'] ?? 0) + 1;
+            if ($orderHasProblem) $out['orders_by_month'][$m]['with_cancel_or_cant_find'] = ($out['orders_by_month'][$m]['with_cancel_or_cant_find'] ?? 0) + 1;
         }
+        foreach ($out['by_history'] as &$h) { $t = ($h['problems'] ?? 0) + ($h['fine'] ?? 0); $h['problem_rate'] = $t ? round(100 * ($h['problems'] ?? 0) / $t) . '%' : null; }
+        unset($h);
+        ksort($out['by_history']);
+        ksort($out['orders_by_month']);
         ksort($out['problems']);
         return response()->json($out);
     });
