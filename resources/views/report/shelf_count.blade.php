@@ -34,6 +34,5 @@
         </a>
     @endforeach
     </div>
-    <p class="sc-small">Comics and magazines are counted on <a href="/reports/reorder?format=comics&location_id={{ $loc }}">their own page</a>.</p>
 </div>
 @endsection
