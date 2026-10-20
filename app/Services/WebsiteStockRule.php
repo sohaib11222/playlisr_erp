@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Hollywood and Pico copies only reach nivessa.com when the product was
  * shelf-counted at that store or bought since TRUSTED_FROM (when purchases
- * started being tracked). Older uncounted store stock reads 0 on the website
+ * started being tracked). Opening stock doesn't count: the Jan 2026 import
+ * loaded old inventory that way. Older uncounted store stock reads 0 on the website
  * until someone counts it. Warehouse locations and comics/magazines (counted
  * by series, not by title) are left as they are.
  *
@@ -18,7 +19,9 @@ use Illuminate\Support\Facades\DB;
  */
 class WebsiteStockRule
 {
-    const TRUSTED_FROM = '2026-01-01 00:00:00';
+    // Purchases jump from ~70/month to 318 in Dec 2025 and keep climbing:
+    // that's when buys started being entered.
+    const TRUSTED_FROM = '2025-12-01 00:00:00';
 
     private static $counts = [];
     private static $from = [];
@@ -38,7 +41,7 @@ class WebsiteStockRule
         $c = self::$counts[$businessId][$locationId . ':' . $productId] ?? null;
         if ($c && ($c['at'] ?? '') >= $from) return true;
         return DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
-            ->where('l.product_id', $productId)->where('t.business_id', $businessId)
+            ->where('l.product_id', $productId)->where('t.business_id', $businessId)->where('t.type', 'purchase')
             ->where('t.transaction_date', '>=', $from)->exists();
     }
 

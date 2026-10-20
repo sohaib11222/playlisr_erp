@@ -627,7 +627,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->orderBy('m')->get();
         $locations = \DB::table('business_locations')->where('business_id', $biz)->pluck('name', 'id');
         $boughtSince = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
-            ->where('t.business_id', $biz)->where('t.transaction_date', '>=', $from)->distinct()->pluck('l.product_id')->flip()->all();
+            ->where('t.business_id', $biz)->where('t.type', 'purchase')->where('t.transaction_date', '>=', $from)->distinct()->pluck('l.product_id')->flip()->all();
         $counts = app(\App\Services\ReorderService::class)->loadState($biz)['counts'] ?? [];
         $groups = [];
         $hiddenIds = [];
