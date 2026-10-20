@@ -406,6 +406,7 @@ body.help-v2 .help-article-body code {
     color: #6a5a30;
     padding: 1px 6px;
     border-radius: 4px;
+    font-family: inherit;
     font-size: 13.5px;
 }
 body.help-v2 .help-article-body table {

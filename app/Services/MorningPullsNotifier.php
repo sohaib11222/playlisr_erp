@@ -22,8 +22,8 @@ class MorningPullsNotifier
     // hollywood: the HW cashier pulls the newest store items for Nick to ship.
     // pico: the Pico opener. (Sarah, 2026-10-19)
     const STORES = [
-        'shipping' => ['channel' => 'shipping', 'clock' => 'hollywood', 'places' => ['warehouse'], 'label' => 'Shipping'],
-        'hollywood' => ['channel' => 'hollywood', 'clock' => 'hollywood', 'places' => ['hollywood'], 'label' => 'Hollywood Store pulls', 'newest' => 10],
+        'shipping' => ['channel' => 'shipping', 'clock' => 'hollywood', 'places' => ['warehouse'], 'label' => 'Hollywood'],
+        'hollywood' => ['channel' => 'hollywood', 'clock' => 'hollywood', 'places' => ['hollywood'], 'label' => 'Hollywood Store', 'newest' => 10],
         'pico' => ['channel' => 'pico', 'clock' => 'pico', 'places' => ['pico'], 'label' => 'Pico'],
     ];
     const PLACE_LABEL = ['hollywood' => 'Hollywood Store', 'warehouse' => 'Warehouse', 'pico' => 'Pico Store'];
