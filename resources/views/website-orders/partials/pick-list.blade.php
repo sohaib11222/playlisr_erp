@@ -13,12 +13,12 @@
       @endphp
       <div class="wo-pick-line {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
         <div class="wo-pick-name">{{ \Illuminate\Support\Str::limit($pl['name'] ?? 'Item', 40) }} @if(($pl['quantity'] ?? 1) > 1) x{{ (int) $pl['quantity'] }} @endif</div>
-        <div class="wo-pick-state">{{ $plDone ? $plStatus : ($plMissing ? "Can't find" : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : '')) }} @if(!empty($pl['picked_by'])) by {{ $pl['picked_by'] }} @endif @if(!empty($pl['picked_at'])) {{ date('n/j g:ia', strtotime($pl['picked_at'])) }} @endif</div>
+        <div class="wo-pick-state">{{ $plDone ? $plStatus : ($plMissing ? "Can't find" : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : 'Not picked yet')) }} @if(!empty($pl['picked_by'])) by {{ $pl['picked_by'] }} @endif @if(!empty($pl['picked_at'])) {{ date('n/j g:ia', strtotime($pl['picked_at'])) }} @endif</div>
         <div class="wo-pick-btns">
           @if($plDone || $plMissing)
             <button type="button" onclick="woPick(this, 'Not Picked')">Undo</button>
           @else
-            <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button>
+            <button type="button" class="go" onclick="woPick(this, 'Picked')">Mark picked</button>
             <button type="button" onclick="woPick(this, 'Can\'t Find')">Can't find</button>
             <button type="button" onclick="woPick(this, 'Dropshipped')" title="Bought from another seller and sent straight to the customer">Dropshipped</button>
           @endif

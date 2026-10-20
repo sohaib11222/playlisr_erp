@@ -10,6 +10,14 @@
 
 <style>
   .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
+  .wo-dg-pick .wo-pick-line { display:block; padding:6px 8px; margin-bottom:5px; }
+  .wo-dg-pick .wo-pick-name { font-size:12px; font-weight:600; margin-bottom:3px; }
+  .wo-dg-pick .wo-pick-state { display:inline-block; font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; background:#fef3c7; color:#92400e; margin-bottom:5px; }
+  .wo-dg-pick .is-done .wo-pick-state { background:#dcfce7; color:#047857; }
+  .wo-dg-pick .is-missing .wo-pick-state { background:#fee2e2; color:#b91c1c; }
+  .wo-dg-pick .wo-pick-btns { display:flex; gap:5px; flex-wrap:wrap; }
+  .wo-dg-pick .wo-pick-btns button { flex:1 1 auto; font-size:12px; font-weight:700; padding:6px 8px; border:1.5px solid #111827; border-radius:6px; background:#fff; color:#000; }
+  .wo-dg-pick .wo-pick-btns button.go { border-color:#047857; color:#047857; background:#fff; }
   .wo-cards { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
   @media (max-width: 1100px) { .wo-cards { grid-template-columns:repeat(2, minmax(0,1fr)); } }
   .wo-card-group { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
@@ -931,12 +939,13 @@
           <div class="wo-scroll">
           <table class="wo-tbl">
             <colgroup>
-              <col style="width:120px"><col style="width:14%"><col><col style="width:108px"><col style="width:86px"><col style="width:92px"><col style="width:236px">
+              <col style="width:120px"><col style="width:11%"><col><col style="width:300px"><col style="width:100px"><col style="width:80px"><col style="width:92px"><col style="width:220px">
             </colgroup>
             <thead><tr>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Discogs order', 'key' => 'status'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Items (bin)', 'key' => 'product'])</th>
+              <th>Pick</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Ordered', 'key' => 'placed'])</th>
@@ -965,12 +974,10 @@
                       </div>
                     @endforeach
                   </td>
+                  {{-- Own column so the buttons have room (Sarah, 2026-10-20) --}}
+                  <td class="wo-dg-pick">@if(!empty($d['pick']))@include('website-orders.partials.pick-list', ['pick' => $d['pick']])@endif</td>
                   <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
-                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}
-                    @if(!empty($d['pick']))
-                      @include('website-orders.partials.pick-list', ['pick' => $d['pick']])
-                    @endif
-                  </td>
+                  <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
                   <td class="wo-placed">@if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@endif</td>
                   <td>
                     <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
