@@ -340,14 +340,15 @@ class ProductController extends Controller
             // when it is in one, else the store plus its genre section (store
             // bins are laid out by category / sub-category). Only places with
             // stock on hand; the bin code is never hidden, Nick pulls by it.
-            $findAt = function ($row) use ($binMap, $warehouseBin, $warehouseQty, $locationNames) {
+            $findAt = function ($row, $inStockOnly = true) use (&$findAt, $binMap, $warehouseBin, $warehouseQty, $locationNames) {
                 // Each spot is [big, small]: the bin code or genre section in
                 // bold, the warehouse zone or format under it. No "Warehouse /"
                 // prefixes, the Store Location column already says where
                 // (Sarah, 2026-10-20: "make it very easy to read").
                 $spots = [];
                 $whBin = $warehouseBin($row);
-                if ($whBin !== '' && ($warehouseQty($row) ?? 0) > 0) {
+                $whQty = $warehouseQty($row);
+                if ($whBin !== '' && ($inStockOnly ? ($whQty ?? 0) > 0 : $whQty !== null)) {
                     $spots[] = [$whBin, preg_replace('/^hollywood\b/i', 'HW', $binMap[strtolower($whBin)])];
                 }
                 $bin = trim((string) ($row->bin_position ?? '')) ?: trim((string) ($row->listing_location ?? ''));
@@ -355,7 +356,7 @@ class ProductController extends Controller
                 $format = trim((string) ($row->category ?? ''));
                 foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
                     [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
-                    if ((float) $q <= 0) { continue; }
+                    if ($inStockOnly && (float) $q <= 0) { continue; }
                     $n = strtolower((string) ($locationNames[(int) $locId] ?? ''));
                     if ($whBin !== '' && (strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false)) { continue; }
                     if ($bin !== '' && (strpos($n, 'discogs') !== false || strpos($n, 'warehouse') !== false)) {
@@ -367,7 +368,14 @@ class ProductController extends Controller
                     }
                     if (!in_array($spot, $spots, true)) { $spots[] = $spot; }
                 }
-                if (!$spots) { return '--'; }
+                if (!$spots) {
+                    // Out of stock: where it last sat, in case the count is
+                    // wrong and the record is still there (Sarah, 2026-10-20).
+                    if (!$inStockOnly) { return '--'; }
+                    $last = $findAt($row, false);
+                    return $last === '--' ? '--'
+                        : $last . '<div style="font-size:14px !important; color:#8A4B00; font-style:italic; white-space:nowrap;">Last spot, 0 in stock</div>';
+                }
                 return implode('', array_map(function ($sp) {
                     return '<div style="margin-bottom:6px; line-height:1.3; min-width:120px;"><div style="font-weight:700; font-size:20px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[0]) . '</div>'
                         . ($sp[1] !== '' ? '<div style="font-size:16px !important; color:#1F1B16; white-space:nowrap;">' . e($sp[1]) . '</div>' : '') . '</div>';
