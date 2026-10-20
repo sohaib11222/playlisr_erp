@@ -76,7 +76,7 @@ class WebsiteOrdersController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $activeTab = $request->query('tab', 'needs_action');
+        $activeTab = $request->query('tab', 'to_ship');
         if (!array_key_exists($activeTab, self::TABS) && $activeTab !== 'archived') {
             $activeTab = 'needs_action';
         }
@@ -234,6 +234,12 @@ class WebsiteOrdersController extends Controller
                 if ($k) $needBy[$k][] = 1;
                 // Need to Pull is split HW Warehouse / HW Store / Pico (Sarah, 2026-10-20)
                 if (in_array($pr['store'], ['warehouse', 'hollywood'], true)) $needBy[$pr['store']][] = 1;
+                // Shipments vs pickups rows (Sarah, 2026-10-20)
+                if (($pr['order']['fulfillment_method'] ?? null) === 'pickup') {
+                    if ($k) $tabCounts['pickup_' . $k] = ($tabCounts['pickup_' . $k] ?? 0) + 1;
+                } elseif (isset($pullCounts[$pr['store']])) {
+                    $tabCounts['to_ship_' . $pr['store']] = ($tabCounts['to_ship_' . $pr['store']] ?? 0) + 1;
+                }
             }
         }
         $tabCounts['needs_action_hw'] = count($needBy['hw']);

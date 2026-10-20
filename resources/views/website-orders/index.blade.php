@@ -10,6 +10,9 @@
 
 <style>
   .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
+  .wo-tabrows { margin-bottom:20px; border-bottom:2px solid #e5e7eb; }
+  .wo-tabrow { margin-bottom:0 !important; border-bottom:1px solid #f1f1f1 !important; flex-wrap:nowrap !important; }
+  .wo-rowlabel { flex:0 0 96px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#000; }
   .wo-tab { position:relative; padding:10px 12px; font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
   .wo-tab:hover { color:#111827; }
   .wo-tab.active { color:#111827; }
@@ -211,16 +214,28 @@
     @php
       // Simplified tabs (Sarah, 2026-10-19). Ready to Ship and Need to Pull
       // are split HW / Pico; old tab links (to_ship, pickup, ...) still work.
-      $tabDefs = [
-        'ready_ship'      => ['label' => 'Ready to Ship', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
-        'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        'recheck_hw'      => ['label' => 'Recheck in HW Bins', 'hot' => true],
-        'ready_pickup'    => ['label' => 'Ready for Pickup', 'split' => ['hollywood' => 'HW', 'pico' => 'Pico']],
-        'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
-        'refunded'        => ['label' => 'Refunded', 'nocount' => true],
-        'preorders'       => ['label' => 'Preorders'],
-        'completed'       => ['label' => 'Completed'],
+      // Rows by job (Sarah, 2026-10-20): shipments, pickups, refunds, done.
+      // Store pills count items; old tab links (needs_action, ...) still work.
+      $tabRows = [
+        'Shipments' => [
+          'to_ship'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico'], 'items' => true],
+          'ready_ship' => ['label' => 'Ready to Ship', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
+        ],
+        'Pickups' => [
+          'pickup'       => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['hw' => 'HW', 'pico' => 'Pico'], 'items' => true],
+          'ready_pickup' => ['label' => 'Ready for Pickup', 'split' => ['hollywood' => 'HW', 'pico' => 'Pico']],
+        ],
+        'Refunds' => [
+          'recheck_hw' => ['label' => 'Recheck in HW Bins', 'hot' => true],
+          'cant_find'  => ['label' => "Can't Find: Decide Refund", 'hot' => true],
+          'refunded'   => ['label' => 'Refunded', 'nocount' => true],
+        ],
+        'Other' => [
+          'preorders' => ['label' => 'Preorders'],
+          'completed' => ['label' => 'Completed'],
+        ],
       ];
+      $tabDefs = array_merge(...array_values($tabRows));
       if (!isset($tabDefs[$activeTab])) $tabDefs[$activeTab] = ['label' => $activeTab === 'archived' ? 'Archived' : (\App\Http\Controllers\WebsiteOrdersController::TABS[$activeTab]['label'] ?? $activeTab)];
       $baseQuery = array_filter([
         'status' => $statusFilter,
@@ -232,17 +247,23 @@
       ], fn($v) => $v !== '' && $v !== null);
     @endphp
 
-    <div class="wo-tabs">
-      @foreach($tabDefs as $key => $def)
+    @if(!isset(array_merge(...array_values($tabRows))[$activeTab]))
+      @php $tabRows['Other'][$activeTab] = $tabDefs[$activeTab]; @endphp
+    @endif
+    <div class="wo-tabrows">
+    @foreach($tabRows as $rowLabel => $rowTabs)
+    <div class="wo-tabs wo-tabrow">
+      <span class="wo-rowlabel">{{ $rowLabel }}</span>
+      @foreach($rowTabs as $key => $def)
         @php
           $count = $tabCounts[$key] ?? 0;
-          $badgeClass = ($key === 'pickup' && ($tabCounts['pickup_overdue'] ?? 0) > 0) ? 'overdue' : ((($def['hot'] ?? false) && $count > 0) ? 'hot' : '');
+          $badgeClass = ((($def['hot'] ?? false) && $count > 0) ? 'hot' : '');
         @endphp
         @if(!empty($def['split']))
           <span class="wo-tab {{ $activeTab === $key ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
             <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}" style="color:inherit;text-decoration:none;">{{ $def['label'] }}</a>
             @foreach($def['split'] as $lk => $ll)
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}{{ $key === 'needs_action' ? ' items' : '' }}</a>
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}{{ !empty($def['items']) ? ' items' : '' }}</a>
             @endforeach
           </span>
         @else
@@ -253,6 +274,8 @@
         </a>
         @endif
       @endforeach
+    </div>
+    @endforeach
     </div>
 
     @if($activeTab === 'needs_action' && ($tabCounts['needs_action'] ?? 0) === 0)
