@@ -335,34 +335,38 @@ class ProductController extends Controller
             // when it is in one, else the store plus its genre section (store
             // bins are laid out by category / sub-category). Only places with
             // stock on hand; the bin code is never hidden, Nick pulls by it.
-            $findAt = function ($row) use ($warehouseSpot, $warehouseBin, $locationNames) {
-                $lines = [];
-                $spot = $warehouseSpot($row);
-                if ($spot !== '') { $lines[] = $spot; }
-                $whBin = $warehouseBin($row) !== '';
+            $findAt = function ($row) use ($binMap, $warehouseBin, $warehouseQty, $locationNames) {
+                // Each spot is [big, small]: the bin code or genre section in
+                // bold, the warehouse zone or format under it. No "Warehouse /"
+                // prefixes, the Store Location column already says where
+                // (Sarah, 2026-10-20: "make it very easy to read").
+                $spots = [];
+                $whBin = $warehouseBin($row);
+                if ($whBin !== '' && ($warehouseQty($row) ?? 0) > 0) {
+                    $spots[] = [$whBin, preg_replace('/^hollywood\b/i', 'HW', $binMap[strtolower($whBin)])];
+                }
                 $bin = trim((string) ($row->bin_position ?? '')) ?: trim((string) ($row->listing_location ?? ''));
-                $genre = implode(' / ', array_filter([trim((string) ($row->category ?? '')), trim((string) ($row->sub_category ?? ''))]));
-                $seen = [];
+                $section = trim((string) ($row->sub_category ?? ''));
+                $format = trim((string) ($row->category ?? ''));
                 foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
                     [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
                     if ((float) $q <= 0) { continue; }
-                    $name = (string) ($locationNames[(int) $locId] ?? '');
-                    $n = strtolower($name);
-                    $isWh = strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false;
-                    if ($whBin && $isWh) { continue; } // already the warehouse line
-                    if (strpos($n, 'discogs') !== false) {
-                        $line = 'Discogs Warehouse / ' . ($bin !== '' ? 'Bin ' . $bin : 'spot not saved');
-                    } elseif (strpos($n, 'pico') !== false) {
-                        $line = implode(' / ', array_filter(['Pico Store', $genre]));
-                    } elseif (strpos($n, 'hollywood') !== false) {
-                        $line = implode(' / ', array_filter(['Hollywood Store', $genre]));
+                    $n = strtolower((string) ($locationNames[(int) $locId] ?? ''));
+                    if ($whBin !== '' && (strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false)) { continue; }
+                    if ($bin !== '' && (strpos($n, 'discogs') !== false || strpos($n, 'warehouse') !== false)) {
+                        $spot = [$bin, ''];
+                    } elseif ($section !== '' || $format !== '') {
+                        $spot = $section !== '' ? [$section, $format] : [$format, ''];
                     } else {
-                        $line = implode(' / ', array_filter([ucwords($name), $bin !== '' ? 'Bin ' . $bin : '']));
+                        $spot = [$bin !== '' ? $bin : 'Spot not saved', ''];
                     }
-                    if (!isset($seen[$line])) { $seen[$line] = true; $lines[] = $line; }
+                    if (!in_array($spot, $spots, true)) { $spots[] = $spot; }
                 }
-                if (!$lines) { return '--'; }
-                return implode('', array_map(fn($l) => '<div style="white-space:nowrap;">' . e($l) . '</div>', $lines));
+                if (!$spots) { return '--'; }
+                return implode('', array_map(function ($sp) {
+                    return '<div style="margin-bottom:4px; line-height:1.25;"><div style="font-weight:700; font-size:14px; color:#1F1B16;">' . e($sp[0]) . '</div>'
+                        . ($sp[1] !== '' ? '<div style="font-size:12px; color:#1F1B16;">' . e($sp[1]) . '</div>' : '') . '</div>';
+                }, $spots));
             };
 
             $vld_scope = '';
