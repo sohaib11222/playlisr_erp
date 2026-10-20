@@ -26,9 +26,9 @@ class CustomerMergeController extends Controller
     /** Tables (other than contacts) with a contact_id column. */
     private function refTables(): array
     {
-        $db = DB::getDatabaseName();
-        return DB::table('information_schema.columns')->where('table_schema', $db)->where('column_name', 'contact_id')
-            ->where('table_name', '!=', 'contacts')->pluck('table_name')->unique()->values()->all();
+        // MySQL returns information_schema names in upper case, so alias them
+        $rows = DB::select("SELECT DISTINCT TABLE_NAME AS t FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND COLUMN_NAME = 'contact_id' AND TABLE_NAME <> 'contacts'", [DB::getDatabaseName()]);
+        return array_values(array_unique(array_map(fn($r) => (string) $r->t, $rows)));
     }
 
     /** [email => [contact rows, kept first]] */
@@ -70,6 +70,10 @@ class CustomerMergeController extends Controller
         @set_time_limit(0);
         $biz = (int) $request->session()->get('user.business_id');
         $tables = $this->refTables();
+        // Never remove a record without moving its sales (Sarah, 2026-10-20)
+        if (!in_array('transactions', $tables, true)) {
+            return redirect('/admin/merge-customers')->with('status', ['success' => 0, 'msg' => 'Stopped: could not find the sales table, nothing was merged.']);
+        }
         $log = ['at' => date('c'), 'by' => auth()->user()->id, 'merges' => []];
         $done = 0;
         foreach ($this->groups($biz) as $email => $g) {
