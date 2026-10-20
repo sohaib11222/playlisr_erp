@@ -596,7 +596,7 @@
                   // separate checklist cut names to one letter). Matched by name.
                   $pickLines = [];
                   foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
-                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true);
+                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true);
                 @endphp
                 <td class="wo-loc @if($pickable) wo-pick @endif" data-web="{{ $o['_id'] }}" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
                   {{-- One block per product, kept level with its product by
@@ -764,7 +764,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true))
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
                     @php
@@ -779,6 +779,9 @@
                       <div class="wo-prog"><span class="p" style="width:{{ $ppPct }}%"></span><span class="c" style="width:{{ $ppCfPct }}%"></span></div>
                       <div class="wo-prog-lbl"><span class="n">{{ $ppN }}</span> of <span class="t">{{ (int) ($pp['total'] ?? 0) }}</span> picked</div>
                       <div class="wo-prog-sub"><span class="cf">{{ $ppCf ? $ppCf . " can't find" : '' }}</span><span class="left">{{ $ppLeft ? ($ppCf ? ' · ' : '') . $ppLeft . ' left' : '' }}</span></div>
+                      @if(($o['fulfillment_method'] ?? null) === 'pickup' && $ppN >= $ppT && $status !== 'ready_for_pickup')
+                        <div style="font-size:11.5px;font-weight:700;color:#047857;margin-top:3px;">All picked: set status to Ready for Pickup (emails the customer)</div>
+                      @endif
                     </div>
                   @endif
                 </td>
