@@ -83,9 +83,11 @@ class SealedBarcodeBackfillService
             $norm = [];
             foreach (array_keys($codes) as $c) $norm[strlen($c) === 13 && $c[0] === '0' ? substr($c, 1) : $c] = true;
             $norm = array_keys($norm);
+            $dTitle = (string) ($resp['data']->title ?? '');
+            $dArtist = implode(' ', array_map(fn($a) => (string) ($a->name ?? ''), (array) ($resp['data']->artists ?? [])));
             if (count($norm) === 1) {
                 $n['found']++;
-                $log[$p->id] = ['status' => 'found', 'new' => (string) $norm[0], 'name' => $p->name, 'cat' => $p->cat, 'old' => $p->sku, 'release' => (int) $p->discogs_release_id, 'at' => date('c')];
+                $log[$p->id] = ['status' => 'found', 'new' => (string) $norm[0], 'name' => $p->name, 'cat' => $p->cat, 'old' => $p->sku, 'release' => (int) $p->discogs_release_id, 'dtitle' => $dTitle, 'dartist' => $dArtist, 'at' => date('c')];
             } else {
                 $log[$p->id] = ['status' => $norm ? 'several' : 'none', 'codes' => $norm, 'name' => $p->name, 'old' => $p->sku, 'release' => (int) $p->discogs_release_id, 'at' => date('c')];
             }
@@ -130,9 +132,23 @@ class SealedBarcodeBackfillService
             if ($other) $why = 'Barcode already on product ' . implode(', ', $other) . ' (duplicate listing)';
             elseif ($dupInBatch[$r['new']] > 1) $why = 'Same barcode found for ' . $dupInBatch[$r['new']] . ' products (duplicate listings)';
             elseif ((string) ($cur[$id] ?? '') !== (string) $r['old']) $why = 'SKU changed since the scan';
+            elseif (!self::namesMatch((string) $r['name'], (string) ($r['dtitle'] ?? ''))) $why = 'Name doesn\'t match the Discogs release (' . ($r['dartist'] ?? '') . ' - ' . ($r['dtitle'] ?? '') . '), check the Discogs link';
             $out[] = ['id' => (int) $id] + $r + ['blocked' => $why];
         }
         return $out;
+    }
+
+    /**
+     * The product name shares the Discogs title's main words, so a product
+     * linked to the wrong release doesn't get that release's barcode.
+     */
+    public static function namesMatch(string $name, string $title): bool
+    {
+        $words = fn($s) => array_values(array_filter(preg_split('/[^a-z0-9]+/', strtolower($s)), fn($w) => strlen($w) > 2 && !in_array($w, ['the', 'and', 'lp', 'vinyl', 'edition', 'deluxe'], true)));
+        $t = $words($title);
+        if (!$t) return false;
+        $n = $words($name);
+        return count(array_intersect($t, $n)) >= max(1, (int) ceil(count($t) * 0.6));
     }
 
     /** Write every unblocked proposal. Old SKU stays in the log ('applied'). */

@@ -9,7 +9,7 @@
   <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:15px;">
     <div><strong>{{ $ready->count() }}</strong> ready to add</div>
     <div><strong>{{ $counts['applied'] ?? 0 }}</strong> added</div>
-    <div><strong>{{ $blocked->count() }}</strong> skipped (duplicate listing)</div>
+    <div><strong>{{ $blocked->count() }}</strong> skipped (duplicate or name mismatch)</div>
     <div><strong>{{ ($counts['none'] ?? 0) + ($counts['several'] ?? 0) }}</strong> no single barcode on Discogs</div>
     <div><strong>{{ $remaining }}</strong> still to check</div>
   </div>
@@ -24,13 +24,14 @@
     </form>
   @endif
   <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
-    <thead><tr style="text-align:left;"><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Product</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Category</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Old SKU</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Barcode from Discogs</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Note</th></tr></thead>
+    <thead><tr style="text-align:left;"><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Product</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Category</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Old SKU</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Discogs release</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Barcode from Discogs</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Note</th></tr></thead>
     <tbody>
       @foreach(collect($proposals)->sortBy('blocked')->take(500) as $p)
         <tr>
           <td style="padding:8px;border-bottom:1px solid #e5e7eb;"><a href="{{ url('/products/' . $p['id'] . '/edit') }}" target="_blank">{{ $p['name'] }}</a></td>
           <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{{ $p['cat'] ?? '' }}</td>
           <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{{ $p['old'] }}</td>
+          <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{{ trim(($p['dartist'] ?? '') . ' - ' . ($p['dtitle'] ?? ''), ' -') }}</td>
           <td style="padding:8px;border-bottom:1px solid #e5e7eb;"><a href="https://www.discogs.com/release/{{ $p['release'] }}" target="_blank">{{ $p['new'] }}</a></td>
           <td style="padding:8px;border-bottom:1px solid #e5e7eb;color:{{ $p['blocked'] ? '#b91c1c' : '#000' }};">{{ $p['blocked'] }}</td>
         </tr>
