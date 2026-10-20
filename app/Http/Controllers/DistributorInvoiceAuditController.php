@@ -281,7 +281,7 @@ class DistributorInvoiceAuditController extends Controller
     }
 
     // Run the automatic intake now (in the background) instead of waiting
-    // for the next :05 / :35.
+    // for the next scheduled check.
     public function runIntake(Request $request)
     {
         if (!(auth()->user()->can('purchase.create') || auth()->user()->can('purchase_order.create'))) {

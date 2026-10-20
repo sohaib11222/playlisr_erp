@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Automatic distributor invoice intake (distributor-invoices:pull, every 30
- * minutes during the day). Nobody has to upload invoices:
+ * Automatic distributor invoice intake (distributor-invoices:pull, every 3
+ * hours, 9am to 9pm PT). Nobody has to upload invoices:
  *
  *   - AMS: logs into allmediasupply.com for each account we have a login for
  *     (Pico 131507 = the ICA "ams" credentials, Hollywood 131715 = the login
@@ -182,7 +182,7 @@ class DistributorInvoiceIntake
         return $this->report;
     }
 
-    // Login/mailbox failures alert at most once a day, not every 30 minutes.
+    // Login/mailbox failures alert at most once a day, not every run.
     private function alertOnce($key, $distributor, $invoice, $problem)
     {
         $seenKey = 'alert:' . $key . ':' . date('Y-m-d');

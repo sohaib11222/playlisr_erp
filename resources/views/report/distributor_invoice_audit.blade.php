@@ -50,7 +50,7 @@
 <div class="box box-solid">
     <div class="box-header with-border"><h3 class="box-title">Automatic intake</h3></div>
     <div class="box-body">
-        <p style="max-width:950px;">Every 30 minutes (7am to 10pm) the ERP checks the AMS portal and the invoice mailbox for new invoices and logs each one as an Ordered purchase, creating any titles we don't carry yet. Anything it can't read is posted to Slack and listed below; upload those by hand at
+        <p style="max-width:950px;">At 9am, 12pm, 3pm, 6pm and 9pm the ERP checks the AMS portal and the invoice mailbox for new invoices and logs each one as an Ordered purchase, creating any titles we don't carry yet. Anything it can't read is posted to Slack and listed below; upload those by hand at
             <a href="/admin/ams-invoice-import">Import AMS Invoice</a> or <a href="/admin/alliance-invoice-import">Import Alliance Invoice</a>.</p>
         <table class="table table-condensed table-bordered" style="max-width:720px;font-size:13px;">
             <tr><td>AMS login</td><td>{!! $intake['ams_main'] ? 'Set (account ' . e($intake['ams_main']) . ')' : '<strong style="color:#c0392b;">Not set</strong>' !!}</td></tr>
