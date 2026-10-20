@@ -471,6 +471,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             'manual_by_store' => $base()->groupBy('bl.name')->select('bl.name', \DB::raw('COUNT(*) as n'), \DB::raw('SUM(l.unit_price_inc_tax * l.quantity) as dollars'))->get(),
             'manual_by_cashier' => $base()->groupBy('bl.name', 'u.first_name')->select('bl.name', 'u.first_name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(30)->get(),
             'manual_by_category' => $base()->groupBy('c.name')->select('c.name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(20)->get(),
+            'by_category_store' => $base()->groupBy('c.name', 'bl.name')->select('c.name as cat', 'bl.name as store', \DB::raw('COUNT(*) as n'), \DB::raw('SUM(l.unit_price_inc_tax * l.quantity) as dollars'))->get(),
             'top_names' => $base()->groupBy('l.product_name')->select('l.product_name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(25)->get(),
         ]);
     });
