@@ -44,6 +44,22 @@
       @endforeach
     </tbody>
   </table>
+  @if(!empty($unclear))
+    <h2 style="font-size:17px;margin:22px 0 8px;">No single barcode on Discogs (left as is)</h2>
+    <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
+      <thead><tr style="text-align:left;"><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Product</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Old SKU</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Discogs release</th><th style="padding:8px;border-bottom:2px solid #e5e7eb;">Barcodes on Discogs</th></tr></thead>
+      <tbody>
+        @foreach($unclear as $u)
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;"><a href="{{ url('/products/' . $u['id'] . '/edit') }}" target="_blank">{{ $u['name'] }}</a></td>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{{ $u['old'] }}</td>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;"><a href="https://www.discogs.com/release/{{ $u['release'] ?? '' }}" target="_blank">{{ $u['release'] ?? '' }}</a></td>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{{ !empty($u['codes']) ? implode(', ', $u['codes']) : 'none' }}</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+  @endif
   @if(count($proposals) > 500)<p>Showing 500 of {{ count($proposals) }}.</p>@endif
 </section>
 @endsection

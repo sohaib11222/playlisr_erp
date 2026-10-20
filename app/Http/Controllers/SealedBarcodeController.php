@@ -21,7 +21,8 @@ class SealedBarcodeController extends Controller
         $counts = array_count_values(array_map(fn($r) => $r['status'] ?? '', $log));
         $remaining = S::eligible($biz)->filter(fn($p) => !isset($log[$p->id]) || ($log[$p->id]['status'] ?? '') === 'error')->count();
         $proposals = S::proposals($biz);
-        return view('product.sealed_barcodes', compact('counts', 'remaining', 'proposals'));
+        $unclear = collect($log)->filter(fn($r) => in_array($r['status'] ?? '', ['none', 'several'], true))->map(fn($r, $id) => ['id' => $id] + $r)->values()->take(300)->all();
+        return view('product.sealed_barcodes', compact('counts', 'remaining', 'proposals', 'unclear'));
     }
 
     /** Start a background Discogs check now instead of waiting for :07 / :37. */
