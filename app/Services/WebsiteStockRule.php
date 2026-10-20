@@ -23,6 +23,11 @@ class WebsiteStockRule
     // that's when buys started being entered.
     const TRUSTED_FROM = '2025-12-01 00:00:00';
 
+    // Off (Sarah 10/20): /products/website-stock-rule/check showed item age
+    // doesn't predict which web orders fail, so the rule blocked about as many
+    // good sales as bad ones. Counting is the fix; the reports stay.
+    const ENABLED = false;
+
     private static $counts = [];
     private static $from = [];
     private static $storeLocations = [];
@@ -30,7 +35,7 @@ class WebsiteStockRule
     /** Quantity the website may sell for one product at one location. */
     public static function qty(int $businessId, int $locationId, int $productId, $qty, $categoryName = null)
     {
-        if ((float) $qty <= 0 || !self::isStore($businessId, $locationId)) return $qty;
+        if (!self::ENABLED || (float) $qty <= 0 || !self::isStore($businessId, $locationId)) return $qty;
         if ($categoryName && preg_match('/comic|magazine/i', (string) $categoryName)) return $qty;
         return self::trusted($businessId, $locationId, $productId) ? $qty : 0;
     }
