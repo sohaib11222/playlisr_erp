@@ -202,6 +202,12 @@ class ShelfCountController extends Controller
         $bins = self::markPriority(array_values($bins));
         usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
         if ($request->input('kind') === 'all') {
+            // All shelves (Sarah 10/20 "please prioritize this"): High priority
+            // shelves first, most cancels then most online orders, then the usual order.
+            usort($bins, function ($a, $b) {
+                return [empty($a['priority']), -($a['web_bad'] ?? 0), -($a['web'] ?? 0), isset($a['last']), $a['last'] ?? '', $a['name']]
+                    <=> [empty($b['priority']), -($b['web_bad'] ?? 0), -($b['web'] ?? 0), isset($b['last']), $b['last'] ?? '', $b['name']];
+            });
             return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
                 'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
         }
