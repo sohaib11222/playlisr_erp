@@ -437,6 +437,19 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/same-barcode', 'BarcodeFixController@sameBarcode');
     // Read-only (Sarah 10/19, cancelled web orders "sold in store"): every
     // ERP sale of these products since a date, with store, time and who rang it.
+    // Read-only (Sarah 10/19): raw website orders from the bridge, filtered
+    // to cancelled/refunded, to look for a pattern in why they were cancelled.
+    Route::get('/website-orders/cancelled-raw', function (\Illuminate\Http\Request $request) {
+        $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
+        $resp = $c->bridgeGet('/erp/orders/console?limit=300&payment_status=all', 60);
+        $all = $resp['data'] ?? [];
+        $out = array_values(array_filter($all, function ($o) {
+            if (($o['order_status'] ?? '') === 'cancelled' || ($o['payment_status'] ?? '') === 'refunded') return true;
+            foreach (($o['items'] ?? []) as $it) if (!empty($it['cancelled'])) return true;
+            return false;
+        }));
+        return response()->json(['total_orders' => count($all), 'cancelled' => $out]);
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
