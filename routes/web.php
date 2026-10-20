@@ -437,6 +437,22 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/products/same-barcode', 'BarcodeFixController@sameBarcode');
     // Read-only (Sarah 10/19, cancelled web orders "sold in store"): every
     // ERP sale of these products since a date, with store, time and who rang it.
+    // Read-only: manual (no product) POS lines whose typed name contains a word.
+    Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $q = mb_strtolower(trim((string) $request->query('q')));
+        $rows = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where(function ($w) { $w->whereNull('l.product_id')->orWhere('l.product_id', 0); })
+            ->whereRaw('LOWER(l.product_name) LIKE ?', ['%' . $q . '%'])
+            ->where('t.transaction_date', '>=', $request->query('since', '2026-09-01'))
+            ->select('l.product_name', 't.transaction_date', 'bl.name as store', \DB::raw("CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')) as who"), 'l.unit_price_inc_tax')
+            ->orderBy('t.transaction_date')->limit(50)->get();
+        $count = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')->where(function ($w) { $w->whereNull('l.product_id')->orWhere('l.product_id', 0); })
+            ->where('t.transaction_date', '>=', $request->query('since', '2026-09-01'))->count();
+        return response()->json(['rows' => $rows, 'all_manual_lines_since' => $count]);
+    });
     Route::get('/products/sales-of', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
         $ids = array_filter(array_map('intval', explode(',', (string) $request->query('ids'))));
