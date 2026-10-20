@@ -189,10 +189,7 @@ class Kernel extends ConsoleKernel
         // /admin/discogs-street-dates if you want to push it faster still.
         // Discogs barcodes for sealed items, read-only lookups between the
         // street-date runs; Sarah applies them at /products/sealed-barcodes (2026-10-19).
-        $schedule->command('sealed-barcodes:scan --limit=300')
-            ->cron('7,37 * * * *')
-            ->timezone('America/Los_Angeles')
-            ->withoutOverlapping(20);
+        // Turned off 2026-10-19 (Sarah said no); /products/sealed-barcodes still works by hand.
 
         $schedule->command('discogs:backfill-street-dates --minutes=6 --commit')
             ->everyFifteenMinutes()
