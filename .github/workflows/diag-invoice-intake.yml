@@ -1,0 +1,49 @@
+# READ-ONLY: what the server has for invoice intake. Branch-only.
+name: Diag invoice intake
+on:
+  push:
+    branches: [diag/invoice-intake]
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Dump
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "== tools"; for t in pdftotext pdftohtml mutool qpdf gs node nodejs python3 java; do printf "%s: " $t; command -v $t || echo none; done
+            php -v | head -1; php -m | grep -iE "zlib|openssl|mbstring|iconv|curl|imap|gd|imagick" | tr '\n' ' '; echo
+            echo "== storage files"; ls storage/app | grep -iE "supplier-creds|email-inbox|slack|quo" ; ls storage/app/ams-imports | wc -l
+            cat > /tmp/diag_intake.php <<'PHP'
+            <?php
+            require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $f = storage_path('app/email-inbox-accounts.json');
+            if (is_file($f)) { foreach ((json_decode(file_get_contents($f), true) ?: []) as $k => $m) echo "mailbox $k user=" . ($m['username'] ?? '?') . " host=" . ($m['host'] ?? '?') . "\n"; } else echo "no email-inbox-accounts.json\n";
+            echo "imap cfg user=" . (config('inventory_check.email.username') ?: '-') . "\n";
+            foreach (glob(storage_path('app/supplier-creds-*')) as $c) echo "creds " . basename($c) . " " . filesize($c) . "\n";
+            foreach (['ams','alliance','redeye'] as $s) { try { $cr = app(\App\Services\InventoryCheckService::class); } catch (\Throwable $e) {} }
+            echo "slack env: " . (env('SLACK_WEBHOOK_URL') ? 'set' : '-') . " log slack: " . (config('logging.channels.slack.url') ? 'set' : '-') . "\n";
+            $bs = DB::table('business')->where('id',1)->value('api_settings'); $j = json_decode((string)$bs, true) ?: [];
+            echo "api_settings keys: " . implode(',', array_keys($j)) . "\n";
+            foreach (glob(storage_path('app/*slack*')) as $c) echo "slackfile " . basename($c) . "\n";
+            PHP
+            php /tmp/diag_intake.php 2>&1 | grep -v "Deprecated" | head -60
+            rm -f /tmp/diag_intake.php
+            grep -rhoE "hooks.slack.com/services/[A-Z0-9]{3}" app config 2>/dev/null | head -3
+            grep -rn "function .*[Ss]lack\|slack_webhook\|SLACK_" app/Utils/RegisterReconUtil.php | head -8
