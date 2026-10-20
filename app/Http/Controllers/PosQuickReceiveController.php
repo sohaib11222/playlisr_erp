@@ -162,10 +162,11 @@ class PosQuickReceiveController extends Controller
             ], 400);
         }
 
+        $tx_id = null;
         try {
             DB::transaction(function () use (
                 $variation, $product, $location_id, $qty, $note,
-                $business_id, $user_id, $request
+                $business_id, $user_id, $request, &$tx_id
             ) {
                 // Find-or-create the (variation, product, location) row and
                 // atomically increment qty_available by qty. Mirror the
@@ -223,10 +224,26 @@ class PosQuickReceiveController extends Controller
             ], 500);
         }
 
+        // Double-receive flag (Sarah 10/20): after the receive, never before
+        // it, and any error is swallowed so the till is never affected.
+        $flag = null;
+        try {
+            $flag = \App\Services\PurchaseDuplicateGuard::quickReceiveFlag($business_id, $location_id, $variation->id, $tx_id);
+            if ($flag && $tx_id) {
+                DB::table('transactions')->where('id', $tx_id)->update([
+                    'additional_notes' => DB::raw("CONCAT(COALESCE(additional_notes, ''), " . DB::getPdo()->quote(' [' . $flag . ']') . ')'),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('PosQuickReceive duplicate flag failed: ' . $e->getMessage());
+            $flag = null;
+        }
+
         return response()->json([
             'success' => true,
             'variation_id' => $variation->id,
             'msg' => 'Received 1 — adding to sale.',
+            'flag' => $flag,
         ]);
     }
 

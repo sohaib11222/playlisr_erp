@@ -135,6 +135,10 @@
                     $modal.modal('hide');
                     if (typeof window.toastr !== 'undefined' && window.toastr.success) {
                         window.toastr.success('Received 1 — adding to sale.');
+                        // Double-receive flag: this box may already be in the ERP.
+                        if (resp.flag && window.toastr.warning) {
+                            window.toastr.warning(resp.flag, '', {timeOut: 12000});
+                        }
                     }
                     // Now that stock is bumped, the normal add-to-cart path
                     // will succeed. Reuse pos_product_row so all the row

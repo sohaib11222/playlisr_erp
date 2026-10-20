@@ -38,6 +38,34 @@ class PurchaseDuplicateGuard
         return false;
     }
 
+    public static function distributorIds($business_id)
+    {
+        $ids = [];
+        foreach (\App\Http\Controllers\DistributorInvoiceAuditController::DISTRIBUTOR_SUPPLIERS as $names) {
+            foreach (DB::table('contacts')->where('business_id', $business_id)->where('type', '!=', 'customer')
+                ->where(function ($q) use ($names) { foreach ($names as $n) $q->orWhere('name', $n)->orWhere('supplier_business_name', $n); })
+                ->pluck('id') as $id) $ids[] = (int) $id;
+        }
+        return array_values(array_unique($ids));
+    }
+
+    // Register quick receive: one record received at the till. Flag text if
+    // that barcode came in from a distributor at this store in the last 30
+    // days, or is on an open incoming order (receive that instead).
+    public static function quickReceiveFlag($business_id, $location_id, $variation_id, $exclude_tx_id = null)
+    {
+        $w = self::warnings($business_id, null, $location_id, '', [$variation_id], 'received', null);
+        $w = array_values(array_filter($w, function ($x) use ($exclude_tx_id) { return (int) $x['transaction_id'] !== (int) $exclude_tx_id; }));
+        if (!$w) return null;
+        $parts = [];
+        foreach ($w as $x) {
+            $parts[] = $x['type'] === 'ordered'
+                ? 'on incoming order #' . $x['transaction_id'] . ', receive that instead'
+                : 'already received on #' . $x['transaction_id'] . ' (' . date('m/d/y', strtotime($x['date'])) . ')';
+        }
+        return 'Check this one: ' . implode('; ', array_slice($parts, 0, 3)) . '.';
+    }
+
     /**
      * @param string $status  the status being saved (received / ordered / pending)
      * @param int|null $purchase_id  the purchase being edited (excluded), null when creating
@@ -45,7 +73,15 @@ class PurchaseDuplicateGuard
      */
     public static function warnings($business_id, $contact_id, $location_id, $ref_no, array $variation_ids, $status, $purchase_id = null)
     {
-        if (!self::isDistributor($business_id, $contact_id)) return [];
+        // contact_id null = any distributor (the register quick receive has no supplier).
+        if ($contact_id === null) {
+            $contactIds = self::distributorIds($business_id);
+            if (!$contactIds) return [];
+        } elseif (!self::isDistributor($business_id, $contact_id)) {
+            return [];
+        } else {
+            $contactIds = [(int) $contact_id];
+        }
         $since = now()->subDays(self::DAYS)->toDateString();
         $out = [];
 
@@ -54,7 +90,7 @@ class PurchaseDuplicateGuard
         $ref = trim((string) $ref_no);
         if ($ref !== '' && !preg_match('#^PO\d{4}/\d+$#', $ref)) {
             $q = DB::table('transactions')->where('business_id', $business_id)->where('type', 'purchase')
-                ->where('contact_id', $contact_id)->where('ref_no', $ref)->where('transaction_date', '>=', $since);
+                ->whereIn('contact_id', $contactIds)->where('ref_no', $ref)->where('transaction_date', '>=', $since);
             if ($purchase_id) $q->where('id', '!=', $purchase_id);
             foreach ($q->get(['id', 'ref_no', 'status', 'transaction_date']) as $t) {
                 $out[] = ['type' => 'ref', 'transaction_id' => (int) $t->id, 'ref_no' => $t->ref_no, 'status' => $t->status, 'date' => substr($t->transaction_date, 0, 10), 'items' => []];
@@ -79,7 +115,7 @@ class PurchaseDuplicateGuard
             ->join('variations as v', 'v.id', '=', 'pl.variation_id')
             ->join('products as p', 'p.id', '=', 'pl.product_id')
             ->where('t.business_id', $business_id)->where('t.type', 'purchase')
-            ->where('t.contact_id', $contact_id)->where('t.location_id', $location_id)
+            ->whereIn('t.contact_id', $contactIds)->where('t.location_id', $location_id)
             ->whereIn('v.sub_sku', $cands)
             ->where(function ($w) use ($since) {
                 $w->where(function ($a) use ($since) {
