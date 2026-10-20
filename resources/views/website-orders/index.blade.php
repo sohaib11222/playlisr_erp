@@ -270,6 +270,10 @@
     @if(!empty($summaryFilter))
       <div class="wo-banner warn">Showing the orders from the #shipping summary link only. <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}">Show all</a></div>
     @endif
+    @if($activeTab === 'recheck_hw')
+      <style>.wo-prod-img { width:84px !important; height:84px !important; }</style>
+      <div class="wo-banner warn">Pico couldn't find these. Check the Hollywood spots listed for each one, then tap Found it or Not here either.</div>
+    @endif
     @if($activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
       <div class="wo-banner warn">These orders need to be packed and shipped — set status to Shipped and enter a tracking number.</div>
     @endif
@@ -558,7 +562,19 @@
                           <div class="wo-pick-btns">
                             @if($plMissing && $activeTab === 'recheck_hw')
                               {{-- Pico couldn't find it: Hollywood checks its own bins (Sarah, 2026-10-20) --}}
-                              <div style="flex:0 0 100%;font-size:12px;font-weight:700;color:#000;margin:2px 0 2px;">Check Hollywood bins for this</div>
+                              @php
+                                // Where it most likely is at Hollywood (Sarah, 2026-10-20)
+                                $hwErp = $locPid ? ($erpLocations[$locPid] ?? null) : null;
+                                $hwSpots = [];
+                                $hwGenre = trim((string) ($hwErp['genre'] ?? ''));
+                                $hwSpots[] = 'Hollywood Store' . ($hwGenre !== '' ? ': ' . $hwGenre : '') . ' section';
+                                $hwBin = trim((string) (($wItem['product_id']['discogsLocation'] ?? '') ?: ($hwErp['bin'] ?? '')));
+                                if ($hwBin !== '' && stripos($hwBin, 'pico') !== 0) $hwSpots[] = 'Warehouse bin ' . $hwBin;
+                                elseif ($hwBin !== '') $hwSpots[] = 'Bin ' . $hwBin . ' (Pico bins are on the HW main floor)';
+                                $hwQty = (float) ($hwErp['stores']['Hollywood In Store'] ?? 0) + (float) ($hwErp['stores']['Hollywood Warehouse'] ?? 0);
+                                if ($hwQty > 0) $hwSpots[] = 'ERP shows ' . (int) $hwQty . ' at Hollywood';
+                              @endphp
+                              <div style="flex:0 0 100%;font-size:12px;color:#000;margin:2px 0 2px;"><strong>Most likely at Hollywood:</strong><br>@foreach($hwSpots as $hs)&bull; {{ $hs }}<br>@endforeach</div>
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="cf" onclick="woHwCheck(this, {{ json_encode(strtolower(trim((string) $line['name']))) }})">Not here either</button>
                             @elseif($plDone || $plMissing)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
