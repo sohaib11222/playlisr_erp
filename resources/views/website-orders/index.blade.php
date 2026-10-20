@@ -236,7 +236,7 @@
   .wo-loc-line { margin-bottom:2px; }
   .wo-pick-inline { margin-top:3px; }
   .wo-pick-inline .wo-pick-state { margin-bottom:3px; }
-  .wo-pick-inline .wo-pick-btns button { padding:5px 8px; }
+  .wo-pick-inline .wo-pick-btns button { flex:0 0 auto !important; padding:4px 10px; font-size:12px; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
