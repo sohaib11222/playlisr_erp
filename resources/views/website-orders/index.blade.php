@@ -220,6 +220,21 @@
   .wo-pick-btns button.go, .wo-pick-all { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
   .wo-pick-all { margin-top:2px; }
   .wo-pick-btns button:disabled, .wo-pick-all:disabled { opacity:.5; cursor:wait; }
+  /* Compact (Sarah, 2026-10-20: "less white space on this page") */
+  .wo-tbl td { padding:7px 8px !important; vertical-align:top !important; }
+  .wo-tbl thead th { padding:7px 8px !important; }
+  .wo-prod-img { width:52px; height:52px; }
+  .wo-row .wo-prod-line, .wo-prod-line { margin-bottom:2px; line-height:1.25; }
+  .wo-filters { margin-bottom:10px; padding:8px 12px; gap:10px; }
+  .wo-filters select, .wo-filters input[type=text], .wo-filters input[type=date] { padding:6px 8px; }
+  .wo-banner { margin-bottom:10px; padding:7px 12px; font-size:13px; }
+  .wo-cards { margin-bottom:10px; gap:8px; }
+  .wo-card-group { padding:7px 10px; }
+  .wo-card-line { padding:3px 6px; }
+  .wo-loc-line { margin-bottom:2px; }
+  .wo-pick-inline { margin-top:3px; }
+  .wo-pick-inline .wo-pick-state { margin-bottom:3px; }
+  .wo-pick-inline .wo-pick-btns button { padding:5px 8px; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
