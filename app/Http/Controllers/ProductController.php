@@ -271,6 +271,51 @@ class ProductController extends Controller
                 return $sum === null ? '--' : number_format((int) round($sum), 0);
             };
 
+            // Warehouse spot under the Stock number ("Warehouse / HW Main Floor /
+            // Bin pico66") when the record is in stock at Hollywood and its bin
+            // is a warehouse bin in Warehouse Locations. Nearly every Hollywood
+            // zone is the warehouse, not the floor (Sarah, 2026-10-16/20).
+            $binMap = \Cache::get('products_index_bin_map');
+            if (!is_array($binMap)) {
+                $map = [];
+                try {
+                    $resp = \App\Services\WebsiteBridge::admin('GET', '/warehouse/locations?active=true', null, 10);
+                    foreach (($resp['data'] ?? []) as $l) {
+                        $c = strtolower(trim((string) ($l['discogs_code'] ?? '')));
+                        $st = strtolower((string) ($l['store'] ?? ''));
+                        if ($c !== '' && in_array($st, ['hollywood', 'warehouse'], true)) {
+                            $map[$c] = trim((string) ($l['zone'] ?? ''));
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    \Log::warning('products index bin map failed: ' . $e->getMessage());
+                }
+                // A failed fetch is retried next request instead of cached empty.
+                if ($map) { \Cache::put('products_index_bin_map', $map, 600); }
+                $binMap = $map;
+            }
+            $whLocIds = [];
+            foreach ($locationNames as $locId => $locName) {
+                $n = strtolower((string) $locName);
+                if (strpos($n, 'discogs') === false && (strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false)) {
+                    $whLocIds[] = (int) $locId;
+                }
+            }
+            $warehouseSpot = function ($row) use ($binMap, $whLocIds) {
+                $bin = trim((string) ($row->bin_position ?? ''));
+                if ($bin === '') { $bin = trim((string) ($row->listing_location ?? '')); }
+                $key = strtolower($bin);
+                if ($bin === '' || !array_key_exists($key, $binMap)) { return ''; }
+                $qty = 0;
+                foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
+                    [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
+                    if (in_array((int) $locId, $whLocIds, true)) { $qty += (float) $q; }
+                }
+                if ($qty <= 0) { return ''; }
+                $zone = preg_replace('/^hollywood\b/i', 'HW', $binMap[$key]);
+                return implode(' / ', array_filter(['Warehouse', $zone, 'Bin ' . $bin], fn($x) => $x !== ''));
+            };
+
             $vld_scope = '';
             if ($permitted_locations != 'all') {
                 $ids = array_filter(array_map('intval', (array) $permitted_locations));
@@ -326,6 +371,8 @@ class ProductController extends Controller
                 'products.updated_at',
                 'products.product_custom_field4',
                 'products.alert_quantity',
+                'products.bin_position',
+                'products.listing_location',
                 DB::raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name"),
                 // Per-product aggregates, one correlated subselect each. These
                 // replace the old variations/vld join + GROUP BY; MySQL runs
@@ -780,10 +827,12 @@ class ProductController extends Controller
                 ->addColumn('mass_delete', function ($row) {
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
-                ->editColumn('current_stock', function($row){
+                ->editColumn('current_stock', function($row) use ($warehouseSpot) {
                     $qty = (float) $row->current_stock;
                     if ($qty !== 0.0 || $row->current_stock !== null) {
-                        return number_format((int) round($qty), 0) . ' ' . $row->unit;
+                        $spot = $warehouseSpot($row);
+                        return number_format((int) round($qty), 0) . ' ' . e($row->unit)
+                            . ($spot !== '' ? '<div style="font-size:12px; white-space:nowrap;">' . e($spot) . '</div>' : '');
                     }
                     return '--';
                 })
