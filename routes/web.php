@@ -647,10 +647,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         ksort($groups);
         $pushed = 0;
         if ($request->query('apply')) {
-            foreach (array_chunk(array_keys($hiddenIds), 200) as $chunk) {
-                (new \App\Services\NivessaStockNotifier())->push($chunk);
-                $pushed += count($chunk);
-            }
+            // One push: the website refreshes the ids one by one, so the
+            // ERP connector isn't hit by many parallel loops during store hours.
+            (new \App\Services\NivessaStockNotifier())->push(array_keys($hiddenIds));
+            $pushed = count($hiddenIds);
         }
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage(), 'line' => $e->getLine()], 500);
