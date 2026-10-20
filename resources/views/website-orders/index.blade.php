@@ -95,6 +95,9 @@
   .wo-tag.media { color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; }
   .wo-tag.fmt { color:#000; border:1px solid #e5e7eb; font-weight:600; }
   .wo-prod-price { font-size:12px; color:#000; }
+  .wo-due { display:block; margin-top:4px; font-size:12px; font-weight:700; color:#166534; }
+  .wo-due.warn { color:#92400e; }
+  .wo-due.over { color:#b91c1c; }
   .wo-sla { display:inline-block; margin-top:4px; padding:1px 7px; border-radius:5px; font-size:10.5px; font-weight:700; }
   .wo-sla.ok { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
   .wo-sla.warn { color:#92400e; background:#fef3c7; border:1px solid #fde68a; }
@@ -436,6 +439,8 @@
               <tr class="wo-row">
                 <td class="wo-placed">
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
+                  @php $due = ($rowIsPreorder && !$rowShipDate) ? null : \App\Http\Controllers\WebsiteOrdersController::dueDate($o, $rowIsPreorder ? $rowShipDate : null); @endphp
+                  @if($due)<span class="wo-due {{ $due[1] }}">{{ $due[0] }}</span>@endif
                   @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
                     @if($rowIsPreorder)
                       <span class="wo-sla pre">not in stock yet</span>

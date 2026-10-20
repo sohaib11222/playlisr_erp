@@ -1108,6 +1108,34 @@ class WebsiteOrdersController extends Controller
         return redirect()->back()->with('status', 'Notes saved.');
     }
 
+    /**
+     * Due date for an open order (Sarah, 2026-10-19), from what the site
+     * promises: shipping 1-2 business days (Priority 1), pickup ready in 48
+     * hours, preorders on street date. Returns [label, state] or null.
+     */
+    public static function dueDate(array $o, ?string $streetDate = null): ?array
+    {
+        $status = $o['order_status'] ?? '';
+        if (!empty($o['archived']) || in_array($status, ['shipped', 'picked_up', 'delivered', 'cancelled', 'email_sent'], true)) return null;
+        if (empty($o['createdAt']) && !$streetDate) return null;
+        $tz = new \DateTimeZone('America/Los_Angeles');
+        $isPickup = ($o['fulfillment_method'] ?? null) === 'pickup';
+        if ($streetDate) {
+            $due = (new \DateTime($streetDate))->setTimezone($tz);
+            while ((int) $due->format('N') >= 6) $due->modify('+1 day');
+        } elseif ($isPickup) {
+            $due = (new \DateTime($o['createdAt']))->setTimezone($tz)->modify('+2 days');
+        } else {
+            $due = (new \DateTime($o['createdAt']))->setTimezone($tz);
+            $n = ($o['ship_speed'] ?? null) === 'priority' ? 1 : 2;
+            while ($n > 0) { $due->modify('+1 day'); if ((int) $due->format('N') < 6) $n--; }
+        }
+        $today = (new \DateTime('now', $tz))->format('Y-m-d');
+        $d = $due->format('Y-m-d');
+        $state = $d < $today ? 'over' : ($d === $today ? 'warn' : 'ok');
+        return ['Due ' . $due->format('m/d/y') . ($state === 'over' ? ' · LATE' : ($state === 'warn' ? ' · today' : '')), $state];
+    }
+
     public static function hoursSinceStatic(?string $dateLike): int
     {
         return self::hoursSince($dateLike);
