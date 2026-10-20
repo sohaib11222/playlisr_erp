@@ -24,7 +24,7 @@
     </form>
     @foreach ($bins as $b)
         <a class="sc-bin" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
-            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span>@if (!empty($b['web']))<br><span class="sc-web">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }} since last count</span>@endif</span>
+            <span><b>{{ $b['name'] }}</b><br><span class="sc-small">{{ number_format($b['titles']) }} titles in the ERP{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span>@if (!empty($b['web']))<br><span class="sc-web">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }} for titles not counted since{{ !empty($b['web_bad']) ? ' (' . $b['web_bad'] . " cancelled or can't find)" : '' }}</span>@endif</span>
             <span>@if (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}</span>@else<span class="sc-due">Never counted</span>@endif</span>
         </a>
     @endforeach

@@ -146,6 +146,7 @@ class ShelfCountController extends Controller
             $b['sub'] = $k; $b['name'] = $r->sub ?: 'No sub-category';
             $b['titles'] = ($b['titles'] ?? 0) + 1; $b['units'] = ($b['units'] ?? 0) + (float) $r->qty;
             $c = $counted[$r->id] ?? null;
+            if ($c) $b['counted'] = ($b['counted'] ?? 0) + 1;
             if ($c && (!isset($b['last']) || $c['at'] > $b['last'])) $b['last'] = $c['at'];
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
