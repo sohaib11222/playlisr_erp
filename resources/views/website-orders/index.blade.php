@@ -441,9 +441,9 @@
         <table class="wo-tbl">
           <colgroup>
             <col style="width:100px">
-            <col style="width:15%">
+            <col style="width:12%">
+            <col style="width:26%">
             <col>
-            <col style="width:260px">
             <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
