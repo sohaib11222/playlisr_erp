@@ -616,6 +616,7 @@
                         { data: 'product_locations', name: 'product_locations', searchable: false },
                         { data: 'artist', name: 'products.artist'},
                         { data: 'product', name: 'products.name'  },
+                        { data: 'find_at', orderable: false, searchable: false },
                         { data: 'category', name: 'c1.name'},
                         { data: 'subcategory', name: 'c2.name'},
                         @can('view_purchase_price')

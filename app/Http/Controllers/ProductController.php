@@ -331,6 +331,39 @@ class ProductController extends Controller
                 $zone = preg_replace('/^hollywood\b/i', 'HW', $binMap[$key]);
                 return implode(' / ', array_filter(['Warehouse', $zone, 'Bin ' . $bin], fn($x) => $x !== ''));
             };
+            // Where to find the record (Sarah, 2026-10-20): the warehouse bin
+            // when it is in one, else the store plus its genre section (store
+            // bins are laid out by category / sub-category). Only places with
+            // stock on hand; the bin code is never hidden, Nick pulls by it.
+            $findAt = function ($row) use ($warehouseSpot, $warehouseBin, $locationNames) {
+                $lines = [];
+                $spot = $warehouseSpot($row);
+                if ($spot !== '') { $lines[] = $spot; }
+                $whBin = $warehouseBin($row) !== '';
+                $bin = trim((string) ($row->bin_position ?? '')) ?: trim((string) ($row->listing_location ?? ''));
+                $genre = implode(' / ', array_filter([trim((string) ($row->category ?? '')), trim((string) ($row->sub_category ?? ''))]));
+                $seen = [];
+                foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
+                    [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
+                    if ((float) $q <= 0) { continue; }
+                    $name = (string) ($locationNames[(int) $locId] ?? '');
+                    $n = strtolower($name);
+                    $isWh = strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false;
+                    if ($whBin && $isWh) { continue; } // already the warehouse line
+                    if (strpos($n, 'discogs') !== false) {
+                        $line = 'Discogs Warehouse / ' . ($bin !== '' ? 'Bin ' . $bin : 'spot not saved');
+                    } elseif (strpos($n, 'pico') !== false) {
+                        $line = implode(' / ', array_filter(['Pico Store', $genre]));
+                    } elseif (strpos($n, 'hollywood') !== false) {
+                        $line = implode(' / ', array_filter(['Hollywood Store', $genre]));
+                    } else {
+                        $line = implode(' / ', array_filter([ucwords($name), $bin !== '' ? 'Bin ' . $bin : '']));
+                    }
+                    if (!isset($seen[$line])) { $seen[$line] = true; $lines[] = $line; }
+                }
+                if (!$lines) { return '--'; }
+                return implode('', array_map(fn($l) => '<div style="white-space:nowrap;">' . e($l) . '</div>', $lines));
+            };
 
             $vld_scope = '';
             if ($permitted_locations != 'all') {
@@ -843,14 +876,15 @@ class ProductController extends Controller
                 ->addColumn('mass_delete', function ($row) {
                     return  '<input type="checkbox" class="row-select" value="' . $row->id .'">' ;
                 })
-                ->editColumn('current_stock', function($row) use ($warehouseSpot) {
+                ->editColumn('current_stock', function($row){
                     $qty = (float) $row->current_stock;
                     if ($qty !== 0.0 || $row->current_stock !== null) {
-                        $spot = $warehouseSpot($row);
-                        return number_format((int) round($qty), 0) . ' ' . e($row->unit)
-                            . ($spot !== '' ? '<div style="font-size:12px; white-space:nowrap;">' . e($spot) . '</div>' : '');
+                        return number_format((int) round($qty), 0) . ' ' . $row->unit;
                     }
                     return '--';
+                })
+                ->addColumn('find_at', function ($row) use ($findAt) {
+                    return $findAt($row);
                 })
                 ->addColumn('hw_stock', function ($row) use ($stockAt, $hwLocIds) {
                     return $stockAt($row, $hwLocIds);
@@ -998,7 +1032,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }])
-                ->rawColumns(['action' , 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'best_cost', 'dist_ams', 'dist_alliance', 'dist_monostereo', 'dist_redeye', 'dist_secretly', 'dist_matador', 'dist_deejay'])
+                ->rawColumns(['action' , 'find_at', 'product_url', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'subcategory', 'current_stock', 'discogs_id', 'list_discogs', 'list_ebay', 'nivessa_url', 'best_cost', 'dist_ams', 'dist_alliance', 'dist_monostereo', 'dist_redeye', 'dist_secretly', 'dist_matador', 'dist_deejay'])
                 ->make(true);
         }
 

@@ -11,6 +11,7 @@
             <th>Store Location</th>
             <th>Artist</th>
             <th>@lang('sale.product')</th>
+            <th>Location</th>
             <th>@lang('product.category')</th>
             <th>@lang('product.sub_category')</th>
             @can('view_purchase_price')
