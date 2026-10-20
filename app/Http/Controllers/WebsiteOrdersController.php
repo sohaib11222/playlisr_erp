@@ -57,6 +57,8 @@ class WebsiteOrdersController extends Controller
         // An item marked Can't Find: decide refund or other fix (Sarah, 2026-10-19)
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
         // Ship + pickup preorders in one tab (Sarah, 2026-10-19: simplify)
+        // Any refund on the order: ERP cancel, item cancel, or straight in Stripe (Sarah, 2026-10-20)
+        'refunded'        => ['label' => 'Refunded', 'statuses' => [], 'fulfillment' => null],
         'preorders'       => ['label' => 'Preorders', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
@@ -78,7 +80,7 @@ class WebsiteOrdersController extends Controller
         }
         $statusFilter = (string) $request->query('status', '');
         // An order link (?order=) shows the order whatever its payment status (refunded too)
-        $paymentStatusFilter = (string) $request->query('payment_status', preg_match('/^[a-f0-9]{24}$/i', (string) $request->query('order', '')) ? 'all' : 'completed');
+        $paymentStatusFilter = (string) $request->query('payment_status', (preg_match('/^[a-f0-9]{24}$/i', (string) $request->query('order', '')) || $activeTab === 'refunded') ? 'all' : 'completed');
         $search = trim((string) $request->query('q', ''));
         $dateFrom = (string) $request->query('from', '');
         $dateTo = (string) $request->query('to', '');
@@ -119,7 +121,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'preorders' => 0, 'cant_find' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'needs_action_warehouse' => 0, 'needs_action_hollywood' => 0, 'preorders' => 0, 'cant_find' => 0, 'refunded' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -143,6 +145,7 @@ class WebsiteOrdersController extends Controller
             }
             if (in_array($status, self::TABS['completed']['statuses'], true)) $tabCounts['completed']++;
             if (self::matchesTab($o, 'cant_find')) $tabCounts['cant_find']++;
+            if (self::isRefunded($o)) $tabCounts['refunded']++;
 
             // Preorder orders (any item not in stock yet) get their own
             // buckets — nothing for staff to action until the street date,
@@ -213,17 +216,21 @@ class WebsiteOrdersController extends Controller
         $filterLocations = self::erpLocations($allOrders);
         // Items waiting to be pulled at each spot (Store filter + Pick route)
         $pullCounts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
-        $needBy = ['hw' => [], 'pico' => []];
+        $needBy = ['hw' => [], 'pico' => [], 'warehouse' => [], 'hollywood' => []];
         foreach (self::pendingPulls($allOrders, $filterLocations) as $pr) {
             if (isset($pullCounts[$pr['store']])) $pullCounts[$pr['store']]++;
             // Need to Pull split by store: HW = Hollywood store + warehouse
             if ($paymentStatusFilter === 'all' || ($pr['order']['payment_status'] ?? '') === $paymentStatusFilter) {
                 $k = $pr['store'] === 'pico' ? 'pico' : (in_array($pr['store'], ['hollywood', 'warehouse'], true) ? 'hw' : null);
                 if ($k) $needBy[$k][(string) ($pr['order']['_id'] ?? '')] = true;
+                // Need to Pull is split HW Warehouse / HW Store / Pico (Sarah, 2026-10-20)
+                if (in_array($pr['store'], ['warehouse', 'hollywood'], true)) $needBy[$pr['store']][(string) ($pr['order']['_id'] ?? '')] = true;
             }
         }
         $tabCounts['needs_action_hw'] = count($needBy['hw']);
         $tabCounts['needs_action_pico'] = count($needBy['pico']);
+        $tabCounts['needs_action_warehouse'] = count($needBy['warehouse']);
+        $tabCounts['needs_action_hollywood'] = count($needBy['hollywood']);
         $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
@@ -1006,7 +1013,9 @@ class WebsiteOrdersController extends Controller
 
         // Same carve-out as the website: preorder orders only ever show up
         // in preorder_ship/preorder_pickup, never in the regular buckets.
-        if ($tab === 'cant_find') return $statusOk && self::hasCantFind($order);
+        if ($tab === 'refunded') return self::isRefunded($order);
+        // Already refunded ones move to the Refunded tab
+        if ($tab === 'cant_find') return $statusOk && self::hasCantFind($order) && !self::isRefunded($order);
         $isPreorder = self::orderHasPreorderItem($order);
         if ($tab === 'preorder_ship' || $tab === 'preorder_pickup' || $tab === 'preorders') {
             return $isPreorder && $statusOk && $fulfillmentOk;
@@ -1037,6 +1046,30 @@ class WebsiteOrdersController extends Controller
     public static function inTab(array $order, string $tab): bool
     {
         return self::matchesTab($order, $tab);
+    }
+
+    /** Money went back on this order: ERP cancel / item cancel refund, or a refund made in Stripe. */
+    public static function isRefunded(array $o): bool
+    {
+        if (($o['payment_status'] ?? '') === 'refunded') return true;
+        if (!empty($o['refund_log']) || !empty($o['external_refunds'])) return true;
+        if (in_array($o['cancel_refund']['status'] ?? null, ['ok', 'manual'], true)) return true;
+        foreach (($o['item_cancellations'] ?? []) as $c) if (in_array($c['refund_status'] ?? null, ['ok', 'manual'], true)) return true;
+        return false;
+    }
+
+    /** [can't-find lines, live lines] for the "whole order or not" label. */
+    public static function cantFindCount(array $o): array
+    {
+        $live = [];
+        foreach (($o['items'] ?? []) as $it) {
+            if (empty($it['cancelled']) && empty($it['is_gift_card'])) $live[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))] = true;
+        }
+        $cf = 0;
+        foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
+            if (($pl['status'] ?? '') === "Can't Find" && isset($live[strtolower(trim((string) ($pl['name'] ?? '')))])) $cf++;
+        }
+        return [$cf, count($live)];
     }
 
     /** Some item still on the order (not cancelled) is marked Can't Find. */

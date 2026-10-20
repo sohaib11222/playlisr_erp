@@ -16,6 +16,10 @@
   .wo-tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:#111827; border-radius:2px 2px 0 0; }
   .wo-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; background:#9ca3af; margin-left:8px; }
   .wo-badge.hot { background:#d97706; }
+  /* Store pills on Ready to Ship / Need to Pull: light blue when selected (Sarah, 2026-10-20) */
+  .wo-split { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:999px; font-size:12px; font-weight:700; color:#000; background:#fff; border:1px solid #d1d5db; text-decoration:none; }
+  .wo-split:hover { border-color:#93c5fd; }
+  .wo-split.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af; }
   .wo-badge.overdue { background:#dc2626; }
 
   .wo-filters { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; margin-bottom:18px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; }
@@ -207,10 +211,11 @@
       // Simplified tabs (Sarah, 2026-10-19). Ready to Ship and Need to Pull
       // are split HW / Pico; old tab links (to_ship, pickup, ...) still work.
       $tabDefs = [
-        'ready_ship'      => ['label' => 'Ready to Ship', 'split' => true],
-        'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => true],
+        'ready_ship'      => ['label' => 'Ready to Ship', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
+        'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         'ready_pickup'    => ['label' => 'Ready for Pickup'],
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
+        'refunded'        => ['label' => 'Refunded'],
         'preorders'       => ['label' => 'Preorders'],
         'completed'       => ['label' => 'Completed'],
       ];
@@ -234,8 +239,8 @@
         @if(!empty($def['split']))
           <span class="wo-tab {{ $activeTab === $key ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
             <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}" style="color:inherit;text-decoration:none;">{{ $def['label'] }}</a>
-            @foreach(['hw' => 'HW', 'pico' => 'Pico'] as $lk => $ll)
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-badge {{ $badgeClass }}" style="text-decoration:none;{{ $activeTab === $key && $locationFilter === $lk ? 'outline:2px solid #1e40af;' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}</a>
+            @foreach($def['split'] as $lk => $ll)
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}</a>
             @endforeach
           </span>
         @else
@@ -451,6 +456,10 @@
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
                   @php $due = ($rowIsPreorder && !$rowShipDate) ? null : \App\Http\Controllers\WebsiteOrdersController::dueDate($o, $rowIsPreorder ? $rowShipDate : null); @endphp
                   @if($due)<span class="wo-due {{ $due[1] }}">{{ $due[0] }}</span>@endif
+                  @if($activeTab === 'cant_find')
+                    @php [$cfN, $cfAll] = \App\Http\Controllers\WebsiteOrdersController::cantFindCount($o); @endphp
+                    <span style="display:block;margin-top:5px;font-size:12px;font-weight:700;color:#b91c1c;">{{ $cfN >= $cfAll ? 'Whole order' : 'Part of order' }}: {{ $cfN }} of {{ $cfAll }} can't find</span>
+                  @endif
                   @if(($o['fulfillment_method'] ?? null) === 'pickup' && !in_array($status, ['picked_up', 'delivered', 'cancelled'], true) && !$isArchived)
                     @if($rowIsPreorder)
                       <span class="wo-sla pre">not in stock yet</span>
@@ -618,6 +627,16 @@
                          two orders could end up with the same short id). --}}
                     <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
                     <button type="button" class="wo-btn" title="Copy a link to this order (for Slack)" onclick="woCopyLink(this, '{{ url('/website-orders') }}?order={{ $o['_id'] }}')">Copy link</button>
+                    @if($status === 'ready_for_pickup' && ($o['fulfillment_method'] ?? null) === 'pickup')
+                      {{-- Re-sends the "ready for pickup" email (Sarah, 2026-10-20) --}}
+                      <form method="POST" action="{{ route('website-orders.updateStatus', $o['_id']) }}" style="display:inline;" onsubmit="this.querySelector('button').disabled=true;">
+                        @csrf
+                        <input type="hidden" name="status" value="ready_for_pickup">
+                        <input type="hidden" name="notify_customer" value="1">
+                        <button type="submit" class="wo-btn" title="Email the customer again that their order is ready">Send pickup reminder</button>
+                      </form>
+                      @if(!empty($o['pickup_ready_notified_at']))<div style="font-size:12px;color:#000;margin-top:3px;">Last emailed {{ date('m/d/y', strtotime($o['pickup_ready_notified_at'])) }}</div>@endif
+                    @endif
                     <div class="wo-more">
                       <button type="button" class="wo-btn wo-more-btn" title="More actions" aria-label="More actions" onclick="woToggleMore(this, event)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
                       <div class="wo-more-menu">
