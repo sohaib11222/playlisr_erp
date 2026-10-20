@@ -499,6 +499,60 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             ->whereIn('p.id', $ids ?: [0])->select('p.id', 'p.name', 'p.sku', 'c.name as cat', 'p.created_at', 'u.first_name as creator', 'p.is_inactive')->get()->keyBy('id');
         return response()->json(compact('sales', 'buys', 'adj', 'stock', 'prods'));
     });
+    // Read-only dig (Sarah 10/19): each cancelled website item -> its ERP
+    // product (posProductId read from the live product page) -> that
+    // product's whole stock story before the order.
+    Route::get('/website-orders/cancelled-dig', function (\Illuminate\Http\Request $request) {
+        @set_time_limit(600);
+        $biz = (int) $request->session()->get('user.business_id');
+        $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
+        $all = ($c->bridgeGet('/erp/orders/console?limit=300&payment_status=all', 60)['data'] ?? []);
+        $rows = [];
+        foreach ($all as $o) {
+            if (($o['order_status'] ?? '') !== 'cancelled') continue;
+            foreach (($o['items'] ?? []) as $it) {
+                $rows[] = ['order' => $o['orderNumber'] ?? null, 'ordered' => substr((string) ($o['createdAt'] ?? ''), 0, 19), 'cancelled' => substr((string) ($o['cancelled_at'] ?? ($o['updatedAt'] ?? '')), 0, 19),
+                    'reason' => $o['cancel_reason'] ?? null, 'wid' => $it['product_id'] ?? null, 'name' => trim(($it['product_artist'] ?? '') . ' - ' . ($it['product_name'] ?? '')), 'price' => $it['price'] ?? null, 'sku' => $it['product_sku'] ?? null];
+            }
+        }
+        $cache = storage_path('app/cancel-dig-pos.json');
+        $map = is_file($cache) ? (json_decode((string) file_get_contents($cache), true) ?: []) : [];
+        foreach ($rows as &$r) {
+            $w = (string) $r['wid'];
+            if (!preg_match('/^[a-f0-9]{24}$/', $w)) continue;
+            if (!array_key_exists($w, $map)) {
+                $ctx = stream_context_create(['http' => ['timeout' => 8, 'header' => "User-Agent: NivessaERP\r\n"]]);
+                $h = @file_get_contents('https://nivessa.com/products/' . $w, false, $ctx);
+                $pid = ($h && preg_match('/posProductId\\\\?"\s*:\s*\\\\?"?(\d+)/', $h, $m)) ? (int) $m[1] : null;
+                $src = ($h && preg_match('/\\\\?"source\\\\?"\s*:\s*\\\\?"([a-z_]+)/', $h, $m2)) ? $m2[1] : null;
+                $map[$w] = ['pid' => $pid, 'src' => $src];
+            }
+            $r['pid'] = $map[$w]['pid']; $r['src'] = $map[$w]['src'];
+        }
+        unset($r);
+        @file_put_contents($cache, json_encode($map));
+        $ids = array_values(array_unique(array_filter(array_column($rows, 'pid'))));
+        $sales = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])->where('t.type', 'sell')
+            ->select('l.product_id', 't.status', 't.transaction_date as d', 'bl.name as store', 'u.first_name as who', 'l.quantity as q')->orderBy('t.transaction_date')->get()->groupBy('product_id');
+        $buys = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.type', 't.status', 't.transaction_date as d', 'bl.name as store', 'u.first_name as who', 'l.quantity as q')->orderBy('t.transaction_date')->get()->groupBy('product_id');
+        $adj = \DB::table('stock_adjustment_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.transaction_date as d', 'u.first_name as who', 'l.quantity as q')->get()->groupBy('product_id');
+        $prods = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->whereIn('p.id', $ids ?: [0])->select('p.id', 'p.name', 'p.sku', 'c.name as cat', 'p.created_at', 'u.first_name as creator')->get()->keyBy('id');
+        foreach ($rows as &$r) {
+            $pid = $r['pid'] ?? null;
+            $r['erp'] = $pid && isset($prods[$pid]) ? $prods[$pid] : null;
+            $r['sales'] = $pid ? ($sales[$pid] ?? []) : [];
+            $r['buys'] = $pid ? ($buys[$pid] ?? []) : [];
+            $r['adj'] = $pid ? ($adj[$pid] ?? []) : [];
+        }
+        unset($r);
+        return response()->json(['items' => $rows]);
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
