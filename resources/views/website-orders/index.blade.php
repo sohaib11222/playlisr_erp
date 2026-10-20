@@ -10,9 +10,17 @@
 
 <style>
   .wo-tabs { display:flex; align-items:center; gap:4px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; overflow-x:auto; flex-wrap:wrap; }
-  .wo-tabrows { margin-bottom:20px; border-bottom:2px solid #e5e7eb; }
-  .wo-tabrow { margin-bottom:0 !important; border-bottom:1px solid #f1f1f1 !important; flex-wrap:nowrap !important; }
-  .wo-rowlabel { flex:0 0 96px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#000; }
+  .wo-cards { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+  @media (max-width: 1100px) { .wo-cards { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .wo-card-group { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
+  .wo-card-title { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#000; margin:0 0 6px; }
+  .wo-card-line { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:7px; flex-wrap:wrap; }
+  .wo-card-line.on { background:#eff6ff; }
+  .wo-card-name { font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
+  .wo-card-line.on .wo-card-name { color:#1e40af; }
+  .wo-card-pills { display:flex; gap:5px; flex-wrap:wrap; }
+  .wo-split b { font-weight:700; margin-left:3px; }
+  .wo-split.has b { color:#b91c1c; }
   .wo-tab { position:relative; padding:10px 12px; font-size:14px; font-weight:600; color:#000; text-decoration:none; white-space:nowrap; }
   .wo-tab:hover { color:#111827; }
   .wo-tab.active { color:#111827; }
@@ -253,31 +261,28 @@
     @if(!isset(array_merge(...array_values($tabRows))[$activeTab]))
       @php $tabRows['Other'][$activeTab] = $tabDefs[$activeTab]; @endphp
     @endif
-    <div class="wo-tabrows">
+    {{-- Four cards, one per job (Sarah, 2026-10-20) --}}
+    <div class="wo-cards">
     @foreach($tabRows as $rowLabel => $rowTabs)
-    <div class="wo-tabs wo-tabrow">
-      <span class="wo-rowlabel">{{ $rowLabel }}</span>
-      @foreach($rowTabs as $key => $def)
-        @php
-          $count = $tabCounts[$key] ?? 0;
-          $badgeClass = ((($def['hot'] ?? false) && $count > 0) ? 'hot' : '');
-        @endphp
-        @if(!empty($def['split']))
-          <span class="wo-tab {{ $activeTab === $key ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
-            <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}" style="color:inherit;text-decoration:none;">{{ $def['label'] }}</a>
-            @foreach($def['split'] as $lk => $ll)
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}{{ !empty($def['items']) ? ' items' : '' }}</a>
-            @endforeach
-          </span>
-        @else
-        <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key])) }}"
-           class="wo-tab {{ $activeTab === $key ? 'active' : '' }}">
-          {{ $def['label'] }}
-          @if(empty($def['nocount']))<span class="wo-badge {{ $badgeClass }}">{{ $count }}</span>@endif
-        </a>
-        @endif
-      @endforeach
-    </div>
+      <div class="wo-card-group">
+        <div class="wo-card-title">{{ $rowLabel }}</div>
+        @foreach($rowTabs as $key => $def)
+          @php $count = $tabCounts[$key] ?? 0; @endphp
+          <div class="wo-card-line {{ $activeTab === $key ? 'on' : '' }}">
+            <a class="wo-card-name" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}">{{ $def['label'] }}</a>
+            <div class="wo-card-pills">
+              @if(!empty($def['split']))
+                @foreach($def['split'] as $lk => $ll)
+                  @php $n = $tabCounts[$key . '_' . $lk] ?? 0; @endphp
+                  <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $n }}</b></a>
+                @endforeach
+              @elseif(empty($def['nocount']))
+                <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key])) }}" class="wo-split {{ $activeTab === $key ? 'on' : '' }} {{ $count > 0 && !empty($def['hot']) ? 'has' : '' }}"><b>{{ $count }}</b></a>
+              @endif
+            </div>
+          </div>
+        @endforeach
+      </div>
     @endforeach
     </div>
 
@@ -301,7 +306,7 @@
       <div class="wo-banner warn">Pico couldn't find these. Check the Hollywood spots listed for each one, then tap Found it or Not here either.</div>
     @endif
     @if($activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
-      <div class="wo-banner warn">These orders need to be packed and shipped — set status to Shipped and enter a tracking number.</div>
+      <div class="wo-banner warn">These shipping orders still have items to pull. Tap Mark picked or Can't find on each item.</div>
     @endif
 
     @if($activeTab === 'preorder_ship')
