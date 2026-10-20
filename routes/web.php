@@ -591,10 +591,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         $out = [];
         foreach (\DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $biz)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
-            ->groupBy('p.id', 'c.name')->select('p.id', 'c.name as cat', \DB::raw('SUM(v.qty_available) as q'))->cursor() as $r) {
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')
+            ->groupBy('p.id', 'c.name', 'bl.name')->select('p.id', 'c.name as cat', 'bl.name as loc', \DB::raw('SUM(v.qty_available) as q'))->cursor() as $r) {
             $fresh = isset($counted[(int) $r->id]) || (($lastIn[$r->id] ?? '') >= $cut);
             $g = preg_match('/vinyl|\\bcds?\\b|cassette|7"|45/i', (string) $r->cat) ? ((stripos((string) $r->cat, 'used') !== false) ? 'used music' : 'new music') : 'other';
-            $k = $g . ' | ' . ($fresh ? 'recent' : 'older');
+            $k = (stripos((string) $r->loc, 'warehouse') !== false ? 'warehouse' : 'stores') . ' | ' . $g . ' | ' . ($fresh ? 'recent' : 'older');
             $out[$k]['listings'] = ($out[$k]['listings'] ?? 0) + 1;
             $out[$k]['copies'] = ($out[$k]['copies'] ?? 0) + (float) $r->q;
         }
