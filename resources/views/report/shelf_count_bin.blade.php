@@ -43,12 +43,12 @@
             <li>Set Sort to match how the bin is filed (usually Artist).</li>
             <li>Flip through the bin and follow along in the list. No need to pull records out or scan.</li>
             <li>Titles with 1 or 2 copies: if they're all there, tap <b>All here</b>. 3 or more copies: count them, type the number in the box and press Enter (it jumps to the next title). Not there at all: tap <b>None</b>. To fix a mistake, type the right number.</li>
-            <li>A record in the bin that isn't on the list: type the artist in the box below and tap it to add it.</li>
+            <li>A record in the bin that isn't on the list: scan its barcode into the box below (or tap Camera and point the phone at the barcode). It's added right away.</li>
             <li>When you finish (or need to stop), tap the green <b>Done: review and save</b> at the bottom, then <b>Save counts for this bin</b>. Titles you didn't touch stay as they are, so you can finish the rest another day.</li>
         </ol>
     </div>
     <div class="sc-scan">
-        <input id="scQ" type="text" placeholder="Type artist / title to add a record (or scan)" autocomplete="off">
+        <input id="scQ" type="text" placeholder="Record not on the list? Scan it here" autocomplete="off">
         <button class="sc-btn light" id="scCamBtn" type="button">Camera</button>
     </div>
     <div id="scCam"></div>
