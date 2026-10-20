@@ -35,8 +35,10 @@
                                            minlength="3"
                                            maxlength="150"
                                            placeholder="e.g. Airheads candy, Used Sharpie, Soda can">
-                                    <small class="text-muted" style="display:block;margin-top:4px;">
-                                        Describe what was sold (e.g. "Airheads candy"). Generic names like "manual" or "item" aren't accepted.
+                                    <input type="text" name="products[0][reason]" class="form-control" style="margin-top:4px;"
+                                           placeholder="Records, CDs, tapes, movies: why not scanned?">
+                                    <small style="display:block;margin-top:4px;color:#2B2620;">
+                                        Snacks, drinks, bag fees and clearance bins are fine here. Records, CDs, tapes and movies must be scanned or searched; manual only if it is not in the ERP, with a reason.
                                     </small>
                                 </td>
                                 <td>

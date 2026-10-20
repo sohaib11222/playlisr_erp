@@ -5269,6 +5269,8 @@ function addManualProductRow() {
                        class="form-control manual-product-name-input" 
                        required 
                        placeholder="Product Name">
+                <input type="text" name="products[${newRowIndex}][reason]" class="form-control" style="margin-top:4px;"
+                       placeholder="Records, CDs, tapes, movies: why not scanned?">
             </td>
             <td>
                 <input type="text" 

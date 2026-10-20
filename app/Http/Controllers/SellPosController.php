@@ -7194,6 +7194,36 @@ class SellPosController extends Controller
                     return $output;
                 }
 
+                // Records, CDs, tapes and movies must come off a real listing,
+                // or the stock never goes down and the website sells a copy we
+                // no longer have (Sarah 10/19: ~900 manual music sales since
+                // 9/1). Manual is still allowed when the item truly is not in
+                // the ERP, with a reason; snacks, bag fees, clearance are free.
+                $catLabel = (string) \App\Category::where('id', (int) $categoryId)->value('name');
+                if (preg_match('/vinyl|\\bcds?\\b|cassette|7"|45 rpm|dvd|blu|vhs|laser|8 track/i', $catLabel) && stripos($catLabel, 'clearance') === false) {
+                    $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($productName . ' ' . $trimmedArtist)), function ($w) { return mb_strlen($w) >= 3; }));
+                    if ($words && $businessId) {
+                        $q = \DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')
+                            ->where('p.business_id', $businessId)->where('p.is_inactive', 0)->where('p.category_id', (int) $categoryId)->where('v.qty_available', '>', 0);
+                        foreach (array_slice($words, 0, 4) as $w) {
+                            $q->where(function ($x) use ($w) { $x->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
+                        }
+                        $found = $q->distinct()->limit(3)->pluck('p.name')->all();
+                        if ($found) {
+                            $output['success'] = false;
+                            $output['msg'] = 'This is in the ERP: ' . implode(' | ', $found) . '. Close this window and scan or search it instead (Row ' . ($index + 1) . ').';
+                            return $output;
+                        }
+                    }
+                    $reason = trim((string) ($product['reason'] ?? ''));
+                    if (mb_strlen($reason) < 5) {
+                        $output['success'] = false;
+                        $output['msg'] = 'Records, CDs, tapes and movies have to be scanned or searched. If it really is not in the ERP, write why in the reason box (Row ' . ($index + 1) . ').';
+                        return $output;
+                    }
+                    \Log::info('Manual music sale: ' . $productName . ' / ' . $trimmedArtist . ' / ' . $catLabel . ' / reason: ' . $reason . ' / user ' . request()->session()->get('user.id'));
+                }
+
                 if (!$hasArtist && preg_match('/^[\d\W_]+$/u', $productName)) {
                     $output['success'] = false;
                     $output['msg'] = 'Please add a short description with words, e.g. "Soda can" (Row ' . ($index + 1) . ')';
