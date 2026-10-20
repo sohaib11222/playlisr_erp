@@ -475,6 +475,30 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
             'top_names' => $base()->groupBy('l.product_name')->select('l.product_name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(25)->get(),
         ]);
     });
+    // Read-only (Sarah 10/19 cancelled-orders dig): every stock movement of
+    // these products (sales, purchases incl. opening stock, adjustments,
+    // transfers) with date, type, store, qty, who + current stock + created.
+    Route::post('/products/ledger', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $ids = array_slice(array_filter(array_map('intval', (array) $request->input('ids'))), 0, 400);
+        $sales = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.type', 't.status', 't.transaction_date as d', 'bl.name as store', 'u.first_name as who', 'l.quantity as q', 't.import_source as src')->get();
+        $buys = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.type', 't.status', 't.transaction_date as d', 'bl.name as store', 'u.first_name as who', 'l.quantity as q', 't.ref_no')->get();
+        $adj = \DB::table('stock_adjustment_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.business_id', $biz)->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id', 't.type', 't.adjustment_type', 't.transaction_date as d', 'bl.name as store', 'u.first_name as who', 'l.quantity as q')->get();
+        $stock = \DB::table('variation_location_details as v')->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')
+            ->whereIn('v.product_id', $ids ?: [0])->select('v.product_id', 'bl.name as store', 'v.qty_available as q', 'v.updated_at')->get();
+        $prods = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->leftJoin('users as u', 'u.id', '=', 'p.created_by')
+            ->whereIn('p.id', $ids ?: [0])->select('p.id', 'p.name', 'p.sku', 'c.name as cat', 'p.created_at', 'u.first_name as creator', 'p.is_inactive')->get()->keyBy('id');
+        return response()->json(compact('sales', 'buys', 'adj', 'stock', 'prods'));
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
