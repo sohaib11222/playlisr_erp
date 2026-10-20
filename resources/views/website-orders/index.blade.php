@@ -548,7 +548,7 @@
                   $cfTab = in_array($activeTab, ['cant_find', 'recheck_hw'], true); // only the Can't Find lines
                   // Need to Pull tabs only show what's still to pull: picked, can't find
                   // and cancelled lines are hidden (Sarah, 2026-10-20)
-                  $needTab = in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true);
+                  $needTab = in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true) && !(($o['fulfillment_method'] ?? null) === 'pickup' && \App\Http\Controllers\WebsiteOrdersController::allPicked($o));
                   $offQueue = ($woStore || $cfTab || $needTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
                   if ($activeTab === 'recheck_hw') {
                     // Only the lines Hollywood still has to check

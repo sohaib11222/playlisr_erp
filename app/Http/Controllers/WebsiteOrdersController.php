@@ -253,7 +253,8 @@ class WebsiteOrdersController extends Controller
             if ($cancelledSince && (strtotime($o['cancelled_at'] ?? '') ?: 0) < $cancelledSince) return false;
             if (!self::matchesTab($o, $activeTab)) return false;
             // Need to Pull: drop orders with nothing left to pull (all picked / can't find)
-            if (in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true)) {
+            // (A fully picked pickup stays: it still has to be marked Ready for Pickup)
+            if (in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true) && !(($o['fulfillment_method'] ?? null) === 'pickup' && self::allPicked($o))) {
                 $off = self::offQueueNames($o);
                 $left = false;
                 foreach (($o['items'] ?? []) as $it) {
