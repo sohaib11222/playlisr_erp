@@ -450,6 +450,30 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         }));
         return response()->json(['total_orders' => count($all), 'cancelled' => $out]);
     });
+    // Read-only: manual POS lines summary by store / cashier / category / name.
+    Route::get('/products/manual-sales-summary', function (\Illuminate\Http\Request $request) {
+        $biz = (int) $request->session()->get('user.business_id');
+        $since = $request->query('since', '2026-09-01');
+        $base = function () use ($biz, $since) {
+            return \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+                ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')
+                ->leftJoin('categories as c', 'c.id', '=', 'l.category_id')
+                ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')->where('t.transaction_date', '>=', $since)
+                ->where(function ($w) { $w->whereNull('l.product_id')->orWhere('l.product_id', 0); });
+        };
+        $all = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+            ->where('t.business_id', $biz)->where('t.type', 'sell')->where('t.status', 'final')->where('t.transaction_date', '>=', $since)
+            ->groupBy('bl.name')->select('bl.name', \DB::raw('COUNT(*) as n'))->pluck('n', 'name');
+        return response()->json([
+            'since' => $since,
+            'all_lines_by_store' => $all,
+            'manual_by_store' => $base()->groupBy('bl.name')->select('bl.name', \DB::raw('COUNT(*) as n'), \DB::raw('SUM(l.unit_price_inc_tax * l.quantity) as dollars'))->get(),
+            'manual_by_cashier' => $base()->groupBy('bl.name', 'u.first_name')->select('bl.name', 'u.first_name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(30)->get(),
+            'manual_by_category' => $base()->groupBy('c.name')->select('c.name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(20)->get(),
+            'top_names' => $base()->groupBy('l.product_name')->select('l.product_name', \DB::raw('COUNT(*) as n'))->orderByDesc('n')->limit(25)->get(),
+        ]);
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
