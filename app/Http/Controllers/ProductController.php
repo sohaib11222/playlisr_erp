@@ -297,7 +297,9 @@ class ProductController extends Controller
             $whLocIds = [];
             foreach ($locationNames as $locId => $locName) {
                 $n = strtolower((string) $locName);
-                if (strpos($n, 'discogs') === false && (strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false)) {
+                // "Discogs Warehouse" counts: its records sit in the Hollywood
+                // warehouse bins, and the bin map below decides the spot.
+                if (strpos($n, 'hollywood') !== false || strpos($n, 'warehouse') !== false) {
                     $whLocIds[] = (int) $locId;
                 }
             }
