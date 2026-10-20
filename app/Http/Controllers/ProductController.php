@@ -213,7 +213,12 @@ class ProductController extends Controller
             // Distributor prices per row, cheapest first, keyed by supplier.
             // $key given => that supplier's cell HTML instead.
             $supplierPriceCache = [];
-            $supplierPricesFor = function ($row, $key = null) use (&$supplierPriceCache, $business_id) {
+            // Distributor costs only for people allowed to see costs (same
+            // permission as Purchase Price); everyone else gets blank cells
+            // and the columns are left out of their table (Sarah, 2026-10-20).
+            $canSeeCost = auth()->user()->can('view_purchase_price');
+            $supplierPricesFor = function ($row, $key = null) use (&$supplierPriceCache, $business_id, $canSeeCost) {
+                if (!$canSeeCost) { return $key === null ? [] : ''; }
                 $id = (int) $row->id;
                 if (!array_key_exists($id, $supplierPriceCache)) {
                     try {

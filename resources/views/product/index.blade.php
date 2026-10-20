@@ -645,6 +645,7 @@
                         { data: 'list_discogs', name: 'list_discogs', orderable: false, searchable: false },
                         { data: 'list_ebay', name: 'list_ebay', orderable: false, searchable: false },
                         { data: 'nivessa_url', name: 'nivessa_url', orderable: false, searchable: false },
+                        @can('view_purchase_price')
                         { data: 'best_cost', name: 'best_cost', orderable: false, searchable: false },
                         { data: 'dist_ams', name: 'dist_ams', orderable: false, searchable: false },
                         { data: 'dist_alliance', name: 'dist_alliance', orderable: false, searchable: false },
@@ -653,6 +654,7 @@
                         { data: 'dist_secretly', name: 'dist_secretly', orderable: false, searchable: false },
                         { data: 'dist_matador', name: 'dist_matador', orderable: false, searchable: false },
                         { data: 'dist_deejay', name: 'dist_deejay', orderable: false, searchable: false }
+                        @endcan
                     ],
                     createdRow: function( row, data, dataIndex ) {
                         if($('input#is_rack_enabled').val() == 1){

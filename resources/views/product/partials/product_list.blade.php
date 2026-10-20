@@ -34,6 +34,7 @@
             <th>Discogs</th>
             <th>eBay</th>
             <th>nivessa.com</th>
+            @can('view_purchase_price')
             <th>Best cost</th>
             <th>AMS</th>
             <th>Alliance</th>
@@ -42,6 +43,7 @@
             <th>Secretly</th>
             <th>Matador</th>
             <th>Deejay</th>
+            @endcan
         </tr>
     </thead>
     <tfoot>
