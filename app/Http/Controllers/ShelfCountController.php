@@ -77,6 +77,29 @@ class ShelfCountController extends Controller
         return $bins;
     }
 
+    const SORTS = ['priority' => 'High priority first', 'oldest' => 'Oldest count first', 'name' => 'A to Z'];
+
+    /**
+     * Shelf list order (Sarah 10/20 "sort by priority / have a sorting
+     * option"). Priority: most cancels, then most online orders, then never
+     * counted / oldest count. Oldest: never counted first, then oldest date.
+     */
+    protected static function sortBins(array $bins, string $sort): array
+    {
+        $oldest = function ($x) { return [isset($x['last']), $x['last'] ?? '']; };
+        usort($bins, function ($a, $b) use ($sort, $oldest) {
+            if ($sort === 'name') return strnatcasecmp($a['name'], $b['name']);
+            $ka = array_merge($oldest($a), [$a['name']]);
+            $kb = array_merge($oldest($b), [$b['name']]);
+            if ($sort !== 'oldest') {
+                $ka = array_merge([empty($a['priority']), -($a['web_bad'] ?? 0), -($a['web'] ?? 0)], $ka);
+                $kb = array_merge([empty($b['priority']), -($b['web_bad'] ?? 0), -($b['web'] ?? 0)], $kb);
+            }
+            return $ka <=> $kb;
+        });
+        return $bins;
+    }
+
     /** Add a product's online orders since its last count to its bin. */
     protected static function addWeb(array &$b, ?array $web, ?array $count): void
     {
@@ -162,12 +185,8 @@ class ShelfCountController extends Controller
             unset($b);
         }
         $bins = self::markPriority(array_values($bins));
-        // High priority first (Sarah 10/20 "sort by priority"), then oldest count.
-        usort($bins, function ($a, $b) {
-            return [empty($a['priority']), -($a['web_bad'] ?? 0), -($a['web'] ?? 0), $a['last'] ?? '', $a['name']]
-                <=> [empty($b['priority']), -($b['web_bad'] ?? 0), -($b['web'] ?? 0), $b['last'] ?? '', $b['name']];
-        });
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
+        $bins = self::sortBins($bins, (string) $request->input('sort', 'priority'));
+        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count(), 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
     }
 
     /**
@@ -206,14 +225,9 @@ class ShelfCountController extends Controller
         $bins = self::markPriority(array_values($bins));
         usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
         if ($request->input('kind') === 'all') {
-            // All shelves (Sarah 10/20 "please prioritize this"): High priority
-            // shelves first, most cancels then most online orders, then the usual order.
-            usort($bins, function ($a, $b) {
-                return [empty($a['priority']), -($a['web_bad'] ?? 0), -($a['web'] ?? 0), isset($a['last']), $a['last'] ?? '', $a['name']]
-                    <=> [empty($b['priority']), -($b['web_bad'] ?? 0), -($b['web'] ?? 0), isset($b['last']), $b['last'] ?? '', $b['name']];
-            });
+            $bins = self::sortBins($bins, (string) $request->input('sort', 'priority'));
             return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
-                'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
+                'bins' => $bins, 'total' => $rows->count(), 'overview' => true, 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
         }
         // Home (Sarah 10/14 "count shelves is overwhelming"): one tile per
         // type of stock with how many of its shelves were counted this month.
