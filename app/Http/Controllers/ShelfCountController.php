@@ -37,6 +37,50 @@ class ShelfCountController extends Controller
         return [$business_id, $locations, $loc];
     }
 
+    /**
+     * Web priority (Sarah 10/20, after the age rule was dropped): products
+     * ordered online in the last 90 days, and how many of those orders had
+     * the item cancelled or marked Can't Find. Bins holding them go on top
+     * until they're counted. Cached an hour (one website call).
+     */
+    protected function webDemand(): array
+    {
+        return \Cache::remember('shelf_count_web_demand', 3600, function () {
+            $cut = now()->subDays(90)->toDateTimeString();
+            $out = [];
+            foreach (app(\App\Http\Controllers\WebsiteOrdersController::class)->recentPaidOrders() as $o) {
+                $at = date('Y-m-d H:i:s', strtotime($o['createdAt'] ?? 'now'));
+                if ($at < $cut) continue;
+                $cantFind = [];
+                foreach (($o['pick_progress']['lines'] ?? []) as $pl) if (($pl['status'] ?? '') === "Can't Find") $cantFind[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+                foreach (($o['items'] ?? []) as $it) {
+                    $pid = (int) ($it['product_id']['posProductId'] ?? 0);
+                    if (!$pid || !empty($it['is_gift_card'])) continue;
+                    $name = strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))));
+                    $bad = !empty($it['cancelled']) || ($o['order_status'] ?? '') === 'cancelled' || isset($cantFind[$name]);
+                    $out[$pid]['orders'] = ($out[$pid]['orders'] ?? 0) + 1;
+                    $out[$pid]['bad'] = ($out[$pid]['bad'] ?? 0) + ($bad ? 1 : 0);
+                    $out[$pid]['at'] = max($out[$pid]['at'] ?? '', $at);
+                }
+            }
+            return $out;
+        });
+    }
+
+    /** Add a product's online orders since its last count to its bin. */
+    protected static function addWeb(array &$b, ?array $web, ?array $count): void
+    {
+        if (!$web || ($count && ($count['at'] ?? '') >= $web['at'])) return;
+        $b['web'] = ($b['web'] ?? 0) + $web['orders'];
+        $b['web_bad'] = ($b['web_bad'] ?? 0) + $web['bad'];
+    }
+
+    /** Web priority bins first (most cancels, then most orders), else the usual order. */
+    protected static function webFirst(array $a, array $b): int
+    {
+        return [-($a['web_bad'] ?? 0), -($a['web'] ?? 0)] <=> [-($b['web_bad'] ?? 0), -($b['web'] ?? 0)];
+    }
+
     /** Last count time per product at this store. */
     protected function lastCounted(int $business_id, int $loc): array
     {
@@ -92,6 +136,7 @@ class ShelfCountController extends Controller
         [$business_id, $locations, $loc] = $this->location($request);
         $kind = ($request->input('kind') && $request->input('kind') !== 'all') ? $this->pickKind($request, $business_id) : 'all';
         $counted = $this->lastCounted($business_id, $loc);
+        $web = $this->webDemand();
         if ($kind === 'all') return $this->overview($request, $business_id, $locations, $loc, $counted);
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
@@ -108,10 +153,11 @@ class ShelfCountController extends Controller
             $b['titles'] = ($b['titles'] ?? 0) + 1; $b['units'] = ($b['units'] ?? 0) + (float) $r->qty;
             $c = $counted[$r->id] ?? null;
             if ($c && (!isset($b['last']) || $c['at'] > $b['last'])) $b['last'] = $c['at'];
+            self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
         $bins = array_values($bins);
-        usort($bins, function ($a, $b) { return [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
+        usort($bins, function ($a, $b) { return self::webFirst($a, $b) ?: [$a['last'] ?? '', $a['name']] <=> [$b['last'] ?? '', $b['name']]; });
         return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count()]);
     }
 
@@ -122,6 +168,7 @@ class ShelfCountController extends Controller
      */
     protected function overview(Request $request, int $business_id, array $locations, int $loc, array $counted)
     {
+        $web = $this->webDemand();
         $kinds = $this->kinds($business_id);
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
@@ -144,10 +191,11 @@ class ShelfCountController extends Controller
             $b['titles'] = ($b['titles'] ?? 0) + 1;
             $c = $counted[$r->id] ?? null;
             if ($c) { $b['counted'] = ($b['counted'] ?? 0) + 1; if (!isset($b['last']) || $c['at'] > $b['last']) $b['last'] = $c['at']; }
+            self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
         $bins = array_values($bins);
-        usort($bins, function ($a, $b) { return [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
+        usort($bins, function ($a, $b) { return self::webFirst($a, $b) ?: [isset($a['last']), $a['last'] ?? '', $a['name']] <=> [isset($b['last']), $b['last'] ?? '', $b['name']]; });
         if ($request->input('kind') === 'all') {
             return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => 'all', 'kinds' => ['all' => 'All shelves'] + $kinds,
                 'bins' => $bins, 'total' => $rows->count(), 'overview' => true]);
@@ -161,6 +209,7 @@ class ShelfCountController extends Controller
             $t['kind'] = $b['kind']; $t['name'] = $kinds[$b['kind']] ?? $b['kind'];
             $t['shelves'] = ($t['shelves'] ?? 0) + 1; $t['titles'] = ($t['titles'] ?? 0) + $b['titles'];
             if (!empty($b['last']) && $b['last'] >= $cut) $t['done'] = ($t['done'] ?? 0) + 1;
+            if (!empty($b['web'])) $t['priority'] = ($t['priority'] ?? 0) + 1;
             if (!empty($b['last']) && (!isset($t['last']) || $b['last'] > $t['last'])) $t['last'] = $b['last'];
             unset($t);
         }
