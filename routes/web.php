@@ -561,6 +561,20 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         unset($r);
         return response()->json(['items' => $rows]);
     });
+    // Read-only: activity log + returns for products (what changed their stock).
+    Route::post('/products/stock-changes', function (\Illuminate\Http\Request $request) {
+        $ids = array_slice(array_filter(array_map('intval', (array) $request->input('ids'))), 0, 300);
+        $log = \DB::table('activity_log as a')->leftJoin('users as u', 'u.id', '=', 'a.causer_id')
+            ->where('a.subject_type', 'App\\Product')->whereIn('a.subject_id', $ids ?: [0])
+            ->select('a.subject_id as pid', 'a.description', 'a.properties', 'a.created_at', 'u.first_name as who')->orderBy('a.created_at')->get();
+        $returns = \DB::table('transactions as t')->join('transaction_sell_lines as l', 'l.transaction_id', '=', 't.return_parent_id')
+            ->where('t.type', 'sell_return')->whereIn('l.product_id', $ids ?: [0])
+            ->select('l.product_id as pid', 't.transaction_date as d', 'l.quantity_returned as q')->get();
+        $deletedSales = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
+            ->whereIn('l.product_id', $ids ?: [0])->where('t.type', 'sell')->where('t.status', '!=', 'final')
+            ->select('l.product_id as pid', 't.status', 't.transaction_date as d')->get();
+        return response()->json(compact('log', 'returns', 'deletedSales'));
+    });
     // Read-only: manual (no product) POS lines whose typed name contains a word.
     Route::get('/products/manual-sales', function (\Illuminate\Http\Request $request) {
         $biz = (int) $request->session()->get('user.business_id');
