@@ -404,6 +404,10 @@ class PurchaseController extends Controller
                 }
             }
 
+            // Double-receive guard (soft): the form already asked for a reason
+            // when this looks like a box we have; record it on the purchase.
+            $transaction_data['additional_notes'] = $this->duplicateNote($request, $business_id, null, null, $transaction_data['additional_notes'] ?? '');
+
             $user_id = $request->session()->get('user.id');
             $enable_product_editing = $request->session()->get('business.enable_editing_product_from_purchase');
 
@@ -844,6 +848,8 @@ class PurchaseController extends Controller
                             'tax_amount', 'shipping_details',
                             'shipping_charges', 'final_total',
                             'additional_notes', 'exchange_rate', 'pay_term_number', 'pay_term_type', 'purchase_order_ids']);
+
+            $update_data['additional_notes'] = $this->duplicateNote($request, $business_id, $id, $before_status, $update_data['additional_notes'] ?? '');
 
             $exchange_rate = $update_data['exchange_rate'];
 
@@ -1564,6 +1570,59 @@ class PurchaseController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Double-receive check for the purchase form (POST /purchases/duplicate-check).
+     * Returns the warnings so the form can ask for a reason before saving.
+     * Never errors: a failed check returns no warnings.
+     */
+    public function duplicateCheck(Request $request)
+    {
+        if (!auth()->user()->can('purchase.create') && !auth()->user()->can('purchase.update')) {
+            return response()->json(['warnings' => []]);
+        }
+        try {
+            $business_id = $request->session()->get('user.business_id');
+            $purchase_id = (int) $request->input('purchase_id') ?: null;
+            if ($purchase_id) {
+                $before = DB::table('transactions')->where('business_id', $business_id)->where('id', $purchase_id)->value('status');
+                if ($before === 'received') return response()->json(['warnings' => []]);
+            }
+            $warnings = \App\Services\PurchaseDuplicateGuard::warnings($business_id, (int) $request->input('contact_id'),
+                (int) $request->input('location_id'), (string) $request->input('ref_no', ''),
+                (array) $request->input('variation_ids', []), (string) $request->input('status', ''), $purchase_id);
+            return response()->json(['warnings' => $warnings]);
+        } catch (\Throwable $e) {
+            \Log::warning('purchase duplicate check failed: ' . $e->getMessage());
+            return response()->json(['warnings' => []]);
+        }
+    }
+
+    // Append the duplicate-check result and the typed reason to the notes.
+    // Saving is never blocked here: if the form's check didn't run (old
+    // cached JS), the note says no reason was given.
+    private function duplicateNote(Request $request, $business_id, $purchase_id, $before_status, $notes)
+    {
+        try {
+            $status = (string) $request->input('status', '');
+            if ($purchase_id && ($before_status === 'received' || $status !== 'received')) return $notes;
+            $vids = [];
+            foreach ((array) $request->input('purchases', []) as $l) {
+                if (!empty($l['variation_id'])) $vids[] = (int) $l['variation_id'];
+            }
+            $contact_id = (int) ($request->input('contact_id') ?: ($purchase_id ? DB::table('transactions')->where('id', $purchase_id)->value('contact_id') : 0));
+            $location_id = (int) ($request->input('location_id') ?: ($purchase_id ? DB::table('transactions')->where('id', $purchase_id)->value('location_id') : 0));
+            $warnings = \App\Services\PurchaseDuplicateGuard::warnings($business_id, $contact_id, $location_id, (string) $request->input('ref_no', ''), $vids, $status, $purchase_id);
+            if (!$warnings) return $notes;
+            $reason = trim((string) $request->input('duplicate_reason', ''));
+            $who = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name);
+            return trim((string) $notes . "\n[Duplicate check: " . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '. '
+                . ($reason !== '' ? 'Saved anyway by ' . $who . ': ' . $reason : 'Saved by ' . $who . ' with no reason given') . ']');
+        } catch (\Throwable $e) {
+            \Log::warning('purchase duplicate note failed: ' . $e->getMessage());
+            return $notes;
+        }
+    }
+
     public function printInvoice($id)
     {
         try {
@@ -1693,6 +1752,28 @@ class PurchaseController extends Controller
 
             $before_status = $transaction->status;
             $update_data['status'] = $status;
+
+            // Double-receive guard: receiving from the list needs a reason
+            // when the same supplier ref / items were already received.
+            if ($status === 'received' && $before_status !== 'received') {
+                $warnings = [];
+                try {
+                    $warnings = \App\Services\PurchaseDuplicateGuard::warnings($business_id, $transaction->contact_id, $transaction->location_id,
+                        $transaction->ref_no, $transaction->purchase_lines->pluck('variation_id')->all(), 'received', $transaction->id);
+                } catch (\Throwable $e) {
+                    \Log::warning('purchase duplicate check failed: ' . $e->getMessage());
+                }
+                if ($warnings) {
+                    $reason = trim((string) request()->input('duplicate_reason', ''));
+                    if ($reason === '') {
+                        return ['success' => 0, 'needs_reason' => 1,
+                            'msg' => '#' . $purchase_id . ' looks already received (' . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '). Type a reason to receive it anyway.'];
+                    }
+                    $update_data['additional_notes'] = trim((string) $transaction->additional_notes . "\n[Duplicate check: "
+                        . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '. Received anyway by '
+                        . trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) . ': ' . $reason . ']');
+                }
+            }
 
             DB::beginTransaction();
 

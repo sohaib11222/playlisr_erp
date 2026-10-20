@@ -17,6 +17,11 @@
 
 				{!! Form::hidden('purchase_id', null, ['id' => 'purchase_id']); !!}
 			</div>
+			<div class="form-group" id="duplicate_reason_group" style="display:none;">
+				<p id="duplicate_reason_msg" style="color:#c0392b;"></p>
+				<label for="status_duplicate_reason">Reason to receive it anyway</label>
+				<textarea name="duplicate_reason" id="status_duplicate_reason" class="form-control" rows="2"></textarea>
+			</div>
 		</div>
 
 		<div class="modal-footer">

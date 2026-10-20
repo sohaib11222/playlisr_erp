@@ -1327,11 +1327,86 @@ $(document).on('click', 'button#submit_purchase_form, button#submit_purchase_for
     }
 
     if ($('form#add_purchase_form').valid()) {
-        $(this).attr('disabled', true);
-        $('button#submit_purchase_form, button#submit_purchase_form_print_labels').attr('disabled', true);
-        $('form#add_purchase_form').submit();
+        var $purchase_btns = $('button#submit_purchase_form, button#submit_purchase_form_print_labels');
+        $purchase_btns.attr('disabled', true);
+        __purchase_duplicate_check(function() {
+            $('form#add_purchase_form').submit();
+        }, function() {
+            $purchase_btns.attr('disabled', false);
+        });
     }
 });
+
+// Double-receive guard (10/2026). Before saving a purchase from a
+// distributor, ask the server whether the same ref or the same barcodes were
+// already received at this store in the last 30 days, or are on an open
+// Ordered purchase (the automatic invoice import). If so, show them and
+// require a reason. A failed check never stops the save.
+function __purchase_duplicate_check(proceed, cancel) {
+    var $form = $('form#add_purchase_form');
+    if ($form.find('input[name="duplicate_reason"]').val()) { proceed(); return; }
+    var variation_ids = [];
+    $form.find('input[name$="[variation_id]"]').each(function() {
+        if ($(this).val()) variation_ids.push($(this).val());
+    });
+    $.ajax({
+        method: 'POST',
+        url: '/purchases/duplicate-check',
+        dataType: 'json',
+        timeout: 8000,
+        data: {
+            contact_id: $('#supplier_id').val(),
+            location_id: $('#location_id').val(),
+            ref_no: $('#ref_no').val(),
+            status: $form.find('select[name="status"]').val(),
+            purchase_id: $('#purchase_id').length ? $('#purchase_id').val() : '',
+            variation_ids: variation_ids,
+            _token: $('meta[name="csrf-token"]').attr('content'),
+        },
+        success: function(res) {
+            if (!res || !res.warnings || !res.warnings.length) { proceed(); return; }
+            __purchase_duplicate_modal(res.warnings, proceed, cancel);
+        },
+        error: function() { proceed(); },
+    });
+}
+
+function __purchase_duplicate_modal(warnings, proceed, cancel) {
+    var esc = function(s) { return $('<div>').text(s == null ? '' : String(s)).html(); };
+    var rows = warnings.map(function(w) {
+        var what = w.type === 'ref' ? 'Same ref / invoice number'
+            : (w.type === 'received' ? 'Same items already received' : 'These items are on an open Ordered purchase. Receive that one instead of entering a new purchase');
+        var date = w.date ? (' (' + w.date.slice(5, 7) + '/' + w.date.slice(8, 10) + '/' + w.date.slice(2, 4) + ')') : '';
+        return '<li style="margin-bottom:8px;"><strong>' + esc(what) + ':</strong> <a href="/purchases/' + w.transaction_id + '/edit" target="_blank">purchase #' + w.transaction_id + '</a>'
+            + (w.ref_no ? ' ref ' + esc(w.ref_no) : '') + ', ' + esc(w.status) + date
+            + (w.items && w.items.length ? '<br>' + esc(w.items.join(', ')) : '') + '</li>';
+    }).join('');
+    $('#purchase_duplicate_modal').remove();
+    var html = '<div class="modal fade" id="purchase_duplicate_modal" tabindex="-1" role="dialog"><div class="modal-dialog" role="document"><div class="modal-content">'
+        + '<div class="modal-header"><h4 class="modal-title">This box may already be in the ERP</h4></div>'
+        + '<div class="modal-body"><ul style="padding-left:18px;">' + rows + '</ul>'
+        + '<div class="form-group"><label for="purchase_duplicate_reason">Why save this purchase anyway?</label>'
+        + '<textarea id="purchase_duplicate_reason" class="form-control" rows="2" placeholder="For example: second box, these copies were not on the first purchase"></textarea></div></div>'
+        + '<div class="modal-footer"><button type="button" class="btn btn-default" id="purchase_duplicate_back">Go back</button>'
+        + '<button type="button" class="btn btn-primary" id="purchase_duplicate_save">Save anyway</button></div>'
+        + '</div></div></div>';
+    $('body').append(html);
+    var $m = $('#purchase_duplicate_modal');
+    var done = false;
+    $m.on('click', '#purchase_duplicate_back', function() { $m.modal('hide'); });
+    $m.on('click', '#purchase_duplicate_save', function() {
+        var reason = $.trim($('#purchase_duplicate_reason').val());
+        if (reason.length < 3) { toastr.error('Type a reason to save anyway.'); return; }
+        var $form = $('form#add_purchase_form');
+        if (!$form.find('input[name="duplicate_reason"]').length) $form.append('<input type="hidden" name="duplicate_reason">');
+        $form.find('input[name="duplicate_reason"]').val(reason);
+        done = true;
+        $m.modal('hide');
+        proceed();
+    });
+    $m.on('hidden.bs.modal', function() { if (!done) cancel(); $m.remove(); });
+    $m.modal('show');
+}
 
 function toggle_search() {
     if ($('#location_id').val()) {
