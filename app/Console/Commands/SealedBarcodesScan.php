@@ -15,6 +15,7 @@ class SealedBarcodesScan extends Command
     {
         @set_time_limit(0);
         $r = SealedBarcodeBackfillService::scan((int) $this->option('business'), (int) $this->option('limit'));
+        \Cache::forget('sealed-barcodes-scan-running');
         $this->info(json_encode($r));
         return 0;
     }

@@ -17,6 +17,12 @@
     @csrf
     <button type="submit" {{ $ready->isEmpty() ? 'disabled' : '' }} style="padding:9px 16px;border-radius:6px;border:0;background:#1e40af;color:#fff;font-weight:700;">Apply {{ $ready->count() }} barcodes</button>
   </form>
+  @if($remaining > 0)
+    <form method="POST" action="{{ url('/products/sealed-barcodes/scan') }}" style="display:inline-block;margin-left:8px;">
+      @csrf
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:1px solid #93c5fd;background:#dbeafe;color:#1e40af;font-weight:700;">Check Discogs now</button>
+    </form>
+  @endif
   @if(($counts['applied'] ?? 0) > 0)
     <form method="POST" action="{{ url('/products/sealed-barcodes/apply') }}" style="display:inline-block;margin-left:8px;">
       @csrf <input type="hidden" name="undo" value="1">

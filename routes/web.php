@@ -521,6 +521,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/products/sealed-barcodes', 'SealedBarcodeController@index');
     Route::post('/products/sealed-barcodes/apply', 'SealedBarcodeController@apply');
+    Route::post('/products/sealed-barcodes/scan', 'SealedBarcodeController@scanNow');
     Route::resource('products', 'ProductController');
 
     Route::post('/import-purchase-products', 'PurchaseController@importPurchaseProducts');
