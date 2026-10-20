@@ -19,7 +19,7 @@
         what lets the store receive an item, so anything flagged here can't be received until it's fixed.
         Import invoices at <a href="/admin/ams-invoice-import">Import AMS Invoice</a> and
         <a href="/admin/alliance-invoice-import">Import Alliance Invoice</a>.
-        Show: <a href="?days=30">30 days</a> | <a href="?days=60">60 days</a> | <a href="?days=90">90 days</a>
+        Show: <a href="?days=30">30 days</a> | <a href="?days=60">60 days</a> | <a href="?days=90">90 days</a> (default 60)
     </p>
 </section>
 
@@ -44,6 +44,68 @@
             @endforeach
             </tbody>
         </table>
+    </div>
+</div>
+
+<div class="box box-solid">
+    <div class="box-header with-border"><h3 class="box-title">Automatic intake</h3></div>
+    <div class="box-body">
+        <p style="max-width:950px;">Every 30 minutes (7am to 10pm) the ERP checks the AMS portal and the invoice mailbox for new invoices and logs each one as an Ordered purchase, creating any titles we don't carry yet. Anything it can't read is posted to Slack and listed below; upload those by hand at
+            <a href="/admin/ams-invoice-import">Import AMS Invoice</a> or <a href="/admin/alliance-invoice-import">Import Alliance Invoice</a>.</p>
+        <table class="table table-condensed table-bordered" style="max-width:720px;font-size:13px;">
+            <tr><td>AMS login</td><td>{!! $intake['ams_main'] ? 'Set (account ' . e($intake['ams_main']) . ')' : '<strong style="color:#c0392b;">Not set</strong>' !!}</td></tr>
+            <tr><td>Second AMS login</td><td>{!! $intake['ams2'] ? 'Set (account ' . e($intake['ams2']) . ')' : '<strong style="color:#c0392b;">Not set</strong> (Pico 131507)' !!}</td></tr>
+            <tr><td>Alliance e-invoice mailbox</td><td>{!! $intake['mailbox'] ? e($intake['mailbox']) . ' (e-invoices from hdadmin@aent.com need to reach this inbox)' : '<strong style="color:#c0392b;">Not set</strong>' !!}</td></tr>
+            <tr><td>Slack alerts</td><td>{!! $intake['slack'] ? 'Set' : '<strong style="color:#c0392b;">Not set</strong>' !!}</td></tr>
+            <tr><td>Last check</td><td>{{ $lastRun ? date('m/d/y g:ia', strtotime($lastRun)) : 'Not yet' }}</td></tr>
+        </table>
+        <form method="POST" action="/reports/distributor-invoice-audit/run-intake" style="display:inline;">
+            {{ csrf_field() }}
+            <button class="btn btn-primary">Check for new invoices now</button>
+        </form>
+
+        @if (count($intakeLog))
+            <table class="table table-condensed table-bordered" style="font-size:12px;margin-top:12px;">
+                <thead><tr><th>When</th><th>Distributor</th><th>Invoice</th><th>Result</th><th>Details</th></tr></thead>
+                <tbody>
+                @foreach ($intakeLog as $l)
+                    <tr>
+                        <td>{{ date('m/d/y g:ia', strtotime($l['at'])) }}</td>
+                        <td>{{ strtoupper($l['distributor'] ?? '') }}</td>
+                        <td>{{ $l['invoice'] ?? '' }}</td>
+                        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-weight:600;{{ in_array($l['status'], ['failed', 'error'], true) ? 'background:#c0392b;color:#fff;' : ($l['status'] === 'imported' ? 'background:#dff0d8;color:#222;' : 'background:#d9ecf7;color:#222;') }}">{{ $l['status'] }}</span></td>
+                        <td>
+                            @if (!empty($l['transaction_id']))
+                                <a href="/purchases/{{ $l['transaction_id'] }}/edit" target="_blank">#{{ $l['transaction_id'] }}</a>
+                            @endif
+                            {{ $l['msg'] ?? '' }}
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        @endif
+
+        @if ($isAdmin)
+            <form method="POST" action="/reports/distributor-invoice-audit/intake-settings" style="margin-top:14px;max-width:720px;" autocomplete="off">
+                {{ csrf_field() }}
+                <h4 style="margin-top:0;">Intake setup (admin)</h4>
+                <p>Blank fields keep what's already saved. Saved encrypted on the server.</p>
+                <div class="form-group"><label>Slack incoming webhook for invoice alerts</label>
+                    <input type="text" name="slack_webhook" class="form-control" placeholder="https://hooks.slack.com/services/..."></div>
+                <div class="row">
+                    <div class="col-sm-4 form-group"><label>Second AMS account #</label><input type="text" name="ams2_account" class="form-control" placeholder="131507"></div>
+                    <div class="col-sm-4 form-group"><label>Its AMS username</label><input type="text" name="ams2_user" class="form-control"></div>
+                    <div class="col-sm-4 form-group"><label>Its AMS password</label><input type="password" name="ams2_pass" class="form-control" autocomplete="new-password"></div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6 form-group"><label>Different invoice mailbox (optional)</label><input type="text" name="mail_user" class="form-control" placeholder="invoices@nivessa.com"></div>
+                    <div class="col-sm-6 form-group"><label>Its Google app password</label><input type="password" name="mail_pass" class="form-control" autocomplete="new-password"></div>
+                </div>
+                <label style="font-weight:normal;"><input type="checkbox" name="test_slack" value="1"> post a test message to Slack</label><br>
+                <button class="btn btn-default">Save setup</button>
+            </form>
+        @endif
     </div>
 </div>
 

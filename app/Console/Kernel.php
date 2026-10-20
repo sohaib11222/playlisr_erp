@@ -87,6 +87,15 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->withoutOverlapping(5);
 
+        // Distributor invoices -> ERP purchases with no one uploading them:
+        // AMS portal (both accounts) + Alliance e-invoice emails, every 30
+        // min while the stores are open. Each run only downloads invoices it
+        // hasn't seen; problems post to Slack and show on the invoice audit.
+        $schedule->command('distributor-invoices:pull')
+            ->cron('5,35 7-22 * * *')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(25);
+
         // Apple Music Top 100 refresh — daily at 09:00 PST. Public RSS
         // feed, no credentials, always safe to run. Feeds the same
         // chart_picks table with source=apple_music_top.

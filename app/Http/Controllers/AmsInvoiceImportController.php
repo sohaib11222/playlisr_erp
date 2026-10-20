@@ -180,7 +180,7 @@ class AmsInvoiceImportController extends Controller
             ], 409);
         }
 
-        $notes = $cfg['label'] . ' invoice ' . $invoice . ($vendor_ref ? (($distributor === 'ams' ? ' / AMS REF ' : ' / PO ') . $vendor_ref) : '') . ' — imported from PDF';
+        $notes = $cfg['label'] . ' invoice ' . $invoice . ($vendor_ref ? (($distributor === 'ams' ? ' / AMS REF ' : ' / PO ') . $vendor_ref) : '') . ', imported from PDF';
 
         try {
             $res = DistributorInvoiceImport::apply($distributor, $business_id, $user_id, $location_id, $contact_id, $invoice, $invoice_date, $notes, $lines);

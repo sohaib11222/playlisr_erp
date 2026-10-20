@@ -2150,6 +2150,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Every distributor invoice vs. its ERP purchase, gaps flagged.
     Route::get('/reports/distributor-invoice-audit', 'DistributorInvoiceAuditController@index');
     Route::post('/reports/distributor-invoice-audit/register', 'DistributorInvoiceAuditController@register');
+    Route::post('/reports/distributor-invoice-audit/run-intake', 'DistributorInvoiceAuditController@runIntake');
+    Route::post('/reports/distributor-invoice-audit/intake-settings', 'DistributorInvoiceAuditController@intakeSettings');
 
     // Diagnose why a specific staff member can't open POS. Lists every staff
     // user with the four POS gates (status, allow_login, user_type,

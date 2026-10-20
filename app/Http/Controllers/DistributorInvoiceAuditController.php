@@ -65,7 +65,7 @@ class DistributorInvoiceAuditController extends Controller
     {
         if (!$this->canAccess()) abort(403, 'Unauthorized action.');
         $business_id = $request->session()->get('user.business_id');
-        $days = max(1, min(365, (int) $request->input('days', 30)));
+        $days = max(1, min(365, (int) $request->input('days', 60)));
         $since = now()->subDays($days)->toDateString();
 
         $locations = DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
@@ -86,7 +86,7 @@ class DistributorInvoiceAuditController extends Controller
                 $invoices[$k] = array_merge([
                     'distributor' => $dist, 'invoice' => $inv, 'date' => $j['invoice_date'] ?? null,
                     'total' => $j['total'] ?? null, 'source' => 'imported',
-                ], $invoices[$k] ?? [], ['import_tx' => $j['transaction_id'] ?? null]);
+                ], $invoices[$k] ?? [], ['import_tx' => $j['transaction_id'] ?? null, 'catch_up_tx' => $j['catch_up_tx'] ?? null]);
             }
         }
 
@@ -94,6 +94,7 @@ class DistributorInvoiceAuditController extends Controller
         $txIds = [];
         foreach ($invoices as $r) {
             if (!empty($r['import_tx'])) $txIds[] = (int) $r['import_tx'];
+            if (!empty($r['catch_up_tx'])) $txIds[] = (int) $r['catch_up_tx'];
             foreach ($r['purchases'] ?? [] as $pid) $txIds[] = (int) $pid;
         }
         $txs = $txIds ? DB::table('transactions')->where('business_id', $business_id)->whereIn('id', array_unique($txIds))
@@ -104,6 +105,7 @@ class DistributorInvoiceAuditController extends Controller
         foreach ($invoices as $k => $r) {
             $tx = [];
             if (!empty($r['import_tx']) && isset($txs[(int) $r['import_tx']])) $tx[] = $txs[(int) $r['import_tx']];
+            if (!empty($r['catch_up_tx']) && isset($txs[(int) $r['catch_up_tx']])) $tx[] = $txs[(int) $r['catch_up_tx']];
             foreach ($r['purchases'] ?? [] as $pid) if (isset($txs[(int) $pid])) $tx[] = $txs[(int) $pid];
             // Fall back to the invoice number written on a purchase's ref/notes.
             if (!$tx && !empty($r['invoice'])) {
@@ -214,7 +216,13 @@ class DistributorInvoiceAuditController extends Controller
             unset($s);
         }
 
-        return view('report.distributor_invoice_audit')->with(compact('rows', 'adhoc', 'summary', 'days', 'locations'));
+        $intake = \App\Services\DistributorInvoiceIntake::status();
+        $intakeLog = array_slice(\App\Services\DistributorInvoiceIntake::log(), 0, 25);
+        $lastRun = Storage::disk('local')->exists('distributor-invoices/intake-last-run.json')
+            ? (json_decode(Storage::disk('local')->get('distributor-invoices/intake-last-run.json'), true)['at'] ?? null) : null;
+        $isAdmin = auth()->user()->hasRole('Admin#' . $business_id);
+
+        return view('report.distributor_invoice_audit')->with(compact('rows', 'adhoc', 'summary', 'days', 'locations', 'intake', 'intakeLog', 'lastRun', 'isAdmin'));
     }
 
     // Add/refresh invoices in the registry. Accepts JSON {rows:[{distributor,
@@ -270,5 +278,51 @@ class DistributorInvoiceAuditController extends Controller
             return response()->json(['success' => true, 'registered' => $n, 'total' => count($reg)]);
         }
         return redirect('/reports/distributor-invoice-audit')->with('status', ['success' => 1, 'msg' => "Registered {$n} invoice(s)."]);
+    }
+
+    // Run the automatic intake now (in the background) instead of waiting
+    // for the next :05 / :35.
+    public function runIntake(Request $request)
+    {
+        if (!(auth()->user()->can('purchase.create') || auth()->user()->can('purchase_order.create'))) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (\Cache::add('distributor-invoices-pull-running', 1, 600)) {
+            // Same launch as SealedBarcodeController: PHP_BINARY is php-fpm under the web server.
+            $php = PHP_BINARY;
+            if (!$php || preg_match('/fpm|cgi/i', basename($php))) $php = 'php';
+            $cmd = 'cd ' . escapeshellarg(base_path()) . ' && ' . escapeshellcmd($php) . ' artisan distributor-invoices:pull';
+            @shell_exec('nohup bash -c ' . escapeshellarg($cmd) . ' > /dev/null 2>&1 & disown');
+            $msg = 'Checking AMS and the invoice mailbox now. Refresh in a minute or two.';
+        } else {
+            $msg = 'A check is already running. Refresh in a minute or two.';
+        }
+        return redirect('/reports/distributor-invoice-audit')->with('status', ['success' => 1, 'msg' => $msg]);
+    }
+
+    // Admin only: Slack webhook for alerts, the second AMS account's login,
+    // and an optional mailbox override (default = the ERP's sarah@ IMAP).
+    // Stored encrypted; blank fields keep what's saved.
+    public function intakeSettings(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        if (!auth()->user()->hasRole('Admin#' . $business_id)) abort(403, 'Unauthorized action.');
+        $hook = trim((string) $request->input('slack_webhook', ''));
+        if ($hook !== '' && strpos($hook, 'https://hooks.slack.com/') !== 0) {
+            return redirect('/reports/distributor-invoice-audit')->with('status', ['success' => 0, 'msg' => 'The Slack webhook should start with https://hooks.slack.com/']);
+        }
+        \App\Services\DistributorInvoiceIntake::saveSettings([
+            'slack_webhook' => $hook,
+            'ams2_account' => trim((string) $request->input('ams2_account', '')),
+            'ams2_user' => trim((string) $request->input('ams2_user', '')),
+            'ams2_pass' => (string) $request->input('ams2_pass', ''),
+            'mail_user' => trim((string) $request->input('mail_user', '')),
+            'mail_pass' => (string) $request->input('mail_pass', ''),
+        ]);
+        if ($request->input('test_slack')) {
+            $ok = \App\Services\DistributorInvoiceIntake::slack('Invoice intake alerts are connected. Problems with AMS or Alliance invoices will post here.');
+            return redirect('/reports/distributor-invoice-audit')->with('status', ['success' => $ok ? 1 : 0, 'msg' => $ok ? 'Saved. Test message posted to Slack.' : 'Saved, but the Slack test message did not go through.']);
+        }
+        return redirect('/reports/distributor-invoice-audit')->with('status', ['success' => 1, 'msg' => 'Saved.']);
     }
 }

@@ -73,6 +73,28 @@ class RawImapClient
         return $uids;
     }
 
+    /**
+     * UIDs matching SINCE <date> FROM <address> (used by the distributor
+     * invoice intake to find Alliance e-invoices).
+     * @return int[]
+     */
+    public function uidSearchSinceFrom(\DateTimeInterface $since, string $from): array
+    {
+        $dateStr = strtoupper($since->format('d-M-Y'));
+        $lines = $this->command('UID SEARCH SINCE ' . $dateStr . ' FROM ' . $this->quote($from));
+        $uids = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^\* SEARCH(.*)$/i', trim($line), $m)) {
+                foreach (preg_split('/\s+/', trim($m[1])) as $tok) {
+                    if ($tok !== '' && ctype_digit($tok)) {
+                        $uids[] = (int) $tok;
+                    }
+                }
+            }
+        }
+        return $uids;
+    }
+
     /** Fetch one message's full raw RFC822 source (headers + body) by UID, without marking it read. */
     public function uidFetchRaw(int $uid): ?string
     {

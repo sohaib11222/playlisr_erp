@@ -135,7 +135,8 @@ class DistributorInvoiceImport
         return $upc;
     }
 
-    // Category from the invoice's format code (AMS "Prod Type": LP / CD / CS;
+    // Category from the invoice's format code (AMS "Prod Type": LP / CD / CDS /
+    // MC / SIN, TIN = merch tins (no category: the reviewer picks);
     // Alliance "CF": 01 = LP, 02 = CD, TO = toys), falling back to words in
     // the description. Null = unknown, the reviewer picks.
     public static function guessCategory($format, $description)
@@ -143,7 +144,7 @@ class DistributorInvoiceImport
         $f = strtoupper(trim((string) $format));
         $d = strtoupper((string) $description);
         if ($f === '02' || preg_match('/^\d?CD|SACD/', $f)) return 'CD - Sealed';
-        if ($f === '01' || preg_match('/^(\d?LP|VIN|VINYL|7|10|12|7IN|12IN|EP)$/', $f)) return 'Vinyl - Sealed';
+        if ($f === '01' || preg_match('/^(\d?LP|VIN|VINYL|7|10|12|7IN|10IN|12IN|EP|SIN|45)$/', $f)) return 'Vinyl - Sealed';
         if ($f === 'TO' || $f === 'TOY') return 'Toys';
         if (preg_match('/^(CS|CAS|CASS|MC)$/', $f)) return 'Cassettes - Sealed';
         if (preg_match('/\bCASSETTE\b/', $d)) return 'Cassettes - Sealed';
@@ -221,9 +222,10 @@ class DistributorInvoiceImport
 
             // Best product for this UPC: active over inactive, then the one in
             // the invoice's category, then the code as printed, then newest.
-            $best = null; $bestScore = null;
+            $best = null; $bestScore = null; $allVids = [];
             foreach (self::upcCandidates($upc) as $rank => $cand) {
                 foreach ($rowsBySku[$cand] ?? [] as $r) {
+                    $allVids[] = (int) $r->variation_id;
                     $score = [(int) !$r->is_inactive, (int) ($catId && (int) $r->category_id === $catId), -$rank, (int) $r->product_id];
                     if ($bestScore === null || $score > $bestScore) { $best = $r; $bestScore = $score; }
                 }
@@ -245,6 +247,9 @@ class DistributorInvoiceImport
                 'current_cost' => $best && $best->default_purchase_price !== null ? round((float) $best->default_purchase_price, 2) : null,
                 'existing' => [],
                 'new_product' => null,
+                // Every product carrying this UPC (the catalog has duplicates),
+                // so "already on a purchase" checks catch any of them.
+                'upc_variation_ids' => array_values(array_unique($allVids)),
             ];
             if (!$best) {
                 $nm = self::nameFromDescription($desc);
@@ -264,7 +269,9 @@ class DistributorInvoiceImport
         // invoice date (a pre-logged order or a floor receipt) — those lines
         // start unticked so the invoice doesn't double them. Other invoice
         // imports (ref AMS- / ALLIANCE-) don't count: a restock is a new line.
-        $vids = array_values(array_filter(array_column($out, 'variation_id')));
+        $vids = [];
+        foreach ($out as $l) foreach ($l['upc_variation_ids'] as $v) $vids[] = $v;
+        $vids = array_values(array_unique($vids));
         if ($vids && $supplier_id && $location_id) {
             $d = self::normalizeDate($invoiceDate);
             $from = date('Y-m-d', strtotime($d . ' -60 days'));
@@ -294,8 +301,8 @@ class DistributorInvoiceImport
                 ];
             }
             foreach ($out as &$line) {
-                if ($line['variation_id'] && isset($byVid[$line['variation_id']])) {
-                    $line['existing'] = $byVid[$line['variation_id']];
+                foreach ($line['upc_variation_ids'] as $v) {
+                    if (isset($byVid[$v])) $line['existing'] = array_merge($line['existing'], $byVid[$v]);
                 }
             }
             unset($line);
@@ -309,9 +316,14 @@ class DistributorInvoiceImport
      * $lines: [{variation_id?, qty, unit_price, upc, description, new_product?{name, artist, sku, category_id, sell_price}}]
      * Returns ['transaction' => Transaction, 'created_products' => [...], 'lines' => n, 'total' => x].
      */
-    public static function apply($distributor, $business_id, $user_id, $location_id, $contact_id, $invoiceKey, $invoiceDate, $notes, array $lines)
+    public static function apply($distributor, $business_id, $user_id, $location_id, $contact_id, $invoiceKey, $invoiceDate, $notes, array $lines, array $opts = [])
     {
         $cfg = self::config($distributor);
+        // A catch-up purchase for lines an earlier import dropped gets its own
+        // ref ("AMS-0621577-B") and snapshot key, and leaves the invoice's
+        // sidecar alone.
+        $suffix = $opts['ref_suffix'] ?? '';
+        $writeSidecar = $opts['sidecar'] ?? true;
         $productUtil = app(ProductUtil::class);
         $catIds = array_flip(self::categoryIds($business_id)); // id => name
 
@@ -413,7 +425,7 @@ class DistributorInvoiceImport
                 'status' => 'ordered',
                 'payment_status' => 'due',
                 'contact_id' => $contact_id,
-                'ref_no' => $cfg['ref'] . $invoiceKey,
+                'ref_no' => $cfg['ref'] . $invoiceKey . $suffix,
                 'transaction_date' => self::normalizeDate($invoiceDate),
                 'total_before_tax' => $total,
                 'tax_amount' => 0,
@@ -445,17 +457,17 @@ class DistributorInvoiceImport
         }
 
         $stamp = now()->toDateTimeString();
-        Storage::disk('local')->put('admin-snapshots/' . $cfg['action'] . '_' . $invoiceKey . '_' . now()->format('Ymd_His') . '.json', json_encode([
+        Storage::disk('local')->put('admin-snapshots/' . $cfg['action'] . '_' . $invoiceKey . $suffix . '_' . now()->format('Ymd_His') . '.json', json_encode([
             'action' => $cfg['action'],
             'timestamp' => $stamp,
-            'direction' => $cfg['label'] . " invoice {$invoiceKey} → purchase #{$transaction->id} (" . count($clean) . ' lines, ' . count($created) . ' new products)',
+            'direction' => $cfg['label'] . " invoice {$invoiceKey}{$suffix} → purchase #{$transaction->id} (" . count($clean) . ' lines, ' . count($created) . ' new products)',
             'business_id' => $business_id,
-            'invoice' => $invoiceKey,
+            'invoice' => $invoiceKey . $suffix,
             'transaction_id' => $transaction->id,
             'created_products' => $created,
         ], JSON_PRETTY_PRINT));
 
-        Storage::disk('local')->put(self::sidecarPath($distributor, $invoiceKey), json_encode([
+        if ($writeSidecar) Storage::disk('local')->put(self::sidecarPath($distributor, $invoiceKey), json_encode([
             'invoice' => $invoiceKey,
             'transaction_id' => $transaction->id,
             'line_count' => count($clean),
