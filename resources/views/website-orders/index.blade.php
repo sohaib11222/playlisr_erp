@@ -18,6 +18,13 @@
   .wo-dg-pick .wo-pick-btns { display:flex; gap:5px; flex-wrap:wrap; }
   .wo-dg-pick .wo-pick-btns button { flex:1 1 auto; font-size:12px; font-weight:700; padding:6px 8px; border:1.5px solid #111827; border-radius:6px; background:#fff; color:#000; }
   .wo-dg-pick .wo-pick-btns button.go { border-color:#047857; color:#047857; background:#fff; }
+  .wo-prog-wrap { margin-top:8px; width:150px; }
+  .wo-prog { height:8px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-prog span { display:block; height:100%; background:#f59e0b; border-radius:999px; }
+  .wo-prog-wrap.full .wo-prog span { background:#047857; }
+  .wo-prog-lbl { font-size:12px; font-weight:700; color:#000; margin-top:3px; }
+  .wo-prog-wrap.full .wo-prog-lbl { color:#047857; }
+  .wo-prog-wrap.part .wo-prog-lbl { color:#92400e; }
   .wo-cards { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
   @media (max-width: 1100px) { .wo-cards { grid-template-columns:repeat(2, minmax(0,1fr)); } }
   .wo-card-group { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
@@ -737,7 +744,12 @@
                   @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
-                    <div class="wo-pick-count" style="margin-top:6px;font-size:12px;font-weight:700;color:{{ ($pp['picked'] ?? 0) >= ($pp['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pp['picked'] ?? 0 }}</span>/<span class="t">{{ $pp['total'] ?? 0 }}</span></div>
+                    @php $ppN = (int) ($pp['picked'] ?? 0); $ppT = max(1, (int) ($pp['total'] ?? 0)); $ppPct = (int) round(100 * min($ppN, $ppT) / $ppT); @endphp
+                    {{-- Progress bar: none / partly / all picked at a glance (Sarah, 2026-10-20) --}}
+                    <div class="wo-pick-count wo-prog-wrap {{ $ppN >= $ppT ? 'full' : ($ppN > 0 ? 'part' : 'none') }}">
+                      <div class="wo-prog"><span style="width:{{ $ppPct }}%"></span></div>
+                      <div class="wo-prog-lbl"><span class="n">{{ $ppN }}</span> of <span class="t">{{ (int) ($pp['total'] ?? 0) }}</span> picked</div>
+                    </div>
                   @endif
                 </td>
               </tr>
@@ -1309,7 +1321,14 @@
         if (l.classList.contains('is-done')) picked += q;
       });
       var c = box.parentNode.querySelector('.wo-pick-count');
-      if (c) { c.querySelector('.n').textContent = picked; c.style.color = picked >= total ? '#047857' : '#000'; }
+      if (c) {
+        c.querySelector('.n').textContent = picked;
+        var bar = c.querySelector('.wo-prog span');
+        if (bar) bar.style.width = (total ? Math.round(100 * Math.min(picked, total) / total) : 0) + '%';
+        c.classList.toggle('full', picked >= total);
+        c.classList.toggle('part', picked > 0 && picked < total);
+        c.classList.toggle('none', picked === 0);
+      }
       var allBtn = box.querySelector('.wo-pick-all');
       if (allBtn) { allBtn.hidden = picked >= total; allBtn.disabled = false; }
     }
