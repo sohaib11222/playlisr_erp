@@ -18,9 +18,13 @@ use Illuminate\Support\Facades\Schema;
  */
 class MorningPullsNotifier
 {
+    // shipping: Nick (ship list + warehouse link), on his clock-in.
+    // hollywood: the HW cashier pulls the newest store items for Nick to ship.
+    // pico: the Pico opener. (Sarah, 2026-10-19)
     const STORES = [
-        'hollywood' => ['channel' => 'shipping', 'places' => ['hollywood', 'warehouse'], 'label' => 'Hollywood'],
-        'pico' => ['channel' => 'pico', 'places' => ['pico'], 'label' => 'Pico'],
+        'shipping' => ['channel' => 'shipping', 'clock' => 'hollywood', 'places' => ['warehouse'], 'label' => 'Shipping'],
+        'hollywood' => ['channel' => 'hollywood', 'clock' => 'hollywood', 'places' => ['hollywood'], 'label' => 'Hollywood Store pulls', 'newest' => 10],
+        'pico' => ['channel' => 'pico', 'clock' => 'pico', 'places' => ['pico'], 'label' => 'Pico'],
     ];
     const PLACE_LABEL = ['hollywood' => 'Hollywood Store', 'warehouse' => 'Warehouse', 'pico' => 'Pico Store'];
     const ROUTE_URL = 'https://playlist.nivessa.com/website-orders/pick-route?store=';
@@ -37,10 +41,10 @@ class MorningPullsNotifier
         foreach (self::STORES as $store => $cfg) {
             if (($state[$store] ?? '') === $now->toDateString()) continue;
             // #shipping goes out on Nick's clock-in (onNickClockIn); this is only the 11 AM fallback
-            $who = $store === 'hollywood' ? [] : self::clockedIn($store);
+            $who = $store === 'shipping' ? [] : self::clockedIn($cfg['clock'], $store === 'hollywood');
             if (!$who) {
                 if ($now->hour < 11) continue; // wait for the morning person to clock in
-                $who = self::scheduled($store);
+                $who = self::scheduled($cfg['clock']);
             }
             $text = self::build($store, $who);
             if ($dryRun) {
@@ -68,10 +72,10 @@ class MorningPullsNotifier
             $now = \Carbon::now('America/Los_Angeles');
             $file = storage_path('app/shipping-shift/morning-pulls.json');
             $state = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
-            if (($state['hollywood'] ?? '') === $now->toDateString()) return;
-            $text = self::build('hollywood', [$userId]);
+            if (($state['shipping'] ?? '') === $now->toDateString()) return;
+            $text = self::build('shipping', [$userId]);
             if ($text === null || self::send('shipping', $text)) {
-                $state['hollywood'] = $now->toDateString();
+                $state['shipping'] = $now->toDateString();
                 if (!is_dir(dirname($file))) @mkdir(dirname($file), 0775, true);
                 @file_put_contents($file, json_encode($state));
             }
@@ -91,6 +95,10 @@ class MorningPullsNotifier
         $orders = $web['data'] ?? [];
         $all = WO::pendingPulls($orders, WO::erpLocations($orders));
         $rows = array_values(array_filter($all, fn($r) => in_array($r['store'], $cfg['places'], true) && $r['pick_status'] !== 'Pending Arrival'));
+        if (!empty($cfg['newest'])) {
+            // Newest orders first (Sarah: "most recent ones")
+            usort($rows, fn($a, $b) => strcmp((string) ($b['order']['createdAt'] ?? ''), (string) ($a['order']['createdAt'] ?? '')));
+        }
         // Marked Pending Arrival: check if it came in (e.g. distributor CDs)
         $waiting = array_values(array_filter($all, fn($r) => in_array($r['store'], $cfg['places'], true) && $r['pick_status'] === 'Pending Arrival'));
         // Every item picked: pack and ship. Pico ships its own; the rest is Hollywood's.
@@ -98,14 +106,17 @@ class MorningPullsNotifier
             if (($o['payment_status'] ?? '') !== 'completed' || !WO::inTab($o, 'ready_ship')) return false;
             $from = [];
             foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
-            return ($from && !array_diff($from, ['pico']) ? 'pico' : 'hollywood') === $store;
+            return ($from && !array_diff($from, ['pico']) ? 'pico' : 'shipping') === $store;
         }));
         if (!$rows && !$waiting && !$ready) return null;
 
         $tags = self::tags($userIds);
         $now = \Carbon::now('America/Los_Angeles');
-        $lines = ['*' . $cfg['label'] . ' for ' . $now->format('D m/d/y') . '*'];
-        $lines[] = ($tags ? implode(' ', $tags) . ' ' : '') . 'here is what to do today. Tap Picked or Can\'t find on the Pick Route as you go.';
+        // Title links to that store's Pick Route (Sarah: "need link")
+        $lines = ['*<' . self::ROUTE_URL . $cfg['places'][0] . '|' . $cfg['label'] . ' for ' . $now->format('D m/d/y') . '>*'];
+        $lines[] = ($tags ? implode(' ', $tags) . ' ' : '') . 'here is what to do today.';
+        // #shipping stays short: pulls are one link per spot (Sarah, 2026-10-19)
+        $compact = $cfg['channel'] === 'shipping';
 
         if ($ready) {
             usort($ready, fn($a, $b) => strcmp((string) ($a['createdAt'] ?? ''), (string) ($b['createdAt'] ?? '')));
@@ -115,14 +126,36 @@ class MorningPullsNotifier
                 $n = 0;
                 foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $n += max(1, (int) ($it['quantity'] ?? 1));
                 $lines[] = '• ' . self::orderRef($o) . ' · ' . $n . ' item' . ($n === 1 ? '' : 's')
-                    . (($o['ship_speed'] ?? null) === 'priority' ? ' · *PRIORITY*' : '') . self::late($o) . self::note($o);
+                    . (($o['ship_speed'] ?? null) === 'priority' ? ' · *PRIORITY*' : '') . self::note($o, true);
             }
         }
 
         $shown = 0;
+        if ($rows && $compact) {
+            $links = [];
+            foreach (array_reverse($cfg['places']) as $place) {
+                $c = count(array_filter($rows, fn($r) => $r['store'] === $place));
+                if ($c) $links[] = '<' . self::ROUTE_URL . $place . '|' . self::PLACE_LABEL[$place] . ' (' . $c . ')>';
+            }
+            $lines[] = '';
+            $lines[] = '*Pull these:* ' . implode(' · ', $links);
+            $rows = [];
+        }
+        if ($rows && !empty($cfg['newest'])) {
+            $lines[] = '';
+            $lines[] = '*<' . self::ROUTE_URL . 'hollywood|Pull these from the store for Nick to ship (' . count($rows) . ')>*' . ' newest first:';
+            foreach (array_slice($rows, 0, $cfg['newest']) as $r) {
+                $spot = self::spot($r);
+                $lines[] = '• ' . ($spot !== '' ? '*' . self::esc($spot) . '*: ' : '') . self::esc(self::itemName($r)) . ' (' . self::orderRef($r['order']) . ')';
+            }
+            if (count($rows) > $cfg['newest']) {
+                $lines[] = '<' . self::ROUTE_URL . 'hollywood|+' . (count($rows) - $cfg['newest']) . ' more on the Pick Route>';
+            }
+            $rows = [];
+        }
         if ($rows) {
             $lines[] = '';
-            $lines[] = '*Pull these* (' . count($rows) . ')';
+            $lines[] = '*<' . self::ROUTE_URL . $cfg['places'][0] . '|Pull these (' . count($rows) . ')>*';
         }
         foreach ($cfg['places'] as $place) {
             $here = array_values(array_filter($rows, fn($r) => $r['store'] === $place));
@@ -131,7 +164,7 @@ class MorningPullsNotifier
             usort($here, function ($a, $b) {
                 return strnatcasecmp(self::spot($a), self::spot($b));
             });
-            $lines[] = '_' . self::PLACE_LABEL[$place] . '_ (' . count($here) . ') <' . self::ROUTE_URL . $place . '|Pick Route>';
+            if (count($cfg['places']) > 1) $lines[] = '_' . self::PLACE_LABEL[$place] . '_ (' . count($here) . ') <' . self::ROUTE_URL . $place . '|Pick Route>';
             foreach ($here as $r) {
                 if ($shown >= self::MAX_LINES) break 2;
                 $shown++;
@@ -167,10 +200,12 @@ class MorningPullsNotifier
     }
 
     /** The order's staff note, e.g. "Alec shipped the Pico part 10/19". */
-    private static function note(array $o): string
+    private static function note(array $o, bool $inline = false): string
     {
         $t = trim((string) ($o['staff_note']['text'] ?? ''));
-        return $t !== '' ? "\n      Note: " . self::esc(mb_strimwidth(preg_replace('/\s+/', ' ', $t), 0, 200, '...')) : '';
+        if ($t === '') return '';
+        $t = self::esc(mb_strimwidth(preg_replace('/\s+/', ' ', $t), 0, 200, '...'));
+        return $inline ? ' - ' . $t : "\n      Note: " . $t;
     }
 
     /** "HW Main Floor / Bin pico19" (warehouse) or "Vinyl - Used / Rock" (store). */
@@ -197,16 +232,21 @@ class MorningPullsNotifier
     }
 
     /** The first person clocked in at the store today (still on the clock). */
-    private static function clockedIn(string $store): array
+    private static function clockedIn(string $store, bool $notNick = false): array
     {
         try {
             $locs = self::locationIds($store);
             if (!$locs || !Schema::hasTable('time_clock_punches')) return [];
             $tz = config('app.timezone');
             $start = \Carbon::now('America/Los_Angeles')->startOfDay()->setTimezone($tz)->format('Y-m-d H:i:s');
-            $uid = DB::table('time_clock_punches')->whereIn('location_id', $locs)->whereNull('clock_out_at')->whereNull('voided_at')
-                ->where('clock_in_at', '>=', $start)->orderBy('clock_in_at')->value('user_id');
-            return $uid ? [(int) $uid] : [];
+            $uids = DB::table('time_clock_punches')->whereIn('location_id', $locs)->whereNull('clock_out_at')->whereNull('voided_at')
+                ->where('clock_in_at', '>=', $start)->orderBy('clock_in_at')->pluck('user_id');
+            foreach ($uids as $uid) {
+                // The HW cashier, not Nick (he gets #shipping)
+                if ($notNick && ShippingShiftNotifier::isShippingStaff(DB::table('users')->where('id', $uid)->first(['first_name', 'last_name']))) continue;
+                return [(int) $uid];
+            }
+            return [];
         } catch (\Throwable $e) {
             \Log::warning('Morning pulls clock check failed: ' . $e->getMessage());
             return [];
@@ -250,10 +290,12 @@ class MorningPullsNotifier
     /** Who would be tagged right now, by name (for the preview page). */
     public static function whoNow(string $store): string
     {
-        $ids = self::clockedIn($store);
+        $clock = self::STORES[$store]['clock'];
+        $ids = self::clockedIn($clock, $store === 'hollywood');
         $how = 'clocked in';
+        if ($store === 'shipping') return 'Nick (when he clocks in)';
         if (!$ids) {
-            $ids = self::scheduled($store);
+            $ids = self::scheduled($clock);
             $how = 'on Sling';
         }
         if (!$ids) return 'nobody yet';

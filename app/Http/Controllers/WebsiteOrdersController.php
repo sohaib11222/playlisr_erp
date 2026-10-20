@@ -1289,7 +1289,7 @@ class WebsiteOrdersController extends Controller
             abort(403, 'Unauthorized action.');
         }
         $out = '';
-        foreach (['hollywood' => '#shipping', 'pico' => '#pico'] as $store => $ch) {
+        foreach (['shipping' => '#shipping', 'hollywood' => '#hollywood', 'pico' => '#pico'] as $store => $ch) {
             $out .= "WOULD POST TO {$ch} (preview, nothing sent). Tags: " . \App\Services\MorningPullsNotifier::whoNow($store) . "\n\n";
             try {
                 $out .= (\App\Services\MorningPullsNotifier::build($store) ?? '(nothing to pull, no post)') . "\n\n";
