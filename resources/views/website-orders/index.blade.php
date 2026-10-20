@@ -242,7 +242,7 @@
           <span class="wo-tab {{ $activeTab === $key ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
             <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}" style="color:inherit;text-decoration:none;">{{ $def['label'] }}</a>
             @foreach($def['split'] as $lk => $ll)
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}</a>
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }}">{{ $ll }} {{ $tabCounts[$key . '_' . $lk] ?? 0 }}{{ $key === 'needs_action' ? ' items' : '' }}</a>
             @endforeach
           </span>
         @else

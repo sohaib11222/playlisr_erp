@@ -230,9 +230,10 @@ class WebsiteOrdersController extends Controller
             // Need to Pull split by store: HW = Hollywood store + warehouse
             if ($paymentStatusFilter === 'all' || ($pr['order']['payment_status'] ?? '') === $paymentStatusFilter) {
                 $k = $pr['store'] === 'pico' ? 'pico' : (in_array($pr['store'], ['hollywood', 'warehouse'], true) ? 'hw' : null);
-                if ($k) $needBy[$k][(string) ($pr['order']['_id'] ?? '')] = true;
+                // Counted in items, not orders (Sarah, 2026-10-20: "says 3 but there are a lot more")
+                if ($k) $needBy[$k][] = 1;
                 // Need to Pull is split HW Warehouse / HW Store / Pico (Sarah, 2026-10-20)
-                if (in_array($pr['store'], ['warehouse', 'hollywood'], true)) $needBy[$pr['store']][(string) ($pr['order']['_id'] ?? '')] = true;
+                if (in_array($pr['store'], ['warehouse', 'hollywood'], true)) $needBy[$pr['store']][] = 1;
             }
         }
         $tabCounts['needs_action_hw'] = count($needBy['hw']);
