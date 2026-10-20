@@ -220,6 +220,8 @@
   .wo-pick-btns button.go, .wo-pick-all { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
   .wo-pick-all { margin-top:2px; }
   .wo-pick-btns button:disabled, .wo-pick-all:disabled { opacity:.5; cursor:wait; }
+  /* Use the full screen width on this page */
+  body.pos-v2 .ev-wrap { max-width:none !important; padding:10px 14px 40px !important; }
   /* Compact (Sarah, 2026-10-20: "less white space on this page") */
   .wo-tbl td { padding:7px 8px !important; vertical-align:top !important; }
   .wo-tbl thead th { padding:7px 8px !important; }
