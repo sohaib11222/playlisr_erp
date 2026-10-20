@@ -64,6 +64,27 @@
         border-bottom: 1px solid #eee;
         margin-bottom: 10px;
     }
+    /* Filters (2026-10-20): pill rows, light blue when selected */
+    .pf-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 22px; margin-bottom: 10px; }
+    .pf-row:last-of-type { margin-bottom: 0; }
+    .pf-group { display: flex; flex-direction: column; gap: 4px; }
+    .pf-label, .pf-select > label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #1F1B16 !important; margin: 0 !important; }
+    .pf-pills, body.products-v2 .date-presets.pf-pills-static { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
+    .pf-pill, body.products-v2 .pf-pills-static .date-preset-btn {
+        background: #fff; border: 1px solid #C9CED6; border-radius: 999px; padding: 6px 13px;
+        font-size: 13px; font-weight: 600; color: #1F1B16; cursor: pointer; line-height: 1.1; box-shadow: none;
+    }
+    .pf-pill:hover, body.products-v2 .pf-pills-static .date-preset-btn:hover { background: #F2F7FF; border-color: #8DB4E8; color: #1F1B16; }
+    .pf-pill.is-active, body.products-v2 .pf-pills-static .date-preset-btn.is-active,
+    body.products-v2 .pf-pills-static .date-preset-btn[data-preset="all"].is-active {
+        background: #DCEBFF; border-color: #5B8FD6; color: #123A6B;
+    }
+    body.products-v2 .pf-pills-static .date-preset-btn[data-preset="all"] { background: #fff; border-color: #C9CED6; color: #1F1B16; font-weight: 600; }
+    .pf-select { display: flex; flex-direction: column; gap: 4px; width: 200px; }
+    .pf-select.pf-date { width: 210px; }
+    .pf-clear { margin-left: auto; background: none; border: 0; color: #1E5BB8; font-weight: 600; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 6px 0; }
+    @media (max-width: 767px) { .pf-select, .pf-select.pf-date { width: 100%; } .pf-clear { margin-left: 0; } }
+
     /* products-v2 overrides this — see public/css/products-list-layout.css */
     body:not(.products-v2) #product_filters_bar .product-search-input {
         max-width: 520px;
@@ -88,71 +109,86 @@
     <div class="row">
         <div class="col-md-12">
         @component('components.filters', ['title' => __('report.filters')])
-            <div class="col-md-2">
-                <div class="form-group">
-                    {!! Form::label('category_id', __('product.category') . ':') !!}
+            {{-- Filters, simplified (Sarah, 2026-10-20): one-click pills for the
+                 common ones, dropdowns only where the list is long. The pills
+                 drive the original selects (kept hidden) so the AJAX payload
+                 and change handlers stay the same. --}}
+            <div class="pf-row">
+                <div class="pf-group">
+                    <span class="pf-label">Stock</span>
+                    <div class="pf-pills" data-target="#product_list_filter_stock">
+                        <button type="button" class="pf-pill" data-value="">All</button>
+                        <button type="button" class="pf-pill" data-value="in_stock">In stock only</button>
+                    </div>
+                </div>
+                <div class="pf-group">
+                    <span class="pf-label">Store</span>
+                    <div class="pf-pills" data-target="#location_id">
+                        <button type="button" class="pf-pill" data-value="">All stores</button>
+                        @foreach($business_locations as $loc_id => $loc_name)
+                            @if($loc_id !== 'none')
+                                <button type="button" class="pf-pill" data-value="{{ $loc_id }}">{{ $loc_name }}</button>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+                <div class="pf-group">
+                    <span class="pf-label">Status</span>
+                    <div class="pf-pills" data-target="#product_list_filter_active_state">
+                        <button type="button" class="pf-pill" data-value="active">Active</button>
+                        <button type="button" class="pf-pill" data-value="inactive">Archived / merged</button>
+                        <button type="button" class="pf-pill" data-value="">All</button>
+                    </div>
+                </div>
+                <button type="button" class="pf-clear" id="product_filters_clear">Clear filters</button>
+            </div>
+
+            <div class="pf-row">
+                <div class="pf-select">
+                    <label for="product_list_filter_category_id">Category</label>
                     {!! Form::select('category_id', $categories, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_category_id', 'placeholder' => __('lang_v1.all')]) !!}
                 </div>
-            </div>
-            <div class="col-md-2">
-                <div class="form-group">
-                    {!! Form::label('sub_category_id', __('product.sub_category') . ':') !!}
+                <div class="pf-select">
+                    <label for="product_list_filter_sub_category_id">Sub category</label>
                     <select name="sub_category_id" id="product_list_filter_sub_category_id" class="form-control select2" style="width:100%;">
                         <option value="">{{ __('lang_v1.all') }}</option>
                     </select>
                 </div>
-            </div>
-            <div class="col-md-2" id="location_filter">
-                <div class="form-group">
-                    <label for="location_id">Store Location:</label>
-                    {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'location_id', 'placeholder' => __('lang_v1.all')]) !!}
-                </div>
-            </div>
-            <div class="col-md-2">
-                <div class="form-group">
-                    {!! Form::label('created_by', __('business.created_by') . ':') !!}
+                <div class="pf-select">
+                    <label for="product_list_filter_created_by">Added by</label>
                     {!! Form::select('created_by', $users_who_created_products, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_created_by', 'placeholder' => __('lang_v1.all')]) !!}
                 </div>
-            </div>
-            <div class="col-md-2">
-                <div class="form-group">
-                    <label for="product_list_filter_active_state">Status:</label>
-                    {!! Form::select('active_state', ['active' => 'Active only', 'inactive' => 'Archived / merged', '' => 'All'], 'active', ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_active_state']) !!}
+                <div class="pf-group">
+                    <span class="pf-label">Added</span>
+                    <div class="date-presets pf-pills-static" id="product_list_date_presets" role="group" aria-label="Date range presets">
+                        <button type="button" class="date-preset-btn" data-preset="today">Today</button>
+                        <button type="button" class="date-preset-btn" data-preset="7">7 days</button>
+                        <button type="button" class="date-preset-btn" data-preset="30">30 days</button>
+                        <button type="button" class="date-preset-btn" data-preset="ytd">This year</button>
+                        <button type="button" class="date-preset-btn is-active" data-preset="all">Any time</button>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-2">
-                <div class="form-group">
-                    <label for="product_list_filter_stock">Stock:</label>
-                    {!! Form::select('stock_state', ['' => 'All', 'in_stock' => 'In stock only'], request()->get('stock_state') == 'in_stock' ? 'in_stock' : '', ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_stock']) !!}
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="form-group">
-                    {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
+                <div class="pf-select pf-date">
+                    <label for="product_list_filter_created_date_range">Or pick dates</label>
                     <div class="input-group">
-                        {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => __('lang_v1.select_a_date_range'), 'readonly']) !!}
+                        {!! Form::text('created_date_range', null, ['class' => 'form-control', 'id' => 'product_list_filter_created_date_range', 'placeholder' => 'Pick a date range', 'readonly']) !!}
                         {{-- Legacy "All" checkbox kept in DOM (hidden via products-v2 CSS)
-                             so existing change handlers still fire. The new preset
-                             buttons below toggle this checkbox programmatically. --}}
+                             so existing change handlers still fire. The preset
+                             buttons toggle this checkbox programmatically. --}}
                         <span class="input-group-addon" id="product_list_filter_all_time_wrap">
                             <label style="margin:0; font-weight:400;">
                                 <input type="checkbox" id="product_list_filter_all_time" checked> @lang('lang_v1.all')
                             </label>
                         </span>
                     </div>
-                    <div class="date-presets" id="product_list_date_presets" role="group" aria-label="Date range presets">
-                        <button type="button" class="date-preset-btn" data-preset="today">Today</button>
-                        <button type="button" class="date-preset-btn" data-preset="7">7 days</button>
-                        <button type="button" class="date-preset-btn" data-preset="30">30 days</button>
-                        <button type="button" class="date-preset-btn" data-preset="ytd">This Year</button>
-                        <button type="button" class="date-preset-btn is-active" data-preset="all" title="Slow on large catalogs — searches the entire database">
-                            <i class="fa fa-globe" aria-hidden="true"></i> All Time
-                        </button>
-                    </div>
-                    <div class="date-preset-hint">
-                        Tip: click <strong>All Time</strong> to search the full catalog (slower).
-                    </div>
                 </div>
+            </div>
+
+            {{-- The original selects the pills drive. --}}
+            <div style="display:none;">
+                {!! Form::select('location_id', $business_locations, null, ['class' => 'form-control', 'id' => 'location_id', 'placeholder' => __('lang_v1.all')]) !!}
+                {!! Form::select('active_state', ['active' => 'Active only', 'inactive' => 'Archived / merged', '' => 'All'], 'active', ['class' => 'form-control', 'id' => 'product_list_filter_active_state']) !!}
+                {!! Form::select('stock_state', ['' => 'All', 'in_stock' => 'In stock only'], request()->get('stock_state') == 'in_stock' ? 'in_stock' : '', ['class' => 'form-control', 'id' => 'product_list_filter_stock']) !!}
             </div>
 
             <!-- include module filter (if any custom filters exist) -->
@@ -407,6 +443,34 @@
         $(document).ready( function(){
             console.log('Document ready - setting up handlers');
 
+            // Filter pills: each group drives its hidden select; the select's
+            // own change handler reloads the table.
+            function syncFilterPills() {
+                $('.pf-pills[data-target]').each(function() {
+                    var val = String($($(this).data('target')).val() || '');
+                    $(this).find('.pf-pill').each(function() {
+                        $(this).toggleClass('is-active', String($(this).data('value')) === val);
+                    });
+                });
+            }
+            $(document).on('click', '.pf-pills[data-target] .pf-pill', function() {
+                var $sel = $($(this).closest('.pf-pills').data('target'));
+                $sel.val(String($(this).data('value'))).trigger('change');
+                syncFilterPills();
+            });
+            $(document).on('change', '#location_id, #product_list_filter_active_state, #product_list_filter_stock', syncFilterPills);
+            syncFilterPills();
+
+            $(document).on('click', '#product_filters_clear', function() {
+                $('#location_id').val('');
+                $('#product_list_filter_stock').val('');
+                $('#product_list_filter_active_state').val('active');
+                $('#product_list_filter_category_id, #product_list_filter_sub_category_id, #product_list_filter_created_by').val('').trigger('change.select2');
+                syncFilterPills();
+                // "Any time" reloads the table once with everything cleared
+                $('#product_list_date_presets .date-preset-btn[data-preset="all"]').trigger('click');
+            });
+
             // Re-init the Store Location select2 with allowClear so users can
             // return to "All" after picking a specific store. The global
             // __select2() init in app.js does not pass allowClear.
@@ -555,6 +619,7 @@
                         @endcan
                         { data: 'hw_stock', orderable: false, searchable: false},
                         { data: 'pico_stock', orderable: false, searchable: false},
+                        { data: 'warehouse_stock', orderable: false, searchable: false},
                         { data: 'current_stock', searchable: false},
                         { data: 'total_sold', searchable: false},
                         { data: 'sku', name: 'products.sku'},

@@ -303,17 +303,31 @@ class ProductController extends Controller
                     $whLocIds[] = (int) $locId;
                 }
             }
-            $warehouseSpot = function ($row) use ($binMap, $whLocIds) {
+            // The record's bin when Warehouse Locations maps it to the
+            // warehouse, else ''.
+            $warehouseBin = function ($row) use ($binMap) {
                 $bin = trim((string) ($row->bin_position ?? ''));
                 if ($bin === '') { $bin = trim((string) ($row->listing_location ?? '')); }
-                $key = strtolower($bin);
-                if ($bin === '' || !array_key_exists($key, $binMap)) { return ''; }
-                $qty = 0;
+                return $bin !== '' && array_key_exists(strtolower($bin), $binMap) ? $bin : '';
+            };
+            // Units in the warehouse: Hollywood / Warehouse stock of a record in
+            // a warehouse bin, plus anything at a real (non-Discogs) Warehouse
+            // location. null when the record has never been there.
+            $warehouseQty = function ($row) use ($warehouseBin, $whLocIds, $locationNames) {
+                $inBin = $warehouseBin($row) !== '';
+                $qty = null;
                 foreach (array_filter(explode('|', (string) ($row->stock_by_location ?? ''))) as $part) {
                     [$locId, $q] = array_pad(explode(':', $part, 2), 2, 0);
-                    if (in_array((int) $locId, $whLocIds, true)) { $qty += (float) $q; }
+                    $n = strtolower((string) ($locationNames[(int) $locId] ?? ''));
+                    $whLoc = strpos($n, 'warehouse') !== false && strpos($n, 'discogs') === false;
+                    if ($whLoc || ($inBin && in_array((int) $locId, $whLocIds, true))) { $qty = ($qty ?? 0) + (float) $q; }
                 }
-                if ($qty <= 0) { return ''; }
+                return $qty;
+            };
+            $warehouseSpot = function ($row) use ($binMap, $warehouseBin, $warehouseQty) {
+                $bin = $warehouseBin($row);
+                if ($bin === '' || ($warehouseQty($row) ?? 0) <= 0) { return ''; }
+                $key = strtolower($bin);
                 $zone = preg_replace('/^hollywood\b/i', 'HW', $binMap[$key]);
                 return implode(' / ', array_filter(['Warehouse', $zone, 'Bin ' . $bin], fn($x) => $x !== ''));
             };
@@ -843,6 +857,10 @@ class ProductController extends Controller
                 })
                 ->addColumn('pico_stock', function ($row) use ($stockAt, $picoLocIds) {
                     return $stockAt($row, $picoLocIds);
+                })
+                ->addColumn('warehouse_stock', function ($row) use ($warehouseQty) {
+                    $qty = $warehouseQty($row);
+                    return $qty === null ? '--' : number_format((int) round($qty), 0);
                 })
                 ->addColumn(
                     'purchase_price',

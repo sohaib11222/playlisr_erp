@@ -21,6 +21,7 @@
             @endcan
             <th>HW Stock</th>
             <th>Pico Stock</th>
+            <th>Warehouse Stock</th>
             <th>Total Stock</th>
             <th>Units Sold</th>
             <th>@lang('product.sku')</th>
