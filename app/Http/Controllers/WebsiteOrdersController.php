@@ -1048,7 +1048,15 @@ class WebsiteOrdersController extends Controller
     {
         $from = [];
         foreach (($o['items'] ?? []) as $it) {
-            if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
+            if (!empty($it['cancelled']) || !empty($it['is_gift_card'])) continue;
+            $sf = (string) ($it['ship_from'] ?? '');
+            if ($sf === '' && !empty($it['product_id'])) {
+                // Orders from before two store carts have no ship_from: go by
+                // where the record is pulled (Thogdin #496 sat at Pico, 2026-10-20)
+                $parts = self::pullParts($it, self::$erpCache[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
+                $sf = self::pullStore($parts['place']) === 'pico' ? 'pico' : 'hollywood';
+            }
+            $from[] = $sf === 'pico' ? 'pico' : 'hollywood';
         }
         return ($from && !array_diff($from, ['pico'])) ? 'pico' : 'hollywood';
     }

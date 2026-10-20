@@ -113,9 +113,7 @@ class MorningPullsNotifier
         // Every item picked: pack and ship. Pico ships its own; the rest is Hollywood's.
         $ready = array_values(array_filter($orders, function ($o) use ($store) {
             if (($o['payment_status'] ?? '') !== 'completed' || !WO::inTab($o, 'ready_ship')) return false;
-            $from = [];
-            foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
-            return ($from && !array_diff($from, ['pico']) ? 'pico' : 'shipping') === $store;
+            return (WO::shipStore($o) === 'pico' ? 'pico' : 'shipping') === $store;
         }));
         if (!$rows && !$waiting && !$ready && !$recheck) return null;
 
