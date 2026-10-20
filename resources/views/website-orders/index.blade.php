@@ -213,6 +213,7 @@
       $tabDefs = [
         'ready_ship'      => ['label' => 'Ready to Ship', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
         'needs_action'    => ['label' => 'Need to Pull', 'hot' => true, 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
+        'recheck_hw'      => ['label' => 'Recheck in HW Bins', 'hot' => true],
         'ready_pickup'    => ['label' => 'Ready for Pickup', 'split' => ['hollywood' => 'HW', 'pico' => 'Pico']],
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'hot' => true],
         'refunded'        => ['label' => 'Refunded', 'nocount' => true],
@@ -473,8 +474,13 @@
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
                   $woStore = ($activeTab !== 'ready_ship' && in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) ? $locationFilter : null;
                   $lineShow = [];
-                  $cfTab = $activeTab === 'cant_find'; // only the Can't Find lines
+                  $cfTab = in_array($activeTab, ['cant_find', 'recheck_hw'], true); // only the Can't Find lines
                   $offQueue = ($woStore || $cfTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
+                  if ($activeTab === 'recheck_hw') {
+                    // Only the lines Hollywood still has to check
+                    $hwRe = \App\Http\Controllers\WebsiteOrdersController::hwRecheckNames($o);
+                    foreach (($o['items'] ?? []) as $rit) { $rk = strtolower(trim((string) ($rit['product_id']['name'] ?? ($rit['product_name'] ?? '')))); if (!isset($hwRe[$rk])) $offQueue[$rk] = true; }
+                  }
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
                     // Store queue hides items already picked or marked Can't Find
@@ -516,9 +522,9 @@
                   // separate checklist cut names to one letter). Matched by name.
                   $pickLines = [];
                   foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
-                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find'], true);
+                  $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true);
                 @endphp
-                <td class="wo-loc @if($pickable) wo-pick @endif" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
+                <td class="wo-loc @if($pickable) wo-pick @endif" data-web="{{ $o['_id'] }}" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
                   {{-- One block per product, kept level with its product by
                        woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
                   @foreach($cancelLines as $line)
@@ -549,7 +555,11 @@
                         <div class="wo-pick-line wo-pick-inline {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
                           <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : '')) }}</div>
                           <div class="wo-pick-btns">
-                            @if($plDone || $plMissing)
+                            @if($plMissing && $activeTab === 'recheck_hw')
+                              {{-- Pico couldn't find it: Hollywood checks its own bins (Sarah, 2026-10-20) --}}
+                              <div style="font-size:12px;font-weight:700;color:#000;margin:2px 0 4px;">Check Hollywood bins for this</div>
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="cf" onclick="woHwCheck(this, {{ json_encode(strtolower(trim((string) $line['name']))) }})">Not here either</button>
+                            @elseif($plDone || $plMissing)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
@@ -668,7 +678,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find'], true))
+                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
                     <div class="wo-pick-count" style="margin-top:6px;font-size:12px;font-weight:700;color:{{ ($pp['picked'] ?? 0) >= ($pp['total'] ?? 0) ? '#047857' : '#000' }};">picked <span class="n">{{ $pp['picked'] ?? 0 }}</span>/<span class="t">{{ $pp['total'] ?? 0 }}</span></div>
@@ -1183,6 +1193,22 @@
   {{-- Pick buttons: save to the website's pick list and update the row in place
        so picking several items doesn't reload the page each tap. --}}
   <script>
+    // Hollywood checked and it isn't there: moves to Can't Find: Decide Refund
+    function woHwCheck(btn, name) {
+      var box = btn.closest('.wo-pick');
+      var line = btn.closest('.wo-pick-line');
+      line.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      fetch('{{ url('/website-orders') }}/' + box.dataset.web + '/hw-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: name })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        if (!res.success) throw new Error(res.message || 'Not saved.');
+        line.querySelector('.wo-pick-btns').innerHTML = '<div style="font-size:12px;font-weight:700;color:#b91c1c;">Not at Hollywood either. Moved to Can\'t Find: Decide Refund.</div>';
+      }).catch(function (e) { alert('Not saved: ' + e.message); line.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); });
+    }
+
     function woPick(btn, status, all) {
       var box = btn.closest('.wo-pick');
       var line = btn.closest('.wo-pick-line');

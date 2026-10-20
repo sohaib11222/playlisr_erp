@@ -93,7 +93,16 @@ class MorningPullsNotifier
             throw new \RuntimeException('could not load website orders');
         }
         $orders = $web['data'] ?? [];
-        $all = WO::pendingPulls($orders, WO::erpLocations($orders));
+        WO::$erpCache = WO::erpLocations($orders);
+        $all = WO::pendingPulls($orders, WO::$erpCache);
+        // Pico couldn't find these: the Hollywood cashier checks our bins (Sarah, 2026-10-20)
+        $recheck = [];
+        if ($store === 'hollywood') {
+            foreach ($orders as $o) {
+                if (($o['payment_status'] ?? '') !== 'completed' || !WO::inTab($o, 'recheck_hw')) continue;
+                foreach (WO::hwRecheckNames($o) as $it) $recheck[] = ['order' => $o, 'item' => $it];
+            }
+        }
         $rows = array_values(array_filter($all, fn($r) => in_array($r['store'], $cfg['places'], true) && $r['pick_status'] !== 'Pending Arrival'));
         if (!empty($cfg['newest'])) {
             // Newest orders first (Sarah: "most recent ones")
@@ -108,7 +117,7 @@ class MorningPullsNotifier
             foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $from[] = ($it['ship_from'] ?? '') === 'pico' ? 'pico' : 'hollywood';
             return ($from && !array_diff($from, ['pico']) ? 'pico' : 'shipping') === $store;
         }));
-        if (!$rows && !$waiting && !$ready) return null;
+        if (!$rows && !$waiting && !$ready && !$recheck) return null;
 
         $tags = self::tags($userIds);
         $now = \Carbon::now('America/Los_Angeles');
@@ -183,6 +192,17 @@ class MorningPullsNotifier
         }
         if ($shown < count($rows)) {
             $lines[] = '+' . (count($rows) - $shown) . ' more on the Pick Route';
+        }
+
+        if ($recheck) {
+            $lines[] = '';
+            $lines[] = '*<https://playlist.nivessa.com/website-orders?tab=recheck_hw|Pico couldn\'t find these, please check our bins (' . count($recheck) . ')>*';
+            foreach ($recheck as $r) {
+                $erp = WO::$erpCache[(int) ($r['item']['product_id']['posProductId'] ?? 0)] ?? null;
+                $genre = (string) ($erp['genre'] ?? '');
+                $lines[] = '• ' . ($genre !== '' ? '*' . self::esc($genre) . '*: ' : '') . self::esc(self::itemName(['item' => $r['item'], 'name' => (string) ($r['item']['product_id']['name'] ?? 'Item')])) . ' (' . self::orderRef($r['order']) . ')';
+            }
+            $lines[] = 'Tap Found it or Not here either on the Recheck in HW Bins tab.';
         }
 
         if ($waiting) {

@@ -57,6 +57,8 @@ class WebsiteOrdersController extends Controller
         // An item marked Can't Find: decide refund or other fix (Sarah, 2026-10-19)
         'cant_find'       => ['label' => "Can't Find: Decide Refund", 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
         // Ship + pickup preorders in one tab (Sarah, 2026-10-19: simplify)
+        // Pico marked it Can't Find: Hollywood checks its bins before anyone decides a refund (Sarah, 2026-10-20)
+        'recheck_hw'      => ['label' => 'Recheck in HW Bins', 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
         // Any refund on the order: ERP cancel, item cancel, or straight in Stripe (Sarah, 2026-10-20)
         'refunded'        => ['label' => 'Refunded', 'statuses' => [], 'fulfillment' => null],
         'preorders'       => ['label' => 'Preorders', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
@@ -103,6 +105,7 @@ class WebsiteOrdersController extends Controller
         $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=' . urlencode($paymentStatusFilter));
         $bridgeError = $resp === null || ($resp['success'] ?? true) === false;
         $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
+        self::$erpCache = self::erpLocations($allOrders);
         $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
 
         // Link to one order (?order=<id>), e.g. pasted in Slack (Sarah, 2026-10-16):
@@ -121,7 +124,7 @@ class WebsiteOrdersController extends Controller
             $search = $linkOrder;
         }
 
-        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'needs_action_warehouse' => 0, 'needs_action_hollywood' => 0, 'preorders' => 0, 'cant_find' => 0, 'refunded' => 0, 'ready_pickup_hollywood' => 0, 'ready_pickup_pico' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
+        $tabCounts = ['needs_action' => 0, 'to_ship' => 0, 'pickup' => 0, 'ready_pickup' => 0, 'ready_ship' => 0, 'ready_ship_hw' => 0, 'ready_ship_pico' => 0, 'needs_action_hw' => 0, 'needs_action_pico' => 0, 'needs_action_warehouse' => 0, 'needs_action_hollywood' => 0, 'preorders' => 0, 'cant_find' => 0, 'recheck_hw' => 0, 'refunded' => 0, 'ready_pickup_hollywood' => 0, 'ready_pickup_pico' => 0, 'preorder_ship' => 0, 'preorder_pickup' => 0, 'completed' => 0, 'archived' => 0, 'pickup_overdue' => 0];
         foreach ($allOrders as $o) {
             // Mirror the website: its badge counts only ever see orders
             // already fetched for the active payment_status filter
@@ -145,6 +148,7 @@ class WebsiteOrdersController extends Controller
             }
             if (in_array($status, self::TABS['completed']['statuses'], true)) $tabCounts['completed']++;
             if (self::matchesTab($o, 'cant_find')) $tabCounts['cant_find']++;
+            if (self::matchesTab($o, 'recheck_hw')) $tabCounts['recheck_hw']++;
             if (self::isRefunded($o)) $tabCounts['refunded']++;
 
             // Preorder orders (any item not in stock yet) get their own
@@ -217,7 +221,7 @@ class WebsiteOrdersController extends Controller
         });
 
         // Store filter needs each item's pull spot (same as the Location column)
-        $filterLocations = self::erpLocations($allOrders);
+        $filterLocations = self::$erpCache;
         // Items waiting to be pulled at each spot (Store filter + Pick route)
         $pullCounts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
         $needBy = ['hw' => [], 'pico' => [], 'warehouse' => [], 'hollywood' => []];
@@ -1020,6 +1024,7 @@ class WebsiteOrdersController extends Controller
         // Same carve-out as the website: preorder orders only ever show up
         // in preorder_ship/preorder_pickup, never in the regular buckets.
         if ($tab === 'refunded') return self::isRefunded($order);
+        if ($tab === 'recheck_hw') return $statusOk && self::hwRecheckNames($order) && !self::isRefunded($order);
         // Already refunded ones move to the Refunded tab
         if ($tab === 'cant_find') return $statusOk && self::hasCantFind($order) && !self::isRefunded($order);
         $isPreorder = self::orderHasPreorderItem($order);
@@ -1052,6 +1057,59 @@ class WebsiteOrdersController extends Controller
     public static function inTab(array $order, string $tab): bool
     {
         return self::matchesTab($order, $tab);
+    }
+
+    /** ERP stock per product for the orders on screen (set once per request). */
+    public static $erpCache = [];
+    private static $hwChecks = null;
+    const HW_CHECKS = 'website-orders/hw-rechecks.json';
+
+    private static function hwChecks(): array
+    {
+        if (self::$hwChecks === null) {
+            $f = storage_path('app/' . self::HW_CHECKS);
+            self::$hwChecks = is_file($f) ? (json_decode((string) file_get_contents($f), true) ?: []) : [];
+        }
+        return self::$hwChecks;
+    }
+
+    /**
+     * Lines Pico marked Can't Find that Hollywood hasn't checked yet:
+     * [lowercase name => item]. Jon: Pico misses are often at Hollywood.
+     */
+    public static function hwRecheckNames(array $o): array
+    {
+        $lines = [];
+        foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
+            if (($pl['status'] ?? '') === "Can't Find") $lines[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+        }
+        if (!$lines) return [];
+        $checked = self::hwChecks()[(string) ($o['_id'] ?? '')] ?? [];
+        $out = [];
+        foreach (($o['items'] ?? []) as $it) {
+            if (!empty($it['cancelled']) || !empty($it['is_gift_card']) || empty($it['product_id'])) continue;
+            $k = strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))));
+            if (!isset($lines[$k]) || isset($checked[$k])) continue;
+            $parts = self::pullParts($it, self::$erpCache[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
+            if (self::pullStore($parts['place']) === 'pico') $out[$k] = $it;
+        }
+        return $out;
+    }
+
+    /** Hollywood checked its bins and it isn't there either: on to Decide Refund. */
+    public function hwCheck(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) return response()->json(['success' => false, 'message' => 'Bad order id.'], 422);
+        $name = strtolower(trim((string) $request->input('name', '')));
+        if ($name === '') return response()->json(['success' => false, 'message' => 'Missing item.'], 422);
+        $f = storage_path('app/' . self::HW_CHECKS);
+        if (!is_dir(dirname($f))) @mkdir(dirname($f), 0775, true);
+        $all = is_file($f) ? (json_decode((string) file_get_contents($f), true) ?: []) : [];
+        $u = auth()->user();
+        $all[$id][$name] = ['by' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')), 'at' => date('c')];
+        file_put_contents($f, json_encode($all));
+        return response()->json(['success' => true]);
     }
 
     /** Money went back on this order: ERP cancel / item cancel refund, or a refund made in Stripe. */
@@ -1098,8 +1156,11 @@ class WebsiteOrdersController extends Controller
         foreach (($o['items'] ?? []) as $it) {
             if (empty($it['cancelled'])) $live[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))] = true;
         }
+        $recheck = self::hwRecheckNames($o);
         foreach (($o['pick_progress']['lines'] ?? []) as $pl) {
-            if (($pl['status'] ?? '') === "Can't Find" && isset($live[strtolower(trim((string) ($pl['name'] ?? '')))])) return true;
+            $k = strtolower(trim((string) ($pl['name'] ?? '')));
+            // Still being rechecked at Hollywood: not ready for a refund decision
+            if (($pl['status'] ?? '') === "Can't Find" && isset($live[$k]) && !isset($recheck[$k])) return true;
         }
         return false;
     }
