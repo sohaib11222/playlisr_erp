@@ -136,6 +136,13 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
 
+        // Morning pull list per store, tagging whoever clocks in first (Sarah, 2026-10-19).
+        $schedule->command('pulls:morning-post')
+            ->everyFiveMinutes()
+            ->between('5:00', '13:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(10);
+
         $schedule->command('shipping:summary-watch')
             ->everyFiveMinutes()
             ->between('8:55', '23:59')

@@ -815,7 +815,7 @@ class WebsiteOrdersController extends Controller
      * (Hollywood / Pico / Warehouse) plus the bin if we have one, keyed by
      * ERP product id (Sarah, 2026-10-14).
      */
-    protected static function erpLocations(array $orders): array
+    public static function erpLocations(array $orders): array
     {
         $ids = [];
         foreach ($orders as $o) {
@@ -1251,6 +1251,24 @@ class WebsiteOrdersController extends Controller
             $out .= (\App\Services\PicoPullsNotifier::build('preview') ?? '(nothing to pull at Pico, no post)') . "\n";
         } catch (\Throwable $e) {
             $out .= 'Pico preview failed: ' . $e->getMessage() . "\n";
+        }
+        return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
+    }
+
+    /** What the morning pull posts would say right now (nothing is sent). */
+    public function morningPullsPreview()
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $out = '';
+        foreach (['hollywood' => '#shipping', 'pico' => '#pico'] as $store => $ch) {
+            $out .= "WOULD POST TO {$ch} (preview, nothing sent). Tags: " . \App\Services\MorningPullsNotifier::whoNow($store) . "\n\n";
+            try {
+                $out .= (\App\Services\MorningPullsNotifier::build($store) ?? '(nothing to pull, no post)') . "\n\n";
+            } catch (\Throwable $e) {
+                $out .= 'Preview failed: ' . $e->getMessage() . "\n\n";
+            }
         }
         return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
     }

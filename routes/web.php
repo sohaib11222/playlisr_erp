@@ -685,6 +685,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         require $websiteAdminRoutes;
     }
     Route::get('/website-orders', 'WebsiteOrdersController@index')->name('website-orders.index');
+    Route::get('/website-orders/morning-pulls-preview', 'WebsiteOrdersController@morningPullsPreview')->name('website-orders.morningPullsPreview');
     Route::get('/website-orders/shipping-summary-preview', 'WebsiteOrdersController@shippingSummaryPreview')->name('website-orders.shippingSummaryPreview');
     Route::get('/website-orders/pick-route', 'WebsiteOrdersController@pickRoute')->name('website-orders.pickRoute');
     Route::get('/website-orders/bin-check', 'WebsiteOrdersController@binCheck')->name('website-orders.binCheck');
