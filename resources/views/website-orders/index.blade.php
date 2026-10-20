@@ -546,7 +546,10 @@
                   $woStore = ($activeTab !== 'ready_ship' && in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) ? $locationFilter : null;
                   $lineShow = [];
                   $cfTab = in_array($activeTab, ['cant_find', 'recheck_hw'], true); // only the Can't Find lines
-                  $offQueue = ($woStore || $cfTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
+                  // Need to Pull tabs only show what's still to pull: picked, can't find
+                  // and cancelled lines are hidden (Sarah, 2026-10-20)
+                  $needTab = in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true);
+                  $offQueue = ($woStore || $cfTab || $needTab) ? \App\Http\Controllers\WebsiteOrdersController::offQueueNames($o, $cfTab) : [];
                   if ($activeTab === 'recheck_hw') {
                     // Only the lines Hollywood still has to check
                     $hwRe = \App\Http\Controllers\WebsiteOrdersController::hwRecheckNames($o);
@@ -555,8 +558,8 @@
                   foreach ($cancelLines as $i => $l) {
                     $it = $o['items'][$i] ?? [];
                     // Store queue hides items already picked or marked Can't Find
-                    if ($woStore && !empty($it['cancelled'])) { $lineShow[$i] = false; continue; }
-                    if (($woStore || $cfTab) && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
+                    if (($woStore || $needTab) && !empty($it['cancelled'])) { $lineShow[$i] = false; continue; }
+                    if (($woStore || $cfTab || $needTab) && isset($offQueue[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $lineShow[$i] = false; continue; }
                     $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
                     $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
                   }
