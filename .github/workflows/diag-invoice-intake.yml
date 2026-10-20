@@ -40,18 +40,11 @@ jobs:
             cat > /tmp/nivessa-diag/run.php <<'PHP'
             <?php
             require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            foreach (['RawImapClient','PdfTextExtractor','DistributorInvoiceParser','DistributorInvoiceImport','DistributorInvoiceIntake'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
-            foreach (['0810016761051','0817424016438','0198704799808','0198704061493','0810016761501','0198704009891'] as $u) {
-              $c = [$u, ltrim($u,'0')];
-              foreach (DB::table('variations as v')->join('products as p','p.id','=','v.product_id')->whereIn('v.sub_sku',$c)->get(['v.id','p.id as pid','p.name','p.is_inactive']) as $v) {
-                echo "== $u | p$v->pid v$v->id | $v->name | inactive $v->is_inactive\n";
-                foreach (DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->leftJoin('users as us','us.id','=','t.created_by')->where('pl.variation_id',$v->id)->orderBy('t.transaction_date')->get(['t.id','t.type','t.status','t.ref_no','t.transaction_date','t.location_id','us.first_name','pl.quantity','pl.quantity_sold','t.created_at']) as $x) echo "  buy #$x->id $x->type $x->status loc$x->location_id " . substr($x->transaction_date,0,16) . " by $x->first_name qty " . round($x->quantity) . " sold " . round($x->quantity_sold) . " ref $x->ref_no\n";
-                foreach (DB::table('transaction_sell_lines as sl')->join('transactions as t','t.id','=','sl.transaction_id')->where('sl.variation_id',$v->id)->where('t.type','sell')->orderBy('t.transaction_date')->get(['t.id','t.status','t.location_id','t.transaction_date','sl.quantity']) as $x) echo "  sale #$x->id $x->status loc$x->location_id " . substr($x->transaction_date,0,10) . " qty " . round($x->quantity) . "\n";
-                foreach (DB::table('stock_adjustment_lines as al')->join('transactions as t','t.id','=','al.transaction_id')->where('al.variation_id',$v->id)->get(['t.id','t.location_id','t.transaction_date','al.quantity']) as $x) echo "  adj #$x->id loc$x->location_id " . substr($x->transaction_date,0,10) . " qty " . round($x->quantity) . "\n";
-                echo "  stock " . json_encode(DB::table('variation_location_details')->where('variation_id',$v->id)->pluck('qty_available','location_id')) . "\n";
-              }
+            foreach (['PurchaseDuplicateGuard'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
+            foreach ([[45984,2,'Bad Omens Finding God HW'],[154019,2,'Poppy I Disagree HW'],[45984,1,'Bad Omens at Pico'],[160349,2,'Jimin HW (on intake order 183104)'],[14851,2,'Aphex SAW HW (Redeye 180117 + order 183125)'],[10289,2,'Tribe Called Quest (183104 ordered)']] as $t) {
+              $t0 = microtime(true); $f = App\Services\PurchaseDuplicateGuard::quickReceiveFlag(1, $t[1], $t[0]);
+              echo $t[2] . ': ' . var_export($f, true) . ' (' . round((microtime(true)-$t0)*1000) . " ms)\n";
             }
-            echo "== 180114/180115 header\n"; foreach (DB::table('transactions')->whereIn('id',[180114,180115,178807,178797])->get(['id','status','ref_no','transaction_date','created_at','additional_notes','location_id']) as $t) echo "#$t->id $t->status " . substr($t->transaction_date,0,16) . " created $t->created_at loc$t->location_id ref $t->ref_no | " . substr(str_replace("\n",' ',(string)$t->additional_notes),0,160) . "\n";
             PHP
             php /tmp/nivessa-diag/run.php 2>&1 | grep -v Deprecated | head -120
             rm -rf /tmp/nivessa-diag
