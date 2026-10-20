@@ -120,6 +120,12 @@
                     {!! Form::select('active_state', ['active' => 'Active only', 'inactive' => 'Archived / merged', '' => 'All'], 'active', ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_active_state']) !!}
                 </div>
             </div>
+            <div class="col-md-2">
+                <div class="form-group">
+                    <label for="product_list_filter_stock">Stock:</label>
+                    {!! Form::select('stock_state', ['' => 'All', 'in_stock' => 'In stock only'], request()->get('stock_state') == 'in_stock' ? 'in_stock' : '', ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'product_list_filter_stock']) !!}
+                </div>
+            </div>
             <div class="col-md-4">
                 <div class="form-group">
                     {!! Form::label('created_date_range', __('lang_v1.created_date_range') . ':') !!}
@@ -484,6 +490,7 @@
                         d.location_id = $('#location_id').val();
                         d.created_by = $('#product_list_filter_created_by').val();
                         d.active_state = $('#product_list_filter_active_state').val();
+                        d.stock_state = $('#product_list_filter_stock').val();
 
                         // Handle date range filter (skipped when All time checked)
                         var all_time = $('#product_list_filter_all_time').is(':checked');
@@ -1103,7 +1110,7 @@
                 }
             });
 
-            $(document).on('change', '#product_list_filter_category_id, #product_list_filter_sub_category_id, #location_id, #repair_model_id, #product_list_filter_created_by, #product_list_filter_active_state',
+            $(document).on('change', '#product_list_filter_category_id, #product_list_filter_sub_category_id, #location_id, #repair_model_id, #product_list_filter_created_by, #product_list_filter_active_state, #product_list_filter_stock',
                 function() {
                     if ($("#product_list_tab").hasClass('active')) {
                         product_table.ajax.reload();

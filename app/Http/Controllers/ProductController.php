@@ -444,6 +444,16 @@ class ProductController extends Controller
             if ($active_state == 'inactive') {
                 $products->Inactive();
             }
+            // In stock only: at least one unit at the stores this user can see
+            // (or the picked Store Location), same scope as the Stock column.
+            $stock_state = request()->get('stock_state', null);
+            if ($stock_state == 'in_stock') {
+                $products->whereRaw('exists (select 1 from variations v2
+                            join variation_location_details vld on vld.variation_id = v2.id
+                           where v2.product_id = products.id and v2.deleted_at is null
+                             and vld.qty_available > 0' . $vld_scope . ')');
+            }
+
             $not_for_selling = request()->get('not_for_selling', null);
             if ($not_for_selling == 'true') {
                 $products->ProductNotForSales();
@@ -488,7 +498,7 @@ class ProductController extends Controller
                 'products_index_total:' . $business_id . ':' . md5(json_encode([
                     $permitted_locations, $location_id, $type, $category_id, $sub_category_id,
                     $any_category_id, $uncategorized_only, $brand_id, $unit_id, $tax_id,
-                    $active_state, $not_for_selling, $woocommerce_enabled, $created_by,
+                    $active_state, $stock_state, $not_for_selling, $woocommerce_enabled, $created_by,
                     $start_date, $end_date, request()->get('repair_model_id'),
                 ])),
                 60,
