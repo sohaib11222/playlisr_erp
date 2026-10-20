@@ -171,6 +171,7 @@
   .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c; }
   .wo-pick-inline .wo-pick-btns { display:flex; gap:4px; flex-wrap:nowrap; grid-column:auto; grid-row:auto; }
   .wo-pick-inline .wo-pick-btns button { flex:1 1 0; min-width:0; font-size:12px; font-weight:700; padding:7px 4px; border-radius:6px; white-space:nowrap; border:1px solid #111827; background:#fff; color:#000; }
+  .wo-pick-inline .wo-pick-btns { flex-wrap:wrap; }
   .wo-pick-inline .wo-pick-btns button.go { background:#047857; border-color:#047857; color:#fff; }
   .wo-pick-inline .wo-pick-btns button.cf { background:#fff; border-color:#b91c1c; color:#b91c1c; }
   .wo-pick-inline .wo-pick-btns button.ds { background:#fff; border-color:#1e40af; color:#1e40af; }
@@ -557,7 +558,7 @@
                           <div class="wo-pick-btns">
                             @if($plMissing && $activeTab === 'recheck_hw')
                               {{-- Pico couldn't find it: Hollywood checks its own bins (Sarah, 2026-10-20) --}}
-                              <div style="font-size:12px;font-weight:700;color:#000;margin:2px 0 4px;">Check Hollywood bins for this</div>
+                              <div style="flex:0 0 100%;font-size:12px;font-weight:700;color:#000;margin:2px 0 2px;">Check Hollywood bins for this</div>
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="cf" onclick="woHwCheck(this, {{ json_encode(strtolower(trim((string) $line['name']))) }})">Not here either</button>
                             @elseif($plDone || $plMissing)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
