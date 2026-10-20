@@ -404,7 +404,7 @@ class PurchaseController extends Controller
                 }
             }
 
-            // Double-receive guard (soft): the form already asked for a reason
+            // Double-receive guard (soft): the form already showed the flag
             // when this looks like a box we have; record it on the purchase.
             $transaction_data['additional_notes'] = $this->duplicateNote($request, $business_id, null, null, $transaction_data['additional_notes'] ?? '');
 
@@ -1613,10 +1613,8 @@ class PurchaseController extends Controller
             $location_id = (int) ($request->input('location_id') ?: ($purchase_id ? DB::table('transactions')->where('id', $purchase_id)->value('location_id') : 0));
             $warnings = \App\Services\PurchaseDuplicateGuard::warnings($business_id, $contact_id, $location_id, (string) $request->input('ref_no', ''), $vids, $status, $purchase_id);
             if (!$warnings) return $notes;
-            $reason = trim((string) $request->input('duplicate_reason', ''));
             $who = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name);
-            return trim((string) $notes . "\n[Duplicate check: " . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '. '
-                . ($reason !== '' ? 'Saved anyway by ' . $who . ': ' . $reason : 'Saved by ' . $who . ' with no reason given') . ']');
+            return trim((string) $notes . "\n[Already received? " . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '. Saved by ' . $who . ']');
         } catch (\Throwable $e) {
             \Log::warning('purchase duplicate note failed: ' . $e->getMessage());
             return $notes;
@@ -1753,7 +1751,7 @@ class PurchaseController extends Controller
             $before_status = $transaction->status;
             $update_data['status'] = $status;
 
-            // Double-receive guard: receiving from the list needs a reason
+            // Double-receive guard: receiving from the list flags the purchase
             // when the same supplier ref / items were already received.
             if ($status === 'received' && $before_status !== 'received') {
                 $warnings = [];
@@ -1764,14 +1762,10 @@ class PurchaseController extends Controller
                     \Log::warning('purchase duplicate check failed: ' . $e->getMessage());
                 }
                 if ($warnings) {
-                    $reason = trim((string) request()->input('duplicate_reason', ''));
-                    if ($reason === '') {
-                        return ['success' => 0, 'needs_reason' => 1,
-                            'msg' => '#' . $purchase_id . ' looks already received (' . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '). Type a reason to receive it anyway.'];
-                    }
-                    $update_data['additional_notes'] = trim((string) $transaction->additional_notes . "\n[Duplicate check: "
-                        . \App\Services\PurchaseDuplicateGuard::summary($warnings) . '. Received anyway by '
-                        . trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) . ': ' . $reason . ']');
+                    // Sarah 10/20: flag it, don't ask for a reason.
+                    $dupFlag = 'Already received? ' . \App\Services\PurchaseDuplicateGuard::summary($warnings);
+                    $update_data['additional_notes'] = trim((string) $transaction->additional_notes . "\n[" . $dupFlag . '. Received by '
+                        . trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) . ']');
                 }
             }
 
@@ -1794,7 +1788,7 @@ class PurchaseController extends Controller
             DB::commit();
 
             $output = ['success' => 1,
-                            'msg' => __('purchase.purchase_update_success')
+                            'msg' => __('purchase.purchase_update_success') . (!empty($dupFlag) ? ' Flagged: #' . $purchase_id . ' ' . $dupFlag . '.' : '')
                         ];
         } catch (\Exception $e) {
             DB::rollBack();

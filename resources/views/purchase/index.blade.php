@@ -137,8 +137,6 @@ body.pos-v2 .payment_modal input[type=file], body.pos-v2 .edit_payment_modal inp
         e.preventDefault();
         $('#update_purchase_status_form').find('#status').val($(this).data('status'));
         $('#update_purchase_status_form').find('#purchase_id').val($(this).data('purchase_id'));
-        $('#duplicate_reason_group').hide();
-        $('#status_duplicate_reason').val('');
         $('#update_purchase_status_modal').modal('show');
     });
 
@@ -164,12 +162,6 @@ body.pos-v2 .payment_modal input[type=file], body.pos-v2 .edit_payment_modal inp
                         .find('button[type="submit"]')
                         .attr('disabled', false);
                 } else {
-                    // Double-receive guard: show the match and ask for a reason.
-                    if (result.needs_reason) {
-                        $('#duplicate_reason_msg').text(result.msg);
-                        $('#duplicate_reason_group').show();
-                        $('#status_duplicate_reason').focus();
-                    }
                     toastr.error(result.msg);
                     form.find('button[type="submit"]').attr('disabled', false);
                 }
