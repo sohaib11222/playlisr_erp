@@ -620,6 +620,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
                 ->with(['product_variations.variations.variation_location_details', 'category', 'product_locations'])->get();
             return \Modules\Connector\Transformers\ProductResource::collection($p);
         }
+        try {
         $months = \DB::table('purchase_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')
             ->where('t.business_id', $biz)->groupBy('m', 't.type')
             ->select(\DB::raw("DATE_FORMAT(t.transaction_date, '%Y-%m') as m"), 't.type', \DB::raw('COUNT(DISTINCT t.id) as purchases'), \DB::raw('COUNT(*) as line_count'), \DB::raw('SUM(l.quantity) as units'))
@@ -650,6 +651,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
                 (new \App\Services\NivessaStockNotifier())->push($chunk);
                 $pushed += count($chunk);
             }
+        }
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage(), 'line' => $e->getLine()], 500);
         }
         return response()->json(['cutoff' => $from, 'hidden_products' => count($hiddenIds), 'pushed_to_website' => $pushed, 'store_stock' => $groups, 'locations' => $locations, 'purchases_by_month' => $months]);
     });
