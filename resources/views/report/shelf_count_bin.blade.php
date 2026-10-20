@@ -39,7 +39,7 @@
         <ol>
             <li>Set Sort to match how the bin is filed (usually Artist).</li>
             <li>Flip through the bin and follow along in the list. No need to pull records out or scan.</li>
-            <li>If the copies match the ERP number, tap <b>All here</b>. If not, use <b>+</b> and <b>-</b> to set how many are there. Not there at all: tap <b>-</b> until it says None.</li>
+            <li>Titles with 1 or 2 copies: if they're all there, tap <b>All here</b>. 3 or more copies: tap <b>+</b> once per copy you see. Use <b>-</b> to fix a mistake. Not there at all: tap <b>-</b> until it says None.</li>
             <li>A record in the bin that isn't on the list: type the artist in the box below and tap it to add it.</li>
             <li>When you finish (or need to stop), tap the green <b>Done: review and save</b> at the bottom, then <b>Save counts for this bin</b>. Titles you didn't touch stay as they are, so you can finish the rest another day.</li>
         </ol>
@@ -78,7 +78,7 @@
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
         return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
-            + (i.erp > 0 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
+            + (i.erp > 0 && i.erp <= 2 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
             + '<button class="sc-pm" data-d="-1" type="button">-</button><div class="n">' + (none ? 'None' : n) + '</div><button class="sc-pm" data-d="1" type="button">+</button></div>';
     }
     // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
