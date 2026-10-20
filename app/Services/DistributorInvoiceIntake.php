@@ -429,7 +429,7 @@ class DistributorInvoiceIntake
                     'msg' => sprintf('Catch-up purchase #%d: %d line(s) missing from #%d, %d new products.', $txId, $res['lines'], $own->id, count($res['created_products']))]);
             } catch (\Throwable $e) {
                 $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => 'Catch-up failed: ' . $e->getMessage()]);
-                $this->alert($distributor, $inv, 'Adding the lines missing from purchase #' . $own->id . ' failed: ' . $e->getMessage());
+                $this->alertOnce('catchup-' . $inv, $distributor, $inv, 'Adding the lines missing from purchase #' . $own->id . ' failed: ' . $e->getMessage());
                 return; // retried next run
             }
         }

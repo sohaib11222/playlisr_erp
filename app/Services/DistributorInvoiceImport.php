@@ -417,7 +417,7 @@ class DistributorInvoiceImport
             foreach ($clean as $l) { $total += $l['qty'] * $l['unit_price']; }
             $total = round($total, 2);
 
-            $productUtil->setAndGetReferenceCount('purchase');
+            $productUtil->setAndGetReferenceCount('purchase', $business_id);
             $transaction = Transaction::create([
                 'business_id' => $business_id,
                 'location_id' => $location_id,
