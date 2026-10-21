@@ -33,7 +33,7 @@ jobs:
           done
           exit 0
 
-      - name: Genre audit (read-only)
+      - name: Genre fix dry run (read-only)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -41,40 +41,502 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
-          command_timeout: 300s
+          command_timeout: 600s
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            php -d memory_limit=1500M artisan tinker --no-ansi <<'PHP'
-            $cats = \DB::table('categories')->whereNull('deleted_at')->get()->keyBy('id');
-            $act = \DB::table('products')->where('is_inactive', 0);
-            $byCat = (clone $act)->select('category_id', 'sub_category_id', \DB::raw('count(*) n'), \DB::raw('sum(exists(select 1 from variation_location_details v where v.product_id=products.id and v.qty_available>0)) instock'))->groupBy('category_id', 'sub_category_id')->get();
-            foreach ($cats->where('parent_id', 0) as $c) {
-              $rows = $byCat->where('category_id', $c->id); $tot = $rows->sum('n'); if (!$tot) continue;
-              echo "\nCAT {$c->id} {$c->name} [{$c->description}] total={$tot}\n";
-              foreach ($rows->sortByDesc('n') as $r) {
-                $s = $r->sub_category_id ? ($cats[$r->sub_category_id] ?? null) : null;
-                $flag = !$r->sub_category_id ? 'BLANK' : (!$s ? 'DELETED-SUB' : ((int)$s->parent_id !== (int)$c->id ? 'OTHER-FORMAT(parent ' . $s->parent_id . ' ' . ($cats[$s->parent_id]->name ?? '?') . ')' : ''));
-                echo "  " . str_pad($r->n, 6) . " stock=" . str_pad($r->instock, 5) . ($s->name ?? '-') . " #{$r->sub_category_id} {$flag}\n";
-              }
+            cat > /tmp/GenreFixDiag.php <<'CTRLEOF'
+            <?php
+
+            namespace App\Http\Controllers;
+            use App\Http\Controllers\Controller;
+
+            use Illuminate\Http\Request;
+
+            /**
+             * Genre Fix (Sarah, 2026-10-21): fix wrong genres catalog-wide here instead of
+             * Clarissa fixing them one at a time during counts. "Genre" is
+             * products.sub_category_id, a child of the format category (Vinyl - Used etc).
+             *
+             * Finds four kinds of problems, proposes a fix for each, nothing changes until
+             * Apply:
+             *   other_format - the genre belongs to a different format's list (e.g. a sealed
+             *                  LP pointing at the CD - Sealed "Hip-Hop"), moved to the same
+             *                  genre in its own format.
+             *   deleted      - the genre was deleted, refilled from the artist.
+             *   blank        - no genre, filled from the artist's other records.
+             *   outlier      - the artist's other records clearly agree on another genre
+             *                  (Sade as Metal, The Clash as Rock when 60 are Punk).
+             * Artists whose records are split with no clear winner go to "Needs a look",
+             * where one pick sets all of that artist's records in that format.
+             * Every apply is snapshotted as 'backfill-genre-from-discogs' rows (id/old/new),
+             * so it's undoable at /admin/admin-action-history.
+             */
+            class GenreFixController extends Controller
+            {
+                const TYPES = [
+                    'other_format' => 'Genre from another format',
+                    'deleted' => 'Genre was deleted',
+                    'outlier' => "Doesn't match the artist's other records",
+                    'blank' => 'No genre',
+                ];
+
+                // Genres that are legitimately "not the artist's usual" (a rock band's
+                // soundtrack), never auto-moved out of; they go to Needs a look instead.
+                const KEEP = ['soundtracks', 'musicals', 'children s', 'holiday', 'christmas', 'comedy', 'gospel'];
+
+                private function guard()
+                {
+                    if (!auth()->user()->can('product.update')) abort(403, 'Unauthorized action.');
+                }
+
+                /** Same genre across formats: "Hip Hop LPs", "Hip-Hop", "hip hop" are one. */
+                public static function canon($name)
+                {
+                    $s = mb_strtolower((string) $name);
+                    $s = str_replace('&', ' and ', $s);
+                    $s = trim(preg_replace('/[^a-z0-9]+/', ' ', $s));
+                    $alias = [
+                        'hiphop' => 'hip hop', 'rap' => 'hip hop',
+                        'r and b soul and funk' => 'rnb', 'r and b soul funk' => 'rnb', 'r and b' => 'rnb', 'soul' => 'rnb',
+                        'soul r and b' => 'rnb', 'rnb' => 'rnb', 'funk' => 'rnb', 'funk soul' => 'rnb',
+                        'alt indie rock' => 'alt', 'alt rock indie' => 'alt', 'alt rock' => 'alt', 'alt indie' => 'alt',
+                        'alternative' => 'alt', 'indie' => 'alt', 'indie rock' => 'alt',
+                        'new wave post punk' => 'new wave', 'post punk' => 'new wave',
+                        'punk hardcore' => 'punk', 'hardcore' => 'punk',
+                        'electronic dance' => 'electronic', 'dance' => 'electronic',
+                        'soundtrack' => 'soundtracks', 'kpop' => 'k pop', 'non music and comedy' => 'comedy',
+                        'bossa nova' => 'bossanova',
+                    ];
+                    if (isset($alias[$s])) return $alias[$s];
+                    $s = trim(preg_replace('/ (lps?|new)$/', '', $s));
+                    return $alias[$s] ?? $s;
+                }
+
+                private static function normArtist($a)
+                {
+                    $a = mb_strtolower(trim((string) $a));
+                    $a = preg_replace('/^the\s+/', '', $a);
+                    return trim(preg_replace('/[^a-z0-9]+/', ' ', $a));
+                }
+
+                private static function badArtist($a)
+                {
+                    return $a === '' || mb_strlen($a) < 2 || preg_match('/^(n a|na|unknown|various|various artists|none|no artist|v a|va|soundtrack|ost)$/', $a);
+                }
+
+                /** Format categories, their live genres, and canon -> best genre id per format. */
+                private function taxonomy($biz)
+                {
+                    $all = \DB::table('categories')->where('business_id', $biz)->whereNull('deleted_at')->select('id', 'name', 'parent_id')->get();
+                    $formats = [];
+                    foreach ($all->where('parent_id', 0) as $c) {
+                        if (ProductController::isMusicCategoryName($c->name)) $formats[(int) $c->id] = $c->name;
+                    }
+                    $subs = []; // id => [name, parent]
+                    foreach ($all->where('parent_id', '>', 0) as $c) $subs[(int) $c->id] = ['name' => $c->name, 'parent' => (int) $c->parent_id];
+                    $sizes = \DB::table('products')->where('business_id', $biz)->where('sub_category_id', '>', 0)
+                        ->select('sub_category_id', \DB::raw('count(*) n'))->groupBy('sub_category_id')->pluck('n', 'sub_category_id')->all();
+                    $byCanon = []; // format => canon => sub id (biggest wins, e.g. cassette Soul vs R&b)
+                    foreach ($subs as $id => $s) {
+                        if (!isset($formats[$s['parent']])) continue;
+                        $k = self::canon($s['name']);
+                        $cur = $byCanon[$s['parent']][$k] ?? null;
+                        if ($cur === null || ($sizes[$id] ?? 0) > ($sizes[$cur] ?? 0)) $byCanon[$s['parent']][$k] = $id;
+                    }
+                    return [$formats, $subs, $byCanon];
+                }
+
+                /** Genre id for a canon key in a format, with Folk/Country and Nu-Metal fallbacks. */
+                private static function subFor($byCanon, $format, $canon)
+                {
+                    $m = $byCanon[$format] ?? [];
+                    if (isset($m[$canon])) return $m[$canon];
+                    $fallback = ['folk' => 'folk country', 'country' => 'folk country', 'nu metal' => 'metal', 'synth' => 'electronic', 'disco' => 'rnb', 'latin soul' => 'latin', 'salsa' => 'latin', 'tropical' => 'latin', 'bossanova' => 'latin', 'neo modern soul' => 'rnb', 'emo' => 'punk'];
+                    if (isset($fallback[$canon], $m[$fallback[$canon]])) return $m[$fallback[$canon]];
+                    return null;
+                }
+
+                /** artist => canon => count, over every music product that has a genre. */
+                private function artistVotes($biz, $formats, $subs)
+                {
+                    $votes = [];
+                    foreach (\DB::table('products')->where('business_id', $biz)->whereIn('category_id', array_keys($formats))
+                        ->where('sub_category_id', '>', 0)->select('artist', 'category_id', 'sub_category_id')->cursor() as $r) {
+                        $s = $subs[(int) $r->sub_category_id] ?? null;
+                        if (!$s || (int) $s['parent'] !== (int) $r->category_id) continue; // don't learn from broken rows
+                        $a = self::normArtist($r->artist);
+                        if (self::badArtist($a)) continue;
+                        $k = self::canon($s['name']);
+                        $votes[$a][$k] = ($votes[$a][$k] ?? 0) + 1;
+                    }
+                    return $votes;
+                }
+
+                /** Artist candidates for a product: the artist column, else either side of "A - B" / "A / B". */
+                private static function artistCandidates($p)
+                {
+                    $c = [];
+                    $a = self::normArtist($p->artist);
+                    if (!self::badArtist($a)) $c[] = $a;
+                    foreach ([' / ', ' - ', ' – '] as $sep) {
+                        if (mb_strpos((string) $p->name, $sep) === false) continue;
+                        foreach (array_map('trim', explode($sep, (string) $p->name, 2)) as $x) {
+                            $x = self::normArtist($x);
+                            if (!self::badArtist($x)) $c[] = $x;
+                        }
+                        break;
+                    }
+                    return array_values(array_unique($c));
+                }
+
+                /** Clear winner for an artist: >= $min records and >= 60% of them. */
+                private static function winner($v, $min)
+                {
+                    if (empty($v)) return null;
+                    arsort($v);
+                    $top = array_key_first($v);
+                    $sum = array_sum($v);
+                    if ($v[$top] < $min || $v[$top] / $sum < 0.6) return null;
+                    return [$top, $v[$top], $sum];
+                }
+
+                /** Every proposed fix, plus the "needs a look" artist groups. */
+                private function compute($biz)
+                {
+                    @set_time_limit(300);
+                    @ini_set('memory_limit', '1500M');
+                    [$formats, $subs, $byCanon] = $this->taxonomy($biz);
+                    $votes = $this->artistVotes($biz, $formats, $subs);
+                    $fixes = [];
+                    $groups = []; // artist|format => [canon => n]
+                    $stock = \DB::table('variation_location_details')->where('qty_available', '>', 0)
+                        ->select('product_id', \DB::raw('sum(qty_available) q'))->groupBy('product_id')->pluck('q', 'product_id')->all();
+                    foreach (\DB::table('products')->where('business_id', $biz)->where('is_inactive', 0)->whereIn('category_id', array_keys($formats))
+                        ->select('id', 'name', 'artist', 'category_id', 'sub_category_id')->cursor() as $p) {
+                        $fmt = (int) $p->category_id;
+                        $sid = (int) $p->sub_category_id;
+                        $s = $sid ? ($subs[$sid] ?? null) : null;
+                        $row = ['id' => (int) $p->id, 'name' => $p->name, 'format' => $formats[$fmt], 'cat' => $fmt, 'old' => $sid ?: null,
+                            'old_name' => $s['name'] ?? ($sid ? 'deleted genre' : ''), 'stock' => (float) ($stock[$p->id] ?? 0)];
+                        $cands = self::artistCandidates($p);
+                        $type = null; $new = null; $why = '';
+
+                        if ($s && $s['parent'] !== $fmt) {
+                            $new = self::subFor($byCanon, $fmt, self::canon($s['name']));
+                            if ($new) { $type = 'other_format'; $why = $s['name'] . ' is on the ' . ($formats[$s['parent']] ?? 'old') . ' list'; }
+                            else { $s = null; } // no twin genre in this format, treat like blank
+                        }
+                        if (!$type && !$s) {
+                            foreach ($cands as $a) {
+                                $w = self::winner($votes[$a] ?? [], 2);
+                                if (!$w) continue;
+                                $new = self::subFor($byCanon, $fmt, $w[0]);
+                                if ($new) { $type = $sid ? 'deleted' : 'blank'; $why = "{$w[1]} of the artist's {$w[2]} records"; break; }
+                            }
+                        } elseif (!$type && $s) {
+                            $a = self::normArtist($p->artist);
+                            $v = self::badArtist($a) ? [] : ($votes[$a] ?? []);
+                            $cur = self::canon($s['name']);
+                            $w = self::winner($v, 3);
+                            $curN = $v[$cur] ?? 0;
+                            if ($w && $w[0] !== $cur && !in_array($cur, self::KEEP, true) && $curN / $w[2] <= 0.3 && $w[1] >= 3 * $curN) {
+                                $new = self::subFor($byCanon, $fmt, $w[0]);
+                                if ($new && $new !== $sid) { $type = 'outlier'; $why = "{$w[1]} of the artist's {$w[2]} records"; }
+                            }
+                            if (!$type && count($v) > 1 && array_sum($v) >= 3) {
+                                $g = $a . '|' . $fmt;
+                                $groups[$g][$cur] = ($groups[$g][$cur] ?? 0) + 1;
+                            }
+                        }
+                        if ($type) $fixes[$type][] = $row + ['new' => $new, 'new_name' => $subs[$new]['name'] ?? '', 'why' => $why];
+                    }
+                    // Needs a look: the artist still has 2+ genres in one format after the fixes above.
+                    $look = [];
+                    foreach ($groups as $g => $split) {
+                        if (count($split) < 2 || array_sum($split) < 3) continue;
+                        [$a, $fmt] = explode('|', $g);
+                        arsort($split);
+                        $named = [];
+                        foreach ($split as $k => $n) {
+                            $id = self::subFor($byCanon, (int) $fmt, $k);
+                            $named[] = ['name' => $id ? $subs[$id]['name'] : ucwords($k), 'n' => $n, 'id' => $id];
+                        }
+                        $look[] = ['artist' => $a, 'cat' => (int) $fmt, 'format' => $formats[$fmt], 'split' => $named, 'n' => array_sum($split)];
+                    }
+                    usort($look, fn($x, $y) => $y['n'] <=> $x['n']);
+                    $genres = [];
+                    foreach ($subs as $id => $s) if (isset($formats[$s['parent']])) $genres[$s['parent']][$id] = $s['name'];
+                    foreach ($genres as &$g) asort($g);
+                    return compact('fixes', 'look', 'genres', 'formats');
+                }
+
+                public function index(Request $request)
+                {
+                    $this->guard();
+                    $biz = (int) $request->session()->get('user.business_id');
+                    $data = $this->compute($biz);
+                    $data['types'] = self::TYPES;
+                    $data['artist'] = trim((string) $request->input('artist'));
+                    $data['records'] = [];
+                    if ($data['artist'] !== '') $data['records'] = $this->artistRecords($biz, $data['artist'], array_keys($data['formats']));
+                    return view('product.genre_fix', $data);
+                }
+
+                /** Active music records for an artist search (artist column or name). */
+                private function artistRecords($biz, $q, $formatIds)
+                {
+                    $key = self::normArtist($q);
+                    $words = array_filter(explode(' ', $key), fn($w) => mb_strlen($w) > 1);
+                    if (!$words) return [];
+                    usort($words, fn($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+                    $out = [];
+                    foreach (\DB::table('products as p')->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                        ->where('p.business_id', $biz)->where('p.is_inactive', 0)->whereIn('p.category_id', $formatIds)
+                        ->where(function ($w) use ($words) { $w->where('p.artist', 'like', '%' . $words[0] . '%')->orWhere('p.name', 'like', '%' . $words[0] . '%'); })
+                        ->select('p.id', 'p.name', 'p.artist', 'p.category_id', 'p.sub_category_id', 'sc.name as genre', 'sc.parent_id', 'sc.deleted_at')
+                        ->orderBy('p.category_id')->orderBy('p.name')->limit(2000)->get() as $p) {
+                        $hit = self::normArtist($p->artist) === $key || in_array($key, self::artistCandidates($p), true)
+                            || preg_match('/\b' . preg_quote($key, '/') . '\b/', self::normArtist($p->name));
+                        if (!$hit) continue;
+                        $ok = $p->sub_category_id && !$p->deleted_at && (int) $p->parent_id === (int) $p->category_id;
+                        $out[] = ['id' => (int) $p->id, 'name' => $p->name, 'cat' => (int) $p->category_id, 'sub' => $ok ? (int) $p->sub_category_id : 0];
+                    }
+                    return $out;
+                }
+
+                /** Write genre changes (id => new sub id), snapshot for undo, tell the website. */
+                private function write($biz, array $changes, $label)
+                {
+                    $formatOf = \DB::table('categories')->where('business_id', $biz)->whereNull('deleted_at')->where('parent_id', '>', 0)->pluck('parent_id', 'id')->all();
+                    $done = [];
+                    \DB::beginTransaction();
+                    try {
+                        foreach (array_chunk(array_keys($changes), 1000) as $ids) {
+                            foreach (\DB::table('products')->where('business_id', $biz)->whereIn('id', $ids)->select('id', 'category_id', 'sub_category_id')->get() as $p) {
+                                $new = (int) $changes[$p->id];
+                                // Only a genre from this product's own format, and only if it changes.
+                                if (!$new || (int) ($formatOf[$new] ?? 0) !== (int) $p->category_id || (int) $p->sub_category_id === $new) continue;
+                                \DB::table('products')->where('id', $p->id)->update(['sub_category_id' => $new]);
+                                $done[] = ['id' => (int) $p->id, 'old' => $p->sub_category_id ? (int) $p->sub_category_id : null, 'new' => $new];
+                            }
+                        }
+                        if ($done) {
+                            $ts = now()->format('Y-m-d_His');
+                            \Storage::disk('local')->put("admin-snapshots/backfill-genre-from-discogs-{$ts}.json", json_encode([
+                                'timestamp' => $ts, 'action' => 'backfill-genre-from-discogs', 'user_id' => auth()->id(), 'business_id' => $biz,
+                                'source_name' => count($done) . ' genre fix(es): ' . $label, 'target_name' => 'products.sub_category_id', 'rows' => $done,
+                            ], JSON_PRETTY_PRINT));
+                        }
+                        \DB::commit();
+                    } catch (\Throwable $e) {
+                        \DB::rollBack();
+                        \Log::error('Genre fix failed: ' . $e->getMessage());
+                        return null;
+                    }
+                    // Website picks up the new genre; after the response so the page isn't slowed down.
+                    $ids = array_column($done, 'id');
+                    if ($ids) {
+                        app()->terminating(function () use ($ids) {
+                            foreach (array_chunk($ids, 300) as $chunk) {
+                                try { (new \App\Services\NivessaStockNotifier())->pushProductChanged($chunk); } catch (\Throwable $e) { \Log::warning('Genre fix website push failed: ' . $e->getMessage()); }
+                            }
+                        });
+                    }
+                    return count($done);
+                }
+
+                private function back($msg, $ok = true, $artist = '')
+                {
+                    return redirect('/products/genre-fix' . ($artist !== '' ? '?artist=' . urlencode($artist) . '#artist' : ''))
+                        ->with('status', ['success' => $ok ? 1 : 0, 'msg' => $msg]);
+                }
+
+                /** Apply one type's fixes: every row of that type except the ones unticked. */
+                public function apply(Request $request)
+                {
+                    $this->guard();
+                    $biz = (int) $request->session()->get('user.business_id');
+                    $type = (string) $request->input('type');
+                    if (!isset(self::TYPES[$type])) return $this->back('Unknown fix type.', false);
+                    $skip = array_flip(array_map('intval', (array) $request->input('skip', [])));
+                    $changes = [];
+                    foreach ($this->compute($biz)['fixes'][$type] ?? [] as $f) {
+                        if (!isset($skip[$f['id']])) $changes[$f['id']] = $f['new'];
+                    }
+                    $n = $this->write($biz, $changes, self::TYPES[$type]);
+                    return $n === null ? $this->back('Something went wrong, nothing changed.', false) : $this->back("Fixed {$n} genres. Undo any time in Admin Action History.");
+                }
+
+                /** One genre for all of an artist's records in one format (from Needs a look). */
+                public function setArtist(Request $request)
+                {
+                    $this->guard();
+                    $biz = (int) $request->session()->get('user.business_id');
+                    $artist = (string) $request->input('artist');
+                    $cat = (int) $request->input('cat');
+                    $sub = (int) $request->input('sub');
+                    if (!$cat || !$sub || $artist === '') return $this->back('Pick a genre first.', false);
+                    $changes = [];
+                    foreach ($this->artistRecords($biz, $artist, [$cat]) as $r) $changes[$r['id']] = $sub;
+                    $n = $this->write($biz, $changes, $artist . ' (all ' . \DB::table('categories')->where('id', $cat)->value('name') . ')');
+                    return $n === null ? $this->back('Something went wrong, nothing changed.', false) : $this->back("Set {$n} of {$artist}'s records.");
+                }
+
+                /** Per-record picks from the artist search. */
+                public function saveRecords(Request $request)
+                {
+                    $this->guard();
+                    $biz = (int) $request->session()->get('user.business_id');
+                    $changes = [];
+                    foreach ((array) $request->input('genre', []) as $id => $sub) if ((int) $sub) $changes[(int) $id] = (int) $sub;
+                    $artist = (string) $request->input('artist');
+                    $n = $this->write($biz, $changes, $artist !== '' ? $artist . ' (by hand)' : 'by hand');
+                    return $n === null ? $this->back('Something went wrong, nothing changed.', false, $artist) : $this->back("Saved {$n} genres.", true, $artist);
+                }
             }
-            echo "\nNO CATEGORY: " . (clone $act)->where(function($q){$q->whereNull('category_id')->orWhere('category_id',0);})->count() . "\n";
-            // artist disagreement within same format
-            $norm = function ($a) { $a = mb_strtolower(trim((string) $a)); $a = preg_replace('/^the\s+/', '', $a); return trim(preg_replace('/[^a-z0-9]+/', ' ', $a)); };
-            $m = [];
-            foreach ((clone $act)->where('sub_category_id', '>', 0)->select('id','name','artist','category_id','sub_category_id','created_by','discogs_release_id')->cursor() as $p) {
-              $a = $norm($p->artist); if ($a === '' || preg_match('/^(n a|na|unknown|various|various artists|none|v a)$/', $a)) continue;
-              $m[$p->category_id][$a][$p->sub_category_id][] = $p->id;
+
+            CTRLEOF
+            cat > /tmp/genre_fix_diag.blade.php <<'VIEWEOF'
+            @extends('layouts.app')
+            @section('title', 'Genre Fix')
+            @section('content')
+            @php
+              $th = 'padding:8px;border-bottom:2px solid #e5e7eb;text-align:left;';
+              $td = 'padding:7px 8px;border-bottom:1px solid #e5e7eb;';
+              $btn = 'padding:8px 14px;border-radius:6px;border:0;background:#1e40af;color:#fff;font-weight:700;cursor:pointer;';
+              $btn2 = 'padding:6px 12px;border-radius:6px;border:1px solid #93c5fd;background:#dbeafe;color:#1e40af;font-weight:700;cursor:pointer;';
+            @endphp
+            <section class="content" style="padding:20px;max-width:1300px;color:#000;">
+              <h1 style="font-size:22px;margin:0 0 6px;">Genre Fix</h1>
+              <p style="margin:0 0 14px;">Finds wrong or missing genres across the whole catalog and proposes the fix, so nobody has to fix genres during counts. Untick anything that looks wrong, then Apply. Every apply can be undone in <a href="{{ url('/admin/admin-action-history') }}">Admin Action History</a>.</p>
+              @if(session('status'))<div style="padding:10px 14px;background:{{ session('status')['success'] ? '#dcfce7' : '#fee2e2' }};border-radius:6px;margin-bottom:12px;">{{ session('status')['msg'] }}</div>@endif
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
+                @foreach($types as $key => $label)
+                  <a href="#{{ $key }}" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">{{ number_format(count($fixes[$key] ?? [])) }} {{ $label }}</a>
+                @endforeach
+                <a href="#look" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">{{ number_format(count($look)) }} artists need a look</a>
+                <a href="#artist" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">Fix one artist</a>
+              </div>
+
+              @foreach($types as $key => $label)
+                @php $rows = $fixes[$key] ?? []; @endphp
+                <h2 id="{{ $key }}" style="font-size:18px;margin:24px 0 8px;">{{ $label }} ({{ number_format(count($rows)) }})</h2>
+                @if(empty($rows))
+                  <p style="margin:0;">Nothing to fix.</p>
+                @else
+                  <form method="POST" action="{{ url('/products/genre-fix/apply') }}" onsubmit="this.querySelector('button').disabled=true; this.querySelectorAll('input.gf-keep').forEach(function(c){ if(!c.checked){ var h=document.createElement('input'); h.type='hidden'; h.name='skip[]'; h.value=c.value; c.form.appendChild(h);} }); return true;">
+                    @csrf <input type="hidden" name="type" value="{{ $key }}">
+                    <button type="submit" style="{{ $btn }}margin-bottom:8px;">Apply all {{ number_format(count($rows)) }} ticked</button>
+                    @if(count($rows) > 400)<span style="margin-left:8px;">Showing the first 400 (most stock first). Apply covers all {{ number_format(count($rows)) }}; untick any shown here to leave them.</span>@endif
+                    <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
+                      <thead><tr><th style="{{ $th }}width:30px;"></th><th style="{{ $th }}">Product</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Now</th><th style="{{ $th }}">Change to</th><th style="{{ $th }}">Why</th><th style="{{ $th }}">Stock</th></tr></thead>
+                      <tbody>
+                        @foreach(collect($rows)->sortByDesc('stock')->take(400) as $r)
+                          <tr>
+                            <td style="{{ $td }}"><input type="checkbox" class="gf-keep" value="{{ $r['id'] }}" checked></td>
+                            <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
+                            <td style="{{ $td }}">{{ $r['format'] }}</td>
+                            <td style="{{ $td }}color:#b91c1c;">{{ $r['old_name'] !== '' ? $r['old_name'] : 'none' }}</td>
+                            <td style="{{ $td }}font-weight:700;">{{ $r['new_name'] }}</td>
+                            <td style="{{ $td }}">{{ $r['why'] }}</td>
+                            <td style="{{ $td }}">{{ $r['stock'] + 0 }}</td>
+                          </tr>
+                        @endforeach
+                      </tbody>
+                    </table>
+                  </form>
+                @endif
+              @endforeach
+
+              <h2 id="look" style="font-size:18px;margin:28px 0 4px;">Artists that need a look ({{ number_format(count($look)) }})</h2>
+              <p style="margin:0 0 8px;">These artists have records under more than one genre in the same format and no clear winner. Pick the right genre and Set; it applies to all of that artist's records in that format. Or open the artist to set records one by one.</p>
+              <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
+                <thead><tr><th style="{{ $th }}">Artist</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Now</th><th style="{{ $th }}">Set all to</th></tr></thead>
+                <tbody>
+                  @foreach(array_slice($look, 0, 300) as $g)
+                    <tr>
+                      <td style="{{ $td }}"><a href="{{ url('/products/genre-fix?artist=' . urlencode($g['artist'])) }}#artist">{{ ucwords($g['artist']) }}</a></td>
+                      <td style="{{ $td }}">{{ $g['format'] }}</td>
+                      <td style="{{ $td }}">{{ collect($g['split'])->map(fn($s) => $s['name'] . ' ' . $s['n'])->implode(', ') }}</td>
+                      <td style="{{ $td }}">
+                        <form method="POST" action="{{ url('/products/genre-fix/set-artist') }}" style="display:flex;gap:6px;" onsubmit="if (this.sub.value === '') return false; this.querySelector('button').disabled = true; return true;">
+                          @csrf <input type="hidden" name="artist" value="{{ $g['artist'] }}"> <input type="hidden" name="cat" value="{{ $g['cat'] }}">
+                          <select name="sub" style="padding:5px;border:1px solid #d1d5db;border-radius:6px;">
+                            <option value="">Pick genre</option>
+                            @foreach($genres[$g['cat']] ?? [] as $id => $name)<option value="{{ $id }}">{{ $name }}</option>@endforeach
+                          </select>
+                          <button type="submit" style="{{ $btn2 }}">Set</button>
+                        </form>
+                      </td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+              @if(count($look) > 300)<p style="margin:6px 0 0;">Showing the 300 artists with the most records. The rest shrink as these get set.</p>@endif
+
+              <h2 id="artist" style="font-size:18px;margin:28px 0 8px;">Fix one artist</h2>
+              <form method="GET" action="{{ url('/products/genre-fix') }}" style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="text" name="artist" value="{{ $artist }}" placeholder="Artist name, e.g. Sade" style="padding:8px;border:1px solid #d1d5db;border-radius:6px;width:320px;">
+                <button type="submit" style="{{ $btn }}">Show records</button>
+              </form>
+              @if($artist !== '')
+                @if(empty($records))
+                  <p style="margin:0;">No active music records found for "{{ $artist }}".</p>
+                @else
+                  <form method="POST" action="{{ url('/products/genre-fix/save') }}" onsubmit="this.querySelectorAll('select[data-orig]').forEach(function(s){ if (s.value === s.dataset.orig) s.disabled = true; }); return true;">
+                    @csrf <input type="hidden" name="artist" value="{{ $artist }}">
+                    <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
+                      <thead><tr><th style="{{ $th }}">Product</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Genre</th></tr></thead>
+                      <tbody>
+                        @foreach($records as $r)
+                          <tr>
+                            <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
+                            <td style="{{ $td }}">{{ $formats[$r['cat']] ?? '' }}</td>
+                            <td style="{{ $td }}">
+                              <select name="genre[{{ $r['id'] }}]" data-orig="{{ $r['sub'] ?: '' }}" style="padding:5px;border:1px solid {{ $r['sub'] ? '#d1d5db' : '#b91c1c' }};border-radius:6px;">
+                                <option value="">{{ $r['sub'] ? '' : 'No genre' }}</option>
+                                @foreach($genres[$r['cat']] ?? [] as $id => $name)<option value="{{ $id }}" {{ $r['sub'] === $id ? 'selected' : '' }}>{{ $name }}</option>@endforeach
+                              </select>
+                            </td>
+                          </tr>
+                        @endforeach
+                      </tbody>
+                    </table>
+                    <button type="submit" style="{{ $btn }}margin-top:10px;">Save genres</button>
+                  </form>
+                @endif
+              @endif
+            </section>
+            @endsection
+
+            VIEWEOF
+            php -d memory_limit=2000M artisan tinker --no-ansi <<'PHP'
+
+            require '/tmp/GenreFixDiag.php';
+            $u = \App\User::whereNull('deleted_at')->whereRaw('lower(first_name)=?', ['jonathan'])->first();
+            auth()->login($u);
+            $c = new \App\Http\Controllers\GenreFixController();
+            $m = new \ReflectionMethod($c, 'compute'); $m->setAccessible(true);
+            $t = microtime(true);
+            $d = $m->invoke($c, (int) $u->business_id);
+            echo "SECS " . round(microtime(true) - $t, 1) . "\n";
+            foreach ($d['fixes'] as $k => $rows) {
+              echo "\nTYPE {$k}: " . count($rows) . "\n";
+              $by = []; foreach ($rows as $r) { $kk = $r['format'] . ' | ' . $r['old_name'] . ' -> ' . $r['new_name']; $by[$kk] = ($by[$kk] ?? 0) + 1; }
+              arsort($by); foreach (array_slice($by, 0, 25, true) as $kk => $n) echo "  {$n}  {$kk}\n";
+              shuffle($rows); foreach (array_slice($rows, 0, 30) as $r) echo "  EX {$r['name']} [{$r['format']}] {$r['old_name']} -> {$r['new_name']} ({$r['why']})\n";
             }
-            $dis = 0; $disProducts = 0; $samples = [];
-            foreach ($m as $cat => $arts) foreach ($arts as $a => $subs) {
-              if (count($subs) < 2) continue;
-              $cnt = array_map('count', $subs); arsort($cnt); $top = array_key_first($cnt); $topN = $cnt[$top]; $sum = array_sum($cnt);
-              $dis++; $disProducts += $sum - $topN;
-              if (count($samples) < 60 && $sum >= 4) { $parts = []; foreach ($cnt as $s => $n) $parts[] = ($cats[$s]->name ?? $s) . ':' . $n; $samples[] = ($cats[$cat]->name ?? $cat) . ' | ' . $a . ' | ' . implode(', ', $parts); }
-            }
-            echo "\nARTISTS WITH MIXED GENRES (same format): {$dis}, minority products: {$disProducts}\n" . implode("\n", $samples) . "\n";
-            echo "\nWITH DISCOGS ID: " . (clone $act)->where('discogs_release_id', '>', 0)->count() . "\n";
-            echo "CREATED_BY top for blank: " . json_encode((clone $act)->where(function($q){$q->whereNull('sub_category_id')->orWhere('sub_category_id',0);})->select('created_by', \DB::raw('count(*) n'))->groupBy('created_by')->orderByDesc('n')->limit(8)->get()) . "\n";
-            $cols = \Schema::getColumnListing('products'); echo "COLS: " . implode(',', array_filter($cols, fn($c) => preg_match('/genre|style|cat|discogs|artist|format/', $c))) . "\n";
+            echo "\nLOOK " . count($d['look']) . "\n";
+            foreach (array_slice($d['look'], 0, 30) as $g) echo "  {$g['artist']} [{$g['format']}] " . collect($g['split'])->map(fn($s) => $s['name'] . ' ' . $s['n'])->implode(', ') . "\n";
+            $r = new \ReflectionMethod($c, 'artistRecords'); $r->setAccessible(true);
+            $recs = $r->invoke($c, (int) $u->business_id, 'Sade', array_keys($d['formats']));
+            echo "\nSADE " . count($recs) . ": " . implode(' | ', array_map(fn($x) => $x['name'], array_slice($recs, 0, 15))) . "\n";
+            $d['types'] = \App\Http\Controllers\GenreFixController::TYPES; $d['artist'] = 'Sade'; $d['records'] = $recs;
+            session()->put('user.business_id', $u->business_id);
+            $html = view()->file('/tmp/genre_fix_diag.blade.php', $d)->render();
+            echo "RENDER OK " . strlen($html) . " bytes, rows=" . substr_count($html, 'gf-keep') . "\n";
+
             PHP
+            rm -f /tmp/GenreFixDiag.php /tmp/genre_fix_diag.blade.php
