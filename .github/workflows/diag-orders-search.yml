@@ -136,6 +136,8 @@ jobs:
               $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
               $i = strpos($html, 'Do these in order');
               echo 'RENDER_OK len=' . strlen($html) . "\n";
+              $wk = strpos($html, 'class="wo-week-line"');
+              echo 'WEEK: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $wk, 900))), 0, 200) . "\n";
               echo 'DISCOGS: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 12000))), 0, 1500) . "\n";
               echo 'HAS_BTNS=' . substr_count(substr($html, $i), 'wo-pick-inline') . "\n";
               return;
