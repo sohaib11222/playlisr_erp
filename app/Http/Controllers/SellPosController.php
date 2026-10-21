@@ -2425,7 +2425,21 @@ class SellPosController extends Controller
             return ['success' => false, 'msg' => 'No Quo line configured for this store.'];
         }
 
-        $link = $this->transactionUtil->getInvoiceUrl($transaction->id, $transaction->business_id);
+        // Link to the nivessa.com receipt page (Sarah, 2026-10-21): the ERP
+        // invoice page showed "Walk-In Customer", a wrong zip and a Print
+        // button. Falls back to the ERP link only if the website is down.
+        $link = null;
+        try {
+            $resp = \App\Services\WebsiteBridge::erp('POST', '/receipts/link', $base, 10);
+            if (!empty($resp['success']) && !empty($resp['link'])) {
+                $link = (string) $resp['link'];
+            }
+        } catch (\Throwable $e) {
+            $link = null;
+        }
+        if ($link === null) {
+            $link = $this->transactionUtil->getInvoiceUrl($transaction->id, $transaction->business_id);
+        }
         $message = $this->buildReceiptTextMessage($base, $link);
 
         $result = $sms->sendFrom((string) $from, $phone, $message);
@@ -2449,52 +2463,14 @@ class SellPosController extends Controller
      */
     private function buildReceiptTextMessage(array $base, string $link): string
     {
-        $store = trim((string) ($base['storeLocation'] ?? ''));
-        if ($store === '') {
-            $storeLabel = 'Nivessa';
-        } elseif (stripos($store, 'nivessa') !== false) {
-            $storeLabel = ucwords($store);
-        } else {
-            $storeLabel = 'Nivessa ' . ucwords($store);
-        }
-
-        $money = function ($n) {
-            return '$' . number_format((float) $n, 2);
-        };
-
-        $lines = [];
-        $lines[] = $storeLabel . ' - thanks for shopping with us!';
-        $lines[] = 'Receipt ' . $base['receiptNo'] . ' - ' . $base['saleDate'];
-
-        $items = $base['items'];
-        $maxItems = 6;
-        foreach (array_slice($items, 0, $maxItems) as $item) {
-            $name = trim((string) ($item['name'] ?? 'Item'));
-            if (mb_strlen($name) > 40) {
-                $name = rtrim(mb_substr($name, 0, 39)) . '…';
-            }
-            $qty = (float) ($item['quantity'] ?? 1);
-            $qtyLabel = '';
-            if (abs($qty - 1) > 0.0001) {
-                $qtyLabel = rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.') . 'x ';
-            }
-            $lines[] = $qtyLabel . $name . ' ' . $money(((float) ($item['price'] ?? 0)) * $qty);
-        }
-        $extra = count($items) - $maxItems;
-        if ($extra > 0) {
-            $lines[] = '+' . $extra . ' more item' . ($extra === 1 ? '' : 's');
-        }
-
-        $totals = 'Subtotal ' . $money($base['subtotal']);
-        if ((float) ($base['discount'] ?? 0) > 0) {
-            $totals .= ', Discount -' . $money($base['discount']);
-        }
-        $totals .= ', Tax ' . $money($base['tax']);
-        $lines[] = $totals;
-        $lines[] = 'Total ' . $money($base['total']) . ' (' . $base['paymentMethod'] . ')';
-        $lines[] = 'Full receipt: ' . $link;
-
-        return implode("\n", $lines);
+        // Short text (Sarah, 2026-10-21); the items are on the receipt page.
+        $isPico = stripos((string) ($base['storeLocation'] ?? ''), 'pico') !== false;
+        $store = $isPico ? 'Nivessa on Pico' : 'Nivessa Hollywood';
+        $first = trim(explode(' ', trim((string) ($base['customerName'] ?? '')))[0] ?? '');
+        $hi = ($first !== '' && strtolower($first) !== 'there') ? 'Hi ' . $first . '!' : 'Hi!';
+        return $hi . ' Thanks for stopping by ' . $store . ".\n\n"
+            . 'Your total today was $' . number_format((float) ($base['total'] ?? 0), 2)
+            . ". Here's your full receipt: " . $link;
     }
 
     /**
