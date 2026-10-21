@@ -848,7 +848,7 @@ class WebsiteOrdersController extends Controller
         return $erpUnknown;
     }
 
-    /** Replace weird ERP bins with the real bin the website has for the same product; backup saved first. */
+    /** Replace a weird ERP bin note with the one bin written in it; backup saved first. */
     public function binUnknownErpFix(Request $request)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
@@ -860,18 +860,17 @@ class WebsiteOrdersController extends Controller
         }
         $rows = $this->erpUnknownBins($u['codes'] ?? []);
         if (!$rows) return redirect()->route('website-orders.binCheck')->with('status', 'No ERP products have a weird bin.');
-        $ids = array_values(array_unique(array_column($rows, 'id')));
-        $w = $this->websiteApi('POST', '/erp/bin-store/bins-for-pos', ['ids' => $ids], 60);
-        if (!($w['success'] ?? false)) {
-            return redirect()->route('website-orders.binCheck')->with('error', ($w['message'] ?? null) ?: 'Could not read the website bins.');
-        }
-        $real = $w['data'] ?? [];
+        // Same rule as the website fix: a note with exactly one bin in it
+        // ("hw a168(2)", "Hollywood A5 (under Metal)") gets that bin. Notes with
+        // no bin or several stay for someone to check.
         $changes = [];
         foreach ($rows as $r) {
-            $bin = trim((string) ($real[$r['id']] ?? ''));
-            if ($bin !== '') $changes[] = ['id' => $r['id'], 'col' => $r['col'], 'old' => $r['bin'], 'new' => $bin];
+            preg_match_all('/\b(fl|gl|pico|hwa|hw a|hw|hollywood a)\s*-?\s*\d+\s*[a-z]?\b/i', $r['bin'], $m);
+            $found = [];
+            foreach ($m[0] as $tok) $found[strtolower(preg_replace('/\s+/', '', $tok))] = trim($tok);
+            if (count($found) === 1) $changes[] = ['id' => $r['id'], 'col' => $r['col'], 'old' => $r['bin'], 'new' => array_values($found)[0]];
         }
-        if (!$changes) return redirect()->route('website-orders.binCheck')->with('status', 'None of these have a real bin on the website yet. Run the Discogs fix first, or someone needs to find them.');
+        if (!$changes) return redirect()->route('website-orders.binCheck')->with('status', 'None of these notes has a single bin in it. Someone needs to find them.');
         $dir = storage_path('admin-snapshots');
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
         file_put_contents($dir . '/bin-unknown-erp-' . date('Ymd-His') . '.json', json_encode(['by' => auth()->id(), 'at' => date('c'), 'changes' => $changes], JSON_PRETTY_PRINT));
@@ -879,7 +878,7 @@ class WebsiteOrdersController extends Controller
             \DB::table('products')->where('id', $c['id'])->where($c['col'], $c['old'])->update([$c['col'] => $c['new']]);
         }
         $n = count($changes);
-        return redirect()->route('website-orders.binCheck')->with('status', "Fixed {$n} ERP bin" . ($n === 1 ? '' : 's') . ' from the website. A backup of the old bins is saved.');
+        return redirect()->route('website-orders.binCheck')->with('status', "Fixed {$n} ERP bin" . ($n === 1 ? '' : 's') . '. A backup of the old bins is saved.');
     }
 
     public function binCheckApply(Request $request)
