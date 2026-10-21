@@ -37,14 +37,10 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            cat > /tmp/nivessa-diag/run.php <<'PHP'
-            <?php
-            require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            foreach (['PurchaseDuplicateGuard'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
-            foreach ([[45984,2,'Bad Omens Finding God HW'],[154019,2,'Poppy I Disagree HW'],[45984,1,'Bad Omens at Pico'],[160349,2,'Jimin HW (on intake order 183104)'],[14851,2,'Aphex SAW HW (Redeye 180117 + order 183125)'],[10289,2,'Tribe Called Quest (183104 ordered)']] as $t) {
-              $t0 = microtime(true); $f = App\Services\PurchaseDuplicateGuard::quickReceiveFlag(1, $t[1], $t[0]);
-              echo $t[2] . ': ' . var_export($f, true) . ' (' . round((microtime(true)-$t0)*1000) . " ms)\n";
-            }
-            PHP
-            php /tmp/nivessa-diag/run.php 2>&1 | grep -v Deprecated | head -120
+            grep -c "quickReceiveFlag" app/Http/Controllers/PosQuickReceiveController.php app/Services/PurchaseDuplicateGuard.php
+            grep -c "resp.flag && window.toastr.warning" resources/views/sale_pos/partials/quick_receive_modal.blade.php
+            grep -n "asset_version" config/constants.php
+            git log -1 --format="%h %s"
+            php artisan view:cache >/dev/null 2>&1; echo "view cache exit $?"; php artisan view:clear >/dev/null 2>&1
+            tail -n 40 storage/logs/laravel-$(date +%Y-%m-%d).log 2>/dev/null | grep -i "quickreceive\|duplicate flag" | tail -5
             rm -rf /tmp/nivessa-diag
