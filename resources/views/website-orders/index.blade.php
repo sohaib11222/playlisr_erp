@@ -440,6 +440,9 @@
         @endforeach
       </div>
     @endif
+    @if(!empty($searchAll))
+      <div class="wo-banner" style="font-size:15px;font-weight:700;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;">Every order matching "{{ request('q') }}" from all tabs, any date. Each one says which tab it's on.</div>
+    @endif
     @if(!empty($linkOrderMissing))
       <div class="wo-banner warn" style="font-size:15px;font-weight:700;">This order wasn't found on the website. Check the order number, or search the buyer's name above.</div>
     @endif
@@ -554,6 +557,10 @@
                   @endif
                 </td>
                 <td>
+                  @if(!empty($searchAll))
+                    @php [$onTab, $onTabName] = \App\Http\Controllers\WebsiteOrdersController::tabFor($o); @endphp
+                    <a href="{{ url('/website-orders') }}?order={{ $o['_id'] }}" style="display:inline-block;margin-bottom:5px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;">{{ $onTabName }}</a>
+                  @endif
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>

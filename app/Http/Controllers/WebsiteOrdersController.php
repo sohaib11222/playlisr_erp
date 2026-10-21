@@ -119,6 +119,18 @@ class WebsiteOrdersController extends Controller
             $one = $this->websiteApi('GET', '/erp/orders/console?order=' . $linkOrder);
             $linkedExtra = ($one['success'] ?? false) ? array_values(array_filter($one['data'] ?? [], fn($x) => ($x['_id'] ?? '') === $linkOrder)) : [];
         }
+        // Search finds every order for that buyer/order number, any tab, status
+        // or age, not just the loaded window (Sarah, 2026-10-21: Apurva's order
+        // sat on Can't Find and a search on To Ship came back empty)
+        $searchAll = $search !== '' && $linkOrder === '';
+        if ($searchAll && !$bridgeError) {
+            $found = $this->websiteApi('GET', '/erp/orders/console?q=' . urlencode($search), null, 20);
+            $have = array_flip(array_column($allOrders, '_id'));
+            foreach (($found['success'] ?? false) ? ($found['data'] ?? []) : [] as $fo) {
+                if (!isset($have[$fo['_id'] ?? ''])) $linkedExtra[] = $fo;
+            }
+            self::$erpCache = self::erpLocations(array_merge($allOrders, $linkedExtra));
+        }
         if ($linkOrder !== '') {
             foreach (array_merge($allOrders, $linkedExtra) as $lo) {
                 if (($lo['_id'] ?? '') !== $linkOrder) continue;
@@ -267,9 +279,11 @@ class WebsiteOrdersController extends Controller
             if (!$onTab) $noTabIds[$nt['_id'] ?? ''] = true;
         }
         $tabCounts['unsorted'] = count($noTabIds);
-        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
+        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($searchAll, $noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             // An order link always shows that order, whatever tab or filter (Sarah, 2026-10-21)
             if ($linkOrder !== '') return ($o['_id'] ?? '') === $linkOrder;
+            // Search ignores tabs and store filters: every match shows, labeled with its tab
+            if ($searchAll) return self::searchMatches($o, $search);
             if ($activeTab === 'unsorted' && !isset($noTabIds[$o['_id'] ?? ''])) return false;
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
@@ -306,7 +320,7 @@ class WebsiteOrdersController extends Controller
 
         // Search never hides an order in another tab: list the tabs it's in (Sarah, 2026-10-21)
         $searchElsewhere = [];
-        if ($search !== '' && $linkOrder === '') {
+        if (false) {
             foreach ($allOrders as $so) {
                 if (!self::searchMatches($so, $search)) continue;
                 if ($paymentStatusFilter !== 'all' && ($so['payment_status'] ?? '') !== $paymentStatusFilter) continue;
@@ -372,6 +386,7 @@ class WebsiteOrdersController extends Controller
         return view('website-orders.index', [
             'erpLocations' => $erpLocations,
             'searchElsewhere' => $searchElsewhere,
+            'searchAll' => $searchAll,
             'linkOrderMissing' => $linkOrder !== '' && !$bridgeError && empty($orders),
             'sortKey' => $sortKey,
             'sortDir' => $sortDir,
@@ -1122,6 +1137,16 @@ class WebsiteOrdersController extends Controller
             $from[] = $sf === 'pico' ? 'pico' : 'hollywood';
         }
         return ($from && !array_diff($from, ['pico'])) ? 'pico' : 'hollywood';
+    }
+
+    /** [tab key, name] of the tab an order shows on (search results label each row with it). */
+    public static function tabFor(array $o): array
+    {
+        $names = ['ready_ship' => 'Shipments: Ready to Ship', 'to_ship' => 'Shipments: Need to Pull', 'pickup' => 'Pickups: Need to Pull', 'ready_pickup' => 'Pickups: Ready for Pickup', 'recheck_hw' => 'Recheck in HW Bins', 'cant_find' => "Can't Find: Decide Refund", 'preorder_ship' => 'Preorders', 'preorder_pickup' => 'Preorders', 'refunded' => 'Refunded', 'completed' => 'Completed', 'archived' => 'Archived'];
+        foreach ($names as $t => $name) {
+            if (self::matchesTab($o, $t) && self::showsOnNeedToPull($o, $t)) return [$t === 'preorder_ship' || $t === 'preorder_pickup' ? 'preorders' : $t, $name];
+        }
+        return ['unsorted', 'Not on any tab'];
     }
 
     /** matchesTab() for other classes (the morning Slack post). */

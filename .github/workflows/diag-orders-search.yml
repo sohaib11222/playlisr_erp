@@ -57,13 +57,13 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
-            foreach (['to_ship', 'needs_action', 'ready_ship', 'unsorted'] as $tab) {
-              foreach (['', 'hw', 'pico', 'warehouse', 'hollywood'] as $loc) {
+            foreach (['to_ship', 'ready_ship', 'completed'] as $tab) {
+              foreach (['', 'pico'] as $loc) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', array_filter(['q' => $q, 'tab' => $tab, 'location' => $loc]));
                 app()->instance('request', $req);
                 $v = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req);
                 $d = $v->getData();
-                echo "TAB {$tab} LOC {$loc}: orders=" . count($d['orders'] ?? []) . ' ids=' . implode(',', array_map(fn($o) => $o['orderNumber'] ?? $o['_id'], $d['orders'] ?? [])) . ' elsewhere=' . json_encode($d['searchElsewhere'] ?? null) . ' bridgeError=' . json_encode($d['bridgeError'] ?? null) . "\n";
+                echo "TAB {$tab} LOC {$loc}: orders=" . count($d['orders'] ?? []) . ' ids=' . implode(',', array_map(fn($o) => $o['orderNumber'] ?? $o['_id'], $d['orders'] ?? [])) . ' tabs=' . json_encode(array_map(fn($o) => \\App\\Http\\Controllers\\WebsiteOrdersController::tabFor($o)[1], $d['orders'] ?? [])) . ' bridgeError=' . json_encode($d['bridgeError'] ?? null) . "\n";
               }
             }
             PHP
