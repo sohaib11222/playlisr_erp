@@ -117,7 +117,8 @@ class WebsiteOrdersController extends Controller
                 // Keep the normal Completed view (and counts) unless this order needs All
                 if (($lo['payment_status'] ?? '') === 'completed' && !$request->has('payment_status')) $paymentStatusFilter = 'completed';
                 foreach (array_merge(array_keys(self::TABS), ['archived']) as $t) {
-                    if (self::matchesTab($lo, $t)) { $activeTab = $t; break; }
+                    // Skip Need to Pull when it has nothing left to pull there (Sarah, 2026-10-21)
+                    if (self::matchesTab($lo, $t) && self::showsOnNeedToPull($lo, $t)) { $activeTab = $t; break; }
                 }
                 break;
             }
@@ -252,17 +253,7 @@ class WebsiteOrdersController extends Controller
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
             if ($cancelledSince && (strtotime($o['cancelled_at'] ?? '') ?: 0) < $cancelledSince) return false;
             if (!self::matchesTab($o, $activeTab)) return false;
-            // Need to Pull: drop orders with nothing left to pull (all picked / can't find)
-            // (A fully picked pickup stays: it still has to be marked Ready for Pickup)
-            if (in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true) && !(($o['fulfillment_method'] ?? null) === 'pickup' && self::allPicked($o))) {
-                $off = self::offQueueNames($o);
-                $left = false;
-                foreach (($o['items'] ?? []) as $it) {
-                    if (!empty($it['cancelled']) || !empty($it['is_gift_card']) || empty($it['product_id'])) continue;
-                    if (!isset($off[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) { $left = true; break; }
-                }
-                if (!$left) return false;
-            }
+            if (!self::showsOnNeedToPull($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
             if ($activeTab === 'ready_pickup' && in_array($locationFilter, ['hollywood', 'pico'], true)) {
@@ -1018,6 +1009,20 @@ class WebsiteOrdersController extends Controller
     {
         foreach ($order['items'] ?? [] as $item) {
             if (!empty($item['product_id']['isPreorder'])) return true;
+        }
+        return false;
+    }
+
+    // Need to Pull tabs drop orders with nothing left to pull (all picked / can't find).
+    // A fully picked pickup stays: it still has to be marked Ready for Pickup.
+    protected static function showsOnNeedToPull(array $o, string $tab): bool
+    {
+        if (!in_array($tab, ['to_ship', 'pickup', 'needs_action'], true)) return true;
+        if (($o['fulfillment_method'] ?? null) === 'pickup' && self::allPicked($o)) return true;
+        $off = self::offQueueNames($o);
+        foreach (($o['items'] ?? []) as $it) {
+            if (!empty($it['cancelled']) || !empty($it['is_gift_card']) || empty($it['product_id'])) continue;
+            if (!isset($off[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) return true;
         }
         return false;
     }
