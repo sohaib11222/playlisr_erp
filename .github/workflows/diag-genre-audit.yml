@@ -1,0 +1,80 @@
+# READ-ONLY (Sarah, 2026-10-21): genre audit - what kinds of wrong genres exist. No writes.
+name: Diag genre audit
+
+on:
+  push:
+    branches: [diag/genre-audit]
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Genre audit (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php -d memory_limit=1500M artisan tinker --no-ansi <<'PHP'
+            $cats = \DB::table('categories')->whereNull('deleted_at')->get()->keyBy('id');
+            $act = \DB::table('products')->where('is_inactive', 0);
+            $byCat = (clone $act)->select('category_id', 'sub_category_id', \DB::raw('count(*) n'), \DB::raw('sum(exists(select 1 from variation_location_details v where v.product_id=products.id and v.qty_available>0)) instock'))->groupBy('category_id', 'sub_category_id')->get();
+            foreach ($cats->where('parent_id', 0) as $c) {
+              $rows = $byCat->where('category_id', $c->id); $tot = $rows->sum('n'); if (!$tot) continue;
+              echo "\nCAT {$c->id} {$c->name} [{$c->description}] total={$tot}\n";
+              foreach ($rows->sortByDesc('n') as $r) {
+                $s = $r->sub_category_id ? ($cats[$r->sub_category_id] ?? null) : null;
+                $flag = !$r->sub_category_id ? 'BLANK' : (!$s ? 'DELETED-SUB' : ((int)$s->parent_id !== (int)$c->id ? 'OTHER-FORMAT(parent ' . $s->parent_id . ' ' . ($cats[$s->parent_id]->name ?? '?') . ')' : ''));
+                echo "  " . str_pad($r->n, 6) . " stock=" . str_pad($r->instock, 5) . ($s->name ?? '-') . " #{$r->sub_category_id} {$flag}\n";
+              }
+            }
+            echo "\nNO CATEGORY: " . (clone $act)->where(function($q){$q->whereNull('category_id')->orWhere('category_id',0);})->count() . "\n";
+            // artist disagreement within same format
+            $norm = function ($a) { $a = mb_strtolower(trim((string) $a)); $a = preg_replace('/^the\s+/', '', $a); return trim(preg_replace('/[^a-z0-9]+/', ' ', $a)); };
+            $m = [];
+            foreach ((clone $act)->where('sub_category_id', '>', 0)->select('id','name','artist','category_id','sub_category_id','created_by','discogs_release_id')->cursor() as $p) {
+              $a = $norm($p->artist); if ($a === '' || preg_match('/^(n a|na|unknown|various|various artists|none|v a)$/', $a)) continue;
+              $m[$p->category_id][$a][$p->sub_category_id][] = $p->id;
+            }
+            $dis = 0; $disProducts = 0; $samples = [];
+            foreach ($m as $cat => $arts) foreach ($arts as $a => $subs) {
+              if (count($subs) < 2) continue;
+              $cnt = array_map('count', $subs); arsort($cnt); $top = array_key_first($cnt); $topN = $cnt[$top]; $sum = array_sum($cnt);
+              $dis++; $disProducts += $sum - $topN;
+              if (count($samples) < 60 && $sum >= 4) { $parts = []; foreach ($cnt as $s => $n) $parts[] = ($cats[$s]->name ?? $s) . ':' . $n; $samples[] = ($cats[$cat]->name ?? $cat) . ' | ' . $a . ' | ' . implode(', ', $parts); }
+            }
+            echo "\nARTISTS WITH MIXED GENRES (same format): {$dis}, minority products: {$disProducts}\n" . implode("\n", $samples) . "\n";
+            echo "\nWITH DISCOGS ID: " . (clone $act)->where('discogs_release_id', '>', 0)->count() . "\n";
+            echo "CREATED_BY top for blank: " . json_encode((clone $act)->where(function($q){$q->whereNull('sub_category_id')->orWhere('sub_category_id',0);})->select('created_by', \DB::raw('count(*) n'))->groupBy('created_by')->orderByDesc('n')->limit(8)->get()) . "\n";
+            $cols = \Schema::getColumnListing('products'); echo "COLS: " . implode(',', array_filter($cols, fn($c) => preg_match('/genre|style|cat|discogs|artist|format/', $c))) . "\n";
+            PHP
