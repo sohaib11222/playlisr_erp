@@ -372,9 +372,11 @@
             @if(!empty($st['split']))
               @foreach($st['split'] as $lk => $ll)
                 @php $sn = $tabCounts[$st['tab'] . '_' . $lk] ?? 0; @endphp
+                {{-- No 0 buttons: a step with nothing just says All done (Sarah, 2026-10-21) --}}
+                @continue($sn === 0 && !($activeTab === $st['tab'] && $locationFilter === $lk))
                 <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => $lk])) }}" class="wo-split {{ $activeTab === $st['tab'] && $locationFilter === $lk ? 'on' : '' }} {{ $sn > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $sn }}</b></a>
               @endforeach
-            @else
+            @elseif($n > 0)
               <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => null])) }}" class="wo-split {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}">{{ $st['tab'] === 'recheck_hw' ? 'Hollywood' : 'Orders' }} <b>{{ $n }}</b></a>
             @endif
           </div>
