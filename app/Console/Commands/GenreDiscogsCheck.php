@@ -31,6 +31,22 @@ class GenreDiscogsCheck extends Command
 
     const STATE = 'genre-discogs-check.json';
 
+    // Our genre (canon) => the Discogs top-level genres it fits under. A record
+    // is only "definitely wrong" when Discogs lists none of them (Cat Stevens
+    // under Folk with Discogs "Rock" stays; Miami Vice Theme under Jazz with
+    // Discogs "Electronic, Pop, Stage & Screen" gets fixed). Genres not listed
+    // here are never changed.
+    const FAMILY = [
+        'rock' => ['Rock'], 'alt' => ['Rock'], 'punk' => ['Rock'], 'metal' => ['Rock'], 'nu metal' => ['Rock'],
+        'new wave' => ['Rock', 'Electronic', 'Pop'], 'synth' => ['Electronic', 'Rock', 'Pop'],
+        'pop' => ['Pop', 'Rock', 'Electronic', 'Funk / Soul'], 'k pop' => ['Pop', 'Electronic', 'Hip Hop'],
+        'folk' => ['Folk, World, & Country', 'Rock', 'Pop'], 'country' => ['Folk, World, & Country'],
+        'folk country' => ['Folk, World, & Country', 'Rock'],
+        'rnb' => ['Funk / Soul'], 'disco' => ['Funk / Soul', 'Electronic', 'Pop'], 'blues' => ['Blues', 'Rock', 'Funk / Soul'],
+        'jazz' => ['Jazz'], 'electronic' => ['Electronic'], 'hip hop' => ['Hip Hop'], 'classical' => ['Classical'],
+        'latin' => ['Latin'], 'reggae' => ['Reggae'], 'world' => ['Folk, World, & Country', 'Latin', 'Reggae'],
+    ];
+
     public static function state()
     {
         try {
@@ -133,11 +149,9 @@ class GenreDiscogsCheck extends Command
                 if (in_array($cur, $theirs, true)) { $stats['ok']++; continue; }
                 $c = G::canon($subs[$cur]['name']);
                 if (in_array($c, G::KEEP, true)) { $stats['ok']++; continue; }
-                $words = ' ' . G::canon(implode(' ', $styles) . ' ' . implode(' ', $genres)) . ' ';
-                $loose = false;
-                foreach (array_map([G::class, 'canon'], array_merge($styles, $genres)) as $tc) if ($tc === $c) $loose = true;
-                foreach (explode(' ', $c) as $w) if (mb_strlen($w) > 2 && strpos($words, ' ' . $w . ' ') !== false) $loose = true;
-                if ($loose) { $stats['ok']++; continue; }
+                // Wrong only if the release isn't in any Discogs genre our genre can live under.
+                $fam = self::FAMILY[$c] ?? null;
+                if ($fam === null || array_intersect($fam, $genres)) { $stats['ok']++; continue; }
             }
             $new = $theirs[0];
             $kind = $curOk ? 'fixed' : 'filled';
