@@ -1356,9 +1356,36 @@ class WebsiteOrdersController extends Controller
         $error = $resp === null || ($resp['success'] ?? true) === false;
         $orders = $error ? [] : ($resp['data'] ?? []);
         $all = self::pendingPulls($orders, self::erpLocations($orders));
+        // Discogs items go on the same route (Sarah, 2026-10-21: one walk, not two lists)
+        $dg = $error ? null : $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
+        $dgOrders = ($dg['success'] ?? false) ? ($dg['data'] ?? []) : [];
+        $dgErp = self::erpLocations(array_map(fn($x) => ['items' => array_map(fn($it) => ['product_id' => ['posProductId' => $it['erp_product_id'] ?? null]], $x['items'] ?? [])], $dgOrders));
+        foreach ($dgOrders as $d) {
+            $lines = [];
+            foreach (($d['pick']['lines'] ?? []) as $pl) $lines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
+            foreach (($d['items'] ?? []) as $it) {
+                $k = strtolower(trim((string) ($it['name'] ?? '')));
+                $pl = $lines[$k] ?? null;
+                if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) continue;
+                $pid = (int) ($it['erp_product_id'] ?? 0);
+                $parts = self::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null);
+                $all[] = [
+                    'order' => ['display_name' => $d['buyer'] ?? '', 'createdAt' => $d['order_date'] ?? null, 'fulfillment_method' => 'shipping', 'order_status' => 'processing', '_discogs' => $d['id'] ?? ''],
+                    'item' => ['product_id' => ['image' => $it['image'] ?? null, 'artist' => $it['artist'] ?? null, 'posProductId' => $pid, 'productType' => $it['product_type'] ?? null], 'quantity' => $it['quantity'] ?? 1],
+                    'name' => (string) ($it['name'] ?? 'Item'), 'parts' => $parts, 'store' => self::pullStore($parts['place']),
+                    'pick_order' => (string) ($d['pick']['order_id'] ?? ''), 'pick_item' => (string) ($pl['item_id'] ?? ''), 'pick_status' => (string) ($pl['status'] ?? 'Not Picked'),
+                    'genre_full' => (string) ($pid ? ($dgErp[$pid]['genre'] ?? '') : ''), 'format' => '',
+                ];
+            }
+        }
         $counts = ['hollywood' => 0, 'pico' => 0, 'warehouse' => 0];
         foreach ($all as $r) if (isset($counts[$r['store']])) $counts[$r['store']]++;
-        $rows = array_values(array_filter($all, fn($r) => $r['store'] === $store));
+        // Late rows are marked; ?late=1 shows just those (Sarah, 2026-10-21: prioritize for Nick)
+        foreach ($all as &$r) $r['due'] = self::dueShort($r['order']);
+        unset($r);
+        $lateOnly = $request->query('late') === '1';
+        $rows = array_values(array_filter($all, fn($r) => $r['store'] === $store && (!$lateOnly || ($r['due'][1] ?? false))));
+        $lateCount = count(array_filter($all, fn($r) => $r['store'] === $store && ($r['due'][1] ?? false)));
         // Store routes walk by genre (bins are laid out by genre), the warehouse
         // by area then bin; inside each, newest orders first (Sarah, 2026-10-16).
         usort($rows, function ($a, $b) use ($store) {
@@ -1379,6 +1406,8 @@ class WebsiteOrdersController extends Controller
             'store' => $store,
             'rows' => $rows,
             'counts' => $counts,
+            'lateOnly' => $lateOnly,
+            'lateCount' => $lateCount,
             'error' => $error ? (($resp['message'] ?? null) ?: 'Could not reach the website.') : null,
         ]);
     }

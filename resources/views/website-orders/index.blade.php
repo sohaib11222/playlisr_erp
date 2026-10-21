@@ -409,7 +409,7 @@
       $woSteps = [
         ['title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'pills' => [['HW Warehouse', 'pickup', 'warehouse'], ['HW Store', 'pickup', 'hollywood'], ['Pico', 'pickup', 'pico']]],
         ['title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'pills' => [['HW Warehouse', 'ready_ship', 'warehouse'], ['HW Store', 'ready_ship', 'hollywood'], ['Pico', 'ready_ship', 'pico']]],
-        ['title' => 'Nick: pull from the warehouse', 'why' => 'Website and Discogs items in the Hollywood warehouse bins.', 'pills' => [['HW Warehouse', 'to_ship', 'warehouse']], 'bar' => ['warehouse']],
+        ['title' => 'Nick: pull from the warehouse', 'why' => 'Website and Discogs items in the Hollywood warehouse bins.', 'pills' => [['HW Warehouse', 'to_ship', 'warehouse']], 'route' => 'warehouse', 'bar' => ['warehouse']],
         ['title' => 'Hollywood cashier: store floor and rechecks', 'why' => 'Pull what\'s on the sales floor, then check the bins for what Pico couldn\'t find.', 'pills' => [['Store floor', 'to_ship', 'hollywood'], ['Recheck bins', 'recheck_hw', null]], 'bar' => ['hollywood']],
         ['title' => 'Pico cashier: pull at Pico', 'why' => 'Items on the Pico floor.', 'pills' => [['Pico', 'to_ship', 'pico']], 'bar' => ['pico']],
         ['title' => 'Waiting on the customer', 'why' => 'Pulled and ready for pickup, or not in stock yet. Nothing to pull.', 'info' => true, 'pills' => [['Ready for pickup', 'ready_pickup', null], ['Preorders', 'preorders', null]]],
@@ -463,6 +463,9 @@
             <span class="wo-step-why">{{ $st['why'] }}</span>
           </a>
           <div class="wo-card-pills">
+            @if(!empty($st['route']) && $n > 0)
+              <a href="{{ route('website-orders.pickRoute', ['store' => $st['route']]) }}" style="display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:8px;background:#1e3a8a;color:#fff !important;font-weight:700;text-decoration:none;">Start pick route</a>
+            @endif
             @foreach($st['pills'] as $p)
               @php $sn = $woPillCount($p); $pOn = $activeTab === $p[1] && ($p[2] === null || $locationFilter === $p[2]); @endphp
               {{-- No 0 buttons: a step with nothing just says All done (Sarah, 2026-10-21) --}}

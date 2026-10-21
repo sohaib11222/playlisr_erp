@@ -12,16 +12,17 @@
   .pr-wrap h1 { font-size:22px; margin:0 0 6px; color:#000; }
   .pr-wrap p.lead { color:#000; margin:0 0 14px; }
   .pr-tabs { display:flex; gap:8px; margin:0 0 16px; flex-wrap:wrap; }
-  .pr-tabs a { padding:7px 14px; border-radius:999px; border:1px solid #d1d5db; background:#fff; color:#000; font-weight:600; text-decoration:none; }
-  .pr-tabs a.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af; }
+  .pr-tabs a { padding:4px 0; color:#000; font-weight:700; text-decoration:none; margin-right:14px; }
+  .pr-tabs a.on { color:#1e40af; text-decoration:underline; text-underline-offset:4px; }
   .pr-area { font-size:16px; font-weight:700; color:#000; margin:22px 0 6px; padding-bottom:4px; border-bottom:2px solid #e5e7eb; }
   .pr-wrap table { width:100%; border-collapse:collapse; font-size:14px; background:#fff; }
   .pr-wrap th, .pr-wrap td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; color:#000; vertical-align:top; }
   .pr-wrap th { font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
-  .pr-bin { display:inline-block; padding:2px 8px; border-radius:5px; background:#fde68a; font-weight:700; }
+  .pr-bin { display:inline-block; padding:2px 8px; border-radius:5px; border:2px solid #000; font-weight:800; font-size:15px; }
+  tr.is-late td:first-child { box-shadow:inset 4px 0 0 #b91c1c; }
   .pr-n { width:34px; font-weight:700; }
   .pr-act button { font-size:13px; padding:6px 11px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#000; cursor:pointer; margin:0 4px 4px 0; }
-  .pr-act button.go { background:#dbeafe; border-color:#93c5fd; color:#1e40af; font-weight:600; }
+  .pr-act button.go { background:#1e3a8a; border-color:#1e3a8a; color:#fff; font-weight:700; }
   .pr-act button:disabled { opacity:.5; cursor:wait; }
   .pr-state { font-size:13px; font-weight:600; color:#000; }
   .pr-state.miss { color:#b91c1c; }
@@ -36,7 +37,16 @@
 <div class="pr-wrap">
   <a href="{{ route('website-orders.index') }}" style="display:inline-block;margin-bottom:10px;padding:7px 14px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#000;font-weight:600;text-decoration:none;">&larr; Back to Website Orders</a>
   <h1>Pick Route</h1>
-  <p class="lead">Everything still to pull, in walking order. Tap Picked or Can't find as you go; it saves to the same pick list as <a href="{{ route('website-orders.index') }}">Website Orders</a>.</p>
+  <p class="lead">Website and Discogs items still to pull, in walking order: room by room, bin by bin. Late orders are in red. Tap Picked or Can't find as you go.</p>
+  @if(($lateCount ?? 0) > 0 || !empty($lateOnly))
+    <p style="font-size:15px;font-weight:700;color:#000;margin:0 0 12px;">
+      @if(!empty($lateOnly))
+        Showing only the {{ $lateCount }} late {{ $lateCount === 1 ? 'item' : 'items' }}. <a href="{{ route('website-orders.pickRoute', ['store' => $store]) }}">Show everything</a>
+      @else
+        {{ $lateCount }} {{ $lateCount === 1 ? 'item is' : 'items are' }} for late orders. <a href="{{ route('website-orders.pickRoute', ['store' => $store, 'late' => 1]) }}">Pull just those first</a>
+      @endif
+    </p>
+  @endif
 
   <div class="pr-tabs">
     @foreach(['hollywood' => 'Hollywood Store', 'pico' => 'Pico Store', 'warehouse' => 'Warehouse'] as $key => $label)
@@ -61,7 +71,7 @@
       <div class="pr-area">{{ $area }} ({{ count($areaRows) }})</div>
       <table style="table-layout:fixed;">
         <colgroup><col style="width:250px"><col style="width:36px"><col style="width:76px"><col style="width:120px"><col><col style="width:140px"><col style="width:160px"><col style="width:44px"><col style="width:90px"><col style="width:150px"></colgroup>
-        <thead><tr><th></th><th>#</th><th>Photo</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Ordered</th><th>Customer</th></tr></thead>
+        <thead><tr><th></th><th>#</th><th>Photo</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Due</th><th>Customer</th></tr></thead>
         <tbody>
           @foreach($areaRows as $r)
             @php
@@ -72,7 +82,7 @@
               $who = $o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest'));
               $how = ($o['fulfillment_method'] ?? null) === 'pickup' ? 'Pickup ' . (($o['pickup_location'] ?? '') === 'pico' ? 'Pico' : 'Hollywood') : 'Ship';
             @endphp
-            <tr class="{{ $r['pick_status'] === "Can't Find" ? 'is-missing' : ($r['pick_status'] === 'Pending Arrival' ? 'is-wait' : '') }}">
+            <tr class="{{ $r['pick_status'] === "Can't Find" ? 'is-missing' : ($r['pick_status'] === 'Pending Arrival' ? 'is-wait' : '') }} {{ ($r['due'][1] ?? false) ? 'is-late' : '' }}">
               <td class="pr-act" data-order="{{ $r['pick_order'] }}" data-item="{{ $r['pick_item'] }}">
                 @if($r['pick_order'] !== '' && $r['pick_item'] !== '')
                   @if($r['pick_status'] === "Can't Find" || $r['pick_status'] === 'Pending Arrival')
@@ -89,11 +99,12 @@
               <td>@if($img)<img src="{{ $img }}" alt="" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px;display:block;">@else &mdash; @endif</td>
               <td>@if($spot !== '')<span class="{{ $store === 'warehouse' ? 'pr-bin' : '' }}">{{ $store === 'warehouse' ? 'Bin ' . $spot : $spot }}</span>@else &mdash; @endif</td>
               <td><strong>{{ $r['name'] }}</strong>@if(!empty($it['product_id']['artist']))<br>{{ $it['product_id']['artist'] }}@endif</td>
-              <td>{{ $r['format'] !== '' ? $r['format'] : '—' }}</td>
+              @php [$prTag] = \App\Http\Controllers\WebsiteOrdersController::itemTag($r['genre_full'] ?? null, $it['product_id']['subCategory'] ?? null, $it['product_id']['productType'] ?? null); @endphp
+              <td style="font-weight:700;">{{ $prTag !== '' ? $prTag : ($r['format'] !== '' ? $r['format'] : '—') }}</td>
               <td>{{ $r['genre_full'] !== '' ? $r['genre_full'] : '—' }}</td>
               <td>{{ (int) ($it['quantity'] ?? 1) }}</td>
-              <td>{{ !empty($o['createdAt']) ? date('m/d/y', strtotime($o['createdAt'])) : '—' }}</td>
-              <td>{{ $who }}<br><span style="font-size:12px;">{{ $how }}</span></td>
+              <td style="{{ ($r['due'][1] ?? false) ? 'color:#b91c1c;font-weight:800;' : '' }}">{{ $r['due'][0] ?? '—' }}</td>
+              <td>{{ $who }}<br><span style="font-size:12px;">{{ !empty($o['_discogs']) ? 'Discogs ' . $o['_discogs'] : $how }}</span></td>
             </tr>
           @endforeach
         </tbody>
