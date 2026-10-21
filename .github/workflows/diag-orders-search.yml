@@ -57,6 +57,19 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'TABS') {
+              foreach (['to_ship', 'ready_ship'] as $tab) {
+                $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab]);
+                app()->instance('request', $req);
+                $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
+                $i = strpos($html, 'Do these in order');
+                echo "TABS {$tab}: sealed=" . substr_count($html, 'wo-cond sealed') . ' used=' . substr_count($html, 'wo-cond used') . ' picked_notes=' . substr_count($html, 'already picked') . "\n";
+                echo "STEPS {$tab}: " . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 6000))), 0, 520) . "\n";
+                $j = strpos($html, 'Discogs orders to');
+                echo "DG {$tab}: " . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $j, 5000))), 0, 500) . "\n";
+              }
+              return;
+            }
             if ($q === 'COND') {
               echo 'CATS: ' . json_encode(\DB::table('categories')->whereNull('deleted_at')->where('parent_id', 0)->pluck('name')) . "\n";
               $resp = (new \ReflectionMethod(\App\Http\Controllers\WebsiteOrdersController::class, 'websiteApi'));
