@@ -37,26 +37,13 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            mkdir -p /tmp/nivessa-diag
             cat > /tmp/nivessa-diag/c.php <<'PHP'
             <?php
             require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            $pw = (string) config('inventory_check.email.password'); $mask = function ($t) use ($pw) { $t = (string) $t; foreach ([$pw, str_replace(' ', '', $pw)] as $p) if ($p !== '') $t = str_replace($p, '[REDACTED]', $t); return preg_replace('/LOGIN\s+\S+\s+\S+/i', 'LOGIN [REDACTED]', $t); };
-            echo "== intake log errors\n";
-            foreach (App\Services\DistributorInvoiceIntake::log() as $i => $e) if (in_array($e['status'] ?? '', ['error','failed'])) echo $i . ' ' . $e['at'] . ' ' . ($e['distributor'] ?? '') . ' contains_pw=' . (($pw !== '' && (strpos($e['msg'], $pw) !== false || strpos($e['msg'], str_replace(' ', '', $pw)) !== false)) ? 'YES' : 'no') . ' | ' . substr($mask($e['msg']), 0, 160) . "\n";
-            echo "== laravel log lines with pw: ";
-            $n = 0; foreach (glob(storage_path('logs/*.log')) as $f) { $c = file_get_contents($f); if ($pw !== '') $n += substr_count($c, $pw) + substr_count($c, str_replace(' ', '', $pw)); } echo "$n\n";
-            echo "== seen alert keys: " . implode(',', array_filter(array_keys(json_decode(Storage::disk('local')->get('distributor-invoices/intake-seen.json'), true) ?: []), function ($k) { return strpos($k, 'alert:') === 0; })) . "\n";
-            $imap = new App\Services\RawImapClient(); $imap->connect('imap.gmail.com', 993);
-            try { $imap->login(config('inventory_check.email.username'), str_replace(' ', '', $pw)); echo "login ok\n"; } catch (\Throwable $e) { echo "login FAILED " . $mask($e->getMessage()) . "\n"; exit; }
-            $imap->selectFolder('[Gmail]/All Mail');
-            $uids = $imap->uidSearchSinceFrom(now()->subDays(4), 'hdadmin@aent.com'); echo "uids " . implode(',', $uids) . "\n";
-            foreach ($uids as $u) { $raw = $imap->uidFetchRaw($u); preg_match('/^Subject:\s*(.+)$/mi', $raw, $sm); echo "-- " . trim($sm[1] ?? '') . "\n";
-              foreach (App\Services\DistributorInvoiceIntake::pdfAttachments($raw) as $pdf) { $p = App\Services\DistributorInvoiceParser::parse('alliance', $pdf); echo json_encode($p['header']) . " sum {$p['sum']} goods " . ($p['totals']['goods'] ?? '?') . "\n";
-                foreach ($p['items'] as $it) echo "  {$it['upc']} {$it['prodType']} {$it['description']} ord " . ($it['ordered'] ?? '') . " ship {$it['qty']} bo {$it['backordered']} @ {$it['unitPrice']}\n"; } }
-            $imap->logout();
-            echo "== 183206 lines\n"; foreach (DB::table('purchase_lines as pl')->join('variations as v','v.id','=','pl.variation_id')->where('pl.transaction_id',183206)->get(['v.sub_sku','pl.quantity']) as $x) echo "  $x->sub_sku x" . round($x->quantity) . "\n";
-            echo "== older purchases\n"; foreach (DB::table('transactions')->whereIn('id',[180302,178795,178797])->get(['id','status','ref_no','transaction_date','location_id']) as $t) { echo "#$t->id $t->status loc$t->location_id " . substr($t->transaction_date,0,10) . " $t->ref_no\n"; foreach (DB::table('purchase_lines as pl')->join('variations as v','v.id','=','pl.variation_id')->join('products as p','p.id','=','pl.product_id')->where('pl.transaction_id',$t->id)->get(['v.sub_sku','p.name','pl.quantity']) as $x) echo "   $x->sub_sku " . substr($x->name,0,40) . " x" . round($x->quantity) . "\n"; }
+            foreach (['RawImapClient','PdfTextExtractor','DistributorInvoiceParser','DistributorInvoiceImport','DistributorInvoiceIntake'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
+            $r = (new App\Services\DistributorInvoiceIntake())->run(5, 'alliance', true);
+            foreach ($r as $e) echo "[" . ($e['status'] ?? '') . "] " . ($e['invoice'] ?? '') . " | " . App\Services\DistributorInvoiceIntake::redact($e['msg'] ?? '') . "\n";
+            echo "log entry 1 after redact-on-read: " . substr(App\Services\DistributorInvoiceIntake::log()[1]['msg'] ?? '', 0, 120) . "\n";
             PHP
             php /tmp/nivessa-diag/c.php 2>&1 | grep -v Deprecated
             rm -rf /tmp/nivessa-diag
