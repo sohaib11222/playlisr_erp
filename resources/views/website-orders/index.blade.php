@@ -272,12 +272,12 @@
   .wo-week { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
   .wo-week-line { font-size:18px; color:#000; }
   .wo-week-line span { margin-left:8px; font-weight:800; }
-  .wo-week-bar { height:14px; margin-top:8px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-week-bar { height:6px; max-width:360px; margin-top:6px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
   .wo-week-bar span { display:block; height:100%; background:#047857; border-radius:999px; }
   .wo-week-sub { font-size:13px; color:#000; margin-top:4px; }
-  .wo-step-bar { display:block; width:260px; max-width:100%; height:10px; margin-top:7px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-step-bar { display:block; width:160px; max-width:100%; height:5px; margin-top:6px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
   .wo-step-bar .fill { display:block; height:100%; background:#047857; border-radius:999px; }
-  .wo-step-barlabel { display:block; font-size:13px; font-weight:700; color:#000; margin-top:3px; }
+  .wo-step-barlabel { display:block; font-size:12px; font-weight:600; color:#000; margin-top:3px; }
   .wo-sortbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; font-size:15px; }
   .wo-sortbar .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border:1.5px solid #d1d5db; border-radius:999px; background:#fff; color:#000 !important; text-decoration:none; display:inline-flex; align-items:center; }
   .wo-sortbar .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af !important; }
@@ -391,9 +391,8 @@
       $wkTot = $wkN + (int) ($tabCounts['week_open'] ?? 0);
     @endphp
     <div class="wo-week">
-      <div class="wo-week-line"><strong>{{ $wkN }} {{ $wkN === 1 ? 'order' : 'orders' }} shipped this week{{ $wkN > 0 ? '!' : '' }}</strong> <span>${{ number_format((float) ($tabCounts['week_shipped_amt'] ?? 0), 2) }}</span></div>
+      <div class="wo-week-line"><strong>{{ $wkN > 0 ? 'Nice work! ' : '' }}{{ $wkN }} {{ $wkN === 1 ? 'order' : 'orders' }} shipped this week</strong> <span>${{ number_format((float) ($tabCounts['week_shipped_amt'] ?? 0), 2) }}</span></div>
       <div class="wo-week-bar"><span style="width:{{ $wkTot ? round(100 * $wkN / $wkTot) : 0 }}%"></span></div>
-      <div class="wo-week-sub">{{ (int) ($tabCounts['week_open'] ?? 0) }} website {{ (int) ($tabCounts['week_open'] ?? 0) === 1 ? 'order' : 'orders' }} still to ship</div>
     </div>
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
@@ -420,7 +419,7 @@
               @endphp
               @if($bTot > 0)
                 <span class="wo-step-bar"><span class="fill" style="width:{{ round(100 * $bDone / $bTot) }}%"></span></span>
-                <span class="wo-step-barlabel">{{ $bDone }} of {{ $bTot }} items pulled</span>
+                <span class="wo-step-barlabel">{{ count($st['pills']) > 1 ? $st['pills'][0][0] . ': ' : '' }}{{ $bDone }} of {{ $bTot }} items pulled</span>
               @endif
             @endif
           </a>
