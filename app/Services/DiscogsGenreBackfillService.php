@@ -272,11 +272,21 @@ class DiscogsGenreBackfillService
             ->pluck('id', 'name')
             ->mapWithKeys(function ($id, $name) { return [$this->normalizeGenreKey($name) => (int) $id]; });
 
+        // Same genre under a different name (Discogs "Funk / Soul" = our
+        // "R&B, Soul & Funk", "Hip Hop" = "Hip Hop LPs"), see GenreFixController::canon.
+        // Until 10/21 only exact names matched, so the backfill filled 0 of ~10.8k.
+        $byCanon = [];
+        foreach ($existingByLower as $name => $id) {
+            $k = \App\Http\Controllers\GenreFixController::canon($name);
+            if (!isset($byCanon[$parentCategoryId][$k])) $byCanon[$parentCategoryId][$k] = $id;
+        }
         foreach ($candidateNames as $name) {
             $key = $this->normalizeGenreKey($name);
             if ($key !== '' && $existingByLower->has($key)) {
                 return $existingByLower->get($key);
             }
+            $id = \App\Http\Controllers\GenreFixController::subFor($byCanon, $parentCategoryId, \App\Http\Controllers\GenreFixController::canon($name));
+            if ($id) return $id;
         }
         return null;
     }

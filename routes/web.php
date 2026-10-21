@@ -866,6 +866,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // boomboxes, turntables) to an "Audio Gear" category. Before the resource.
     Route::get('/products/fix-audio-gear', 'AudioGearFixController@apply')->name('products.fix-audio-gear');
 
+    // Genre Fix (Sarah 10/21): catalog-wide wrong/missing genre fixes, undoable.
+    Route::get('/products/genre-fix', 'GenreFixController@index');
+    Route::post('/products/genre-fix/apply', 'GenreFixController@apply');
+    Route::post('/products/genre-fix/set-artist', 'GenreFixController@setArtist');
+    Route::post('/products/genre-fix/save', 'GenreFixController@saveRecords');
     Route::get('/products/sealed-barcodes', 'SealedBarcodeController@index');
     Route::post('/products/sealed-barcodes/apply', 'SealedBarcodeController@apply');
     Route::post('/products/sealed-barcodes/scan', 'SealedBarcodeController@scanNow');

@@ -833,6 +833,9 @@ class AdminSidebarMenu
                 $admin_links[] = [route('manual-item-price-rules.index'), 'Manual Item Price Rules', 'fa fas fa-dollar-sign', request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules'];
                 $admin_links[] = [route('product-entry-rules.index'), 'Product Entry Rules', 'fa fas fa-magic', request()->segment(1) == 'settings' && request()->segment(2) == 'product-entry-rules'];
             }
+            if ($user->can('product.update')) {
+                $admin_links[] = [url('/products/genre-fix'), 'Genre Fix', 'fa fas fa-tags', request()->segment(1) == 'products' && request()->segment(2) == 'genre-fix'];
+            }
             if ($is_owner) {
                 $admin_links[] = [route('products.merge.index'), 'Merge Duplicates', 'fa fas fa-object-group', request()->segment(1) == 'products' && request()->segment(2) == 'merge'];
                 $admin_links[] = [route('products.name.index'), 'Name Cleanup', 'fa fas fa-font', request()->segment(1) == 'products' && request()->segment(2) == 'name-cleanup'];
