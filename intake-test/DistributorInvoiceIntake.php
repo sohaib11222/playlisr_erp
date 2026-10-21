@@ -334,9 +334,15 @@ class DistributorInvoiceIntake
             $imap->selectFolder('[Gmail]/All Mail');
             $uids = $imap->uidSearchSinceFrom(now()->subDays($days), self::ALLIANCE_FROM);
             $seen = $this->seen();
+            // Re-open processed emails only while some imported invoice still
+            // needs its one-time re-check.
+            $pendingResync = false;
+            foreach (Storage::disk('local')->files(DistributorInvoiceImport::config('alliance')['dir']) as $f) {
+                if ($this->needsResync('alliance', basename($f, '.json'))) { $pendingResync = true; break; }
+            }
             foreach ($uids as $uid) {
                 $uidKey = 'mail:' . $user . ':' . $uid;
-                if (isset($seen[$uidKey])) continue;
+                if (isset($seen[$uidKey]) && !$pendingResync) continue;
                 $raw = $imap->uidFetchRaw($uid);
                 if (!$raw) continue;
                 $subject = '';
