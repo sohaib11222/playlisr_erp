@@ -365,7 +365,7 @@
         ['title' => 'Nick: pull from the warehouse', 'why' => 'Website and Discogs items in the Hollywood warehouse bins.', 'pills' => [['HW Warehouse', 'to_ship', 'warehouse']], 'bar' => ['warehouse']],
         ['title' => 'Hollywood cashier: store floor and rechecks', 'why' => 'Pull what\'s on the sales floor, then check the bins for what Pico couldn\'t find.', 'pills' => [['Store floor', 'to_ship', 'hollywood'], ['Recheck bins', 'recheck_hw', null]], 'bar' => ['hollywood']],
         ['title' => 'Pico cashier: pull at Pico', 'why' => 'Items on the Pico floor.', 'pills' => [['Pico', 'to_ship', 'pico']], 'bar' => ['pico']],
-        ['title' => 'Modify, substitute or refund decision', 'why' => 'Nobody could find these, or the order needs fixing. A manager decides.', 'pills' => [['Orders', 'cant_find', null]]],
+        ['title' => 'Modify, substitute or refund decision', 'why' => 'Nobody could find these, or the order needs fixing. A manager decides.', 'pills' => [['Orders', 'cant_find', null], ['Old Discogs', 'discogs_old', null]]],
       ];
       $woPillCount = function ($p) use ($tabCounts) {
         if ($p[2] === null) return (int) ($tabCounts[$p[1]] ?? 0);
@@ -1213,13 +1213,16 @@
       </div>
     @endif
 
-    @if(in_array($activeTab, ['to_ship', 'ready_ship'], true))
+    @if($activeTab === 'discogs_old')
+      <div class="wo-banner warn" style="font-size:15px;">These Discogs orders are over 30 days old and Discogs still says Payment Received. For each one: if it already went out, mark it shipped on Discogs; if not, ship it or refund the buyer on Discogs.</div>
+    @endif
+    @if(in_array($activeTab, ['to_ship', 'ready_ship', 'discogs_old'], true))
       {{-- Discogs orders to ship (Sarah, 2026-10-12): marked shipped here, which
            sets Shipped on Discogs and sends the buyer the tracking number.
            Need to Pull shows what's left to pull; fully pulled ones are on Pack and ship (2026-10-21). --}}
       <h3 style="margin:22px 0 10px;font-size:16px;font-weight:700;color:#111827;">
         <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
-        {{ $activeTab === 'ready_ship' ? 'Discogs orders to pack and ship' : 'Discogs orders to pull' }} ({{ count($discogsToShip ?? []) }})
+        {{ $activeTab === 'discogs_old' ? 'Old Discogs orders to check' : ($activeTab === 'ready_ship' ? 'Discogs orders to pack and ship' : 'Discogs orders to pull') }} ({{ count($discogsToShip ?? []) }})
       </h3>
       @if(!empty($discogsError))
         <div class="alert-err">{{ $discogsError }}</div>

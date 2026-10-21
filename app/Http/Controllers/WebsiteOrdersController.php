@@ -61,6 +61,8 @@ class WebsiteOrdersController extends Controller
         'recheck_hw'      => ['label' => 'Recheck in HW Bins', 'statuses' => ['processing', 'pending', 'flag', 'ready_for_pickup', ''], 'fulfillment' => null],
         // Any refund on the order: ERP cancel, item cancel, or straight in Stripe (Sarah, 2026-10-20)
         'refunded'        => ['label' => 'Refunded', 'statuses' => [], 'fulfillment' => null],
+        // Discogs orders still unpaid-to-ship past 30 days: a manager checks each (Sarah, 2026-10-21)
+        'discogs_old'     => ['label' => 'Old Discogs orders to check', 'statuses' => [], 'fulfillment' => null],
         'preorders'       => ['label' => 'Preorders', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => null],
         'preorder_ship'   => ['label' => 'Preorder · To Ship', 'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'shipping'],
         'preorder_pickup' => ['label' => 'Preorder · Pickup',  'statuses' => ['processing', 'ready_for_pickup', 'flag', 'pending', ''], 'fulfillment' => 'pickup'],
@@ -453,6 +455,18 @@ class WebsiteOrdersController extends Controller
                 }
             } elseif (in_array($activeTab, ['to_ship', 'ready_ship'], true)) {
                 $discogsError = 'Could not load Discogs orders: ' . ($d['message'] ?? 'unknown error');
+            }
+        }
+        // Old Discogs orders (past 30 days, still Payment Received): count for
+        // the decision step, list on their own tab, never on Nick's list
+        if ($onlySource !== 'website' && !$bridgeError) {
+            $od = $this->websiteApi('GET', '/erp/discogs/to-ship?old=1', null, 20);
+            $oldDiscogs = ($od['success'] ?? false) ? ($od['data'] ?? []) : [];
+            $tabCounts['discogs_old'] = count($oldDiscogs);
+            if ($activeTab === 'discogs_old') {
+                foreach ($oldDiscogs as &$odg) { $odg['_ready'] = false; $odg['_left'] = []; $odg['_pack'] = 'hollywood'; }
+                unset($odg);
+                $discogsToShip = $oldDiscogs;
             }
         }
         if ($activeTab === 'to_ship') {
