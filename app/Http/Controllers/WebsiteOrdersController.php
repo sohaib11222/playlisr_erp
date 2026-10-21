@@ -189,7 +189,8 @@ class WebsiteOrdersController extends Controller
             if (in_array($status, self::TABS['needs_action']['statuses'], true) && !($fm === 'shipping' && self::allPicked($o))) $tabCounts['needs_action']++;
             if ($fm === 'shipping' && in_array($status, self::TABS['to_ship']['statuses'], true)) {
                 $tabCounts[self::allPicked($o) ? 'ready_ship' : 'to_ship']++;
-                if (self::allPicked($o)) $tabCounts['ready_ship_' . (self::shipStore($o) === 'pico' ? 'pico' : 'hw')]++;
+                // ready_ship_{spot} is counted once per order further down (packSpot)
+                if (self::allPicked($o)) $tabCounts['ready_ship_hw'] += self::shipStore($o) === 'pico' ? 0 : 1;
             }
             if ($fm === 'pickup' && $status === 'ready_for_pickup') {
                 $tabCounts['ready_pickup']++;
@@ -394,6 +395,25 @@ class WebsiteOrdersController extends Controller
         $erpLocations = self::erpLocations($orders);
         // Discogs rows show the same Location column (Sarah, 2026-10-21)
         $erpLocations += self::erpLocations(array_map(fn($d) => ['items' => array_map(fn($it) => ['product_id' => ['posProductId' => $it['erp_product_id'] ?? null]], $d['items'] ?? [])], $discogsToShip));
+        // Store filter applies to Discogs orders too: only orders with an
+        // unpicked item at that spot (Sarah, 2026-10-21: "Pico shows 0, why is it showing things")
+        if (in_array($locationFilter, ['warehouse', 'hollywood', 'pico', 'hw'], true)) {
+            $discogsToShip = array_values(array_filter($discogsToShip, function ($d) use ($locationFilter, $erpLocations) {
+                $done = [];
+                foreach (($d['pick']['lines'] ?? []) as $pl) {
+                    if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) $done[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+                }
+                foreach (($d['items'] ?? []) as $it) {
+                    if (isset($done[strtolower(trim((string) ($it['name'] ?? '')))])) continue;
+                    $pid = (int) ($it['erp_product_id'] ?? 0);
+                    $pp = self::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $pid]], $pid ? ($erpLocations[$pid] ?? null) : null);
+                    if (self::placeIsStore($pp['place'], $locationFilter)) return true;
+                }
+                return false;
+            }));
+        }
+        // Newest Discogs orders first (Sarah, 2026-10-21)
+        usort($discogsToShip, fn($a, $b) => strtotime($b['order_date'] ?? '') <=> strtotime($a['order_date'] ?? ''));
         self::$sortGenres = $erpLocations;
         if ($sortKey !== '') {
             $orders = self::sortRows($orders, $sortKey, $sortDir, false);
