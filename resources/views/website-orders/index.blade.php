@@ -563,6 +563,9 @@
                     $pp = $l['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $erpLocations[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null);
                     $lineShow[$i] = !$woStore || ($pp && \App\Http\Controllers\WebsiteOrdersController::placeIsStore($pp['place'], $woStore));
                   }
+                  // Opened from an order link: show every item with its pick
+                  // state, picked and can't find included (Sarah, 2026-10-21)
+                  if (preg_match('/^[a-f0-9]{24}$/i', (string) request()->query('order', ''))) $lineShow = array_fill_keys(array_keys($lineShow), true);
                   $hiddenLines = count(array_filter($lineShow, fn($v) => !$v));
                 @endphp
                 <td>
@@ -588,7 +591,7 @@
                     </div>
                   @endforeach
                   @if($hiddenLines > 0)
-                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked, can't find or cancelled)</div>
+                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked, can't find or cancelled) <a href="{{ route('website-orders.index', ['order' => $o['_id']]) }}">Show all items</a></div>
                   @endif
                 </td>
                 @php
