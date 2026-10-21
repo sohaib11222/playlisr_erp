@@ -267,6 +267,14 @@
   .wo-step.clear .wo-step-num { background:#9ca3af; }
   .wo-step-done { background:#bbf7d0 !important; color:#000 !important; }
   /* Sealed vs Used, impossible to miss (Sarah, 2026-10-21) */
+  /* Step numbers: small and plain (Sarah, 2026-10-21: "overwhelming") */
+  .wo-step-num { flex:0 0 22px !important; height:auto !important; background:none !important; color:#000 !important; font-size:15px !important; font-weight:700 !important; border-radius:0 !important; justify-content:flex-start !important; }
+  .wo-week { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+  .wo-week-line { font-size:18px; color:#000; }
+  .wo-week-line span { margin-left:8px; font-weight:800; }
+  .wo-week-bar { height:14px; margin-top:8px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-week-bar span { display:block; height:100%; background:#047857; border-radius:999px; }
+  .wo-week-sub { font-size:13px; color:#000; margin-top:4px; }
   .wo-step-bar { display:block; width:260px; max-width:100%; height:10px; margin-top:7px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
   .wo-step-bar .fill { display:block; height:100%; background:#047857; border-radius:999px; }
   .wo-step-barlabel { display:block; font-size:13px; font-weight:700; color:#000; margin-top:3px; }
@@ -378,6 +386,15 @@
     @if($woLookup)
       <div class="wo-banner" style="background:#eff6ff;border:1px solid #bfdbfe;color:#000;">{{ request()->filled('order') ? 'One order.' : 'Search results only.' }} <a href="{{ route('website-orders.index') }}">Back to the work list</a></div>
     @else
+    @php
+      $wkN = (int) ($tabCounts['week_shipped'] ?? 0);
+      $wkTot = $wkN + (int) ($tabCounts['week_open'] ?? 0);
+    @endphp
+    <div class="wo-week">
+      <div class="wo-week-line"><strong>{{ $wkN }} {{ $wkN === 1 ? 'order' : 'orders' }} shipped this week{{ $wkN > 0 ? '!' : '' }}</strong> <span>${{ number_format((float) ($tabCounts['week_shipped_amt'] ?? 0), 2) }}</span></div>
+      <div class="wo-week-bar"><span style="width:{{ $wkTot ? round(100 * $wkN / $wkTot) : 0 }}%"></span></div>
+      <div class="wo-week-sub">{{ (int) ($tabCounts['week_open'] ?? 0) }} website {{ (int) ($tabCounts['week_open'] ?? 0) === 1 ? 'order' : 'orders' }} still to ship</div>
+    </div>
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
       @foreach($woSteps as $i => $st)

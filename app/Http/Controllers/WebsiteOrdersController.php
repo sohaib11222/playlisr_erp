@@ -295,6 +295,20 @@ class WebsiteOrdersController extends Controller
         // Orders no tab fits go to the manager decision step, not a warning
         // banner (Sarah, 2026-10-21: "i dont like this")
         $tabCounts['cant_find'] = ($tabCounts['cant_find'] ?? 0) + count($noTabIds);
+        // Shipped this week (Mon-Sun, LA time) with $, for the top progress bar (Sarah, 2026-10-21)
+        $weekStart = (new \DateTime('monday this week', new \DateTimeZone('America/Los_Angeles')))->getTimestamp();
+        $tabCounts['week_shipped'] = 0;
+        $tabCounts['week_shipped_amt'] = 0.0;
+        $tabCounts['week_open'] = 0;
+        foreach ($allOrders as $wo) {
+            if (($wo['payment_status'] ?? '') !== 'completed' || ($wo['fulfillment_method'] ?? null) !== 'shipping') continue;
+            if (($wo['order_status'] ?? '') === 'shipped' && (strtotime($wo['shipped_at'] ?? '') ?: 0) >= $weekStart) {
+                $tabCounts['week_shipped']++;
+                $tabCounts['week_shipped_amt'] += (float) ($wo['total_amount'] ?? 0);
+            } elseif (self::matchesTab($wo, 'to_ship') || self::matchesTab($wo, 'ready_ship')) {
+                $tabCounts['week_open']++;
+            }
+        }
         // Pulled vs left per spot, for the progress bars (Sarah, 2026-10-21)
         foreach ($allOrders as $po) {
             if ($paymentStatusFilter !== 'all' && ($po['payment_status'] ?? '') !== $paymentStatusFilter) continue;
