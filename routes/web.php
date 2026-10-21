@@ -1065,6 +1065,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/website-orders/{id}/hw-check', 'WebsiteOrdersController@hwCheck')->name('website-orders.hwCheck');
     Route::post('/website-orders/{id}/archive', 'WebsiteOrdersController@archive')->name('website-orders.archive');
     Route::post('/website-orders/{id}/note', 'WebsiteOrdersController@saveOrderNote')->name('website-orders.saveOrderNote');
+    Route::post('/website-orders/{id}/extra-payment', 'WebsiteOrdersController@extraPayment')->name('website-orders.extraPayment');
     Route::post('/website-orders/{id}/fulfillment', 'WebsiteOrdersController@saveFulfillment')->name('website-orders.saveFulfillment');
     Route::post('/website-orders/{id}/item-store', 'WebsiteOrdersController@itemStore')->name('website-orders.itemStore');
     Route::get('/website-orders/substitute-search', 'WebsiteOrdersController@substituteSearch')->name('website-orders.substituteSearch');

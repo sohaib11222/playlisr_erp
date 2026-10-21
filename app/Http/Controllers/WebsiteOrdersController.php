@@ -1508,6 +1508,40 @@ class WebsiteOrdersController extends Controller
         ], $ok ? 200 : 422);
     }
 
+    /**
+     * Money the customer paid outside checkout (PayPal, Zelle...), e.g. the
+     * difference for a substitute or upgraded shipping (Sarah, 2026-10-21).
+     * The website adds it to the order total and keeps who/how/why.
+     */
+    public function extraPayment(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) {
+            return response()->json(['success' => false, 'message' => 'Bad order id.'], 422);
+        }
+        $amount = round((float) $request->input('amount', 0), 2);
+        $method = trim((string) $request->input('method', ''));
+        if ($amount <= 0) return response()->json(['success' => false, 'message' => 'Enter the amount paid.'], 422);
+        if ($method === '') return response()->json(['success' => false, 'message' => 'Say how they paid (PayPal, Zelle...).'], 422);
+        $u = auth()->user();
+        $by = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null);
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/extra-payment", [
+            'amount' => $amount,
+            'method' => mb_substr($method, 0, 40),
+            'payer' => mb_substr(trim((string) $request->input('payer', '')), 0, 120),
+            'note' => mb_substr(trim((string) $request->input('note', '')), 0, 2000),
+            'priority' => (bool) $request->input('priority', false),
+            'changedBy' => $by,
+        ]);
+        $ok = $resp !== null && ($resp['success'] ?? false) === true;
+        return response()->json([
+            'success' => $ok,
+            'message' => $ok ? 'Saved. New total $' . number_format((float) ($resp['data']['total_amount'] ?? 0), 2) . '.' : (($resp['message'] ?? null) ?: 'Could not reach the website. Nothing was changed.'),
+        ], $ok ? 200 : 422);
+    }
+
     public function saveNotes(Request $request)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {

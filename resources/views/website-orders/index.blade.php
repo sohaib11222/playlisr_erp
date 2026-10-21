@@ -828,7 +828,12 @@
                     @endif
                   @endif
                 </td>
-                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
+                <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
+                  {{-- Paid outside checkout, already in the total (Sarah, 2026-10-21) --}}
+                  @foreach(($o['extra_payments'] ?? []) as $xp)
+                    <div style="font-size:12px;font-weight:600;color:#000;margin-top:4px;">Incl. ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} by {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) ({{ $xp['payer'] }})@endif</div>
+                  @endforeach
+                </td>
                 <td class="wo-actions-cell">
                   <div class="wo-row-actions">
                     <button type="button" class="wo-btn wo-btn-primary"
@@ -856,6 +861,7 @@
                           <input type="hidden" name="archived" value="{{ $isArchived ? '0' : '1' }}">
                           <button type="submit" class="wo-more-item">{{ $isArchived ? 'Restore' : 'Archive' }}</button>
                         </form>
+                        <button type="button" class="wo-more-item" onclick="woCloseMore(); woExtraOpen('{{ $o['_id'] }}')">Add extra payment</button>
                         @if(!$isArchived)
                           <button type="button" class="wo-more-item danger" data-order="{{ $o['_id'] }}" data-who="{{ $customerName }}" data-num="{{ $o['orderNumber'] ?? '' }}" data-total="{{ number_format((float) ($o['total_amount'] ?? 0), 2, '.', '') }}" data-split="{{ (!empty($o['ships_from_both_stores']) && ($o['ship_mode'] ?? 'separate') !== 'combine' && ($o['fulfillment_method'] ?? '') === 'shipping') ? '1' : '0' }}" data-lines="{{ json_encode($cancelLines) }}" onclick="woCloseMore(); woOpenCancel('{{ $o['_id'] }}', this)">Cancel order</button>
                         @endif
@@ -870,6 +876,23 @@
                     </div>
                   @endforeach
                   {{-- Note on this one order (Sarah, 2026-10-16), saved to the website order --}}
+                  @foreach(($o['extra_payments'] ?? []) as $xp)
+                    <div class="wo-onote-show" style="background:#dbeafe;border-color:#bfdbfe;">
+                      <div class="txt">Extra paid: ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} by {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) from {{ $xp['payer'] }}@endif @if(!empty($xp['note']))&middot; {{ $xp['note'] }}@endif</div>
+                      <div class="by">{{ $xp['by'] ?? '' }} @if(!empty($xp['at'])){{ \Carbon\Carbon::parse($xp['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
+                    </div>
+                  @endforeach
+                  <div class="wo-xpay" id="wo-xpay-{{ $o['_id'] }}" hidden style="border:1px solid #bfdbfe;border-radius:6px;padding:8px;margin:4px 0;background:#fff;">
+                    <div style="font-size:13px;font-weight:700;color:#000;margin-bottom:4px;">Extra payment (added to the total)</div>
+                    <input type="number" step="0.01" min="0" class="xp-amount" placeholder="Amount" style="width:100%;margin-bottom:4px;">
+                    <input type="text" class="xp-method" placeholder="How (PayPal, Zelle...)" style="width:100%;margin-bottom:4px;">
+                    <input type="text" class="xp-payer" placeholder="Paid by (name on the payment)" style="width:100%;margin-bottom:4px;">
+                    <textarea class="xp-note" rows="2" placeholder="What it was for" style="width:100%;margin-bottom:4px;"></textarea>
+                    <label style="font-size:13px;color:#000;"><input type="checkbox" class="xp-priority"> Shipped Priority</label>
+                    <div class="xp-msg" style="font-size:12px;color:#991b1b;margin:4px 0;"></div>
+                    <button type="button" class="wo-btn wo-btn-primary" onclick="woExtraSave('{{ $o['_id'] }}', this)">Save</button>
+                    <button type="button" class="wo-btn" onclick="document.getElementById('wo-xpay-{{ $o['_id'] }}').hidden = true">Cancel</button>
+                  </div>
                   @php $oNote = $o['staff_note'] ?? []; $oNoteText = trim((string) ($oNote['text'] ?? '')); @endphp
                   <div class="wo-onote" data-id="{{ $o['_id'] }}">
                     <div class="wo-onote-show" @if($oNoteText === '') hidden @endif>
@@ -1688,6 +1711,36 @@
   window.addEventListener('resize', woAlignLoc);
 </script>
 <script>
+  // Extra payment taken outside checkout (Sarah, 2026-10-21)
+  function woExtraOpen(id) {
+    var box = document.getElementById('wo-xpay-' + id);
+    box.hidden = false;
+    window.woPickQuietUntil = Date.now() + 10 * 60000;
+    box.querySelector('.xp-amount').focus();
+  }
+  function woExtraSave(id, btn) {
+    var box = document.getElementById('wo-xpay-' + id);
+    var msg = box.querySelector('.xp-msg');
+    btn.disabled = true;
+    fetch('{{ url('/website-orders') }}/' + id + '/extra-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        amount: box.querySelector('.xp-amount').value,
+        method: box.querySelector('.xp-method').value,
+        payer: box.querySelector('.xp-payer').value,
+        note: box.querySelector('.xp-note').value,
+        priority: box.querySelector('.xp-priority').checked
+      })
+    }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res.success) { msg.textContent = res.message || 'Not saved.'; return; }
+        window.woPickQuietUntil = 0;
+        location.reload();
+      }).catch(function () { btn.disabled = false; msg.textContent = 'Not saved. Try again.'; });
+  }
   // Per-order notes (Sarah, 2026-10-16): saved on the website order via WebsiteOrdersController::saveOrderNote
   function woNoteOpen(btn) {
     var box = btn.closest('.wo-onote');
