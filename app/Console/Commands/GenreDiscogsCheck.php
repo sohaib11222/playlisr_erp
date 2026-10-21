@@ -86,7 +86,7 @@ class GenreDiscogsCheck extends Command
         $state = self::state();
         $queue = array_values(array_filter(self::queue($biz, array_keys($formats)), fn($id) => !isset($state['checked'][$id])));
         if ($this->option('skip-blank')) {
-            $blank = array_flip(\DB::table('products')->whereIn('id', $queue)->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })->pluck('id')->all());
+            $blank = array_flip(\DB::table('products')->where('business_id', $biz)->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })->pluck('id')->all());
             $queue = array_values(array_filter($queue, fn($id) => !isset($blank[$id])));
         }
         $done = []; $n = 0; $errors = 0; $stats = ['ok' => 0, 'fixed' => 0, 'filled' => 0, 'artist_mismatch' => 0, 'no_match' => 0, 'error' => 0];
