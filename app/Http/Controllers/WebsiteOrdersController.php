@@ -1371,7 +1371,7 @@ class WebsiteOrdersController extends Controller
                 $parts = self::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null);
                 $all[] = [
                     'order' => ['display_name' => $d['buyer'] ?? '', 'createdAt' => $d['order_date'] ?? null, 'fulfillment_method' => 'shipping', 'order_status' => 'processing', '_discogs' => $d['id'] ?? ''],
-                    'item' => ['product_id' => ['image' => $it['image'] ?? null, 'artist' => $it['artist'] ?? null, 'posProductId' => $pid, 'productType' => $it['product_type'] ?? null], 'quantity' => $it['quantity'] ?? 1],
+                    'item' => ['product_id' => ['image' => $it['image'] ?? null, 'artist' => $it['artist'] ?? null, 'posProductId' => $pid, 'productType' => $it['product_type'] ?? null], 'quantity' => $it['quantity'] ?? 1, 'price' => $it['price'] ?? null],
                     'name' => (string) ($it['name'] ?? 'Item'), 'parts' => $parts, 'store' => self::pullStore($parts['place']),
                     'pick_order' => (string) ($d['pick']['order_id'] ?? ''), 'pick_item' => (string) ($pl['item_id'] ?? ''), 'pick_status' => (string) ($pl['status'] ?? 'Not Picked'),
                     'genre_full' => (string) ($pid ? ($dgErp[$pid]['genre'] ?? '') : ''), 'format' => '',

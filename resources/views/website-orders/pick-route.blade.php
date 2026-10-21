@@ -70,8 +70,8 @@
     @foreach($groups as $area => $areaRows)
       <div class="pr-area">{{ $area }} ({{ count($areaRows) }})</div>
       <table style="table-layout:fixed;">
-        <colgroup><col style="width:250px"><col style="width:36px"><col style="width:76px"><col style="width:120px"><col><col style="width:140px"><col style="width:160px"><col style="width:44px"><col style="width:90px"><col style="width:150px"></colgroup>
-        <thead><tr><th></th><th>#</th><th>Photo</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Due</th><th>Customer</th></tr></thead>
+        <colgroup><col style="width:250px"><col style="width:36px"><col style="width:76px"><col style="width:120px"><col><col style="width:140px"><col style="width:160px"><col style="width:44px"><col style="width:80px"><col style="width:90px"><col style="width:150px"></colgroup>
+        <thead><tr><th></th><th>#</th><th>Photo</th><th>{{ $store === 'warehouse' ? 'Bin' : 'Spot' }}</th><th>Item</th><th>Format</th><th>Genre</th><th>Qty</th><th>Price</th><th>Due</th><th>Customer</th></tr></thead>
         <tbody>
           @foreach($areaRows as $r)
             @php
@@ -103,6 +103,7 @@
               <td style="font-weight:700;">{{ $prTag !== '' ? $prTag : ($r['format'] !== '' ? $r['format'] : '—') }}</td>
               <td>{{ $r['genre_full'] !== '' ? $r['genre_full'] : '—' }}</td>
               <td>{{ (int) ($it['quantity'] ?? 1) }}</td>
+              <td style="font-weight:700;">{{ isset($it['price']) && $it['price'] !== null ? '$' . number_format((float) $it['price'], 2) : '—' }}</td>
               <td style="{{ ($r['due'][1] ?? false) ? 'color:#b91c1c;font-weight:800;' : '' }}">{{ $r['due'][0] ?? '—' }}</td>
               <td>{{ $who }}<br><span style="font-size:12px;">{{ !empty($o['_discogs']) ? 'Discogs ' . $o['_discogs'] : $how }}</span></td>
             </tr>
