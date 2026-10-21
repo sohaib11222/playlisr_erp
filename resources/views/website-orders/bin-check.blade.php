@@ -80,6 +80,56 @@
     <p>None.</p>
   @endif
 
+  <h2 id="unknown">Bins that aren't on the bin map ({{ count($unknown) + count($erpUnknown) }})</h2>
+  <p>A bin code that isn't in <a href="{{ url('/website-admin/warehouse/locations') }}">Warehouse Locations</a> can't be found on a pull (like "DS894", which was really GL42).</p>
+  @if($unknownError)<div class="alert-err">{{ $unknownError }}</div>@endif
+  @php $job = $unknownFix ?: []; @endphp
+  @if(!empty($job['running']))
+    <div class="alert-ok">Fixing from Discogs: {{ $job['done'] ?? 0 }} of {{ $job['total'] ?? 0 }} checked, {{ count($job['fixed'] ?? []) }} fixed so far. Reload to update.</div>
+  @elseif(!empty($job['finishedAt']))
+    <div class="alert-ok">Last fix ({{ date('m/d/y g:ia', strtotime($job['finishedAt'])) }}): {{ count($job['fixed'] ?? []) }} fixed from Discogs, {{ count($job['notFound'] ?? []) }} still need someone to find them.@if(!empty($job['error'])) Stopped early: {{ $job['error'] }}@endif</div>
+  @endif
+  @if(count($unknown) && empty($job['running']))
+    <form method="POST" action="{{ route('website-orders.binUnknownFix') }}" style="margin-bottom:10px;" onsubmit="this.querySelector('button').disabled=true;">
+      {{ csrf_field() }}
+      <button type="submit" class="bc-btn">Fix these from Discogs</button>
+      <span style="margin-left:8px;color:#374151;">Takes each record's bin from its Discogs listing when that bin is on the map. The old bin is saved on each record.</span>
+    </form>
+  @endif
+  @php $why = collect($job['notFound'] ?? [])->keyBy('productId'); @endphp
+  @if(count($unknown))
+    <h3 style="font-size:15px;margin:14px 0 6px;">Website ({{ count($unknown) }})</h3>
+    <table>
+      <tr><th>Record</th><th>Bin</th><th>Price</th><th>Discogs</th><th>Note</th></tr>
+      @foreach($unknown as $p)
+        <tr>
+          <td>@if(!empty($p['posProductId']))<a href="{{ url('/products/' . $p['posProductId'] . '/edit') }}">{{ $p['name'] }}</a>@else<a href="https://nivessa.com/products/{{ $p['productId'] }}" target="_blank">{{ $p['name'] }}</a>@endif</td>
+          <td>{{ $p['bin'] }}</td>
+          <td>${{ number_format((float) ($p['price'] ?? 0), 2) }}</td>
+          <td>@if(!empty($p['discogId']))<a href="https://www.discogs.com/sell/item/{{ $p['discogId'] }}" target="_blank">{{ $p['discogId'] }}</a>@else None @endif</td>
+          <td>{{ $why[$p['productId']]['why'] ?? '' }}</td>
+        </tr>
+      @endforeach
+    </table>
+  @elseif(!$unknownError)
+    <p>Website: none. Every in-stock record's bin is on the map.</p>
+  @endif
+  @if(count($erpUnknown))
+    <h3 style="font-size:15px;margin:14px 0 6px;">ERP products ({{ count($erpUnknown) }})</h3>
+    <table>
+      <tr><th>Product</th><th>Bin</th><th>Field</th></tr>
+      @foreach($erpUnknown as $r)
+        <tr>
+          <td><a href="{{ url('/products/' . $r['id'] . '/edit') }}">{{ $r['name'] }}</a></td>
+          <td>{{ $r['bin'] }}</td>
+          <td>{{ $r['field'] }}</td>
+        </tr>
+      @endforeach
+    </table>
+  @elseif(!$unknownError)
+    <p>ERP: none.</p>
+  @endif
+
   @if(!empty($origins))
     <h2>Where the moved records came from ({{ count($origins) }})</h2>
     <p>The first time each one got stock in the ERP.</p>

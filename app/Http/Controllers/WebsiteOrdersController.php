@@ -742,7 +742,41 @@ class WebsiteOrdersController extends Controller
         }
         $o = $this->websiteApi('GET', '/erp/bin-store/orders', null, 60);
         $p = $this->websiteApi('GET', '/erp/bin-store/products', null, 90);
+        // Bins that aren't on the bin map, website and ERP (Sarah, 2026-10-21)
+        $u = $this->websiteApi('GET', '/erp/bin-store/unknown-bins', null, 120);
+        $erpUnknown = [];
+        if (($u['success'] ?? false) && !empty($u['codes'])) {
+            $known = array_flip($u['codes']);
+            $norm = fn($c) => strtolower(preg_replace('/\s+/', ' ', trim((string) $c)));
+            try {
+                $rows = \DB::table('products as p')
+                    ->join('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
+                    ->where('p.business_id', (int) auth()->user()->business_id)
+                    ->where('vld.qty_available', '>', 0)
+                    ->where(function ($w) {
+                        $w->where('p.bin_position', '!=', '')->orWhere('p.listing_location', '!=', '');
+                    })
+                    ->groupBy('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
+                    ->select('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
+                    ->get();
+                foreach ($rows as $r) {
+                    foreach (['bin_position' => 'Bin position', 'listing_location' => 'Listing location'] as $col => $label) {
+                        $v = trim((string) ($r->$col ?? ''));
+                        if ($v !== '' && !isset($known[$norm($v)])) {
+                            $erpUnknown[] = ['id' => (int) $r->id, 'name' => trim(($r->artist ? $r->artist . ' - ' : '') . $r->name), 'bin' => $v, 'field' => $label];
+                        }
+                    }
+                }
+                usort($erpUnknown, fn($a, $b) => strnatcasecmp($a['bin'], $b['bin']));
+            } catch (\Throwable $e) {
+                \Log::warning('bin-check erp unknown bins: ' . $e->getMessage());
+            }
+        }
         return view('website-orders.bin-check', [
+            'unknown' => ($u['success'] ?? false) ? ($u['data'] ?? []) : [],
+            'unknownFix' => $u['fix'] ?? null,
+            'unknownError' => ($u['success'] ?? false) ? null : (($u['message'] ?? null) ?: 'Could not reach the website.'),
+            'erpUnknown' => $erpUnknown,
             'orderFixes' => ($o['success'] ?? false) ? ($o['data'] ?? []) : [],
             'orderError' => ($o['success'] ?? false) ? null : (($o['message'] ?? null) ?: 'Could not reach the website.'),
             'products' => ($p['success'] ?? false) ? ($p['data'] ?? []) : [],
@@ -763,6 +797,19 @@ class WebsiteOrdersController extends Controller
         }
         $n = (int) ($resp['changed'] ?? 0);
         return redirect()->route('website-orders.binCheck')->with('status', "Fixed {$n} order line" . ($n === 1 ? '' : 's') . '. The old store is saved on each line.');
+    }
+
+    /** Start the website's fix: take each unknown bin from its live Discogs listing (Sarah, 2026-10-21). */
+    public function binUnknownFix(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $resp = $this->websiteApi('POST', '/erp/bin-store/unknown-bins/fix', [], 30);
+        if ($resp === null || ($resp['success'] ?? false) !== true) {
+            return redirect()->route('website-orders.binCheck')->with('error', ($resp['message'] ?? null) ?: 'Could not reach the website.');
+        }
+        return redirect()->route('website-orders.binCheck')->with('status', 'Started. It checks each record on Discogs about every 2 seconds, so reload this page to see progress.');
     }
 
     /** Move one shipping line to the store that really has it (Sarah, 2026-10-14). */
