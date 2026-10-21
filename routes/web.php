@@ -1073,6 +1073,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Customer email copy editor — moved here from nivessa.com's
     // /admin/email-templates so the ERP is the only place admin tooling
     // lives (see EmailTemplatesController).
+    // App Notifications: web push to customers who saved the nivessa.com app.
+    Route::get('/push-notifications', 'PushNotificationsController@index')->name('push-notifications.index');
+    Route::post('/push-notifications/send', 'PushNotificationsController@send')->name('push-notifications.send');
     Route::get('/email-templates', 'EmailTemplatesController@index')->name('email-templates.index');
     Route::post('/email-templates/{key}', 'EmailTemplatesController@update')->name('email-templates.update');
     Route::post('/email-templates/{key}/reset', 'EmailTemplatesController@reset')->name('email-templates.reset');

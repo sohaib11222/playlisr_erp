@@ -275,6 +275,11 @@ class AdminSidebarMenu
                             'Email Templates',
                             ['icon' => 'fa fas fa-envelope', 'active' => request()->segment(1) == 'email-templates']
                         );
+                        $sub->url(
+                            route('push-notifications.index'),
+                            'App Notifications',
+                            ['icon' => 'fa fas fa-bell', 'active' => request()->segment(1) == 'push-notifications']
+                        );
                         $sub->url(route('wa.directory.partyPrep'), 'Listening Party Prep', ['icon' => 'fa fas fa-clipboard-list', 'active' => request()->is('website-events/listening-party-prep*')]);
                         $sub->url(route('wa.directory.communityEvents'), 'Community Events', ['icon' => 'fa fas fa-users', 'active' => request()->is('website-events/community*')]);
                         $sub->url(route('wa.bookings.index'), 'Venue Bookings', ['icon' => 'fa fas fa-calendar-check', 'active' => request()->segment(1) == 'website-bookings' && !request()->is('website-bookings/calendar*') && !request()->is('website-bookings/add*') && !request()->is('website-bookings/venues*')]);
