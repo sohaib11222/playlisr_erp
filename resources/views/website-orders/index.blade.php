@@ -254,7 +254,8 @@
   .wo-step .wo-split b { font-size:16px; margin-left:6px; }
   /* No green text anywhere on the work list (Sarah, 2026-10-21) */
   .wo-steps a, .wo-steps .wo-split, .wo-steps .wo-more { color:#000 !important; }
-  .wo-steps .wo-split.has b { color:#b91c1c !important; }
+  /* Counts with work: white number in a green circle (Sarah, 2026-10-21) */
+  .wo-steps .wo-split.has b { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 6px; border-radius:999px; background:#047857; color:#fff !important; box-sizing:border-box; }
   .wo-steps .wo-split.on, .wo-steps .wo-more.on { color:#1e40af !important; }
   .wo-steps .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border-width:1.5px; }
   .wo-steps-more { font-size:15px; }
@@ -337,7 +338,8 @@
         ['tab' => 'pickup', 'title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         ['tab' => 'to_ship', 'title' => 'Pull shipping orders', 'why' => 'Find each item, tap Mark picked or Can\'t find. Discogs orders are here too.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Check Hollywood before anyone refunds.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
+        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Hollywood checks its store and warehouse before anyone refunds.'],
+        ['tab' => 'cant_find', 'title' => 'Managers: refund or substitute', 'why' => 'Nobody could find these. A manager decides: refund the item or send a substitute.'],,
       ];
       $woStepCount = function ($st) use ($tabCounts) {
         if (in_array($st['tab'], ['ready_ship', 'recheck_hw'], true)) return (int) ($tabCounts[$st['tab']] ?? 0);
@@ -368,7 +370,7 @@
                 <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => $lk])) }}" class="wo-split {{ $activeTab === $st['tab'] && $locationFilter === $lk ? 'on' : '' }} {{ $sn > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $sn }}</b></a>
               @endforeach
             @else
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab']])) }}" class="wo-split {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}"><b>{{ $n }}</b></a>
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => null])) }}" class="wo-split {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}">{{ $st['tab'] === 'recheck_hw' ? 'Hollywood' : 'Orders' }} <b>{{ $n }}</b></a>
             @endif
           </div>
         </div>
@@ -377,9 +379,6 @@
         <span class="wo-more-group"><span class="wo-more-label">Waiting on the customer:</span>
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'ready_pickup', 'location' => null])) }}" class="wo-more {{ $activeTab === 'ready_pickup' ? 'on' : '' }}">Ready for Pickup ({{ $tabCounts['ready_pickup'] ?? 0 }})</a>
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'preorders', 'location' => null])) }}" class="wo-more {{ in_array($activeTab, ['preorders', 'preorder_ship', 'preorder_pickup'], true) ? 'on' : '' }}">Preorders ({{ $tabCounts['preorders'] ?? 0 }})</a>
-        </span>
-        <span class="wo-more-group"><span class="wo-more-label">Managers decide:</span>
-          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'cant_find', 'location' => null])) }}" class="wo-more {{ $activeTab === 'cant_find' ? 'on' : '' }}">Can't Find: Refund or Substitute ({{ $tabCounts['cant_find'] ?? 0 }})</a>
         </span>
         <span class="wo-more-group"><span class="wo-more-label">Done:</span>
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'completed', 'location' => null])) }}" class="wo-more {{ $activeTab === 'completed' ? 'on' : '' }}">Completed</a>

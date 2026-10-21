@@ -347,6 +347,15 @@ class WebsiteOrdersController extends Controller
             }
         }
 
+        // Partly pulled orders first on Need to Pull, so they get finished
+        // and move to Pack and ship (Sarah, 2026-10-21)
+        if ($activeTab === 'to_ship' && (string) $request->query('sort', '') === '') {
+            $rank = [];
+            foreach ($orders as $i => $po) $rank[$i] = (int) ($po['pick_progress']['picked'] ?? 0) > 0 ? 0 : 1;
+            $idx = array_keys($orders);
+            usort($idx, fn($a, $b) => [$rank[$a], $a] <=> [$rank[$b], $b]);
+            $orders = array_map(fn($i) => $orders[$i], $idx);
+        }
         if ($activeTab === 'pickup') {
             usort($orders, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
         }
