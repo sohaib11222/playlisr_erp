@@ -6,7 +6,10 @@
 name: Genre check (Discogs)
 
 on:
-  # schedule added after the dry run is reviewed
+  schedule:
+    # Same slot as the old discogs-genre-backfill schedule (turned off), so the
+    # Discogs rate limit share doesn't grow.
+    - cron: '*/20 * * * *'
   workflow_dispatch:
     inputs:
       minutes:

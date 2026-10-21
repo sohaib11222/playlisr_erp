@@ -17,10 +17,8 @@
 name: Backfill genres (Discogs)
 
 on:
-  schedule:
-    # Every 20 min, run for up to 8 min — same duty cycle as the street-date
-    # backfill so the two don't fight over the same ~60 req/min Discogs budget.
-    - cron: '*/20 * * * *'
+  # Schedule moved to discogs-genre-check.yml on 2026-10-21 (it fills blanks
+  # too and also fixes definitely-wrong genres). Manual runs still work.
   workflow_dispatch:
     inputs:
       minutes:

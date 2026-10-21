@@ -237,6 +237,11 @@ class GenreFixController extends Controller
         $this->guard();
         $biz = (int) $request->session()->get('user.business_id');
         $data = $this->compute($biz);
+        $dc = \App\Console\Commands\GenreDiscogsCheck::state();
+        $data['dc'] = ['checked' => count($dc['checked']), 'fixed' => (int) $dc['fixed'], 'filled' => (int) $dc['filled'],
+            'recent' => array_values(array_filter($dc['recent'], fn($r) => empty($r['dry']))),
+            'total' => \DB::table('products')->where('business_id', $biz)->where('is_inactive', 0)
+                ->whereIn('category_id', array_keys($data['formats']))->where('discogs_release_id', '>', 0)->count()];
         $data['types'] = self::TYPES;
         $data['artist'] = trim((string) $request->input('artist'));
         $data['records'] = [];

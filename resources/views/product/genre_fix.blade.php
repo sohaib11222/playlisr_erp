@@ -13,6 +13,25 @@
   <h1 style="font-size:24px;margin:0 0 14px;">Genre Fix</h1>
   @if(session('status'))<div style="padding:10px 14px;background:{{ session('status')['success'] ? '#dcfce7' : '#fee2e2' }};border-radius:6px;margin-bottom:14px;font-size:15px;">{{ session('status')['msg'] }}</div>@endif
 
+  <div style="{{ $box }}background:#dbeafe;border-color:#93c5fd;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Discogs is checking every record by itself</div>
+    <div style="font-size:15px;">{{ number_format($dc['checked']) }} of {{ number_format($dc['total']) }} checked. {{ number_format($dc['fixed']) }} wrong genres fixed, {{ number_format($dc['filled']) }} missing genres filled. Nothing to do here.</div>
+    @if(!empty($dc['recent']))
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;font-size:15px;color:#1e40af;">See the latest changes</summary>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;background:#fff;">
+          @foreach(array_slice($dc['recent'], 0, 100) as $r)
+            <tr>
+              <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
+              <td style="{{ $td }}">{{ $r['old'] !== '' ? $r['old'] : 'No genre' }} to <strong>{{ $r['new'] }}</strong></td>
+              <td style="{{ $td }}">Discogs: {{ $r['discogs'] }}</td>
+            </tr>
+          @endforeach
+        </table>
+      </details>
+    @endif
+  </div>
+
   <div style="{{ $box }}">
     <h2 style="font-size:19px;margin:0 0 6px;">Step 1: Fix the obvious ones</h2>
     @if($all->isEmpty())
