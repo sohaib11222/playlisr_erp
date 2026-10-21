@@ -56,7 +56,7 @@ class GenreFixController extends Controller
             'new wave post punk' => 'new wave', 'post punk' => 'new wave',
             'punk hardcore' => 'punk', 'hardcore' => 'punk',
             'electronic dance' => 'electronic', 'dance' => 'electronic',
-            'soundtrack' => 'soundtracks', 'kpop' => 'k pop', 'non music and comedy' => 'comedy',
+            'kpop' => 'k pop', 'non music and comedy' => 'comedy',
             'bossa nova' => 'bossanova',
             // Discogs' own genre names
             'stage and screen' => 'soundtracks', 'non music' => 'comedy', 'folk world and country' => 'folk',
@@ -66,6 +66,7 @@ class GenreFixController extends Controller
             'contemporary r and b' => 'rnb', 'rhythm and blues' => 'rnb', 'neo soul' => 'rnb',
             'boom bap' => 'hip hop', 'conscious' => 'hip hop', 'trap' => 'hip hop', 'pop rap' => 'hip hop', 'thug rap' => 'hip hop',
             'house' => 'electronic', 'techno' => 'electronic', 'ambient' => 'electronic', 'downtempo' => 'electronic', 'electro' => 'electronic',
+            'rnb swing' => 'rnb', 'musical' => 'musicals', 'soundtrack' => 'soundtracks',
             'black metal' => 'metal', 'death metal' => 'metal', 'doom metal' => 'metal', 'nu metal' => 'nu metal',
         ];
         if (isset($alias[$s])) return $alias[$s];

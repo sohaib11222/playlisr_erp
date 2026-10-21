@@ -26,7 +26,7 @@ use Illuminate\Console\Command;
  */
 class GenreDiscogsCheck extends Command
 {
-    protected $signature = 'genres:discogs-check {--business=1} {--minutes=8} {--commit : write (default: dry run)} {--limit=0 : stop after this many records}';
+    protected $signature = 'genres:discogs-check {--business=1} {--minutes=8} {--commit : write (default: dry run)} {--limit=0 : stop after this many records} {--skip-blank : test the wrong-genre check only}';
     protected $description = 'Fix definitely-wrong and blank genres from each record\'s Discogs release.';
 
     const STATE = 'genre-discogs-check.json';
@@ -85,6 +85,10 @@ class GenreDiscogsCheck extends Command
 
         $state = self::state();
         $queue = array_values(array_filter(self::queue($biz, array_keys($formats)), fn($id) => !isset($state['checked'][$id])));
+        if ($this->option('skip-blank')) {
+            $blank = array_flip(\DB::table('products')->whereIn('id', $queue)->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })->pluck('id')->all());
+            $queue = array_values(array_filter($queue, fn($id) => !isset($blank[$id])));
+        }
         $done = []; $n = 0; $errors = 0; $stats = ['ok' => 0, 'fixed' => 0, 'filled' => 0, 'artist_mismatch' => 0, 'no_match' => 0, 'error' => 0];
 
         foreach ($queue as $id) {
