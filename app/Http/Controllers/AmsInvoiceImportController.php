@@ -129,7 +129,8 @@ class AmsInvoiceImportController extends Controller
         $out = DistributorInvoiceImport::preview(
             $business_id, $lines,
             (int) $request->input('supplier_id'), (int) $request->input('location_id'),
-            $header['date'] ?? ''
+            $header['date'] ?? '',
+            DistributorInvoiceImport::invoiceKey($distributor, $header['invoice'] ?? ''), $distributor
         );
 
         $matched = count(array_filter($out, function ($l) { return $l['matched']; }));

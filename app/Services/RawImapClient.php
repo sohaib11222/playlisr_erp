@@ -137,18 +137,20 @@ class RawImapClient
 
     private function command(string $cmd): array
     {
+        // Errors name the command, never its arguments for LOGIN (password).
+        $shown = stripos($cmd, 'LOGIN ') === 0 ? 'LOGIN' : $cmd;
         $tag = $this->nextTag();
         $this->write("{$tag} {$cmd}\r\n");
         $lines = [];
         while (true) {
             $line = $this->readLine();
             if ($line === null) {
-                throw new \RuntimeException("IMAP connection closed while waiting for response to: {$cmd}");
+                throw new \RuntimeException("IMAP connection closed while waiting for response to: {$shown}");
             }
             $lines[] = $line;
             if (preg_match('/^' . preg_quote($tag, '/') . ' (OK|NO|BAD)(.*)$/i', trim($line), $m)) {
                 if (strtoupper($m[1]) !== 'OK') {
-                    throw new \RuntimeException("IMAP command failed [{$cmd}]: " . trim($line));
+                    throw new \RuntimeException("IMAP command failed [{$shown}]: " . trim($line));
                 }
                 break;
             }

@@ -93,11 +93,43 @@ class DistributorInvoiceIntake
     public static function log()
     {
         if (!Storage::disk('local')->exists(self::LOG)) return [];
-        return json_decode(Storage::disk('local')->get(self::LOG), true) ?: [];
+        $log = json_decode(Storage::disk('local')->get(self::LOG), true) ?: [];
+        foreach ($log as &$e) if (isset($e['msg'])) $e['msg'] = preg_replace('/\bLOGIN\s+\S+\s+\S+/i', 'LOGIN [hidden]', (string) $e['msg']);
+        unset($e);
+        return $log;
+    }
+
+    // Never store or show a password: IMAP errors used to echo the LOGIN
+    // command (10/20). Masks LOGIN arguments and any configured secret.
+    public static function redact($text)
+    {
+        $text = preg_replace('/\bLOGIN\s+\S+\s+\S+/i', 'LOGIN [hidden]', (string) $text);
+        $s = self::settings();
+        foreach ([config('inventory_check.email.password'), $s['mail_pass'] ?? null, $s['ams2_pass'] ?? null] as $secret) {
+            $secret = (string) $secret;
+            if (strlen($secret) < 4) continue;
+            foreach (array_unique([$secret, str_replace(' ', '', $secret)]) as $v) $text = str_replace($v, '[hidden]', $text);
+        }
+        return $text;
+    }
+
+    // Rewrite stored log entries through redact() (cleans up the 10/20 leak).
+    public static function scrubLog()
+    {
+        $log = self::log();
+        $changed = false;
+        foreach ($log as &$e) {
+            $clean = self::redact($e['msg'] ?? '');
+            if ($clean !== ($e['msg'] ?? '')) { $e['msg'] = $clean; $changed = true; }
+        }
+        unset($e);
+        if ($changed) Storage::disk('local')->put(self::LOG, json_encode($log, JSON_PRETTY_PRINT));
+        return $changed;
     }
 
     private function addLog(array $entry)
     {
+        if (isset($entry['msg'])) $entry['msg'] = self::redact($entry['msg']);
         $entry['at'] = now()->toDateTimeString();
         $this->report[] = $entry;
         if ($this->dry) return;
@@ -145,6 +177,7 @@ class DistributorInvoiceIntake
     private function alert($distributor, $invoice, $problem)
     {
         $label = DistributorInvoiceImport::config($distributor)['label'] ?? strtoupper($distributor);
+        $problem = self::redact($problem);
         $text = "Invoice intake: {$label} invoice " . ($invoice ?: '(no number)') . " needs a look. {$problem}"
             . "\nAudit: https://playlist.nivessa.com/reports/distributor-invoice-audit";
         if ($this->dry) return;
@@ -157,6 +190,9 @@ class DistributorInvoiceIntake
     {
         $this->dry = (bool) $dry;
         $this->report = [];
+        if (!$this->dry) {
+            try { self::scrubLog(); } catch (\Throwable $e) {}
+        }
         if (!$this->business_id || !$this->user_id) return ['error' => 'No business/user to import as.'];
         if ($only === null || $only === 'ams') {
             foreach ($this->amsLogins() as $login) {
@@ -256,6 +292,10 @@ class DistributorInvoiceIntake
                 if ($ts && $ts < $since) continue;
                 $inv = str_pad((string) ($row['InvoiceNumber'] ?? ''), 7, '0', STR_PAD_LEFT);
                 if ($this->alreadyHandled('ams', $inv)) {
+                    if ($this->needsResync('ams', $inv)) {
+                        list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
+                        if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->resync('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
+                    }
                     if ($this->needsCatchUp('ams', $inv)) {
                         list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
                         if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->catchUp('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
@@ -294,9 +334,15 @@ class DistributorInvoiceIntake
             $imap->selectFolder('[Gmail]/All Mail');
             $uids = $imap->uidSearchSinceFrom(now()->subDays($days), self::ALLIANCE_FROM);
             $seen = $this->seen();
+            // Re-open processed emails only while some imported invoice still
+            // needs its one-time re-check.
+            $pendingResync = false;
+            foreach (Storage::disk('local')->files(DistributorInvoiceImport::config('alliance')['dir']) as $f) {
+                if ($this->needsResync('alliance', basename($f, '.json'))) { $pendingResync = true; break; }
+            }
             foreach ($uids as $uid) {
                 $uidKey = 'mail:' . $user . ':' . $uid;
-                if (isset($seen[$uidKey])) continue;
+                if (isset($seen[$uidKey]) && !$pendingResync) continue;
                 $raw = $imap->uidFetchRaw($uid);
                 if (!$raw) continue;
                 $subject = '';
@@ -313,7 +359,10 @@ class DistributorInvoiceIntake
                 }
                 foreach ($pdfs as $pdf) {
                     $inv = $invFromSubject;
-                    if ($inv && $this->alreadyHandled('alliance', $inv)) continue;
+                    if ($inv && $this->alreadyHandled('alliance', $inv)) {
+                        if ($this->needsResync('alliance', $inv)) $this->resync('alliance', $inv, $pdf, 'Alliance e-invoice email');
+                        continue;
+                    }
                     $this->importPdf('alliance', $pdf, 'Alliance e-invoice email', $inv, null);
                 }
                 $this->markSeen($uidKey);
@@ -400,7 +449,7 @@ class DistributorInvoiceIntake
             return ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'] ?? '',
                     'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
         }, $p['items']);
-        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10));
+        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10), $inv, $distributor);
         $take = []; $noCategory = [];
         foreach ($preview as $l) {
             $onOwn = false;
@@ -437,6 +486,60 @@ class DistributorInvoiceIntake
             $this->alert($distributor, $inv, 'These lines are still missing from purchase #' . $own->id . ' because their format has no category: ' . implode('; ', $noCategory) . '.');
         }
         $this->markCatchUp($path, $sc, $txId);
+    }
+
+    // Invoices the intake imported automatically before 10/21 left off any
+    // title that was on an older purchase. One pass adds those lines to the
+    // invoice's own purchase while it is still Ordered.
+    private function needsResync($distributor, $invoice)
+    {
+        $path = DistributorInvoiceImport::sidecarPath($distributor, DistributorInvoiceImport::invoiceKey($distributor, $invoice));
+        if (!Storage::disk('local')->exists($path)) return false;
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        if (!array_key_exists('new_products', $sc) || !empty($sc['resynced_at']) || empty($sc['transaction_id'])) return false;
+        $tx = DB::table('transactions')->where('id', (int) $sc['transaction_id'])->first(['status', 'additional_notes']);
+        return $tx && $tx->status !== 'received' && strpos((string) $tx->additional_notes, 'imported automatically') !== false;
+    }
+
+    private function resync($distributor, $invoice, $pdf, $source)
+    {
+        $inv = DistributorInvoiceImport::invoiceKey($distributor, $invoice);
+        $path = DistributorInvoiceImport::sidecarPath($distributor, $inv);
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        $own = DB::table('transactions')->where('id', (int) $sc['transaction_id'])->first(['id', 'location_id', 'contact_id', 'transaction_date']);
+        $p = DistributorInvoiceParser::parse($distributor, $pdf);
+        if (!$own || !$p['items'] || $p['goods_matches'] === false) return;
+        $ownVids = array_flip(DB::table('purchase_lines')->where('transaction_id', $own->id)->pluck('variation_id')->map(function ($v) { return (int) $v; })->all());
+        $lines = array_map(function ($it) {
+            return ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'] ?? '',
+                    'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
+        }, $p['items']);
+        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10), $inv, $distributor);
+        $add = []; $names = [];
+        foreach ($preview as $l) {
+            if (!$l['matched'] || $l['existing']) continue;
+            $onOwn = false;
+            foreach ($l['upc_variation_ids'] as $v) if (isset($ownVids[$v])) { $onOwn = true; break; }
+            if ($onOwn) continue;
+            $add[] = ['variation_id' => $l['variation_id'], 'qty' => $l['qty'], 'unit_price' => $l['unit_price']];
+            $names[] = $l['description'] . ' x' . $l['qty'] . ($l['earlier'] ? ' (also on older #' . $l['earlier'][0]['transaction_id'] . ')' : '');
+        }
+        if ($this->dry) {
+            $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'dry-run re-check', 'msg' => count($add) . ' line(s) to add to #' . $own->id . ': ' . implode('; ', $names)]);
+            return;
+        }
+        if ($add) {
+            try {
+                list($n, $total) = DistributorInvoiceImport::appendLines($this->business_id, $own->id, $add);
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'imported', 'source' => $source, 'transaction_id' => $own->id,
+                    'msg' => sprintf('Added %d line(s), $%.2f, left off by the old rule: %s.', $n, $total, implode('; ', $names))]);
+            } catch (\Throwable $e) {
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => 'Re-check failed: ' . $e->getMessage()]);
+                return;
+            }
+        }
+        $sc['resynced_at'] = now()->toDateTimeString();
+        Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
     }
 
     private function markCatchUp($path, array $sc, $txId)
@@ -477,11 +580,11 @@ class DistributorInvoiceIntake
             return ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'] ?? '',
                     'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
         }, $p['items']);
-        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $supplier_id, $location_id, $date);
+        $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $supplier_id, $location_id, $date, $inv, $distributor);
 
         $take = []; $onOther = []; $noCategory = [];
         foreach ($preview as $l) {
-            if ($l['existing']) { $onOther[] = $l['description'] . ' (on purchase #' . $l['existing'][0]['transaction_id'] . ')'; continue; }
+            if ($l['existing']) { $onOther[] = $l['description'] . ' (this invoice is already on purchase #' . $l['existing'][0]['transaction_id'] . ')'; continue; }
             if (!$l['matched'] && empty($l['new_product']['category_id'])) { $noCategory[] = $l['upc'] . ' ' . $l['description']; continue; }
             $take[] = ['variation_id' => $l['variation_id'], 'qty' => $l['qty'], 'unit_price' => $l['unit_price'], 'upc' => $l['upc'],
                        'description' => $l['description'], 'new_product' => $l['matched'] ? null : $l['new_product']];
@@ -496,7 +599,7 @@ class DistributorInvoiceIntake
         }
         if (!$take) {
             $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'nothing to add', 'source' => $source,
-                'msg' => 'Every line is already on another purchase: ' . implode('; ', $onOther)]);
+                'msg' => 'Every line is already logged for this invoice: ' . implode('; ', $onOther)]);
             if ($noCategory) $this->alert($distributor, $inv, 'Lines with no category were not imported: ' . implode('; ', $noCategory));
             if ($seenKey) $this->markSeen($seenKey);
             return;
@@ -512,7 +615,7 @@ class DistributorInvoiceIntake
         $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'imported', 'source' => $source,
             'transaction_id' => $res['transaction']->id,
             'msg' => sprintf('Purchase #%d: %d lines, $%.2f, %d new products.%s', $res['transaction']->id, $res['lines'], $res['total'], count($res['created_products']),
-                $onOther ? ' Left off (already on another purchase): ' . implode('; ', $onOther) . '.' : '')]);
+                $onOther ? ' Left off (this invoice already logged): ' . implode('; ', $onOther) . '.' : '')]);
         if ($noCategory) {
             $this->alert($distributor, $inv, 'Imported as purchase #' . $res['transaction']->id . ', but these lines had no category and were left off: ' . implode('; ', $noCategory) . '. Add them on the purchase.');
         }

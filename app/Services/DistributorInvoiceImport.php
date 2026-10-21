@@ -203,7 +203,7 @@ class DistributorInvoiceImport
      * Returns the lines with matched product info, existing-purchase flags and
      * a proposed new product for unmatched ones.
      */
-    public static function preview($business_id, array $lines, $supplier_id, $location_id, $invoiceDate)
+    public static function preview($business_id, array $lines, $supplier_id, $location_id, $invoiceDate, $invoiceKey = '', $distributor = '')
     {
         $catIds = self::categoryIds($business_id);
 
@@ -256,7 +256,8 @@ class DistributorInvoiceImport
                 'product_name' => $best ? $best->product_name : null,
                 'product_inactive' => $best ? (bool) $best->is_inactive : false,
                 'current_cost' => $best && $best->default_purchase_price !== null ? round((float) $best->default_purchase_price, 2) : null,
-                'existing' => [],
+                'existing' => [],   // same invoice already logged on another purchase: skip
+                'earlier' => [],    // the title is on an older purchase: just FYI
                 'new_product' => null,
                 // Every product carrying this UPC (the catalog has duplicates),
                 // so "already on a purchase" checks catch any of them.
@@ -276,17 +277,24 @@ class DistributorInvoiceImport
             $out[] = $line;
         }
 
-        // Already on a purchase from this supplier at this store around the
-        // invoice date (a pre-logged order or a floor receipt) — those lines
-        // start unticked so the invoice doesn't double them. Other invoice
-        // imports (ref AMS- / ALLIANCE-) don't count: a restock is a new line.
+        // A line is only left off when THIS invoice is already logged on
+        // another purchase (its number in the ref or notes, e.g. Jon's
+        // "Alliance PLS97785739", or the purchases registered for it on the
+        // audit page). The same title on an older purchase is a reorder or a
+        // back-order fill, so it is imported and only noted (Sarah 10/21).
         $vids = [];
         foreach ($out as $l) foreach ($l['upc_variation_ids'] as $v) $vids[] = $v;
         $vids = array_values(array_unique($vids));
         if ($vids && $supplier_id && $location_id) {
             $d = self::normalizeDate($invoiceDate);
-            $from = date('Y-m-d', strtotime($d . ' -60 days'));
+            $from = date('Y-m-d', strtotime($d . ' -90 days'));
             $to = date('Y-m-d 23:59:59', strtotime($d . ' +10 days'));
+            $key = strtoupper(trim((string) $invoiceKey));
+            $registered = [];
+            if ($key !== '' && $distributor !== '' && Storage::disk('local')->exists('distributor-invoices/registry.json')) {
+                $reg = json_decode(Storage::disk('local')->get('distributor-invoices/registry.json'), true) ?: [];
+                foreach ($reg[$distributor . ':' . $key]['purchases'] ?? [] as $pid) $registered[(int) $pid] = true;
+            }
             $hits = DB::table('purchase_lines as pl')
                 ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
                 ->where('t.business_id', $business_id)
@@ -294,26 +302,19 @@ class DistributorInvoiceImport
                 ->where('t.contact_id', $supplier_id)
                 ->where('t.location_id', $location_id)
                 ->whereBetween('t.transaction_date', [$from, $to])
-                ->where(function ($q) {
-                    $q->whereNull('t.ref_no')
-                      ->orWhere(function ($q2) {
-                          $q2->where('t.ref_no', 'not like', 'AMS-%')->where('t.ref_no', 'not like', 'ALLIANCE-%');
-                      });
-                })
                 ->whereIn('pl.variation_id', $vids)
-                ->get(['pl.variation_id', 't.id', 't.ref_no', 't.status', 'pl.quantity']);
-            $byVid = [];
+                ->get(['pl.variation_id', 't.id', 't.ref_no', 't.additional_notes', 't.status', 'pl.quantity']);
+            $same = []; $earlier = [];
             foreach ($hits as $h) {
-                $byVid[(int) $h->variation_id][] = [
-                    'transaction_id' => (int) $h->id,
-                    'ref_no' => $h->ref_no,
-                    'status' => $h->status,
-                    'qty' => (float) $h->quantity,
-                ];
+                $row = ['transaction_id' => (int) $h->id, 'ref_no' => $h->ref_no, 'status' => $h->status, 'qty' => (float) $h->quantity];
+                $isSame = isset($registered[(int) $h->id])
+                    || ($key !== '' && (stripos((string) $h->ref_no, $key) !== false || stripos((string) $h->additional_notes, $key) !== false));
+                if ($isSame) $same[(int) $h->variation_id][] = $row; else $earlier[(int) $h->variation_id][] = $row;
             }
             foreach ($out as &$line) {
                 foreach ($line['upc_variation_ids'] as $v) {
-                    if (isset($byVid[$v])) $line['existing'] = array_merge($line['existing'], $byVid[$v]);
+                    if (isset($same[$v])) $line['existing'] = array_merge($line['existing'], $same[$v]);
+                    if (isset($earlier[$v])) $line['earlier'] = array_merge($line['earlier'], $earlier[$v]);
                 }
             }
             unset($line);
@@ -491,6 +492,47 @@ class DistributorInvoiceImport
         ], JSON_PRETTY_PRINT));
 
         return ['transaction' => $transaction, 'created_products' => $created, 'lines' => count($clean), 'total' => $total];
+    }
+
+    // Add catalog lines to a purchase that is still Ordered (no stock moves):
+    // used when an auto-imported invoice left lines off under the old rule.
+    public static function appendLines($business_id, $transaction_id, array $lines)
+    {
+        $tx = DB::table('transactions')->where('business_id', $business_id)->where('id', $transaction_id)->where('type', 'purchase')->first();
+        if (!$tx || $tx->status === 'received') throw new \RuntimeException('purchase #' . $transaction_id . ' is missing or already received');
+        $added = 0; $total = 0.0;
+        DB::beginTransaction();
+        try {
+            foreach ($lines as $l) {
+                $vid = (int) ($l['variation_id'] ?? 0);
+                $pid = $vid ? DB::table('variations')->where('id', $vid)->value('product_id') : null;
+                if (!$pid || (float) $l['qty'] <= 0) continue;
+                $pl = new PurchaseLine();
+                $pl->transaction_id = $transaction_id;
+                $pl->product_id = (int) $pid;
+                $pl->variation_id = $vid;
+                $pl->quantity = (float) $l['qty'];
+                $pl->purchase_price = round((float) $l['unit_price'], 4);
+                $pl->purchase_price_inc_tax = round((float) $l['unit_price'], 4);
+                $pl->pp_without_discount = round((float) $l['unit_price'], 4);
+                $pl->item_tax = 0;
+                $pl->tax_id = null;
+                $pl->save();
+                $added++;
+                $total += (float) $l['qty'] * (float) $l['unit_price'];
+            }
+            if ($added) {
+                DB::table('transactions')->where('id', $transaction_id)->update([
+                    'total_before_tax' => DB::raw('total_before_tax + ' . round($total, 2)),
+                    'final_total' => DB::raw('final_total + ' . round($total, 2)),
+                ]);
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+        return [$added, round($total, 2)];
     }
 
     // Undo: delete the purchase (only while not received) and every product
