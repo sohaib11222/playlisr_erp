@@ -61,8 +61,7 @@ jobs:
               foreach (['due', 'location', 'fulfillment', 'total', 'listed'] as $sk) foreach (['to_ship', 'cant_find'] as $tab) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab, 'sort' => $sk, 'dir' => 'asc']);
                 app()->instance('request', $req);
-                try { $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render(); echo "SORT {$tab}/{$sk}: ok len=" . strlen($html) . "\n"; }
-                catch (\Throwable $e) { echo "SORT {$tab}/{$sk}: ERR " . substr($e->getMessage(), 0, 200) . "\n"; }
+                try { $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render(); echo "SORT {$tab}/{$sk}: ok len=" . strlen($html) . "\n"; } catch (\Throwable $e) { echo "SORT {$tab}/{$sk}: ERR " . substr($e->getMessage(), 0, 200) . "\n"; }
               }
               return;
             }
