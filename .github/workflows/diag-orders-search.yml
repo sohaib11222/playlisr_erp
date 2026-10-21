@@ -57,6 +57,13 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'UNSORTED') {
+              $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'unsorted']);
+              app()->instance('request', $req);
+              $d = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->getData();
+              foreach ($d['orders'] as $o) echo 'UNS ' . json_encode(['#' . ($o['orderNumber'] ?? ''), $o['createdAt'] ?? '', $o['order_status'] ?? '', $o['fulfillment_method'] ?? '', $o['payment_status'] ?? '', $o['total_amount'] ?? '', $o['pick_progress'] ? [$o['pick_progress']['picked'] ?? null, $o['pick_progress']['total'] ?? null, array_column($o['pick_progress']['lines'] ?? [], 'status')] : null, array_map(fn($i) => [($i['product_id']['name'] ?? $i['product_name'] ?? ''), !empty($i['cancelled']), !empty($i['product_id']['isPreorder'])], $o['items'] ?? []), $o['refund_log'] ?? null, $o['cancel_refund'] ?? null]) . "\n";
+              return;
+            }
             if ($q === 'TABS') {
               foreach (['to_ship', 'ready_ship'] as $tab) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab]);

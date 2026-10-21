@@ -1252,6 +1252,11 @@ class WebsiteOrdersController extends Controller
                 return (float) ($discogs ? ($o['total'] ?? 0) : ($o['total_amount'] ?? 0));
             case 'placed':
                 return strtotime($discogs ? ($o['order_date'] ?? '') : ($o['createdAt'] ?? '')) ?: 0;
+            case 'items':
+                // Fewest items first, newest first among equals (Sarah, 2026-10-21)
+                $n = 0;
+                foreach ($items as $it) if (empty($it['cancelled']) && empty($it['is_gift_card'])) $n += (int) ($it['quantity'] ?? 1);
+                return [$n, -(strtotime($discogs ? ($o['order_date'] ?? '') : ($o['createdAt'] ?? '')) ?: 0)];
         }
         return 0;
     }

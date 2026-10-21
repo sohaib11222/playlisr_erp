@@ -267,6 +267,9 @@
   .wo-step.clear .wo-step-num { background:#9ca3af; }
   .wo-step-done { background:#bbf7d0 !important; color:#000 !important; }
   /* Sealed vs Used, impossible to miss (Sarah, 2026-10-21) */
+  .wo-sortbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; font-size:15px; }
+  .wo-sortbar .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border:1.5px solid #d1d5db; border-radius:999px; background:#fff; color:#000 !important; text-decoration:none; display:inline-flex; align-items:center; }
+  .wo-sortbar .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af !important; }
   .wo-cond { display:inline-block; margin:0 4px 0 2px; padding:3px 10px; border-radius:6px; font-size:13px; font-weight:800; letter-spacing:.04em; color:#fff; vertical-align:1px; }
   .wo-cond.sealed { background:#1e40af; }
   .wo-cond.used { background:#c2410c; }
@@ -426,6 +429,20 @@
     @if(!$woLookup && $activeTab === 'recheck_hw')
       <style>.wo-prod-img { width:84px !important; height:84px !important; }</style>
       <div class="wo-banner warn">Pico couldn't find these. Check the Hollywood spots listed for each one, then tap Found it or Not here either.</div>
+    @endif
+    @if(!$woLookup && in_array($activeTab, ['to_ship', 'pickup', 'ready_ship'], true))
+      {{-- Pick order (Sarah, 2026-10-21): newest, 1-item orders, or biggest $ first --}}
+      @php
+        $woSorts = ['' => 'Partly pulled first', 'placed:desc' => 'Newest first', 'items:asc' => '1-item orders first', 'total:desc' => 'Highest $ first', 'placed:asc' => 'Oldest first'];
+        $woSortNow = $sortKey === '' ? '' : $sortKey . ':' . $sortDir;
+      @endphp
+      <div class="wo-sortbar">
+        <span class="wo-more-label">Pull in this order:</span>
+        @foreach($woSorts as $sv => $sl)
+          @php [$sk, $sd] = $sv === '' ? [null, null] : explode(':', $sv); @endphp
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $activeTab, 'sort' => $sk, 'dir' => $sd])) }}" class="wo-more {{ $woSortNow === $sv ? 'on' : '' }}">{{ $sl }}</a>
+        @endforeach
+      </div>
     @endif
     @if(!$woLookup && $activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
       <div class="wo-banner warn">These shipping orders still have items to pull. Tap Mark picked or Can't find on each item.</div>
