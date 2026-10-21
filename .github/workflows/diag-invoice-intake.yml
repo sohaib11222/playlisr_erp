@@ -37,10 +37,16 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            grep -c "quickReceiveFlag" app/Http/Controllers/PosQuickReceiveController.php app/Services/PurchaseDuplicateGuard.php
-            grep -c "resp.flag && window.toastr.warning" resources/views/sale_pos/partials/quick_receive_modal.blade.php
-            grep -n "asset_version" config/constants.php
-            git log -1 --format="%h %s"
-            php artisan view:cache >/dev/null 2>&1; echo "view cache exit $?"; php artisan view:clear >/dev/null 2>&1
-            tail -n 40 storage/logs/laravel-$(date +%Y-%m-%d).log 2>/dev/null | grep -i "quickreceive\|duplicate flag" | tail -5
+            mkdir -p /tmp/nivessa-diag
+            cat > /tmp/nivessa-diag/c.php <<'PHP'
+            <?php
+            require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            foreach (['sale_pos/partials/quick_receive_modal','purchase/partials/update_purchase_status_modal','purchase/index','report/distributor_invoice_audit','admin/distributor_invoice_import'] as $v) {
+              $php = Blade::compileString(file_get_contents(resource_path("views/$v.blade.php")));
+              file_put_contents('/tmp/nivessa-diag/v.php', $php);
+              echo $v . ': ' . trim(shell_exec('php -l /tmp/nivessa-diag/v.php 2>&1 | head -1')) . "\n";
+            }
+            PHP
+            php /tmp/nivessa-diag/c.php 2>&1 | grep -v Deprecated
+            php artisan view:cache 2>&1 | tail -3
             rm -rf /tmp/nivessa-diag
