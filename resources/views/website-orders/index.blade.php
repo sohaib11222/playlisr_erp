@@ -247,7 +247,11 @@
   .wo-step.on { background:#eff6ff; border-color:#bfdbfe; }
   .wo-step-num { flex:0 0 30px; height:30px; border-radius:50%; background:#1e40af; color:#fff; font-weight:800; font-size:15px; display:flex; align-items:center; justify-content:center; }
   .wo-step.clear .wo-step-num { background:#047857; }
-  .wo-step-main { flex:1 1 260px; min-width:0; text-decoration:none; color:#000; }
+  .wo-step-main { flex:0 1 auto; min-width:0; max-width:520px; text-decoration:none; color:#000; }
+  /* Store counts sit right next to the step, big enough to tap (Sarah, 2026-10-21) */
+  .wo-step .wo-card-pills { display:flex; flex-wrap:wrap; gap:8px; }
+  .wo-step .wo-split { height:36px; padding:0 16px; font-size:15px; border-width:1.5px; }
+  .wo-step .wo-split b { font-size:16px; margin-left:6px; }
   .wo-step-title { font-size:16px; font-weight:800; color:#000; }
   .wo-step-why { display:block; font-size:13px; color:#000; margin-top:2px; }
   .wo-step-start { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:#1e40af; color:#fff; font-size:12px; font-weight:800; vertical-align:2px; }
