@@ -321,6 +321,12 @@
 							<span>{{ $meta['label'] }}</span>
 						</label>
 					@endforeach
+					{{-- Website orders are never rung here: they come into the ERP
+					     at checkout. This just opens Orders, where substitutes and
+					     extra payments are done (Sarah, 2026-10-21, Apurva #100221). --}}
+					<a href="{{ url('/website-orders') }}" target="_blank" rel="noopener" class="pos-channel-chip pos-channel-link" title="Website orders aren't rung on the POS. Opens Orders: find the order, then Substitute or Add extra payment there.">
+						<i class="fa fa-globe"></i><span>Website order</span>
+					</a>
 					{{-- Kept in sync by JS; legacy code reads this directly. --}}
 					<input type="hidden" name="is_whatnot" id="is_whatnot" value="0">
 				</div>
@@ -370,6 +376,7 @@
 					background: #2563eb; border: 1px solid #1d4ed8; color: #fff; font-weight: 700;
 				}
 				.pos-channel-chip.is-active i { opacity: 1; }
+				.pos-channel-link, .pos-channel-link:hover, .pos-channel-link:focus { text-decoration: none; border-style: solid; border-color: #bfdbfe; color: #1e40af; }
 			</style>
 			<script>
 				// Sarah 2026-04-22 (take 3): Root cause of "whatnot button isnt
