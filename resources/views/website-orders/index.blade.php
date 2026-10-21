@@ -94,6 +94,12 @@
   .wo-pill.st-default { background:#f3f4f6; color:#000; }
 
   .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:8px; font-size:12px; font-weight:600; margin:0 0 4px; }
+  .wo-big-tag { display:inline-block; margin-left:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:800; letter-spacing:.02em; }
+  .wo-big-tag.sub { background:#2563eb; color:#fff; }
+  .wo-big-tag.cf { background:#dc2626; color:#fff; }
+  .wo-sub-for { margin-top:3px; font-size:13px; font-weight:700; color:#1e40af; }
+  .wo-sub-note { font-size:12px; color:#000; margin-top:2px; }
+  .wo-sub-note summary { cursor:pointer; color:#1e40af; font-weight:600; }
   .wo-item-chip { display:inline-block; margin-top:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700; }
   .wo-item-chip.ok { background:#d1fae5; color:#065f46; }
   .wo-item-chip.sub { background:#dbeafe; color:#1e40af; }
@@ -754,6 +760,8 @@
                         @if($lineCond)<span class="wo-cond {{ $lineCond }}">{{ strtoupper($lineCond) }}</span>@endif
                         @if($lineMedia)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
+                        @php $rowAnyPl = $line['gift'] ? null : ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null); @endphp
+                        @if(!empty($lineItem['substituted_from']['name']))<span class="wo-big-tag sub">SUBSTITUTE</span>@elseif($rowAnyPl && ($rowAnyPl['status'] ?? '') === "Can't Find" && in_array($status, ['shipped', 'delivered', 'email_sent'], true))<span class="wo-big-tag cf">NOT SENT</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
                         @php $rowPl = (!$rowPickable && !$line['gift'] && !$line['cancelled']) ? ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null) : null; @endphp
@@ -768,10 +776,11 @@
                           <span class="wo-item-chip no">Cancelled</span>
                         @endif
                         @if(!empty($lineItem['substituted_from']['name']))
-                          @if(isset($lineItem['substituted_from']['price']) && (float) $lineItem['substituted_from']['price'] !== (float) ($lineItem['price'] ?? 0))<div style="font-size:12px;color:#000;">Was ${{ number_format((float) $lineItem['substituted_from']['price'], 2) }} for the original</div>@endif
-                          <button type="button" class="wo-onote-open" onclick="woItemPrice('{{ $o['_id'] }}', '{{ $line['id'] }}', '{{ number_format((float) ($lineItem['price'] ?? 0), 2, '.', '') }}')">Edit price</button>
-                          <div style="margin-top:4px;font-size:12px;font-weight:700;color:#1e40af;">Substitute for {{ $lineItem['substituted_from']['name'] }}@if(!empty($lineItem['substituted_from']['by'])) ({{ $lineItem['substituted_from']['by'] }}{{ !empty($lineItem['substituted_from']['at']) ? ' ' . date('m/d/y', strtotime($lineItem['substituted_from']['at'])) : '' }})@endif</div>
-                          @if(!empty($lineItem['substituted_from']['note']))<div style="font-size:12px;color:#000;">{{ $lineItem['substituted_from']['note'] }}</div>@endif
+                          {{-- One short line; the agreement note folds away (Sarah, 2026-10-21: "too busy") --}}
+                          <div class="wo-sub-for">Replaced {{ $lineItem['substituted_from']['name'] }}@if(isset($lineItem['substituted_from']['price'])) (${{ number_format((float) $lineItem['substituted_from']['price'], 2) }})@endif
+                            <button type="button" class="wo-onote-open" onclick="woItemPrice('{{ $o['_id'] }}', '{{ $line['id'] }}', '{{ number_format((float) ($lineItem['price'] ?? 0), 2, '.', '') }}')">Edit price</button>
+                          </div>
+                          @if(!empty($lineItem['substituted_from']['note']))<details class="wo-sub-note"><summary>Note</summary>{{ $lineItem['substituted_from']['note'] }}@if(!empty($lineItem['substituted_from']['by'])) ({{ $lineItem['substituted_from']['by'] }}{{ !empty($lineItem['substituted_from']['at']) ? ' ' . date('m/d/y', strtotime($lineItem['substituted_from']['at'])) : '' }})@endif</details>@endif
                         @endif
                       </div>
                     </div>
