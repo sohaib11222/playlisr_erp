@@ -1,0 +1,70 @@
+# READ-ONLY (Sarah, 2026-10-21): render the Website Orders page logic for a
+# search on prod and print which orders/tabs come back. No writes.
+name: Diag orders search
+
+on:
+  workflow_dispatch:
+    inputs:
+      q:
+        description: "Search text"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Run Orders page search (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_Q: ${{ github.event.inputs.q }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          envs: DIAG_Q
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_Q
+            php artisan tinker --no-ansi <<'PHP'
+            $q = trim((string) getenv('DIAG_Q'));
+            $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
+            auth()->login($u);
+            foreach (['to_ship', 'needs_action', 'ready_ship', 'unsorted'] as $tab) {
+              foreach (['', 'hw', 'pico', 'warehouse', 'hollywood'] as $loc) {
+                $req = \Illuminate\Http\Request::create('/website-orders', 'GET', array_filter(['q' => $q, 'tab' => $tab, 'location' => $loc]));
+                app()->instance('request', $req);
+                $v = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req);
+                $d = $v->getData();
+                echo "TAB {$tab} LOC {$loc}: orders=" . count($d['orders'] ?? []) . ' ids=' . implode(',', array_map(fn($o) => $o['orderNumber'] ?? $o['_id'], $d['orders'] ?? [])) . ' elsewhere=' . json_encode($d['searchElsewhere'] ?? null) . ' bridgeError=' . json_encode($d['bridgeError'] ?? null) . "\n";
+              }
+            }
+            PHP
+            echo "=== done ==="
