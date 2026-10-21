@@ -136,6 +136,9 @@ jobs:
               $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
               $i = strpos($html, 'Do these in order');
               echo 'RENDER_OK len=' . strlen($html) . "\n";
+              foreach (["Couldn't reach", 'Do these in order', 'wo-steps', 'bridgeError'] as $needle) echo 'HAS ' . $needle . '=' . substr_count($html, $needle) . "\n";
+              $cr = strpos($html, "Couldn't reach");
+              if ($cr !== false) echo 'CR: ' . substr(strip_tags(substr($html, $cr, 600)), 0, 400) . "\n";
               $wk = strpos($html, 'class="wo-week-line"');
               echo 'WEEK: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $wk, 900))), 0, 200) . "\n";
               echo 'DISCOGS: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 12000))), 0, 1500) . "\n";
