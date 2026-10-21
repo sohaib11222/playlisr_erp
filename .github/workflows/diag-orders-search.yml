@@ -58,7 +58,7 @@ jobs:
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
             if ($q === 'PILLS') {
-              foreach ([['pickup', 'warehouse'], ['ready_ship', 'pico'], ['to_ship', 'warehouse'], ['to_ship', 'hollywood'], ['to_ship', 'pico'], ['recheck_hw', null], ['cant_find', null]] as [$tab, $loc]) {
+              foreach ([['pickup', 'warehouse'], ['ready_ship', 'pico'], ['to_ship', 'warehouse'], ['to_ship', 'hollywood'], ['to_ship', 'pico'], ['recheck_hw', null], ['cant_find', null], ['discogs_old', null]] as [$tab, $loc]) {
                 $t0 = microtime(true);
                 try {
                   $req = \Illuminate\Http\Request::create('/website-orders', 'GET', array_filter(['tab' => $tab, 'location' => $loc]));
