@@ -186,6 +186,8 @@ class DistributorInvoiceImport
     {
         $d = trim(preg_replace('/\s+/', ' ', (string) $description));
         $d = str_replace("\u{00AD}", '-', $d);
+        // AMS cuts long titles mid-parenthesis ("(MA", "(RANDOM -"): drop the stub.
+        $d = trim(preg_replace('/\s*\([^)]*$/', '', $d));
         // Alliance Hot Wheels lines: "HW PREM JAGUAR XJS".
         if (preg_match('/^HW (PREM )?(.+)$/', $d, $m)) {
             return ['artist' => 'Hot Wheels', 'name' => 'Hot Wheels' . ($m[1] ? ' Premium' : '') . ' - ' . ProductNameNormalizer::properTitle($m[2])];
