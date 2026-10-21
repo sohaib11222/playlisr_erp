@@ -937,8 +937,8 @@
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                   @php $woMoney = \App\Http\Controllers\WebsiteOrdersController::orderMoney($o, $status); @endphp
-                  @if($woMoney)
-                    {{-- Should total for what was sent vs paid (Sarah, 2026-10-21) --}}
+                  @if($woMoney && abs($woMoney['diff']) >= 0.01)
+                    {{-- Only when what was sent and what was paid don't match (Sarah, 2026-10-21: "confusing") --}}
                     <div class="wo-money">
                       <div>Should be <b>${{ number_format($woMoney['should'], 2) }}</b></div>
                       <div>Paid <b>${{ number_format($woMoney['paid'], 2) }}</b></div>
