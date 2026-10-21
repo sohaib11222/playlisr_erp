@@ -412,6 +412,7 @@
         ['title' => 'Nick: pull from the warehouse', 'why' => 'Website and Discogs items in the Hollywood warehouse bins.', 'pills' => [['HW Warehouse', 'to_ship', 'warehouse']], 'bar' => ['warehouse']],
         ['title' => 'Hollywood cashier: store floor and rechecks', 'why' => 'Pull what\'s on the sales floor, then check the bins for what Pico couldn\'t find.', 'pills' => [['Store floor', 'to_ship', 'hollywood'], ['Recheck bins', 'recheck_hw', null]], 'bar' => ['hollywood']],
         ['title' => 'Pico cashier: pull at Pico', 'why' => 'Items on the Pico floor.', 'pills' => [['Pico', 'to_ship', 'pico']], 'bar' => ['pico']],
+        ['title' => 'Waiting on the customer', 'why' => 'Pulled and ready for pickup, or not in stock yet. Nothing to pull.', 'info' => true, 'pills' => [['Ready for pickup', 'ready_pickup', null], ['Preorders', 'preorders', null]]],
         ['title' => 'Modify, substitute or refund decision', 'why' => 'Nobody could find these, or the order needs fixing. A manager decides.', 'pills' => [['Orders', 'cant_find', null], ['Discogs to check', 'discogs_old', null]]],
       ];
       $woPillCount = function ($p) use ($tabCounts) {
@@ -424,7 +425,7 @@
         return $n;
       };
       $woStartAt = null;
-      foreach ($woSteps as $i => $st) if ($woStartAt === null && $woStepCount($st) > 0) $woStartAt = $i;
+      foreach ($woSteps as $i => $st) if ($woStartAt === null && empty($st['info']) && $woStepCount($st) > 0) $woStartAt = $i;
     @endphp
     {{-- Searching or one order: the store work list and its counts aren't
          about that order, so hide them (Sarah, 2026-10-21: Apurva's shipped
@@ -439,7 +440,9 @@
     @endphp
     <div class="wo-week">
       <div class="wo-week-line"><strong>{{ $wkN > 0 ? 'Nice work! ' : '' }}{{ $wkN }} {{ $wkN === 1 ? 'order' : 'orders' }} shipped this week</strong> <span>${{ number_format((float) ($tabCounts['week_shipped_amt'] ?? 0), 2) }}</span></div>
-      <div class="wo-week-bar"><span style="width:{{ $wkTot ? round(100 * $wkN / $wkTot) : 0 }}%"></span></div>
+      @if(($tabCounts['almost_done'] ?? 0) > 0)
+        <div class="wo-week-sub" style="font-size:15px;font-weight:600;margin-top:4px;">{{ $tabCounts['almost_done'] }} {{ $tabCounts['almost_done'] === 1 ? 'order is' : 'orders are' }} almost done: just 1 item left to pull.</div>
+      @endif
     </div>
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
@@ -456,19 +459,8 @@
           <a class="wo-step-main" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $first[1], 'location' => $first[2]])) }}">
             <span class="wo-step-title">{{ $st['title'] }}</span>
             @if($woStartAt === $i)<span class="wo-step-start">Start here</span>@endif
-            @if($n === 0)<span class="wo-step-done">All done</span>@endif
+            @if($n === 0 && empty($st['info']))<span class="wo-step-done">All done</span>@endif
             <span class="wo-step-why">{{ $st['why'] }}</span>
-            @if(!empty($st['bar']) && $n > 0)
-              @php
-                $bDone = 0; $bLeft = 0;
-                foreach ($st['bar'] as $bs) { $bDone += (int) ($tabCounts['pulled_' . $bs] ?? 0); $bLeft += (int) ($tabCounts['to_ship_' . $bs] ?? 0); }
-                $bTot = $bDone + $bLeft;
-              @endphp
-              @if($bTot > 0)
-                <span class="wo-step-bar"><span class="fill" style="width:{{ round(100 * $bDone / $bTot) }}%"></span></span>
-                <span class="wo-step-barlabel">{{ count($st['pills']) > 1 ? $st['pills'][0][0] . ': ' : '' }}{{ $bDone }} of {{ $bTot }} items pulled</span>
-              @endif
-            @endif
           </a>
           <div class="wo-card-pills">
             @foreach($st['pills'] as $p)
@@ -481,10 +473,6 @@
         </div>
       @endforeach
       <div class="wo-steps-more">
-        <span class="wo-more-group"><span class="wo-more-label">Waiting on the customer:</span>
-          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'ready_pickup', 'location' => null])) }}" class="wo-more {{ $activeTab === 'ready_pickup' ? 'on' : '' }}">Ready for Pickup ({{ $tabCounts['ready_pickup'] ?? 0 }})</a>
-          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'preorders', 'location' => null])) }}" class="wo-more {{ in_array($activeTab, ['preorders', 'preorder_ship', 'preorder_pickup'], true) ? 'on' : '' }}">Preorders ({{ $tabCounts['preorders'] ?? 0 }})</a>
-        </span>
         <span class="wo-more-group"><span class="wo-more-label">Done:</span>
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'completed', 'location' => null])) }}" class="wo-more {{ $activeTab === 'completed' ? 'on' : '' }}">Completed</a>
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'refunded', 'location' => null])) }}" class="wo-more {{ $activeTab === 'refunded' ? 'on' : '' }}">Refunded</a>
@@ -644,10 +632,10 @@
             <col style="width:12%">
             <col>
             <col style="width:340px">
-            <col style="width:118px">
-            <col style="width:112px">
             <col style="width:86px">
             <col style="width:236px">
+            <col style="width:112px">
+            <col style="width:118px">
             <col style="width:108px">
           </colgroup>
           <thead><tr>
@@ -656,10 +644,10 @@
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
             <th>Location</th>
-            <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
-            <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>Actions</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
           </tr></thead>
           <tbody>
@@ -903,79 +891,6 @@
                   @endforeach
                   @endif
                 </td>
-                <td>
-                  <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
-                  @if($paymentStatusFilter === 'all')
-                    @php $ps = $o['payment_status'] ?? 'unknown'; $psColors = ['completed' => '#dcfce7;color:#166534', 'pending' => '#fef9c3;color:#854d0e', 'failed' => '#fee2e2;color:#991b1b', 'cancelled' => '#f3f4f6;color:#000', 'refunded' => '#f3e8ff;color:#6b21a8']; @endphp
-                    <div style="margin-top:5px;"><span class="wo-pill" style="background:{{ $psColors[$ps] ?? '#f3f4f6;color:#000' }};font-size:11px;padding:2px 8px;">Payment: {{ ucfirst($ps) }}</span></div>
-                  @endif
-                  @if($rowIsPreorder)
-                    <div style="margin-top:6px;">
-                      <span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#f97316;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">PREORDER — NOT IN STOCK</span>
-                      @if($rowShipDate)
-                        <div style="font-size:11px;color:#9a3412;margin-top:3px;">Ships {{ gmdate('M j, Y', strtotime($rowShipDate)) }}</div>
-                      @endif
-                    </div>
-                  @else
-                    @php
-                      // Released preorders keep their street date (Sarah, 2026-10-19: show it on Ready for Pickup)
-                      $streetDates = collect($o['items'] ?? [])->pluck('product_id.preorderShipDate')->filter()->sort()->values();
-                    @endphp
-                    @if($streetDates->isNotEmpty())
-                      <div style="font-size:12px;color:#000;margin-top:5px;font-weight:600;">Street date {{ gmdate('m/d/y', strtotime($streetDates->first())) }}</div>
-                    @endif
-                  @endif
-                </td>
-                <td>
-                  @if($isGift)
-                    <span class="wo-fm-pill digital">Digital (Email)</span>
-                  @elseif(($o['fulfillment_method'] ?? null) === 'pickup')
-                    <span class="wo-fm-pill pickup" @if(!\App\Http\Controllers\WebsiteOrdersController::knownPickupLocation($o)) style="background:#fee2e2;color:#991b1b;" @endif>Pickup ({{ \App\Http\Controllers\WebsiteOrdersController::pickupLocationLabel($o) }})</span>
-                  @else
-                    <span class="wo-fm-pill shipping">Shipping</span>
-                    @if(($o['ship_speed'] ?? null) === 'priority')
-                      @if(in_array($status, ['shipped', 'delivered', 'email_sent'], true))
-                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;">Shipped Priority</span>
-                      @else
-                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;" title="Customer paid for USPS Priority Mail. Buy a Priority Mail label for this order.">PRIORITY: ship Priority Mail</span>
-                      @endif
-                    @endif
-                    @php
-                      // Two store carts: which store(s) this order ships from.
-                      $woShipStores = collect($o['items'] ?? [])
-                        ->filter(function ($it) { return empty($it['is_gift_card']) && !empty($it['ship_from']); })
-                        ->pluck('ship_from')->unique()->values();
-                    @endphp
-                    @if(!empty($o['ships_from_both_stores']) && !$woDone)
-                      <div>
-                        @if(($o['ship_mode'] ?? null) === 'combine')
-                          <span class="wo-fm-pill both-comb" title="Customer chose one package: bring everything to one store, ship together">Both stores: combine into 1 package</span>
-                        @else
-                          <span class="wo-fm-pill both-sep" title="Customer chose separate packages: each store ships its own part">Both stores: ship separately</span>
-                        @endif
-                      </div>
-                    @elseif($woShipStores->count() === 1)
-                      <div class="wo-shipfrom">Ships from {{ $woShipStores->first() === 'pico' ? 'Pico' : 'Hollywood' }}</div>
-                    @endif
-                    {{-- What the customer paid for shipping, at a glance (Sarah, 2026-10-21) --}}
-                    @php $woShipPaid = $o['shipping_cost'] ?? null; @endphp
-                    <div style="margin-top:6px;font-size:14px;font-weight:700;color:#000;">
-                      @if($woShipPaid === null)
-                        Shipping paid: not recorded
-                      @elseif((float) $woShipPaid <= 0)
-                        Shipping paid: $0.00 (free)
-                      @else
-                        Shipping paid: ${{ number_format((float) $woShipPaid, 2) }}
-                      @endif
-                      <button type="button" class="wo-onote-open" onclick="woShipPaidEdit('{{ $o['_id'] }}', '{{ $woShipPaid === null ? '' : number_format((float) $woShipPaid, 2, '.', '') }}')">Edit</button>
-                    </div>
-                    @if(($o['ship_speed'] ?? null) === 'priority' && !empty($o['priority_packages']))
-                      @foreach($o['priority_packages'] as $pp)
-                        <div style="font-size:12px;color:#000;">{{ ($pp['store'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }} package: ${{ number_format((float) ($pp['price'] ?? 0), 2) }}</div>
-                      @endforeach
-                    @endif
-                  @endif
-                </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                   @php $woMoney = \App\Http\Controllers\WebsiteOrdersController::orderMoney($o, $status); @endphp
                   @if($woMoney && abs($woMoney['diff']) >= 0.01)
@@ -1093,6 +1008,79 @@
                         <div style="font-size:11.5px;font-weight:700;color:#047857;margin-top:3px;">All picked: set status to Ready for Pickup (emails the customer)</div>
                       @endif
                     </div>
+                  @endif
+                </td>
+                <td>
+                  @if($isGift)
+                    <span class="wo-fm-pill digital">Digital (Email)</span>
+                  @elseif(($o['fulfillment_method'] ?? null) === 'pickup')
+                    <span class="wo-fm-pill pickup" @if(!\App\Http\Controllers\WebsiteOrdersController::knownPickupLocation($o)) style="background:#fee2e2;color:#991b1b;" @endif>Pickup ({{ \App\Http\Controllers\WebsiteOrdersController::pickupLocationLabel($o) }})</span>
+                  @else
+                    <span class="wo-fm-pill shipping">Shipping</span>
+                    @if(($o['ship_speed'] ?? null) === 'priority')
+                      @if(in_array($status, ['shipped', 'delivered', 'email_sent'], true))
+                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;">Shipped Priority</span>
+                      @else
+                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;" title="Customer paid for USPS Priority Mail. Buy a Priority Mail label for this order.">PRIORITY: ship Priority Mail</span>
+                      @endif
+                    @endif
+                    @php
+                      // Two store carts: which store(s) this order ships from.
+                      $woShipStores = collect($o['items'] ?? [])
+                        ->filter(function ($it) { return empty($it['is_gift_card']) && !empty($it['ship_from']); })
+                        ->pluck('ship_from')->unique()->values();
+                    @endphp
+                    @if(!empty($o['ships_from_both_stores']) && !$woDone)
+                      <div>
+                        @if(($o['ship_mode'] ?? null) === 'combine')
+                          <span class="wo-fm-pill both-comb" title="Customer chose one package: bring everything to one store, ship together">Both stores: combine into 1 package</span>
+                        @else
+                          <span class="wo-fm-pill both-sep" title="Customer chose separate packages: each store ships its own part">Both stores: ship separately</span>
+                        @endif
+                      </div>
+                    @elseif($woShipStores->count() === 1)
+                      <div class="wo-shipfrom">Ships from {{ $woShipStores->first() === 'pico' ? 'Pico' : 'Hollywood' }}</div>
+                    @endif
+                    {{-- What the customer paid for shipping, at a glance (Sarah, 2026-10-21) --}}
+                    @php $woShipPaid = $o['shipping_cost'] ?? null; @endphp
+                    <div style="margin-top:6px;font-size:14px;font-weight:700;color:#000;">
+                      @if($woShipPaid === null)
+                        Shipping paid: not recorded
+                      @elseif((float) $woShipPaid <= 0)
+                        Shipping paid: $0.00 (free)
+                      @else
+                        Shipping paid: ${{ number_format((float) $woShipPaid, 2) }}
+                      @endif
+                      <button type="button" class="wo-onote-open" onclick="woShipPaidEdit('{{ $o['_id'] }}', '{{ $woShipPaid === null ? '' : number_format((float) $woShipPaid, 2, '.', '') }}')">Edit</button>
+                    </div>
+                    @if(($o['ship_speed'] ?? null) === 'priority' && !empty($o['priority_packages']))
+                      @foreach($o['priority_packages'] as $pp)
+                        <div style="font-size:12px;color:#000;">{{ ($pp['store'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }} package: ${{ number_format((float) ($pp['price'] ?? 0), 2) }}</div>
+                      @endforeach
+                    @endif
+                  @endif
+                </td>
+                <td>
+                  <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
+                  @if($paymentStatusFilter === 'all')
+                    @php $ps = $o['payment_status'] ?? 'unknown'; $psColors = ['completed' => '#dcfce7;color:#166534', 'pending' => '#fef9c3;color:#854d0e', 'failed' => '#fee2e2;color:#991b1b', 'cancelled' => '#f3f4f6;color:#000', 'refunded' => '#f3e8ff;color:#6b21a8']; @endphp
+                    <div style="margin-top:5px;"><span class="wo-pill" style="background:{{ $psColors[$ps] ?? '#f3f4f6;color:#000' }};font-size:11px;padding:2px 8px;">Payment: {{ ucfirst($ps) }}</span></div>
+                  @endif
+                  @if($rowIsPreorder)
+                    <div style="margin-top:6px;">
+                      <span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#f97316;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">PREORDER — NOT IN STOCK</span>
+                      @if($rowShipDate)
+                        <div style="font-size:11px;color:#9a3412;margin-top:3px;">Ships {{ gmdate('M j, Y', strtotime($rowShipDate)) }}</div>
+                      @endif
+                    </div>
+                  @else
+                    @php
+                      // Released preorders keep their street date (Sarah, 2026-10-19: show it on Ready for Pickup)
+                      $streetDates = collect($o['items'] ?? [])->pluck('product_id.preorderShipDate')->filter()->sort()->values();
+                    @endphp
+                    @if($streetDates->isNotEmpty())
+                      <div style="font-size:12px;color:#000;margin-top:5px;font-weight:600;">Street date {{ gmdate('m/d/y', strtotime($streetDates->first())) }}</div>
+                    @endif
                   @endif
                 </td>
                 <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
@@ -1304,10 +1292,10 @@
               <col style="width:12%">
               <col>
               <col style="width:340px">
-              <col style="width:118px">
-              <col style="width:112px">
               <col style="width:86px">
               <col style="width:236px">
+              <col style="width:112px">
+              <col style="width:118px">
               <col style="width:108px">
             </colgroup>
             <thead><tr>
@@ -1316,10 +1304,10 @@
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
               <th>Location</th>
-              <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
-              <th>Fulfillment</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
               <th>Actions</th>
+              <th>Fulfillment</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             </tr></thead>
             <tbody>
@@ -1403,8 +1391,6 @@
                       </div>
                     @endforeach
                   </td>
-                  <td><span class="wo-pill st-processing">{{ $d['status'] ?? 'Payment Received' }}</span></td>
-                  <td><span class="wo-fm-pill shipping">Shipping</span><div class="wo-shipfrom">Discogs order</div></td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
                   <td class="wo-actions-cell">
                     <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
@@ -1419,6 +1405,8 @@
                       <div class="wo-pick-count" style="margin-top:8px;font-size:13px;font-weight:700;color:#000;"><span class="n">{{ (int) ($dPick['picked'] ?? 0) }}</span> of {{ (int) $dPick['total'] }} picked</div>
                     @endif
                   </td>
+                  <td><span class="wo-fm-pill shipping">Shipping</span><div class="wo-shipfrom">Discogs order</div></td>
+                  <td><span class="wo-pill st-processing">{{ $d['status'] ?? 'Payment Received' }}</span></td>
                   <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
                 </tr>
               @endforeach
