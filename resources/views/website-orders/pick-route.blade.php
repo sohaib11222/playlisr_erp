@@ -43,6 +43,7 @@
       <a href="{{ route('website-orders.pickRoute', ['store' => $key]) }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }} ({{ $counts[$key] ?? 0 }})</a>
     @endforeach
     <a href="javascript:window.print()" class="pr-print">Print</a>
+    <a href="{{ url()->full() }}" id="pr-walk" style="display:none;">Back to walking order</a>
   </div>
 
   @if($error)
@@ -104,6 +105,42 @@
   @endif
 </div>
 <script>
+  // Every column sorts on click (Sarah, 2026-10-21). Sorting puts all rows in
+  // one list; reload to get the walking order back.
+  (function () {
+    var tables = Array.prototype.slice.call(document.querySelectorAll('.pr-wrap table'));
+    if (!tables.length) return;
+    var dir = {};
+    function val(td) {
+      var t = (td ? td.innerText : '').trim();
+      var m = t.match(/^\$([\d,.]+)/); if (m) return parseFloat(m[1].replace(/,/g, ''));
+      m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})/); if (m) return Number('20' + m[3]) * 10000 + Number(m[1]) * 100 + Number(m[2]);
+      if (/^\d+$/.test(t)) return Number(t);
+      return t.toLowerCase();
+    }
+    tables[0].querySelectorAll('thead th').forEach(function (th, ci) {
+      if (ci === 0 || ci === 2) return; // buttons, photo
+      th.style.cursor = 'pointer';
+      th.title = 'Sort';
+      th.addEventListener('click', function () {
+        dir[ci] = dir[ci] === 1 ? -1 : 1;
+        var rows = [];
+        tables.forEach(function (t) { rows = rows.concat(Array.prototype.slice.call(t.querySelectorAll('tbody tr'))); });
+        rows.sort(function (a, b) {
+          var x = val(a.children[ci]), y = val(b.children[ci]);
+          if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir[ci];
+          return String(x).localeCompare(String(y), undefined, { numeric: true }) * dir[ci];
+        });
+        var body = tables[0].querySelector('tbody');
+        rows.forEach(function (r) { body.appendChild(r); });
+        tables.slice(1).forEach(function (t) { t.style.display = 'none'; });
+        document.querySelectorAll('.pr-area').forEach(function (h) { h.style.display = 'none'; });
+        tables[0].querySelectorAll('thead th').forEach(function (h, i) { h.textContent = h.textContent.replace(/ [▲▼]$/, '') + (i === ci ? (dir[ci] === 1 ? ' ▲' : ' ▼') : ''); });
+        var back = document.getElementById('pr-walk');
+        if (back) back.style.display = 'inline-block';
+      });
+    });
+  })();
   // No Pending arrival in the warehouse (Sarah, 2026-10-21)
   var PR_WAREHOUSE = {{ $store === 'warehouse' ? 'true' : 'false' }};
   // Same pick records as the Website Orders checklist (WebsiteOrdersController::pick)
