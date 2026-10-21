@@ -639,6 +639,8 @@
                 $placed = !empty($o['createdAt']) ? date('M j, Y g:ia', strtotime($o['createdAt'])) : '—';
                 $isArchived = !empty($o['archived']);
                 $status = $o['order_status'] ?? '';
+                // Shipped / done: show only what was sent, nothing to pull (Sarah, 2026-10-21: "too complicated")
+                $woDone = in_array($status, ['shipped', 'delivered', 'email_sent', 'picked_up'], true);
                 $pillClass = in_array($status, ['processing','ready_for_pickup','picked_up','shipped','email_sent','delivered','cancelled','flag'], true) ? "st-{$status}" : 'st-default';
                 $rowId = 'wo-detail-' . preg_replace('/[^A-Za-z0-9]/', '', (string) ($o['_id'] ?? '')) . '-' . $loop->index;
                 // Order-level preorder flag: true if ANY item is still a
@@ -761,9 +763,9 @@
                         @if(!$line['gift'] && !$lineErp)<span class="wo-noerp">not in ERP</span>@endif
                         @php $lineMedia = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($lineItem['product_id']['productType'] ?? null); $lineFmt = $line['gift'] ? null : ($lineItem['product_id']['format'] ?? null); @endphp
                         @php $lineCond = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::conditionOf($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null); @endphp
-                        @if($lineCond)<span class="wo-cond {{ $lineCond }}">{{ strtoupper($lineCond) }}</span>@endif
-                        @if($lineMedia)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
-                        @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
+                        @if($lineCond && !$woDone)<span class="wo-cond {{ $lineCond }}">{{ strtoupper($lineCond) }}</span>@endif
+                        @if($lineMedia && !$woDone)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
+                        @if($lineFmt && !$woDone)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         @php $rowAnyPl = $line['gift'] ? null : ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null); @endphp
                         @if(!empty($lineItem['substituted_from']['name']))<span class="wo-big-tag sub">SUBSTITUTE</span>@elseif($rowAnyPl && ($rowAnyPl['status'] ?? '') === "Can't Find" && in_array($status, ['shipped', 'delivered', 'email_sent'], true))<span class="wo-big-tag cf">NOT SENT</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
@@ -801,6 +803,7 @@
                   $pickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true);
                 @endphp
                 <td class="wo-loc @if($pickable) wo-pick @endif" data-web="{{ $o['_id'] }}" @if($pickable) data-order="{{ $o['pick_progress']['order_id'] }}" @endif>
+                  @if(!$woDone)
                   {{-- One block per product, kept level with its product by
                        woAlignLoc() below (Sarah, 2026-10-16). See pullParts(). --}}
                   @foreach($cancelLines as $line)
@@ -860,6 +863,7 @@
                       @endif
                     </div>
                   @endforeach
+                  @endif
                 </td>
                 <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
                 <td>
@@ -905,7 +909,7 @@
                         ->filter(function ($it) { return empty($it['is_gift_card']) && !empty($it['ship_from']); })
                         ->pluck('ship_from')->unique()->values();
                     @endphp
-                    @if(!empty($o['ships_from_both_stores']))
+                    @if(!empty($o['ships_from_both_stores']) && !$woDone)
                       <div>
                         @if(($o['ship_mode'] ?? null) === 'combine')
                           <span class="wo-fm-pill both-comb" title="Customer chose one package: bring everything to one store, ship together">Both stores: combine into 1 package</span>
@@ -995,8 +999,8 @@
                   @foreach(($o['extra_payments'] ?? []) as $xp)
                     <div class="wo-onote-show" style="background:#dbeafe;border-color:#bfdbfe;">
                       <div class="txt">Extra paid ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} &middot; {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) from {{ $xp['payer'] }}@endif</div>
-                      @if(!empty($xp['note']))<div style="font-size:12px;color:#000;margin-top:2px;">{{ $xp['note'] }}</div>@endif
-                      <div class="by">{{ $xp['by'] ?? '' }} @if(!empty($xp['at'])){{ \Carbon\Carbon::parse($xp['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
+                      @if(!empty($xp['note']) && !$woDone)<div style="font-size:12px;color:#000;margin-top:2px;">{{ $xp['note'] }}</div>@endif
+                      <div class="by" @if($woDone) hidden @endif>{{ $xp['by'] ?? '' }} @if(!empty($xp['at'])){{ \Carbon\Carbon::parse($xp['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
                     </div>
                   @endforeach
                   <div class="wo-xpay" id="wo-xpay-{{ $o['_id'] }}" hidden style="border:1px solid #bfdbfe;border-radius:6px;padding:8px;margin:4px 0;background:#fff;">
@@ -1023,7 +1027,7 @@
                       <button type="button" class="wo-btn" onclick="woNoteClose(this)">Cancel</button>
                     </div>
                   </div>
-                  @if(!empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true))
+                  @if(!$woDone && !empty($o['pick_progress']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true))
                     @php $pp = $o['pick_progress']; @endphp
                     {{-- Pick buttons are beside each item in Location; just the count here --}}
                     @php
