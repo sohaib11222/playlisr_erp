@@ -61,9 +61,9 @@ jobs:
               $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'to_ship']);
               app()->instance('request', $req);
               $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
-              $i = strpos($html, 'Discogs orders to ship');
+              $i = strpos($html, 'Do these in order');
               echo 'RENDER_OK len=' . strlen($html) . "\n";
-              echo 'DISCOGS: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 9000))), 0, 1500) . "\n";
+              echo 'DISCOGS: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 12000))), 0, 1500) . "\n";
               echo 'HAS_BTNS=' . substr_count(substr($html, $i), 'wo-pick-inline') . "\n";
               return;
             }

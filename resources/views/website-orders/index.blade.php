@@ -239,13 +239,32 @@
   /* One row of buttons under the bin, not stacked (Sarah, 2026-10-21) */
   .wo-pick-inline .wo-pick-btns { flex-wrap:nowrap !important; gap:4px; }
   .wo-pick-inline .wo-pick-btns button { flex:0 0 auto !important; padding:4px 8px; font-size:12px; line-height:1.2; }
+  /* Priority work list (Sarah, 2026-10-21) */
+  .wo-steps { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:16px; }
+  .wo-steps-head { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:#000; margin-bottom:8px; }
+  .wo-step { display:flex; align-items:center; gap:12px; padding:9px 10px; border-radius:8px; border:1px solid transparent; flex-wrap:wrap; }
+  .wo-step + .wo-step { margin-top:4px; }
+  .wo-step.on { background:#eff6ff; border-color:#bfdbfe; }
+  .wo-step-num { flex:0 0 30px; height:30px; border-radius:50%; background:#1e40af; color:#fff; font-weight:800; font-size:15px; display:flex; align-items:center; justify-content:center; }
+  .wo-step.clear .wo-step-num { background:#047857; }
+  .wo-step-main { flex:1 1 260px; min-width:0; text-decoration:none; color:#000; }
+  .wo-step-title { font-size:16px; font-weight:800; color:#000; }
+  .wo-step-why { display:block; font-size:13px; color:#000; margin-top:2px; }
+  .wo-step-start { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:#1e40af; color:#fff; font-size:12px; font-weight:800; vertical-align:2px; }
+  .wo-step-done { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:#dcfce7; color:#047857; font-size:12px; font-weight:800; vertical-align:2px; }
+  .wo-steps-more { display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:12px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:13px; }
+  .wo-more-group { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  .wo-more-label { font-weight:700; color:#000; }
+  .wo-more { display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; border:1px solid #d1d5db; background:#fff; color:#000; font-weight:600; text-decoration:none; }
+  .wo-more:hover { border-color:#93c5fd; }
+  .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
   <div class="ev-head">
     <div>
       <h1>Orders</h1>
-      <p class="sub">Fulfillment for nivessa.com orders — the ERP's replacement for the website's own Orders page.</p>
+      <p class="sub">Website and Discogs orders to pull, pack and ship.</p>
     </div>
     <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : ($locationFilter === 'hw' ? 'hollywood' : 'hollywood')]) }}" class="wo-route-btn">Pick Route &rarr;</a>
   </div>
@@ -298,29 +317,65 @@
     @if(!isset(array_merge(...array_values($tabRows))[$activeTab]))
       @php $tabRows['Other'][$activeTab] = $tabDefs[$activeTab]; @endphp
     @endif
-    {{-- Four cards, one per job (Sarah, 2026-10-20) --}}
-    <div class="wo-cards">
-    @foreach($tabRows as $rowLabel => $rowTabs)
-      <div class="wo-card-group">
-        <div class="wo-card-title">{{ $rowLabel }}</div>
-        @foreach($rowTabs as $key => $def)
-          @php $count = $tabCounts[$key] ?? 0; @endphp
-          <div class="wo-card-line {{ $activeTab === $key ? 'on' : '' }}">
-            <a class="wo-card-name" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => null])) }}">{{ $def['label'] }}</a>
-            <div class="wo-card-pills">
-              @if(!empty($def['split']))
-                @foreach($def['split'] as $lk => $ll)
-                  @php $n = $tabCounts[$key . '_' . $lk] ?? 0; @endphp
-                  <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key, 'location' => $lk])) }}" class="wo-split {{ $activeTab === $key && $locationFilter === $lk ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $n }}</b></a>
-                @endforeach
-              @elseif(empty($def['nocount']))
-                <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $key])) }}" class="wo-split {{ $activeTab === $key ? 'on' : '' }} {{ $count > 0 && !empty($def['hot']) ? 'has' : '' }}"><b>{{ $count }}</b></a>
-              @endif
-            </div>
+    {{-- Work list in priority order (Sarah, 2026-10-21: "ppl dont know what to
+         prioritize"). Numbered steps, top to bottom; the first step with work
+         says Start here. Waiting / manager / done views sit below, smaller. --}}
+    @php
+      $woSteps = [
+        ['tab' => 'pickup', 'title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
+        ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
+        ['tab' => 'to_ship', 'title' => 'Pull shipping orders', 'why' => 'Find each item, tap Mark picked or Can\'t find. Discogs orders are here too.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
+        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Check Hollywood before anyone refunds.'],
+      ];
+      $woStepCount = function ($st) use ($tabCounts) {
+        if (empty($st['split'])) return (int) ($tabCounts[$st['tab']] ?? 0);
+        $n = 0;
+        foreach (array_keys($st['split']) as $lk) $n += (int) ($tabCounts[$st['tab'] . '_' . $lk] ?? 0);
+        return $n;
+      };
+      $woStartAt = null;
+      foreach ($woSteps as $i => $st) if ($woStartAt === null && $woStepCount($st) > 0) $woStartAt = $i;
+    @endphp
+    <div class="wo-steps">
+      <div class="wo-steps-head">Do these in order, top to bottom</div>
+      @foreach($woSteps as $i => $st)
+        @php $n = $woStepCount($st); @endphp
+        <div class="wo-step {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n === 0 ? 'clear' : '' }}">
+          <div class="wo-step-num">{{ $i + 1 }}</div>
+          <a class="wo-step-main" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => null])) }}">
+            <span class="wo-step-title">{{ $st['title'] }}</span>
+            @if($woStartAt === $i)<span class="wo-step-start">Start here</span>@endif
+            @if($n === 0)<span class="wo-step-done">All done</span>@endif
+            <span class="wo-step-why">{{ $st['why'] }}</span>
+          </a>
+          <div class="wo-card-pills">
+            @if(!empty($st['split']))
+              @foreach($st['split'] as $lk => $ll)
+                @php $sn = $tabCounts[$st['tab'] . '_' . $lk] ?? 0; @endphp
+                <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => $lk])) }}" class="wo-split {{ $activeTab === $st['tab'] && $locationFilter === $lk ? 'on' : '' }} {{ $sn > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $sn }}</b></a>
+              @endforeach
+            @else
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab']])) }}" class="wo-split {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}"><b>{{ $n }}</b></a>
+            @endif
           </div>
-        @endforeach
+        </div>
+      @endforeach
+      <div class="wo-steps-more">
+        <span class="wo-more-group"><span class="wo-more-label">Waiting on the customer:</span>
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'ready_pickup', 'location' => null])) }}" class="wo-more {{ $activeTab === 'ready_pickup' ? 'on' : '' }}">Ready for Pickup ({{ $tabCounts['ready_pickup'] ?? 0 }})</a>
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'preorders', 'location' => null])) }}" class="wo-more {{ in_array($activeTab, ['preorders', 'preorder_ship', 'preorder_pickup'], true) ? 'on' : '' }}">Preorders ({{ $tabCounts['preorders'] ?? 0 }})</a>
+        </span>
+        <span class="wo-more-group"><span class="wo-more-label">Managers decide:</span>
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'cant_find', 'location' => null])) }}" class="wo-more {{ $activeTab === 'cant_find' ? 'on' : '' }}">Can't Find: Refund or Substitute ({{ $tabCounts['cant_find'] ?? 0 }})</a>
+        </span>
+        <span class="wo-more-group"><span class="wo-more-label">Done:</span>
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'completed', 'location' => null])) }}" class="wo-more {{ $activeTab === 'completed' ? 'on' : '' }}">Completed</a>
+          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => 'refunded', 'location' => null])) }}" class="wo-more {{ $activeTab === 'refunded' ? 'on' : '' }}">Refunded</a>
+          @if(in_array($activeTab, ['archived', 'unsorted', 'needs_action'], true))
+            <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $activeTab])) }}" class="wo-more on">{{ $tabDefs[$activeTab]['label'] ?? ucfirst($activeTab) }}</a>
+          @endif
+        </span>
       </div>
-    @endforeach
     </div>
 
     @if($activeTab === 'needs_action' && ($tabCounts['needs_action'] ?? 0) === 0)
