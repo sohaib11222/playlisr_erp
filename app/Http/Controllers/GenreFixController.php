@@ -62,6 +62,11 @@ class GenreFixController extends Controller
             'stage and screen' => 'soundtracks', 'non music' => 'comedy', 'folk world and country' => 'folk',
             'indie pop' => 'alt', 'synth pop' => 'new wave', 'thrash' => 'metal', 'heavy metal' => 'metal',
             'hard rock' => 'rock', 'classic rock' => 'rock', 'rock and roll' => 'rock', 'gangsta' => 'hip hop',
+            'alternative rock' => 'alt', 'grunge' => 'alt', 'shoegaze' => 'alt', 'lo fi' => 'alt',
+            'contemporary r and b' => 'rnb', 'rhythm and blues' => 'rnb', 'neo soul' => 'rnb',
+            'boom bap' => 'hip hop', 'conscious' => 'hip hop', 'trap' => 'hip hop', 'pop rap' => 'hip hop', 'thug rap' => 'hip hop',
+            'house' => 'electronic', 'techno' => 'electronic', 'ambient' => 'electronic', 'downtempo' => 'electronic', 'electro' => 'electronic',
+            'black metal' => 'metal', 'death metal' => 'metal', 'doom metal' => 'metal', 'nu metal' => 'nu metal',
         ];
         if (isset($alias[$s])) return $alias[$s];
         $s = trim(preg_replace('/ (lps?|new)$/', '', $s));
