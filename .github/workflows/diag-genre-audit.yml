@@ -50,7 +50,7 @@ jobs:
             $req = \Illuminate\Http\Request::create('/products/genre-fix', 'GET', ['artist' => 'Sade']); $req->setLaravelSession(app('session.store')); session()->put('user.business_id', $u->business_id); app()->instance('request', $req);
             $html = (string) app(\App\Http\Controllers\GenreFixController::class)->index($req)->render();
             echo "LIVE OK " . strlen($html) . " rows=" . substr_count($html, 'gf-keep') . " sidebar=" . substr_count($html, 'Genre Fix') . "\n";
-            echo 'STEPS ' . substr_count($html, 'Step 1') . substr_count($html, 'Step 2') . ' cards=' . substr_count($html, 'gf-card" data-key') . ' fixall=' . (preg_match('/Fix all [0-9,]+/', $html, $mm) ? $mm[0] : 'none') . "\n"; $html = null;
+            echo 'DC ' . (preg_match('/[0-9,]+ of [0-9,]+ checked[^<]*/', $html, $dm) ? $dm[0] : 'none') . ' STEPS ' . substr_count($html, 'Step 1') . substr_count($html, 'Step 2') . ' cards=' . substr_count($html, 'gf-card" data-key') . ' fixall=' . (preg_match('/Fix all [0-9,]+/', $html, $mm) ? $mm[0] : 'none') . "\n"; $html = null;
             $svc = new \App\Services\DiscogsGenreBackfillService(); $m = new \ReflectionMethod($svc, 'matchExistingSubCategory'); $m->setAccessible(true);
             foreach ([15 => ['Funk / Soul'], 175 => ['Hip Hop'], 55 => ['Indie Rock', 'Rock'], 15 => ['Stage & Screen']] as $cat => $c) echo "MATCH {$cat} " . json_encode($c) . " => " . \DB::table('categories')->where('id', $m->invoke($svc, $u->business_id, $cat, $c))->value('name') . "\n";
             PHP
