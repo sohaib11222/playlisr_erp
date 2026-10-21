@@ -304,6 +304,27 @@
   .wo-more { display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; border:1px solid #d1d5db; background:#fff; color:#000; font-weight:600; text-decoration:none; }
   .wo-more:hover { border-color:#93c5fd; }
   .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af; }
+  /* Calm table (Sarah, 2026-10-21: "so many colors, overwhelming"): black and
+     white, one navy accent for SEALED/USED and the main button, red only for late. */
+  .wo-tbl thead th, .wo-tbl thead th a { color:#000 !important; }
+  .wo-tbl a.wo-prod-name, .wo-tbl .wo-prod-name { color:#000 !important; font-weight:700; text-decoration:none; }
+  .wo-tbl a.wo-prod-name:hover { text-decoration:underline; }
+  .wo-tbl .wo-tag { background:none !important; border:none !important; color:#000 !important; padding:0 !important; margin-left:6px; font-size:11px; font-weight:600; }
+  .wo-tbl .wo-tag.fmt { display:none; }
+  .wo-tbl .wo-noerp { background:none !important; color:#000 !important; font-weight:400; font-size:11px; }
+  .wo-cond.sealed { background:#1e3a8a !important; color:#fff !important; border:2px solid #1e3a8a; }
+  .wo-cond.used { background:#fff !important; color:#1e3a8a !important; border:2px solid #1e3a8a; }
+  .wo-tbl .wo-pill, .wo-tbl .wo-fm-pill { background:none !important; color:#000 !important; padding:0 !important; font-weight:600; font-size:13px; }
+  .wo-tbl .wo-fm-pill[style] { background:none !important; color:#b91c1c !important; }
+  .wo-pick-inline .wo-pick-state { background:none !important; padding:0 !important; color:#000 !important; font-weight:600; }
+  .wo-pick-inline:not(.is-done):not(.is-missing) .wo-pick-state { display:none !important; }
+  .wo-pick-inline.is-missing .wo-pick-state { color:#b91c1c !important; }
+  .wo-pick-inline.is-done { background:none !important; padding:0 !important; }
+  .wo-pick-inline .wo-pick-btns button.go { background:#1e3a8a !important; border-color:#1e3a8a !important; color:#fff !important; }
+  .wo-pick-inline .wo-pick-btns button.cf, .wo-pick-inline .wo-pick-btns button.ds, .wo-pick-inline .wo-pick-btns button.undo { background:none !important; border:none !important; color:#000 !important; text-decoration:underline; font-weight:600 !important; padding:4px 6px !important; }
+  .wo-prog span.p { background:#1e3a8a; }
+  .wo-prog span.c { background:#9ca3af; }
+  .wo-prog-sub .cf, .wo-prog-wrap.full .wo-prog-lbl, .wo-prog-wrap.part .wo-prog-lbl { color:#000 !important; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -490,9 +511,6 @@
           <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $activeTab, 'sort' => $sk, 'dir' => $sd])) }}" class="wo-more {{ $woSortNow === $sv ? 'on' : '' }}">{{ $sl }}</a>
         @endforeach
       </div>
-    @endif
-    @if(!$woLookup && $activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
-      <div class="wo-banner warn">These shipping orders still have items to pull. Tap Mark picked or Can't find on each item.</div>
     @endif
 
     @if($activeTab === 'preorder_ship')
