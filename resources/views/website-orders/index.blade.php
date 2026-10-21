@@ -820,6 +820,7 @@
                       @else
                         Shipping paid: ${{ number_format((float) $woShipPaid, 2) }}
                       @endif
+                      <button type="button" class="wo-onote-open" onclick="woShipPaidEdit('{{ $o['_id'] }}', '{{ $woShipPaid === null ? '' : number_format((float) $woShipPaid, 2, '.', '') }}')">Edit</button>
                     </div>
                     @if(($o['ship_speed'] ?? null) === 'priority' && !empty($o['priority_packages']))
                       @foreach($o['priority_packages'] as $pp)
@@ -1711,6 +1712,18 @@
   window.addEventListener('resize', woAlignLoc);
 </script>
 <script>
+  // Shipping paid outside checkout (Sarah, 2026-10-21); total unchanged
+  function woShipPaidEdit(id, current) {
+    var v = prompt('What did the customer pay for shipping? (This does not change the order total.)', current);
+    if (v === null) return;
+    fetch('{{ url('/website-orders') }}/' + id + '/shipping-paid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ amount: v })
+    }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+      .then(function (res) { if (!res.success) { alert(res.message || 'Not saved.'); return; } location.reload(); });
+  }
   // Extra payment taken outside checkout (Sarah, 2026-10-21)
   function woExtraOpen(id) {
     var box = document.getElementById('wo-xpay-' + id);

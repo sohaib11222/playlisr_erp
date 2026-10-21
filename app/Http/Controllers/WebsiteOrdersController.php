@@ -1542,6 +1542,32 @@ class WebsiteOrdersController extends Controller
         ], $ok ? 200 : 422);
     }
 
+    /**
+     * Set what the customer paid for shipping when it was taken outside
+     * checkout (Sarah, 2026-10-21). The order total is not changed.
+     */
+    public function shippingPaid(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) {
+            return response()->json(['success' => false, 'message' => 'Bad order id.'], 422);
+        }
+        $amount = round((float) $request->input('amount', -1), 2);
+        if ($amount < 0) return response()->json(['success' => false, 'message' => 'Enter the shipping amount.'], 422);
+        $u = auth()->user();
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/shipping-paid", [
+            'amount' => $amount,
+            'changedBy' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null),
+        ]);
+        $ok = $resp !== null && ($resp['success'] ?? false) === true;
+        return response()->json([
+            'success' => $ok,
+            'message' => $ok ? 'Saved.' : (($resp['message'] ?? null) ?: 'Could not reach the website. Nothing was changed.'),
+        ], $ok ? 200 : 422);
+    }
+
     public function saveNotes(Request $request)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
