@@ -265,7 +265,11 @@
   .wo-steps .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border-width:1.5px; }
   .wo-steps-more { font-size:15px; }
   .wo-step.clear .wo-step-num { background:#9ca3af; }
-  .wo-step-done { background:#f3f4f6 !important; color:#000 !important; }
+  .wo-step-done { background:#bbf7d0 !important; color:#000 !important; }
+  /* Sealed vs Used, impossible to miss (Sarah, 2026-10-21) */
+  .wo-cond { display:inline-block; margin:0 4px 0 2px; padding:3px 10px; border-radius:6px; font-size:13px; font-weight:800; letter-spacing:.04em; color:#fff; vertical-align:1px; }
+  .wo-cond.sealed { background:#1e40af; }
+  .wo-cond.used { background:#c2410c; }
   .wo-step-title { font-size:16px; font-weight:800; color:#000; }
   .wo-step-why { display:block; font-size:13px; color:#000; margin-top:2px; }
   .wo-step-start { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:#1e40af; color:#fff; font-size:12px; font-weight:800; vertical-align:2px; }
@@ -688,6 +692,8 @@
                         @if($line['cancelled'])<s>@endif @if($lineErp)<a class="wo-prod-name" href="{{ url('/products/' . $lineErp . '/edit') }}" target="_blank" rel="noopener">{{ $line['name'] }}</a>@else{{ $line['name'] }}@endif @if($line['cancelled'])</s>@endif
                         @if(!$line['gift'] && !$lineErp)<span class="wo-noerp">not in ERP</span>@endif
                         @php $lineMedia = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($lineItem['product_id']['productType'] ?? null); $lineFmt = $line['gift'] ? null : ($lineItem['product_id']['format'] ?? null); @endphp
+                        @php $lineCond = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::conditionOf($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null); @endphp
+                        @if($lineCond)<span class="wo-cond {{ $lineCond }}">{{ strtoupper($lineCond) }}</span>@endif
                         @if($lineMedia)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
@@ -1149,17 +1155,18 @@
       </div>
     @endif
 
-    @if($activeTab === 'to_ship')
+    @if(in_array($activeTab, ['to_ship', 'ready_ship'], true))
       {{-- Discogs orders to ship (Sarah, 2026-10-12): marked shipped here, which
-           sets Shipped on Discogs and sends the buyer the tracking number. --}}
+           sets Shipped on Discogs and sends the buyer the tracking number.
+           Need to Pull shows what's left to pull; fully pulled ones are on Pack and ship (2026-10-21). --}}
       <h3 style="margin:22px 0 10px;font-size:16px;font-weight:700;color:#111827;">
         <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
-        Discogs orders to ship ({{ count($discogsToShip ?? []) }})
+        {{ $activeTab === 'ready_ship' ? 'Discogs orders to pack and ship' : 'Discogs orders to pull' }} ({{ count($discogsToShip ?? []) }})
       </h3>
       @if(!empty($discogsError))
         <div class="alert-err">{{ $discogsError }}</div>
       @elseif(empty($discogsToShip))
-        <div class="ev-card"><div class="empty">No Discogs orders waiting to ship.</div></div>
+        <div class="ev-card"><div class="empty">{{ $activeTab === 'ready_ship' ? 'No Discogs orders fully pulled yet.' : 'No Discogs items left to pull.' }}</div></div>
       @else
         <div class="wo-card">
           <div class="wo-scroll">
@@ -1206,13 +1213,20 @@
                     <div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div>
                     <div class="wo-buyer-email"><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">Order {{ $d['id'] }}</a></div>
                   </td>
+                  @php
+                    // Need to Pull: only what's still to pull (Sarah, 2026-10-21)
+                    $dShow = function ($it) use ($activeTab, $d) { return $activeTab !== 'to_ship' || array_key_exists(strtolower(trim((string) ($it['name'] ?? ''))), $d['_left'] ?? []); };
+                    $dHidden = count(array_filter($d['items'] ?? [], fn($it) => !$dShow($it)));
+                  @endphp
                   <td>
                     @foreach(($d['items'] ?? []) as $it)
-                      @php $dMedia = \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($it['product_type'] ?? null); @endphp
+                      @continue(!$dShow($it))
+                      @php $dMedia = \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($it['product_type'] ?? null); $dCond = \App\Http\Controllers\WebsiteOrdersController::conditionOf($erpLocations[(int) ($it['erp_product_id'] ?? 0)]['genre'] ?? null, null); @endphp
                       <div class="wo-prod-line wo-prod-with-img">
                         @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
                         <div>
                           @if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif
+                          @if($dCond)<span class="wo-cond {{ $dCond }}">{{ strtoupper($dCond) }}</span>@endif
                           @if($dMedia)<span class="wo-tag media">{{ $dMedia }}</span>@endif
                           @if(!empty($it['format']))<span class="wo-tag fmt">{{ $it['format'] }}</span>@endif
                           <div class="wo-prod-price">{{ $it['quantity'] ?? 1 }}@if(!empty($it['price'])) &times; ${{ number_format((float) $it['price'], 2) }}@endif</div>
@@ -1220,9 +1234,11 @@
                         </div>
                       </div>
                     @endforeach
+                    @if($dHidden > 0)<div style="font-size:12px;color:#000;margin-top:4px;">+{{ $dHidden }} already picked</div>@endif
                   </td>
                   <td class="wo-loc @if(!empty($dPick['order_id'])) wo-pick @endif" @if(!empty($dPick['order_id'])) data-order="{{ $dPick['order_id'] }}" @endif>
                     @foreach(($d['items'] ?? []) as $it)
+                      @continue(!$dShow($it))
                       @php
                         $dPid = (int) ($it['erp_product_id'] ?? 0);
                         $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $dPid]], $dPid ? ($erpLocations[$dPid] ?? null) : null);

@@ -366,10 +366,45 @@ class WebsiteOrdersController extends Controller
         $discogsError = null;
         $discogsWaiting = null;
         $discogsWaitingError = null;
-        if ($activeTab === 'to_ship') {
+        // Discogs orders work like website orders (Sarah, 2026-10-21: Nick found
+        // them overwhelming): Need to Pull lists only what's left to pull, fully
+        // pulled ones move to Pack and ship, and both count in the steps.
+        if ($onlySource !== 'website' && !$bridgeError) {
             $d = $this->websiteApi('GET', '/erp/discogs/to-ship', null, 20);
             if (($d['success'] ?? false) === true) {
-                $discogsToShip = $onlySource === 'website' ? [] : ($d['data'] ?? []);
+                $allDiscogs = $d['data'] ?? [];
+                $dgErp = self::erpLocations(array_map(fn($x) => ['items' => array_map(fn($it) => ['product_id' => ['posProductId' => $it['erp_product_id'] ?? null]], $x['items'] ?? [])], $allDiscogs));
+                foreach ($allDiscogs as &$dg) {
+                    $st = [];
+                    foreach (($dg['pick']['lines'] ?? []) as $pl) $st[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl['status'] ?? 'Not Picked';
+                    $left = [];
+                    $spots = [];
+                    foreach (($dg['items'] ?? []) as $it) {
+                        $k = strtolower(trim((string) ($it['name'] ?? '')));
+                        $pid = (int) ($it['erp_product_id'] ?? 0);
+                        $spot = self::pullStore(self::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null)['place']);
+                        if ($spot !== '') $spots[$spot] = true;
+                        if (!in_array($st[$k] ?? 'Not Picked', ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true)) $left[$k] = $spot;
+                    }
+                    $dg['_left'] = $left;
+                    $dg['_ready'] = !empty($dg['items']) && !$left;
+                    $dg['_pack'] = isset($spots['pico']) && count($spots) === 1 ? 'pico' : ((isset($spots['warehouse']) && count($spots) === 1) ? 'warehouse' : 'hollywood');
+                    if ($dg['_ready']) {
+                        $tabCounts['ready_ship'] = ($tabCounts['ready_ship'] ?? 0) + 1;
+                        $tabCounts['ready_ship_' . $dg['_pack']] = ($tabCounts['ready_ship_' . $dg['_pack']] ?? 0) + 1;
+                    } else {
+                        foreach ($left as $k => $spot) {
+                            // Can't find lines wait on the buyer, not a pull
+                            if (($st[$k] ?? '') === "Can't Find" || $spot === '') continue;
+                            $tabCounts['to_ship_' . $spot] = ($tabCounts['to_ship_' . $spot] ?? 0) + 1;
+                        }
+                    }
+                }
+                unset($dg);
+                if (in_array($activeTab, ['to_ship', 'ready_ship'], true)) {
+                    $wantReady = $activeTab === 'ready_ship';
+                    $discogsToShip = array_values(array_filter($allDiscogs, fn($x) => $x['_ready'] === $wantReady));
+                }
                 if ($overdueOnly) {
                     $discogsToShip = array_values(array_filter($discogsToShip, function ($o) use ($overdueCutoff) {
                         return (strtotime($o['order_date'] ?? '') ?: PHP_INT_MAX) <= $overdueCutoff;
@@ -382,9 +417,11 @@ class WebsiteOrdersController extends Controller
                         return strpos(strtolower(($o['id'] ?? '') . ' ' . ($o['buyer'] ?? '')), $needle) !== false;
                     }));
                 }
-            } else {
+            } elseif (in_array($activeTab, ['to_ship', 'ready_ship'], true)) {
                 $discogsError = 'Could not load Discogs orders: ' . ($d['message'] ?? 'unknown error');
             }
+        }
+        if ($activeTab === 'to_ship') {
             // Paid Discogs orders we told the buyer we can't find, still
             // waiting on their answer (Sarah, 2026-10-14): not to ship, but
             // listed so they get a refund or substitute.
@@ -407,7 +444,8 @@ class WebsiteOrdersController extends Controller
         // Store filter applies to Discogs orders too: only orders with an
         // unpicked item at that spot (Sarah, 2026-10-21: "Pico shows 0, why is it showing things")
         if (in_array($locationFilter, ['warehouse', 'hollywood', 'pico', 'hw'], true)) {
-            $discogsToShip = array_values(array_filter($discogsToShip, function ($d) use ($locationFilter, $erpLocations) {
+            $discogsToShip = array_values(array_filter($discogsToShip, function ($d) use ($locationFilter, $erpLocations, $activeTab) {
+                if ($activeTab === 'ready_ship') return $locationFilter === 'hw' ? ($d['_pack'] ?? '') !== 'pico' : ($d['_pack'] ?? '') === $locationFilter;
                 $done = [];
                 foreach (($d['pick']['lines'] ?? []) as $pl) {
                     if (in_array($pl['status'] ?? '', ['Picked', 'Packed', 'Shipped', "Can't Find", 'Dropshipped'], true)) $done[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
@@ -922,6 +960,17 @@ class WebsiteOrdersController extends Controller
         if (self::shipStore($o) === 'pico') return 'pico';
         $spots = self::orderSpots($o);
         return ($spots && !array_diff($spots, ['warehouse'])) ? 'warehouse' : 'hollywood';
+    }
+
+    /** 'sealed' / 'used' from the ERP category ("Vinyl - Sealed", "CD - Used"), else the website sub-category; null when unknown. */
+    public static function conditionOf(?string $erpGenre, ?string $subCategory): ?string
+    {
+        foreach ([(string) $erpGenre, (string) $subCategory] as $h) {
+            $cat = strtolower(explode(' / ', $h)[0]);
+            if (strpos($cat, 'sealed') !== false || preg_match('/\bnew\b/', $cat)) return 'sealed';
+            if (strpos($cat, 'used') !== false) return 'used';
+        }
+        return null;
     }
 
     /** Spots (warehouse / hollywood / pico) that have a live item of this order; $cfOnly = just the Can't Find lines. */
