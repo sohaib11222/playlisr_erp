@@ -790,10 +790,19 @@ class WebsiteOrdersController extends Controller
         try {
             $oldPid = (int) ($resp['oldPosProductId'] ?? 0);
             $qty = (float) ($resp['quantity'] ?? 1);
-            $tx = \DB::table('transactions')->where('type', 'sell')->where(function ($w) use ($id) {
-                $w->where('additional_notes', 'Website order ' . $id)->orWhere('additional_notes', 'like', 'Website order ' . $id . '%');
-            })->orderByDesc('id')->first();
-            $line = ($tx && $oldPid) ? \DB::table('transaction_sell_lines')->where('transaction_id', $tx->id)->where('product_id', $oldPid)->first() : null;
+            // A web order can be one ERP sale or one sale per item (Apurva
+            // #100221), so find the sale that holds the old record.
+            $line = $oldPid ? \DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->where('t.type', 'sell')
+                ->where(function ($w) use ($id) {
+                    $w->where('t.additional_notes', 'Website order ' . $id)->orWhere('t.additional_notes', 'like', 'Website order ' . $id . '%');
+                })
+                ->where('tsl.product_id', $oldPid)
+                ->orderByDesc('t.id')
+                ->select('tsl.*')
+                ->first() : null;
+            $tx = $line ? \DB::table('transactions')->where('id', $line->transaction_id)->first() : null;
             $var = \DB::table('variations')->where('product_id', $newPid)->whereNull('deleted_at')->orderBy('id')->first();
             if ($line && $var) {
                 \DB::transaction(function () use ($line, $var, $newPid, $tx, $qty) {
