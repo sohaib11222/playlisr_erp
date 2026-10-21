@@ -339,7 +339,7 @@
         ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         ['tab' => 'to_ship', 'title' => 'Pull shipping orders', 'why' => 'Find each item, tap Mark picked or Can\'t find. Discogs orders are here too.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Hollywood checks its store and warehouse before anyone refunds.'],
-        ['tab' => 'cant_find', 'title' => 'Managers: refund or substitute', 'why' => 'Nobody could find these. A manager decides: refund the item or send a substitute.'],,
+        ['tab' => 'cant_find', 'title' => 'Managers: refund or substitute', 'why' => 'Nobody could find these. A manager decides: refund the item or send a substitute.'],
       ];
       $woStepCount = function ($st) use ($tabCounts) {
         if (in_array($st['tab'], ['ready_ship', 'recheck_hw'], true)) return (int) ($tabCounts[$st['tab']] ?? 0);
