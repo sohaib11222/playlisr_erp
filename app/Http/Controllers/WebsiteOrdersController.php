@@ -311,6 +311,14 @@ class WebsiteOrdersController extends Controller
                 $tabCounts['week_open']++;
             }
         }
+        // Almost done: shipping orders with only 1 item left to pull (Sarah, 2026-10-21: "something positive")
+        $tabCounts['almost_done'] = 0;
+        foreach ($allOrders as $ao) {
+            if ($paymentStatusFilter !== 'all' && ($ao['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+            if (!self::matchesTab($ao, 'to_ship')) continue;
+            $pp = $ao['pick_progress'] ?? null;
+            if ($pp && (int) ($pp['picked'] ?? 0) > 0 && (int) ($pp['total'] ?? 0) - (int) ($pp['picked'] ?? 0) === 1) $tabCounts['almost_done']++;
+        }
         // Pulled vs left per spot, for the progress bars (Sarah, 2026-10-21)
         foreach ($allOrders as $po) {
             if ($paymentStatusFilter !== 'all' && ($po['payment_status'] ?? '') !== $paymentStatusFilter) continue;
@@ -420,6 +428,7 @@ class WebsiteOrdersController extends Controller
                     $dg['_left'] = $left;
                     $dg['_ready'] = !empty($dg['items']) && !$left;
                     $dg['_pack'] = isset($spots['pico']) && count($spots) === 1 ? 'pico' : ((isset($spots['warehouse']) && count($spots) === 1) ? 'warehouse' : 'hollywood');
+                    if (!$dg['_ready'] && count($left) === 1 && count($dg['items'] ?? []) > 1) $tabCounts['almost_done'] = ($tabCounts['almost_done'] ?? 0) + 1;
                     if ($dg['_ready']) {
                         $tabCounts['ready_ship'] = ($tabCounts['ready_ship'] ?? 0) + 1;
                         $tabCounts['ready_ship_' . $dg['_pack']] = ($tabCounts['ready_ship_' . $dg['_pack']] ?? 0) + 1;
