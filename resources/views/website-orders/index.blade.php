@@ -426,6 +426,12 @@
       </div>
     </form>
 
+    {{-- Safety net: paid orders no tab shows (Sarah, 2026-10-21) --}}
+    @if($activeTab === 'unsorted')
+      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">Not on any tab: these paid orders didn't fit any tab. Open each one and set its status (or tell Sarah).</div>
+    @elseif(($tabCounts['unsorted'] ?? 0) > 0)
+      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">{{ $tabCounts['unsorted'] }} paid {{ $tabCounts['unsorted'] === 1 ? 'order isn\'t' : 'orders aren\'t' }} on any tab. <a href="{{ route('website-orders.index', ['tab' => 'unsorted']) }}">Show {{ $tabCounts['unsorted'] === 1 ? 'it' : 'them' }}</a></div>
+    @endif
     {{-- Orders never disappear: say where else the search matches (Sarah, 2026-10-21) --}}
     @if(!empty($searchElsewhere))
       <div class="wo-banner warn" style="font-size:15px;font-weight:700;">"{{ request('q') }}" also matches orders on:

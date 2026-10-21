@@ -77,7 +77,7 @@ class WebsiteOrdersController extends Controller
         }
 
         $activeTab = $request->query('tab', 'to_ship');
-        if (!array_key_exists($activeTab, self::TABS) && $activeTab !== 'archived') {
+        if (!array_key_exists($activeTab, self::TABS) && !in_array($activeTab, ['archived', 'unsorted'], true)) {
             $activeTab = 'needs_action';
         }
         $statusFilter = (string) $request->query('status', '');
@@ -102,7 +102,7 @@ class WebsiteOrdersController extends Controller
         // client-side after) so the 300-order window is filled with orders
         // that actually match, instead of getting crowded out by pending/
         // failed-payment orders and pushing real matches out of the window.
-        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=' . urlencode($paymentStatusFilter));
+        $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&includeArchived=1&payment_status=' . urlencode($paymentStatusFilter));
         $bridgeError = $resp === null || ($resp['success'] ?? true) === false;
         $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
         self::$erpCache = self::erpLocations($allOrders);
@@ -255,14 +255,27 @@ class WebsiteOrdersController extends Controller
         $tabCounts['needs_action_pico'] = count($needBy['pico']);
         $tabCounts['needs_action_warehouse'] = count($needBy['warehouse']);
         $tabCounts['needs_action_hollywood'] = count($needBy['hollywood']);
-        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
+        // Safety net (Sarah, 2026-10-21: "orders cannot disappear"): paid orders
+        // that no tab shows land on Not on Any Tab, flagged at the top.
+        $noTabIds = [];
+        foreach ($allOrders as $nt) {
+            if ($paymentStatusFilter !== 'all' && ($nt['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+            $onTab = false;
+            foreach (array_merge(array_keys(self::TABS), ['archived']) as $t) {
+                if (self::matchesTab($nt, $t) && self::showsOnNeedToPull($nt, $t)) { $onTab = true; break; }
+            }
+            if (!$onTab) $noTabIds[$nt['_id'] ?? ''] = true;
+        }
+        $tabCounts['unsorted'] = count($noTabIds);
+        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             // An order link always shows that order, whatever tab or filter (Sarah, 2026-10-21)
             if ($linkOrder !== '') return ($o['_id'] ?? '') === $linkOrder;
+            if ($activeTab === 'unsorted' && !isset($noTabIds[$o['_id'] ?? ''])) return false;
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
             if ($cancelledSince && (strtotime($o['cancelled_at'] ?? '') ?: 0) < $cancelledSince) return false;
-            if (!self::matchesTab($o, $activeTab)) return false;
+            if ($activeTab !== 'unsorted' && !self::matchesTab($o, $activeTab)) return false;
             if (!self::showsOnNeedToPull($o, $activeTab)) return false;
             if ($paymentStatusFilter !== 'all' && ($o['payment_status'] ?? '') !== $paymentStatusFilter) return false;
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
