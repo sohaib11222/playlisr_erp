@@ -57,6 +57,22 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'COND') {
+              echo 'CATS: ' . json_encode(\DB::table('categories')->whereNull('deleted_at')->where('parent_id', 0)->pluck('name')) . "\n";
+              $resp = (new \ReflectionMethod(\App\Http\Controllers\WebsiteOrdersController::class, 'websiteApi'));
+              $resp->setAccessible(true);
+              $r = $resp->invoke(app(\App\Http\Controllers\WebsiteOrdersController::class), 'GET', '/erp/orders/console?limit=300&payment_status=completed');
+              $orders = $r['data'] ?? [];
+              $erp = \App\Http\Controllers\WebsiteOrdersController::erpLocations($orders);
+              $n = 0;
+              foreach ($orders as $o) foreach (($o['items'] ?? []) as $it) {
+                if (empty($it['product_id'])) continue;
+                if ($n++ > 60) break 2;
+                $pid = (int) ($it['product_id']['posProductId'] ?? 0);
+                echo 'IT ' . json_encode([$it['product_id']['name'] ?? '', $erp[$pid]['genre'] ?? null, $it['product_id']['subCategory'] ?? null, $it['product_id']['format'] ?? null, $it['product_id']['productType'] ?? null]) . "\n";
+              }
+              return;
+            }
             if ($q === 'CF') {
               $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'cant_find']);
               app()->instance('request', $req);
