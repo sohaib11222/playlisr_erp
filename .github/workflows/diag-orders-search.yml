@@ -57,6 +57,20 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'PILLS') {
+              foreach ([['pickup', 'warehouse'], ['ready_ship', 'pico'], ['to_ship', 'warehouse'], ['to_ship', 'hollywood'], ['to_ship', 'pico'], ['recheck_hw', null], ['cant_find', null]] as [$tab, $loc]) {
+                $t0 = microtime(true);
+                try {
+                  $req = \Illuminate\Http\Request::create('/website-orders', 'GET', array_filter(['tab' => $tab, 'location' => $loc]));
+                  app()->instance('request', $req);
+                  $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
+                  echo "PILL {$tab}/{$loc}: ok len=" . strlen($html) . ' secs=' . round(microtime(true) - $t0, 1) . ' mem=' . round(memory_get_peak_usage() / 1e6) . "MB\n";
+                } catch (\Throwable $e) {
+                  echo "PILL {$tab}/{$loc}: ERR " . get_class($e) . ' ' . substr($e->getMessage(), 0, 300) . ' @' . basename($e->getFile()) . ':' . $e->getLine() . "\n";
+                }
+              }
+              return;
+            }
             if ($q === 'UNSORTED') {
               $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'unsorted']);
               app()->instance('request', $req);
