@@ -469,7 +469,8 @@ class WebsiteOrdersController extends Controller
                 $discogsToShip = $oldDiscogs;
             }
         }
-        if ($activeTab === 'to_ship') {
+        // Waiting on the buyer lives with the manager decision, not on Nick's list (Sarah, 2026-10-21)
+        if ($onlySource !== 'website' && !$bridgeError) {
             // Paid Discogs orders we told the buyer we can't find, still
             // waiting on their answer (Sarah, 2026-10-14): not to ship, but
             // listed so they get a refund or substitute.
@@ -477,8 +478,10 @@ class WebsiteOrdersController extends Controller
             if (($w['success'] ?? false) === true) {
                 $discogsWaiting = $w['data'] ?? [];
                 usort($discogsWaiting, fn($a, $b) => ($b['days_waiting'] ?? 0) <=> ($a['days_waiting'] ?? 0));
+                $tabCounts['discogs_old'] = ($tabCounts['discogs_old'] ?? 0) + count($discogsWaiting);
+                if ($activeTab !== 'discogs_old') $discogsWaiting = null;
             } else {
-                $discogsWaitingError = 'Could not load Discogs orders waiting on the buyer: ' . ($w['message'] ?? 'unknown error');
+                if ($activeTab === 'discogs_old') $discogsWaitingError = 'Could not load Discogs orders waiting on the buyer: ' . ($w['message'] ?? 'unknown error');
             }
         }
 
