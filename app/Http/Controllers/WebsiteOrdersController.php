@@ -1512,6 +1512,15 @@ class WebsiteOrdersController extends Controller
                 return (float) ($discogs ? ($o['total'] ?? 0) : ($o['total_amount'] ?? 0));
             case 'placed':
                 return strtotime($discogs ? ($o['order_date'] ?? '') : ($o['createdAt'] ?? '')) ?: 0;
+            case 'due':
+                return strtotime($discogs ? ($o['order_date'] ?? '') : ($o['createdAt'] ?? '')) ?: 0;
+            case 'location':
+                // First item's pull spot: place, room, bin (Sarah, 2026-10-21: every column sorts)
+                $first = $items[0] ?? [];
+                if ($discogs) return strtolower(trim(($first['zone'] ?? '') . ' ' . ($first['location'] ?? '')));
+                $pid = (int) ($first['product_id']['posProductId'] ?? 0);
+                $pp = self::pullParts($first, self::$sortGenres[$pid] ?? null);
+                return strtolower(trim($pp['place'] . ' ' . $pp['area'] . ' ' . $pp['bin']));
             case 'items':
                 // Fewest items first, newest first among equals (Sarah, 2026-10-21)
                 $n = 0;

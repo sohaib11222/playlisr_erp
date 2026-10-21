@@ -643,10 +643,10 @@
           </colgroup>
           <thead><tr>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
-            <th>Due</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Due', 'key' => 'due'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
-            <th>Location</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Location', 'key' => 'location'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>Actions</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
@@ -1161,7 +1161,7 @@
                       <h5>What they ordered</h5>
                       <table class="wo-detail-items">
                         <thead><tr>
-                          <th></th><th>Name</th><th>Artist</th><th>Format</th><th>Genre</th><th>Store</th><th>Discogs code</th><th>Location</th><th>Qty</th><th>Price</th>
+                          <th></th><th>Name</th><th>Artist</th><th>Format</th><th>Genre</th><th>Store</th><th>Discogs code</th><th>@include('website-orders.partials.sort-th', ['label' => 'Location', 'key' => 'location'])</th><th>Qty</th><th>Price</th>
                         </tr></thead>
                         <tbody>
                           @foreach(($o['items'] ?? []) as $item)
@@ -1303,13 +1303,13 @@
             </colgroup>
             <thead><tr>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
-              <th>Due</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Due', 'key' => 'due'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
-              <th>Location</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Location', 'key' => 'location'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
               <th>Actions</th>
-              <th>Fulfillment</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             </tr></thead>
