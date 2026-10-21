@@ -313,13 +313,14 @@ class GenreFixController extends Controller
         $this->guard();
         $biz = (int) $request->session()->get('user.business_id');
         $type = (string) $request->input('type');
-        if (!isset(self::TYPES[$type])) return $this->back('Unknown fix type.', false);
+        if ($type !== 'all' && !isset(self::TYPES[$type])) return $this->back('Unknown fix type.', false);
         $skip = array_flip(array_map('intval', (array) $request->input('skip', [])));
         $changes = [];
-        foreach ($this->compute($biz)['fixes'][$type] ?? [] as $f) {
-            if (!isset($skip[$f['id']])) $changes[$f['id']] = $f['new'];
+        foreach ($this->compute($biz)['fixes'] as $t => $rows) {
+            if ($type !== 'all' && $t !== $type) continue;
+            foreach ($rows as $f) if (!isset($skip[$f['id']])) $changes[$f['id']] = $f['new'];
         }
-        $n = $this->write($biz, $changes, self::TYPES[$type]);
+        $n = $this->write($biz, $changes, $type === 'all' ? 'Fix all' : self::TYPES[$type]);
         return $n === null ? $this->back('Something went wrong, nothing changed.', false) : $this->back("Fixed {$n} genres. Undo any time in Admin Action History.");
     }
 

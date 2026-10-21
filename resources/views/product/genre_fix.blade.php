@@ -2,99 +2,86 @@
 @section('title', 'Genre Fix')
 @section('content')
 @php
-  $th = 'padding:8px;border-bottom:2px solid #e5e7eb;text-align:left;';
-  $td = 'padding:7px 8px;border-bottom:1px solid #e5e7eb;';
-  $btn = 'padding:8px 14px;border-radius:6px;border:0;background:#1e40af;color:#fff;font-weight:700;cursor:pointer;';
-  $btn2 = 'padding:6px 12px;border-radius:6px;border:1px solid #93c5fd;background:#dbeafe;color:#1e40af;font-weight:700;cursor:pointer;';
+  $all = collect($fixes)->flatten(1)->sortByDesc('stock')->values();
+  $box = 'background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:18px;';
+  $big = 'padding:12px 22px;border-radius:8px;border:0;background:#1e40af;color:#fff;font-weight:700;font-size:16px;cursor:pointer;';
+  $pill = 'padding:10px 16px;border-radius:8px;border:1px solid #93c5fd;background:#dbeafe;color:#1e40af;font-weight:700;font-size:15px;cursor:pointer;';
+  $td = 'padding:6px 8px;border-bottom:1px solid #e5e7eb;';
+  $cards = array_slice($look, 0, 300);
 @endphp
-<section class="content" style="padding:20px;max-width:1300px;color:#000;">
-  <h1 style="font-size:22px;margin:0 0 6px;">Genre Fix</h1>
-  <p style="margin:0 0 14px;">Finds wrong or missing genres across the whole catalog and proposes the fix, so nobody has to fix genres during counts. Untick anything that looks wrong, then Apply. Every apply can be undone in <a href="{{ url('/admin/admin-action-history') }}">Admin Action History</a>.</p>
-  @if(session('status'))<div style="padding:10px 14px;background:{{ session('status')['success'] ? '#dcfce7' : '#fee2e2' }};border-radius:6px;margin-bottom:12px;">{{ session('status')['msg'] }}</div>@endif
+<section class="content" style="padding:20px;max-width:900px;color:#000;">
+  <h1 style="font-size:24px;margin:0 0 14px;">Genre Fix</h1>
+  @if(session('status'))<div style="padding:10px 14px;background:{{ session('status')['success'] ? '#dcfce7' : '#fee2e2' }};border-radius:6px;margin-bottom:14px;font-size:15px;">{{ session('status')['msg'] }}</div>@endif
 
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
-    @foreach($types as $key => $label)
-      <a href="#{{ $key }}" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">{{ number_format(count($fixes[$key] ?? [])) }} {{ $label }}</a>
-    @endforeach
-    <a href="#look" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">{{ number_format(count($look)) }} artists need a look</a>
-    <a href="#artist" style="padding:10px 14px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700;text-decoration:none;">Fix one artist</a>
+  <div style="{{ $box }}">
+    <h2 style="font-size:19px;margin:0 0 6px;">Step 1: Fix the obvious ones</h2>
+    @if($all->isEmpty())
+      <p style="margin:0;font-size:15px;">All done. No obvious wrong genres left.</p>
+    @else
+      <p style="margin:0 0 14px;font-size:15px;">{{ number_format($all->count()) }} records have a genre that doesn't match the artist's other records (like Sade under Metal). One click fixes them all. You can undo it.</p>
+      <form method="POST" action="{{ url('/products/genre-fix/apply') }}" onsubmit="this.querySelector('button').disabled=true; return true;">
+        @csrf <input type="hidden" name="type" value="all">
+        <button type="submit" style="{{ $big }}">Fix all {{ number_format($all->count()) }}</button>
+      </form>
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer;font-size:15px;color:#1e40af;">See what will change</summary>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;">
+          @foreach($all->take(300) as $r)
+            <tr>
+              <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
+              <td style="{{ $td }}">{{ $r['old_name'] !== '' ? $r['old_name'] : 'No genre' }} to <strong>{{ $r['new_name'] }}</strong></td>
+            </tr>
+          @endforeach
+        </table>
+        @if($all->count() > 300)<p style="margin:6px 0 0;">First 300 shown.</p>@endif
+      </details>
+    @endif
   </div>
 
-  @foreach($types as $key => $label)
-    @php $rows = $fixes[$key] ?? []; @endphp
-    <h2 id="{{ $key }}" style="font-size:18px;margin:24px 0 8px;">{{ $label }} ({{ number_format(count($rows)) }})</h2>
-    @if(empty($rows))
-      <p style="margin:0;">Nothing to fix.</p>
+  <div style="{{ $box }}">
+    <h2 style="font-size:19px;margin:0 0 6px;">Step 2: Pick the genre for these artists</h2>
+    @if(empty($cards))
+      <p style="margin:0;font-size:15px;">All done.</p>
     @else
-      <form method="POST" action="{{ url('/products/genre-fix/apply') }}" onsubmit="this.querySelector('button').disabled=true; this.querySelectorAll('input.gf-keep').forEach(function(c){ if(!c.checked){ var h=document.createElement('input'); h.type='hidden'; h.name='skip[]'; h.value=c.value; c.form.appendChild(h);} }); return true;">
-        @csrf <input type="hidden" name="type" value="{{ $key }}">
-        <button type="submit" style="{{ $btn }}margin-bottom:8px;">Apply all {{ number_format(count($rows)) }} ticked</button>
-        @if(count($rows) > 400)<span style="margin-left:8px;">Showing the first 400 (most stock first). Apply covers all {{ number_format(count($rows)) }}; untick any shown here to leave them.</span>@endif
-        <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
-          <thead><tr><th style="{{ $th }}width:30px;"></th><th style="{{ $th }}">Product</th><th style="{{ $th }}">Artist</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Now</th><th style="{{ $th }}">Change to</th><th style="{{ $th }}">Why</th><th style="{{ $th }}">Stock</th></tr></thead>
-          <tbody>
-            @foreach(collect($rows)->sortByDesc('stock')->take(400) as $r)
-              <tr>
-                <td style="{{ $td }}"><input type="checkbox" class="gf-keep" value="{{ $r['id'] }}" checked></td>
-                <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
-                <td style="{{ $td }}">{{ $r['artist'] }}</td>
-                <td style="{{ $td }}">{{ $r['format'] }}</td>
-                <td style="{{ $td }}color:#b91c1c;">{{ $r['old_name'] !== '' ? $r['old_name'] : 'none' }}</td>
-                <td style="{{ $td }}font-weight:700;">{{ $r['new_name'] }}</td>
-                <td style="{{ $td }}">{{ $r['why'] }}</td>
-                <td style="{{ $td }}">{{ $r['stock'] + 0 }}</td>
-              </tr>
+      <p style="margin:0 0 14px;font-size:15px;">These artists are split between genres. Tap the right one and all their records move there.</p>
+      @foreach($cards as $i => $g)
+        <div class="gf-card" data-key="{{ $g['artist'] }}|{{ $g['cat'] }}" style="display:none;">
+          <div style="font-size:22px;font-weight:700;">{{ ucwords($g['artist']) }}</div>
+          <div style="font-size:15px;margin:2px 0 14px;">{{ $g['format'] }}, {{ $g['n'] }} records. <a href="{{ url('/products/genre-fix?artist=' . urlencode($g['artist'])) }}#artist">See them</a></div>
+          <form method="POST" action="{{ url('/products/genre-fix/set-artist') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            @csrf <input type="hidden" name="artist" value="{{ $g['artist'] }}"> <input type="hidden" name="cat" value="{{ $g['cat'] }}">
+            @foreach($g['split'] as $s)
+              @if($s['id'])<button type="submit" name="sub" value="{{ $s['id'] }}" style="{{ $pill }}">{{ $s['name'] }} ({{ $s['n'] }})</button>@endif
             @endforeach
-          </tbody>
-        </table>
-      </form>
-    @endif
-  @endforeach
-
-  <h2 id="look" style="font-size:18px;margin:28px 0 4px;">Artists that need a look ({{ number_format(count($look)) }})</h2>
-  <p style="margin:0 0 8px;">These artists have records under more than one genre in the same format and no clear winner. Pick the right genre and Set; it applies to all of that artist's records in that format. Or open the artist to set records one by one.</p>
-  <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
-    <thead><tr><th style="{{ $th }}">Artist</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Now</th><th style="{{ $th }}">Set all to</th></tr></thead>
-    <tbody>
-      @foreach(array_slice($look, 0, 300) as $g)
-        <tr>
-          <td style="{{ $td }}"><a href="{{ url('/products/genre-fix?artist=' . urlencode($g['artist'])) }}#artist">{{ ucwords($g['artist']) }}</a></td>
-          <td style="{{ $td }}">{{ $g['format'] }}</td>
-          <td style="{{ $td }}">{{ collect($g['split'])->map(fn($s) => $s['name'] . ' ' . $s['n'])->implode(', ') }}</td>
-          <td style="{{ $td }}">
-            <form method="POST" action="{{ url('/products/genre-fix/set-artist') }}" style="display:flex;gap:6px;" onsubmit="if (this.sub.value === '') return false; this.querySelector('button').disabled = true; return true;">
-              @csrf <input type="hidden" name="artist" value="{{ $g['artist'] }}"> <input type="hidden" name="cat" value="{{ $g['cat'] }}">
-              <select name="sub" style="padding:5px;border:1px solid #d1d5db;border-radius:6px;">
-                <option value="">Pick genre</option>
-                @foreach($genres[$g['cat']] ?? [] as $id => $name)<option value="{{ $id }}">{{ $name }}</option>@endforeach
-              </select>
-              <button type="submit" style="{{ $btn2 }}">Set</button>
-            </form>
-          </td>
-        </tr>
+            <select name="sub" disabled onchange="if (this.value) this.form.submit();" style="padding:9px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;" class="gf-other">
+              <option value="">Something else</option>
+              @foreach($genres[$g['cat']] ?? [] as $id => $name)<option value="{{ $id }}">{{ $name }}</option>@endforeach
+            </select>
+            <button type="button" class="gf-skip" style="padding:10px 16px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#000;font-size:15px;cursor:pointer;">Skip</button>
+          </form>
+          <div style="margin-top:12px;font-size:14px;"><span class="gf-left"></span> artists left</div>
+        </div>
       @endforeach
-    </tbody>
-  </table>
-  @if(count($look) > 300)<p style="margin:6px 0 0;">Showing the 300 artists with the most records. The rest shrink as these get set.</p>@endif
+      <p id="gf-cards-done" style="display:none;margin:0;font-size:15px;">You've gone through all of them for now.</p>
+    @endif
+  </div>
 
-  <h2 id="artist" style="font-size:18px;margin:28px 0 8px;">Fix one artist</h2>
-  <form method="GET" action="{{ url('/products/genre-fix') }}" style="display:flex;gap:8px;margin-bottom:10px;">
-    <input type="text" name="artist" value="{{ $artist }}" placeholder="Artist name, e.g. Sade" style="padding:8px;border:1px solid #d1d5db;border-radius:6px;width:320px;">
-    <button type="submit" style="{{ $btn }}">Show records</button>
-  </form>
-  @if($artist !== '')
-    @if(empty($records))
-      <p style="margin:0;">No active music records found for "{{ $artist }}".</p>
-    @else
-      <form method="POST" action="{{ url('/products/genre-fix/save') }}" onsubmit="this.querySelectorAll('select[data-orig]').forEach(function(s){ if (s.value === s.dataset.orig) s.disabled = true; }); return true;">
-        @csrf <input type="hidden" name="artist" value="{{ $artist }}">
-        <table style="width:100%;border-collapse:collapse;background:#fff;font-size:14px;">
-          <thead><tr><th style="{{ $th }}">Product</th><th style="{{ $th }}">Format</th><th style="{{ $th }}">Genre</th></tr></thead>
-          <tbody>
+  <div id="artist" style="{{ $box }}">
+    <h2 style="font-size:19px;margin:0 0 8px;">Fix one artist</h2>
+    <form method="GET" action="{{ url('/products/genre-fix') }}#artist" style="display:flex;gap:8px;margin-bottom:10px;">
+      <input type="text" name="artist" value="{{ $artist }}" placeholder="Artist name" style="padding:10px;border:1px solid #d1d5db;border-radius:8px;width:280px;font-size:15px;">
+      <button type="submit" style="{{ $pill }}">Show records</button>
+    </form>
+    @if($artist !== '')
+      @if(empty($records))
+        <p style="margin:0;">No records found for "{{ $artist }}".</p>
+      @else
+        <form method="POST" action="{{ url('/products/genre-fix/save') }}" onsubmit="this.querySelectorAll('select[data-orig]').forEach(function(s){ if (s.value === s.dataset.orig) s.disabled = true; }); return true;">
+          @csrf <input type="hidden" name="artist" value="{{ $artist }}">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;">
             @foreach($records as $r)
               <tr>
-                <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
-                <td style="{{ $td }}">{{ $formats[$r['cat']] ?? '' }}</td>
+                <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a> <span style="font-size:13px;">({{ $formats[$r['cat']] ?? '' }})</span></td>
                 <td style="{{ $td }}">
                   <select name="genre[{{ $r['id'] }}]" data-orig="{{ $r['sub'] ?: '' }}" style="padding:5px;border:1px solid {{ $r['sub'] ? '#d1d5db' : '#b91c1c' }};border-radius:6px;">
                     <option value="">{{ $r['sub'] ? '' : 'No genre' }}</option>
@@ -103,11 +90,38 @@
                 </td>
               </tr>
             @endforeach
-          </tbody>
-        </table>
-        <button type="submit" style="{{ $btn }}margin-top:10px;">Save genres</button>
-      </form>
+          </table>
+          <button type="submit" style="{{ $big }}margin-top:12px;">Save</button>
+        </form>
+      @endif
     @endif
-  @endif
+  </div>
 </section>
+<script>
+(function () {
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.gf-card'));
+  if (!cards.length) return;
+  var skipped = {};
+  try { skipped = JSON.parse(localStorage.getItem('gf-skipped') || '{}'); } catch (e) {}
+  function show() {
+    var left = cards.filter(function (c) { return !skipped[c.dataset.key]; });
+    cards.forEach(function (c) { c.style.display = 'none'; });
+    if (!left.length) { document.getElementById('gf-cards-done').style.display = 'block'; return; }
+    left[0].style.display = 'block';
+    left[0].querySelector('.gf-left').textContent = left.length;
+  }
+  cards.forEach(function (c) {
+    // "Something else" only sends when picked, so it doesn't override a tapped button.
+    var other = c.querySelector('.gf-other');
+    other.disabled = false;
+    c.querySelectorAll('button[name=sub]').forEach(function (b) { b.addEventListener('click', function () { other.disabled = true; }); });
+    c.querySelector('.gf-skip').addEventListener('click', function () {
+      skipped[c.dataset.key] = 1;
+      try { localStorage.setItem('gf-skipped', JSON.stringify(skipped)); } catch (e) {}
+      show();
+    });
+  });
+  show();
+})();
+</script>
 @endsection
