@@ -40,10 +40,33 @@ jobs:
             cat > /tmp/nivessa-diag/c.php <<'PHP'
             <?php
             require 'vendor/autoload.php'; $app = require 'bootstrap/app.php'; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            foreach (['RawImapClient','PdfTextExtractor','DistributorInvoiceParser','DistributorInvoiceImport','DistributorInvoiceIntake'] as $c) require "/tmp/nivessa-diag/intake-test/$c.php";
-            $r = (new App\Services\DistributorInvoiceIntake())->run(5, 'alliance', true);
-            foreach ($r as $e) echo "[" . ($e['status'] ?? '') . "] " . ($e['invoice'] ?? '') . " | " . App\Services\DistributorInvoiceIntake::redact($e['msg'] ?? '') . "\n";
-            echo "log entry 1 after redact-on-read: " . substr(App\Services\DistributorInvoiceIntake::log()[1]['msg'] ?? '', 0, 120) . "\n";
+            $intake = new App\Services\DistributorInvoiceIntake();
+            $f = Closure::bind(function () {
+              $login = $this->amsLogins()[0]; $jar = tempnam('/tmp', 'amsd'); $base = 'https://www.allmediasupply.com';
+              $this->curl($jar, 'GET', $base . '/Account/LogOn');
+              $this->curl($jar, 'POST', $base . '/Account/LogOn', http_build_query(['AccountNumber' => $login['account'], 'UserName' => $login['user'], 'Password' => $login['pass'], 'RememberMe' => 'false', 'ReturnUrl' => '']), ['Content-Type: application/x-www-form-urlencoded']);
+              list(, $json) = $this->curl($jar, 'POST', $base . '/Account/Invoices_Read', 'sort=InvoiceDate-desc&page=1&pageSize=80&group=&filter=', ['Content-Type: application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With: XMLHttpRequest']);
+              foreach ((json_decode($json, true)['Data'] ?? []) as $row) {
+                $inv = str_pad((string) $row['InvoiceNumber'], 7, '0', STR_PAD_LEFT);
+                if (!in_array($inv, ['0606975','0610688','0618818','0620086'])) continue;
+                list(, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) $row['DocumentId']);
+                $p = App\Services\DistributorInvoiceParser::parse('ams', $pdf);
+                foreach ($p['items'] as $it) {
+                  if (App\Services\DistributorInvoiceImport::guessCategory($it['prodType'], $it['description'])) continue;
+                  $m = DB::table('variations as v')->join('products as p','p.id','=','v.product_id')->whereIn('v.sub_sku', App\Services\DistributorInvoiceImport::upcCandidates($it['upc']))->get(['p.id','p.name','p.category_id','p.is_inactive']);
+                  $pl = $m->count() ? DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->whereIn('pl.product_id',$m->pluck('id'))->get(['t.id','t.status','t.ref_no','pl.quantity']) : [];
+                  echo "$inv {$it['upc']} [{$it['prodType']}] {$it['description']} qty {$it['qty']} @ {$it['unitPrice']} | catalog " . json_encode($m) . " | purchases " . json_encode($pl) . "\n";
+                }
+              }
+              @unlink($jar);
+            }, $intake, App\Services\DistributorInvoiceIntake::class);
+            $f();
+            echo "== GVF CD 0881061183679 HW purchases\n";
+            foreach (DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->join('variations as v','v.id','=','pl.variation_id')->whereIn('v.sub_sku',['0881061183679','881061183679'])->get(['t.id','t.status','t.location_id','t.ref_no','pl.quantity']) as $x) echo json_encode($x) . "\n";
+            echo "GVF CD stock: " . json_encode(DB::table('variation_location_details as d')->join('variations as v','v.id','=','d.variation_id')->whereIn('v.sub_sku',['0881061183679','881061183679'])->pluck('d.qty_available','d.location_id')) . "\n";
+            echo "== 180302/180115\n" . json_encode(DB::table('transactions')->whereIn('id',[180302,180115])->get(['id','status','payment_status','total_before_tax','final_total'])) . "\n";
+            echo "payments 180115: " . json_encode(DB::table('transaction_payments')->where('transaction_id',180115)->get(['id','amount','method','paid_on'])) . "\n";
+            echo "payments 178807/178797: " . json_encode(DB::table('transaction_payments')->whereIn('transaction_id',[178807,178797])->get(['transaction_id','amount'])) . "\n";
             PHP
             php /tmp/nivessa-diag/c.php 2>&1 | grep -v Deprecated
             rm -rf /tmp/nivessa-diag
