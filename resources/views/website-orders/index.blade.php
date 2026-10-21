@@ -329,6 +329,18 @@
   .wo-prog span.p { background:#1e3a8a; }
   .wo-prog span.c { background:#9ca3af; }
   .wo-prog-sub .cf, .wo-prog-wrap.full .wo-prog-lbl, .wo-prog-wrap.part .wo-prog-lbl { color:#000 !important; }
+  /* No pills (Sarah, 2026-10-21: "i hate pills"): plain text links */
+  .wo-split, .wo-more, .wo-step .wo-split { height:auto !important; padding:2px 0 !important; border:none !important; border-radius:0 !important; background:none !important; color:#000 !important; font-size:15px !important; font-weight:700 !important; text-decoration:none; }
+  .wo-split:hover, .wo-more:hover { text-decoration:underline; }
+  .wo-split.on, .wo-more.on { color:#1e40af !important; text-decoration:underline; text-underline-offset:4px; }
+  .wo-card-pills { gap:18px !important; }
+  .wo-steps-more .wo-more-group { gap:16px; }
+  .wo-steps .wo-split b:not(.x) { min-width:24px !important; height:24px !important; font-size:14px !important; }
+  /* Narrow screens: scroll the table sideways instead of squeezing columns */
+  .wo-scroll { overflow-x:auto; }
+  .wo-tbl { min-width:1380px; }
+  .wo-cond { white-space:nowrap; }
+  .wo-step .wo-step-main { max-width:none; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -505,15 +517,18 @@
     @if(!$woLookup && in_array($activeTab, ['to_ship', 'pickup', 'ready_ship'], true))
       {{-- Pick order (Sarah, 2026-10-21): newest, 1-item orders, or biggest $ first --}}
       @php
-        $woSorts = ['' => 'Due first', 'placed:desc' => 'Newest first', 'items:asc' => '1-item orders first', 'total:desc' => 'Highest $ first', 'placed:asc' => 'Oldest first'];
+        $woSorts = ['' => 'Due date (most overdue first)', 'placed:desc' => 'Newest orders', 'items:asc' => 'Fewest items', 'total:desc' => 'Highest $'];
         $woSortNow = $sortKey === '' ? '' : $sortKey . ':' . $sortDir;
       @endphp
+      {{-- One plain Sort by dropdown (Sarah, 2026-10-21: the buttons were confusing) --}}
       <div class="wo-sortbar">
-        <span class="wo-more-label">Pull in this order:</span>
-        @foreach($woSorts as $sv => $sl)
-          @php [$sk, $sd] = $sv === '' ? [null, null] : explode(':', $sv); @endphp
-          <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $activeTab, 'sort' => $sk, 'dir' => $sd])) }}" class="wo-more {{ $woSortNow === $sv ? 'on' : '' }}">{{ $sl }}</a>
-        @endforeach
+        <label for="wo-sort" class="wo-more-label">Sort by</label>
+        <select id="wo-sort" onchange="location.href=this.value" style="font-size:15px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#000;">
+          @foreach($woSorts as $sv => $sl)
+            @php [$sk, $sd] = $sv === '' ? [null, null] : explode(':', $sv); @endphp
+            <option value="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $activeTab, 'sort' => $sk, 'dir' => $sd])) }}" @if($woSortNow === $sv) selected @endif>{{ $sl }}</option>
+          @endforeach
+        </select>
       </div>
     @endif
 
