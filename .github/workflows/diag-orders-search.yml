@@ -64,7 +64,6 @@ jobs:
               echo 'CF_RENDER len=' . strlen($html) . ' subBtns=' . substr_count($html, 'woSubOpen(') . ' modal=' . substr_count($html, 'id="wo-sub-modal"') . "\n";
               $sreq = \Illuminate\Http\Request::create('/website-orders/substitute-search', 'GET', ['q' => 'abbey road']);
               app()->instance('request', $sreq);
-              session(['user.business_id' => $u->business_id]);
               echo 'SEARCH: ' . substr(app(\App\Http\Controllers\WebsiteOrdersController::class)->substituteSearch($sreq)->getContent(), 0, 700) . "\n";
               return;
             }

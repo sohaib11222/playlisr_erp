@@ -734,7 +734,7 @@ class WebsiteOrdersController extends Controller
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
         $q = trim((string) $request->query('q', ''));
         if (mb_strlen($q) < 2) return response()->json(['success' => true, 'data' => []]);
-        $bid = (int) request()->session()->get('user.business_id', auth()->user()->business_id);
+        $bid = (int) auth()->user()->business_id;
         $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
         $rows = \DB::table('products as p')
             ->join('variations as v', 'v.product_id', '=', 'p.id')
