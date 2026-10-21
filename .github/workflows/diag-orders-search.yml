@@ -57,6 +57,16 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'PICO') {
+              foreach ([['ready_ship', 'pico'], ['to_ship', 'pico']] as [$tab, $loc]) {
+                $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab, 'location' => $loc]);
+                app()->instance('request', $req);
+                $d = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->getData();
+                echo "PICO {$tab}: web=" . count($d['orders']) . ' discogs=' . count($d['discogsToShip'] ?? []) . "\n";
+                foreach ($d['orders'] as $o) echo "  ORDER #" . ($o['orderNumber'] ?? '') . ' ' . ($o['display_name'] ?? ($o['user_id']['name'] ?? '')) . ' pack=' . \App\Http\Controllers\WebsiteOrdersController::packSpot($o) . ' shipfrom=' . json_encode(array_column($o['items'] ?? [], 'ship_from')) . ' spots=' . json_encode(\App\Http\Controllers\WebsiteOrdersController::orderSpots($o)) . ' pick=' . json_encode([$o['pick_progress']['picked'] ?? null, $o['pick_progress']['total'] ?? null]) . "\n";
+              }
+              return;
+            }
             if ($q === 'RENDER') {
               $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'to_ship']);
               app()->instance('request', $req);
