@@ -728,6 +728,89 @@ class WebsiteOrdersController extends Controller
     }
 
     /** Move one shipping line to the store that really has it (Sarah, 2026-10-14). */
+    /** Product search for the Substitute box: name, artist or SKU, with price and stock per store (Sarah, 2026-10-21). */
+    public function substituteSearch(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
+        $q = trim((string) $request->query('q', ''));
+        if (mb_strlen($q) < 2) return response()->json(['success' => true, 'data' => []]);
+        $bid = (int) request()->session()->get('user.business_id', auth()->user()->business_id);
+        $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+        $rows = \DB::table('products as p')
+            ->join('variations as v', 'v.product_id', '=', 'p.id')
+            ->where('p.business_id', $bid)
+            ->whereNull('v.deleted_at')
+            ->where(function ($w) use ($like, $q) {
+                $w->where('p.name', 'like', $like)->orWhere('p.artist', 'like', $like)->orWhere('p.sku', $q);
+            })
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'v.id as variation_id', 'v.sell_price_inc_tax as price')
+            ->orderBy('v.id')
+            ->limit(60)
+            ->get()
+            ->unique('id')
+            ->values();
+        $ids = $rows->pluck('id')->all();
+        $stock = [];
+        if ($ids) {
+            foreach (\DB::table('variation_location_details as vld')->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->whereIn('vld.product_id', $ids)->where('vld.qty_available', '>', 0)
+                ->select('vld.product_id', 'bl.name', 'vld.qty_available')->get() as $r) {
+                $stock[$r->product_id][] = trim($r->name) . ' ' . (float) $r->qty_available;
+            }
+        }
+        $out = $rows->map(fn($r) => [
+            'id' => (int) $r->id, 'name' => $r->name, 'artist' => $r->artist, 'sku' => $r->sku,
+            'price' => $r->price !== null ? round((float) $r->price, 2) : null,
+            'stock' => $stock[$r->id] ?? [],
+        ])->sortByDesc(fn($r) => count($r['stock']) > 0)->values()->take(15);
+        return response()->json(['success' => true, 'data' => $out]);
+    }
+
+    /**
+     * Substitute (Sarah, 2026-10-21): after talking to the customer, swap an
+     * item nobody could find for another record. The website order line points
+     * at the new record and it goes back on the pick list; the ERP sale line is
+     * switched to the new record and its stock comes off (the missing one stays off).
+     */
+    public function substitute(Request $request, string $id, string $itemId)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id) || !preg_match('/^[a-f0-9]{24}$/i', $itemId)) return response()->json(['success' => false, 'message' => 'Bad order or item.'], 422);
+        $newPid = (int) $request->input('product_id');
+        $note = trim((string) $request->input('note', ''));
+        if (!$newPid) return response()->json(['success' => false, 'message' => 'Pick the substitute record.'], 422);
+        if ($note === '') return response()->json(['success' => false, 'message' => 'Say how the customer agreed (text, email, call).'], 422);
+        $by = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username;
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/items/{$itemId}/substitute", ['posProductId' => $newPid, 'note' => $note, 'changedBy' => $by], 20);
+        if (($resp['success'] ?? false) !== true) {
+            return response()->json(['success' => false, 'message' => ($resp['message'] ?? null) ?: 'Could not reach the website. Nothing was changed.']);
+        }
+        // ERP sale line: same sale, now the substitute record
+        $erpNote = '';
+        try {
+            $oldPid = (int) ($resp['oldPosProductId'] ?? 0);
+            $qty = (float) ($resp['quantity'] ?? 1);
+            $tx = \DB::table('transactions')->where('type', 'sell')->where(function ($w) use ($id) {
+                $w->where('additional_notes', 'Website order ' . $id)->orWhere('additional_notes', 'like', 'Website order ' . $id . '%');
+            })->orderByDesc('id')->first();
+            $line = ($tx && $oldPid) ? \DB::table('transaction_sell_lines')->where('transaction_id', $tx->id)->where('product_id', $oldPid)->first() : null;
+            $var = \DB::table('variations')->where('product_id', $newPid)->whereNull('deleted_at')->orderBy('id')->first();
+            if ($line && $var) {
+                \DB::transaction(function () use ($line, $var, $newPid, $tx, $qty) {
+                    \DB::table('transaction_sell_lines')->where('id', $line->id)->update(['product_id' => $newPid, 'variation_id' => $var->id, 'updated_at' => now()]);
+                    \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->decrement('qty_available', $qty);
+                });
+                $erpNote = ' The ERP sale now shows the new record and its stock came off.';
+            } else {
+                $erpNote = ' The ERP sale for this order wasn\'t found, so take the new record off stock by hand.';
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('substitute ERP line update failed: ' . $e->getMessage());
+            $erpNote = ' The ERP sale couldn\'t be updated, so take the new record off stock by hand.';
+        }
+        return response()->json(['success' => true, 'message' => 'Substituted. The new record is back on Need to Pull.' . $erpNote]);
+    }
+
     public function itemStore(Request $request, string $id)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {

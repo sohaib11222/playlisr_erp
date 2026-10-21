@@ -147,7 +147,7 @@ class DistributorInvoiceImport
     }
 
     // Category from the invoice's format code (AMS "Prod Type": LP / CD / CDS /
-    // MC / SIN, TIN = merch tins (no category: the reviewer picks);
+    // MC / SIN (7-inch) / TEN (10-inch) / TIN (12-inch);
     // Alliance "CF": 01 = LP, 02 = CD, TO = toys), falling back to words in
     // the description. Null = unknown, the reviewer picks.
     public static function guessCategory($format, $description)
@@ -155,7 +155,8 @@ class DistributorInvoiceImport
         $f = strtoupper(trim((string) $format));
         $d = strtoupper((string) $description);
         if ($f === '02' || preg_match('/^\d?CD|SACD/', $f)) return 'CD - Sealed';
-        if ($f === '01' || preg_match('/^(\d?LP|VIN|VINYL|7|10|12|7IN|10IN|12IN|EP|SIN|45)$/', $f)) return 'Vinyl - Sealed';
+        // AMS: TIN = 12-inch, TEN = 10-inch, SIN = 7-inch single (Fugazi "7 Songs" 12" came as TIN).
+        if ($f === '01' || preg_match('/^(\d?LP|VIN|VINYL|7|10|12|7IN|10IN|12IN|EP|SIN|TIN|TEN|45)$/', $f)) return 'Vinyl - Sealed';
         if ($f === 'TO' || $f === 'TOY') return 'Toys';
         if (preg_match('/^(CS|CAS|CASS|MC)$/', $f)) return 'Cassettes - Sealed';
         if (preg_match('/\bCASSETTE\b/', $d)) return 'Cassettes - Sealed';

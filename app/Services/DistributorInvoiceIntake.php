@@ -296,6 +296,10 @@ class DistributorInvoiceIntake
                         list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
                         if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->resync('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
                     }
+                    if ($this->needsVinylCatchUp('ams', $inv)) {
+                        list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
+                        if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->vinylCatchUp('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
+                    }
                     if ($this->needsCatchUp('ams', $inv)) {
                         list($dc, $pdf) = $this->curl($jar, 'GET', $base . '/Account/GetDocument/' . (int) ($row['DocumentId'] ?? 0));
                         if ($dc === 200 && strncmp($pdf, '%PDF', 4) === 0) $this->catchUp('ams', $inv, $pdf, 'AMS portal ' . $login['label']);
@@ -539,6 +543,65 @@ class DistributorInvoiceIntake
             }
         }
         $sc['resynced_at'] = now()->toDateTimeString();
+        Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
+    }
+
+    // 10/21: AMS format codes TIN (12-inch) and TEN (10-inch) had no category,
+    // so the first catch-up left those records off. One extra pass adds only
+    // TIN/TEN lines whose barcode is not in the catalog at all (so they
+    // cannot be on any purchase) as new products on "<ref>-C".
+    private function needsVinylCatchUp($distributor, $invoice)
+    {
+        $path = DistributorInvoiceImport::sidecarPath($distributor, DistributorInvoiceImport::invoiceKey($distributor, $invoice));
+        if (!Storage::disk('local')->exists($path)) return false;
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        return !empty($sc['catch_up_at']) && empty($sc['vinyl_catch_up_at']);
+    }
+
+    private function vinylCatchUp($distributor, $invoice, $pdf, $source)
+    {
+        $inv = DistributorInvoiceImport::invoiceKey($distributor, $invoice);
+        $path = DistributorInvoiceImport::sidecarPath($distributor, $inv);
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        $own = DB::table('transactions')->where('id', (int) ($sc['transaction_id'] ?? 0))->first(['id', 'location_id', 'contact_id', 'transaction_date']);
+        $p = DistributorInvoiceParser::parse($distributor, $pdf);
+        if (!$own || !$p['items'] || $p['goods_matches'] === false) return;
+        $lines = [];
+        foreach ($p['items'] as $it) {
+            if (!in_array(strtoupper($it['prodType'] ?? ''), ['TIN', 'TEN'], true)) continue;
+            $lines[] = ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'],
+                        'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
+        }
+        $take = [];
+        if ($lines) {
+            foreach (DistributorInvoiceImport::preview($this->business_id, $lines, $own->contact_id, $own->location_id, substr($own->transaction_date, 0, 10), $inv, $distributor) as $l) {
+                if ($l['matched'] || $l['upc_variation_ids'] || empty($l['new_product']['category_id'])) continue; // already in the catalog
+                $take[] = ['variation_id' => null, 'qty' => $l['qty'], 'unit_price' => $l['unit_price'], 'upc' => $l['upc'],
+                           'description' => $l['description'], 'new_product' => $l['new_product']];
+            }
+        }
+        if ($this->dry) {
+            $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'dry-run vinyl', 'msg' => count($take) . ' to add: ' . implode('; ', array_map(function ($t) { return $t['new_product']['name'] . ' x' . $t['qty'] . ' $' . $t['new_product']['sell_price']; }, $take))]);
+            return;
+        }
+        $txId = null;
+        if ($take) {
+            $ownStatus = DB::table('transactions')->where('id', $own->id)->value('status');
+            $notes = DistributorInvoiceImport::config($distributor)['label'] . ' invoice ' . $inv . ': 10-inch / 12-inch records left off purchase #' . $own->id . ', added automatically'
+                . ($ownStatus === 'received' ? '. That box was already received with #' . $own->id . ', so count these before receiving.' : '');
+            try {
+                $res = DistributorInvoiceImport::apply($distributor, $this->business_id, $this->user_id, $own->location_id, $own->contact_id, $inv,
+                    substr($own->transaction_date, 0, 10), $notes, $take, ['ref_suffix' => '-C', 'sidecar' => false]);
+                $txId = $res['transaction']->id;
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'imported', 'source' => $source, 'transaction_id' => $txId,
+                    'msg' => sprintf('Purchase #%d: %d 10/12-inch record(s) missing from #%d, %d new products.', $txId, $res['lines'], $own->id, count($res['created_products']))]);
+            } catch (\Throwable $e) {
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => '10/12-inch catch-up failed: ' . $e->getMessage()]);
+                return;
+            }
+        }
+        $sc['vinyl_catch_up_at'] = now()->toDateTimeString();
+        $sc['vinyl_catch_up_tx'] = $txId;
         Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
     }
 

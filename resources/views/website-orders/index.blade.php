@@ -680,6 +680,10 @@
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                        @if(!empty($lineItem['substituted_from']['name']))
+                          <div style="margin-top:4px;font-size:12px;font-weight:700;color:#1e40af;">Substitute for {{ $lineItem['substituted_from']['name'] }}@if(!empty($lineItem['substituted_from']['by'])) ({{ $lineItem['substituted_from']['by'] }}{{ !empty($lineItem['substituted_from']['at']) ? ' ' . date('m/d/y', strtotime($lineItem['substituted_from']['at'])) : '' }})@endif</div>
+                          @if(!empty($lineItem['substituted_from']['note']))<div style="font-size:12px;color:#000;">{{ $lineItem['substituted_from']['note'] }}</div>@endif
+                        @endif
                       </div>
                     </div>
                   @endforeach
@@ -741,6 +745,9 @@
                               @endphp
                               <div style="flex:0 0 100%;font-size:12px;color:#000;margin:2px 0 2px;"><strong>Most likely at Hollywood:</strong><br>@foreach($hwSpots as $hs)&bull; {{ $hs }}<br>@endforeach</div>
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="cf" onclick="woHwCheck(this, {{ json_encode(strtolower(trim((string) $line['name']))) }})">Not here either</button>
+                            @elseif($plMissing && $activeTab === 'cant_find')
+                              {{-- After talking to the customer: swap for another record (Sarah, 2026-10-21) --}}
+                              <button type="button" class="go" onclick="woSubOpen('{{ $o['_id'] }}', '{{ $line['id'] }}', {{ json_encode($line['name']) }}, {{ json_encode($customerName) }})">Substitute</button><button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @elseif($plDone || $plMissing)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
@@ -1464,7 +1471,29 @@
 
   {{-- Pick buttons: save to the website's pick list and update the row in place
        so picking several items doesn't reload the page each tap. --}}
-  <script>
+  
+<div id="wo-sub-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;" onclick="if (event.target === this) woSubClose()">
+  <div style="background:#fff;border-radius:12px;max-width:620px;width:100%;padding:20px;box-sizing:border-box;color:#000;">
+    <div style="font-size:19px;font-weight:800;margin-bottom:4px;">Substitute</div>
+    <div style="font-size:14px;margin-bottom:12px;">Only after the customer said yes. Replacing <strong id="wo-sub-what"></strong>. They keep the price they paid; refund any difference separately.</div>
+    <input id="wo-sub-q" type="text" placeholder="Search the ERP: title, artist or SKU" oninput="woSubSearch(this.value)" style="width:100%;font-size:15px;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;box-sizing:border-box;">
+    <div id="wo-sub-results" style="max-height:300px;overflow:auto;margin-top:8px;"></div>
+    <div id="wo-sub-picked" style="margin-top:10px;font-size:14px;font-weight:700;"></div>
+    <textarea id="wo-sub-note" rows="2" placeholder="How the customer agreed, e.g. Texted 10/21, OK with the 2019 repress" style="width:100%;margin-top:10px;font-size:14px;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;box-sizing:border-box;"></textarea>
+    <div id="wo-sub-msg" style="margin-top:8px;font-size:14px;font-weight:700;color:#1e40af;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button type="button" class="wo-btn" onclick="woSubClose()">Close</button>
+      <button type="button" id="wo-sub-save" class="wo-btn wo-btn-primary" onclick="woSubSave()">Substitute</button>
+    </div>
+  </div>
+</div>
+<style>
+  .wo-sub-row { display:block; width:100%; text-align:left; padding:9px 11px; margin-bottom:6px; border:1.5px solid #e5e7eb; border-radius:8px; background:#fff; color:#000; cursor:pointer; font-size:14px; }
+  .wo-sub-row .m { display:block; font-size:12.5px; margin-top:2px; color:#000; }
+  .wo-sub-row:hover { border-color:#93c5fd; }
+  .wo-sub-row.on { background:#dbeafe; border-color:#93c5fd; }
+</style>
+<script>
     // Hollywood checked and it isn't there: moves to Can't Find: Decide Refund
     function woHwCheck(btn, name) {
       var box = btn.closest('.wo-pick');
@@ -1502,6 +1531,71 @@
           woPickCount(box);
         })
         .catch(function (e) { alert('Pick not saved: ' + e.message); btns.forEach(function (b) { b.disabled = false; }); });
+    }
+    // Substitute box (Sarah, 2026-10-21)
+    var woSub = { order: null, item: null, pick: null, t: null };
+    function woSubOpen(orderId, itemId, name, buyer) {
+      woSub.order = orderId; woSub.item = itemId; woSub.pick = null;
+      document.getElementById('wo-sub-what').textContent = name + ' for ' + buyer;
+      document.getElementById('wo-sub-q').value = '';
+      document.getElementById('wo-sub-note').value = '';
+      document.getElementById('wo-sub-results').innerHTML = '';
+      document.getElementById('wo-sub-picked').textContent = 'Nothing picked yet';
+      document.getElementById('wo-sub-msg').textContent = '';
+      document.getElementById('wo-sub-save').disabled = false;
+      document.getElementById('wo-sub-modal').style.display = 'flex';
+      setTimeout(function () { document.getElementById('wo-sub-q').focus(); }, 50);
+    }
+    function woSubClose() { document.getElementById('wo-sub-modal').style.display = 'none'; }
+    function woSubSearch(q) {
+      clearTimeout(woSub.t);
+      woSub.t = setTimeout(function () {
+        var box = document.getElementById('wo-sub-results');
+        if (q.trim().length < 2) { box.innerHTML = ''; return; }
+        box.innerHTML = '<div style="padding:8px;">Searching...</div>';
+        fetch('{{ route('website-orders.substituteSearch') }}?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            box.innerHTML = '';
+            var rows = (res && res.data) || [];
+            if (!rows.length) { box.innerHTML = '<div style="padding:8px;">No records found.</div>'; return; }
+            rows.forEach(function (p) {
+              var b = document.createElement('button');
+              b.type = 'button';
+              b.className = 'wo-sub-row';
+              var stock = p.stock.length ? p.stock.join(', ') : 'No stock in the ERP';
+              b.innerHTML = '<strong></strong><span class="m"></span>';
+              b.querySelector('strong').textContent = (p.artist ? p.artist + ' - ' : '') + p.name;
+              b.querySelector('.m').textContent = (p.price !== null ? '$' + p.price.toFixed(2) + ' · ' : '') + (p.sku ? 'SKU ' + p.sku + ' · ' : '') + stock;
+              b.onclick = function () {
+                woSub.pick = p.id;
+                document.querySelectorAll('.wo-sub-row').forEach(function (x) { x.classList.remove('on'); });
+                b.classList.add('on');
+                document.getElementById('wo-sub-picked').textContent = 'Swap for: ' + b.querySelector('strong').textContent;
+              };
+              box.appendChild(b);
+            });
+          })
+          .catch(function () { box.innerHTML = '<div style="padding:8px;">Search failed, try again.</div>'; });
+      }, 250);
+    }
+    function woSubSave() {
+      var msg = document.getElementById('wo-sub-msg');
+      var note = document.getElementById('wo-sub-note').value.trim();
+      if (!woSub.pick) { msg.textContent = 'Pick the substitute record first.'; return; }
+      if (!note) { msg.textContent = 'Say how the customer agreed (text, email, call).'; return; }
+      var btn = document.getElementById('wo-sub-save');
+      btn.disabled = true; msg.textContent = 'Saving...';
+      fetch('{{ url('/website-orders') }}/' + woSub.order + '/items/' + woSub.item + '/substitute', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        body: JSON.stringify({ product_id: woSub.pick, note: note })
+      }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+        .then(function (res) {
+          msg.textContent = res.message || (res.success ? 'Substituted.' : 'Not saved.');
+          if (res.success) { setTimeout(function () { location.reload(); }, 1800); } else { btn.disabled = false; }
+        })
+        .catch(function () { msg.textContent = 'Not saved, try again.'; btn.disabled = false; });
     }
     function woPickPaint(l, status, who) {
       var done = status === 'Picked' || status === 'Dropshipped', missing = status === "Can't Find";
