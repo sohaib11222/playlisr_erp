@@ -426,6 +426,17 @@
       </div>
     </form>
 
+    {{-- Orders never disappear: say where else the search matches (Sarah, 2026-10-21) --}}
+    @if(!empty($searchElsewhere))
+      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">"{{ request('q') }}" also matches orders on:
+        @foreach($searchElsewhere as $seTab => $seN)
+          <a href="{{ route('website-orders.index', array_filter(['tab' => $seTab, 'q' => request('q'), 'payment_status' => request('payment_status')])) }}" style="margin-left:8px;">{{ \App\Http\Controllers\WebsiteOrdersController::TABS[$seTab]['label'] ?? ucfirst($seTab) }} ({{ $seN }})</a>
+        @endforeach
+      </div>
+    @endif
+    @if(!empty($linkOrderMissing))
+      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">This order wasn't found on the website. Check the order number, or search the buyer's name above.</div>
+    @endif
     @if(empty($orders))
       <div class="ev-card"><div class="empty">No orders in this view.
         {{-- Store filter on a tab with nothing to pull: point to where the pulls are (Sarah, 2026-10-19) --}}

@@ -111,8 +111,16 @@ class WebsiteOrdersController extends Controller
         // Link to one order (?order=<id>), e.g. pasted in Slack (Sarah, 2026-10-16):
         // open the tab it lives in and show just that order.
         $linkOrder = (string) $request->query('order', '');
-        if (preg_match('/^[a-f0-9]{24}$/i', $linkOrder)) {
-            foreach ($allOrders as $lo) {
+        if (!preg_match('/^[a-f0-9]{24}$/i', $linkOrder)) $linkOrder = '';
+        // Orders can never disappear (Sarah, 2026-10-21): a linked order outside
+        // the newest-300 window (or archived) is fetched on its own.
+        $linkedExtra = [];
+        if ($linkOrder !== '' && !$bridgeError && !in_array($linkOrder, array_column($allOrders, '_id'), true)) {
+            $one = $this->websiteApi('GET', '/erp/orders/console?order=' . $linkOrder);
+            $linkedExtra = ($one['success'] ?? false) ? array_values(array_filter($one['data'] ?? [], fn($x) => ($x['_id'] ?? '') === $linkOrder)) : [];
+        }
+        if ($linkOrder !== '') {
+            foreach (array_merge($allOrders, $linkedExtra) as $lo) {
                 if (($lo['_id'] ?? '') !== $linkOrder) continue;
                 // Keep the normal Completed view (and counts) unless this order needs All
                 if (($lo['payment_status'] ?? '') === 'completed' && !$request->has('payment_status')) $paymentStatusFilter = 'completed';
@@ -247,7 +255,9 @@ class WebsiteOrdersController extends Controller
         $tabCounts['needs_action_pico'] = count($needBy['pico']);
         $tabCounts['needs_action_warehouse'] = count($needBy['warehouse']);
         $tabCounts['needs_action_hollywood'] = count($needBy['hollywood']);
-        $orders = array_values(array_filter($allOrders, function ($o) use ($activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
+        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
+            // An order link always shows that order, whatever tab or filter (Sarah, 2026-10-21)
+            if ($linkOrder !== '') return ($o['_id'] ?? '') === $linkOrder;
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
@@ -274,21 +284,25 @@ class WebsiteOrdersController extends Controller
                 }
                 if (!$hit) return false;
             }
-            if ($search !== '') {
-                $needle = strtolower($search);
-                $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
-                // Shipping name (the Buyer column often shows it), product name and artist (Sarah, 2026-10-16)
-                $hay .= ' ' . strtolower((string) ($o['shippingAddress'][0]['name'] ?? ''));
-                foreach (($o['items'] ?? []) as $it) {
-                    $hay .= ' ' . strtolower(($it['product_id']['name'] ?? ($it['product_name'] ?? '')) . ' ' . ($it['product_id']['artist'] ?? ($it['product_artist'] ?? '')));
-                }
-                if (strpos($hay, $needle) === false) return false;
-            }
+            if ($search !== '' && !self::searchMatches($o, $search)) return false;
             $createdAt = strtotime($o['createdAt'] ?? '') ?: 0;
             if ($dateFrom !== '' && $createdAt < strtotime($dateFrom)) return false;
             if ($dateTo !== '' && $createdAt > strtotime($dateTo . ' 23:59:59')) return false;
             return true;
         }));
+
+        // Search never hides an order in another tab: list the tabs it's in (Sarah, 2026-10-21)
+        $searchElsewhere = [];
+        if ($search !== '' && $linkOrder === '') {
+            foreach ($allOrders as $so) {
+                if (!self::searchMatches($so, $search)) continue;
+                if ($paymentStatusFilter !== 'all' && ($so['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+                foreach (array_merge(array_keys(self::TABS), ['archived']) as $t) {
+                    if ($t === $activeTab || !self::matchesTab($so, $t) || !self::showsOnNeedToPull($so, $t)) continue;
+                    $searchElsewhere[$t] = ($searchElsewhere[$t] ?? 0) + 1;
+                }
+            }
+        }
 
         if ($activeTab === 'pickup') {
             usort($orders, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
@@ -344,6 +358,8 @@ class WebsiteOrdersController extends Controller
 
         return view('website-orders.index', [
             'erpLocations' => $erpLocations,
+            'searchElsewhere' => $searchElsewhere,
+            'linkOrderMissing' => $linkOrder !== '' && !$bridgeError && empty($orders),
             'sortKey' => $sortKey,
             'sortDir' => $sortDir,
             'discogsToShip' => $discogsToShip,
@@ -1025,6 +1041,17 @@ class WebsiteOrdersController extends Controller
             if (!isset($off[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) return true;
         }
         return false;
+    }
+
+    // Order id, buyer, shipping name, product name and artist (Sarah, 2026-10-16)
+    protected static function searchMatches(array $o, string $search): bool
+    {
+        $hay = strtolower(($o['_id'] ?? '') . ' ' . ($o['user_id']['name'] ?? '') . ' ' . ($o['user_id']['email'] ?? '') . ' ' . ($o['display_name'] ?? '') . ' ' . ($o['orderNumber'] ?? ''));
+        $hay .= ' ' . strtolower((string) ($o['shippingAddress'][0]['name'] ?? ''));
+        foreach (($o['items'] ?? []) as $it) {
+            $hay .= ' ' . strtolower(($it['product_id']['name'] ?? ($it['product_name'] ?? '')) . ' ' . ($it['product_id']['artist'] ?? ($it['product_artist'] ?? '')));
+        }
+        return strpos($hay, strtolower($search)) !== false;
     }
 
     protected static function matchesTab(array $order, string $tab): bool
