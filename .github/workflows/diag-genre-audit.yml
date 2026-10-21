@@ -122,7 +122,7 @@ jobs:
 
                 private static function badArtist($a)
                 {
-                    return $a === '' || mb_strlen($a) < 2 || preg_match('/^(n a|na|unknown|various|various artists|none|no artist|v a|va|soundtrack|ost)$/', $a);
+                    return $a === '' || mb_strlen($a) < 2 || preg_match('/^(n a|na|unknown|various|various artists|none|no artist|v a|va|soundtrack|ost|unknown artist|various artist|original cast|original soundtrack)$/', $a);
                 }
 
                 /** Format categories, their live genres, and canon -> best genre id per format. */
@@ -190,14 +190,14 @@ jobs:
                     return array_values(array_unique($c));
                 }
 
-                /** Clear winner for an artist: >= $min records and >= 60% of them. */
+                /** Clear winner for an artist: >= $min records and >= 75% of them. */
                 private static function winner($v, $min)
                 {
                     if (empty($v)) return null;
                     arsort($v);
                     $top = array_key_first($v);
                     $sum = array_sum($v);
-                    if ($v[$top] < $min || $v[$top] / $sum < 0.6) return null;
+                    if ($v[$top] < $min || $v[$top] / $sum < 0.75) return null;
                     return [$top, $v[$top], $sum];
                 }
 
@@ -224,12 +224,12 @@ jobs:
 
                         if ($s && $s['parent'] !== $fmt) {
                             $new = self::subFor($byCanon, $fmt, self::canon($s['name']));
-                            if ($new) { $type = 'other_format'; $why = $s['name'] . ' is on the ' . ($formats[$s['parent']] ?? 'old') . ' list'; }
+                            if ($new) { $type = 'other_format'; $why = 'Was ' . (isset($formats[$s['parent']]) ? 'the ' . $formats[$s['parent']] . ' ' : 'an old ') . $s['name'] . ', moved to this format\'s own'; }
                             else { $s = null; } // no twin genre in this format, treat like blank
                         }
                         if (!$type && !$s) {
                             foreach ($cands as $a) {
-                                $w = self::winner($votes[$a] ?? [], 2);
+                                $w = self::winner($votes[$a] ?? [], 3);
                                 if (!$w) continue;
                                 $new = self::subFor($byCanon, $fmt, $w[0]);
                                 if ($new) { $type = $sid ? 'deleted' : 'blank'; $why = "{$w[1]} of the artist's {$w[2]} records"; break; }
@@ -238,13 +238,13 @@ jobs:
                             $a = self::normArtist($p->artist);
                             $v = self::badArtist($a) ? [] : ($votes[$a] ?? []);
                             $cur = self::canon($s['name']);
-                            $w = self::winner($v, 3);
+                            $w = self::winner($v, 5);
                             $curN = $v[$cur] ?? 0;
-                            if ($w && $w[0] !== $cur && !in_array($cur, self::KEEP, true) && $curN / $w[2] <= 0.3 && $w[1] >= 3 * $curN) {
+                            if ($w && $w[0] !== $cur && !in_array($cur, self::KEEP, true) && $curN / $w[2] <= 0.15) {
                                 $new = self::subFor($byCanon, $fmt, $w[0]);
                                 if ($new && $new !== $sid) { $type = 'outlier'; $why = "{$w[1]} of the artist's {$w[2]} records"; }
                             }
-                            if (!$type && count($v) > 1 && array_sum($v) >= 3) {
+                            if (!$type && count(array_diff(array_keys($v), self::KEEP)) > 1 && array_sum($v) >= 3) {
                                 $g = $a . '|' . $fmt;
                                 $groups[$g][$cur] = ($groups[$g][$cur] ?? 0) + 1;
                             }
@@ -254,7 +254,7 @@ jobs:
                     // Needs a look: the artist still has 2+ genres in one format after the fixes above.
                     $look = [];
                     foreach ($groups as $g => $split) {
-                        if (count($split) < 2 || array_sum($split) < 3) continue;
+                        if (count(array_diff(array_keys($split), self::KEEP)) < 2 || array_sum($split) < 3) continue;
                         [$a, $fmt] = explode('|', $g);
                         arsort($split);
                         $named = [];
@@ -535,8 +535,9 @@ jobs:
             echo "\nSADE " . count($recs) . ": " . implode(' | ', array_map(fn($x) => $x['name'], array_slice($recs, 0, 15))) . "\n";
             $d['types'] = \App\Http\Controllers\GenreFixController::TYPES; $d['artist'] = 'Sade'; $d['records'] = $recs;
             session()->put('user.business_id', $u->business_id);
-            $html = view()->file('/tmp/genre_fix_diag.blade.php', $d)->render();
-            echo "RENDER OK " . strlen($html) . " bytes, rows=" . substr_count($html, 'gf-keep') . "\n";
+            echo 'BLANK WITH DISCOGS: ' . \DB::table('products')->where('is_inactive',0)->where('discogs_release_id','>',0)->where(function($q){$q->whereNull('sub_category_id')->orWhere('sub_category_id',0);})->count() . "\n";
+            $html = (string) view()->file('/tmp/genre_fix_diag.blade.php', $d)->render();
+            echo "RENDER OK " . strlen($html) . " bytes, rows=" . substr_count($html, 'gf-keep') . "\n"; $html = null;
 
             PHP
             rm -f /tmp/GenreFixDiag.php /tmp/genre_fix_diag.blade.php
