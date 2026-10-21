@@ -813,7 +813,7 @@ class WebsiteOrdersController extends Controller
     /** Same rules as the website: store markers and bin-shaped codes (FL364, pico123) aren't weird. */
     public static function looksLikeBin(string $c): bool
     {
-        return (bool) preg_match('/^(fl|gl|pico|hwa|hw a|hw|hollywood a|hollywooda)\s*-?\s*\d+\s*[a-z]?$/i', trim($c));
+        return (bool) preg_match('/^(fl|gl|pico|hwa|hw a|hw|hollywood a|hollywooda)\s*-?\s*\d+\s*[a-z]?(\.\d+)?$/i', trim($c));
     }
 
     /** In-stock ERP products whose bin_position / listing_location isn't a real bin. */
