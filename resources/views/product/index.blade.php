@@ -1288,6 +1288,10 @@
                     stock_report_cols.push({ data: 'total_sold', name: 'total_sold', searchable: false });
                     stock_report_cols.push({ data: 'total_transfered', name: 'total_transfered', searchable: false });
                     stock_report_cols.push({ data: 'total_adjusted', name: 'total_adjusted', searchable: false });
+                    // First/Last purchase headers were added 5/25 without these, so the
+                    // tab's column count didn't match and it never opened.
+                    stock_report_cols.push({ data: 'first_purchase_date', name: 'first_purchase_date', searchable: false });
+                    stock_report_cols.push({ data: 'last_purchase_date', name: 'last_purchase_date', searchable: false });
                     stock_report_cols.push({ data: 'product_custom_field1', name: 'product_custom_field1'});
                     stock_report_cols.push({ data: 'product_custom_field2', name: 'product_custom_field2'});
                     stock_report_cols.push({ data: 'product_custom_field3', name: 'product_custom_field3'});
