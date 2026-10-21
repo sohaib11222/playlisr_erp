@@ -395,7 +395,7 @@
             @if($woStartAt === $i)<span class="wo-step-start">Start here</span>@endif
             @if($n === 0)<span class="wo-step-done">All done</span>@endif
             <span class="wo-step-why">{{ $st['why'] }}</span>
-            @if(!empty($st['bar']))
+            @if(!empty($st['bar']) && $n > 0)
               @php
                 $bDone = 0; $bLeft = 0;
                 foreach ($st['bar'] as $bs) { $bDone += (int) ($tabCounts['pulled_' . $bs] ?? 0); $bLeft += (int) ($tabCounts['to_ship_' . $bs] ?? 0); }
