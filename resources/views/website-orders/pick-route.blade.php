@@ -37,14 +37,6 @@
 <div class="pr-wrap">
   <a href="{{ route('website-orders.index') }}" style="display:inline-block;margin-bottom:10px;padding:7px 14px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#000;font-weight:600;text-decoration:none;">&larr; Back to Website Orders</a>
   <h1>Pick Route</h1>
-  <p class="lead">Website and Discogs items still to pull, in walking order: room by room, bin by bin. Late orders are in red. Tap Picked or Can't find as you go.</p>
-  @if(($lateCount ?? 0) > 0 || !empty($lateOnly))
-    <p style="font-size:15px;font-weight:700;color:#000;margin:0 0 12px;">
-      @if(!empty($lateOnly))
-        Showing only the {{ $lateCount }} late {{ $lateCount === 1 ? 'item' : 'items' }}. <a href="{{ route('website-orders.pickRoute', ['store' => $store]) }}">Show everything</a>
-      @else
-        {{ $lateCount }} {{ $lateCount === 1 ? 'item is' : 'items are' }} for late orders. <a href="{{ route('website-orders.pickRoute', ['store' => $store, 'late' => 1]) }}">Pull just those first</a>
-      @endif
     </p>
   @endif
 
@@ -88,7 +80,7 @@
                   @if($r['pick_status'] === "Can't Find" || $r['pick_status'] === 'Pending Arrival')
                     <span class="pr-state {{ $r['pick_status'] === 'Pending Arrival' ? 'wait' : 'miss' }}">{{ $r['pick_status'] === 'Pending Arrival' ? 'Pending arrival' : "Can't find" }}</span> <button type="button" onclick="prPick(this, 'Not Picked')">Undo</button>
                   @else
-                    <button type="button" class="go" onclick="prPick(this, 'Picked')">Picked</button><button type="button" onclick="prPick(this, &quot;Can't Find&quot;)">Can't find</button><button type="button" onclick="prPick(this, 'Pending Arrival')">Pending arrival</button><button type="button" onclick="prPick(this, 'Dropshipped')">Dropshipped</button>
+                    <button type="button" class="go" onclick="prPick(this, 'Picked')">Picked</button><button type="button" onclick="prPick(this, &quot;Can't Find&quot;)">Can't find</button>@if($store !== 'warehouse')<button type="button" onclick="prPick(this, 'Pending Arrival')">Pending arrival</button>@endif<button type="button" onclick="prPick(this, 'Dropshipped')">Dropshipped</button>
                   @endif
                 @else
                   <span class="pr-state">Not on pick list</span>
@@ -114,6 +106,8 @@
   @endif
 </div>
 <script>
+  // No Pending arrival in the warehouse (Sarah, 2026-10-21)
+  var PR_WAREHOUSE = {{ $store === 'warehouse' ? 'true' : 'false' }};
   // Same pick records as the Website Orders checklist (WebsiteOrdersController::pick)
   function prPick(btn, status) {
     var td = btn.closest('.pr-act');
@@ -133,10 +127,10 @@
         tr.classList.toggle('is-wait', wait);
         td.innerHTML = (done || missing || wait)
           ? '<span class="pr-state ' + (done ? 'done' : (wait ? 'wait' : 'miss')) + '">' + (done ? (status === 'Dropshipped' ? 'Dropshipped' : 'Picked') : (wait ? 'Pending arrival' : "Can't find")) + '</span> <button type="button">Undo</button>'
-          : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button><button type="button">Pending arrival</button><button type="button">Dropshipped</button>';
+          : '<button type="button" class="go">Picked</button><button type="button">Can\'t find</button>' + (PR_WAREHOUSE ? '' : '<button type="button" data-s="Pending Arrival">Pending arrival</button>') + '<button type="button" data-s="Dropshipped">Dropshipped</button>';
         var bs = td.querySelectorAll('button');
         if (done || missing || wait) { bs[0].onclick = function () { prPick(this, 'Not Picked'); }; }
-        else { bs[0].onclick = function () { prPick(this, 'Picked'); }; bs[1].onclick = function () { prPick(this, "Can't Find"); }; bs[2].onclick = function () { prPick(this, 'Pending Arrival'); }; bs[3].onclick = function () { prPick(this, 'Dropshipped'); }; }
+        else { bs[0].onclick = function () { prPick(this, 'Picked'); }; bs[1].onclick = function () { prPick(this, "Can't Find"); }; td.querySelectorAll('button[data-s]').forEach(function (b) { b.onclick = function () { prPick(this, b.dataset.s); }; }); }
       })
       .catch(function (e) { alert('Pick not saved: ' + e.message); td.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); });
   }
