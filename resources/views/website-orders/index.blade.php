@@ -93,7 +93,12 @@
   .wo-pill.st-flag { background:#fee2e2; color:#991b1b; }
   .wo-pill.st-default { background:#f3f4f6; color:#000; }
 
-  .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; }
+  .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:8px; font-size:12px; font-weight:600; margin:0 0 4px; }
+  .wo-item-chip { display:inline-block; margin-top:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700; }
+  .wo-item-chip.ok { background:#d1fae5; color:#065f46; }
+  .wo-item-chip.sub { background:#dbeafe; color:#1e40af; }
+  .wo-item-chip.cf { background:#fee2e2; color:#991b1b; }
+  .wo-item-chip.no { background:#f3f4f6; color:#000; }
   .wo-fm-pill.shipping { background:#e0f2fe; color:#0369a1; }
   .wo-fm-pill.pickup { background:#f3e8ff; color:#6d28d9; }
   .wo-fm-pill.digital { background:#dcfce7; color:#166534; }
@@ -658,7 +663,12 @@
                   }
                   // Opened from an order link: show every item with its pick
                   // state, picked and can't find included (Sarah, 2026-10-21)
-                  if (preg_match('/^[a-f0-9]{24}$/i', (string) request()->query('order', ''))) $lineShow = array_fill_keys(array_keys($lineShow), true);
+                  // Shipped / done orders too: nothing left to pull, so show it all
+                  // with what happened to each item (Sarah, 2026-10-21).
+                  if (preg_match('/^[a-f0-9]{24}$/i', (string) request()->query('order', '')) || in_array($status, ['shipped', 'delivered', 'picked_up', 'email_sent'], true)) $lineShow = array_fill_keys(array_keys($lineShow), true);
+                  $rowPickLines = [];
+                  foreach (($o['pick_progress']['lines'] ?? []) as $rpl) $rowPickLines[strtolower(trim((string) ($rpl['name'] ?? '')))] = $rpl;
+                  $rowPickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true);
                   $hiddenLines = count(array_filter($lineShow, fn($v) => !$v));
                 @endphp
                 <td>
@@ -680,6 +690,17 @@
                         @if($lineFmt)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
                         @if($lineArtist)<div class="wo-prod-artist">{{ $lineArtist }}</div>@endif
+                        @php $rowPl = (!$rowPickable && !$line['gift'] && !$line['cancelled']) ? ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null) : null; @endphp
+                        @if($rowPl)
+                          @php
+                            $rowPs = $rowPl['status'] ?? 'Not Picked';
+                            $rowDone = in_array($rowPs, ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true);
+                            $rowSub = !empty($lineItem['substituted_from']['name']);
+                          @endphp
+                          <span class="wo-item-chip {{ $rowPs === "Can't Find" ? 'cf' : ($rowDone ? ($rowSub ? 'sub' : 'ok') : 'no') }}" data-pick-item="{{ $rowPl['item_id'] ?? '' }}">{{ $rowPs === "Can't Find" ? "Can't find" : ($rowDone ? ($rowSub ? 'Substitute sent' : ($rowPs === 'Dropshipped' ? 'Dropshipped' : 'Picked')) : ($rowPs === 'Pending Arrival' ? 'Pending arrival' : 'Not picked')) }}</span>
+                        @elseif($line['cancelled'])
+                          <span class="wo-item-chip no">Cancelled</span>
+                        @endif
                         @if(!empty($lineItem['substituted_from']['name']))
                           <div style="margin-top:4px;font-size:12px;font-weight:700;color:#1e40af;">Substitute for {{ $lineItem['substituted_from']['name'] }}@if(!empty($lineItem['substituted_from']['by'])) ({{ $lineItem['substituted_from']['by'] }}{{ !empty($lineItem['substituted_from']['at']) ? ' ' . date('m/d/y', strtotime($lineItem['substituted_from']['at'])) : '' }})@endif</div>
                           @if(!empty($lineItem['substituted_from']['note']))<div style="font-size:12px;color:#000;">{{ $lineItem['substituted_from']['note'] }}</div>@endif
@@ -791,7 +812,11 @@
                   @else
                     <span class="wo-fm-pill shipping">Shipping</span>
                     @if(($o['ship_speed'] ?? null) === 'priority')
-                      <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;" title="Customer paid for USPS Priority Mail. Buy a Priority Mail label for this order.">PRIORITY: ship Priority Mail</span>
+                      @if(in_array($status, ['shipped', 'delivered', 'email_sent'], true))
+                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;">Shipped Priority</span>
+                      @else
+                        <span class="wo-fm-pill" style="background:#fee2e2;color:#991b1b;font-weight:700;" title="Customer paid for USPS Priority Mail. Buy a Priority Mail label for this order.">PRIORITY: ship Priority Mail</span>
+                      @endif
                     @endif
                     @php
                       // Two store carts: which store(s) this order ships from.
@@ -832,7 +857,7 @@
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
                   {{-- Paid outside checkout, already in the total (Sarah, 2026-10-21) --}}
                   @foreach(($o['extra_payments'] ?? []) as $xp)
-                    <div style="font-size:12px;font-weight:600;color:#000;margin-top:4px;">Incl. ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} by {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) ({{ $xp['payer'] }})@endif</div>
+                    <div style="font-size:12px;font-weight:600;color:#000;margin-top:4px;">incl. ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} {{ $xp['method'] ?? '' }}</div>
                   @endforeach
                 </td>
                 <td class="wo-actions-cell">
@@ -879,7 +904,8 @@
                   {{-- Note on this one order (Sarah, 2026-10-16), saved to the website order --}}
                   @foreach(($o['extra_payments'] ?? []) as $xp)
                     <div class="wo-onote-show" style="background:#dbeafe;border-color:#bfdbfe;">
-                      <div class="txt">Extra paid: ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} by {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) from {{ $xp['payer'] }}@endif @if(!empty($xp['note']))&middot; {{ $xp['note'] }}@endif</div>
+                      <div class="txt">Extra paid ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} &middot; {{ $xp['method'] ?? '' }}@if(!empty($xp['payer'])) from {{ $xp['payer'] }}@endif</div>
+                      @if(!empty($xp['note']))<div style="font-size:12px;color:#000;margin-top:2px;">{{ $xp['note'] }}</div>@endif
                       <div class="by">{{ $xp['by'] ?? '' }} @if(!empty($xp['at'])){{ \Carbon\Carbon::parse($xp['at'])->setTimezone('America/Los_Angeles')->format('m/d/y g:ia') }}@endif</div>
                     </div>
                   @endforeach
@@ -916,12 +942,22 @@
                       $ppCf = 0; foreach (($pp['lines'] ?? []) as $ppl) if (($ppl['status'] ?? '') === "Can't Find") $ppCf += max(1, (int) ($ppl['quantity'] ?? 1));
                       $ppCfPct = (int) round(100 * min($ppCf, $ppT - min($ppN, $ppT)) / $ppT);
                       $ppLeft = max(0, (int) ($pp['total'] ?? 0) - $ppN - $ppCf);
+                      // Substitutes sent count on their own, not as picked (Sarah, 2026-10-21: "5 of 8 picked w 2 substitutes")
+                      $ppSub = 0;
+                      foreach (($o['items'] ?? []) as $ppIt) {
+                        if (empty($ppIt['substituted_from']['name']) || !empty($ppIt['cancelled'])) continue;
+                        $ppL = $rowPickLines[strtolower(trim((string) ($ppIt['product_id']['name'] ?? ($ppIt['product_name'] ?? ''))))] ?? null;
+                        if ($ppL && in_array($ppL['status'] ?? '', ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true)) $ppSub += max(1, (int) ($ppL['quantity'] ?? 1));
+                      }
+                      $ppSub = min($ppSub, $ppN);
+                      $ppSubPct = (int) round(100 * $ppSub / $ppT);
+                      $ppPct = max(0, $ppPct - $ppSubPct);
                     @endphp
                     {{-- Progress bar: none / partly / all picked at a glance (Sarah, 2026-10-20) --}}
                     <div class="wo-pick-count wo-prog-wrap {{ $ppN >= $ppT ? 'full' : ($ppN > 0 ? 'part' : 'none') }}">
-                      <div class="wo-prog"><span class="p" style="width:{{ $ppPct }}%"></span><span class="c" style="width:{{ $ppCfPct }}%"></span></div>
-                      <div class="wo-prog-lbl"><span class="n">{{ $ppN }}</span> of <span class="t">{{ (int) ($pp['total'] ?? 0) }}</span> picked</div>
-                      <div class="wo-prog-sub"><span class="cf">{{ $ppCf ? $ppCf . " can't find" : '' }}</span><span class="left">{{ $ppLeft ? ($ppCf ? ' · ' : '') . $ppLeft . ' left' : '' }}</span></div>
+                      <div class="wo-prog"><span class="p" style="width:{{ $ppPct }}%"></span><span class="s" style="width:{{ $ppSubPct }}%;display:inline-block;height:100%;background:#2563eb;"></span><span class="c" style="width:{{ $ppCfPct }}%"></span></div>
+                      <div class="wo-prog-lbl"><span class="n">{{ $ppN - $ppSub }}</span> of <span class="t">{{ (int) ($pp['total'] ?? 0) }}</span> picked</div>
+                      <div class="wo-prog-sub">@if($ppSub)<span style="color:#1e40af;font-weight:700;">{{ $ppSub }} {{ $ppSub === 1 ? 'substitute' : 'substitutes' }}</span>@endif<span class="cf">{{ $ppCf ? ($ppSub ? ' · ' : '') . $ppCf . " can't find" : '' }}</span><span class="left">{{ $ppLeft ? (($ppCf || $ppSub) ? ' · ' : '') . $ppLeft . ' left' : '' }}</span></div>
                       @if(($o['fulfillment_method'] ?? null) === 'pickup' && $ppN >= $ppT && $status !== 'ready_for_pickup')
                         <div style="font-size:11.5px;font-weight:700;color:#047857;margin-top:3px;">All picked: set status to Ready for Pickup (emails the customer)</div>
                       @endif
