@@ -768,6 +768,8 @@
                           <span class="wo-item-chip no">Cancelled</span>
                         @endif
                         @if(!empty($lineItem['substituted_from']['name']))
+                          @if(isset($lineItem['substituted_from']['price']) && (float) $lineItem['substituted_from']['price'] !== (float) ($lineItem['price'] ?? 0))<div style="font-size:12px;color:#000;">Was ${{ number_format((float) $lineItem['substituted_from']['price'], 2) }} for the original</div>@endif
+                          <button type="button" class="wo-onote-open" onclick="woItemPrice('{{ $o['_id'] }}', '{{ $line['id'] }}', '{{ number_format((float) ($lineItem['price'] ?? 0), 2, '.', '') }}')">Edit price</button>
                           <div style="margin-top:4px;font-size:12px;font-weight:700;color:#1e40af;">Substitute for {{ $lineItem['substituted_from']['name'] }}@if(!empty($lineItem['substituted_from']['by'])) ({{ $lineItem['substituted_from']['by'] }}{{ !empty($lineItem['substituted_from']['at']) ? ' ' . date('m/d/y', strtotime($lineItem['substituted_from']['at'])) : '' }})@endif</div>
                           @if(!empty($lineItem['substituted_from']['note']))<div style="font-size:12px;color:#000;">{{ $lineItem['substituted_from']['note'] }}</div>@endif
                         @endif
@@ -1614,10 +1616,11 @@
 <div id="wo-sub-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;" onclick="if (event.target === this) woSubClose()">
   <div style="background:#fff;border-radius:12px;max-width:620px;width:100%;padding:20px;box-sizing:border-box;color:#000;">
     <div style="font-size:19px;font-weight:800;margin-bottom:4px;">Substitute</div>
-    <div style="font-size:14px;margin-bottom:12px;">Only after the customer said yes. Replacing <strong id="wo-sub-what"></strong>. They keep the price they paid; refund any difference separately.</div>
+    <div style="font-size:14px;margin-bottom:12px;">Only after the customer said yes. Replacing <strong id="wo-sub-what"></strong>. Set the substitute's price below. Extra money they paid goes in Add extra payment.</div>
     <input id="wo-sub-q" type="text" placeholder="Search the ERP: title, artist or SKU" oninput="woSubSearch(this.value)" style="width:100%;font-size:15px;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;box-sizing:border-box;">
     <div id="wo-sub-results" style="max-height:300px;overflow:auto;margin-top:8px;"></div>
     <div id="wo-sub-picked" style="margin-top:10px;font-size:14px;font-weight:700;"></div>
+    <label style="display:block;margin-top:10px;font-size:14px;font-weight:700;color:#000;">Price on the order <input id="wo-sub-price" type="number" step="0.01" min="0" style="width:120px;font-size:14px;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:8px;margin-left:6px;"></label>
     <textarea id="wo-sub-note" rows="2" placeholder="How the customer agreed, e.g. Texted 10/21, OK with the 2019 repress" style="width:100%;margin-top:10px;font-size:14px;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;box-sizing:border-box;"></textarea>
     <div id="wo-sub-msg" style="margin-top:8px;font-size:14px;font-weight:700;color:#1e40af;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
@@ -1678,6 +1681,7 @@
       document.getElementById('wo-sub-what').textContent = name + ' for ' + buyer;
       document.getElementById('wo-sub-q').value = '';
       document.getElementById('wo-sub-note').value = '';
+      document.getElementById('wo-sub-price').value = '';
       document.getElementById('wo-sub-results').innerHTML = '';
       document.getElementById('wo-sub-picked').textContent = 'Nothing picked yet';
       document.getElementById('wo-sub-msg').textContent = '';
@@ -1708,6 +1712,7 @@
               b.querySelector('.m').textContent = (p.price !== null ? '$' + p.price.toFixed(2) + ' · ' : '') + (p.sku ? 'SKU ' + p.sku + ' · ' : '') + stock;
               b.onclick = function () {
                 woSub.pick = p.id;
+                if (p.price !== null) document.getElementById('wo-sub-price').value = p.price.toFixed(2);
                 document.querySelectorAll('.wo-sub-row').forEach(function (x) { x.classList.remove('on'); });
                 b.classList.add('on');
                 document.getElementById('wo-sub-picked').textContent = 'Swap for: ' + b.querySelector('strong').textContent;
@@ -1728,7 +1733,7 @@
       fetch('{{ url('/website-orders') }}/' + woSub.order + '/items/' + woSub.item + '/substitute', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-        body: JSON.stringify({ product_id: woSub.pick, note: note })
+        body: JSON.stringify({ product_id: woSub.pick, note: note, price: document.getElementById('wo-sub-price').value })
       }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
         .then(function (res) {
           msg.textContent = res.message || (res.success ? 'Substituted.' : 'Not saved.');
@@ -1836,6 +1841,18 @@
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
       credentials: 'same-origin',
       body: JSON.stringify({ amount: v })
+    }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
+      .then(function (res) { if (!res.success) { alert(res.message || 'Not saved.'); return; } location.reload(); });
+  }
+  // Re-price a substituted line (Sarah, 2026-10-21); total unchanged
+  function woItemPrice(id, item, current) {
+    var v = prompt('Price of this item on the order? (The order total does not change; extra money goes in Add extra payment.)', current);
+    if (v === null) return;
+    fetch('{{ url('/website-orders') }}/' + id + '/items/' + item + '/price', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ price: v })
     }).then(function (r) { return r.json().catch(function () { return { success: false }; }); })
       .then(function (res) { if (!res.success) { alert(res.message || 'Not saved.'); return; } location.reload(); });
   }

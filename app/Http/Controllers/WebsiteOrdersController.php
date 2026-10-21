@@ -962,7 +962,9 @@ class WebsiteOrdersController extends Controller
         if (!$newPid) return response()->json(['success' => false, 'message' => 'Pick the substitute record.'], 422);
         if ($note === '') return response()->json(['success' => false, 'message' => 'Say how the customer agreed (text, email, call).'], 422);
         $by = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username;
-        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/items/{$itemId}/substitute", ['posProductId' => $newPid, 'note' => $note, 'changedBy' => $by], 20);
+        $newPrice = $request->filled('price') ? round((float) $request->input('price'), 2) : null;
+        if ($newPrice !== null && $newPrice < 0) return response()->json(['success' => false, 'message' => 'Enter a valid price.'], 422);
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/items/{$itemId}/substitute", ['posProductId' => $newPid, 'note' => $note, 'changedBy' => $by, 'price' => $newPrice], 20);
         if (($resp['success'] ?? false) !== true) {
             return response()->json(['success' => false, 'message' => ($resp['message'] ?? null) ?: 'Could not reach the website. Nothing was changed.']);
         }
@@ -1002,6 +1004,7 @@ class WebsiteOrdersController extends Controller
                     if ((int) $locId !== (int) $tx->location_id) \DB::table('transactions')->where('id', $tx->id)->update(['location_id' => $locId, 'updated_at' => now()]);
                     \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $locId)->decrement('qty_available', $qty);
                 });
+                if ($newPrice !== null) self::setErpLinePrice((int) $line->id, $newPrice);
                 $erpNote = ' The ERP sale now shows the new record and its stock came off.';
             } else {
                 $erpNote = ' The ERP sale for this order wasn\'t found, so take the new record off stock by hand.';
@@ -1011,6 +1014,63 @@ class WebsiteOrdersController extends Controller
             $erpNote = ' The ERP sale couldn\'t be updated, so take the new record off stock by hand.';
         }
         return response()->json(['success' => true, 'message' => 'Substituted. The new record is back on Need to Pull.' . $erpNote]);
+    }
+
+    /**
+     * Re-price one line of a website order, e.g. a substitute that costs more
+     * or less than what it replaced (Sarah, 2026-10-21). The website line and
+     * its ERP sale line change; the order total doesn't (extra money goes
+     * through Add extra payment).
+     */
+    public function itemPrice(Request $request, string $id, string $itemId)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id) || !preg_match('/^[a-f0-9]{24}$/i', $itemId)) return response()->json(['success' => false, 'message' => 'Bad order or item.'], 422);
+        $price = round((float) $request->input('price', -1), 2);
+        if ($price < 0) return response()->json(['success' => false, 'message' => 'Enter a valid price.'], 422);
+        $by = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username;
+        $resp = $this->websiteApi('POST', "/erp/orders/{$id}/items/{$itemId}/price", ['price' => $price, 'changedBy' => $by], 20);
+        if (($resp['success'] ?? false) !== true) {
+            return response()->json(['success' => false, 'message' => ($resp['message'] ?? null) ?: 'Could not reach the website. Nothing was changed.'], 422);
+        }
+        $erpNote = ' The ERP sale for this item wasn\'t found, so its price there is unchanged.';
+        $pid = (int) ($resp['posProductId'] ?? 0);
+        $line = $pid ? \DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->where('t.type', 'sell')
+            ->where(function ($w) use ($id) {
+                $w->where('t.additional_notes', 'Website order ' . $id)->orWhere('t.additional_notes', 'like', 'Website order ' . $id . '%');
+            })
+            ->where('tsl.product_id', $pid)
+            ->orderByDesc('t.id')
+            ->select('tsl.id')
+            ->first() : null;
+        if ($line) {
+            self::setErpLinePrice((int) $line->id, $price);
+            $erpNote = ' The ERP sale shows the new price too.';
+        }
+        return response()->json(['success' => true, 'message' => 'Price saved.' . $erpNote]);
+    }
+
+    /** Set an ERP sale line's price; a one-line sale's totals follow it. */
+    private static function setErpLinePrice(int $lineId, float $price): void
+    {
+        $l = \DB::table('transaction_sell_lines')->where('id', $lineId)->first();
+        if (!$l) return;
+        \DB::transaction(function () use ($l, $price) {
+            \DB::table('transaction_sell_lines')->where('id', $l->id)->update([
+                'unit_price_before_discount' => $price, 'unit_price' => $price, 'unit_price_inc_tax' => $price + (float) $l->item_tax, 'updated_at' => now(),
+            ]);
+            if (\DB::table('transaction_sell_lines')->where('transaction_id', $l->transaction_id)->count() === 1) {
+                $t = \DB::table('transactions')->where('id', $l->transaction_id)->first();
+                $sub = round($price * (float) $l->quantity, 2);
+                \DB::table('transactions')->where('id', $t->id)->update([
+                    'total_before_tax' => $sub,
+                    'final_total' => round($sub + (float) $t->tax_amount + (float) $t->shipping_charges - (float) ($t->discount_amount ?? 0), 2),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
     }
 
     public function itemStore(Request $request, string $id)
