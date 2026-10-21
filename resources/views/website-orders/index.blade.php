@@ -360,6 +360,13 @@
       $woStartAt = null;
       foreach ($woSteps as $i => $st) if ($woStartAt === null && $woStepCount($st) > 0) $woStartAt = $i;
     @endphp
+    {{-- Searching or one order: the store work list and its counts aren't
+         about that order, so hide them (Sarah, 2026-10-21: Apurva's shipped
+         order looked like Pico Ready to Ship). --}}
+    @php $woLookup = !empty($searchAll) || request()->filled('order'); @endphp
+    @if($woLookup)
+      <div class="wo-banner" style="background:#eff6ff;border:1px solid #bfdbfe;color:#000;">{{ request()->filled('order') ? 'One order.' : 'Search results only.' }} <a href="{{ route('website-orders.index') }}">Back to the work list</a></div>
+    @else
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
       @foreach($woSteps as $i => $st)
@@ -400,12 +407,12 @@
         </span>
       </div>
     </div>
-
-    @if($activeTab === 'needs_action' && ($tabCounts['needs_action'] ?? 0) === 0)
+    @endif
+    @if(!$woLookup && $activeTab === 'needs_action' && ($tabCounts['needs_action'] ?? 0) === 0)
       <div class="wo-banner ok">No orders need action right now. All caught up.</div>
     @endif
 
-    @if($activeTab === 'pickup')
+    @if(!$woLookup && $activeTab === 'pickup')
       @if(($tabCounts['pickup_overdue'] ?? 0) > 0)
         <div class="wo-banner overdue"><strong>{{ $tabCounts['pickup_overdue'] }} overdue</strong> — waiting more than {{ $pickupSlaOverdueHours }} hours. Pull these as soon as possible.</div>
       @else
@@ -416,11 +423,11 @@
     @if(!empty($summaryFilter))
       <div class="wo-banner warn">Showing the orders from the #shipping summary link only. <a href="{{ route('website-orders.index', ['tab' => $activeTab]) }}">Show all</a></div>
     @endif
-    @if($activeTab === 'recheck_hw')
+    @if(!$woLookup && $activeTab === 'recheck_hw')
       <style>.wo-prod-img { width:84px !important; height:84px !important; }</style>
       <div class="wo-banner warn">Pico couldn't find these. Check the Hollywood spots listed for each one, then tap Found it or Not here either.</div>
     @endif
-    @if($activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
+    @if(!$woLookup && $activeTab === 'to_ship' && ($tabCounts['to_ship'] ?? 0) > 0)
       <div class="wo-banner warn">These shipping orders still have items to pull. Tap Mark picked or Can't find on each item.</div>
     @endif
 
