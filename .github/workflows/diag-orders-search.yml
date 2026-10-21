@@ -57,6 +57,17 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'CF') {
+              $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'cant_find']);
+              app()->instance('request', $req);
+              $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
+              echo 'CF_RENDER len=' . strlen($html) . ' subBtns=' . substr_count($html, 'woSubOpen(') . ' modal=' . substr_count($html, 'id="wo-sub-modal"') . "\n";
+              $sreq = \Illuminate\Http\Request::create('/website-orders/substitute-search', 'GET', ['q' => 'abbey road']);
+              app()->instance('request', $sreq);
+              session(['user.business_id' => $u->business_id]);
+              echo 'SEARCH: ' . substr(app(\App\Http\Controllers\WebsiteOrdersController::class)->substituteSearch($sreq)->getContent(), 0, 700) . "\n";
+              return;
+            }
             if ($q === 'PICO') {
               foreach ([['ready_ship', 'pico'], ['to_ship', 'pico']] as [$tab, $loc]) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab, 'location' => $loc]);
