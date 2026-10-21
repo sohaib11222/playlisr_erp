@@ -2468,7 +2468,7 @@ class SellPosController extends Controller
         $store = $isPico ? 'Nivessa on Pico' : 'Nivessa Hollywood';
         $first = trim(explode(' ', trim((string) ($base['customerName'] ?? '')))[0] ?? '');
         $hi = ($first !== '' && strtolower($first) !== 'there') ? 'Hi ' . $first . '!' : 'Hi!';
-        return $hi . ' Thanks for stopping by ' . $store . ".\n\n"
+        return $hi . ' Thank you for shopping with us at ' . $store . ".\n\n"
             . 'Your total today was $' . number_format((float) ($base['total'] ?? 0), 2)
             . ". Here's your full receipt: " . $link;
     }
