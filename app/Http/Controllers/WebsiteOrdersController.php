@@ -258,9 +258,19 @@ class WebsiteOrdersController extends Controller
                 // Shipments vs pickups rows (Sarah, 2026-10-20)
                 if (($pr['order']['fulfillment_method'] ?? null) === 'pickup') {
                     if ($k) $tabCounts['pickup_' . $k] = ($tabCounts['pickup_' . $k] ?? 0) + 1;
+                    // All three spots on every step (Sarah, 2026-10-21)
+                    if (in_array($pr['store'], ['warehouse', 'hollywood'], true)) $tabCounts['pickup_' . $pr['store']] = ($tabCounts['pickup_' . $pr['store']] ?? 0) + 1;
                 } elseif (isset($pullCounts[$pr['store']])) {
                     $tabCounts['to_ship_' . $pr['store']] = ($tabCounts['to_ship_' . $pr['store']] ?? 0) + 1;
                 }
+            }
+        }
+        // Ready to Ship and Recheck split by spot too: orders with an item there (Sarah, 2026-10-21)
+        foreach ($allOrders as $so) {
+            if ($paymentStatusFilter !== 'all' && ($so['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+            foreach (['ready_ship' => false, 'recheck_hw' => true] as $st => $cfOnly) {
+                if (!self::matchesTab($so, $st)) continue;
+                foreach (self::orderSpots($so, $cfOnly) as $spot) $tabCounts[$st . '_' . $spot] = ($tabCounts[$st . '_' . $spot] ?? 0) + 1;
             }
         }
         $tabCounts['needs_action_hw'] = count($needBy['hw']);
@@ -295,14 +305,15 @@ class WebsiteOrdersController extends Controller
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
             if ($activeTab === 'ready_pickup' && in_array($locationFilter, ['hollywood', 'pico'], true)) {
                 if ((($o['pickup_location'] ?? '') === 'pico' ? 'pico' : 'hollywood') !== $locationFilter) return false;
-            } elseif ($activeTab === 'ready_ship' && in_array($locationFilter, ['hw', 'pico'], true)) {
+            } elseif ($activeTab === 'ready_ship' && $locationFilter === 'hw') {
                 // All picked: split by the store that ships it
                 if ((self::shipStore($o) === 'pico' ? 'pico' : 'hw') !== $locationFilter) return false;
             } elseif (in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) {
                 // Any item to pull at that spot (Hollywood store, Pico, or the
                 // warehouse), shipping or pickup. Sarah, 2026-10-16.
                 $hit = false;
-                $offQueue = self::offQueueNames($o, $activeTab === 'cant_find');
+                // Ready to Ship: everything is picked, so match any item there
+                $offQueue = $activeTab === 'ready_ship' ? [] : self::offQueueNames($o, in_array($activeTab, ['cant_find', 'recheck_hw'], true));
                 foreach (($o['items'] ?? []) as $it) {
                     if ($hit) break;
                     if (!empty($it['is_gift_card']) || !empty($it['cancelled'])) continue;
@@ -778,6 +789,21 @@ class WebsiteOrdersController extends Controller
         if (stripos($place, 'warehouse') !== false) return 'warehouse';
         if (stripos($place, 'hollywood') !== false) return 'hollywood';
         return '';
+    }
+
+    /** Spots (warehouse / hollywood / pico) that have a live item of this order; $cfOnly = just the Can't Find lines. */
+    public static function orderSpots(array $o, bool $cfOnly = false): array
+    {
+                $cf = [];
+        if ($cfOnly) foreach (($o['pick_progress']['lines'] ?? []) as $pl) if (($pl['status'] ?? '') === "Can't Find") $cf[strtolower(trim((string) ($pl['name'] ?? '')))] = true;
+        $spots = [];
+        foreach (($o['items'] ?? []) as $it) {
+            if (!empty($it['is_gift_card']) || !empty($it['cancelled']) || empty($it['product_id'])) continue;
+            if ($cfOnly && !isset($cf[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))])) continue;
+            $sp = self::pullStore(self::pullParts($it, self::$erpCache[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place']);
+            if ($sp !== '') $spots[$sp] = $sp;
+        }
+        return array_values($spots);
     }
 
     /**

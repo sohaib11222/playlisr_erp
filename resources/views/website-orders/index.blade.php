@@ -252,6 +252,14 @@
   .wo-step .wo-card-pills { display:flex; flex-wrap:wrap; gap:8px; }
   .wo-step .wo-split { height:36px; padding:0 16px; font-size:15px; border-width:1.5px; }
   .wo-step .wo-split b { font-size:16px; margin-left:6px; }
+  /* No green text anywhere on the work list (Sarah, 2026-10-21) */
+  .wo-steps a, .wo-steps .wo-split, .wo-steps .wo-more { color:#000 !important; }
+  .wo-steps .wo-split.has b { color:#b91c1c !important; }
+  .wo-steps .wo-split.on, .wo-steps .wo-more.on { color:#1e40af !important; }
+  .wo-steps .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border-width:1.5px; }
+  .wo-steps-more { font-size:15px; }
+  .wo-step.clear .wo-step-num { background:#9ca3af; }
+  .wo-step-done { background:#f3f4f6 !important; color:#000 !important; }
   .wo-step-title { font-size:16px; font-weight:800; color:#000; }
   .wo-step-why { display:block; font-size:13px; color:#000; margin-top:2px; }
   .wo-step-start { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:#1e40af; color:#fff; font-size:12px; font-weight:800; vertical-align:2px; }
@@ -326,12 +334,13 @@
          says Start here. Waiting / manager / done views sit below, smaller. --}}
     @php
       $woSteps = [
-        ['tab' => 'pickup', 'title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
-        ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['hw' => 'HW', 'pico' => 'Pico']],
+        ['tab' => 'pickup', 'title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
+        ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
         ['tab' => 'to_ship', 'title' => 'Pull shipping orders', 'why' => 'Find each item, tap Mark picked or Can\'t find. Discogs orders are here too.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Check Hollywood before anyone refunds.'],
+        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Check Hollywood before anyone refunds.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
       ];
       $woStepCount = function ($st) use ($tabCounts) {
+        if (in_array($st['tab'], ['ready_ship', 'recheck_hw'], true)) return (int) ($tabCounts[$st['tab']] ?? 0);
         if (empty($st['split'])) return (int) ($tabCounts[$st['tab']] ?? 0);
         $n = 0;
         foreach (array_keys($st['split']) as $lk) $n += (int) ($tabCounts[$st['tab'] . '_' . $lk] ?? 0);
