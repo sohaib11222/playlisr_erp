@@ -312,6 +312,10 @@
   .wo-tbl .wo-tag { background:none !important; border:none !important; color:#000 !important; padding:0 !important; margin-left:6px; font-size:11px; font-weight:600; }
   .wo-tbl .wo-tag.fmt { display:none; }
   .wo-tbl .wo-noerp { background:none !important; color:#000 !important; font-weight:400; font-size:11px; }
+  .wo-cond { font-size:10.5px !important; padding:1px 6px !important; border-radius:4px !important; letter-spacing:.03em !important; border-width:1.5px !important; }
+  .wo-cond.plain { background:#fff; color:#000; border:1.5px solid #9ca3af; }
+  .wo-duecol { font-size:14px; font-weight:600; color:#000; white-space:nowrap; }
+  .wo-duecol.late { color:#b91c1c; font-weight:800; }
   .wo-cond.sealed { background:#1e3a8a !important; color:#fff !important; border:2px solid #1e3a8a; }
   .wo-cond.used { background:#fff !important; color:#1e3a8a !important; border:2px solid #1e3a8a; }
   .wo-tbl .wo-pill, .wo-tbl .wo-fm-pill { background:none !important; color:#000 !important; padding:0 !important; font-weight:600; font-size:13px; }
@@ -501,7 +505,7 @@
     @if(!$woLookup && in_array($activeTab, ['to_ship', 'pickup', 'ready_ship'], true))
       {{-- Pick order (Sarah, 2026-10-21): newest, 1-item orders, or biggest $ first --}}
       @php
-        $woSorts = ['' => 'Partly pulled first', 'placed:desc' => 'Newest first', 'items:asc' => '1-item orders first', 'total:desc' => 'Highest $ first', 'placed:asc' => 'Oldest first'];
+        $woSorts = ['' => 'Due first', 'placed:desc' => 'Newest first', 'items:asc' => '1-item orders first', 'total:desc' => 'Highest $ first', 'placed:asc' => 'Oldest first'];
         $woSortNow = $sortKey === '' ? '' : $sortKey . ':' . $sortDir;
       @endphp
       <div class="wo-sortbar">
@@ -621,25 +625,27 @@
         <table class="wo-tbl">
           <colgroup>
             <col style="width:100px">
+            <col style="width:78px">
             <col style="width:12%">
             <col>
             <col style="width:340px">
-            <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
             <col style="width:86px">
             <col style="width:236px">
+            <col style="width:108px">
           </colgroup>
           <thead><tr>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
+            <th>Due</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
             <th>Location</th>
-            <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Fulfillment', 'key' => 'fulfillment'])</th>
             <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
             <th>Actions</th>
+            <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
           </tr></thead>
           <tbody>
             @foreach($orders as $o)
@@ -698,8 +704,7 @@
               <tr class="wo-row">
                 <td class="wo-placed">
                   @if(!empty($o['createdAt'])){{ date('M j, Y', strtotime($o['createdAt'])) }}<span class="t">{{ date('g:ia', strtotime($o['createdAt'])) }}</span>@else &mdash; @endif
-                  @php $due = ($rowIsPreorder && !$rowShipDate) ? null : \App\Http\Controllers\WebsiteOrdersController::dueDate($o, $rowIsPreorder ? $rowShipDate : null); @endphp
-                  @if($due)<span class="wo-due {{ $due[1] }}">{{ $due[0] }}</span>@endif
+
                   @if($activeTab === 'refunded')
                     @php [$rfAmt, $rfAt, $rfWhy] = \App\Http\Controllers\WebsiteOrdersController::refundSummary($o); @endphp
                     <span style="display:block;margin-top:5px;font-size:12px;font-weight:700;color:#6b21a8;">Refunded{{ $rfAmt > 0 ? ' $' . number_format($rfAmt, 2) : '' }}{{ $rfAt ? ' on ' . date('m/d/y', strtotime($rfAt)) : '' }}</span>
@@ -718,6 +723,9 @@
                     @endif
                   @endif
                 </td>
+                {{-- Due: just the date, red if late (Sarah, 2026-10-21) --}}
+                @php $dueS = ($rowIsPreorder && !$rowShipDate) ? null : \App\Http\Controllers\WebsiteOrdersController::dueShort($o, $rowIsPreorder ? $rowShipDate : null); @endphp
+                <td class="wo-duecol {{ ($dueS[1] ?? false) ? 'late' : '' }}">{{ $dueS[0] ?? '' }}</td>
                 <td>
                   @if(!empty($searchAll))
                     @php [$onTab, $onTabName] = \App\Http\Controllers\WebsiteOrdersController::tabFor($o); @endphp
@@ -778,8 +786,8 @@
                         @if(!$line['gift'] && !$lineErp)<span class="wo-noerp">not in ERP</span>@endif
                         @php $lineMedia = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($lineItem['product_id']['productType'] ?? null); $lineFmt = $line['gift'] ? null : ($lineItem['product_id']['format'] ?? null); @endphp
                         @php $lineCond = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::conditionOf($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null); @endphp
-                        @if($lineCond && !$woDone)<span class="wo-cond {{ $lineCond }}">{{ strtoupper($lineCond) }}</span>@endif
-                        @if($lineMedia && !$woDone)<span class="wo-tag media">{{ $lineMedia }}</span>@endif
+                        @php [$lineTag, $lineTagCls] = $line['gift'] ? ['', ''] : \App\Http\Controllers\WebsiteOrdersController::itemTag($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null, $lineItem['product_id']['productType'] ?? null); @endphp
+                        @if($lineTag !== '' && !$woDone)<span class="wo-cond {{ $lineTagCls }}">{{ $lineTag }}</span>@endif
                         @if($lineFmt && !$woDone)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
                         @php $rowAnyPl = $line['gift'] ? null : ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null); @endphp
                         @if(!empty($lineItem['substituted_from']['name']))<span class="wo-big-tag sub">SUBSTITUTE</span>@elseif($rowAnyPl && ($rowAnyPl['status'] ?? '') === "Can't Find" && in_array($status, ['shipped', 'delivered', 'email_sent'], true))<span class="wo-big-tag cf">NOT SENT</span>@endif
@@ -880,7 +888,6 @@
                   @endforeach
                   @endif
                 </td>
-                <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
                 <td>
                   <span class="wo-pill {{ $pillClass }}">{{ $statuses[$status] ?? ($status ?: 'Pending') }}</span>
                   @if($paymentStatusFilter === 'all')
@@ -1073,6 +1080,7 @@
                     </div>
                   @endif
                 </td>
+                <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
                 <td colspan="9">
@@ -1277,25 +1285,27 @@
           <table class="wo-tbl">
             <colgroup>
               <col style="width:100px">
+              <col style="width:78px">
               <col style="width:12%">
               <col>
               <col style="width:340px">
-              <col style="width:108px">
               <col style="width:118px">
               <col style="width:112px">
               <col style="width:86px">
               <col style="width:236px">
+              <col style="width:108px">
             </colgroup>
             <thead><tr>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
+              <th>Due</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
               <th>Location</th>
-              <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
               <th>Fulfillment</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
               <th>Actions</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
             </tr></thead>
             <tbody>
               {{-- Same columns and look as the website order rows (Sarah, 2026-10-21) --}}
@@ -1310,10 +1320,11 @@
                 <tr class="wo-row">
                   <td class="wo-placed">
                     @if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@else &mdash; @endif
-                    @if($dDays >= 5)<span class="wo-due over">{{ $dDays }} days old</span>@endif
                   </td>
+                  @php $dDue = !empty($d['order_date']) ? \App\Http\Controllers\WebsiteOrdersController::dueShort(['createdAt' => $d['order_date'], 'order_status' => 'processing', 'fulfillment_method' => 'shipping']) : null; @endphp
+                  <td class="wo-duecol {{ ($dDue[1] ?? false) ? 'late' : '' }}">{{ $dDue[0] ?? '' }}</td>
                   <td>
-                    <span class="wo-pill" style="background:#fef3c7;color:#92400e;margin-bottom:5px;">Discogs</span>
+                    <div style="font-size:12px;font-weight:700;color:#000;margin-bottom:3px;">Discogs</div>
                     <div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div>
                     <div class="wo-buyer-email"><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">Order {{ $d['id'] }}</a></div>
                   </td>
@@ -1330,8 +1341,8 @@
                         @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
                         <div>
                           @if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif
-                          @if($dCond)<span class="wo-cond {{ $dCond }}">{{ strtoupper($dCond) }}</span>@endif
-                          @if($dMedia)<span class="wo-tag media">{{ $dMedia }}</span>@endif
+                          @php [$dTag, $dTagCls] = \App\Http\Controllers\WebsiteOrdersController::itemTag($erpLocations[(int) ($it['erp_product_id'] ?? 0)]['genre'] ?? null, null, $it['product_type'] ?? null); @endphp
+                          @if($dTag !== '')<span class="wo-cond {{ $dTagCls }}">{{ $dTag }}</span>@endif
                           @if(!empty($it['format']))<span class="wo-tag fmt">{{ $it['format'] }}</span>@endif
                           <div class="wo-prod-price">{{ $it['quantity'] ?? 1 }}@if(!empty($it['price'])) &times; ${{ number_format((float) $it['price'], 2) }}@endif</div>
                           @if(!empty($it['artist']))<div class="wo-prod-artist">{{ $it['artist'] }}</div>@endif
@@ -1377,7 +1388,6 @@
                       </div>
                     @endforeach
                   </td>
-                  <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
                   <td><span class="wo-pill st-processing">{{ $d['status'] ?? 'Payment Received' }}</span></td>
                   <td><span class="wo-fm-pill shipping">Shipping</span><div class="wo-shipfrom">Discogs order</div></td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
@@ -1394,6 +1404,7 @@
                       <div class="wo-pick-count" style="margin-top:8px;font-size:13px;font-weight:700;color:#000;"><span class="n">{{ (int) ($dPick['picked'] ?? 0) }}</span> of {{ (int) $dPick['total'] }} picked</div>
                     @endif
                   </td>
+                  <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
                 </tr>
               @endforeach
             </tbody>

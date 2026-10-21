@@ -382,14 +382,9 @@ class WebsiteOrdersController extends Controller
             }
         }
 
-        // Partly pulled orders first on Need to Pull, so they get finished
-        // and move to Pack and ship (Sarah, 2026-10-21)
-        if ($activeTab === 'to_ship' && (string) $request->query('sort', '') === '') {
-            $rank = [];
-            foreach ($orders as $i => $po) $rank[$i] = (int) ($po['pick_progress']['picked'] ?? 0) > 0 ? 0 : 1;
-            $idx = array_keys($orders);
-            usort($idx, fn($a, $b) => [$rank[$a], $a] <=> [$rank[$b], $b]);
-            $orders = array_map(fn($i) => $orders[$i], $idx);
+        // Default: most overdue at the top, so Nick starts at row one (Sarah, 2026-10-21)
+        if (in_array($activeTab, ['to_ship', 'ready_ship'], true) && (string) $request->query('sort', '') === '') {
+            usort($orders, fn($a, $b) => (strtotime($a['createdAt'] ?? '') ?: 0) <=> (strtotime($b['createdAt'] ?? '') ?: 0));
         }
         if ($activeTab === 'pickup') {
             usort($orders, fn($a, $b) => strtotime($a['createdAt'] ?? '') <=> strtotime($b['createdAt'] ?? ''));
@@ -1212,6 +1207,28 @@ class WebsiteOrdersController extends Controller
         if (self::shipStore($o) === 'pico') return 'pico';
         $spots = self::orderSpots($o);
         return ($spots && !array_diff($spots, ['warehouse'])) ? 'warehouse' : 'hollywood';
+    }
+
+    /** One small tag like "SEALED CD" / "USED LP": both from the ERP category when it has them, else the website type (Sarah, 2026-10-21: Eminem CD showed LP). */
+    public static function itemTag(?string $erpGenre, ?string $subCategory, ?string $productType): array
+    {
+        $cond = self::conditionOf($erpGenre, $subCategory);
+        $cat = strtolower(explode(' / ', (string) $erpGenre)[0]);
+        $media = null;
+        foreach (['vinyl' => 'LP', 'cd' => 'CD', 'cassette' => 'Cassette', 'dvd' => 'DVD', 'blu' => 'Blu-ray', 'vhs' => 'VHS', '7"' => '7"', 'laser' => 'LaserDisc'] as $k => $lbl) {
+            if ($cat !== '' && preg_match('/\b' . preg_quote($k, '/') . '/', $cat)) { $media = $lbl; break; }
+        }
+        if (!$media) $media = self::mediaTypeLabel($productType);
+        $text = trim(strtoupper(($cond ?? '') . ' ' . ($media ?? '')));
+        return [$text, $cond ?: 'plain'];
+    }
+
+    /** Just the due date (m/d/y) and whether it's late, for the Due column. */
+    public static function dueShort(array $o, ?string $streetDate = null): ?array
+    {
+        $d = self::dueDate($o, $streetDate);
+        if (!$d) return null;
+        return [preg_replace('/^Due (\S+).*$/', '$1', $d[0]), $d[1] === 'over'];
     }
 
     /** 'sealed' / 'used' from the ERP category ("Vinyl - Sealed", "CD - Used"), else the website sub-category; null when unknown. */
