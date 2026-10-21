@@ -710,6 +710,22 @@
                     @elseif($woShipStores->count() === 1)
                       <div class="wo-shipfrom">Ships from {{ $woShipStores->first() === 'pico' ? 'Pico' : 'Hollywood' }}</div>
                     @endif
+                    {{-- What the customer paid for shipping, at a glance (Sarah, 2026-10-21) --}}
+                    @php $woShipPaid = $o['shipping_cost'] ?? null; @endphp
+                    <div style="margin-top:6px;font-size:14px;font-weight:700;color:#000;">
+                      @if($woShipPaid === null)
+                        Shipping paid: not recorded
+                      @elseif((float) $woShipPaid <= 0)
+                        Shipping paid: $0.00 (free)
+                      @else
+                        Shipping paid: ${{ number_format((float) $woShipPaid, 2) }}
+                      @endif
+                    </div>
+                    @if(($o['ship_speed'] ?? null) === 'priority' && !empty($o['priority_packages']))
+                      @foreach($o['priority_packages'] as $pp)
+                        <div style="font-size:12px;color:#000;">{{ ($pp['store'] ?? '') === 'pico' ? 'Pico' : 'Hollywood' }} package: ${{ number_format((float) ($pp['price'] ?? 0), 2) }}</div>
+                      @endforeach
+                    @endif
                   @endif
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}</td>
