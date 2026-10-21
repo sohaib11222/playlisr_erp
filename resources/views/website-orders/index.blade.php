@@ -95,8 +95,8 @@
 
   .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:8px; font-size:12px; font-weight:600; margin:0 0 4px; }
   .wo-big-tag { display:inline-block; margin-left:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:800; letter-spacing:.02em; }
-  .wo-big-tag.sub { background:#2563eb; color:#fff; }
-  .wo-big-tag.cf { background:#dc2626; color:#fff; }
+  .wo-big-tag.sub { background:#2563eb; color:#fff !important; }
+  .wo-big-tag.cf { background:#dc2626; color:#fff !important; }
   .wo-sub-for { margin-top:3px; font-size:13px; font-weight:700; color:#1e40af; }
   .wo-sub-note { font-size:12px; color:#000; margin-top:2px; }
   .wo-sub-note summary { cursor:pointer; color:#1e40af; font-weight:600; }
