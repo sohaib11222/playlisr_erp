@@ -969,9 +969,21 @@ class WebsiteOrdersController extends Controller
             $tx = $line ? \DB::table('transactions')->where('id', $line->transaction_id)->first() : null;
             $var = \DB::table('variations')->where('product_id', $newPid)->whereNull('deleted_at')->orderBy('id')->first();
             if ($line && $var) {
-                \DB::transaction(function () use ($line, $var, $newPid, $tx, $qty) {
+                // Take the substitute off where it's actually stocked. When the
+                // order was booked one sale per item, move that sale to that
+                // store too (Apurva #100221: Pico's Pink Floyd line became
+                // Hollywood's Sgt. Pepper's, Sarah 2026-10-21).
+                $locId = $tx->location_id;
+                $hereQty = (float) \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $locId)->value('qty_available');
+                if ($hereQty < $qty) {
+                    $other = \DB::table('variation_location_details')->where('variation_id', $var->id)->where('qty_available', '>=', $qty)->orderByDesc('qty_available')->value('location_id');
+                    $onlyLine = \DB::table('transaction_sell_lines')->where('transaction_id', $tx->id)->count() === 1;
+                    if ($other && $onlyLine) $locId = $other;
+                }
+                \DB::transaction(function () use ($line, $var, $newPid, $tx, $qty, $locId) {
                     \DB::table('transaction_sell_lines')->where('id', $line->id)->update(['product_id' => $newPid, 'variation_id' => $var->id, 'updated_at' => now()]);
-                    \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->decrement('qty_available', $qty);
+                    if ((int) $locId !== (int) $tx->location_id) \DB::table('transactions')->where('id', $tx->id)->update(['location_id' => $locId, 'updated_at' => now()]);
+                    \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $locId)->decrement('qty_available', $qty);
                 });
                 $erpNote = ' The ERP sale now shows the new record and its stock came off.';
             } else {
