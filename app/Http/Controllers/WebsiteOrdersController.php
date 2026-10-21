@@ -377,6 +377,8 @@ class WebsiteOrdersController extends Controller
         $sortKey = (string) $request->query('sort', '');
         $sortDir = $request->query('dir') === 'desc' ? 'desc' : 'asc';
         $erpLocations = self::erpLocations($orders);
+        // Discogs rows show the same Location column (Sarah, 2026-10-21)
+        $erpLocations += self::erpLocations(array_map(fn($d) => ['items' => array_map(fn($it) => ['product_id' => ['posProductId' => $it['erp_product_id'] ?? null]], $d['items'] ?? [])], $discogsToShip));
         self::$sortGenres = $erpLocations;
         if ($sortKey !== '') {
             $orders = self::sortRows($orders, $sortKey, $sortDir, false);

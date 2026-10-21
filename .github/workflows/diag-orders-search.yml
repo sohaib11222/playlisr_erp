@@ -57,6 +57,16 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'RENDER') {
+              $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'to_ship']);
+              app()->instance('request', $req);
+              $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
+              $i = strpos($html, 'Discogs orders to ship');
+              echo 'RENDER_OK len=' . strlen($html) . "\n";
+              echo 'DISCOGS: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 9000))), 0, 1500) . "\n";
+              echo 'HAS_BTNS=' . substr_count(substr($html, $i), 'wo-pick-inline') . "\n";
+              return;
+            }
             foreach (['to_ship', 'ready_ship', 'completed'] as $tab) {
               foreach (['', 'pico'] as $loc) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', array_filter(['q' => $q, 'tab' => $tab, 'location' => $loc]));

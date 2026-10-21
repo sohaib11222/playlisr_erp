@@ -236,7 +236,9 @@
   .wo-loc-line { margin-bottom:2px; }
   .wo-pick-inline { margin-top:3px; }
   .wo-pick-inline .wo-pick-state { margin-bottom:3px; }
-  .wo-pick-inline .wo-pick-btns button { flex:0 0 auto !important; padding:4px 10px; font-size:12px; }
+  /* One row of buttons under the bin, not stacked (Sarah, 2026-10-21) */
+  .wo-pick-inline .wo-pick-btns { flex-wrap:nowrap !important; gap:4px; }
+  .wo-pick-inline .wo-pick-btns button { flex:0 0 auto !important; padding:4px 8px; font-size:12px; line-height:1.2; }
 </style>
 
 <div class="ev-wrap ev-wrap-wide">
@@ -462,8 +464,8 @@
           <colgroup>
             <col style="width:100px">
             <col style="width:12%">
-            <col style="width:26%">
             <col>
+            <col style="width:340px">
             <col style="width:108px">
             <col style="width:118px">
             <col style="width:112px">
@@ -1027,47 +1029,103 @@
           <div class="wo-scroll">
           <table class="wo-tbl">
             <colgroup>
-              <col style="width:120px"><col style="width:11%"><col><col style="width:300px"><col style="width:100px"><col style="width:80px"><col style="width:92px"><col style="width:220px">
+              <col style="width:100px">
+              <col style="width:12%">
+              <col>
+              <col style="width:340px">
+              <col style="width:108px">
+              <col style="width:118px">
+              <col style="width:112px">
+              <col style="width:86px">
+              <col style="width:236px">
             </colgroup>
             <thead><tr>
-              <th>@include('website-orders.partials.sort-th', ['label' => 'Discogs order', 'key' => 'status'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Placed', 'key' => 'placed'])</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Buyer', 'key' => 'buyer'])</th>
-              <th>@include('website-orders.partials.sort-th', ['label' => 'Items (bin)', 'key' => 'product'])</th>
-              <th>Pick</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Product', 'key' => 'product'])</th>
+              <th>Location</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Listed', 'key' => 'listed'])</th>
+              <th>@include('website-orders.partials.sort-th', ['label' => 'Status', 'key' => 'status'])</th>
+              <th>Fulfillment</th>
               <th>@include('website-orders.partials.sort-th', ['label' => 'Total', 'key' => 'total'])</th>
-              <th>@include('website-orders.partials.sort-th', ['label' => 'Ordered', 'key' => 'placed'])</th>
-              <th>Mark shipped</th>
+              <th>Actions</th>
             </tr></thead>
             <tbody>
+              {{-- Same columns and look as the website order rows (Sarah, 2026-10-21) --}}
               @foreach($discogsToShip as $d)
+                @php
+                  $dListed = \App\Http\Controllers\WebsiteOrdersController::listedShort(collect($d['items'] ?? [])->map(fn($it) => $it['listed_at'] ?? null)->filter()->sort()->first());
+                  $dPick = $d['pick'] ?? null;
+                  $dPickLines = [];
+                  foreach (($dPick['lines'] ?? []) as $pl) $dPickLines[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl;
+                  $dDays = !empty($d['order_date']) ? (int) floor((time() - strtotime($d['order_date'])) / 86400) : 0;
+                @endphp
                 <tr class="wo-row">
-                  <td>
-                    <span class="wo-pill" style="background:#fef3c7;color:#92400e;">Discogs</span>
-                    <div><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">{{ $d['id'] }}</a></div>
-                    <div style="font-size:11px;color:#000;">{{ $d['status'] ?? '' }}</div>
+                  <td class="wo-placed">
+                    @if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@else &mdash; @endif
+                    @if($dDays >= 5)<span class="wo-due over">{{ $dDays }} days old</span>@endif
                   </td>
-                  @php
-                    $dListed = \App\Http\Controllers\WebsiteOrdersController::listedShort(collect($d['items'] ?? [])->map(fn($it) => $it['listed_at'] ?? null)->filter()->sort()->first());
-                  @endphp
-                  <td><div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div></td>
-                  <td style="font-size:13px;">
+                  <td>
+                    <span class="wo-pill" style="background:#fef3c7;color:#92400e;margin-bottom:5px;">Discogs</span>
+                    <div class="wo-buyer-name">{{ $d['buyer'] ?? '' }}</div>
+                    <div class="wo-buyer-email"><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">Order {{ $d['id'] }}</a></div>
+                  </td>
+                  <td>
                     @foreach(($d['items'] ?? []) as $it)
+                      @php $dMedia = \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($it['product_type'] ?? null); @endphp
                       <div class="wo-prod-line wo-prod-with-img">
-                      @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
-                      <div>@if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif @if(($it['quantity'] ?? 1) > 1) x{{ $it['quantity'] }}@endif @if(!empty($it['location']))<span style="color:#000;">({{ $it['location'] }})</span>@endif
-                        @php $dlisted = \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null); @endphp
-                        @if($dlisted && count($d['items'] ?? []) > 1)<div style="font-size:11px;color:#000;">{{ $dlisted }}</div>@endif
-                      </div>
+                        @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
+                        <div>
+                          @if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif
+                          @if($dMedia)<span class="wo-tag media">{{ $dMedia }}</span>@endif
+                          @if(!empty($it['format']))<span class="wo-tag fmt">{{ $it['format'] }}</span>@endif
+                          <div class="wo-prod-price">{{ $it['quantity'] ?? 1 }}@if(!empty($it['price'])) &times; ${{ number_format((float) $it['price'], 2) }}@endif</div>
+                          @if(!empty($it['artist']))<div class="wo-prod-artist">{{ $it['artist'] }}</div>@endif
+                        </div>
                       </div>
                     @endforeach
                   </td>
-                  {{-- Own column so the buttons have room (Sarah, 2026-10-20) --}}
-                  <td class="wo-dg-pick">@if(!empty($d['pick']))@include('website-orders.partials.pick-list', ['pick' => $d['pick']])@endif</td>
+                  <td class="wo-loc @if(!empty($dPick['order_id'])) wo-pick @endif" @if(!empty($dPick['order_id'])) data-order="{{ $dPick['order_id'] }}" @endif>
+                    @foreach(($d['items'] ?? []) as $it)
+                      @php
+                        $dPid = (int) ($it['erp_product_id'] ?? 0);
+                        $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $dPid]], $dPid ? ($erpLocations[$dPid] ?? null) : null);
+                        $pl = $dPickLines[strtolower(trim((string) ($it['name'] ?? '')))] ?? null;
+                      @endphp
+                      <div class="wo-loc-line">
+                        @if($pull['place'] === '' && $pull['area'] === '' && $pull['bin'] === '')
+                          <span class="none">Not set</span>
+                        @else
+                          @if($pull['place'] !== '')<span class="place">{{ $pull['place'] }}</span>@endif
+                          @if($pull['area'] !== '')<span class="area">{{ $pull['area'] }}</span>@endif
+                          @if(($pull['genre'] ?? '') !== '')<span class="area">{{ $pull['genre'] }}</span>@endif
+                          @if($pull['bin'] !== '')<span class="binv">Bin {{ $pull['bin'] }}</span>@endif
+                        @endif
+                        @if($pl)
+                          @php
+                            $plStatus = $pl['status'] ?? 'Not Picked';
+                            $plDone = in_array($plStatus, ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true);
+                            $plMissing = $plStatus === "Can't Find";
+                          @endphp
+                          <div class="wo-pick-line wo-pick-inline {{ $plDone ? 'is-done' : ($plMissing ? 'is-missing' : '') }}" data-item="{{ $pl['item_id'] }}" data-qty="{{ (int) ($pl['quantity'] ?? 1) }}">
+                            <div class="wo-pick-state">{{ $plDone ? $plStatus . (!empty($pl['picked_by']) ? ' by ' . $pl['picked_by'] : '') : ($plMissing ? "Can't find" . (!empty($pl['picked_by']) ? ' (' . $pl['picked_by'] . ')' : '') : ($plStatus === 'Pending Arrival' ? 'Pending arrival' : 'Not picked yet')) }}</div>
+                            <div class="wo-pick-btns">
+                              @if($plDone || $plMissing)
+                                <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
+                              @else
+                                <button type="button" class="go" onclick="woPick(this, 'Picked')">Mark picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
+                              @endif
+                            </div>
+                          </div>
+                        @endif
+                      </div>
+                    @endforeach
+                  </td>
                   <td class="wo-listed">{{ explode(' · ', (string) ($dListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($dListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($dListed ?? ''), 2)[1] }}</span>@endif</td>
+                  <td><span class="wo-pill st-processing">{{ $d['status'] ?? 'Payment Received' }}</span></td>
+                  <td><span class="wo-fm-pill shipping">Shipping</span><div class="wo-shipfrom">Discogs order</div></td>
                   <td class="wo-total">${{ number_format((float) ($d['total'] ?? 0), 2) }}</td>
-                  <td class="wo-placed">@if(!empty($d['order_date'])){{ date('M j, Y', strtotime($d['order_date'])) }}<span class="t">{{ date('g:ia', strtotime($d['order_date'])) }}</span>@endif</td>
-                  <td>
+                  <td class="wo-actions-cell">
                     <form method="POST" action="{{ route('website-orders.shipDiscogs', ['id' => $d['id']]) }}"
                           onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Marking...';">
                       {{ csrf_field() }}
@@ -1075,6 +1133,10 @@
                              style="width:100%;font-size:13px;padding:7px 9px;border:1px solid #d1d5db;border-radius:7px;box-sizing:border-box;margin-bottom:6px;">
                       <button type="submit" class="wo-btn wo-btn-primary">Mark shipped</button>
                     </form>
+                    <a class="wo-btn" href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener" style="margin-top:6px;display:inline-block;">Open on Discogs</a>
+                    @if(!empty($dPick['total']))
+                      <div class="wo-pick-count" style="margin-top:8px;font-size:13px;font-weight:700;color:#000;"><span class="n">{{ (int) ($dPick['picked'] ?? 0) }}</span> of {{ (int) $dPick['total'] }} picked</div>
+                    @endif
                   </td>
                 </tr>
               @endforeach
