@@ -785,7 +785,19 @@
                       $lineImg = $line['gift'] ? null : (($lineItem['product_id']['image'] ?? null) ?: ($lineItem['product_image'] ?? null));
                       $lineErp = $line['gift'] ? null : ($lineItem['product_id']['posProductId'] ?? null);
                     @endphp
-                    <div class="wo-prod-line wo-prod-with-img">
+                    @php
+                      // Big view on click: photo + details (Sarah, 2026-10-21)
+                      [$bvTag] = $line['gift'] ? [''] : \App\Http\Controllers\WebsiteOrdersController::itemTag($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null, $lineItem['product_id']['productType'] ?? null);
+                      $bv = $line['gift'] ? null : [
+                        'img' => $lineImg, 'name' => $line['name'], 'artist' => $lineArtist, 'tag' => $bvTag,
+                        'price' => '$' . number_format((float) ($lineItem['price'] ?? 0), 2), 'qty' => (int) ($lineItem['quantity'] ?? $line['qty']),
+                        'format' => $lineItem['product_id']['format'] ?? null, 'genre' => $erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? ($lineItem['product_id']['genre'] ?? null),
+                        'where' => $line['spot'] ?? '', 'sku' => $lineItem['product_id']['sku'] ?? null,
+                        'listed' => \App\Http\Controllers\WebsiteOrdersController::listedLabel($lineItem['product_id']['posCreatedAt'] ?? ($lineItem['product_id']['createdAt'] ?? null)),
+                        'erp' => $lineErp ? url('/products/' . $lineErp . '/edit') : null,
+                      ];
+                    @endphp
+                    <div class="wo-prod-line wo-prod-with-img" @if($bv) data-bv="{{ json_encode($bv) }}" @endif>
                       @if($lineImg)<img class="wo-prod-img" src="{{ $lineImg }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
                       <div>
                         @if($line['cancelled'])<s>@endif @if($lineErp)<a class="wo-prod-name" href="{{ url('/products/' . $lineErp . '/edit') }}" target="_blank" rel="noopener">{{ $line['name'] }}</a>@else{{ $line['name'] }}@endif @if($line['cancelled'])</s>@endif
@@ -1343,7 +1355,20 @@
                     @foreach(($d['items'] ?? []) as $it)
                       @continue(!$dShow($it))
                       @php $dMedia = \App\Http\Controllers\WebsiteOrdersController::mediaTypeLabel($it['product_type'] ?? null); $dCond = \App\Http\Controllers\WebsiteOrdersController::conditionOf($erpLocations[(int) ($it['erp_product_id'] ?? 0)]['genre'] ?? null, null); @endphp
-                      <div class="wo-prod-line wo-prod-with-img">
+                      @php
+                        $dbPid = (int) ($it['erp_product_id'] ?? 0);
+                        [$dbTag] = \App\Http\Controllers\WebsiteOrdersController::itemTag($erpLocations[$dbPid]['genre'] ?? null, null, $it['product_type'] ?? null);
+                        $dbv = [
+                          'img' => $it['image'] ?? null, 'name' => $it['name'] ?? 'Item', 'artist' => $it['artist'] ?? null, 'tag' => $dbTag,
+                          'price' => !empty($it['price']) ? '$' . number_format((float) $it['price'], 2) : null, 'qty' => (int) ($it['quantity'] ?? 1),
+                          'format' => $it['format'] ?? null, 'genre' => $erpLocations[$dbPid]['genre'] ?? null,
+                          'where' => \App\Http\Controllers\WebsiteOrdersController::pullSpot(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $dbPid]], $dbPid ? ($erpLocations[$dbPid] ?? null) : null),
+                          'sku' => null, 'listed' => \App\Http\Controllers\WebsiteOrdersController::listedLabel($it['listed_at'] ?? null),
+                          'erp' => $dbPid ? url('/products/' . $dbPid . '/edit') : null,
+                          'discogs' => !empty($it['listing_id']) ? 'https://www.discogs.com/sell/item/' . $it['listing_id'] : null,
+                        ];
+                      @endphp
+                      <div class="wo-prod-line wo-prod-with-img" data-bv="{{ json_encode($dbv) }}">
                         @if(!empty($it['image']))<img class="wo-prod-img" src="{{ $it['image'] }}" alt="" loading="lazy">@else<div class="wo-prod-img"></div>@endif
                         <div>
                           @if(!empty($it['erp_product_id']))<a class="wo-prod-name" href="{{ url('/products/' . $it['erp_product_id'] . '/edit') }}" target="_blank" rel="noopener">{{ $it['name'] ?? 'Item' }}</a>@else{{ $it['name'] ?? 'Item' }}<span class="wo-noerp">not in ERP</span>@endif
@@ -2022,4 +2047,52 @@
     if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length && why);
   }
 </script>
+
+{{-- Big product view (Sarah, 2026-10-21) --}}
+<div id="wo-bv" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2100;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;" onclick="if (event.target === this) this.style.display='none'">
+  <div style="background:#fff;border-radius:12px;max-width:760px;width:100%;padding:20px;box-sizing:border-box;color:#000;display:flex;gap:20px;flex-wrap:wrap;">
+    <img id="wo-bv-img" src="" alt="" style="width:340px;max-width:100%;height:auto;border-radius:8px;object-fit:contain;background:#f3f4f6;">
+    <div style="flex:1 1 260px;min-width:0;">
+      <div id="wo-bv-tag" class="wo-cond sealed" style="font-size:12px !important;"></div>
+      <div id="wo-bv-name" style="font-size:22px;font-weight:800;margin:8px 0 2px;"></div>
+      <div id="wo-bv-artist" style="font-size:16px;margin-bottom:12px;"></div>
+      <table id="wo-bv-rows" style="font-size:15px;border-collapse:collapse;"></table>
+      <div id="wo-bv-links" style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;font-weight:700;"></div>
+      <button type="button" onclick="document.getElementById('wo-bv').style.display='none'" style="margin-top:16px;font-size:15px;padding:8px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#000;">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+  document.addEventListener('click', function (e) {
+    var hit = e.target.closest('.wo-prod-line[data-bv] .wo-prod-img, .wo-prod-line[data-bv] .wo-prod-name');
+    if (!hit || e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    var d = JSON.parse(hit.closest('.wo-prod-line').dataset.bv);
+    var img = document.getElementById('wo-bv-img');
+    img.src = d.img || ''; img.style.display = d.img ? '' : 'none';
+    var tag = document.getElementById('wo-bv-tag');
+    tag.textContent = d.tag || ''; tag.style.display = d.tag ? 'inline-block' : 'none';
+    tag.className = 'wo-cond ' + (/USED/.test(d.tag || '') ? 'used' : (/SEALED/.test(d.tag || '') ? 'sealed' : 'plain'));
+    document.getElementById('wo-bv-name').textContent = d.name || '';
+    document.getElementById('wo-bv-artist').textContent = d.artist || '';
+    var rows = [['Price', d.price], ['Qty', d.qty], ['Where', d.where], ['Format', d.format], ['Genre', d.genre], ['SKU', d.sku], ['Listed', d.listed]];
+    var t = document.getElementById('wo-bv-rows'); t.innerHTML = '';
+    rows.forEach(function (r) {
+      if (r[1] === null || r[1] === undefined || r[1] === '') return;
+      var tr = document.createElement('tr');
+      var a = document.createElement('td'); a.textContent = r[0]; a.style.cssText = 'font-weight:700;padding:3px 14px 3px 0;vertical-align:top;';
+      var b = document.createElement('td'); b.textContent = r[1]; b.style.cssText = 'padding:3px 0;';
+      tr.appendChild(a); tr.appendChild(b); t.appendChild(tr);
+    });
+    var l = document.getElementById('wo-bv-links'); l.innerHTML = '';
+    [['Open in the ERP', d.erp], ['Open on Discogs', d.discogs]].forEach(function (x) {
+      if (!x[1]) return;
+      var a = document.createElement('a'); a.href = x[1]; a.target = '_blank'; a.rel = 'noopener'; a.textContent = x[0]; a.style.color = '#1e40af';
+      l.appendChild(a);
+    });
+    document.getElementById('wo-bv').style.display = 'flex';
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.getElementById('wo-bv').style.display = 'none'; });
+</script>
+<style>.wo-prod-line[data-bv] .wo-prod-img { cursor:zoom-in; }</style>
 @endsection
