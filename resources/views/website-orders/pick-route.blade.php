@@ -37,8 +37,6 @@
 <div class="pr-wrap">
   <a href="{{ route('website-orders.index') }}" style="display:inline-block;margin-bottom:10px;padding:7px 14px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#000;font-weight:600;text-decoration:none;">&larr; Back to Website Orders</a>
   <h1>Pick Route</h1>
-    </p>
-  @endif
 
   <div class="pr-tabs">
     @foreach(['hollywood' => 'Hollywood Store', 'pico' => 'Pico Store', 'warehouse' => 'Warehouse'] as $key => $label)
