@@ -116,6 +116,11 @@
   @endif
   @if(count($erpUnknown))
     <h3 style="font-size:15px;margin:14px 0 6px;">ERP products ({{ count($erpUnknown) }})</h3>
+    <form method="POST" action="{{ route('website-orders.binUnknownErpFix') }}" style="margin-bottom:10px;" onsubmit="this.querySelector('button').disabled=true;">
+      {{ csrf_field() }}
+      <button type="submit" class="bc-btn">Copy the real bin from the website</button>
+      <span style="margin-left:8px;color:#374151;">For each product the website has a real bin for. A backup of the old bins is saved.</span>
+    </form>
     <table>
       <tr><th>Product</th><th>Bin</th><th>Field</th></tr>
       @foreach($erpUnknown as $r)

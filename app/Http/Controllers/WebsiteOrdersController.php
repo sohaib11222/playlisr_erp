@@ -764,34 +764,7 @@ class WebsiteOrdersController extends Controller
         $p = $this->websiteApi('GET', '/erp/bin-store/products', null, 90);
         // Bins that aren't on the bin map, website and ERP (Sarah, 2026-10-21)
         $u = $this->websiteApi('GET', '/erp/bin-store/unknown-bins', null, 120);
-        $erpUnknown = [];
-        if (($u['success'] ?? false) && !empty($u['codes'])) {
-            $known = array_flip($u['codes']);
-            $norm = fn($c) => strtolower(preg_replace('/\s+/', ' ', trim((string) $c)));
-            try {
-                $rows = \DB::table('products as p')
-                    ->join('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
-                    ->where('p.business_id', (int) auth()->user()->business_id)
-                    ->where('vld.qty_available', '>', 0)
-                    ->where(function ($w) {
-                        $w->where('p.bin_position', '!=', '')->orWhere('p.listing_location', '!=', '');
-                    })
-                    ->groupBy('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
-                    ->select('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
-                    ->get();
-                foreach ($rows as $r) {
-                    foreach (['bin_position' => 'Bin position', 'listing_location' => 'Listing location'] as $col => $label) {
-                        $v = trim((string) ($r->$col ?? ''));
-                        if ($v !== '' && !isset($known[$norm($v)])) {
-                            $erpUnknown[] = ['id' => (int) $r->id, 'name' => trim(($r->artist ? $r->artist . ' - ' : '') . $r->name), 'bin' => $v, 'field' => $label];
-                        }
-                    }
-                }
-                usort($erpUnknown, fn($a, $b) => strnatcasecmp($a['bin'], $b['bin']));
-            } catch (\Throwable $e) {
-                \Log::warning('bin-check erp unknown bins: ' . $e->getMessage());
-            }
-        }
+        $erpUnknown = ($u['success'] ?? false) ? $this->erpUnknownBins($u['codes'] ?? []) : [];
         return view('website-orders.bin-check', [
             'unknown' => ($u['success'] ?? false) ? ($u['data'] ?? []) : [],
             'unknownFix' => $u['fix'] ?? null,
@@ -804,6 +777,78 @@ class WebsiteOrdersController extends Controller
             'canUndo' => \App\Http\Controllers\BinMoveController::canUndo(),
             'origins' => (function () { try { return \App\Http\Controllers\BinMoveController::lastMoveOrigins(); } catch (\Throwable $e) { \Log::warning('bin origins: ' . $e->getMessage()); return []; } })(),
         ]);
+    }
+
+    /** Same rules as the website: store markers and bin-shaped codes (FL364, pico123) aren't weird. */
+    public static function looksLikeBin(string $c): bool
+    {
+        return (bool) preg_match('/^(fl|gl|pico|hwa|hw a|hw|hollywood a|hollywooda)\s*-?\s*\d+\s*[a-z]?$/i', trim($c));
+    }
+
+    /** In-stock ERP products whose bin_position / listing_location isn't a real bin. */
+    protected function erpUnknownBins(array $codes): array
+    {
+        if (!$codes) return [];
+        $known = array_flip($codes);
+        $norm = fn($c) => strtolower(preg_replace('/\s+/', ' ', trim((string) $c)));
+        $erpUnknown = [];
+        try {
+            $rows = \DB::table('products as p')
+                ->join('variation_location_details as vld', 'vld.product_id', '=', 'p.id')
+                ->where('p.business_id', (int) auth()->user()->business_id)
+                ->where('vld.qty_available', '>', 0)
+                ->where(function ($w) {
+                    $w->where('p.bin_position', '!=', '')->orWhere('p.listing_location', '!=', '');
+                })
+                ->groupBy('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
+                ->select('p.id', 'p.name', 'p.artist', 'p.bin_position', 'p.listing_location')
+                ->get();
+            foreach ($rows as $r) {
+                foreach (['bin_position' => 'Bin position', 'listing_location' => 'Listing location'] as $col => $label) {
+                    $v = trim((string) ($r->$col ?? ''));
+                    if ($v === '' || isset($known[$norm($v)]) || preg_match('/^(discogs warehouse|hollywood|pico)$/i', $v) || self::looksLikeBin($v)) continue;
+                    $erpUnknown[] = ['id' => (int) $r->id, 'name' => trim(($r->artist ? $r->artist . ' - ' : '') . $r->name), 'bin' => $v, 'field' => $label, 'col' => $col];
+                }
+            }
+            usort($erpUnknown, fn($a, $b) => strnatcasecmp($a['bin'], $b['bin']));
+        } catch (\Throwable $e) {
+            \Log::warning('bin-check erp unknown bins: ' . $e->getMessage());
+        }
+        return $erpUnknown;
+    }
+
+    /** Replace weird ERP bins with the real bin the website has for the same product; backup saved first. */
+    public function binUnknownErpFix(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $u = $this->websiteApi('GET', '/erp/bin-store/unknown-bins', null, 120);
+        if (!($u['success'] ?? false)) {
+            return redirect()->route('website-orders.binCheck')->with('error', ($u['message'] ?? null) ?: 'Could not reach the website.');
+        }
+        $rows = $this->erpUnknownBins($u['codes'] ?? []);
+        if (!$rows) return redirect()->route('website-orders.binCheck')->with('status', 'No ERP products have a weird bin.');
+        $ids = array_values(array_unique(array_column($rows, 'id')));
+        $w = $this->websiteApi('POST', '/erp/bin-store/bins-for-pos', ['ids' => $ids], 60);
+        if (!($w['success'] ?? false)) {
+            return redirect()->route('website-orders.binCheck')->with('error', ($w['message'] ?? null) ?: 'Could not read the website bins.');
+        }
+        $real = $w['data'] ?? [];
+        $changes = [];
+        foreach ($rows as $r) {
+            $bin = trim((string) ($real[$r['id']] ?? ''));
+            if ($bin !== '') $changes[] = ['id' => $r['id'], 'col' => $r['col'], 'old' => $r['bin'], 'new' => $bin];
+        }
+        if (!$changes) return redirect()->route('website-orders.binCheck')->with('status', 'None of these have a real bin on the website yet. Run the Discogs fix first, or someone needs to find them.');
+        $dir = storage_path('admin-snapshots');
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        file_put_contents($dir . '/bin-unknown-erp-' . date('Ymd-His') . '.json', json_encode(['by' => auth()->id(), 'at' => date('c'), 'changes' => $changes], JSON_PRETTY_PRINT));
+        foreach ($changes as $c) {
+            \DB::table('products')->where('id', $c['id'])->where($c['col'], $c['old'])->update([$c['col'] => $c['new']]);
+        }
+        $n = count($changes);
+        return redirect()->route('website-orders.binCheck')->with('status', "Fixed {$n} ERP bin" . ($n === 1 ? '' : 's') . ' from the website. A backup of the old bins is saved.');
     }
 
     public function binCheckApply(Request $request)

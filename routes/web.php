@@ -1061,6 +1061,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/website-orders/bin-check', 'WebsiteOrdersController@binCheck')->name('website-orders.binCheck');
     Route::post('/website-orders/bin-check/apply', 'WebsiteOrdersController@binCheckApply')->name('website-orders.binCheckApply');
     Route::post('/website-orders/bin-check/unknown-fix', 'WebsiteOrdersController@binUnknownFix')->name('website-orders.binUnknownFix');
+    Route::post('/website-orders/bin-check/unknown-erp-fix', 'WebsiteOrdersController@binUnknownErpFix')->name('website-orders.binUnknownErpFix');
     Route::post('/website-orders/bin-check/move', 'BinMoveController@move')->name('website-orders.binMove');
     Route::post('/website-orders/bin-check/undo', 'BinMoveController@undo')->name('website-orders.binMoveUndo');
     Route::post('/website-orders/bin-check/run-daily', 'BinMoveController@runDaily')->name('website-orders.binRunDaily');
