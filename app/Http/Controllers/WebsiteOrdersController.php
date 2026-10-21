@@ -268,7 +268,9 @@ class WebsiteOrdersController extends Controller
         // Ready to Ship and Recheck split by spot too: orders with an item there (Sarah, 2026-10-21)
         foreach ($allOrders as $so) {
             if ($paymentStatusFilter !== 'all' && ($so['payment_status'] ?? '') !== $paymentStatusFilter) continue;
-            foreach (['ready_ship' => false, 'recheck_hw' => true] as $st => $cfOnly) {
+            // Ready to Ship counts each order once, at the spot that packs it (Sarah, 2026-10-21: "1 order at pico, why 2")
+            if (self::matchesTab($so, 'ready_ship')) $tabCounts['ready_ship_' . self::packSpot($so)] = ($tabCounts['ready_ship_' . self::packSpot($so)] ?? 0) + 1;
+            foreach (['recheck_hw' => true] as $st => $cfOnly) {
                 if (!self::matchesTab($so, $st)) continue;
                 foreach (self::orderSpots($so, $cfOnly) as $spot) $tabCounts[$st . '_' . $spot] = ($tabCounts[$st . '_' . $spot] ?? 0) + 1;
             }
@@ -305,6 +307,8 @@ class WebsiteOrdersController extends Controller
             if ($statusFilter !== '' && ($o['order_status'] ?? '') !== $statusFilter) return false;
             if ($activeTab === 'ready_pickup' && in_array($locationFilter, ['hollywood', 'pico'], true)) {
                 if ((($o['pickup_location'] ?? '') === 'pico' ? 'pico' : 'hollywood') !== $locationFilter) return false;
+            } elseif ($activeTab === 'ready_ship' && in_array($locationFilter, ['warehouse', 'hollywood', 'pico'], true)) {
+                if (self::packSpot($o) !== $locationFilter) return false;
             } elseif ($activeTab === 'ready_ship' && $locationFilter === 'hw') {
                 // All picked: split by the store that ships it
                 if ((self::shipStore($o) === 'pico' ? 'pico' : 'hw') !== $locationFilter) return false;
@@ -789,6 +793,14 @@ class WebsiteOrdersController extends Controller
         if (stripos($place, 'warehouse') !== false) return 'warehouse';
         if (stripos($place, 'hollywood') !== false) return 'hollywood';
         return '';
+    }
+
+    /** Where a fully picked shipping order gets packed: Pico when Pico ships it, HW Warehouse when every item came from the warehouse, else HW Store. */
+    public static function packSpot(array $o): string
+    {
+        if (self::shipStore($o) === 'pico') return 'pico';
+        $spots = self::orderSpots($o);
+        return ($spots && !array_diff($spots, ['warehouse'])) ? 'warehouse' : 'hollywood';
     }
 
     /** Spots (warehouse / hollywood / pico) that have a live item of this order; $cfOnly = just the Can't Find lines. */
