@@ -54,6 +54,7 @@ class ProductController extends Controller
 
     private EbayService $ebayService;
     private DiscogsService $discogsService;
+    private ?DiscogsService $discogsServiceForRequest = null;
 
     /**
      * Constructor
@@ -70,6 +71,24 @@ class ProductController extends Controller
 
         //barcode types
         $this->barcode_types = $this->productUtil->barcode_types();
+    }
+
+    /**
+     * DiscogsService bound to the current request's business.
+     *
+     * The constructor-injected instance resolves before the session business
+     * is reliably available, so it can end up with no token and report
+     * "Discogs API token not configured" even when the token is saved in
+     * Business Settings > Integrations. Build it lazily instead.
+     */
+    private function discogs(): DiscogsService
+    {
+        if (empty($this->discogsServiceForRequest)) {
+            $business_id = request()->session()->get('user.business_id')
+                ?? (auth()->user()->business_id ?? null);
+            $this->discogsServiceForRequest = new DiscogsService($business_id);
+        }
+        return $this->discogsServiceForRequest;
     }
     
     /**
@@ -599,7 +618,7 @@ class ProductController extends Controller
 
             $ebayConfigured = $ebayService->isConfigured();
             $ebaySellerConnected = $ebayConfigured ? $ebayService->isSellerConnected() : false;
-            $discogsConfigured = $this->discogsService->isConfigured();
+            $discogsConfigured = $this->discogs()->isConfigured();
             $discogsListedSet = self::getDiscogsListedReleaseSet();
 
             // "Showing x of N entries" — N is the row count for the current
@@ -5275,9 +5294,9 @@ class ProductController extends Controller
         $priceRecommendation = $this->ebayService->getPriceRecommendations($query, $gtin, implode(',', $ebayCategoryIds));
 
         if (!empty($category) && $category->use_discogs_api) {
-            $discogsReleases = $this->discogsService->getRelease($query);
+            $discogsReleases = $this->discogs()->getRelease($query);
 
-            $priceRecommendationDiscogs = $this->discogsService->searchProductPrice($query);
+            $priceRecommendationDiscogs = $this->discogs()->searchProductPrice($query);
         }
 
         return response()->json([
@@ -5436,7 +5455,7 @@ class ProductController extends Controller
     public function getDiscogsPrices(Request $request)
     {
         $releaseId = $request->input('release_id');
-        $discogsPrices = $this->discogsService->getPriceSuggesions($releaseId);
+        $discogsPrices = $this->discogs()->getPriceSuggesions($releaseId);
 
         if($discogsPrices['error']) {
             return response()->json([
@@ -5463,10 +5482,10 @@ class ProductController extends Controller
     public function searchDiscogsProductPrice(Request $request)
     {
         $query = $request->input('query');
-        $discogsPrices = $this->discogsService->searchProductPrice($query);
+        $discogsPrices = $this->discogs()->searchProductPrice($query);
 
 
-        $discogsReleases = $this->discogsService->getRelease($query);
+        $discogsReleases = $this->discogs()->getRelease($query);
         dd($discogsPrices ?? [], $discogsReleases, 'testing');
         
     }
@@ -5474,7 +5493,7 @@ class ProductController extends Controller
     public function searchDiscogsProductPrice2(Request $request)
     {
         $query = $request->input('query');
-        $releases = $this->discogsService->getRelease($query);
+        $releases = $this->discogs()->getRelease($query);
         dd($releases);
     }
 
@@ -6115,7 +6134,7 @@ class ProductController extends Controller
      */
     public function listToDiscogs($id)
     {
-        if (!$this->discogsService->isConfigured()) {
+        if (!$this->discogs()->isConfigured()) {
             return response()->json([
                 'success' => false,
                 'msg' => 'Discogs API token not configured. Please configure in Business Settings > Integrations.'
@@ -6126,7 +6145,7 @@ class ProductController extends Controller
             $product = Product::findOrFail($id);
 
             // Try to find release ID from product name/artist
-            $release = $this->discogsService->getRelease($product->name, $product->sku, $product->name);
+            $release = $this->discogs()->getRelease($product->name, $product->sku, $product->name);
             $releaseId = null;
             if (!empty($release['data']->results[0]->id)) {
                 $releaseId = $release['data']->results[0]->id;
@@ -6144,7 +6163,7 @@ class ProductController extends Controller
                 'location' => $product->listing_location ?? null
             ];
 
-            $result = $this->discogsService->createListing($productData);
+            $result = $this->discogs()->createListing($productData);
 
             if ($result['success']) {
                 // Persist listing info only if the optional tracking columns were
@@ -6231,7 +6250,7 @@ class ProductController extends Controller
      */
     public function syncDiscogsListings(Request $request)
     {
-        if (!$this->discogsService->isConfigured()) {
+        if (!$this->discogs()->isConfigured()) {
             return response()->json(['ok' => false, 'msg' => 'Discogs API token not configured. Add it in Business Settings > Integrations.']);
         }
 
@@ -6274,7 +6293,7 @@ class ProductController extends Controller
 
         do {
             $page++;
-            $resp = $this->discogsService->fetchInventoryPage($username, $page, 100, 'For Sale');
+            $resp = $this->discogs()->fetchInventoryPage($username, $page, 100, 'For Sale');
 
             if (!empty($resp['error'])) {
                 // Persist what we have and report the error (e.g. bad username, 429).
@@ -6333,7 +6352,7 @@ class ProductController extends Controller
      */
     public function bulkListToDiscogs(Request $request)
     {
-        if (!$this->discogsService->isConfigured()) {
+        if (!$this->discogs()->isConfigured()) {
             return response()->json([
                 'success' => false,
                 'msg' => 'Discogs API token not configured.'
