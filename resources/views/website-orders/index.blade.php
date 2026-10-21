@@ -1248,7 +1248,7 @@
                       @continue(!$dShow($it))
                       @php
                         $dPid = (int) ($it['erp_product_id'] ?? 0);
-                        $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $dPid]], $dPid ? ($erpLocations[$dPid] ?? null) : null);
+                        $pull = \App\Http\Controllers\WebsiteOrdersController::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $dPid]], $dPid ? ($erpLocations[$dPid] ?? null) : null);
                         $pl = $dPickLines[strtolower(trim((string) ($it['name'] ?? '')))] ?? null;
                       @endphp
                       <div class="wo-loc-line">

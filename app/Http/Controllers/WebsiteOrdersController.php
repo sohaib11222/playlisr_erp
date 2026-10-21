@@ -382,7 +382,7 @@ class WebsiteOrdersController extends Controller
                     foreach (($dg['items'] ?? []) as $it) {
                         $k = strtolower(trim((string) ($it['name'] ?? '')));
                         $pid = (int) ($it['erp_product_id'] ?? 0);
-                        $spot = self::pullStore(self::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null)['place']);
+                        $spot = self::pullStore(self::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null)['place']);
                         if ($spot !== '') $spots[$spot] = true;
                         if (!in_array($st[$k] ?? 'Not Picked', ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true)) $left[$k] = $spot;
                     }
@@ -453,7 +453,7 @@ class WebsiteOrdersController extends Controller
                 foreach (($d['items'] ?? []) as $it) {
                     if (isset($done[strtolower(trim((string) ($it['name'] ?? '')))])) continue;
                     $pid = (int) ($it['erp_product_id'] ?? 0);
-                    $pp = self::pullParts(['discogs_code' => $it['location'] ?? null, 'product_id' => ['posProductId' => $pid]], $pid ? ($erpLocations[$pid] ?? null) : null);
+                    $pp = self::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $pid]], $pid ? ($erpLocations[$pid] ?? null) : null);
                     if (self::placeIsStore($pp['place'], $locationFilter)) return true;
                 }
                 return false;
