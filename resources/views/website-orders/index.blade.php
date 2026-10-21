@@ -94,6 +94,10 @@
   .wo-pill.st-default { background:#f3f4f6; color:#000; }
 
   .wo-fm-pill { display:inline-block; padding:3px 9px; border-radius:8px; font-size:12px; font-weight:600; margin:0 0 4px; }
+  .wo-money { margin-top:6px; padding:5px 7px; border:1px solid #bfdbfe; border-radius:6px; background:#eff6ff; font-size:12px; color:#000; line-height:1.5; }
+  .wo-money .over { color:#065f46; font-weight:700; }
+  .wo-money .under { color:#991b1b; font-weight:700; }
+  .wo-money .even { color:#065f46; font-weight:700; }
   .wo-big-tag { display:inline-block; margin-left:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:800; letter-spacing:.02em; }
   .wo-big-tag.sub { background:#2563eb; color:#fff !important; }
   .wo-big-tag.cf { background:#dc2626; color:#fff !important; }
@@ -932,6 +936,15 @@
                   @endif
                 </td>
                 <td class="wo-total">${{ number_format((float) ($o['total_amount'] ?? 0), 2) }}
+                  @php $woMoney = \App\Http\Controllers\WebsiteOrdersController::orderMoney($o, $status); @endphp
+                  @if($woMoney)
+                    {{-- Should total for what was sent vs paid (Sarah, 2026-10-21) --}}
+                    <div class="wo-money">
+                      <div>Should be <b>${{ number_format($woMoney['should'], 2) }}</b></div>
+                      <div>Paid <b>${{ number_format($woMoney['paid'], 2) }}</b></div>
+                      @if(abs($woMoney['diff']) >= 0.01)<div class="{{ $woMoney['diff'] > 0 ? 'over' : 'under' }}">{{ $woMoney['diff'] > 0 ? 'Over' : 'Under' }} ${{ number_format(abs($woMoney['diff']), 2) }}</div>@else<div class="even">Even</div>@endif
+                    </div>
+                  @endif
                   {{-- Paid outside checkout, already in the total (Sarah, 2026-10-21) --}}
                   @foreach(($o['extra_payments'] ?? []) as $xp)
                     <div style="font-size:12px;font-weight:600;color:#000;margin-top:4px;">incl. ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} {{ $xp['method'] ?? '' }}</div>

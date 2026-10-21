@@ -1052,6 +1052,44 @@ class WebsiteOrdersController extends Controller
         return response()->json(['success' => true, 'message' => 'Price saved.' . $erpNote]);
     }
 
+    /**
+     * What the order should total for what was actually sent vs what the
+     * customer paid (Sarah, 2026-10-21). Sent = lines not cancelled and, once
+     * shipped, not Can't Find; substitutes at their new price. Tax uses the
+     * rate checkout charged; shipping is what they paid for shipping.
+     * Returns null when nothing about the order changed after checkout.
+     *
+     * @return array{should: float, paid: float, diff: float}|null
+     */
+    public static function orderMoney(array $o, string $status): ?array
+    {
+        $extras = 0.0;
+        foreach (($o['extra_payments'] ?? []) as $xp) $extras += (float) ($xp['amount'] ?? 0);
+        $done = in_array($status, ['shipped', 'delivered', 'email_sent', 'picked_up'], true);
+        $pickStatus = [];
+        foreach (($o['pick_progress']['lines'] ?? []) as $pl) $pickStatus[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl['status'] ?? '';
+        $orig = 0.0; $now = 0.0; $changed = $extras > 0;
+        foreach (($o['items'] ?? []) as $it) {
+            if (!empty($it['cancelled'])) continue;
+            $q = max(1, (int) ($it['quantity'] ?? 1));
+            $price = (float) ($it['price'] ?? 0);
+            $was = isset($it['substituted_from']['price']) ? (float) $it['substituted_from']['price'] : $price;
+            if (!empty($it['substituted_from']['name'])) $changed = true;
+            $orig += $was * $q;
+            $name = strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))));
+            if ($done && ($pickStatus[$name] ?? '') === "Can't Find") { $changed = true; continue; }
+            $now += $price * $q;
+        }
+        if (!$changed || $orig <= 0) return null;
+        $paid = (float) ($o['total_amount'] ?? 0);
+        $disc = (float) ($o['total_discount'] ?? 0);
+        $checkoutShip = (float) ($o['checkout_shipping'] ?? ($o['shipping_cost'] ?? 0));
+        $base = max(0.01, $orig - $disc);
+        $rate = max(0, ($paid - $extras - $checkoutShip - $base) / $base);
+        $should = round(max(0, $now - $disc) * (1 + $rate) + (float) ($o['shipping_cost'] ?? 0), 2);
+        return ['should' => $should, 'paid' => round($paid, 2), 'diff' => round($paid - $should, 2)];
+    }
+
     /** Set an ERP sale line's price; a one-line sale's totals follow it. */
     private static function setErpLinePrice(int $lineId, float $price): void
     {
@@ -1837,6 +1875,7 @@ class WebsiteOrdersController extends Controller
         $u = auth()->user();
         $resp = $this->websiteApi('POST', "/erp/orders/{$id}/shipping-paid", [
             'amount' => $amount,
+            'checkoutShipping' => $request->filled('checkout_shipping') ? round((float) $request->input('checkout_shipping'), 2) : null,
             'changedBy' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->username ?? null),
         ]);
         $ok = $resp !== null && ($resp['success'] ?? false) === true;
