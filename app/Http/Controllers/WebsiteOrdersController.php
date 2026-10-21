@@ -292,12 +292,29 @@ class WebsiteOrdersController extends Controller
             if (!$onTab) $noTabIds[$nt['_id'] ?? ''] = true;
         }
         $tabCounts['unsorted'] = count($noTabIds);
+        // Orders no tab fits go to the manager decision step, not a warning
+        // banner (Sarah, 2026-10-21: "i dont like this")
+        $tabCounts['cant_find'] = ($tabCounts['cant_find'] ?? 0) + count($noTabIds);
+        // Pulled vs left per spot, for the progress bars (Sarah, 2026-10-21)
+        foreach ($allOrders as $po) {
+            if ($paymentStatusFilter !== 'all' && ($po['payment_status'] ?? '') !== $paymentStatusFilter) continue;
+            if (!self::matchesTab($po, 'to_ship') && !self::matchesTab($po, 'ready_ship')) continue;
+            $pst = [];
+            foreach (($po['pick_progress']['lines'] ?? []) as $pl) $pst[strtolower(trim((string) ($pl['name'] ?? '')))] = $pl['status'] ?? '';
+            foreach (($po['items'] ?? []) as $it) {
+                if (!empty($it['cancelled']) || !empty($it['is_gift_card']) || empty($it['product_id'])) continue;
+                if (!in_array($pst[strtolower(trim((string) ($it['product_id']['name'] ?? ($it['product_name'] ?? ''))))] ?? '', ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true)) continue;
+                $sp = self::pullStore(self::pullParts($it, self::$erpCache[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null)['place']);
+                if ($sp !== '') $tabCounts['pulled_' . $sp] = ($tabCounts['pulled_' . $sp] ?? 0) + 1;
+            }
+        }
         $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($searchAll, $noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             // An order link always shows that order, whatever tab or filter (Sarah, 2026-10-21)
             if ($linkOrder !== '') return ($o['_id'] ?? '') === $linkOrder;
             // Search ignores tabs and store filters: every match shows, labeled with its tab
             if ($searchAll) return self::searchMatches($o, $search);
             if ($activeTab === 'unsorted' && !isset($noTabIds[$o['_id'] ?? ''])) return false;
+            if ($activeTab === 'cant_find' && isset($noTabIds[$o['_id'] ?? ''])) return true;
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
@@ -334,6 +351,8 @@ class WebsiteOrdersController extends Controller
             return true;
         }));
 
+        foreach ($orders as &$nto) if (isset($noTabIds[$nto['_id'] ?? ''])) $nto['_noTab'] = true;
+        unset($nto);
         // Search never hides an order in another tab: list the tabs it's in (Sarah, 2026-10-21)
         $searchElsewhere = [];
         if (false) {
@@ -385,6 +404,7 @@ class WebsiteOrdersController extends Controller
                         $spot = self::pullStore(self::pullParts(['discogs_code' => $it['location'] ?? null, 'location' => ['zone' => (string) ($it['zone'] ?? '')], 'product_id' => ['posProductId' => $pid]], $pid ? ($dgErp[$pid] ?? null) : null)['place']);
                         if ($spot !== '') $spots[$spot] = true;
                         if (!in_array($st[$k] ?? 'Not Picked', ['Picked', 'Packed', 'Shipped', 'Dropshipped'], true)) $left[$k] = $spot;
+                        elseif ($spot !== '') $tabCounts['pulled_' . $spot] = ($tabCounts['pulled_' . $spot] ?? 0) + 1;
                     }
                     $dg['_left'] = $left;
                     $dg['_ready'] = !empty($dg['items']) && !$left;

@@ -267,6 +267,9 @@
   .wo-step.clear .wo-step-num { background:#9ca3af; }
   .wo-step-done { background:#bbf7d0 !important; color:#000 !important; }
   /* Sealed vs Used, impossible to miss (Sarah, 2026-10-21) */
+  .wo-step-bar { display:block; width:260px; max-width:100%; height:10px; margin-top:7px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+  .wo-step-bar .fill { display:block; height:100%; background:#047857; border-radius:999px; }
+  .wo-step-barlabel { display:block; font-size:13px; font-weight:700; color:#000; margin-top:3px; }
   .wo-sortbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; font-size:15px; }
   .wo-sortbar .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border:1.5px solid #d1d5db; border-radius:999px; background:#fff; color:#000 !important; text-decoration:none; display:inline-flex; align-items:center; }
   .wo-sortbar .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af !important; }
@@ -346,18 +349,23 @@
          prioritize"). Numbered steps, top to bottom; the first step with work
          says Start here. Waiting / manager / done views sit below, smaller. --}}
     @php
+      // Steps by who does them (Sarah, 2026-10-21): Nick owns the warehouse,
+      // the Hollywood cashier pulls the store floor and rechecks bins.
       $woSteps = [
-        ['tab' => 'pickup', 'title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        ['tab' => 'ready_ship', 'title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        ['tab' => 'to_ship', 'title' => 'Pull shipping orders', 'why' => 'Find each item, tap Mark picked or Can\'t find. Discogs orders are here too.', 'split' => ['warehouse' => 'HW Warehouse', 'hollywood' => 'HW Store', 'pico' => 'Pico']],
-        ['tab' => 'recheck_hw', 'title' => 'Recheck in Hollywood bins', 'why' => 'Pico couldn\'t find these. Hollywood checks its store and warehouse before anyone refunds.'],
-        ['tab' => 'cant_find', 'title' => 'Managers: refund or substitute', 'why' => 'Nobody could find these. A manager decides: refund the item or send a substitute.'],
+        ['title' => 'Pull pickup orders', 'why' => 'The customer is coming in for these.', 'pills' => [['HW Warehouse', 'pickup', 'warehouse'], ['HW Store', 'pickup', 'hollywood'], ['Pico', 'pickup', 'pico']]],
+        ['title' => 'Pack and ship', 'why' => 'Everything is pulled. Pack it and print the label.', 'pills' => [['HW Warehouse', 'ready_ship', 'warehouse'], ['HW Store', 'ready_ship', 'hollywood'], ['Pico', 'ready_ship', 'pico']]],
+        ['title' => 'Nick: pull from the warehouse', 'why' => 'Website and Discogs items in the Hollywood warehouse bins.', 'pills' => [['HW Warehouse', 'to_ship', 'warehouse']], 'bar' => ['warehouse']],
+        ['title' => 'Hollywood cashier: store floor and rechecks', 'why' => 'Pull what\'s on the sales floor, then check the bins for what Pico couldn\'t find.', 'pills' => [['Store floor', 'to_ship', 'hollywood'], ['Recheck bins', 'recheck_hw', null]], 'bar' => ['hollywood']],
+        ['title' => 'Pico cashier: pull at Pico', 'why' => 'Items on the Pico floor.', 'pills' => [['Pico', 'to_ship', 'pico']], 'bar' => ['pico']],
+        ['title' => 'Modify, substitute or refund decision', 'why' => 'Nobody could find these, or the order needs fixing. A manager decides.', 'pills' => [['Orders', 'cant_find', null]]],
       ];
-      $woStepCount = function ($st) use ($tabCounts) {
-        if (in_array($st['tab'], ['ready_ship', 'recheck_hw'], true)) return (int) ($tabCounts[$st['tab']] ?? 0);
-        if (empty($st['split'])) return (int) ($tabCounts[$st['tab']] ?? 0);
+      $woPillCount = function ($p) use ($tabCounts) {
+        if ($p[2] === null) return (int) ($tabCounts[$p[1]] ?? 0);
+        return (int) ($tabCounts[$p[1] . '_' . $p[2]] ?? 0);
+      };
+      $woStepCount = function ($st) use ($woPillCount) {
         $n = 0;
-        foreach (array_keys($st['split']) as $lk) $n += (int) ($tabCounts[$st['tab'] . '_' . $lk] ?? 0);
+        foreach ($st['pills'] as $p) $n += $woPillCount($p);
         return $n;
       };
       $woStartAt = null;
@@ -373,26 +381,39 @@
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
       @foreach($woSteps as $i => $st)
-        @php $n = $woStepCount($st); @endphp
-        <div class="wo-step {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n === 0 ? 'clear' : '' }}">
+        @php
+          $n = $woStepCount($st);
+          $stOn = false;
+          foreach ($st['pills'] as $p) if ($activeTab === $p[1] && ($p[2] === null || $locationFilter === $p[2])) $stOn = true;
+          $first = $st['pills'][0];
+          foreach ($st['pills'] as $p) if ($woPillCount($p) > 0) { $first = $p; break; }
+        @endphp
+        <div class="wo-step {{ $stOn ? 'on' : '' }} {{ $n === 0 ? 'clear' : '' }}">
           <div class="wo-step-num">{{ $i + 1 }}</div>
-          <a class="wo-step-main" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => null])) }}">
+          <a class="wo-step-main" href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $first[1], 'location' => $first[2]])) }}">
             <span class="wo-step-title">{{ $st['title'] }}</span>
             @if($woStartAt === $i)<span class="wo-step-start">Start here</span>@endif
             @if($n === 0)<span class="wo-step-done">All done</span>@endif
             <span class="wo-step-why">{{ $st['why'] }}</span>
+            @if(!empty($st['bar']))
+              @php
+                $bDone = 0; $bLeft = 0;
+                foreach ($st['bar'] as $bs) { $bDone += (int) ($tabCounts['pulled_' . $bs] ?? 0); $bLeft += (int) ($tabCounts['to_ship_' . $bs] ?? 0); }
+                $bTot = $bDone + $bLeft;
+              @endphp
+              @if($bTot > 0)
+                <span class="wo-step-bar"><span class="fill" style="width:{{ round(100 * $bDone / $bTot) }}%"></span></span>
+                <span class="wo-step-barlabel">{{ $bDone }} of {{ $bTot }} items pulled</span>
+              @endif
+            @endif
           </a>
           <div class="wo-card-pills">
-            @if(!empty($st['split']))
-              @foreach($st['split'] as $lk => $ll)
-                @php $sn = $tabCounts[$st['tab'] . '_' . $lk] ?? 0; @endphp
-                {{-- No 0 buttons: a step with nothing just says All done (Sarah, 2026-10-21) --}}
-                @continue($sn === 0 && !($activeTab === $st['tab'] && $locationFilter === $lk))
-                <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => $lk])) }}" class="wo-split {{ $activeTab === $st['tab'] && $locationFilter === $lk ? 'on' : '' }} {{ $sn > 0 ? 'has' : '' }}">{{ $ll }} <b>{{ $sn }}</b></a>
-              @endforeach
-            @elseif($n > 0)
-              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $st['tab'], 'location' => null])) }}" class="wo-split {{ $activeTab === $st['tab'] ? 'on' : '' }} {{ $n > 0 ? 'has' : '' }}">{{ $st['tab'] === 'recheck_hw' ? 'Hollywood' : 'Orders' }} <b>{{ $n }}</b></a>
-            @endif
+            @foreach($st['pills'] as $p)
+              @php $sn = $woPillCount($p); $pOn = $activeTab === $p[1] && ($p[2] === null || $locationFilter === $p[2]); @endphp
+              {{-- No 0 buttons: a step with nothing just says All done (Sarah, 2026-10-21) --}}
+              @continue($sn === 0 && !$pOn)
+              <a href="{{ route('website-orders.index', array_merge($baseQuery, ['tab' => $p[1], 'location' => $p[2]])) }}" class="wo-split {{ $pOn ? 'on' : '' }} {{ $sn > 0 ? 'has' : '' }}">{{ $p[0] }} <b>{{ $sn }}</b></a>
+            @endforeach
           </div>
         </div>
       @endforeach
@@ -530,12 +551,6 @@
       </div>
     </form>
 
-    {{-- Safety net: paid orders no tab shows (Sarah, 2026-10-21) --}}
-    @if($activeTab === 'unsorted')
-      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">Not on any tab: these paid orders didn't fit any tab. Open each one and set its status (or tell Sarah).</div>
-    @elseif(($tabCounts['unsorted'] ?? 0) > 0)
-      <div class="wo-banner warn" style="font-size:15px;font-weight:700;">{{ $tabCounts['unsorted'] }} paid {{ $tabCounts['unsorted'] === 1 ? 'order isn\'t' : 'orders aren\'t' }} on any tab. <a href="{{ route('website-orders.index', ['tab' => 'unsorted']) }}">Show {{ $tabCounts['unsorted'] === 1 ? 'it' : 'them' }}</a></div>
-    @endif
     {{-- Orders never disappear: say where else the search matches (Sarah, 2026-10-21) --}}
     @if(!empty($searchElsewhere))
       <div class="wo-banner warn" style="font-size:15px;font-weight:700;">"{{ request('q') }}" also matches orders on:
@@ -665,6 +680,9 @@
                     @php [$onTab, $onTabName] = \App\Http\Controllers\WebsiteOrdersController::tabFor($o); @endphp
                     <a href="{{ url('/website-orders') }}?order={{ $o['_id'] }}" style="display:inline-block;margin-bottom:5px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;">{{ $onTabName }}</a>
                   @endif
+                  @if(!empty($o['_noTab']))
+                    <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:12px;font-weight:700;">Needs a decision: an item isn't on the website anymore or the order has no shipping method.</div>
+                  @endif
                   <div class="wo-buyer-name">{{ $customerName }}</div>
                   <div class="wo-buyer-email">{{ $customerEmail }}</div>
                 </td>
@@ -673,7 +691,7 @@
                   // rest become "+N at Hollywood" (Sarah, 2026-10-16).
                   $woStore = ($activeTab !== 'ready_ship' && in_array($locationFilter, ['hollywood', 'pico', 'warehouse', 'hw'], true)) ? $locationFilter : null;
                   $lineShow = [];
-                  $cfTab = in_array($activeTab, ['cant_find', 'recheck_hw'], true); // only the Can't Find lines
+                  $cfTab = in_array($activeTab, ['cant_find', 'recheck_hw'], true) && empty($o['_noTab']); // only the Can't Find lines
                   // Need to Pull tabs only show what's still to pull: picked, can't find
                   // and cancelled lines are hidden (Sarah, 2026-10-20)
                   $needTab = in_array($activeTab, ['to_ship', 'pickup', 'needs_action'], true) && !(($o['fulfillment_method'] ?? null) === 'pickup' && \App\Http\Controllers\WebsiteOrdersController::allPicked($o));
