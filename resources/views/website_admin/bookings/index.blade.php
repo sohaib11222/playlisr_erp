@@ -133,18 +133,6 @@
                 </td>
                 <td>
                   <div class="wb-actions">
-                    @if($b['status'] === 'pending' && empty($b['expired']))
-                      <form method="POST" action="{{ route('wa.bookings.status', $b['id']) }}">
-                        {{ csrf_field() }}
-                        <input type="hidden" name="status" value="confirmed">
-                        <button type="submit" class="wb-btn wb-btn-sm" style="color:#15803d;" title="Confirm"><i class="fa fa-check"></i> Confirm</button>
-                      </form>
-                      <form method="POST" action="{{ route('wa.bookings.status', $b['id']) }}">
-                        {{ csrf_field() }}
-                        <input type="hidden" name="status" value="cancelled">
-                        <button type="submit" class="wb-btn wb-btn-sm wb-btn-danger" title="Reject">Reject</button>
-                      </form>
-                    @endif
                     <a href="https://nivessa.com/bookings/{{ urlencode($b['bookingNumber']) }}" target="_blank" rel="noopener" class="wb-btn wb-btn-sm" title="View Details"><i class="fa fa-eye"></i> View</a>
                     <button type="button" class="wb-btn wb-btn-sm" data-act="edit" title="Edit date / time"><i class="fa fa-pencil-alt"></i> Edit</button>
                     <button type="button" class="wb-btn wb-btn-sm" data-act="charge" title="Charge card on file (cleaning, damage, missing items)"><i class="fa fa-credit-card"></i> Charge</button>
