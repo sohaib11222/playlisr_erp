@@ -2514,10 +2514,22 @@ class SellPosController extends Controller
             // Pre-tax price (after any line discount), so the item lines add
             // up to Subtotal and Tax is shown once, like the email receipt.
             $unitPrice = (float) ($line->unit_price ?? $line->unit_price_inc_tax ?? 0);
+            // Album photo for the email receipt (Sarah, 2026-10-21). Full URLs
+            // (Discogs covers) as-is, uploaded images through /uploads/img.
+            $image = null;
+            try {
+                $img = !empty($line->product) ? trim((string) $line->product->image) : '';
+                if ($img !== '') {
+                    $image = preg_match('#^https?://#i', $img) ? $img : asset('/uploads/img/' . rawurlencode($img));
+                }
+            } catch (\Throwable $e) {
+                $image = null;
+            }
             $items[] = [
                 'name' => !empty($line->product) ? $line->product->name : 'Item',
                 'quantity' => $qty,
                 'price' => $unitPrice,
+                'image' => $image,
             ];
             $lineSubtotal += round($unitPrice * $qty, 2);
         }
