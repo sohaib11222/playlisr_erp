@@ -57,6 +57,21 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'ROUTE') {
+              foreach ([['store' => 'warehouse'], ['store' => 'warehouse', 'late' => '1'], ['store' => 'hollywood']] as $qq) {
+                $req = \Illuminate\Http\Request::create('/website-orders/pick-route', 'GET', $qq);
+                app()->instance('request', $req);
+                try {
+                  $v = app(\App\Http\Controllers\WebsiteOrdersController::class)->pickRoute($req);
+                  $d = $v->getData();
+                  $html = $v->render();
+                  echo 'ROUTE ' . json_encode($qq) . ': rows=' . count($d['rows']) . ' discogs=' . count(array_filter($d['rows'], fn($r) => !empty($r['order']['_discogs']))) . ' late=' . $d['lateCount'] . ' counts=' . json_encode($d['counts']) . ' len=' . strlen($html) . "\n";
+                  $i = strpos($html, 'pr-area');
+                  echo 'ROUTETXT: ' . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 3000))), 0, 600) . "\n";
+                } catch (\Throwable $e) { echo 'ROUTE ERR ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine() . "\n"; }
+              }
+              return;
+            }
             if ($q === 'PILLS') {
               foreach ([['pickup', 'warehouse'], ['ready_ship', 'pico'], ['to_ship', 'warehouse'], ['to_ship', 'hollywood'], ['to_ship', 'pico'], ['recheck_hw', null], ['cant_find', null], ['discogs_old', null]] as [$tab, $loc]) {
                 $t0 = microtime(true);
