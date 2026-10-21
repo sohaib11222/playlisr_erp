@@ -585,9 +585,6 @@
         @endforeach
       </div>
     @endif
-    @if(!empty($searchAll))
-      <div class="wo-banner" style="font-size:15px;font-weight:700;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;">Every order matching "{{ request('q') }}" from all tabs, any date. Each one says which tab it's on.</div>
-    @endif
     @if(!empty($linkOrderMissing))
       <div class="wo-banner warn" style="font-size:15px;font-weight:700;">This order wasn't found on the website. Check the order number, or search the buyer's name above.</div>
     @endif
