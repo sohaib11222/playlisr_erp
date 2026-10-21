@@ -61,7 +61,10 @@ jobs:
               foreach (['to_ship', 'ready_ship'] as $tab) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab]);
                 app()->instance('request', $req);
-                $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
+                $view = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req);
+                $vd = $view->getData();
+                echo "DGDATA {$tab}: n=" . count($vd['discogsToShip'] ?? []) . ' err=' . json_encode($vd['discogsError'] ?? null) . ' first=' . json_encode(array_map(fn($x) => [$x['id'] ?? null, $x['_ready'] ?? null, $x['_left'] ?? null, array_map(fn($i) => [$i['location'] ?? null, $i['zone'] ?? null], $x['items'] ?? [])], array_slice($vd['discogsToShip'] ?? [], 0, 4))) . "\n";
+                $html = $view->render();
                 $i = strpos($html, 'Do these in order');
                 echo "TABS {$tab}: sealed=" . substr_count($html, 'wo-cond sealed') . ' used=' . substr_count($html, 'wo-cond used') . ' picked_notes=' . substr_count($html, 'already picked') . "\n";
                 echo "STEPS {$tab}: " . substr(preg_replace('/\s+/', ' ', strip_tags(substr($html, $i, 6000))), 0, 520) . "\n";
