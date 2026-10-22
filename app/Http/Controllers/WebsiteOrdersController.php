@@ -658,6 +658,48 @@ class WebsiteOrdersController extends Controller
      * Mark a Discogs order shipped (status on Discogs + tracking number sent
      * to the buyer). The website only records it once Discogs accepts it.
      */
+    /** Signature for a texted order link, so the preview URL can't be guessed. */
+    public static function shareSig(string $id): string
+    {
+        return substr(hash_hmac('sha256', 'order-share:' . $id, (string) config('app.key')), 0, 16);
+    }
+
+    public static function shareUrl(string $id): string
+    {
+        return url('/o/' . $id . '/' . self::shareSig($id));
+    }
+
+    /**
+     * Texted order links show a preview (Sarah, 2026-10-22): no login, so the
+     * phone can read the order number, items and first photo; opening it goes
+     * on to the order on the Orders page (login as usual).
+     */
+    public function sharePreview(string $id, string $sig)
+    {
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id) || !hash_equals(self::shareSig($id), $sig)) abort(404);
+        $o = \Cache::remember('order-share:' . $id, 600, function () use ($id) {
+            $one = $this->websiteApi('GET', '/erp/orders/console?order=' . $id);
+            $hit = ($one['success'] ?? false) ? array_values(array_filter($one['data'] ?? [], fn($x) => ($x['_id'] ?? '') === $id)) : [];
+            return $hit[0] ?? null;
+        });
+        $items = collect($o['items'] ?? [])->map(fn($it) => [
+            'name' => $it['product_id']['name'] ?? ($it['product_name'] ?? 'Item'),
+            'artist' => $it['product_id']['artist'] ?? null,
+            'qty' => (int) ($it['quantity'] ?? 1),
+            'img' => ($it['product_id']['image'] ?? null) ?: ($it['product_image'] ?? null),
+        ])->values();
+        $who = $o ? ($o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest'))) : null;
+        $count = $items->sum('qty');
+        $title = $o ? 'Order #' . ($o['orderNumber'] ?? '') . ' - ' . $who : 'Website order';
+        $desc = $o ? $count . ' item' . ($count === 1 ? '' : 's') . ': ' . $items->map(fn($i) => ($i['artist'] ? $i['artist'] . ' - ' : '') . $i['name'])->implode(', ') : '';
+        if (strlen($desc) > 280) $desc = substr($desc, 0, 277) . '...';
+        $img = $items->pluck('img')->filter(fn($u) => is_string($u) && preg_match('#^https?://#', $u))->first();
+        return response()->view('website-orders.share', [
+            'title' => $title, 'desc' => $desc, 'img' => $img, 'items' => $items,
+            'go' => url('/website-orders') . '?order=' . $id,
+        ]);
+    }
+
     public function shipDiscogs(Request $request, string $id)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {

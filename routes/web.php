@@ -27,6 +27,8 @@ Route::get('/discogs/search-product-price-2', [ProductController::class, 'search
 // nginx hijacks /api/*. The website reads listening-party / event detail
 // from here — the ERP is the source of truth.
 Route::get('/events-feed.json', 'EventsController@publicFeed');
+// Texted order links: public preview page (signed), then on to the order.
+Route::get('/o/{id}/{sig}', 'WebsiteOrdersController@sharePreview')->name('website-orders.share');
 Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'publicFeed']);
 // A-class product ids (sales-based ABC import) for the nivessa.com New Arrivals ordering.
 Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'abcAProducts']);

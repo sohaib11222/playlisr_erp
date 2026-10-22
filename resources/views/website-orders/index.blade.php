@@ -928,7 +928,7 @@
                     {{-- Toggles the details row right after this order's row (not by id:
                          two orders could end up with the same short id). --}}
                     <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
-                    <button type="button" class="wo-btn" title="Copy a link to this order (for Slack)" onclick="woCopyLink(this, '{{ url('/website-orders') }}?order={{ $o['_id'] }}')">Copy link</button>
+                    <button type="button" class="wo-btn" title="Copy a link to this order (shows a preview when texted)" onclick="woCopyLink(this, '{{ \App\Http\Controllers\WebsiteOrdersController::shareUrl($o['_id']) }}')">Copy link</button>
                     @if($status === 'ready_for_pickup' && ($o['fulfillment_method'] ?? null) === 'pickup')
                       {{-- Re-sends the "ready for pickup" email (Sarah, 2026-10-20) --}}
                       <form method="POST" action="{{ route('website-orders.updateStatus', $o['_id']) }}" style="display:inline;" onsubmit="this.querySelector('button').disabled=true;">
