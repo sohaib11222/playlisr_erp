@@ -443,8 +443,9 @@ class RegisterReconUtil
             if ($gap > -self::DRAWER_TOLERANCE) continue; // only drops matter
             $pName = ucfirst(strtolower(trim((string) ($prev->first_name ?: $prev->username))));
             $nName = ucfirst(strtolower(trim((string) ($n->first_name ?: $n->username))));
-            // Same cash back at a later handover within 36h (Pico: $100 goes
-            // to the safe at night and comes back mid-day) - it wasn't lost.
+            // Same cash back at a later handover within 36h (Pico: $100 under
+            // the change tray that the morning count misses, Alec 10/22) - it
+            // wasn't lost.
             $backNote = null;
             $later = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
                 ->where('cr.business_id', $business_id)->where('cr.location_id', $n->location_id)
@@ -458,7 +459,7 @@ class RegisterReconUtil
                 if (abs($back + $gap) < 5) {
                     $backNote = 'came back: $' . number_format($back, 0) . ' more in the drawer when '
                         . ucfirst(strtolower(trim((string) ($m->first_name ?: $m->username)))) . ' opened '
-                        . \Carbon\Carbon::parse($m->created_at)->format('n/j g:ia') . ' (likely the safe)';
+                        . \Carbon\Carbon::parse($m->created_at)->format('n/j g:ia') . ' (likely bills under the change tray)';
                     break;
                 }
             }
