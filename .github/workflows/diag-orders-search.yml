@@ -57,6 +57,18 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'SUBERP') {
+              $tx = \DB::table('transactions')->where('type', 'sell')->where('additional_notes', 'like', 'Website order %')->orderByDesc('id')->first();
+              $line = \DB::table('transaction_sell_lines')->where('transaction_id', $tx->id)->first();
+              $var = \DB::table('variations')->where('product_id', 728)->whereNull('deleted_at')->orderBy('id')->first();
+              $before = \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->value('qty_available');
+              echo 'SUBERP tx=' . $tx->id . ' loc=' . $tx->location_id . ' line=' . $line->id . ' old_pid=' . $line->product_id . ' stock_before=' . json_encode($before) . "\n";
+              \DB::beginTransaction();
+              try { \DB::transaction(function () use ($line, $var, $tx) { \DB::table('transaction_sell_lines')->where('id', $line->id)->update(['product_id' => 728, 'variation_id' => $var->id, 'updated_at' => now()]); \DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->decrement('qty_available', 1); }); echo 'SUBERP inside: pid=' . \DB::table('transaction_sell_lines')->where('id', $line->id)->value('product_id') . ' stock=' . json_encode(\DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->value('qty_available')) . "\n"; } catch (\Throwable $e) { echo 'SUBERP ERR ' . $e->getMessage() . "\n"; }
+              \DB::rollBack();
+              echo 'SUBERP after rollback: pid=' . \DB::table('transaction_sell_lines')->where('id', $line->id)->value('product_id') . ' stock=' . json_encode(\DB::table('variation_location_details')->where('variation_id', $var->id)->where('location_id', $tx->location_id)->value('qty_available')) . "\n";
+              return;
+            }
             if ($q === 'SUBTEST') {
               $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
               $api = new \ReflectionMethod($c, 'websiteApi'); $api->setAccessible(true);
