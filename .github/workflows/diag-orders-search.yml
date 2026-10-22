@@ -57,6 +57,25 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'SUBTEST') {
+              $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
+              $api = new \ReflectionMethod($c, 'websiteApi'); $api->setAccessible(true);
+              $oid = '69d6a9d91b244cae6e8a8d92';
+              $o = ($api->invoke($c, 'GET', '/erp/orders/console?order=' . $oid)['data'][0] ?? null);
+              $it = $o['items'][0] ?? null;
+              echo 'BEFORE ' . json_encode([$o['orderNumber'] ?? null, $it['_id'] ?? null, $it['product_id']['name'] ?? null, $it['product_id']['posProductId'] ?? null, $it['substituted_from'] ?? null]) . "\n";
+              $tx = \DB::table('transactions')->where('type', 'sell')->where('additional_notes', 'like', 'Website order ' . $oid . '%')->first();
+              echo 'ERP SALE ' . json_encode($tx ? [$tx->id, $tx->location_id] : null) . "\n";
+              $newPid = (int) \DB::table('products')->where('name', 'like', '%Abbey Road%')->where('artist', 'like', '%Beatles%')->value('id');
+              echo 'SUB PID ' . $newPid . "\n";
+              \DB::beginTransaction();
+              try { $req = \Illuminate\Http\Request::create('/x', 'POST', ['product_id' => $newPid, 'note' => 'Claude test on archived test order']); app()->instance('request', $req); $r = $c->substitute($req, $oid, (string) ($it['_id'] ?? '')); echo 'RESULT ' . $r->getContent() . "\n"; if ($tx) echo 'LINES NOW ' . json_encode(\DB::table('transaction_sell_lines')->where('transaction_id', $tx->id)->pluck('product_id')) . "\n"; } catch (\Throwable $e) { echo 'ERR ' . $e->getMessage() . "\n"; }
+              \DB::rollBack();
+              $o2 = ($api->invoke($c, 'GET', '/erp/orders/console?order=' . $oid)['data'][0] ?? null);
+              $it2 = $o2['items'][0] ?? null;
+              echo 'AFTER ' . json_encode([$it2['product_id']['name'] ?? null, $it2['product_id']['posProductId'] ?? null, $it2['substituted_from'] ?? null, array_column($o2['pick_progress']['lines'] ?? [], 'status')]) . "\n";
+              return;
+            }
             if ($q === 'ALMOST') {
               $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => 'to_ship', 'almost' => '1']);
               app()->instance('request', $req);
