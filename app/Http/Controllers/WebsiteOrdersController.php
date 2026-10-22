@@ -682,7 +682,10 @@ class WebsiteOrdersController extends Controller
             $hit = ($one['success'] ?? false) ? array_values(array_filter($one['data'] ?? [], fn($x) => ($x['_id'] ?? '') === $id)) : [];
             return $hit[0] ?? null;
         });
+        $locs = $o ? self::erpLocations([$o]) : [];
         $items = collect($o['items'] ?? [])->map(fn($it) => [
+            'price' => '$' . number_format((float) ($it['price'] ?? 0), 2),
+            'where' => empty($it['product_id']) ? '' : self::pullSpot($it, $locs[(int) ($it['product_id']['posProductId'] ?? 0)] ?? null),
             'name' => $it['product_id']['name'] ?? ($it['product_name'] ?? 'Item'),
             'artist' => $it['product_id']['artist'] ?? null,
             'qty' => (int) ($it['quantity'] ?? 1),
@@ -691,8 +694,8 @@ class WebsiteOrdersController extends Controller
         $who = $o ? ($o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest'))) : null;
         $count = $items->sum('qty');
         $title = $o ? 'Order #' . ($o['orderNumber'] ?? '') . ' - ' . $who : 'Website order';
-        $desc = $o ? $count . ' item' . ($count === 1 ? '' : 's') . ': ' . $items->map(fn($i) => ($i['artist'] ? $i['artist'] . ' - ' : '') . $i['name'])->implode(', ') : '';
-        if (strlen($desc) > 280) $desc = substr($desc, 0, 277) . '...';
+        $desc = $o ? $count . ' item' . ($count === 1 ? '' : 's') . ': ' . $items->map(fn($i) => ($i['artist'] ? $i['artist'] . ' - ' : '') . $i['name'] . ' ' . $i['price'] . ($i['where'] !== '' ? ' (' . $i['where'] . ')' : ''))->implode('; ') : '';
+        if (strlen($desc) > 400) $desc = substr($desc, 0, 397) . '...';
         $img = $items->pluck('img')->filter(fn($u) => is_string($u) && preg_match('#^https?://#', $u))->first();
         return response()->view('website-orders.share', [
             'title' => $title, 'desc' => $desc, 'img' => $img, 'items' => $items,

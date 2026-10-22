@@ -20,6 +20,7 @@
     h1 { font-size:22px; margin:0 0 14px; }
     .it { display:flex; gap:12px; align-items:center; margin-bottom:10px; font-size:15px; }
     .it img, .it .ph { width:56px; height:56px; border-radius:8px; object-fit:cover; background:#f3f4f6; flex-shrink:0; }
+    .loc { font-size:14px; }
     a.go { display:inline-block; margin-top:16px; padding:12px 18px; border-radius:8px; background:#1e3a8a; color:#fff; font-weight:700; text-decoration:none; }
   </style>
 </head>
@@ -29,7 +30,7 @@
     @foreach($items as $i)
       <div class="it">
         @if($i['img'])<img src="{{ $i['img'] }}" alt="">@else<div class="ph"></div>@endif
-        <div>@if($i['artist'])<b>{{ $i['artist'] }}</b><br>@endif{{ $i['name'] }}@if($i['qty'] > 1) (x{{ $i['qty'] }})@endif</div>
+        <div>@if($i['artist'])<b>{{ $i['artist'] }}</b><br>@endif{{ $i['name'] }}@if($i['qty'] > 1) (x{{ $i['qty'] }})@endif<br>{{ $i['price'] }}@if($i['where'] !== '')<br><span class="loc">{{ $i['where'] }}</span>@endif</div>
       </div>
     @endforeach
     <a class="go" href="{{ $go }}">Open the order</a>
