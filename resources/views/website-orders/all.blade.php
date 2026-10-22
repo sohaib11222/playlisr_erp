@@ -70,7 +70,8 @@
               <td><strong>{{ $r['buyer'] }}</strong>@if(!empty($r['email']))<div style="font-size:12px;">{{ $r['email'] }}</div>@endif</td>
               <td class="ao-items">
                 @foreach(($r['items'] ?? []) as $it)
-                  <div>@if(!empty($it['cancelled']))<s>@endif{{ $it['qty'] > 1 ? $it['qty'] . ' x ' : '' }}{{ $it['name'] }}@if(!empty($it['artist'])) - {{ $it['artist'] }}@endif @if(!empty($it['price']))(${{ number_format((float) $it['price'], 2) }})@endif @if(!empty($it['cancelled']))</s> cancelled@endif</div>
+                  @php $aoLine = ($it['qty'] > 1 ? $it['qty'] . ' x ' : '') . $it['name'] . (!empty($it['artist']) ? ' - ' . $it['artist'] : '') . (!empty($it['price']) ? ' ($' . number_format((float) $it['price'], 2) . ')' : ''); @endphp
+                  <div>@if(!empty($it['cancelled']))<s>{{ $aoLine }}</s> cancelled @else{{ $aoLine }}@endif</div>
                 @endforeach
               </td>
               <td style="font-weight:700;">${{ number_format((float) ($r['total'] ?? 0), 2) }}</td>
