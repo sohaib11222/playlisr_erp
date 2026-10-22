@@ -350,6 +350,7 @@
       <p class="sub">Website and Discogs orders to pull, pack and ship.</p>
     </div>
     <a href="{{ route('website-orders.pickRoute', ['store' => in_array($locationFilter, ['hollywood', 'pico', 'warehouse'], true) ? $locationFilter : ($locationFilter === 'hw' ? 'hollywood' : 'hollywood')]) }}" class="wo-route-btn">Pick Route &rarr;</a>
+    <a href="{{ route('website-orders.all') }}" style="margin-left:14px;color:#000;font-weight:700;align-self:center;">All Orders</a>
   </div>
 
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif

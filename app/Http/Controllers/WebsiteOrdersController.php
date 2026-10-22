@@ -1388,6 +1388,32 @@ class WebsiteOrdersController extends Controller
      * in walking order so the picker does one pass: area, then bin (or
      * format, then genre, for store stock), then artist.
      */
+    /**
+     * All Orders (Sarah, 2026-10-22): every website or Discogs order ever, any
+     * status, archived and duplicates included, newest first. No tabs, nothing
+     * hidden, nothing to click that changes an order: the source of truth.
+     */
+    public function allOrders(Request $request)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $source = $request->query('source') === 'discogs' ? 'discogs' : 'website';
+        $page = max(1, (int) $request->query('page', 1));
+        $q = trim((string) $request->query('q', ''));
+        $resp = $this->websiteApi('GET', '/erp/orders/all?' . http_build_query(['source' => $source, 'page' => $page, 'per' => 100, 'q' => $q]), null, 30);
+        $ok = ($resp['success'] ?? false) === true;
+        return view('website-orders.all', [
+            'source' => $source,
+            'page' => $page,
+            'q' => $q,
+            'rows' => $ok ? ($resp['data'] ?? []) : [],
+            'total' => $ok ? (int) ($resp['total'] ?? 0) : 0,
+            'per' => 100,
+            'error' => $ok ? null : (($resp['message'] ?? null) ?: 'Could not reach the website.'),
+        ]);
+    }
+
     public function pickRoute(Request $request)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
