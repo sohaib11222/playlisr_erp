@@ -273,13 +273,41 @@ class ShelfCountController extends Controller
             ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->where('v.qty_available', '>', 0)
             ->where(function ($q) use ($kind) { $this->kindQuery($q, $kind); })
             ->where(function ($q) use ($sub) { $sub ? $q->where('p.sub_category_id', $sub) : $q->whereNull('p.sub_category_id')->orWhere('p.sub_category_id', 0); })
-            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position', \DB::raw('SUM(v.qty_available) as qty'))
-            ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position')
+            ->select('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position', 'p.category_id', \DB::raw('SUM(v.qty_available) as qty'))
+            ->groupBy('p.id', 'p.name', 'p.artist', 'p.sku', 'p.bin_position', 'p.category_id')
             ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->get();
         $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No sub-category';
         $labels = $this->kinds($business_id);
+        // Genres each title can be moved to: the ones under its own format (Sarah 10/21).
+        $genres = [];
+        if (auth()->user()->can('product.update')) {
+            foreach (\DB::table('categories')->where('business_id', $business_id)->whereNull('deleted_at')
+                ->whereIn('parent_id', $items->pluck('category_id')->filter()->unique()->all())->orderBy('name')->get(['id', 'name', 'parent_id']) as $g) {
+                $genres[(int) $g->parent_id][] = ['id' => (int) $g->id, 'name' => $g->name];
+            }
+        }
         return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
-            'name' => $name, 'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty]; })->values()]);
+            'name' => $name, 'sub' => $sub, 'genres' => (object) $genres,
+            'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty, 'cat' => (int) $i->category_id]; })->values()]);
+    }
+
+    /**
+     * Wrong genre spotted while counting (Sarah 10/21): move one title to
+     * another genre of its format. Same writer as Genre fix, so it's undoable
+     * from Admin action history and the website updates.
+     */
+    public function setGenre(Request $request)
+    {
+        if (!auth()->user()->can('product.update')) abort(403);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $id = (int) $request->input('product_id');
+        $sub = (int) $request->input('sub_id');
+        $p = \DB::table('products')->where('business_id', $business_id)->where('id', $id)->first(['name', 'category_id']);
+        $g = \DB::table('categories')->where('business_id', $business_id)->where('id', $sub)->whereNull('deleted_at')->first(['name', 'parent_id']);
+        if (!$p || !$g || (int) $g->parent_id !== (int) $p->category_id) return response()->json(['ok' => false, 'msg' => 'That genre is not under this format.'], 422);
+        $n = app(GenreFixController::class)->write($business_id, [$id => $sub], 'shelf count: ' . $p->name . ' -> ' . $g->name);
+        if ($n === null) return response()->json(['ok' => false, 'msg' => 'Could not save. Try again.'], 500);
+        return response()->json(['ok' => true, 'genre' => $g->name]);
     }
 
     /** Barcode (or words) -> product, for the scan box. */
