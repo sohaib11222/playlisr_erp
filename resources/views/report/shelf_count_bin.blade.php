@@ -87,8 +87,23 @@
     // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
     // title or bin spot. Choice remembered on this device.
     var SORT_KEY = 'shelfcount:sort';
+    // People are filed by last name like the shelf (Sarah 10/21): "Bob Dylan"
+    // sorts as "Dylan Bob", "Tom Petty & The Heartbreakers" as "Petty Tom".
+    // The ERP doesn't know person vs band, so only flip 2-3 word names that
+    // start with a common first name; bands that do are listed in NOT_PEOPLE.
+    var FIRST = ('aaron adam al alan albert alex alice alicia amy andre andrew andy angel angie ann anna anne annie anthony antonio archie aretha art arthur barbara barry ben benny bernard bert bessie beth betty bill billie billy bing blake bo bob bobbie bobby bonnie brad brandon brenda brian bruce bruno bryan bud buddy burt carl carla carlos carly carol carole caroline carrie cass cat celine charles charley charlie chet chris christina christine chuck cindy claire clarence cliff clint cole colin connie conway cyndi dan daniel danny darlene dave david dean debbie dee del dennis diana diane dick dinah dion dolly don donald donna donny doris dorothy doug duane dusty dwight earl ed eddie eddy edgar edith edward elizabeth ella ellie elton elvis emily emmylou eric erykah etta eva frank frankie fred freddie freddy gary gene george gil gilbert gladys glen glenn gloria gordon grace graham greg gregory gwen hank harold harry hayley helen herb herbie howard ian ike irma isaac isaiah jack jackie jackson jake james jamie jan jane janet janis jason jay jean jeff jeffrey jennifer jenny jerry jessica jesse jill jim jimi jimmie jimmy jo joan joanna joe joel john johnnie johnny jon jonathan joni joseph josh joshua judy julia julian julie justin karen kate katie kay keith kelly ken kenny kevin kim kirk kris kurt kylie lana larry laura lauren lee lena lenny leon leonard les leslie lily linda lionel liz lloyd lou louis lucinda lucy luke lyle mac marc marcus margo maria mariah marian marianne mark marshall martha martin marty marvin mary matt matthew maurice max mel melanie melissa merle michael mick mickey miguel mike miles miley minnie miriam mitch molly muddy nancy nat natalie neil nick nicky nina nora norah norman otis pat patrick patsy patti patty paul paula peggy percy pete peter phil philip phoebe quincy rachel randy ray rick ricky rita rob robert roberta robbie robin rod roger ron ronnie rosanne rose roy ruby rufus russell ruth ry ryan sam sammy sarah scott sean shania sharon sheryl shirley simon sonny stan stephen steve steven stevie sue susan suzanne taylor ted teddy terry thelma thomas tim tina toby todd tom tommy tony townes tracy van vance vern vic victor vince walter warren wayne wendy wes whitney will william willie wilson woody yoko zach').split(' ');
+    var NOT_PEOPLE = ['joy division', 'jethro tull', 'molly hatchet', 'van halen', 'ben folds five', 'billy talent', 'tom tom club', 'mac demarco band', 'marshall tucker band', 'lucy dacus band', 'archie bronson outfit', 'joe jackson band'];
+    function fileAs(artist) {
+        var full = String(artist || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+        var lead = full.split(/\s*(?:&|\+|,|\/)\s*|\s+(?:and|with|feat\.?|featuring|ft\.?|x)\s+/i)[0].trim();
+        if (NOT_PEOPLE.indexOf(lead.toLowerCase()) !== -1 || NOT_PEOPLE.indexOf(full.toLowerCase()) !== -1) return full;
+        var w = lead.split(/\s+/), sfx = /^(jr\.?|sr\.?|ii|iii|iv)$/i.test(w[w.length - 1]) ? w.pop() : '';
+        if (w.length < 2 || w.length > 3 || FIRST.indexOf(w[0].toLowerCase()) === -1 || /\d|band$|group$|orchestra$|trio$|quartet$/i.test(lead)) return full;
+        var last = w.pop();
+        return last + ' ' + w.join(' ') + (sfx ? ' ' + sfx : '') + full.slice(lead.length);
+    }
     function sortKey(i, by) {
-        var a = String(i.artist || i.name || ''), t = String(i.name || '');
+        var a = i.artist ? fileAs(i.artist) : String(i.name || ''), t = String(i.name || '');
         return (by === 'title' ? t : by === 'bin' ? (i.bin || '~') + ' ' + a : a + ' ' + t).toLowerCase().replace(/^the\s+/, '');
     }
     function sortItems(by) {
