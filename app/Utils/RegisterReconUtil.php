@@ -509,10 +509,11 @@ class RegisterReconUtil
         if (!\Schema::hasTable('buy_customer_offers')) return [];
         $rows = \DB::table('buy_customer_offers as o')
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
+            ->leftJoin('contacts as c', 'c.id', '=', 'o.contact_id')
             ->where('o.business_id', $business_id)
             ->where('o.status', 'draft')
             ->whereDate('o.created_at', $date)
-            ->select('o.location_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'u.first_name', 'u.username')
+            ->select('o.location_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'c.name as contact_name', 'u.first_name', 'u.username')
             ->orderBy('o.created_at')
             ->get();
         $groups = [];
@@ -520,6 +521,7 @@ class RegisterReconUtil
             $who = ucfirst(strtolower(trim((string) ($o->first_name ?: $o->username))));
             $seller = trim((string) $o->seller_first_name . ' ' . (string) $o->seller_last_name);
             if ($seller === '') $seller = trim((string) $o->seller_name);
+            if ($seller === '') $seller = trim((string) $o->contact_name);
             if ($seller === '' || stripos($seller, 'walk-in') === 0) $seller = 'a walk-in';
             $g = (int) $o->location_id . '|' . $who;
             $groups[$g]['location_id'] = $o->location_id;
