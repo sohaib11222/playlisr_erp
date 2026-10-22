@@ -63,7 +63,7 @@
   .wo-banner.ok { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
 
   .wo-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .wo-tbl { width:100%; min-width:1380px; table-layout:fixed; border-collapse:collapse; }
+  .wo-tbl { width:100%; min-width:1540px; table-layout:fixed; border-collapse:collapse; }
   .wo-scroll { overflow-x:auto; }
   .wo-tbl td { overflow-wrap:anywhere; }
   .wo-tbl td.wo-actions-cell { overflow:visible; }
@@ -338,7 +338,7 @@
   .wo-steps .wo-split b:not(.x) { min-width:24px !important; height:24px !important; font-size:14px !important; }
   /* Narrow screens: scroll the table sideways instead of squeezing columns */
   .wo-scroll { overflow-x:auto; }
-  .wo-tbl { min-width:1380px; }
+  .wo-tbl { min-width:1540px; }
   .wo-cond { white-space:nowrap; }
   .wo-step .wo-step-main { max-width:none; }
 </style>
@@ -632,9 +632,9 @@
           <colgroup>
             <col style="width:100px">
             <col style="width:78px">
-            <col style="width:12%">
-            <col>
-            <col style="width:340px">
+            <col style="width:150px">
+            <col style="width:270px">
+            <col style="width:280px">
             <col style="width:86px">
             <col style="width:236px">
             <col style="width:112px">
@@ -1304,9 +1304,9 @@
             <colgroup>
               <col style="width:100px">
               <col style="width:78px">
-              <col style="width:12%">
-              <col>
-              <col style="width:340px">
+              <col style="width:150px">
+              <col style="width:270px">
+              <col style="width:280px">
               <col style="width:86px">
               <col style="width:236px">
               <col style="width:112px">
