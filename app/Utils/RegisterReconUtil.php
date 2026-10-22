@@ -549,16 +549,20 @@ class RegisterReconUtil
             // write a cash_register_transactions row - pull them from
             // buy_customer_offers for this store during the shift (any
             // ringer, so admin-rung buys still count against the drawer).
+            // Sum what was actually handed over (final_offer_cash), not the
+            // purchase's final_total: that only counts titled lines, so a quick
+            // buy with untitled items came out $0 and the drawer looked short
+            // by the whole buy (Andy's $140 collection, 10/21).
             $cashBuys = 0.0;
             if (\Schema::hasTable('buy_customer_offers')) {
-                $cashBuys = (float) \DB::table('transactions as t')
-                    ->join('buy_customer_offers as o', 'o.accepted_purchase_id', '=', 't.id')
-                    ->where('t.business_id', $business_id)
-                    ->where('t.type', 'purchase')
+                $cashBuys = (float) \DB::table('buy_customer_offers as o')
+                    ->leftJoin('transactions as t', 't.id', '=', 'o.accepted_purchase_id')
+                    ->where('o.business_id', $business_id)
+                    ->where('o.status', 'accepted')
                     ->where('o.payment_method', 'cash_in_store')
-                    ->where('t.location_id', $r->location_id)
-                    ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
-                    ->sum('t.final_total');
+                    ->whereRaw('COALESCE(o.location_id, t.location_id) = ?', [$r->location_id])
+                    ->whereRaw('COALESCE(o.accepted_at, t.transaction_date) BETWEEN ? AND ?', [$r->created_at, $r->closed_at])
+                    ->sum('o.final_offer_cash');
             }
             // "Use Store Credit" on the POS books the whole sale as cash with
             // a "Store credit used: $X" note - that $X never went in the
