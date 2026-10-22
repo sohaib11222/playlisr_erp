@@ -76,10 +76,10 @@
 .eos table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .eos th, .eos td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
 .eos th { font-weight: 800; font-size: 13px; white-space: nowrap; }
-.eos .scroll { overflow-x: auto; }
+.eos .eos-scroll { overflow-x: auto; }
 .eos td.good { background: var(--good-bg); color: var(--good); font-weight: 700; }
 .eos td.bad { background: var(--bad-bg); color: var(--bad); font-weight: 700; }
-.eos .sc input[type=text] { width: 86px; padding: 4px 6px; }
+.eos .eos-sc input[type=text] { width: 86px; padding: 4px 6px; }
 .eos .tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12.5px; font-weight: 800; }
 .eos .tag.on, .eos .tag.done { background: var(--good-bg); color: var(--good); }
 .eos .tag.off { background: var(--bad-bg); color: var(--bad); }
@@ -196,10 +196,10 @@
         <div class="card">
             <h2>Scorecard</h2>
             <p class="hint">5 to 15 weekly numbers, each with one owner and a goal. Store sales fill in from the ERP. Type the rest each week before the L10.</p>
-            <form method="POST" action="{{ url('/eos') }}" class="sc">
+            <form method="POST" action="{{ url('/eos') }}" class="eos-sc">
                 @csrf
                 <input type="hidden" name="do" value="values">
-                <div class="scroll">
+                <div class="eos-scroll">
                 <table>
                     <tr>
                         <th>Number</th><th>Owner</th><th>Goal</th>
