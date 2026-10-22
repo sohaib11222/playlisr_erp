@@ -32,6 +32,9 @@
 .sc-how ol { margin: 6px 0 0 18px; padding: 0; }
 .sc-how li { margin-bottom: 4px; }
 .sc-zero { border-color: #8E1B1B !important; color: #8E1B1B !important; }
+.sc-genre { height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; color: #1F1B16; font-size: 14px; padding: 0 10px; cursor: pointer; margin-right: 6px; }
+.sc-gsel { display: block; margin-top: 6px; height: 40px; font-size: 15px; border: 2px solid #1F1B16; border-radius: 8px; padding: 0 8px; max-width: 100%; }
+.sc-moved { color: #2E6B2E; font-weight: 700; }
 .sc-all { height: 44px; border-radius: 10px; border: 1px solid #2E6B2E; background: #fff; color: #2E6B2E; font-size: 14px; font-weight: 700; padding: 0 10px; cursor: pointer; margin-right: 6px; }
 </style>
 <div class="sc-wrap">
@@ -43,6 +46,7 @@
             <li>Go down the list as you flip through the bin.</li>
             <li>Tap <b>All here</b>, tap <b>None</b>, or type how many you see.</li>
             <li>Record not on the list? Scan it.</li>
+            @if(count((array) $genres))<li>Wrong genre? Tap <b>Genre</b> on that record and pick the right one. It saves right away.</li>@endif
             <li>Tap the green <b>Done</b> button at the bottom, then <b>Save</b>.</li>
         </ol>
     </div>
@@ -72,17 +76,27 @@
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var LOC = {{ (int) $loc }};
     var items = @json($items);
-    var byId = {}, count = {}, touched = {}, extra = [];
+    var GENRES = @json($genres), SUB = {{ (int) $sub }};
+    var byId = {}, count = {}, touched = {}, extra = [], moved = {}, editing = null;
     items.forEach(function (i) { byId[i.id] = i; count[i.id] = 0; });
     function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function label(i) { return (i.artist && (i.name || '').toLowerCase().indexOf(String(i.artist).toLowerCase()) === -1 ? i.artist + ' - ' : '') + i.name; }
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
-        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div></div>'
+        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div>'
+            + (moved[i.id] ? '<div class="sc-small sc-moved">Genre changed to ' + esc(moved[i.id]) + '</div>' : '')
+            + (editing === i.id ? genreSelect(i) : '') + '</div>'
+            + (GENRES[i.cat] ? '<button class="sc-genre" type="button">Genre</button>' : '')
             + (i.erp > 0 && i.erp <= 2 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
             + (!none ? '<button class="sc-all sc-zero" type="button">None</button>' : '')
             + '<input class="sc-n" type="number" inputmode="numeric" enterkeyhint="next" min="0" step="1" aria-label="Copies here" placeholder="#" value="' + (touched[i.id] ? n : '') + '"></div>';
+    }
+    // Wrong genre (Sarah 10/21): pick another genre of the same format. Saves at once.
+    function genreSelect(i) {
+        return '<select class="sc-gsel"><option value="">Move to genre...</option>' + GENRES[i.cat].map(function (g) {
+            return '<option value="' + g.id + '"' + (g.id === (i.sub || SUB) ? ' disabled' : '') + '>' + esc(g.name) + (g.id === (i.sub || SUB) ? ' (now)' : '') + '</option>';
+        }).join('') + '</select>';
     }
     // Sort the list the way the shelf is laid out (Sarah 10/20): artist,
     // title or bin spot. Choice remembered on this device.
@@ -151,6 +165,19 @@
     }
     // Type the number of copies on the shelf (Sarah 10/20: "key in instead of + and -").
     document.querySelector('.sc-wrap').addEventListener('change', function (e) {
+        var gs = e.target.closest('.sc-gsel');
+        if (gs && gs.value) {
+            var gi = byId[gs.closest('.sc-item').getAttribute('data-id')], f = document.getElementById('scFlash');
+            gs.disabled = true;
+            fetch('/reports/shelf-count/genre', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                body: JSON.stringify({ product_id: gi.id, sub_id: parseInt(gs.value, 10) }) })
+                .then(function (r) { return r.json(); }).then(function (j) {
+                    if (!j.ok) { gs.disabled = false; f.className = 'sc-flash bad'; f.textContent = j.msg || 'Could not change the genre.'; return; }
+                    gi.sub = parseInt(gs.value, 10); moved[gi.id] = j.genre; editing = null; render();
+                    f.className = 'sc-flash ok'; f.textContent = 'Moved to ' + j.genre + ': ' + label(gi);
+                }, function () { gs.disabled = false; f.className = 'sc-flash bad'; f.textContent = 'Could not change the genre. Check the connection.'; });
+            return;
+        }
         var inp = e.target.closest('.sc-n'); if (!inp) return;
         var it = byId[inp.closest('.sc-item').getAttribute('data-id')];
         if (inp.value === '') { delete touched[it.id]; count[it.id] = 0; keepDraft(); render(); return; }
@@ -175,6 +202,7 @@
         setTimeout(focusPending, 0);
     });
     document.querySelector('.sc-wrap').addEventListener('click', function (e) {
+        var gb = e.target.closest('.sc-genre'); if (gb) { var gid = +gb.closest('.sc-item').getAttribute('data-id'); editing = editing === gid ? null : gid; render(); return; }
         var z = e.target.closest('.sc-zero'); if (z) { var zi = byId[z.closest('.sc-item').getAttribute('data-id')]; count[zi.id] = 0; bump(zi, 0); return; }
         var all = e.target.closest('.sc-all'); if (all) { var ai = byId[all.closest('.sc-item').getAttribute('data-id')]; bump(ai, Math.round(ai.erp) - (count[ai.id] || 0)); return; }
         var b = e.target.closest('.sc-pm'); if (b) { var id = b.closest('.sc-item').getAttribute('data-id'); bump(byId[id], parseInt(b.getAttribute('data-d'), 10)); return; }

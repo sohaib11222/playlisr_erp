@@ -271,8 +271,8 @@ class GenreFixController extends Controller
         return $out;
     }
 
-    /** Write genre changes (id => new sub id), snapshot for undo, tell the website. */
-    private function write($biz, array $changes, $label)
+    /** Write genre changes (id => new sub id), snapshot for undo, tell the website. Also used by Shelf count. */
+    public function write($biz, array $changes, $label)
     {
         $formatOf = \DB::table('categories')->where('business_id', $biz)->whereNull('deleted_at')->where('parent_id', '>', 0)->pluck('parent_id', 'id')->all();
         $done = [];
