@@ -173,7 +173,7 @@ jobs:
               $html = app(\App\Http\Controllers\WebsiteOrdersController::class)->index($req)->render();
               $i = strpos($html, 'Do these in order');
               echo 'RENDER_OK len=' . strlen($html) . "\n";
-              foreach (["Couldn't reach", 'Do these in order', 'wo-steps', 'bridgeError'] as $needle) echo 'HAS ' . $needle . '=' . substr_count($html, $needle) . "\n";
+              foreach (["Couldn't reach", 'Do these in order', 'wo-steps', 'bridgeError', 'spot not saved', 'HW Basement'] as $needle) echo 'HAS ' . $needle . '=' . substr_count($html, $needle) . "\n";
               $cr = strpos($html, "Couldn't reach");
               if ($cr !== false) echo 'CR: ' . substr(strip_tags(substr($html, $cr, 600)), 0, 400) . "\n";
               $wk = strpos($html, 'class="wo-week-line"');
