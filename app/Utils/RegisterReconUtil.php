@@ -427,6 +427,13 @@ class RegisterReconUtil
                 ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
                 ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.user_id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
             if (!$prev || (int) $prev->user_id === (int) $n->user_id) continue; // same person, not a handover
+            // Someone else's register was already open here (Jon's side
+            // register, a second till) - the drawer wasn't handed over.
+            $overlap = \DB::table('cash_registers')->where('business_id', $business_id)->where('location_id', $n->location_id)
+                ->where('id', '<>', $n->id)->where('created_at', '<', $n->created_at)
+                ->where(function ($q) use ($n) { $q->whereNull('closed_at')->orWhere('closed_at', '>', $n->created_at); })
+                ->exists();
+            if ($overlap) continue;
             $closeDrop = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $prev->id)->where('phase', 'close')->sum('amount') : 0.0;
             $openDrop  = $hasDeposits ? (float) \DB::table('cash_deposits')->where('cash_register_id', $n->id)->where('phase', 'open')->sum('amount') : 0.0;
             $initial = (float) \DB::table('cash_register_transactions')->where('cash_register_id', $n->id)->where('transaction_type', 'initial')->sum('amount');
@@ -436,13 +443,32 @@ class RegisterReconUtil
             if ($gap > -self::DRAWER_TOLERANCE) continue; // only drops matter
             $pName = ucfirst(strtolower(trim((string) ($prev->first_name ?: $prev->username))));
             $nName = ucfirst(strtolower(trim((string) ($n->first_name ?: $n->username))));
+            // Same cash back at a later handover within 36h (Pico: $100 goes
+            // to the safe at night and comes back mid-day) - it wasn't lost.
+            $backNote = null;
+            $later = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+                ->where('cr.business_id', $business_id)->where('cr.location_id', $n->location_id)
+                ->where('cr.created_at', '>', $n->created_at)
+                ->where('cr.created_at', '<=', \Carbon\Carbon::parse($n->created_at)->addHours(36))
+                ->orderBy('cr.created_at')->get(['cr.id', 'cr.created_at', 'u.first_name', 'u.username']);
+            foreach ($later as $m) {
+                $mp = self::prevClose($business_id, (int) $n->location_id, $m->created_at, (int) $m->id);
+                if (!$mp) continue;
+                $back = self::foundAtOpen((int) $m->id) - self::leftAtClose($mp);
+                if (abs($back + $gap) < 5) {
+                    $backNote = 'came back: $' . number_format($back, 0) . ' more in the drawer when '
+                        . ucfirst(strtolower(trim((string) ($m->first_name ?: $m->username)))) . ' opened '
+                        . \Carbon\Carbon::parse($m->created_at)->format('n/j g:ia') . ' (likely the safe)';
+                    break;
+                }
+            }
             $flags[] = [
                 'location_id' => $n->location_id,
                 'kind'   => 'handover',
                 'detail' => 'drawer went from $' . number_format($left, 0) . ' (' . $pName . ' closed ' . \Carbon\Carbon::parse($prev->closed_at)->format('g:ia')
                     . ') to $' . number_format($found, 0) . ' (' . $nName . ' opened ' . \Carbon\Carbon::parse($n->created_at)->format('g:ia') . ')',
                 'ask'    => $pName . ' / ' . $nName,
-                'note'   => null,
+                'note'   => $backNote,
                 'amount' => abs($gap),
             ];
         }
@@ -647,6 +673,7 @@ class RegisterReconUtil
             // Only shorts matter (Sarah 9/27); a negative expected means the
             // buy was paid from outside the drawer - not a drawer problem.
             if ($variance > -self::DRAWER_TOLERANCE || $expected < 0) continue;
+            $miscount = self::miscountNote($business_id, $r, $variance);
             $flags[] = [
                 'location_id' => $r->location_id,
                 'kind'   => 'drawer',
@@ -662,11 +689,81 @@ class RegisterReconUtil
                     . ' (counted $' . number_format((float) $r->closing_amount, 2)
                     . ', expected $' . number_format($expected, 2) . ')',
                 'ask'    => $who,
-                'note'   => null,
+                'note'   => $miscount,
                 'amount' => abs($variance),
             ];
         }
         return $flags;
+    }
+
+    /** Opening count (saved opening cash + open-time safe drop). */
+    private static function foundAtOpen(int $register_id): float
+    {
+        $drop = \Schema::hasTable('cash_deposits')
+            ? (float) \DB::table('cash_deposits')->where('cash_register_id', $register_id)->where('phase', 'open')->sum('amount') : 0.0;
+        return (float) \DB::table('cash_register_transactions')->where('cash_register_id', $register_id)
+            ->where('transaction_type', 'initial')->sum('amount') + $drop;
+    }
+
+    /** What a closed register left in the drawer (count minus close-time safe drop). */
+    private static function leftAtClose($reg): float
+    {
+        $drop = \Schema::hasTable('cash_deposits')
+            ? (float) \DB::table('cash_deposits')->where('cash_register_id', $reg->id)->where('phase', 'close')->sum('amount') : 0.0;
+        return (float) $reg->closing_amount - $drop;
+    }
+
+    /** Last counted close at this store in the 24h before $at. */
+    private static function prevClose(int $business_id, int $location_id, $at, int $exclude_id)
+    {
+        return \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+            ->where('cr.business_id', $business_id)->where('cr.location_id', $location_id)->where('cr.id', '<>', $exclude_id)
+            ->where('cr.status', 'close')->whereNotNull('cr.closing_amount')
+            ->where('cr.closed_at', '<=', $at)
+            ->where('cr.closed_at', '>=', \Carbon\Carbon::parse($at)->subHours(24))
+            ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
+            ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
+    }
+
+    /**
+     * A short drawer that a neighbouring count already accounts for is a
+     * miscount, not missing cash (Sarah 10/22 "maybe its a system issue"):
+     *  - the next opening count found the money (Quenton closed 10/16 at
+     *    $440, re-opened at 1:12am with $590 - his $148 "short" was there);
+     *  - the opening count was higher than what the last shift left, and
+     *    counted from what was left the shift is even (Michael 10/21 opened
+     *    at $793 after Manolo left $566, closed $231 "short").
+     * Returns a note (shown under Explained, kept off Slack) or null.
+     */
+    private static function miscountNote(int $business_id, $r, float $variance): ?string
+    {
+        $name = function ($u) { return ucfirst(strtolower(trim((string) ($u->first_name ?: $u->username)))); };
+        $next = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+            ->where('cr.business_id', $business_id)->where('cr.location_id', $r->location_id)->where('cr.id', '<>', $r->id)
+            ->where('cr.created_at', '>=', $r->closed_at)
+            ->where('cr.created_at', '<=', \Carbon\Carbon::parse($r->closed_at)->addHours(24))
+            ->orderBy('cr.created_at')->first(['cr.id', 'cr.created_at', 'u.first_name', 'u.username']);
+        if ($next) {
+            $left  = self::leftAtClose($r);
+            $found = self::foundAtOpen((int) $next->id);
+            if ($found - $left >= self::DRAWER_TOLERANCE && abs($found - $left + $variance) < self::DRAWER_TOLERANCE) {
+                return 'miscount: the next count found it (' . $name($next) . ' opened '
+                    . \Carbon\Carbon::parse($next->created_at)->format('n/j g:ia') . ' with $' . number_format($found, 0)
+                    . ', this close counted $' . number_format($left, 0) . ')';
+            }
+        }
+        $prev = self::prevClose($business_id, (int) $r->location_id, $r->created_at, (int) $r->id);
+        if ($prev) {
+            $left  = self::leftAtClose($prev);
+            $found = self::foundAtOpen((int) $r->id);
+            $over  = $found - $left;
+            if ($over >= self::DRAWER_TOLERANCE && abs($variance + $over) < self::DRAWER_TOLERANCE) {
+                return 'miscount: opening count was $' . number_format($over, 0) . ' more than ' . $name($prev)
+                    . ' left ($' . number_format($found, 0) . ' vs $' . number_format($left, 0) . '); from what was left the drawer is within $'
+                    . number_format(abs($variance + $over), 0);
+            }
+        }
+        return null;
     }
 
     const FATTEEN_SLACK_ID = 'U07QEGGQ7B2';
