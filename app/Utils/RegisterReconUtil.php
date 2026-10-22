@@ -372,7 +372,7 @@ class RegisterReconUtil
 
         // 3) Drawer counts + registers that were never counted.
         $drawerNotes = self::drawerNotes();
-        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date), self::changeRunFlags($business_id, $date), self::draftBuyFlags($business_id, $date)) as $f) {
+        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date), self::changeRunFlags($business_id, $date), self::draftBuyFlags($business_id, $date), self::smallShortFlags($business_id, $date)) as $f) {
             $k = $storeKey($f['location_id']);
             $f['note_key'] = self::drawerNoteKey($date, $stores[$k]['name'], $f['kind'], (string) ($f['ask'] ?? ''));
             $f['note'] = $f['note'] ?? ($drawerNotes[$f['note_key']] ?? null);
@@ -618,58 +618,7 @@ class RegisterReconUtil
             // $70-$550 short). closing_amount is counted before the safe drop.
             if (!self::FLAG_DRAWER_VARIANCE) continue;
             if (!$row) continue;
-            // Collection buys paid in cash come out of the drawer but never
-            // write a cash_register_transactions row - pull them from
-            // buy_customer_offers for this store during the shift (any
-            // ringer, so admin-rung buys still count against the drawer).
-            // Sum what was actually handed over (final_offer_cash), not the
-            // purchase's final_total: that only counts titled lines, so a quick
-            // buy with untitled items came out $0 and the drawer looked short
-            // by the whole buy (Andy's $140 collection, 10/21).
-            $cashBuys = 0.0;
-            if (\Schema::hasTable('buy_customer_offers')) {
-                $cashBuys = (float) \DB::table('buy_customer_offers as o')
-                    ->leftJoin('transactions as t', 't.id', '=', 'o.accepted_purchase_id')
-                    ->where('o.business_id', $business_id)
-                    ->where('o.status', 'accepted')
-                    ->where('o.payment_method', 'cash_in_store')
-                    ->whereRaw('COALESCE(o.location_id, t.location_id) = ?', [$r->location_id])
-                    ->whereRaw('COALESCE(o.accepted_at, t.transaction_date) BETWEEN ? AND ?', [$r->created_at, $r->closed_at])
-                    ->sum('o.final_offer_cash');
-            }
-            // "Use Store Credit" on the POS books the whole sale as cash with
-            // a "Store credit used: $X" note - that $X never went in the
-            // drawer, so take it back out of expected cash.
-            $scCents = 0;
-            $txIds = \DB::table('cash_register_transactions')->where('cash_register_id', $r->id)
-                ->where('transaction_type', 'sell')->where('pay_method', 'cash')
-                ->whereNotNull('transaction_id')->pluck('transaction_id')->all();
-            if (!empty($txIds)) {
-                foreach (\DB::table('transaction_payments')->whereIn('transaction_id', $txIds)
-                    ->where('method', 'cash')->where('note', 'like', '%Store credit used:%')->pluck('note') as $n) {
-                    if (preg_match('/store credit used:\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)/i', (string) $n, $m)) {
-                        $scCents += (int) round(((float) $m[1]) * 100);
-                    }
-                }
-            }
-            // Cash paid out of the drawer for store expenses (e.g. Luis paying
-            // $300 for bookshelves, 9/25) - counted when logged as an expense
-            // at this store during the shift, paid in cash, and not already
-            // posted to this register by the POS expense button.
-            $cashExpenses = (float) \DB::table('transactions as t')
-                ->join('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
-                ->where('t.business_id', $business_id)
-                ->where('t.type', 'expense')
-                ->where('t.location_id', $r->location_id)
-                ->where('tp.method', 'cash')
-                ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
-                ->whereNotExists(function ($q) use ($r) {
-                    $q->select(\DB::raw(1))->from('cash_register_transactions as c')
-                      ->whereColumn('c.transaction_id', 't.id')
-                      ->where('c.cash_register_id', $r->id);
-                })
-                ->sum('tp.amount');
-            $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys - $scCents / 100 - $cashExpenses;
+            [$expected, $cashBuys] = self::shiftExpected($business_id, $r, $row);
             $variance = round((float) $r->closing_amount - $expected, 2);
             // Only shorts matter (Sarah 9/27); a negative expected means the
             // buy was paid from outside the drawer - not a drawer problem.
@@ -692,6 +641,137 @@ class RegisterReconUtil
                 'ask'    => $who,
                 'note'   => $miscount,
                 'amount' => abs($variance),
+            ];
+        }
+        return $flags;
+    }
+
+    /**
+     * Cash the drawer should hold at close: opening cash + cash in/out,
+     * less cash buys, store credit booked as cash and cash expenses.
+     * Returns [expected, cashBuys].
+     */
+    private static function shiftExpected(int $business_id, $r, $row): array
+    {
+        // Collection buys paid in cash come out of the drawer but never
+        // write a cash_register_transactions row - pull them from
+        // buy_customer_offers for this store during the shift (any
+        // ringer, so admin-rung buys still count against the drawer).
+        // Sum what was actually handed over (final_offer_cash), not the
+        // purchase's final_total: that only counts titled lines, so a quick
+        // buy with untitled items came out $0 and the drawer looked short
+        // by the whole buy (Andy's $140 collection, 10/21).
+        $cashBuys = 0.0;
+        if (\Schema::hasTable('buy_customer_offers')) {
+            $cashBuys = (float) \DB::table('buy_customer_offers as o')
+                ->leftJoin('transactions as t', 't.id', '=', 'o.accepted_purchase_id')
+                ->where('o.business_id', $business_id)
+                ->where('o.status', 'accepted')
+                ->where('o.payment_method', 'cash_in_store')
+                ->whereRaw('COALESCE(o.location_id, t.location_id) = ?', [$r->location_id])
+                ->whereRaw('COALESCE(o.accepted_at, t.transaction_date) BETWEEN ? AND ?', [$r->created_at, $r->closed_at])
+                ->sum('o.final_offer_cash');
+        }
+        // "Use Store Credit" on the POS books the whole sale as cash with
+        // a "Store credit used: $X" note - that $X never went in the
+        // drawer, so take it back out of expected cash.
+        $scCents = 0;
+        $txIds = \DB::table('cash_register_transactions')->where('cash_register_id', $r->id)
+            ->where('transaction_type', 'sell')->where('pay_method', 'cash')
+            ->whereNotNull('transaction_id')->pluck('transaction_id')->all();
+        if (!empty($txIds)) {
+            foreach (\DB::table('transaction_payments')->whereIn('transaction_id', $txIds)
+                ->where('method', 'cash')->where('note', 'like', '%Store credit used:%')->pluck('note') as $n) {
+                if (preg_match('/store credit used:\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)/i', (string) $n, $m)) {
+                    $scCents += (int) round(((float) $m[1]) * 100);
+                }
+            }
+        }
+        // Cash paid out of the drawer for store expenses (e.g. Luis paying
+        // $300 for bookshelves, 9/25) - counted when logged as an expense
+        // at this store during the shift, paid in cash, and not already
+        // posted to this register by the POS expense button.
+        $cashExpenses = (float) \DB::table('transactions as t')
+            ->join('transaction_payments as tp', 'tp.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.type', 'expense')
+            ->where('t.location_id', $r->location_id)
+            ->where('tp.method', 'cash')
+            ->whereBetween('t.transaction_date', [$r->created_at, $r->closed_at])
+            ->whereNotExists(function ($q) use ($r) {
+                $q->select(\DB::raw(1))->from('cash_register_transactions as c')
+                  ->whereColumn('c.transaction_id', 't.id')
+                  ->where('c.cash_register_id', $r->id);
+            })
+            ->sum('tp.amount');
+        $expected = (float) $row->opening_cash + (float) $row->cash_net - $cashBuys - $scCents / 100 - $cashExpenses;
+        return [$expected, $cashBuys];
+    }
+
+    /** Sum of cash_register_transactions per register, as drawerFlags reads them. */
+    private static function registerCash(array $ids)
+    {
+        return \DB::table('cash_register_transactions')
+            ->whereIn('cash_register_id', $ids)
+            ->selectRaw("cash_register_id,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type='initial' THEN amount ELSE 0 END) as opening_cash,
+                SUM(CASE WHEN pay_method='cash' AND transaction_type <> 'initial' THEN CASE WHEN type='credit' THEN amount ELSE -amount END ELSE 0 END) as cash_net")
+            ->groupBy('cash_register_id')
+            ->get()
+            ->keyBy('cash_register_id');
+    }
+
+    /**
+     * Small shorts that add up (Sarah 10/22: "just want to make sure we are
+     * flagging any theft"). A shift under $20 isn't asked about on its own,
+     * so $15 a shift would never show. If a cashier's shifts in the 7 days
+     * up to $date that were each within $20 net $20+ under, and their shift
+     * on $date was one of the short ones, say so. Overs offset unders, so
+     * ordinary counting noise cancels out.
+     */
+    public static function smallShortFlags(int $business_id, string $date): array
+    {
+        if (!self::FLAG_DRAWER_VARIANCE) return [];
+        $regs = \DB::table('cash_registers as cr')
+            ->leftJoin('users as u', 'cr.user_id', '=', 'u.id')
+            ->where('cr.business_id', $business_id)
+            ->where('cr.status', 'close')
+            ->whereNotNull('cr.closing_amount')
+            ->whereDate('cr.closed_at', '>=', \Carbon\Carbon::parse($date)->subDays(6)->toDateString())
+            ->whereDate('cr.closed_at', '<=', $date)
+            ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
+            ->orderBy('cr.closed_at')
+            ->get(['cr.id', 'cr.user_id', 'cr.location_id', 'cr.created_at', 'cr.closed_at', 'cr.closing_amount', 'u.first_name', 'u.username']);
+        if ($regs->isEmpty()) return [];
+        $crt = self::registerCash($regs->pluck('id')->all());
+
+        $byUser = [];
+        foreach ($regs as $r) {
+            $row = $crt->get($r->id);
+            if (!$row) continue;
+            [$expected] = self::shiftExpected($business_id, $r, $row);
+            if ($expected < 0) continue;
+            $variance = round((float) $r->closing_amount - $expected, 2);
+            if (abs($variance) >= self::DRAWER_TOLERANCE) continue; // big ones are asked about on their own
+            $byUser[$r->user_id][] = ['r' => $r, 'v' => $variance];
+        }
+
+        $flags = [];
+        foreach ($byUser as $shifts) {
+            $today = array_values(array_filter($shifts, fn($x) => \Carbon\Carbon::parse($x['r']->closed_at)->toDateString() === $date));
+            if (empty($today) || min(array_column($today, 'v')) > -1) continue;
+            $net = round(array_sum(array_column($shifts, 'v')), 2);
+            if ($net > -self::DRAWER_TOLERANCE) continue;
+            $under = count(array_filter($shifts, fn($x) => $x['v'] < 0));
+            $r = end($today)['r'];
+            $flags[] = [
+                'location_id' => $r->location_id,
+                'kind'   => 'smallshort',
+                'detail' => 'small drawer shorts add up: $' . number_format(abs($net), 2) . ' under over the last 7 days ('
+                    . $under . ' of ' . count($shifts) . ' shifts under, each less than $' . (int) self::DRAWER_TOLERANCE . ')',
+                'ask'    => ucfirst(strtolower(trim((string) ($r->first_name ?: $r->username)))),
+                'note'   => null,
+                'amount' => abs($net),
             ];
         }
         return $flags;
@@ -783,7 +863,7 @@ class RegisterReconUtil
     /** A drawer/handover flag someone already answered. */
     public static function isExplained(array $it): bool
     {
-        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun', 'draftbuy'], true) && !empty($it['note']);
+        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun', 'draftbuy', 'smallshort'], true) && !empty($it['note']);
     }
 
     public static function shortRows(array $s): array
@@ -821,7 +901,7 @@ class RegisterReconUtil
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
-            foreach (['drawer', 'handover', 'changerun', 'draftbuy'] as $k) {
+            foreach (['drawer', 'handover', 'changerun', 'draftbuy', 'smallshort'] as $k) {
                 foreach ($kinds[$k] ?? [] as $it) {
                     $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
                 }
