@@ -57,6 +57,14 @@ jobs:
             $q = trim((string) getenv('DIAG_Q'));
             $u = \App\User::whereNull('deleted_at')->orderBy('id')->get()->first(fn($x) => $x->can('sell.create'));
             auth()->login($u);
+            if ($q === 'ALL') {
+              foreach ([['source' => 'website'], ['source' => 'website', 'page' => '3'], ['source' => 'website', 'q' => 'apurva'], ['source' => 'discogs'], ['source' => 'discogs', 'q' => '17460']] as $qq) {
+                $req = \Illuminate\Http\Request::create('/website-orders/all', 'GET', $qq);
+                app()->instance('request', $req);
+                try { $v = app(\App\Http\Controllers\WebsiteOrdersController::class)->allOrders($req); $d = $v->getData(); $html = $v->render(); echo 'ALL ' . json_encode($qq) . ': total=' . $d['total'] . ' rows=' . count($d['rows']) . ' err=' . json_encode($d['error']) . ' first=' . json_encode(array_map(fn($r) => [$r['number'] ?? null, substr((string) ($r['date'] ?? ''), 0, 10), $r['buyer'] ?? '', $r['status'] ?? ''], array_slice($d['rows'], 0, 2))) . ' len=' . strlen($html) . "\n"; } catch (\Throwable $e) { echo 'ALL ERR ' . substr($e->getMessage(), 0, 300) . "\n"; }
+              }
+              return;
+            }
             if ($q === 'SORTS') {
               foreach (['due', 'location', 'fulfillment', 'total', 'listed'] as $sk) foreach (['to_ship', 'cant_find'] as $tab) {
                 $req = \Illuminate\Http\Request::create('/website-orders', 'GET', ['tab' => $tab, 'sort' => $sk, 'dir' => 'asc']);
