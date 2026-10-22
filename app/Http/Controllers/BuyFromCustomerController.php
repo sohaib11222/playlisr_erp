@@ -261,6 +261,11 @@ class BuyFromCustomerController extends Controller
         }
 
         $offerId = $request->input('offer_id') ?: null;
+        // A late autosave (in-flight AJAX or tab-hide beacon) landing after the
+        // offer was rejected/accepted must not spawn a new draft copy of it.
+        if ($offerId && $this->offerIsFinalized($offerId)) {
+            return response()->json(['saved' => false, 'offer_id' => $offerId]);
+        }
         try {
             $saved = DB::transaction(function () use ($request, $offerId) {
                 return $this->saveOffer($request, 'draft', $offerId, false);
@@ -380,6 +385,14 @@ class BuyFromCustomerController extends Controller
         ]);
 
         $offerId = $id ?? ($request->input('offer_id') ?: null);
+        // A second "No deal" submit (Enter in the reason box + click, double
+        // click) used to hit saveOffer with an already-rejected id, which spawns
+        // a fresh BFC and left a duplicate rejected buy in History. Treat a
+        // repeat reject of a closed offer as a no-op. (Quenton 2026-10-22)
+        if ($offerId && $this->offerIsFinalized($offerId)) {
+            return redirect()->route('buy-from-customer.history')
+                ->with('status', ['success' => 1, 'msg' => 'Offer marked as rejected.']);
+        }
         DB::transaction(function () use ($request, $offerId) {
             $this->saveOffer($request, 'rejected', $offerId);
         });
@@ -829,6 +842,13 @@ class BuyFromCustomerController extends Controller
         }
 
         return ['payout_type' => 'cash', 'payment_method' => 'cash_in_store'];
+    }
+
+    protected function offerIsFinalized($offerId)
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $status = BuyCustomerOffer::where('business_id', $business_id)->where('id', $offerId)->value('status');
+        return in_array($status, ['accepted', 'rejected'], true);
     }
 
     protected function saveOffer(Request $request, $status = 'draft', $offerId = null, $createContact = true)

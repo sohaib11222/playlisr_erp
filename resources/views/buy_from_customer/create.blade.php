@@ -1688,7 +1688,11 @@ HTML;
             $(document).on('change', '#payment_method', refresh);
             refresh();
 
-            $('#reject_buy_offer_form').on('submit', function () {
+            $('#reject_buy_offer_form').on('submit', function (e) {
+                // One reject per quote: a double click / Enter + click used to post twice.
+                if ($(this).data('bfcSubmitted')) { e.preventDefault(); return false; }
+                $(this).data('bfcSubmitted', true);
+                $('.bfc-btn-reject').prop('disabled', true);
                 $(this).find('input[type="hidden"][name="final_offer_cash"]').val(isFinite(autoCash) ? autoCash.toFixed(2) : '');
                 $(this).find('input[type="hidden"][name="final_offer_credit"]').val(isFinite(autoCredit) ? autoCredit.toFixed(2) : '');
             });
