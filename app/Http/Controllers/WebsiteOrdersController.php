@@ -1792,7 +1792,14 @@ class WebsiteOrdersController extends Controller
     {
         $names = ['ready_ship' => 'Shipments: Ready to Ship', 'to_ship' => 'Shipments: Need to Pull', 'pickup' => 'Pickups: Need to Pull', 'ready_pickup' => 'Pickups: Ready for Pickup', 'recheck_hw' => 'Recheck in HW Bins', 'cant_find' => "Can't Find: Decide Refund", 'preorder_ship' => 'Preorders', 'preorder_pickup' => 'Preorders', 'refunded' => 'Refunded', 'completed' => 'Completed', 'archived' => 'Archived'];
         foreach ($names as $t => $name) {
-            if (self::matchesTab($o, $t) && self::showsOnNeedToPull($o, $t)) return [$t === 'preorder_ship' || $t === 'preorder_pickup' ? 'preorders' : $t, $name];
+            if (self::matchesTab($o, $t) && self::showsOnNeedToPull($o, $t)) {
+                // Part of the order went out, part was refunded (Sarah, 2026-10-22: "shipped and partially refunded no?")
+                if ($t === 'refunded' && self::isPartlyRefunded($o)) {
+                    $st = (string) ($o['order_status'] ?? '');
+                    $name = (in_array($st, ['shipped', 'delivered', 'email_sent'], true) ? 'Shipped, ' : ($st === 'picked_up' ? 'Picked up, ' : '')) . 'Partly refunded';
+                }
+                return [$t === 'preorder_ship' || $t === 'preorder_pickup' ? 'preorders' : $t, $name];
+            }
         }
         return ['unsorted', 'Not on any tab'];
     }
@@ -1863,6 +1870,14 @@ class WebsiteOrdersController extends Controller
         if (!empty($o['refund_log']) || !empty($o['external_refunds'])) return true;
         if (in_array($o['cancel_refund']['status'] ?? null, ['ok', 'manual'], true)) return true;
         foreach (($o['item_cancellations'] ?? []) as $c) if (in_array($c['refund_status'] ?? null, ['ok', 'manual'], true)) return true;
+        return false;
+    }
+
+    /** Some money went back but at least one item is still on the order. */
+    public static function isPartlyRefunded(array $o): bool
+    {
+        if (($o['payment_status'] ?? '') === 'refunded' || !self::isRefunded($o)) return false;
+        foreach (($o['items'] ?? []) as $it) if (empty($it['cancelled'])) return true;
         return false;
     }
 

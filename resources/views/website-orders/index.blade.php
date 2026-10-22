@@ -929,6 +929,14 @@
                       @if(abs($woMoney['diff']) >= 0.01)<div class="{{ $woMoney['diff'] > 0 ? 'over' : 'under' }}">{{ $woMoney['diff'] > 0 ? 'Over' : 'Under' }} ${{ number_format(abs($woMoney['diff']), 2) }}</div>@else<div class="even">Even</div>@endif
                     </div>
                   @endif
+                  @php [$woRfAmt] = \App\Http\Controllers\WebsiteOrdersController::refundSummary($o); @endphp
+                  @if($woRfAmt > 0)
+                    {{-- Total after refunds (Sarah, 2026-10-22: "i want to see total after also") --}}
+                    <div class="wo-money">
+                      <div class="under">Refunded ${{ number_format($woRfAmt, 2) }}</div>
+                      <div>Total now <b>${{ number_format(max(0, (float) ($o['total_amount'] ?? 0) - $woRfAmt), 2) }}</b></div>
+                    </div>
+                  @endif
                   {{-- Paid outside checkout, already in the total (Sarah, 2026-10-21) --}}
                   @foreach(($o['extra_payments'] ?? []) as $xp)
                     <div style="font-size:12px;font-weight:600;color:#000;margin-top:4px;">incl. ${{ number_format((float) ($xp['amount'] ?? 0), 2) }} {{ $xp['method'] ?? '' }}</div>
