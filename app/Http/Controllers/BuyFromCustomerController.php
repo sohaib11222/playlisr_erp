@@ -150,7 +150,12 @@ class BuyFromCustomerController extends Controller
                 ];
             })->all();
 
+        // offer_id must ride along in input_data: the Save draft / Accept /
+        // No deal forms build their hidden fields from it, and without it a
+        // reopened draft's reject/accept spawned a NEW BFC while the draft
+        // stayed open (Quenton 2026-10-22: 1 draft + 3 rejected copies).
         $input_data = [
+            'offer_id' => $offer->id,
             'location_id' => $offer->location_id,
             'seller_mode' => $offer->seller_mode ?: 'phone',
             'contact_id' => $offer->contact_id,
