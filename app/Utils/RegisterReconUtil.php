@@ -372,7 +372,7 @@ class RegisterReconUtil
 
         // 3) Drawer counts + registers that were never counted.
         $drawerNotes = self::drawerNotes();
-        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date), self::changeRunFlags($business_id, $date)) as $f) {
+        foreach (array_merge(self::drawerFlags($business_id, $date), self::handoverFlags($business_id, $date), self::changeRunFlags($business_id, $date), self::draftBuyFlags($business_id, $date)) as $f) {
             $k = $storeKey($f['location_id']);
             $f['note_key'] = self::drawerNoteKey($date, $stores[$k]['name'], $f['kind'], (string) ($f['ask'] ?? ''));
             $f['note'] = $f['note'] ?? ($drawerNotes[$f['note_key']] ?? null);
@@ -493,6 +493,50 @@ class RegisterReconUtil
                 'ask'    => $who,
                 'note'   => $back ? 'change put back in the drawer ' . \Carbon\Carbon::parse($back)->format('g:ia') : null,
                 'amount' => (float) $r->amount,
+            ];
+        }
+        return $flags;
+    }
+
+    /**
+     * Buys started on $date but never accepted (Quenton's 10/20 Pico buys
+     * sat as $0 drafts). Only an accepted buy comes out of expected cash, so
+     * if one was really paid the drawer looks short and nobody knows why.
+     * One line per cashier, sellers listed once (autosave makes repeats).
+     */
+    public static function draftBuyFlags(int $business_id, string $date): array
+    {
+        if (!\Schema::hasTable('buy_customer_offers')) return [];
+        $rows = \DB::table('buy_customer_offers as o')
+            ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
+            ->where('o.business_id', $business_id)
+            ->where('o.status', 'draft')
+            ->whereDate('o.created_at', $date)
+            ->select('o.location_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'u.first_name', 'u.username')
+            ->orderBy('o.created_at')
+            ->get();
+        $groups = [];
+        foreach ($rows as $o) {
+            $who = ucfirst(strtolower(trim((string) ($o->first_name ?: $o->username))));
+            $seller = trim((string) $o->seller_first_name . ' ' . (string) $o->seller_last_name);
+            if ($seller === '') $seller = trim((string) $o->seller_name);
+            if ($seller === '' || stripos($seller, 'walk-in') === 0) $seller = 'a walk-in';
+            $g = (int) $o->location_id . '|' . $who;
+            $groups[$g]['location_id'] = $o->location_id;
+            $groups[$g]['ask'] = $who;
+            $groups[$g]['sellers'][strtolower($seller)] = $seller;
+        }
+        $flags = [];
+        foreach ($groups as $g) {
+            $n = count($g['sellers']);
+            $flags[] = [
+                'location_id' => $g['location_id'],
+                'kind'   => 'draftbuy',
+                'detail' => $n . ' ' . ($n === 1 ? 'buy' : 'buys') . ' left as a draft (' . implode(', ', $g['sellers'])
+                    . ') - did we buy ' . ($n === 1 ? 'it' : 'these') . '? If yes, enter what was paid and Accept; if not, Reject',
+                'ask'    => $g['ask'],
+                'note'   => null,
+                'amount' => 0,
             ];
         }
         return $flags;
@@ -639,7 +683,7 @@ class RegisterReconUtil
     /** A drawer/handover flag someone already answered. */
     public static function isExplained(array $it): bool
     {
-        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun'], true) && !empty($it['note']);
+        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun', 'draftbuy'], true) && !empty($it['note']);
     }
 
     public static function shortRows(array $s): array
@@ -677,7 +721,7 @@ class RegisterReconUtil
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
-            foreach (['drawer', 'handover', 'changerun'] as $k) {
+            foreach (['drawer', 'handover', 'changerun', 'draftbuy'] as $k) {
                 foreach ($kinds[$k] ?? [] as $it) {
                     $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
                 }
