@@ -1517,7 +1517,7 @@ HTML;
             var $form = $('#buy_offer_form');
             if (!$form.length) return;
             var url = '{{ route('buy-from-customer.autosave') }}';
-            var timer = null, inFlight = false, pending = false, submitting = false;
+            var timer = null, inFlight = false, pending = false, submitting = false, xhr = null;
 
             function hasContent() {
                 // Returning seller: an existing account selected is enough on its
@@ -1544,7 +1544,7 @@ HTML;
                 if (!hasContent()) return;
                 if (inFlight) { pending = true; return; }
                 inFlight = true;
-                $.ajax({ url: url, method: 'POST', dataType: 'json', data: $form.serialize() })
+                xhr = $.ajax({ url: url, method: 'POST', dataType: 'json', data: $form.serialize() })
                     .done(function (resp) {
                         if (resp && resp.offer_id) { $('#bfc_offer_id').val(resp.offer_id); }
                     })
@@ -1569,9 +1569,27 @@ HTML;
             // Scoped to the buy forms by action (Calculate/Save/Accept/Reject all
             // POST to a buy-from-customer.* route) so an unrelated AJAX form in the
             // layout can't permanently kill autosave for the page.
-            $(document).on('submit', 'form', function () {
+            // Two more ways the Calculate form made a second draft (Quenton
+            // 2026-10-22, BFC 1187/1188): a double click posted it twice, and
+            // submitting while an autosave was still in flight posted it with
+            // an empty offer_id before the autosave's new id came back. So
+            // submit Calculate once, and if an autosave is mid-request, wait
+            // for it to fill offer_id and then submit.
+            $(document).on('submit', 'form', function (e) {
                 var action = ($(this).attr('action') || '');
                 if (action.indexOf('buy-from-customer') === -1 && this.id !== 'buy_offer_form') return;
+                if (e.isDefaultPrevented()) return;
+                if (this.id === 'buy_offer_form') {
+                    if (submitting) { e.preventDefault(); return false; }
+                    if (inFlight && xhr) {
+                        e.preventDefault();
+                        submitting = true;
+                        clearTimeout(timer);
+                        var formEl = this;
+                        xhr.always(function () { formEl.submit(); });
+                        return false;
+                    }
+                }
                 submitting = true;
                 clearTimeout(timer);
             });
@@ -1589,6 +1607,9 @@ HTML;
                 if (document.visibilityState === 'hidden') flushBeacon();
             });
             window.addEventListener('pagehide', flushBeacon);
+            // Back button restores this page from cache with submitting still
+            // true, which would leave Calculate dead. Re-arm it.
+            window.addEventListener('pageshow', function (ev) { if (ev.persisted) submitting = false; });
         })();
 
         @if(!empty($calc))
