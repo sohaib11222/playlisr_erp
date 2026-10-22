@@ -78,6 +78,7 @@ class WebsiteOrdersController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        $this->loadBinMap();
         $activeTab = $request->query('tab', 'to_ship');
         if (!array_key_exists($activeTab, self::TABS) && !in_array($activeTab, ['archived', 'unsorted'], true)) {
             $activeTab = 'needs_action';
@@ -1199,12 +1200,39 @@ class WebsiteOrdersController extends Controller
      *
      * @return array{place:string, area:string, genre:string, bin:string}
      */
+    /** Bin code (lowercase) -> ['store' => ..., 'zone' => ...] from Warehouse Locations; loaded once per request. */
+    public static $binMap = null;
+
+    /** Load the bin map from the website (cached 10 min). */
+    protected function loadBinMap(): void
+    {
+        if (self::$binMap !== null) return;
+        self::$binMap = \Cache::remember('website_orders_bin_map', 600, function () {
+            $r = $this->websiteApi('GET', '/erp/bin-map', null, 10);
+            return ($r['success'] ?? false) ? ($r['data'] ?? []) : [];
+        }) ?: [];
+    }
+
+    /** Zone for a bin code from the bin map ("Hollywood Basement"), or ''. */
+    protected static function binZone(string $code): string
+    {
+        $m = (self::$binMap ?? [])[strtolower(trim($code))] ?? null;
+        if (!$m) return '';
+        return trim((string) ($m['zone'] ?? '')) ?: (($m['store'] ?? '') === 'pico' ? 'Pico' : 'Hollywood');
+    }
+
     public static function pullParts(array $item, ?array $erp): array
     {
         $product = $item['product_id'] ?? [];
         $loc = $item['location'] ?? ($product['location'] ?? null);
         $zone = is_array($loc) ? trim((string) ($loc['zone'] ?? '')) : '';
         $code = trim((string) ($item['discogs_code'] ?? ($product['discogsLocation'] ?? '')));
+        // Only the bin code known: the bin map says which store and room (Sarah, 2026-10-22)
+        if ($zone === '' && $code !== '') $zone = self::binZone($code);
+        if ($code === '' && $erp && ($erp['bin'] ?? '') !== '' && self::binZone((string) $erp['bin']) !== '') {
+            $code = (string) $erp['bin'];
+            $zone = self::binZone($code);
+        }
         // A stale Discogs bin can point at the other store (Boston LP 10/16: website
         // said bin pico66 = Hollywood, ERP has it only at Pico, Used Rock). When the
         // ERP stocks it only at the other store, the ERP wins.
@@ -1429,6 +1457,7 @@ class WebsiteOrdersController extends Controller
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {
             abort(403, 'Unauthorized action.');
         }
+        $this->loadBinMap();
         $store = in_array($request->query('store'), ['hollywood', 'pico', 'warehouse'], true) ? $request->query('store') : 'warehouse';
         $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&payment_status=completed');
         $error = $resp === null || ($resp['success'] ?? true) === false;
