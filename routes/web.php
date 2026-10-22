@@ -29,6 +29,8 @@ Route::get('/discogs/search-product-price-2', [ProductController::class, 'search
 Route::get('/events-feed.json', 'EventsController@publicFeed');
 // Texted order links: public preview page (signed), then on to the order.
 Route::get('/o/{id}/{sig}', 'WebsiteOrdersController@sharePreview')->name('website-orders.share');
+// Short form (Sarah 10/22 "shorten these urls"): /o/100103-ab12cd
+Route::get('/o/{code}', 'WebsiteOrdersController@sharePreviewShort')->where('code', '[0-9]+-[a-f0-9]{6}');
 Route::get('/products-feed.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'publicFeed']);
 // A-class product ids (sales-based ABC import) for the nivessa.com New Arrivals ordering.
 Route::get('/abc-a-products.json', [\App\Http\Controllers\Api\NivessaProductsFeedController::class, 'abcAProducts']);

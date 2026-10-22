@@ -680,9 +680,27 @@ class WebsiteOrdersController extends Controller
         return substr(hash_hmac('sha256', 'order-share:' . $id, (string) config('app.key')), 0, 16);
     }
 
-    public static function shareUrl(string $id): string
+    public static function shareUrl(string $id, $orderNumber = null): string
     {
+        // Short link by order number when the order has one (Sarah, 2026-10-22)
+        if (is_numeric($orderNumber) && (int) $orderNumber > 0) {
+            $n = (int) $orderNumber;
+            return url('/o/' . $n . '-' . substr(hash_hmac('sha256', 'order-share-num:' . $n, (string) config('app.key')), 0, 6));
+        }
         return url('/o/' . $id . '/' . self::shareSig($id));
+    }
+
+    public function sharePreviewShort(string $code)
+    {
+        [$n, $sig] = explode('-', $code, 2);
+        if (!hash_equals(substr(hash_hmac('sha256', 'order-share-num:' . (int) $n, (string) config('app.key')), 0, 6), $sig)) abort(404);
+        $id = \Cache::remember('order-share-num:' . (int) $n, 86400, function () use ($n) {
+            $r = $this->websiteApi('GET', '/erp/orders/console?q=' . (int) $n);
+            foreach (($r['data'] ?? []) as $x) if ((string) ($x['orderNumber'] ?? '') === (string) (int) $n) return (string) $x['_id'];
+            return null;
+        });
+        if (!$id) abort(404);
+        return $this->sharePreview($id, self::shareSig($id));
     }
 
     /**
@@ -709,7 +727,9 @@ class WebsiteOrdersController extends Controller
         ])->values();
         $who = $o ? ($o['display_name'] ?? (($o['shippingAddress'][0]['name'] ?? null) ?: ($o['user_id']['name'] ?? 'Guest'))) : null;
         $count = $items->sum('qty');
-        $title = $o ? 'Order #' . ($o['orderNumber'] ?? '') . ' - ' . $who : 'Website order';
+        // Slack's link card can drop the description, so the title carries the
+        // essentials: items, total and where the order is (Sarah, 2026-10-22).
+        $title = $o ? 'Order #' . ($o['orderNumber'] ?? '') . ' - ' . $who . ' - ' . $count . ' item' . ($count === 1 ? '' : 's') . ', $' . number_format((float) ($o['total_amount'] ?? 0), 2) . ' - ' . self::tabFor($o)[1] : 'Website order';
         $desc = $o ? $count . ' item' . ($count === 1 ? '' : 's') . ': ' . $items->map(fn($i) => ($i['artist'] ? $i['artist'] . ' - ' : '') . $i['name'] . ' ' . $i['price'] . ($i['where'] !== '' ? ' (' . $i['where'] . ')' : ''))->implode('; ') : '';
         if (strlen($desc) > 400) $desc = substr($desc, 0, 397) . '...';
         $img = $items->pluck('img')->filter(fn($u) => is_string($u) && preg_match('#^https?://#', $u))->first();

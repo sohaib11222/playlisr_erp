@@ -949,7 +949,7 @@
                     {{-- Toggles the details row right after this order's row (not by id:
                          two orders could end up with the same short id). --}}
                     <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
-                    <button type="button" class="wo-btn" title="Copy a link to this order (shows a preview when texted)" onclick="woCopyLink(this, '{{ \App\Http\Controllers\WebsiteOrdersController::shareUrl($o['_id']) }}')">Copy link</button>
+                    <button type="button" class="wo-btn" title="Copy a link to this order (shows a preview when texted)" onclick="woCopyLink(this, '{{ \App\Http\Controllers\WebsiteOrdersController::shareUrl($o['_id'], $o['orderNumber'] ?? null) }}')">Copy link</button>
                     @if(empty($o['erp_decision']))
                       <button type="button" class="wo-btn" onclick="woDecision('{{ $o['_id'] }}', false)">Needs a decision</button>
                     @else
