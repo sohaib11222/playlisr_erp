@@ -332,13 +332,19 @@ class WebsiteOrdersController extends Controller
                 if ($sp !== '') $tabCounts['pulled_' . $sp] = ($tabCounts['pulled_' . $sp] ?? 0) + 1;
             }
         }
-        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($searchAll, $noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
+        $almostOnly = $request->query('almost') === '1';
+        $orders = array_values(array_filter(array_merge($allOrders, $linkedExtra), function ($o) use ($almostOnly, $searchAll, $noTabIds, $linkOrder, $activeTab, $statusFilter, $paymentStatusFilter, $search, $dateFrom, $dateTo, $overdueOnly, $onlySource, $shippedSince, $cancelledSince, $overdueCutoff, $locationFilter, $filterLocations) {
             // An order link always shows that order, whatever tab or filter (Sarah, 2026-10-21)
             if ($linkOrder !== '') return ($o['_id'] ?? '') === $linkOrder;
             // Search ignores tabs and store filters: every match shows, labeled with its tab
             if ($searchAll) return self::searchMatches($o, $search);
             if ($activeTab === 'unsorted' && !isset($noTabIds[$o['_id'] ?? ''])) return false;
             if ($activeTab === 'cant_find' && isset($noTabIds[$o['_id'] ?? ''])) return true;
+            // Almost done: 1 item left to pull, at least one already picked (Sarah, 2026-10-22)
+            if ($almostOnly) {
+                $pp = $o['pick_progress'] ?? null;
+                if (!$pp || (int) ($pp['picked'] ?? 0) === 0 || (int) ($pp['total'] ?? 0) - (int) ($pp['picked'] ?? 0) !== 1) return false;
+            }
             if ($onlySource === 'discogs') return false;
             if ($overdueOnly && (strtotime($o['createdAt'] ?? '') ?: PHP_INT_MAX) > $overdueCutoff) return false;
             if ($shippedSince && (strtotime($o['shipped_at'] ?? '') ?: 0) < $shippedSince) return false;
@@ -444,6 +450,7 @@ class WebsiteOrdersController extends Controller
                 if (in_array($activeTab, ['to_ship', 'ready_ship'], true)) {
                     $wantReady = $activeTab === 'ready_ship';
                     $discogsToShip = array_values(array_filter($allDiscogs, fn($x) => $x['_ready'] === $wantReady));
+                    if ($request->query('almost') === '1') $discogsToShip = array_values(array_filter($discogsToShip, fn($x) => count($x['_left'] ?? []) === 1 && count($x['items'] ?? []) > 1));
                 }
                 if ($overdueOnly) {
                     $discogsToShip = array_values(array_filter($discogsToShip, function ($o) use ($overdueCutoff) {

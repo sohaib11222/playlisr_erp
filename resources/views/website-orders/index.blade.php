@@ -288,6 +288,9 @@
   .wo-step-bar { display:block; width:160px; max-width:100%; height:5px; margin-top:6px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
   .wo-step-bar .fill { display:block; height:100%; background:#047857; border-radius:999px; }
   .wo-step-barlabel { display:block; font-size:12px; font-weight:600; color:#000; margin-top:3px; }
+  .wo-almost { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 10px; padding:10px 12px; border-radius:8px; background:#ecfdf5; border:1px solid #a7f3d0; color:#000 !important; text-decoration:none; font-size:15px; }
+  .wo-almost span { color:#1e40af; font-weight:700; text-decoration:underline; }
+  .wo-almost.on { border-color:#047857; }
   .wo-sortbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; font-size:15px; }
   .wo-sortbar .wo-more { height:36px; padding:0 16px; font-size:15px; font-weight:700; border:1.5px solid #d1d5db; border-radius:999px; background:#fff; color:#000 !important; text-decoration:none; display:inline-flex; align-items:center; }
   .wo-sortbar .wo-more.on { background:#dbeafe; border-color:#93c5fd; color:#1e40af !important; }
@@ -441,12 +444,15 @@
     @endphp
     <div class="wo-week">
       <div class="wo-week-line"><strong>{{ $wkN > 0 ? 'Nice work! ' : '' }}{{ $wkN }} {{ $wkN === 1 ? 'order' : 'orders' }} shipped this week</strong> <span>${{ number_format((float) ($tabCounts['week_shipped_amt'] ?? 0), 2) }}</span></div>
-      @if(($tabCounts['almost_done'] ?? 0) > 0)
-        <div class="wo-week-sub" style="font-size:15px;font-weight:600;margin-top:4px;">{{ $tabCounts['almost_done'] }} {{ $tabCounts['almost_done'] === 1 ? 'order is' : 'orders are' }} almost done: just 1 item left to pull.</div>
-      @endif
     </div>
     <div class="wo-steps">
       <div class="wo-steps-head">Do these in order, top to bottom</div>
+      {{-- Quick wins, clickable (Sarah, 2026-10-22) --}}
+      @if(($tabCounts['almost_done'] ?? 0) > 0)
+        <a href="{{ route('website-orders.index', ['tab' => 'to_ship', 'almost' => 1]) }}" class="wo-almost {{ request('almost') === '1' ? 'on' : '' }}">
+          <strong>Almost done: {{ $tabCounts['almost_done'] }} {{ $tabCounts['almost_done'] === 1 ? 'order needs' : 'orders need' }} just 1 more item.</strong> <span>Finish {{ $tabCounts['almost_done'] === 1 ? 'it' : 'them' }} &rarr;</span>
+        </a>
+      @endif
       @foreach($woSteps as $i => $st)
         @php
           $n = $woStepCount($st);
@@ -505,6 +511,9 @@
     @if(!$woLookup && $activeTab === 'recheck_hw')
       <style>.wo-prod-img { width:84px !important; height:84px !important; }</style>
       <div class="wo-banner warn">Pico couldn't find these. Check the Hollywood spots listed for each one, then tap Found it or Not here either.</div>
+    @endif
+    @if(request('almost') === '1')
+      <div class="wo-banner" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#000;font-size:15px;">Showing only orders with 1 item left to pull. <a href="{{ route('website-orders.index', ['tab' => 'to_ship']) }}">Show all</a></div>
     @endif
     @if(!$woLookup && in_array($activeTab, ['to_ship', 'pickup', 'ready_ship'], true))
       {{-- Pick order (Sarah, 2026-10-21): newest, 1-item orders, or biggest $ first --}}
