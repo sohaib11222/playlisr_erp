@@ -108,6 +108,14 @@ class WebsiteOrdersController extends Controller
         $resp = $this->websiteApi('GET', '/erp/orders/console?limit=300&includeArchived=1&payment_status=' . urlencode($paymentStatusFilter));
         $bridgeError = $resp === null || ($resp['success'] ?? true) === false;
         $allOrders = $bridgeError ? [] : ($resp['data'] ?? []);
+        // Orders sent to the decision step show whatever their payment status (Sarah, 2026-10-22)
+        foreach ($allOrders as &$fo) {
+            if (!empty($fo['erp_decision']) && $paymentStatusFilter !== 'all' && ($fo['payment_status'] ?? '') !== $paymentStatusFilter) {
+                $fo['_payment_real'] = $fo['payment_status'] ?? '';
+                $fo['payment_status'] = $paymentStatusFilter;
+            }
+        }
+        unset($fo);
         self::$erpCache = self::erpLocations($allOrders);
         $bridgeErrorMessage = $bridgeError ? ($resp['message'] ?? 'Could not reach the website.') : null;
 

@@ -748,7 +748,7 @@
                     <a href="{{ url('/website-orders') }}?order={{ $o['_id'] }}" style="display:inline-block;margin-bottom:5px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;">{{ $onTabName }}</a>
                   @endif
                   @if(!empty($o['erp_decision']))
-                    <div style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:13px;font-weight:600;">Needs a decision{{ !empty($o['erp_decision']['by']) ? ' (' . $o['erp_decision']['by'] . (!empty($o['erp_decision']['at']) ? ' ' . date('m/d/y', strtotime($o['erp_decision']['at'])) : '') . ')' : '' }}: {{ $o['erp_decision']['note'] ?? '' }}</div>
+                    <div style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:13px;font-weight:600;">Needs a decision{{ !empty($o['erp_decision']['by']) ? ' (' . $o['erp_decision']['by'] . (!empty($o['erp_decision']['at']) ? ' ' . date('m/d/y', strtotime($o['erp_decision']['at'])) : '') . ')' : '' }}: {{ $o['erp_decision']['note'] ?? '' }}@if(!empty($o['_payment_real'])) (website payment: {{ $o['_payment_real'] }})@endif</div>
                   @endif
                   @if(!empty($o['_noTab']))
                     <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:12px;font-weight:700;">Needs a decision: an item isn't on the website anymore or the order has no shipping method.</div>
