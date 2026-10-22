@@ -7093,6 +7093,8 @@ class SellPosController extends Controller
             // the first product-category once outside the loop so every row in
             // the batch reuses it.
             $businessId = request()->session()->get('user.business_id');
+            $manualLocName = (string) \App\BusinessLocation::where('business_id', $businessId)->where('id', (int) request()->get('location_id'))->value('name');
+            $isPicoLocation = stripos($manualLocName, 'pico') !== false;
             $defaultCategoryId = null;
             $defaultSubCategoryId = null;
             if ($businessId) {
@@ -7187,8 +7189,10 @@ class SellPosController extends Controller
                 // no longer have (Sarah 10/19: ~900 manual music sales since
                 // 9/1). Manual is still allowed when the item truly is not in
                 // the ERP, with a reason; snacks, bag fees, clearance are free.
+                // Pico is exempt (Sarah 10/22): most Pico stock is not in the
+                // ERP yet, so cashiers there ring manual items all day.
                 $catLabel = (string) \App\Category::where('id', (int) $categoryId)->value('name');
-                if (preg_match('/vinyl|\\bcds?\\b|cassette|7"|45 rpm|dvd|blu|vhs|laser|8 track/i', $catLabel) && stripos($catLabel, 'clearance') === false) {
+                if (!$isPicoLocation && preg_match('/vinyl|\\bcds?\\b|cassette|7"|45 rpm|dvd|blu|vhs|laser|8 track/i', $catLabel) && stripos($catLabel, 'clearance') === false) {
                     $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($productName . ' ' . $trimmedArtist)), function ($w) { return mb_strlen($w) >= 3; }));
                     if ($words && $businessId) {
                         $q = \DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')

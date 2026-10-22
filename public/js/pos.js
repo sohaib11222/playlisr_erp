@@ -2995,6 +2995,7 @@ function initManualProductNameAutocomplete($scope) {
 function getManualProductRows(inputData) {
     // Add CSRF token to the data
     inputData._token = $('meta[name="csrf-token"]').attr('content');
+    inputData.location_id = $('#location_id').val();
     
     
     $.ajax({
