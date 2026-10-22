@@ -1729,6 +1729,8 @@ class WebsiteOrdersController extends Controller
         if (self::isGiftCardOrder($order)) {
             return $tab === 'completed';
         }
+        // Sent to the decision step by hand: only there until someone decides (Sarah, 2026-10-22)
+        if (!empty($order['erp_decision'])) return $tab === 'cant_find';
 
         $def = self::TABS[$tab] ?? null;
         if (!$def) return true;
@@ -1972,6 +1974,19 @@ class WebsiteOrdersController extends Controller
     }
 
     /** Note on one website order (Sarah, 2026-10-16). JSON: { text }. */
+    /** Send an order to the decision step with why, or take it off (Sarah, 2026-10-22). */
+    public function sendToDecision(Request $request, string $id)
+    {
+        if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) abort(403, 'Unauthorized action.');
+        if (!preg_match('/^[a-f0-9]{24}$/i', $id)) return response()->json(['success' => false, 'message' => 'Bad order id.'], 422);
+        $clear = $request->input('clear') === '1';
+        $note = trim((string) $request->input('note', ''));
+        if (!$clear && $note === '') return response()->json(['success' => false, 'message' => 'Say what needs deciding.'], 422);
+        $by = trim(auth()->user()->first_name . ' ' . auth()->user()->last_name) ?: auth()->user()->username;
+        $r = $this->websiteApi('POST', "/erp/orders/{$id}/decision", ['note' => $note, 'changedBy' => $by, 'clear' => $clear]);
+        return response()->json(['success' => ($r['success'] ?? false) === true, 'message' => $r['message'] ?? null]);
+    }
+
     public function saveOrderNote(Request $request, string $id)
     {
         if (!auth()->user()->can('product.create') && !auth()->user()->can('sell.create')) {

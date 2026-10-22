@@ -747,6 +747,9 @@
                     @php [$onTab, $onTabName] = \App\Http\Controllers\WebsiteOrdersController::tabFor($o); @endphp
                     <a href="{{ url('/website-orders') }}?order={{ $o['_id'] }}" style="display:inline-block;margin-bottom:5px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;">{{ $onTabName }}</a>
                   @endif
+                  @if(!empty($o['erp_decision']))
+                    <div style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:13px;font-weight:600;">Needs a decision{{ !empty($o['erp_decision']['by']) ? ' (' . $o['erp_decision']['by'] . (!empty($o['erp_decision']['at']) ? ' ' . date('m/d/y', strtotime($o['erp_decision']['at'])) : '') . ')' : '' }}: {{ $o['erp_decision']['note'] ?? '' }}</div>
+                  @endif
                   @if(!empty($o['_noTab']))
                     <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:#fee2e2;color:#000;font-size:12px;font-weight:700;">Needs a decision: an item isn't on the website anymore or the order has no shipping method.</div>
                   @endif
@@ -939,6 +942,11 @@
                          two orders could end up with the same short id). --}}
                     <button type="button" class="wo-btn" onclick="woToggleDetails(this)">Details</button>
                     <button type="button" class="wo-btn" title="Copy a link to this order (shows a preview when texted)" onclick="woCopyLink(this, '{{ \App\Http\Controllers\WebsiteOrdersController::shareUrl($o['_id']) }}')">Copy link</button>
+                    @if(empty($o['erp_decision']))
+                      <button type="button" class="wo-btn" onclick="woDecision('{{ $o['_id'] }}', false)">Needs a decision</button>
+                    @else
+                      <button type="button" class="wo-btn" onclick="woDecision('{{ $o['_id'] }}', true)">Decided, take off</button>
+                    @endif
                     @if($status === 'ready_for_pickup' && ($o['fulfillment_method'] ?? null) === 'pickup')
                       {{-- Re-sends the "ready for pickup" email (Sarah, 2026-10-20) --}}
                       <form method="POST" action="{{ route('website-orders.updateStatus', $o['_id']) }}" style="display:inline;" onsubmit="this.querySelector('button').disabled=true;">
@@ -2105,4 +2113,23 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.getElementById('wo-bv').style.display = 'none'; });
 </script>
 <style>.wo-prod-line[data-bv] .wo-prod-img { cursor:zoom-in; }</style>
+<script>
+  // Needs a decision (Sarah, 2026-10-22): inline note box, no browser prompts
+  function woDecision(id, clear) {
+    var go = function (note) {
+      fetch('{{ url('/website-orders') }}/' + id + '/decision', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        body: JSON.stringify({ note: note || '', clear: clear ? '1' : '0' }) })
+        .then(function (r) { return r.json(); }).then(function (res) { if (res.success) location.reload(); else alert(res.message || 'Not saved.'); });
+    };
+    if (clear) { go(''); return; }
+    var box = document.getElementById('wo-dec-' + id);
+    if (box) { box.remove(); return; }
+    box = document.createElement('div'); box.id = 'wo-dec-' + id; box.style.cssText = 'margin-top:6px;';
+    box.innerHTML = '<textarea rows="2" style="width:100%;font-size:13px;padding:6px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;" placeholder="What needs deciding"></textarea><button type="button" class="wo-btn wo-btn-primary" style="margin-top:4px;">Send to decision</button>';
+    box.querySelector('button').onclick = function () { var n = box.querySelector('textarea').value.trim(); if (!n) return; this.disabled = true; go(n); };
+    event.target.closest('td').appendChild(box);
+    box.querySelector('textarea').focus();
+  }
+</script>
 @endsection
