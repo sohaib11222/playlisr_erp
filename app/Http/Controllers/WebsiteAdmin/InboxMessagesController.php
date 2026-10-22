@@ -62,11 +62,12 @@ class InboxMessagesController extends Controller
         if ($reply === '') {
             return back()->with('error', 'Please enter a reply message.');
         }
-        $resp = WebsiteBridge::admin('PATCH', '/contact/reply/' . rawurlencode($id), ['reply' => $reply], 30);
+        $staffName = trim((string) (auth()->user()->first_name ?? ''));
+        $resp = WebsiteBridge::admin('PATCH', '/contact/reply/' . rawurlencode($id), ['reply' => $reply, 'staffName' => $staffName], 30);
         if (empty($resp['success'])) {
             return back()->with('error', $resp['message'] ?? 'Failed to send reply.');
         }
-        return back()->with('status', 'Reply sent.');
+        return back()->with('status', 'Reply emailed to the customer.');
     }
 
     public function status(Request $request, $id)
