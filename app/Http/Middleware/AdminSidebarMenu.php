@@ -35,6 +35,11 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
+            //EOS: leadership team only (admins + store managers).
+            if ($is_admin || \App\Http\Controllers\ManagerChecklistController::currentManagerKey()) {
+                $menu->url(url('/eos'), 'EOS', ['icon' => 'fa fas fa-compass', 'active' => request()->segment(1) == 'eos'])->order(7);
+            }
+
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 

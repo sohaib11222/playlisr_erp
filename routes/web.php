@@ -1855,6 +1855,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/manager-checkins', 'ManagerCheckinController@index')->name('manager-checkins.index');
     Route::post('/manager-checkins', 'ManagerCheckinController@store')->name('manager-checkins.store');
 
+    // EOS: V/TO, Accountability Chart, Rocks, Scorecard, Issues, To-dos and
+    // the weekly L10 for the leadership team. JSON sidecar storage/app/eos.json.
+    Route::get('/eos', 'EosController@index')->name('eos.index');
+    Route::post('/eos', 'EosController@update')->name('eos.update');
+
     // The old Employee Tasks board was retired 2026-09-23 (never used: 0
     // completions). Its employee_tasks tables are left in place. Old links
     // and pinned favorites land on Tasks instead.
