@@ -481,6 +481,50 @@ class RsdOrderController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Public list of the RSD titles actually ordered, per store, for
+     * nivessa.com/rsd-black-friday/ordered (Sarah 10/23/2026). Titles and
+     * stores only: no suppliers, costs or quantities.
+     */
+    public function publicOrdered(Request $request)
+    {
+        $names = [];
+        foreach ((array) config('rsd_order.list', []) as $r) {
+            $r = array_values((array) $r);
+            if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[0], $r[1])] = [$r[0], $r[1]];
+        }
+        foreach ((array) config('rsd_order.requests', []) as $r) {
+            $r = array_values((array) $r);
+            if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[1], $r[0])] = [$r[1], $r[0]];
+        }
+        $byKey = [];
+        foreach (glob(storage_path('app/rsd-order-*.json')) ?: [] as $file) {
+            $state = json_decode((string) @file_get_contents($file), true);
+            if (!is_array($state)) continue;
+            foreach ((array) ($state['requests']['rows'] ?? []) as $r) {
+                $r = array_values((array) $r);
+                if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[1], $r[0])] = [$r[1], $r[0]];
+            }
+            foreach ((array) ($state['ordered'] ?? []) as $store => $rows) {
+                foreach ((array) $rows as $key => $o) {
+                    if ((int) ($o['qty'] ?? 0) <= 0 || !isset($names[$key])) continue;
+                    [$artist, $title] = $names[$key];
+                    $title = trim(preg_replace('/\s*\(NOT RSD - REGULAR RELEASE\)\s*/i', '', $title));
+                    $byKey[$key] = $byKey[$key] ?? ['artist' => $artist, 'title' => $title, 'stores' => []];
+                    $byKey[$key]['stores'][stripos($store, 'pico') !== false ? 'pico' : 'hollywood'] = true;
+                }
+            }
+        }
+        $items = array_map(function ($i) { $i['stores'] = array_keys($i['stores']); return $i; }, array_values($byKey));
+        usort($items, function ($a, $b) { return strcasecmp($a['artist'] . $a['title'], $b['artist'] . $b['title']); });
+        return response()->json([
+            'event' => config('rsd_order.event'),
+            'date' => config('rsd_order.event_date'),
+            'updated' => now()->toDateTimeString(),
+            'items' => $items,
+        ])->header('Access-Control-Allow-Origin', '*')->header('Cache-Control', 'public, max-age=300');
+    }
+
     public function markOrdered(Request $request)
     {
         $biz = (int) $request->session()->get('user.business_id');
