@@ -1284,6 +1284,9 @@ class WebsiteOrdersController extends Controller
             return stripos($n, 'warehouse') !== false ? 'Warehouse' : str_ireplace(' In Store', ' Store', $n);
         }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
+        // New used arrivals sit on the Used New Arrivals rack before they're
+        // binned: CDs / used vinyl 1 week at Pico, 45 days at Hollywood (Sarah, 2026-10-23).
+        $places = array_map(fn($n) => self::newArrivalPlace($n, $erp), $places);
         // Store stock: the genre bin on two lines, "Vinyl - Used" then
         // "R&B, Soul & Funk" (ERP category / sub-category).
         // Same for warehouse stock with no bin (sealed stock sits by genre too).
@@ -1294,6 +1297,21 @@ class WebsiteOrdersController extends Controller
             'genre' => trim($genre[1] ?? ''),
             'bin'   => (string) ($erp['bin'] ?? ''),
         ];
+    }
+
+    /** "Pico Store" -> "Pico Bins or Used New Arrivals" while a CD / used vinyl item is still new there. */
+    protected static function newArrivalPlace(string $place, array $erp): string
+    {
+        $store = stripos($place, 'pico') === 0 ? 'Pico' : (stripos($place, 'hollywood') === 0 ? 'Hollywood' : '');
+        if ($store === '' || stripos($place, ' Store') === false) return $place;
+        $cat = strtolower(explode(' / ', (string) ($erp['genre'] ?? ''), 2)[0]);
+        $isCd = (bool) preg_match('/\bcds?\b/', $cat);
+        $isUsedVinyl = strpos($cat, 'vinyl') !== false && strpos($cat, 'used') !== false;
+        if (!$isCd && !$isUsedVinyl) return $place;
+        $t = !empty($erp['added']) ? strtotime((string) $erp['added']) : false;
+        if (!$t) return $place;
+        $days = (time() - $t) / 86400;
+        return $days < ($store === 'Pico' ? 7 : 45) ? $store . ' Bins or Used New Arrivals' : $place;
     }
 
     /** Pull spot per item name (lowercase), for the pick checklist. */
@@ -1579,7 +1597,7 @@ class WebsiteOrdersController extends Controller
                 ->leftJoin('categories as gc', 'gc.id', '=', 'p.category_id')
                 ->leftJoin('categories as gs', 'gs.id', '=', 'p.sub_category_id')
                 ->whereIn('p.id', array_keys($ids))
-                ->select('p.id', 'p.bin_position', 'p.listing_location', 'gc.name as genre', 'gs.name as sub_genre', 'bl.name as loc_name', 'vld.qty_available')
+                ->select('p.id', 'p.created_at', 'p.bin_position', 'p.listing_location', 'gc.name as genre', 'gs.name as sub_genre', 'bl.name as loc_name', 'vld.qty_available')
                 ->get();
         } catch (\Throwable $e) {
             \Log::warning('website-orders erpLocations failed: ' . $e->getMessage());
@@ -1595,7 +1613,7 @@ class WebsiteOrdersController extends Controller
                 // Store bins are laid out by genre (the ERP category), so this is
                 // what the picker walks to (Sarah, 2026-10-15).
                 $genre = implode(' / ', array_filter([trim((string) ($r->genre ?? '')), trim((string) ($r->sub_genre ?? ''))]));
-                $map[$pid] = ['stores' => [], 'stocked' => [], 'bin' => $bin, 'genre' => $genre];
+                $map[$pid] = ['stores' => [], 'stocked' => [], 'bin' => $bin, 'genre' => $genre, 'added' => $r->created_at];
             }
             if (empty($r->loc_name)) continue;
             $qty = (float) ($r->qty_available ?? 0);
