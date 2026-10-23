@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  *  - Title: an individual vinyl line with a typed title is matched to our own
  *    products by its significant words; sold in last 90 days vs on hand.
  *  - Group: the item type's format + genres (e.g. used vinyl Punk/Metal/Hip Hop)
- *    sold in last 60 days vs on hand, turned into days of stock.
+ *    sold in last 60 days vs on hand, compared with the whole format there.
  * Title wins when it applies. Anything unmapped (gear, apparel, cards...) or
  * any failure returns 1.0, so this can never break or raise a normal buy.
  */
@@ -25,9 +25,10 @@ class BuyDemandService
 {
     // Tuning knobs (Jon). Group = format + genre at the store.
     const GROUP_WINDOW_DAYS = 60;
-    const HOT_MAX_DAYS_OF_STOCK = 30;
+    // Speed = (sold / on hand) for the genre over the same for its whole format.
+    const HOT_MIN_SPEED = 1.5;
     const HOT_MIN_SOLD = 10;
-    const WARM_MAX_DAYS_OF_STOCK = 60;
+    const WARM_MIN_SPEED = 1.2;
     const WARM_MIN_SOLD = 5;
 
     // Title = one release matched by name at the store.
@@ -117,7 +118,7 @@ class BuyDemandService
             }
             $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType;
             if (!isset($this->memo[$key])) {
-                $this->memo[$key] = Cache::remember('buydemand:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType) {
+                $this->memo[$key] = Cache::remember('buydemand2:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType) {
                     return $this->groupDemand($businessId, $locationId, $itemType);
                 });
             }
@@ -136,46 +137,56 @@ class BuyDemandService
             return self::normal();
         }
 
-        $since = now()->subDays(self::GROUP_WINDOW_DAYS);
-        $sold = (float) DB::table('transaction_sell_lines as tsl')
+        // Every genre has hundreds of days of stock (10/23 check: 500 to 2,700),
+        // so "low" means low compared with the rest of that format at the store:
+        // a genre that turns over faster than the format average gets the bump.
+        list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, $formatIds, $genreIds);
+        list($fmtSold, $fmtOnHand) = $this->soldAndOnHand($businessId, $locationId, $formatIds, null);
+        $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
+        $fmtTurn = $fmtOnHand > 0 ? $fmtSold / $fmtOnHand : 0;
+        $speed = $fmtTurn > 0 ? $turn / $fmtTurn : 0;
+
+        $level = 'normal';
+        if ($sold >= self::HOT_MIN_SOLD && $speed >= self::HOT_MIN_SPEED) {
+            $level = 'hot';
+        } elseif ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
+            $level = 'warm';
+        }
+
+        $reason = sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
+        if ($speed > 0 && is_finite($speed)) {
+            $reason .= sprintf(' (sells %.1fx as fast as the rest of this format here)', $speed);
+        }
+        return $this->result($level, $reason);
+    }
+
+    /** Units sold in the window and on hand now at the store; $genreIds null = whole format. */
+    protected function soldAndOnHand($businessId, $locationId, array $formatIds, $genreIds)
+    {
+        $sold = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
             ->join('products as p', 'p.id', '=', 'tsl.product_id')
             ->where('t.business_id', $businessId)
             ->where('t.location_id', $locationId)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
-            ->where('t.transaction_date', '>=', $since)
+            ->where('t.transaction_date', '>=', now()->subDays(self::GROUP_WINDOW_DAYS))
             ->whereNull('tsl.parent_sell_line_id')
-            ->whereIn('p.category_id', $formatIds)
-            ->whereIn('p.sub_category_id', $genreIds)
-            ->sum(DB::raw('tsl.quantity - COALESCE(tsl.quantity_returned, 0)'));
-
-        $onHand = (float) DB::table('variation_location_details as vld')
+            ->whereIn('p.category_id', $formatIds);
+        $onHand = DB::table('variation_location_details as vld')
             ->join('products as p', 'p.id', '=', 'vld.product_id')
             ->where('p.business_id', $businessId)
             ->where('vld.location_id', $locationId)
             ->where('vld.qty_available', '>', 0)
-            ->whereIn('p.category_id', $formatIds)
-            ->whereIn('p.sub_category_id', $genreIds)
-            ->sum('vld.qty_available');
-
-        $sold = max(0, round($sold));
-        $onHand = max(0, round($onHand));
-        $perDay = $sold / self::GROUP_WINDOW_DAYS;
-        $days = $perDay > 0 ? $onHand / $perDay : null;
-
-        $level = 'normal';
-        if ($days !== null && $sold >= self::HOT_MIN_SOLD && $days < self::HOT_MAX_DAYS_OF_STOCK) {
-            $level = 'hot';
-        } elseif ($days !== null && $sold >= self::WARM_MIN_SOLD && $days < self::WARM_MAX_DAYS_OF_STOCK) {
-            $level = 'warm';
+            ->whereIn('p.category_id', $formatIds);
+        if ($genreIds !== null) {
+            $sold->whereIn('p.sub_category_id', $genreIds);
+            $onHand->whereIn('p.sub_category_id', $genreIds);
         }
-
-        $reason = sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
-        if ($days !== null) {
-            $reason .= sprintf(' (about %d days of stock)', (int) round($days));
-        }
-        return $this->result($level, $reason);
+        return [
+            max(0, (int) round((float) $sold->sum(DB::raw('tsl.quantity - COALESCE(tsl.quantity_returned, 0)')))),
+            max(0, (int) round((float) $onHand->sum('vld.qty_available'))),
+        ];
     }
 
     protected function titleDemand($businessId, $locationId, $title)
@@ -189,7 +200,7 @@ class BuyDemandService
         if (isset($this->memo[$key])) {
             return $this->memo[$key];
         }
-        return $this->memo[$key] = Cache::remember('buydemand:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $words) {
+        return $this->memo[$key] = Cache::remember('buydemand2:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $words) {
             $vinylIds = $this->formatIds($businessId, 'vinyl', 'any');
             if (empty($vinylIds)) {
                 return self::normal();
