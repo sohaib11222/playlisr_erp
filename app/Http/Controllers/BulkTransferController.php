@@ -47,12 +47,12 @@ class BulkTransferController extends Controller
         $history = $this->history($business_id);
 
         // "Transfer Selected" on the Products page sends ?ids=1,2,3; the list
-        // is filled with their SKUs (a SKU can't be mistaken for another id).
+        // is filled as "ID 123" lines so each resolves to that exact product.
         $prefill = '';
         $ids = array_filter(array_map('intval', explode(',', (string) $request->input('ids', ''))));
         if ($ids) {
-            $prefill = implode("\n", \DB::table('products')->where('business_id', $business_id)
-                ->whereIn('id', array_slice($ids, 0, 500))->pluck('sku')->filter()->all());
+            $prefill = implode("\n", array_map(function ($id) { return 'ID ' . $id; }, \DB::table('products')
+                ->where('business_id', $business_id)->whereIn('id', array_slice($ids, 0, 500))->pluck('id')->all()));
         }
 
         return view('bulk_transfer.index', compact('locations', 'default_from', 'default_to', 'history', 'prefill'));
@@ -245,6 +245,12 @@ class BulkTransferController extends Controller
                 ->select('v.id as variation_id', 'v.product_id', 'v.sub_sku', 'v.default_purchase_price', 'p.sku', 'p.name', 'p.artist', 'p.enable_stock',
                     DB::raw('(SELECT purchase_price_inc_tax FROM purchase_lines WHERE variation_id = v.id ORDER BY id DESC LIMIT 1) as last_purchased_price'));
         };
+
+        // "ID 123" (what Transfer Selected fills in) is that exact product.
+        if (preg_match('/^id\s*[:#]?\s*(\d+)$/i', $code, $m)) {
+            $cands = $base()->where('p.id', (int) $m[1])->get();
+            return $cands->isEmpty() ? null : ($cands->count() === 1 ? $cands->first() : 'Has ' . $cands->count() . ' versions, scan the exact version SKU');
+        }
 
         // 1) product SKU
         $cands = $base()->where('p.sku', $code)->get();
