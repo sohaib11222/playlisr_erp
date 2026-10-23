@@ -1124,7 +1124,18 @@
                     @endif
                   @endif
                 </td>
-                <td class="wo-listed">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[0] }}@if(count(explode(' · ', (string) ($rowListed ?? ''), 2)) > 1)<span class="t">{{ explode(' · ', (string) ($rowListed ?? ''), 2)[1] }}</span>@endif</td>
+                {{-- One listed date per item, level with its product (Sarah, 2026-10-23) --}}
+                <td class="wo-listed">
+                  @foreach($cancelLines as $line)
+                    @continue(!$lineShow[$loop->index])
+                    @php
+                      $lstItem = $o['items'][$loop->index] ?? [];
+                      $lst = $line['gift'] ? null : \App\Http\Controllers\WebsiteOrdersController::listedShort($lstItem['product_id']['posCreatedAt'] ?? ($lstItem['product_id']['createdAt'] ?? null));
+                      $lstBits = explode(' · ', (string) $lst, 2);
+                    @endphp
+                    <div class="wo-listed-line">@if($lst){{ $lstBits[0] }}@if(count($lstBits) > 1)<span class="t">{{ $lstBits[1] }}</span>@endif @else &mdash; @endif</div>
+                  @endforeach
+                </td>
               </tr>
               <tr id="{{ $rowId }}" class="wo-detail" style="display:none;">
                 <td colspan="9">
@@ -1921,11 +1932,12 @@
       var prods = tr.querySelectorAll('.wo-prod-line');
       var locs = tr.querySelectorAll('td.wo-loc .wo-loc-line');
       locs.forEach(function (l) { l.style.minHeight = ''; l.style.marginTop = ''; });
+      tr.querySelectorAll('td.wo-listed .wo-listed-line').forEach(function (d) { d.style.minHeight = ''; d.style.marginTop = ''; });
       prods.forEach(function (p) { p.style.minHeight = ''; p.style.marginTop = ''; });
-      if (!prods.length || prods.length !== locs.length) return;
+      if (!prods.length) return;
       // Line each product up with its location: whichever side is lower or
       // taller pushes the other, so pick buttons sit beside their item.
-      locs.forEach(function (l, i) {
+      if (prods.length === locs.length) locs.forEach(function (l, i) {
         var pr = prods[i].getBoundingClientRect();
         var lr = l.getBoundingClientRect();
         var shift = pr.top - lr.top;
@@ -1934,6 +1946,14 @@
         var h = Math.max(prods[i].getBoundingClientRect().height, l.getBoundingClientRect().height);
         l.style.minHeight = h + 'px';
         prods[i].style.minHeight = h + 'px';
+      });
+      // Listed dates follow their product too
+      var lst = tr.querySelectorAll('td.wo-listed .wo-listed-line');
+      if (lst.length !== prods.length) return;
+      lst.forEach(function (d, i) {
+        var shift = prods[i].getBoundingClientRect().top - d.getBoundingClientRect().top;
+        if (shift > 0) d.style.marginTop = shift + 'px';
+        d.style.minHeight = prods[i].getBoundingClientRect().height + 'px';
       });
     });
   }
