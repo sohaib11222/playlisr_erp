@@ -491,7 +491,11 @@ class RsdOrderController extends Controller
         $names = [];
         foreach ((array) config('rsd_order.list', []) as $r) {
             $r = array_values((array) $r);
-            if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[0], $r[1])] = [$r[0], $r[1]];
+            if (empty($r[0]) || empty($r[1])) continue;
+            $names[self::key($r[0], $r[1])] = [$r[0], $r[1]];
+            // index() lists unrequested titles as "TITLE (FORMAT) (RSD)".
+            $f = (string) ($r[2] ?? '');
+            $names[self::key($r[0], $r[1] . ($f !== '' ? ' (' . $f . ')' : '') . ' (RSD)')] = [$r[0], $r[1]];
         }
         foreach ((array) config('rsd_order.requests', []) as $r) {
             $r = array_values((array) $r);
