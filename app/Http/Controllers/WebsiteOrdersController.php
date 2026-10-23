@@ -1285,7 +1285,7 @@ class WebsiteOrdersController extends Controller
         }, array_keys($erp['stores'] ?: $erp['stocked'] ?: []));
         $inStore = (bool) array_filter($places, fn($n) => stripos($n, ' Store') !== false);
         // New used arrivals sit on the Used New Arrivals rack before they're
-        // binned: CDs / used vinyl 1 week at Pico, 45 days at Hollywood (Sarah, 2026-10-23).
+        // binned: CDs / used vinyl 2 weeks at Pico, 45 days at Hollywood (Sarah, 2026-10-23).
         $places = array_map(fn($n) => self::newArrivalPlace($n, $erp), $places);
         // Store stock: the genre bin on two lines, "Vinyl - Used" then
         // "R&B, Soul & Funk" (ERP category / sub-category).
@@ -1311,7 +1311,7 @@ class WebsiteOrdersController extends Controller
         $t = !empty($erp['added']) ? strtotime((string) $erp['added']) : false;
         if (!$t) return $place;
         $days = (time() - $t) / 86400;
-        return $days < ($store === 'Pico' ? 7 : 45) ? $store . ' Bins or Used New Arrivals' : $place;
+        return $days < ($store === 'Pico' ? 14 : 45) ? $store . ' Bins or Used New Arrivals' : $place;
     }
 
     /** Pull spot per item name (lowercase), for the pick checklist. */
