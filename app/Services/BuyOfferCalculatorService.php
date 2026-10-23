@@ -240,6 +240,7 @@ class BuyOfferCalculatorService
                     'demand_multiplier' => $mult,
                     'demand_level' => $mult > 1.0 ? ($raw['level'] ?? 'warm') : 'normal',
                     'demand_reason' => $raw['reason'] ?? null,
+                    'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
                 ];
             }
             $cashTotal += $cashLine;

@@ -5,7 +5,7 @@ namespace App\Services;
 /**
  * Sidecar store of offers priced on the Beta buy form (demand bonus), keyed
  * by buy_customer_offers.id:
- *   { "<offer_id>": { bonus_cash, updated_at, lines: [{line_order, title, item_type, multiplier, level, reason}] } }
+ *   { "<offer_id>": { bonus_cash, updated_at, lines: [{line_order, title, item_type, multiplier, level, reason, genre}] } }
  *
  * JSON, no DB column (we don't run migrations on this box). Mirrors the
  * AmsPurchaseOrders sidecar pattern. Also lets accept reuse the multipliers
@@ -63,6 +63,7 @@ class BuyBetaOffers
                 'multiplier' => (float) ($l['demand_multiplier'] ?? 1),
                 'level' => $l['demand_level'] ?? 'normal',
                 'reason' => $l['demand_reason'] ?? null,
+                'genre' => $l['demand_genre'] ?? null,
             ];
         }
         $all = self::load($business_id);

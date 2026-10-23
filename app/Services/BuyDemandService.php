@@ -20,6 +20,11 @@ use Illuminate\Support\Facades\Log;
  *    sold in last 60 days vs on hand, compared with the whole format there.
  * Title wins when it applies. Anything unmapped (gear, apparel, cards...) or
  * any failure returns 1.0, so this can never break or raise a normal buy.
+ *
+ * Genre pick (10/23): a line can name one genre (canon key, e.g. 'rnb') from
+ * genreChoices(). Then only that genre is compared with its format, so R&B
+ * isn't averaged in with Jazz. Broad buckets (individual vinyl, "general" /
+ * "anything else") only get a bonus once a genre is picked.
  */
 class BuyDemandService
 {
@@ -80,6 +85,19 @@ class BuyDemandService
         'rpm45_newwave_rock_alt' => ['45', 'any', ['new wave', 'rock', 'alt']],
     ];
 
+    /**
+     * Broad buckets: item_type => [format, condition]. Any genre of the format
+     * can be picked; without a pick there is no group bonus.
+     */
+    const OPEN_TYPES = [
+        'individual_vinyl' => ['vinyl', 'used'],
+        'bulk_vinyl_anything_else' => ['vinyl', 'used'],
+        'cd_general_used' => ['cd', 'used'],
+        'cd_general_sealed' => ['cd', 'sealed'],
+        'cassette_everything_else' => ['cassette', 'any'],
+        'rpm45_anything_else' => ['45', 'any'],
+    ];
+
     // Words that don't identify a release.
     const STOPWORDS = ['the', 'and', 'a', 'an', 'of', 'lp', 'lps', 'vinyl', 'record', 'records', 'album',
         'used', 'sealed', 'new', 'original', 'press', 'pressing', 'reissue', 'edition', 'deluxe', 'remastered',
@@ -108,30 +126,111 @@ class BuyDemandService
                 return self::normal();
             }
 
+            $choices = $this->genreChoices($businessId, $itemType);
+            $genre = (string) ($line['genre'] ?? '');
+            $genre = isset($choices[$genre]) ? $genre : '';
+
             if ($itemType === 'individual_vinyl') {
                 $title = trim((string) ($line['title'] ?? ''));
-                return $title !== '' ? $this->titleDemand($businessId, $locationId, $title) : self::normal();
+                $byTitle = $title !== '' ? $this->titleDemand($businessId, $locationId, $title) : self::normal();
+                if ($byTitle['level'] !== 'normal' || $genre === '') {
+                    return $byTitle;
+                }
+                return $this->cachedGroup($businessId, $locationId, $itemType, $genre, $choices[$genre]);
             }
 
-            if (!isset(self::TYPE_MAP[$itemType])) {
-                return self::normal();
+            if (isset(self::TYPE_MAP[$itemType]) || $genre !== '') {
+                return $this->cachedGroup($businessId, $locationId, $itemType, $genre, $genre !== '' ? $choices[$genre] : null);
             }
-            $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType;
-            if (!isset($this->memo[$key])) {
-                $this->memo[$key] = Cache::remember('buydemand2:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType) {
-                    return $this->groupDemand($businessId, $locationId, $itemType);
-                });
-            }
-            return $this->memo[$key];
+            return self::normal();
         } catch (\Throwable $e) {
             Log::warning('BuyDemandService failed', ['item_type' => $line['item_type'] ?? null, 'err' => $e->getMessage()]);
             return self::normal();
         }
     }
 
-    protected function groupDemand($businessId, $locationId, $itemType)
+    /** [format, condition, genre canon keys or null = any] for a type, null if unmapped. */
+    protected function typeSpec($itemType)
     {
-        list($format, $condition, $genres) = self::TYPE_MAP[$itemType];
+        if (isset(self::TYPE_MAP[$itemType])) {
+            return self::TYPE_MAP[$itemType];
+        }
+        if (isset(self::OPEN_TYPES[$itemType])) {
+            return [self::OPEN_TYPES[$itemType][0], self::OPEN_TYPES[$itemType][1], null];
+        }
+        return null;
+    }
+
+    /**
+     * Genres a line of this type can be narrowed to: [canon key => label],
+     * from the live sub-categories under the type's format. Group types only
+     * offer their own genres (R&B/Jazz CDs: R&B or Jazz); broad buckets offer
+     * every genre of the format. Empty = no dropdown.
+     */
+    public function genreChoices($businessId, $itemType)
+    {
+        $spec = $this->typeSpec($itemType);
+        if ($spec === null) {
+            return [];
+        }
+        list($format, $condition, $genres) = $spec;
+        $formatIds = $this->formatIds((int) $businessId, $format, $condition);
+        list(, $subs) = $this->taxonomy((int) $businessId);
+        $parents = array_flip($formatIds);
+        $out = [];
+        foreach ($subs as $s) {
+            if (!isset($parents[$s['parent']])) {
+                continue;
+            }
+            $canon = GenreFixController::canon($s['name']);
+            if ($canon === '' || ($genres !== null && !in_array($canon, $genres, true))) {
+                continue;
+            }
+            if (!isset($out[$canon])) {
+                $out[$canon] = trim($s['name']);
+            }
+        }
+        asort($out, SORT_NATURAL | SORT_FLAG_CASE);
+        return count($out) >= 2 ? $out : [];
+    }
+
+    /** genreChoices() for every type that has any, for the Beta form's dropdowns. */
+    public function allGenreChoices($businessId)
+    {
+        $out = [];
+        foreach (array_merge(array_keys(self::TYPE_MAP), array_keys(self::OPEN_TYPES)) as $t) {
+            $c = $this->genreChoices($businessId, $t);
+            if (!empty($c)) {
+                $out[$t] = $c;
+            }
+        }
+        return $out;
+    }
+
+    protected function cachedGroup($businessId, $locationId, $itemType, $genre, $genreLabel)
+    {
+        $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType . ':' . $genre;
+        if (!isset($this->memo[$key])) {
+            $this->memo[$key] = Cache::remember('buydemand3:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
+                return $this->groupDemand($businessId, $locationId, $itemType, $genre, $genreLabel);
+            });
+        }
+        return $this->memo[$key];
+    }
+
+    /** $genre '' = the type's whole genre group; a canon key = just that genre. */
+    protected function groupDemand($businessId, $locationId, $itemType, $genre = '', $genreLabel = null)
+    {
+        $spec = $this->typeSpec($itemType);
+        if ($spec === null) {
+            return self::normal();
+        }
+        list($format, $condition, $genres) = $spec;
+        if ($genre !== '') {
+            $genres = [$genre];
+        } elseif ($genres === null) {
+            return self::normal();
+        }
         list($formatIds, $genreIds) = $this->groupIds($businessId, $format, $condition, $genres);
         if (empty($formatIds) || empty($genreIds)) {
             return self::normal();
@@ -153,7 +252,7 @@ class BuyDemandService
             $level = 'warm';
         }
 
-        $reason = sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
+        $reason = ($genreLabel ? $genreLabel . ': ' : '') . sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
         if ($speed > 0 && is_finite($speed)) {
             $reason .= sprintf(' (sells %.1fx as fast as the rest of this format here)', $speed);
         }
