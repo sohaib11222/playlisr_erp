@@ -289,6 +289,18 @@
 @section('content')
 <section class="content-header">
     <h1>Buy from Customer Form @if(!empty($bfcBeta)) (Beta) @endif</h1>
+    @if(empty(request()->route('id')))
+        {{-- Normal / Beta live on one page as tabs (Sarah 10/23). --}}
+        <div class="bfc-form-tabs">
+            <a href="{{ route('buy-from-customer.create') }}" class="{{ empty($bfcBeta) ? 'on' : '' }}">Normal</a>
+            <a href="{{ route('buy-from-customer.beta') }}" class="{{ !empty($bfcBeta) ? 'on' : '' }}">Beta</a>
+        </div>
+        <style>
+            .bfc-form-tabs { display: flex; gap: 8px; margin-top: 10px; }
+            .bfc-form-tabs a { padding: 6px 16px; border-radius: 999px; border: 1px solid #DFD2B3; background: #FFFFFF; color: #1F1B16; font-weight: 700; font-size: 14px; text-decoration: none; }
+            .bfc-form-tabs a.on { background: #DCEBFF; border-color: #9DC1F0; color: #1F4E8C; }
+        </style>
+    @endif
 </section>
 
 <section class="content bfc-create">
@@ -374,7 +386,6 @@
     @if($bfcBeta)
         <div class="bfc-beta-banner">
             <span><strong>Beta buy form:</strong> pays up to 20% more on things we're low on and selling fast at this store. The bonus shows on each line after you press Save and continue.</span>
-            <a href="{{ route('buy-from-customer.create') }}">Use the normal form</a>
         </div>
     @endif
 
