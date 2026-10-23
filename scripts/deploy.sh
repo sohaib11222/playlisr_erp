@@ -116,19 +116,54 @@ fi
 # Recycle PHP-FPM workers so new code actually goes live. optimize:clear and
 # the OPcache endpoint above don't reliably refresh already-running FPM workers
 # — changed controller/middleware classes keep serving stale bytecode until the
-# workers restart. SIGKILL the workers we own; the root-owned FPM master
+# workers restart. SIGKILL the pool's workers; the root-owned FPM master
 # respawns fresh ones immediately, and they recompile from the new code on disk.
-# This is exactly what the manual "FPM kill workers" job did — now it runs on
-# every deploy, so no manual recycle step is ever needed again.
+#
+# This used to kill workers owned by `whoami`, which silently did nothing
+# whenever the deploy ran as anyone other than the pool owner — exactly the case
+# for the GitHub Actions deploy user. The result was the worst possible failure:
+# a green "Deploy production", new files on disk, and FPM happily serving the
+# old bytecode. Target the user that owns the checkout instead, and escalate via
+# sudo when we are not that user.
 ME=$(whoami)
-echo "deploy: recycling php-fpm workers owned by $ME"
-pkill -9 -u "$ME" -f 'php-?fpm.*pool' 2>/dev/null || true
+POOL_USER=$(stat -c '%U' "$DEPLOY_DIR" 2>/dev/null || echo "$ME")
+echo "deploy: recycling php-fpm workers owned by $POOL_USER (running as $ME)"
+
+RECYCLED=0
+if [ "$POOL_USER" = "$ME" ]; then
+  pkill -9 -u "$POOL_USER" -f 'php-?fpm.*pool' 2>/dev/null || true
+  RECYCLED=1
+elif sudo -n true 2>/dev/null; then
+  sudo -n pkill -9 -u "$POOL_USER" -f 'php-?fpm.*pool' 2>/dev/null || true
+  RECYCLED=1
+elif sudo -n -u "$POOL_USER" true 2>/dev/null; then
+  sudo -n -u "$POOL_USER" pkill -9 -u "$POOL_USER" -f 'php-?fpm.*pool' 2>/dev/null || true
+  RECYCLED=1
+fi
+
+if [ "$RECYCLED" = "0" ]; then
+  echo "deploy: ERROR cannot recycle php-fpm workers owned by $POOL_USER while running as $ME."
+  echo "deploy: the new code is on disk but FPM is still serving the old bytecode."
+  echo "deploy: fix by deploying as $POOL_USER, granting passwordless sudo, or"
+  echo "deploy: repairing /opcache-reset.php (it returned non-200 above)."
+  exit 1
+fi
+
 sleep 3
+SMOKE_OK=0
 for i in 1 2 3 4 5; do
   CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 15 https://playlist.nivessa.com/login || echo TIMEOUT)
   echo "deploy: post-recycle smoke test attempt $i: HTTP $CODE"
-  [ "$CODE" = "200" ] && break
+  if [ "$CODE" = "200" ]; then
+    SMOKE_OK=1
+    break
+  fi
   sleep 3
 done
+
+if [ "$SMOKE_OK" = "0" ]; then
+  echo "deploy: ERROR site did not return 200 after recycling workers."
+  exit 1
+fi
 
 echo "deploy: done"
