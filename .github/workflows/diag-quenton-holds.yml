@@ -1,0 +1,85 @@
+# READ-ONLY (Sarah, 2026-10-23): trace records Quenton had set aside
+# (Siouxsie, Marvin Gaye, Minnie Riperton, ...) — who bought them, and
+# everything sold to/by Quenton recently. No writes.
+name: Diag Quenton held records
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Look-back days"
+        required: false
+        default: "120"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Trace Quenton's records (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_DAYS: ${{ github.event.inputs.days }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          envs: DIAG_DAYS
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_DAYS
+            php artisan tinker --no-ansi <<'PHP'
+            $since = now()->subDays((int) (getenv('DIAG_DAYS') ?: 120));
+            $names = ['%quent%', '%quint%', '%kwent%'];
+            $users = \DB::table('users')->where(function ($q) use ($names) { foreach ($names as $n) $q->orWhere('first_name', 'like', $n)->orWhere('last_name', 'like', $n)->orWhere('username', 'like', $n); })->get(['id', 'first_name', 'last_name', 'username', 'deleted_at']);
+            echo 'USERS ' . json_encode($users) . "\n";
+            $contacts = \DB::table('contacts')->where(function ($q) use ($names) { foreach ($names as $n) $q->orWhere('name', 'like', $n)->orWhere('first_name', 'like', $n)->orWhere('last_name', 'like', $n); })->get(['id', 'name', 'mobile', 'email', 'type']);
+            echo 'CONTACTS ' . json_encode($contacts) . "\n";
+            $uids = $users->pluck('id')->all(); $cids = $contacts->pluck('id')->all();
+            $lineRow = function ($r) { return json_encode([$r->tdate, 'tx#' . $r->tid, $r->invoice_no, $r->status, 'susp=' . $r->is_suspend, 'loc=' . $r->loc, 'buyer=' . $r->buyer . ' (c' . $r->contact_id . ')', 'cashier=' . trim($r->fn . ' ' . $r->ln), $r->artist, $r->pname, $r->sku, 'qty=' . $r->quantity, 'price=' . round($r->unit_price_inc_tax, 2), 'note=' . substr((string) $r->additional_notes . ' ' . (string) $r->staff_note, 0, 120)]); };
+            $base = fn () => \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->join('products as p', 'p.id', '=', 'l.product_id')->leftJoin('contacts as c', 'c.id', '=', 't.contact_id')->leftJoin('users as u', 'u.id', '=', 't.created_by')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->where('t.type', 'sell')->where('t.transaction_date', '>=', $since)->select('t.transaction_date as tdate', 't.id as tid', 't.invoice_no', 't.status', 't.is_suspend', 'bl.name as loc', 'c.name as buyer', 't.contact_id', 'u.first_name as fn', 'u.last_name as ln', 'p.artist', 'p.name as pname', 'p.sku', 'l.quantity', 'l.unit_price_inc_tax', 't.additional_notes', 't.staff_note')->orderBy('t.transaction_date');
+            echo "\n=== SALES TO QUENTON (as customer) ===\n";
+            if ($cids) foreach ($base()->whereIn('t.contact_id', $cids)->get() as $r) echo $lineRow($r) . "\n";
+            echo "\n=== SALES NOTED quenton ===\n";
+            foreach ($base()->where(function ($q) use ($names) { foreach ($names as $n) $q->orWhere('t.additional_notes', 'like', $n)->orWhere('t.staff_note', 'like', $n)->orWhere('l.sell_line_note', 'like', $n); })->get() as $r) echo $lineRow($r) . "\n";
+            echo "\n=== SUSPENDED/DRAFT SALES BY QUENTON ===\n";
+            if ($uids) foreach ($base()->whereIn('t.created_by', $uids)->where(fn ($q) => $q->where('t.is_suspend', 1)->orWhere('t.status', '!=', 'final'))->get() as $r) echo $lineRow($r) . "\n";
+            echo "\n=== ALL SALES OF THE NAMED ARTISTS ===\n";
+            $art = ['%siouxsie%', '%banshee%', '%marvin gaye%', '%riperton%'];
+            foreach ($base()->where(function ($q) use ($art) { foreach ($art as $a) $q->orWhere('p.artist', 'like', $a)->orWhere('p.name', 'like', $a); })->get() as $r) echo $lineRow($r) . "\n";
+            echo "\n=== SALES RUNG BY QUENTON WITH A NAMED/EMPLOYEE BUYER ===\n";
+            if ($uids) foreach ($base()->whereIn('t.created_by', $uids)->whereNotNull('c.name')->where('c.name', 'not like', '%walk%')->get() as $r) echo $lineRow($r) . "\n";
+            echo "\n=== CUSTOMER PICKUPS / IN-STORE ORDERS mentioning quenton ===\n";
+            if (\Schema::hasTable('customer_pickups')) foreach (\DB::table('customer_pickups as cp')->leftJoin('products as p', 'p.id', '=', 'cp.product_id')->where(function ($q) use ($cids, $names) { if ($cids) $q->whereIn('cp.contact_id', $cids); foreach ($names as $n) $q->orWhere('cp.notes', 'like', $n)->orWhere('cp.picked_up_by_name', 'like', $n); })->get(['cp.*', 'p.artist', 'p.name as pname']) as $r) echo 'PICKUP ' . json_encode($r) . "\n";
+            if (\Schema::hasTable('in_store_orders')) foreach (\DB::table('in_store_orders')->where(function ($q) use ($names) { foreach ($names as $n) $q->orWhere('customer_name', 'like', $n)->orWhere('notes', 'like', $n); })->get() as $r) echo 'ISO ' . json_encode($r) . "\n";
+            echo "\n=== CURRENT STOCK OF NAMED ARTISTS (qty>0) ===\n";
+            foreach (\DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')->whereNull('p.deleted_at')->where('v.qty_available', '>', 0)->where(function ($q) use ($art) { foreach ($art as $a) $q->orWhere('p.artist', 'like', $a)->orWhere('p.name', 'like', $a); })->get(['p.id', 'p.artist', 'p.name', 'p.sku', 'bl.name as loc', 'v.qty_available']) as $r) echo 'STOCK ' . json_encode($r) . "\n";
+            PHP
+            echo "=== done ==="
