@@ -4326,6 +4326,7 @@ class ProductController extends Controller
 
         $createdProducts = [];
         $duplicatesSkipped = [];
+        $priceChanged = [];
         $dupService = app(\App\Services\ProductDuplicateService::class);
 
         // Optional "Buy record #" from the top of Mass Add: new products get
@@ -4488,6 +4489,29 @@ class ProductController extends Controller
                         $productData['single_dsp_inc_tax'],
                         $productData['single_dsp_inc_tax']
                     );
+                } else {
+                    // Existing record picked on the row: the selling price typed
+                    // there is the new price. It used to be ignored, so the old
+                    // price stayed and the sticker printed it (Andy 10/23:
+                    // typed $10, Style-Makers Of Jazz kept $20).
+                    $newPrice = isset($productData['single_dsp_inc_tax']) ? $this->productUtil->num_uf($productData['single_dsp_inc_tax']) : 0;
+                    $variation = !empty($variationId)
+                        ? Variation::where('product_id', $product->id)->where('id', $variationId)->first()
+                        : Variation::where('product_id', $product->id)->first();
+                    if ($newPrice > 0 && $variation && abs((float) $variation->sell_price_inc_tax - $newPrice) >= 0.01) {
+                        $oldPrice = (float) $variation->sell_price_inc_tax;
+                        $variation->default_sell_price = $newPrice;
+                        $variation->sell_price_inc_tax = $newPrice;
+                        $variation->save();
+                        $priceChanged[] = (int) $product->id;
+                        try {
+                            $log = activity()->performedOn($product)->causedBy(auth()->user())
+                                ->withProperties(['update_note' => 'Price $' . number_format($oldPrice, 2) . ' -> $' . number_format($newPrice, 2) . ' on Mass Add'])
+                                ->log('edited');
+                            $log->business_id = $businessId;
+                            $log->save();
+                        } catch (\Throwable $logEx) {}
+                    }
                 }
 
                 $this->clearStockForDroppedLocations($product, $productData['business_locations'] ?? []);
@@ -4539,6 +4563,11 @@ class ProductController extends Controller
             }
 
             DB::commit();
+
+            // New prices on existing records reach nivessa.com now.
+            if (!empty($priceChanged)) {
+                try { (new \App\Services\NivessaStockNotifier())->pushProductChanged($priceChanged); } catch (\Throwable $e) {}
+            }
 
             $msg = 'Products were created successfully!';
             if (!empty($duplicatesSkipped)) {
