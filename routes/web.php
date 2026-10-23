@@ -1606,6 +1606,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('stock-transfers/print/{id}', 'StockTransferController@printInvoice');
     Route::post('stock-transfers/update-status/{id}', 'StockTransferController@updateStatus');
     Route::resource('stock-transfers', 'StockTransferController');
+
+    // Bulk Transfer: paste/scan a list of ids or SKUs and move them to another store.
+    Route::get('/transfers/bulk', 'BulkTransferController@index');
+    Route::post('/transfers/bulk/preview', 'BulkTransferController@preview');
+    Route::post('/transfers/bulk', 'BulkTransferController@store');
     
     Route::get('/opening-stock/add/{product_id}', 'OpeningStockController@add');
     Route::post('/opening-stock/save', 'OpeningStockController@save');

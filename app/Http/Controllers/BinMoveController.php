@@ -121,8 +121,11 @@ class BinMoveController extends Controller
             ->get()->map(function ($r) { return (array) $r; })->all();
     }
 
-    /** Transfer lines from one location to another as one completed stock transfer. */
-    protected function transfer(int $businessId, int $from, int $to, array $lines, string $note, int $userId): Transaction
+    /**
+     * Transfer lines from one location to another as one completed stock transfer.
+     * Public so the bulk Transfer page (BulkTransferController) reuses the same ledger path.
+     */
+    public function transfer(int $businessId, int $from, int $to, array $lines, string $note, int $userId): Transaction
     {
         $refCount = $this->productUtil->setAndGetReferenceCount('stock_transfer', $businessId);
         $base = [

@@ -392,6 +392,14 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-search', 'active' => request()->segment(1) == 'stock-lookup']
                             );
                         }
+                        // Bulk store-to-store move; same permission as stock transfers (purchase.create).
+                        if (auth()->user()->can('purchase.create')) {
+                            $sub->url(
+                                url('/transfers/bulk'),
+                                'Transfer Items',
+                                ['icon' => 'fa fas fa-exchange-alt', 'active' => request()->segment(1) == 'transfers']
+                            );
+                        }
                         if (auth()->user()->can('product.create')) {
                             $sub->url(
                                 action('ProductController@create'),
