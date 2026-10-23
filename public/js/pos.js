@@ -3472,6 +3472,13 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                         );
                     }
 
+                    // Held copy (see /holds): a warning only, the row is already added.
+                    try {
+                        if (result.hold_warning) {
+                            toastr.warning(result.hold_warning, 'On hold', { timeOut: 10000 });
+                        }
+                    } catch (holdErr) {}
+
                     //Used in restaurant module
                     if (result.html_modifier) {
                         $('table#pos_table tbody')

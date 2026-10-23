@@ -120,6 +120,10 @@
 
 @include('sale_pos.partials.clover_mismatch_modal')
 
+{{-- Hold button modal + script (Jon 2026-10-23). Outside the sale form so
+     its fields are never submitted with a sale. --}}
+@include('sale_pos.partials._holds_pos')
+
 {{-- Buy Calculator iframe modal removed (2026-04-19): iframe loaded blank for some users,
      likely auth/cookie issues when the protected route is loaded inside an iframe.
      Button now opens the calculator in a new tab — simpler + more reliable. --}}

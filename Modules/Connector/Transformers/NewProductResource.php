@@ -54,6 +54,16 @@ class NewProductResource extends JsonResource
                     }
                 }
 
+                // Copies in the hold bin (/holds) are off sale on the website.
+                if (! request()->input('raw_stock') && ! empty($v['variation_location_details'])) {
+                    foreach ($v['variation_location_details'] as $u => $w) {
+                        if (! isset($w['qty_available'], $w['location_id'])) continue;
+                        $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['qty_available'] = \App\Services\ProductHolds::websiteQty(
+                            (int) $array['business_id'], (int) $v['id'], (int) $w['location_id'], $w['qty_available']
+                        );
+                    }
+                }
+
                 if (isset($v['group_prices'])) {
                     $array['product_variations'][$key]['variations'][$k]['selling_price_group'] = $v['group_prices'];
                     unset($array['product_variations'][$key]['variations'][$k]['group_prices']);

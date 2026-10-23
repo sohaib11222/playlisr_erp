@@ -71,6 +71,11 @@ class AdminSidebarMenu
                             'Customer Pickups',
                             ['icon' => 'fa fas fa-hand-holding', 'active' => request()->segment(1) == 'customer-pickups']
                         );
+                        $sub->url(
+                            action('HoldController@index'),
+                            'Holds',
+                            ['icon' => 'fa fas fa-pause-circle', 'active' => request()->segment(1) == 'holds']
+                        );
                         // Moved from the website admin (Sarah, 2026-10-15).
                         $sub->url(route('wa.warehouse.packer'), 'Packer View', ['icon' => 'fa fas fa-dolly', 'active' => request()->is('website-admin/warehouse/packer*')]);
                         $sub->url(route('wa.warehouse.index'), 'Warehouse', ['icon' => 'fa fas fa-warehouse', 'active' => request()->segment(1) == 'website-admin' && !request()->is('website-admin/warehouse/packer*') && !request()->is('website-admin/rates*')]);

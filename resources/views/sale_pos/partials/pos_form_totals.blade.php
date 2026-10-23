@@ -757,6 +757,12 @@
             <a href="{{ route('pos.exportManualProducts') }}" class="pos-util-btn" title="Export manually added products from POS">
                 <i class="fas fa-file-excel"></i> Export manual products
             </a>
+            @if(empty($edit))
+            {{-- Holds (Jon 2026-10-23): cart items go to the hold bin. Script in _holds_pos. --}}
+            <button type="button" class="pos-util-btn" id="pos-hold-items" title="Put the items in the cart on hold for a customer or employee">
+                <i class="fas fa-pause-circle"></i> Hold
+            </button>
+            @endif
         </div>
 
         <script>

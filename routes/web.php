@@ -267,6 +267,14 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
     Route::post('/customer-pickups/{id}/put-back', 'CustomerPickupController@markPutBack');
     Route::post('/customer-pickups/{id}/shelved', 'CustomerPickupController@markShelved');
+    // Customer / employee holds (Jon, 2026-10-23): hold bin, off the website.
+    Route::get('/holds', 'HoldController@index');
+    Route::get('/holds/lookup', 'HoldController@lookup');
+    Route::post('/holds', 'HoldController@store');
+    Route::post('/holds/from-pos', 'HoldController@fromPos');
+    Route::post('/holds/{id}/release', 'HoldController@release');
+    Route::post('/holds/{id}/sold', 'HoldController@sold');
+    Route::post('/holds/{id}/extend', 'HoldController@extend');
 
     // In Store Orders — quick walk-in log: customer name, item, price paid,
     // paid/unpaid, notify when ready. Free-text customer, not tied to the

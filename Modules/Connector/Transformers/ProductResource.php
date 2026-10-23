@@ -56,12 +56,16 @@ class ProductResource extends JsonResource
                 }
 
                 // Website stock rule: old uncounted store copies read 0
-                // (raw_stock=1 returns the ERP number untouched).
+                // (raw_stock=1 returns the ERP number untouched). Copies in
+                // the hold bin (/holds) come off sale too, whatever the rule.
                 if (! request()->input('raw_stock') && ! empty($v['variation_location_details'])) {
                     foreach ($v['variation_location_details'] as $u => $w) {
                         $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['erp_qty_available'] = $w['qty_available'];
-                        $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['qty_available'] = \App\Services\WebsiteStockRule::qty(
+                        $web_qty = \App\Services\WebsiteStockRule::qty(
                             (int) $array['business_id'], (int) $w['location_id'], (int) $array['id'], $w['qty_available'], $array['category']['name'] ?? null
+                        );
+                        $array['product_variations'][$key]['variations'][$k]['variation_location_details'][$u]['qty_available'] = \App\Services\ProductHolds::websiteQty(
+                            (int) $array['business_id'], (int) $v['id'], (int) $w['location_id'], $web_qty
                         );
                     }
                 }

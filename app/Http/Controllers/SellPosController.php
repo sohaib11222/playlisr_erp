@@ -6888,6 +6888,18 @@ class SellPosController extends Controller
                     $output['barcoded_by_you'] = true;
                     $output['barcoder_name'] = auth()->user()->first_name;
                 }
+
+                // Held copy (/holds): warn only, never block the sale.
+                try {
+                    $hold = \App\Services\ProductHolds::activeHold((int) request()->session()->get('user.business_id'), (int) $variation_id, (int) $location_id);
+                    if ($hold) {
+                        $output['hold_warning'] = 'On hold for ' . $hold->held_for_name . ' until '
+                            . \Carbon\Carbon::parse($hold->hold_until)->format('m/d/y')
+                            . '. Release the hold before selling to someone else.';
+                    }
+                } catch (\Throwable $holdErr) {
+                    // a hold lookup must never stop a row from being added
+                }
             }
 
             if ($this->transactionUtil->isModuleEnabled('modifiers')  && !$is_direct_sell) {

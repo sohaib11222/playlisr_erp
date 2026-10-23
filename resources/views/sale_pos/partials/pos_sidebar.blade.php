@@ -1,3 +1,6 @@
+{{-- Past-due holds at this store (Jon 2026-10-23); renders nothing when clear. --}}
+@include('sale_pos.partials.holds_overdue_flag')
+
 {{-- Customer rewards panel — mirrors the #customer_account_info block in the left column
 	 so the Nivessa Bucks balance is visible at a glance on the right side of the POS.
 	 Stays hidden until a customer is selected. A small script below syncs the values. --}}
