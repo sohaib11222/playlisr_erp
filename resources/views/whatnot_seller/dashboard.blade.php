@@ -1,0 +1,124 @@
+@extends('layouts.app')
+@section('title', 'Whatnot Seller')
+
+@section('content')
+<style>
+    .wn-kpi { background: #fff; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.08); color: #222; }
+    .wn-kpi b { display: block; font-size: 24px; }
+    .wn-flag { display: inline-block; background: #fdecea; color: #a12622; border-radius: 10px; padding: 1px 8px; font-size: 12px; margin: 1px 2px 1px 0; }
+    .wn-golden { display: inline-block; background: #d7ebfb; color: #0b4a7a; border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+    .wn-table td, .wn-table th { color: #222; }
+    .wn-low { color: #a12622; font-weight: 600; }
+    .wn-gap { color: #a12622; font-weight: 600; }
+</style>
+<section class="content-header">
+    <h1>Whatnot Seller <small style="color:#333;">what {{ $s['seller_name'] }} sold, for how much, and his commission</small></h1>
+</section>
+
+<section class="content">
+    @if(session('status'))
+        <div class="alert alert-{{ session('status.success') ? 'success' : 'danger' }}">{{ session('status.msg') }}</div>
+    @endif
+
+    <div class="box box-primary">
+        <div class="box-body">
+            <p style="margin:0 0 6px;"><strong>{{ $s['seller_name'] }}'s private link</strong> (no ERP login, he only sees Whatnot items he can sell and his own sales):</p>
+            <div class="input-group">
+                <input type="text" class="form-control" id="wn-link" value="{{ $link }}" readonly>
+                <span class="input-group-btn"><button class="btn btn-default" type="button" onclick="var i=document.getElementById('wn-link');i.select();document.execCommand('copy');this.textContent='Copied';">Copy</button></span>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" class="form-inline" style="margin-bottom:12px;">
+        <label>From</label> <input type="date" name="start_date" value="{{ $from }}" class="form-control">
+        <label>To</label> <input type="date" name="end_date" value="{{ $to }}" class="form-control">
+        <button class="btn btn-primary">Show</button>
+    </form>
+
+    <div class="row">
+        <div class="col-sm-3"><div class="wn-kpi">Sold on Whatnot<b>${{ number_format($total, 2) }}</b>{{ $count }} items, {{ \Carbon\Carbon::parse($from)->format('m/d/y') }} to {{ \Carbon\Carbon::parse($to)->format('m/d/y') }}</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">Average price vs sticker<b class="{{ $avg_pct !== null && $avg_pct < $s['min_pct_of_sticker'] ? 'wn-low' : '' }}">{{ $avg_pct === null ? 'n/a' : $avg_pct . '%' }}</b>${{ number_format($lost_vs_sticker, 2) }} under sticker in total</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">Flagged sales<b class="{{ $flagged ? 'wn-low' : '' }}">{{ $flagged }}</b>too cheap, too new in store, or under cost</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">Commission owed<b>{{ $owed_from === null ? 'Set paid through' : ($owed_commission === null ? 'Set rate' : '$' . number_format($owed_commission, 2)) }}</b>@if($owed_from)on ${{ number_format($owed_sales, 2) }} sold since {{ \Carbon\Carbon::parse($owed_from)->format('m/d/y') }}@else fill in the last day he was paid through below @endif</div></div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-5">
+            <div class="box box-default">
+                <div class="box-header"><h3 class="box-title">Did every sale get marked?</h3></div>
+                <div class="box-body">
+                    <p style="color:#222;">Compares what's in the ERP to the monthly Whatnot statement (typed in at <a href="{{ url('/whatnot/import-statement') }}">Import monthly statement</a>). A gap means records were sold on Whatnot but never marked, so they're still showing on the website.</p>
+                    <table class="table table-condensed wn-table">
+                        <tr><th>Month</th><th class="text-right">Marked in ERP</th><th class="text-right">Whatnot statement</th><th class="text-right">Not marked</th></tr>
+                        @forelse($month_rows as $m)
+                            @php $gap = $m['statement'] === null ? null : round($m['statement'] - $m['erp'], 2); @endphp
+                            <tr>
+                                <td>{{ $m['label'] }}</td>
+                                <td class="text-right">${{ number_format($m['erp'], 2) }}</td>
+                                <td class="text-right">{{ $m['statement'] === null ? 'not imported' : '$' . number_format($m['statement'], 2) }}</td>
+                                <td class="text-right {{ $gap !== null && $gap > 1 ? 'wn-gap' : '' }}">{{ $gap === null ? '' : '$' . number_format($gap, 2) }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="4">No Whatnot sales in this range.</td></tr>
+                        @endforelse
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="box box-default">
+                <div class="box-header"><h3 class="box-title">Rules and commission</h3></div>
+                <div class="box-body">
+                    <form method="post" action="{{ url('/reports/whatnot-seller/settings') }}">
+                        @csrf
+                        <div class="row">
+                            <div class="col-sm-4 form-group"><label>Seller name</label><input class="form-control" name="seller_name" value="{{ $s['seller_name'] }}"></div>
+                            <div class="col-sm-4 form-group"><label>Commission %</label><input class="form-control" type="number" step="0.01" name="commission_pct" value="{{ $s['commission_pct'] }}" placeholder="not set"></div>
+                            <div class="col-sm-4 form-group"><label>Paid through</label><input class="form-control" type="date" name="paid_through" value="{{ $s['paid_through'] }}"></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-4 form-group"><label>Lowest % of sticker</label><input class="form-control" type="number" name="min_pct_of_sticker" value="{{ $s['min_pct_of_sticker'] }}"></div>
+                            <div class="col-sm-4 form-group"><label>Days in store first</label><input class="form-control" type="number" name="min_days_in_store" value="{{ $s['min_days_in_store'] }}"></div>
+                            <div class="col-sm-4 form-group"><label>Credit sales to user</label>
+                                <select class="form-control" name="user_id"><option value="">None</option>
+                                    @foreach($users as $u)<option value="{{ $u->id }}" {{ (int) $s['user_id'] === (int) $u->id ? 'selected' : '' }}>{{ $u->name }}</option>@endforeach
+                                </select></div>
+                        </div>
+                        <button class="btn btn-primary">Save</button>
+                        <label style="margin-left:14px; font-weight:normal;"><input type="checkbox" name="new_link" value="1"> Make a new link (the old one stops working)</label>
+                    </form>
+                    <p style="color:#222; margin:10px 0 0;">He sees these rules on his page. Anything under the lowest % or newer than the days-in-store needs a written reason before he can save it.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="box box-default">
+        <div class="box-header"><h3 class="box-title">Every Whatnot item sold</h3> <span style="color:#222;">({{ $by_golden }} marked by {{ $s['seller_name'] }} himself, the rest rung up by staff on the POS)</span></div>
+        <div class="box-body table-responsive">
+            <table class="table table-striped table-condensed wn-table" id="wn-lines">
+                <thead><tr><th>Date</th><th>Item</th><th>Store</th><th class="text-right">Sold</th><th class="text-right">Sticker</th><th class="text-right">% of sticker</th><th class="text-right">Cost</th><th class="text-right">Days in store</th><th>Marked by</th><th>Flags / reason</th></tr></thead>
+                <tbody>
+                @forelse($lines as $l)
+                    <tr>
+                        <td>{{ $l['date'] }}</td>
+                        <td><a href="{{ url('/sells/' . $l['transaction_id']) }}" target="_blank">{{ $l['title'] }}</a></td>
+                        <td>{{ $l['store'] }}</td>
+                        <td class="text-right">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
+                        <td class="text-right">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'], 2) }}</td>
+                        <td class="text-right {{ $l['pct'] !== null && $l['pct'] < $s['min_pct_of_sticker'] ? 'wn-low' : '' }}">{{ $l['pct'] === null ? '' : $l['pct'] . '%' }}</td>
+                        <td class="text-right">{{ $l['cost'] ? '$' . number_format($l['cost'], 2) : '' }}</td>
+                        <td class="text-right">{{ $l['days_in_store'] }}</td>
+                        <td>@if($l['by_golden'])<span class="wn-golden">{{ $l['entered_by'] }}</span>@else{{ $l['entered_by'] }}@endif</td>
+                        <td>@foreach($l['flags'] as $f)<span class="wn-flag">{{ $f }}</span>@endforeach @if($l['note'] !== '') <div>{{ $l['note'] }}</div> @endif</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="10">No Whatnot sales in this range.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+@endsection

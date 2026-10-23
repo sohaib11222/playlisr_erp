@@ -119,6 +119,12 @@ Route::middleware(['setData'])->group(function () {
     // One-time store setup link (owner makes it on Time clock settings).
     Route::get('/clock/setup/{token}', 'PhoneClockController@setupPage')->where('token', '[a-f0-9]{48}');
     Route::post('/clock/setup/{token}', 'PhoneClockController@setupUse')->where('token', '[a-f0-9]{48}')->middleware('throttle:10,1');
+
+    // Golden's Whatnot page (Sarah 2026-10-23): no ERP login, the secret link
+    // is the auth. He marks Whatnot sales; owners see /reports/whatnot-seller.
+    Route::get('/whatnot-seller/{token}', 'WhatnotSellerController@page')->where('token', '[a-f0-9]{48}');
+    Route::get('/whatnot-seller/{token}/search', 'WhatnotSellerController@search')->where('token', '[a-f0-9]{48}')->middleware('throttle:120,1');
+    Route::post('/whatnot-seller/{token}/sell', 'WhatnotSellerController@sell')->where('token', '[a-f0-9]{48}')->middleware('throttle:20,1');
 });
 
 //Routes for authenticated users only
@@ -1383,6 +1389,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/selling-below-cost', 'ReportController@sellingBelowCostReport');
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
+    Route::get('/reports/whatnot-seller', 'WhatnotSellerController@dashboard');
+    Route::post('/reports/whatnot-seller/settings', 'WhatnotSellerController@saveSettings');
     Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
     Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
