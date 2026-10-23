@@ -22,34 +22,23 @@
     <div id="lc-card">
         <h3 id="lc-title">Put {{ $lc['items'] == 1 ? 'it' : 'them' }} on the floor now</h3>
         <div class="lc-floor">
-            <p style="margin:0">
-                @if(!empty($lc['online']))
-                    {{ $lc['items'] == 1 ? 'This item is' : 'These ' . $lc['items'] . ' items are' }} for sale on nivessa.com as of right now.
-                @else
-                    {{ $lc['items'] == 1 ? 'This item goes' : 'These ' . $lc['items'] . ' items go' }} on nivessa.com as soon as the purchase is received.
-                @endif
-                Put {{ $lc['items'] == 1 ? 'it' : 'them' }} out on the floor{{ !empty($lc['store']) ? ' at ' . $lc['store'] : '' }} right away, not behind the desk, so we can find {{ $lc['items'] == 1 ? 'it' : 'them' }} for online orders.
-            </p>
+            <p style="margin:0">{{ $lc['items'] == 1 ? 'It is' : 'They are' }} for sale online{{ empty($lc['online']) ? ' once received' : '' }}. Don't leave {{ $lc['items'] == 1 ? 'it' : 'them' }} behind the desk.</p>
         </div>
 
-        @if(!empty($lc['pairs']))
-            <p><strong>Did you mean to change the price of something we already have?</strong>
-                {{ count($lc['pairs']) == 1 ? 'This new product looks' : 'These new products look' }} like a listing that's already there. If you only wanted a new price, undo the new one and edit the old one instead.</p>
-            @foreach($lc['pairs'] as $pair)
-                <div class="lc-pair">
-                    <div class="lc-row"><span class="lc-tag">You added</span> {{ $pair['new']['label'] }} &middot; ${{ number_format($pair['new']['price'], 2) }}</div>
-                    <div class="lc-row"><span class="lc-tag">Already have</span> {{ $pair['old']['label'] }} &middot; ${{ number_format($pair['old']['price'], 2) }} &middot; {{ $pair['old']['qty'] }} in stock</div>
-                    <form method="POST" action="{{ url('/purchases/listing-undo') }}" class="lc-actions" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
-                        {{ csrf_field() }}
-                        <input type="hidden" name="purchase_id" value="{{ $lc['purchase_id'] }}">
-                        <input type="hidden" name="new_product_id" value="{{ $pair['new']['id'] }}">
-                        <input type="hidden" name="old_product_id" value="{{ $pair['old']['id'] }}">
-                        <button type="submit" class="lc-primary">Undo the new one, edit the old one</button>
-                        <button type="button" onclick="this.closest('.lc-pair').remove();">No, it's another copy</button>
-                    </form>
-                </div>
-            @endforeach
-        @endif
+        @foreach(($lc['pairs'] ?? []) as $pair)
+            <div class="lc-pair">
+                <p style="margin:0 0 6px"><strong>We already have this:</strong> {{ $pair['old']['label'] }} (${{ number_format($pair['old']['price'], 2) }})</p>
+                <p style="margin:0">Did you just want to change the price?</p>
+                <form method="POST" action="{{ url('/purchases/listing-undo') }}" class="lc-actions" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="purchase_id" value="{{ $lc['purchase_id'] }}">
+                    <input type="hidden" name="new_product_id" value="{{ $pair['new']['id'] }}">
+                    <input type="hidden" name="old_product_id" value="{{ $pair['old']['id'] }}">
+                    <button type="submit" class="lc-primary">Yes, change the old one</button>
+                    <button type="button" onclick="this.closest('.lc-pair').remove();">No, it's a new copy</button>
+                </form>
+            </div>
+        @endforeach
 
         <button type="button" class="lc-done" onclick="document.getElementById('lc-overlay').remove();">Got it</button>
     </div>
