@@ -147,7 +147,10 @@ class DiscogsInventoryImportController extends Controller
                 foreach ($rows as $r) {
                     $key = $this->detectFormatKey((string) $r->product_description);
                     $rule = $formatRules[$key] ?? $formatRules['LP / Vinyl'];
-                    $cid = $categoryIdByName[$rule['name']] ?? $categoryIdByName['Used Vinyl'];
+                    // Never fall back to vinyl when the format's category isn't found: that
+                    // filed 1,142 CDs and cassettes as Used Vinyl (found 10/23/26).
+                    $cid = $categoryIdByName[$rule['name']] ?? null;
+                    if (!$cid) continue;
                     $bucket[$cid][] = (int) $r->id;
                     $costByCategory[$cid] = (float) $rule['cost'];
                     $perCategory[$rule['name']] = ($perCategory[$rule['name']] ?? 0) + 1;
