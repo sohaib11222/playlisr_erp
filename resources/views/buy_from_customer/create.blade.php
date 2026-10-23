@@ -271,6 +271,8 @@
         .bfc-create .bfc-demand-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; text-align: left; }
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
+        .bfc-create .bfc-demand-normal { background: #F1F1F1; color: #555; border: 1px solid #DDD; font-weight: 500; }
+        .bfc-create .bfc-genre { margin-top: 4px; height: 28px; padding: 2px 6px; font-size: 12px; }
         .bfc-create .bfc-demand-bonus { font-size: 15px; font-weight: 700; color: #7A1F1F; }
     </style>
     @if($is_embed)
@@ -352,12 +354,25 @@
         }
         $bfcDemandChip = function ($cl) {
             $lvl = $cl['demand_level'] ?? 'normal';
-            if (!in_array($lvl, ['hot', 'warm'], true)) return '';
+            $why = (string) ($cl['demand_reason'] ?? '');
+            // Normal lines still show their sales speed (gray), so the cashier
+            // can see why there's no bonus.
+            if (!in_array($lvl, ['hot', 'warm'], true)) {
+                return $why !== '' ? '<span class="bfc-demand-chip bfc-demand-normal">' . e('No bonus: ' . $why) . '</span>' : '';
+            }
             $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
             $label = ($lvl === 'hot' ? 'Hot' : 'Warm') . ' +' . $pct . '%';
-            $why = (string) ($cl['demand_reason'] ?? '');
             return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
         };
+        // Beta: per item type, the genres a line can be narrowed to ([canon => label]).
+        $bfcGenres = [];
+        if ($bfcBeta) {
+            try {
+                $bfcGenres = app(\App\Services\BuyDemandService::class)->allGenreChoices((int) session('user.business_id'));
+            } catch (\Throwable $e) {
+                $bfcGenres = [];
+            }
+        }
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
             $pmVal = 'cash_in_store';
@@ -385,7 +400,7 @@
 
     @if($bfcBeta)
         <div class="bfc-beta-banner">
-            <span><strong>Beta buy form:</strong> pays up to 20% more on things we're low on and selling fast at this store. The bonus shows on each line after you press Save and continue.</span>
+            <span><strong>Beta buy form:</strong> pays up to 20% more on things that sell fast at this store. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any bonus right away.</span>
         </div>
     @endif
 
@@ -642,10 +657,18 @@ HTML;
                                     ];
                                 @endphp
                                 @foreach($lines as $i => $line)
-                                    @php $bfcRowDemand = $bfcDemand[$i] ?? null; @endphp
+                                    @php $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
                                     <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @endif>
                                         <td>{!! Form::select("lines[$i][item_type]", $itemTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
-                                        <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}</td>
+                                        <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}
+                                        @if($bfcBeta)
+                                            <select name="lines[{{ $i }}][genre]" class="form-control bfc-genre" @if(empty($bfcRowGenres)) style="display:none;" @endif>
+                                                <option value="">Genre (optional)</option>
+                                                @foreach($bfcRowGenres as $gk => $gl)
+                                                    <option value="{{ $gk }}" @if($gk === $bfcRowGenre) selected @endif>{{ $gl }}</option>
+                                                @endforeach
+                                            </select>
+                                        @endif</td>
                                         <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}</td>
                                         <td>{!! Form::select("lines[$i][condition_grade]", array_combine($grades, $grades), $line['condition_grade'] ?? 'VG+', ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
@@ -1251,7 +1274,7 @@ HTML;
             var idx = $tbody.find('tr').length;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
-                + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control"></td>'
+                + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
                 + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"></td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
@@ -1263,6 +1286,7 @@ HTML;
             var $newRow = $($.parseHTML(row));
             $newRow.find('select[name$="[item_type]"]').val(prevType);
             $newRow.find('select[name$="[condition_grade]"]').val(prevGrade);
+            bfcFillGenres($newRow);
             $tbody.append($newRow);
             bfcTypeSearch($newRow);
             bfcApplyRowState($newRow);
@@ -1398,6 +1422,47 @@ HTML;
         }
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         var BFC_RULES = @json($bfcRules);
+        var BFC_BETA = @json((bool) $bfcBeta);
+        var BFC_GENRES = @json((object) $bfcGenres);
+        var BFC_DEMAND_URL = @json(route('buy-from-customer.beta.demand'));
+        // Beta: the genre dropdown under a line's title offers only the genres
+        // its item type covers; keep the pick if the new type still has it.
+        function bfcFillGenres($row) {
+            var $g = $row.find('select.bfc-genre');
+            if (!$g.length) return;
+            var keep = $g.val() || '';
+            var choices = BFC_GENRES[$row.find('select[name$="[item_type]"]').val()] || {};
+            var keys = Object.keys(choices).sort(function (a, b) { return choices[a].localeCompare(choices[b]); });
+            $g.empty().append($('<option>').val('').text('Genre (optional)'));
+            keys.forEach(function (k) { $g.append($('<option>').val(k).text(choices[k])); });
+            $g.val(keys.indexOf(keep) >= 0 ? keep : '').toggle(keys.length > 0);
+        }
+        // Beta: ask the server for this line's bonus as soon as its type, genre
+        // or title changes (same numbers Save and continue will use).
+        var bfcDemandSeq = 0;
+        function bfcPreviewDemand($row) {
+            if (!BFC_BETA) return;
+            var type = $row.find('select[name$="[item_type]"]').val() || '';
+            var title = ($row.find('input[name$="[title]"]').val() || '').trim();
+            var genre = $row.find('select.bfc-genre').val() || '';
+            var loc = $('#location_id').val() || '';
+            $row.find('.bfc-demand-chip').remove();
+            $row.removeAttr('data-demand-mult');
+            if (!type || !loc || (type === 'individual_vinyl' && !title && !genre)) { bfcRecalcAll(); return; }
+            var seq = ++bfcDemandSeq;
+            $row.data('demand-seq', seq);
+            $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre }).done(function (d) {
+                if ($row.data('demand-seq') !== seq || !d) return;
+                var mult = parseFloat(d.multiplier) || 1;
+                var lvl = (mult > 1 && (d.level === 'hot' || d.level === 'warm')) ? d.level : 'normal';
+                $row.attr('data-demand-mult', mult);
+                if (d.reason) {
+                    var label = lvl === 'normal' ? 'No bonus' : ((lvl === 'hot' ? 'Hot' : 'Warm') + ' +' + Math.round((mult - 1) * 100) + '%');
+                    $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-' + lvl).text(label + ': ' + d.reason));
+                }
+                bfcRecalcAll();
+            });
+        }
         var BFC_HAS_CALC = @json(!empty($calc));
         // The negotiation ladder auto-fills from the live total at 50 / 75 / 95%
         // (credit at ×credit_bonus), mirroring the server. We only drive it live
@@ -1525,12 +1590,31 @@ HTML;
 
         // Beta: a row's demand bonus belongs to the type + title it was priced
         // for. Changing either drops it until the next Save and continue.
-        $(document).on('input change', '#offer_lines_table input[name$="[title]"], #offer_lines_table select[name$="[item_type]"]', function () {
+        $(document).on('input change', '#offer_lines_table input[name$="[title]"], #offer_lines_table select[name$="[item_type]"], #offer_lines_table select.bfc-genre', function () {
             var $row = $(this).closest('tr');
             if ($row.attr('data-demand-mult') === undefined) return;
             $row.removeAttr('data-demand-mult');
             $row.find('.bfc-demand-chip').remove();
         });
+        if (BFC_BETA) {
+            $(document).on('change', '#offer_lines_table select[name$="[item_type]"]', function () {
+                var $row = $(this).closest('tr');
+                bfcFillGenres($row);
+                bfcPreviewDemand($row);
+            });
+            $(document).on('change', '#offer_lines_table select.bfc-genre, #offer_lines_table input[name$="[title]"]', function () {
+                bfcPreviewDemand($(this).closest('tr'));
+            });
+            // Demand is per store: re-check every line that has something in it.
+            $(document).on('change', '#location_id', function () {
+                $('#offer_lines_table tbody tr').each(function () {
+                    var $row = $(this);
+                    if ($row.attr('data-demand-mult') !== undefined || $row.find('select.bfc-genre').val() || $row.find('select[name$="[item_type]"]').val() !== 'individual_vinyl') {
+                        bfcPreviewDemand($row);
+                    }
+                });
+            });
+        }
         $(document).on('input change', '#offer_lines_table input', bfcRecalcAll);
         $(document).on('change', '#offer_lines_table select', function () {
             bfcApplyRowState($(this).closest('tr'));

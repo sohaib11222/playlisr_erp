@@ -186,10 +186,23 @@ class BuyFromCustomerController extends Controller
         ];
 
         // A draft quoted on the Beta form reopens in Beta, keeping its quoted
-        // demand bonus (pinned from the sidecar).
-        $isBeta = request()->input('beta') == '1' || $this->betaRecord($business_id, $offer->id) !== null;
+        // demand bonus (pinned from the sidecar) and each line's genre pick.
+        $betaRec = $this->betaRecord($business_id, $offer->id);
+        $isBeta = request()->input('beta') == '1' || $betaRec !== null;
         if ($isBeta) {
             $input_data['beta'] = '1';
+            $genres = [];
+            foreach ((array) ($betaRec['lines'] ?? []) as $bl) {
+                if (!empty($bl['genre'])) {
+                    $genres[(string) ($bl['line_order'] ?? '')] = $bl['genre'];
+                }
+            }
+            foreach ($input_data['lines'] as $li => $l) {
+                if (isset($genres[(string) $li])) {
+                    $input_data['lines'][$li]['genre'] = $genres[(string) $li];
+                }
+            }
+            $lines = $input_data['lines'];
         }
 
         // Recompute the calculator so the offer ladder / totals panel shows the
@@ -311,11 +324,11 @@ class BuyFromCustomerController extends Controller
         if ($pinOfferId) {
             $prev = $this->betaRecord($business_id, $pinOfferId);
             foreach ((array) ($prev['lines'] ?? []) as $pl) {
-                $quoted[self::demandLineKey($pl['line_order'] ?? '', $pl['item_type'] ?? '', $pl['title'] ?? '')] = $pl;
+                $quoted[self::demandLineKey($pl['line_order'] ?? '', $pl['item_type'] ?? '', $pl['title'] ?? '', $pl['genre'] ?? '')] = $pl;
             }
         }
         return function ($line, $i) use ($service, $business_id, $locationId, $quoted) {
-            $k = self::demandLineKey($i, $line['item_type'] ?? '', $line['title'] ?? '');
+            $k = self::demandLineKey($i, $line['item_type'] ?? '', $line['title'] ?? '', $line['genre'] ?? '');
             if (isset($quoted[$k])) {
                 return ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
             }
@@ -323,9 +336,35 @@ class BuyFromCustomerController extends Controller
         };
     }
 
-    protected static function demandLineKey($order, $itemType, $title)
+    protected static function demandLineKey($order, $itemType, $title, $genre = '')
     {
-        return $order . '|' . $itemType . '|' . mb_strtolower(trim((string) $title));
+        return $order . '|' . $itemType . '|' . mb_strtolower(trim((string) $title)) . '|' . (string) $genre;
+    }
+
+    /**
+     * GET /buy-from-customer/beta/demand: one line's demand bonus, so the Beta
+     * form shows it the moment a type / genre / title is picked instead of
+     * only after Save and continue. Same service and cache as Calculate.
+     */
+    public function betaDemand(Request $request)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $locationId = (int) $request->input('location_id');
+        if (!BusinessLocation::where('business_id', $business_id)->where('id', $locationId)->exists()) {
+            return response()->json(BuyDemandService::normal());
+        }
+        if ($this->demandService === null) {
+            $this->demandService = app(BuyDemandService::class);
+        }
+        $line = [
+            'item_type' => (string) $request->input('item_type', ''),
+            'title' => (string) $request->input('title', ''),
+            'genre' => (string) $request->input('genre', ''),
+        ];
+        return response()->json($this->demandService->forLine($line, $business_id, $locationId));
     }
 
     protected function betaRecord($business_id, $offerId)
@@ -1080,7 +1119,7 @@ class BuyFromCustomerController extends Controller
         $offer->lines()->delete();
         foreach ($calculation['lines'] as $line) {
             // demand_* are Beta-only and have no columns (they live in the sidecar).
-            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason']);
+            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre']);
             $offer->lines()->create($line);
         }
 

@@ -905,6 +905,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer/beta', 'BuyFromCustomerController@createBeta')->name('buy-from-customer.beta');
     Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@createBeta');
     Route::post('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@calculateBeta')->name('buy-from-customer.beta.calculate');
+    Route::get('/buy-from-customer/beta/demand', 'BuyFromCustomerController@betaDemand')->name('buy-from-customer.beta.demand');
     Route::post('/buy-from-customer/autosave', 'BuyFromCustomerController@autosave')->name('buy-from-customer.autosave');
     Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
