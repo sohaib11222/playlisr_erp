@@ -896,7 +896,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/purchases/get_purchase_entry_row', 'PurchaseController@getPurchaseEntryRow');
     Route::post('/purchases/check_ref_number', 'PurchaseController@checkRefNumber');
     Route::post('/purchases/duplicate-check', 'PurchaseController@duplicateCheck');
-    Route::post('/purchases/listing-undo', 'ListingCheckController@undo');
     Route::get('/buy-from-customer', 'BuyFromCustomerController@create')->name('buy-from-customer.create');
     Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@create');
     Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');

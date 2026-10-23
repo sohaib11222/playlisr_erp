@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\DB;
  * 2. Someone who only meant to change a price sometimes adds a brand-new
  *    product instead (Andy 10/19 listed "invinceable / m jackson" at $10 while
  *    "Michael Jackson - Invincible" was already on the shelf at Pico). New
- *    products in the purchase that look like an existing listing are offered
- *    an undo + a jump to the existing product's edit page.
+ *    products in the purchase that look like an existing listing are
+ *    flagged so the lister tells a manager (Sarah 10/23: no undo/delete).
  *
  * Read-only; callers flash the result into the session for the popup partial
  * (layouts/partials/listing_check_modal). Any failure returns null.

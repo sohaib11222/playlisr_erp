@@ -1,5 +1,5 @@
 {{-- After a purchase is saved (Jon 10/23): remind the lister the items are on
-     nivessa.com now, and offer an undo when a new product looks like one we
+     nivessa.com now, and flag a new product that looks like one we
      already had. Data comes from App\Services\ListingCheck via session flash.
      Self-contained: plain JS, no Bootstrap modal, so it can't break the page. --}}
 @php($lc = session('listing_check'))
@@ -28,15 +28,7 @@
         @foreach(($lc['pairs'] ?? []) as $pair)
             <div class="lc-pair">
                 <p style="margin:0 0 6px"><strong>We already have this:</strong> {{ $pair['old']['label'] }} (${{ number_format($pair['old']['price'], 2) }})</p>
-                <p style="margin:0">Did you just want to change the price?</p>
-                <form method="POST" action="{{ url('/purchases/listing-undo') }}" class="lc-actions" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
-                    {{ csrf_field() }}
-                    <input type="hidden" name="purchase_id" value="{{ $lc['purchase_id'] }}">
-                    <input type="hidden" name="new_product_id" value="{{ $pair['new']['id'] }}">
-                    <input type="hidden" name="old_product_id" value="{{ $pair['old']['id'] }}">
-                    <button type="submit" class="lc-primary">Yes, change the old one</button>
-                    <button type="button" onclick="this.closest('.lc-pair').remove();">No, it's a new copy</button>
-                </form>
+                <p style="margin:0">If you only meant to change its price, tell a manager.</p>
             </div>
         @endforeach
 
