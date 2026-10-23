@@ -88,7 +88,7 @@ body.holds-v2 .h-empty { padding: 26px 8px; text-align: center; font-size: 14px;
 <div class="holds-wrap">
     <div class="holds-head">
         <h1>Holds</h1>
-        <p>Items set aside in the hold bin for a customer or an employee. A held item is off the website and the POS warns if it gets rung up. Customer holds can run up to {{ $maxCustomer }} days, employee holds up to {{ $maxEmployee }} days. When a hold is past due, pull it from the bin and clear it here.</p>
+        <p>Items set aside in the hold bin for a customer or an employee. A held item is off the website and the POS warns if it gets rung up. Customer holds can run up to {{ $maxCustomer * 24 }} hours, employee holds up to {{ $maxEmployee }} days. When a hold is past due, pull it from the bin and clear it here.</p>
     </div>
 
     @if(is_string(session('status')))<div class="h-alert ok">{{ session('status') }}</div>@endif
@@ -156,7 +156,7 @@ body.holds-v2 .h-empty { padding: 26px 8px; text-align: center; font-size: 14px;
                         value="{{ old('hold_until', $oldType === 'employee' ? $defaultUntilEmployee : $defaultUntilCustomer) }}"
                         min="{{ $today->toDateString() }}"
                         max="{{ $oldType === 'employee' ? $latestUntilEmployee : $latestUntilCustomer }}">
-                    <div class="h-help" id="hold_until_help">Up to {{ $oldType === 'employee' ? $maxEmployee : $maxCustomer }} days.</div>
+                    <div class="h-help" id="hold_until_help">Up to {{ $oldType === 'employee' ? $maxEmployee . ' days' : ($maxCustomer * 24) . ' hours' }}.</div>
                 </div>
                 <div class="h-field wide">
                     <label for="hold_notes">Note</label>
@@ -310,7 +310,7 @@ body.holds-v2 .h-empty { padding: 26px 8px; text-align: center; font-size: 14px;
             $('#hold_customer_field').toggle(type === 'customer');
             $('#hold_employee_field').toggle(type === 'employee');
             $('#hold_until').val(defaults[type].until).attr('max', defaults[type].max);
-            $('#hold_until_help').text('Up to ' + defaults[type].days + ' days.');
+            $('#hold_until_help').text('Up to ' + (type === 'customer' ? (defaults[type].days * 24) + ' hours.' : defaults[type].days + ' days.'));
         });
 
         function esc(s) { return $('<div>').text(s == null ? '' : s).html(); }

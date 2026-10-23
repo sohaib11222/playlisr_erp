@@ -21,11 +21,11 @@ use Illuminate\Support\Facades\Schema;
 class ProductHolds
 {
     // Longest a hold may run, counted from today. Change here only.
-    const MAX_DAYS_CUSTOMER = 14;
+    const MAX_DAYS_CUSTOMER = 2; // 48 hours (Sarah 10/23)
     const MAX_DAYS_EMPLOYEE = 7;
 
     // Default hold length when placing a new hold.
-    const DEFAULT_DAYS_CUSTOMER = 7;
+    const DEFAULT_DAYS_CUSTOMER = 2;
     const DEFAULT_DAYS_EMPLOYEE = 3;
 
     private static $tableExists = null;
@@ -70,7 +70,7 @@ class ProductHolds
         }
         if ($until->lt(Carbon::today())) return 'Hold until can not be in the past.';
         if ($until->gt(self::latestUntil($type))) {
-            return ucfirst($type) . ' holds can be at most ' . self::maxDays($type) . ' days (until '
+            return ucfirst($type) . ' holds can be at most ' . ($type === 'customer' ? (self::maxDays($type) * 24) . ' hours' : self::maxDays($type) . ' days') . ' (until '
                 . self::latestUntil($type)->format('m/d/y') . ').';
         }
         return null;

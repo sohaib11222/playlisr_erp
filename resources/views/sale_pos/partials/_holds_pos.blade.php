@@ -71,7 +71,7 @@
                 <div class="form-group">
                     <label for="pos_hold_until">Hold until</label>
                     <input type="date" class="form-control" id="pos_hold_until" value="{{ $hpDefaults['customer'] }}" min="{{ \Carbon\Carbon::today()->toDateString() }}" max="{{ $hpDefaults['customer_max'] }}">
-                    <div class="hp-help" id="pos_hold_until_help">Up to {{ $hpDefaults['customer_days'] }} days.</div>
+                    <div class="hp-help" id="pos_hold_until_help">Up to {{ $hpDefaults['customer_days'] * 24 }} hours.</div>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                     <label for="pos_hold_notes">Note</label>
@@ -116,7 +116,7 @@
                 $('#pos_hold_employee_wrap').toggle(holdType === 'employee');
                 if (defaults[holdType].until) $('#pos_hold_until').val(defaults[holdType].until);
                 if (defaults[holdType].max) $('#pos_hold_until').attr('max', defaults[holdType].max);
-                $('#pos_hold_until_help').text('Up to ' + defaults[holdType].days + ' days.');
+                $('#pos_hold_until_help').text('Up to ' + (holdType === 'customer' ? (defaults[holdType].days * 24) + ' hours.' : defaults[holdType].days + ' days.'));
             }
 
             function readQty($row) {
