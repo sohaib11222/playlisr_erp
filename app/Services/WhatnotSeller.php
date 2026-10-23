@@ -182,8 +182,10 @@ class WhatnotSeller
             if ($pct !== null && $pct < (int) $s['min_pct_of_sticker']) {
                 $flags[] = 'Sold at ' . $pct . '% of sticker';
             }
-            if ($days !== null && $days < (int) $s['min_days_in_store']) {
-                $flags[] = 'Only ' . $days . ' days in store';
+            if ($days === 0) {
+                $flags[] = 'Added to ERP the day it sold';
+            } elseif ($days !== null && $days < (int) $s['min_days_in_store']) {
+                $flags[] = 'Only ' . $days . ' day' . ($days === 1 ? '' : 's') . ' in store';
             }
             if ($r->cost !== null && (float) $r->cost > 0 && $sold < (float) $r->cost) {
                 $flags[] = 'Below our cost';
