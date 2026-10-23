@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Buy from Customer Form')
+@section('title', !empty($bfcBeta) ? 'Buy from Customer Form (Beta)' : 'Buy from Customer Form')
 
 @php
     $is_embed = request()->get('embed') == '1';
@@ -264,6 +264,14 @@
         .bfc-create #bfc_overpay_alert, .bfc-create .alert { font-size: 17px !important; }
         .bfc-create .form-control { height: 44px; }
         .bfc-create .bfc-offer-box .bfc-final-row input { font-size: 24px !important; }
+        /* Beta buy form (demand bonus). Hot = light red, warm = light blue. */
+        .bfc-create .bfc-beta-banner { background: #DCEBFF; border: 1px solid #A9C8F0; color: #1F4E8C; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-size: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .bfc-create .bfc-beta-banner strong { color: #1F4E8C; }
+        .bfc-create .bfc-beta-banner a { color: #1F4E8C; text-decoration: underline; font-weight: 600; }
+        .bfc-create .bfc-demand-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; text-align: left; }
+        .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
+        .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
+        .bfc-create .bfc-demand-bonus { font-size: 15px; font-weight: 700; color: #7A1F1F; }
     </style>
     @if($is_embed)
         {{-- When opened inside the POS modal iframe, hide the admin chrome so only the calculator shows. --}}
@@ -280,7 +288,7 @@
 
 @section('content')
 <section class="content-header">
-    <h1>Buy from Customer Form</h1>
+    <h1>Buy from Customer Form @if(!empty($bfcBeta)) (Beta) @endif</h1>
 </section>
 
 <section class="content bfc-create">
@@ -322,6 +330,22 @@
         // Never echo an approver's login back into the page as hidden fields.
         unset($input['approver_username'], $input['approver_password'], $input['overpay_request_id']);
         $calc = $calculation ?? null;
+        // Beta buy form: demand bonus per line, keyed by row index (line_order).
+        $bfcBeta = !empty($bfcBeta) || (($input['beta'] ?? '') == '1');
+        $bfcDemand = [];
+        if ($bfcBeta && $calc) {
+            foreach ((array) data_get($calc, 'lines', []) as $bfcCl) {
+                if (isset($bfcCl['line_order'])) $bfcDemand[$bfcCl['line_order']] = $bfcCl;
+            }
+        }
+        $bfcDemandChip = function ($cl) {
+            $lvl = $cl['demand_level'] ?? 'normal';
+            if (!in_array($lvl, ['hot', 'warm'], true)) return '';
+            $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
+            $label = ($lvl === 'hot' ? 'Hot' : 'Warm') . ' +' . $pct . '%';
+            $why = (string) ($cl['demand_reason'] ?? '');
+            return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
+        };
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
             $pmVal = 'cash_in_store';
@@ -346,6 +370,13 @@
             <li>If you are unsure or need approval, please call your store manager to help you.</li>
         </ol>
     </div>
+
+    @if($bfcBeta)
+        <div class="bfc-beta-banner">
+            <span><strong>Beta buy form:</strong> pays up to 20% more on things we're low on and selling fast at this store. The bonus shows on each line after you press Save and continue.</span>
+            <a href="{{ route('buy-from-customer.create') }}">Use the normal form</a>
+        </div>
+    @endif
 
     <div class="row">
         <div class="col-md-12">
@@ -459,7 +490,10 @@ HTML;
                     </div>
                 </div>
                 <div class="box-body">
-                    <form id="buy_offer_form" method="POST" action="{{ route('buy-from-customer.calculate') }}">
+                    <form id="buy_offer_form" method="POST" action="{{ $bfcBeta ? route('buy-from-customer.beta.calculate') : route('buy-from-customer.calculate') }}">
+                        @if($bfcBeta)
+                            <input type="hidden" name="beta" value="1">
+                        @endif
                         @if(filter_var(request()->input('as_cashier'), FILTER_VALIDATE_BOOLEAN))
                             <input type="hidden" name="as_cashier" value="1">
                         @endif
@@ -597,7 +631,8 @@ HTML;
                                     ];
                                 @endphp
                                 @foreach($lines as $i => $line)
-                                    <tr>
+                                    @php $bfcRowDemand = $bfcDemand[$i] ?? null; @endphp
+                                    <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @endif>
                                         <td>{!! Form::select("lines[$i][item_type]", $itemTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}</td>
@@ -608,7 +643,7 @@ HTML;
                                             {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
                                         </td>
                                         <td>{!! Form::select("lines[$i][disposition]", $dispositions, $line['disposition'] ?? '', ['class' => 'form-control bfc-disposition']) !!}</td>
-                                        <td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>
+                                        <td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small>@if($bfcRowDemand) {!! $bfcDemandChip($bfcRowDemand) !!} @endif</td>
                                         <td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>
                                     </tr>
                                 @endforeach
@@ -631,6 +666,9 @@ HTML;
                             <strong id="bfc_running_total" style="display:none;">$0.00</strong>
                             <span>Max cash offer <strong id="bfc_running_final">$0.00</strong></span>
                             <span>Max store credit offer <strong id="bfc_running_credit">$0.00</strong></span>
+                            @if($bfcBeta && $calc)
+                                <span class="bfc-demand-bonus">Demand bonus: +${{ number_format((float) data_get($calc, 'demand_bonus_cash', 0), 2) }}</span>
+                            @endif
                         </span>
                     </div>
                     <div class="bfc-offer-box">
@@ -728,6 +766,9 @@ HTML;
                             <div><span>Max cash offer</span><strong>@format_currency(data_get($calc, 'final_offer_cash', 0))</strong></div>
                             <div class="bfc-max-credit"><span>Max store credit offer</span><strong>@format_currency(data_get($calc, 'final_offer_credit', 0))</strong></div>
                         </div>
+                        @if($bfcBeta)
+                            <p class="bfc-demand-bonus" style="margin:8px 0 0;">Demand bonus: +${{ number_format((float) data_get($calc, 'demand_bonus_cash', 0), 2) }} cash value (Beta, included in the offers above)</p>
+                        @endif
 
                         <details class="bfc-breakdown">
                         <summary>See item breakdown</summary>
@@ -751,7 +792,7 @@ HTML;
                                         @foreach($calcLines as $cl)
                                             <tr>
                                                 <td>{{ $itemTypes[data_get($cl, 'item_type')] ?? data_get($cl, 'item_type') }}</td>
-                                                <td>{{ data_get($cl, 'title') ?: '—' }}</td>
+                                                <td>{{ data_get($cl, 'title') ?: '—' }}@if($bfcBeta) {!! $bfcDemandChip($cl) !!} @endif</td>
                                                 <td>{{ data_get($cl, 'condition_grade') ?: '—' }}</td>
                                                 <td class="text-right">{{ (float) data_get($cl, 'quantity', 0) + 0 }}</td>
                                                 <td class="text-right">@format_currency(data_get($cl, 'line_cash_total', 0))</td>
@@ -865,7 +906,17 @@ HTML;
                                         </div>
                                         @php
                                             try {
-                                                $bfcPureAuto = app(\App\Services\BuyOfferCalculatorService::class)->calculate($input['lines'] ?? [], []);
+                                                if ($bfcBeta && $calc) {
+                                                    // Beta: the system number includes the demand bonus. Same
+                                                    // 95% / x credit math as the calculator's untouched final.
+                                                    $bfcAutoCash = round((float) data_get($calc, 'calculated_cash_total', 0) * 0.95, 2);
+                                                    $bfcPureAuto = [
+                                                        'final_offer_cash' => $bfcAutoCash,
+                                                        'final_offer_credit' => round($bfcAutoCash * (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'], 2),
+                                                    ];
+                                                } else {
+                                                    $bfcPureAuto = app(\App\Services\BuyOfferCalculatorService::class)->calculate($input['lines'] ?? [], []);
+                                                }
                                             } catch (\Throwable $e) {
                                                 $bfcPureAuto = null;
                                             }
@@ -1392,7 +1443,11 @@ HTML;
             } else {
                 line = qty * (parseFloat(t.unit_rate) || 0) * gm;
             }
-            return Math.round(line * 100) / 100;
+            line = Math.round(line * 100) / 100;
+            // Beta: the server's demand bonus for this row (set after Save and continue).
+            var dm = parseFloat($row.attr('data-demand-mult'));
+            if (isFinite(dm) && dm > 1) { line = Math.round(line * dm * 100) / 100; }
+            return line;
         }
         function bfcLineFormula($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
@@ -1457,6 +1512,14 @@ HTML;
             if (!BFC_HAS_CALC) { bfcPopulateLadder(cashTotal); }
         }
 
+        // Beta: a row's demand bonus belongs to the type + title it was priced
+        // for. Changing either drops it until the next Save and continue.
+        $(document).on('input change', '#offer_lines_table input[name$="[title]"], #offer_lines_table select[name$="[item_type]"]', function () {
+            var $row = $(this).closest('tr');
+            if ($row.attr('data-demand-mult') === undefined) return;
+            $row.removeAttr('data-demand-mult');
+            $row.find('.bfc-demand-chip').remove();
+        });
         $(document).on('input change', '#offer_lines_table input', bfcRecalcAll);
         $(document).on('change', '#offer_lines_table select', function () {
             bfcApplyRowState($(this).closest('tr'));

@@ -7,6 +7,8 @@ use App\BuyCustomerOffer;
 use App\Contact;
 use App\Product;
 use App\PurchaseLine;
+use App\Services\BuyBetaOffers;
+use App\Services\BuyDemandService;
 use App\Services\BuyOfferCalculatorService;
 use App\Services\BuyResultsReportService;
 use App\Services\InventoryCheckService;
@@ -61,7 +63,18 @@ class BuyFromCustomerController extends Controller
         }
     }
 
-    public function create()
+    /**
+     * Beta buy form (Jon 2026-10-23): same form, same save / accept / approval
+     * flow, but lines we're low on and selling fast at this store pay up to
+     * 20% more (BuyDemandService). Carried through every step by a hidden
+     * beta=1 input; the normal form never sees any of it.
+     */
+    public function createBeta()
+    {
+        return $this->create(true);
+    }
+
+    public function create($beta = false)
     {
         if (!auth()->user()->can('purchase.create')) {
             abort(403, 'Unauthorized action.');
@@ -105,7 +118,8 @@ class BuyFromCustomerController extends Controller
             ]);
         }
 
-        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget', 'input_data'));
+        return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget', 'input_data'))
+            ->with('bfcBeta', $beta === true);
     }
 
     /**
@@ -171,12 +185,20 @@ class BuyFromCustomerController extends Controller
             'lines' => $lines,
         ];
 
+        // A draft quoted on the Beta form reopens in Beta, keeping its quoted
+        // demand bonus (pinned from the sidecar).
+        $isBeta = request()->input('beta') == '1' || $this->betaRecord($business_id, $offer->id) !== null;
+        if ($isBeta) {
+            $input_data['beta'] = '1';
+        }
+
         // Recompute the calculator so the offer ladder / totals panel shows the
         // draft's numbers on load. Best-effort — a calc failure must never block
         // reopening a draft, so fall back to the bare form.
         $calculation = null;
         try {
-            $calculation = $this->calculator->calculate($lines, $input_data);
+            $demand = $isBeta ? $this->demandHook($business_id, $offer->location_id, $offer->id) : null;
+            $calculation = $this->calculator->calculate($lines, $input_data, $demand);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('BFC draft reopen calc failed', ['offer_id' => $offer->id, 'err' => $e->getMessage()]);
         }
@@ -196,7 +218,8 @@ class BuyFromCustomerController extends Controller
         return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'purchaseBudget'))
             ->with('input_data', $input_data)
             ->with('calculation', $calculation)
-            ->with('saved_offer_id', $offer->id);
+            ->with('saved_offer_id', $offer->id)
+            ->with('bfcBeta', $isBeta);
     }
 
     public function calculate(Request $request)
@@ -207,7 +230,7 @@ class BuyFromCustomerController extends Controller
 
         $this->validateRequest($request, false);
         $lines = $request->input('lines', []);
-        $calculation = $this->calculator->calculate($lines, $request->all());
+        $calculation = $this->calculator->calculate($lines, $request->all(), $this->demandFor($request));
 
         // Auto-save a draft on every Calculate so history captures the
         // negotiation even if the cashier doesn't explicitly hit Save Draft.
@@ -242,7 +265,76 @@ class BuyFromCustomerController extends Controller
 
         return view('buy_from_customer.create', compact('locations', 'contacts', 'itemTypes', 'grades', 'calculation', 'purchaseBudget'))
             ->with('input_data', $request->all())
-            ->with('saved_offer_id', $saved->id);
+            ->with('saved_offer_id', $saved->id)
+            ->with('bfcBeta', $this->isBeta($request));
+    }
+
+    /** POST /buy-from-customer/beta/calculate: the Beta form's Calculate. */
+    public function calculateBeta(Request $request)
+    {
+        $request->merge(['beta' => '1']);
+        return $this->calculate($request);
+    }
+
+    // Laravel 5.8 has no $request->boolean() (it 500'd this page once).
+    protected function isBeta(Request $request)
+    {
+        return $request->input('beta') == '1';
+    }
+
+    /** @var BuyDemandService|null shared so its per-request memo spans every calculate() call */
+    protected $demandService = null;
+
+    /**
+     * The calculator's demand hook for a Beta request, null for the normal form.
+     * $pinned reuses the multipliers already quoted on this offer (sidecar), so
+     * the overpay guard on accept compares against the number the cashier was
+     * shown, not one that drifted when the 6h demand cache refreshed.
+     */
+    protected function demandFor(Request $request, $pinned = false)
+    {
+        if (!$this->isBeta($request)) {
+            return null;
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $offerId = $pinned ? (int) $request->input('offer_id', 0) : 0;
+        return $this->demandHook($business_id, $request->input('location_id'), $offerId ?: null);
+    }
+
+    protected function demandHook($business_id, $locationId, $pinOfferId = null)
+    {
+        if ($this->demandService === null) {
+            $this->demandService = app(BuyDemandService::class);
+        }
+        $service = $this->demandService;
+        $quoted = [];
+        if ($pinOfferId) {
+            $prev = $this->betaRecord($business_id, $pinOfferId);
+            foreach ((array) ($prev['lines'] ?? []) as $pl) {
+                $quoted[self::demandLineKey($pl['line_order'] ?? '', $pl['item_type'] ?? '', $pl['title'] ?? '')] = $pl;
+            }
+        }
+        return function ($line, $i) use ($service, $business_id, $locationId, $quoted) {
+            $k = self::demandLineKey($i, $line['item_type'] ?? '', $line['title'] ?? '');
+            if (isset($quoted[$k])) {
+                return ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
+            }
+            return $service->forLine($line, $business_id, $locationId);
+        };
+    }
+
+    protected static function demandLineKey($order, $itemType, $title)
+    {
+        return $order . '|' . $itemType . '|' . mb_strtolower(trim((string) $title));
+    }
+
+    protected function betaRecord($business_id, $offerId)
+    {
+        try {
+            return BuyBetaOffers::get((int) $business_id, (int) $offerId);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
@@ -327,7 +419,7 @@ class BuyFromCustomerController extends Controller
             return $this->saveOffer($request, 'draft', $offerId);
         });
 
-        return redirect()->route('buy-from-customer.create')
+        return redirect()->route($this->isBeta($request) ? 'buy-from-customer.beta' : 'buy-from-customer.create')
             ->with('status', ['success' => 1, 'msg' => 'Draft offer saved successfully.'])
             ->with('saved_offer_id', $saved->id);
     }
@@ -466,7 +558,15 @@ class BuyFromCustomerController extends Controller
 
         $is_admin = auth()->user()->hasRole('Admin#' . $business_id);
 
-        return view('buy_from_customer.history', compact('offers', 'diagnostics', 'is_admin'));
+        // Offers priced on the Beta form get a tag (sidecar, see BuyBetaOffers).
+        $betaOffers = [];
+        try {
+            $betaOffers = BuyBetaOffers::load((int) $business_id);
+        } catch (\Throwable $e) {
+            $betaOffers = [];
+        }
+
+        return view('buy_from_customer.history', compact('offers', 'diagnostics', 'is_admin', 'betaOffers'));
     }
 
     /**
@@ -679,7 +779,9 @@ class BuyFromCustomerController extends Controller
             // require an override reason. Skipped entirely for a donated
             // collection — dropping to $0 is the whole point of "Donated" and
             // doesn't need a manager-approval-style reason typed in.
-            $autoCalc = $this->calculator->calculate($request->input('lines', []), []);
+            // Beta: the demand bonus is part of the system number, so the guard
+            // below compares against the bumped (quoted) figure.
+            $autoCalc = $this->calculator->calculate($request->input('lines', []), [], $this->demandFor($request, true));
             $pm = $request->input('payment_method');
             $autoFinal = $pm === 'store_credit' ? (float) $autoCalc['final_offer_credit'] : (float) $autoCalc['final_offer_cash'];
             // Prefer the amount the cashier typed on the accept step; fall back
@@ -863,7 +965,8 @@ class BuyFromCustomerController extends Controller
         $business_id = request()->session()->get('user.business_id');
         $user_id = request()->session()->get('user.id');
         $contact = $this->resolveSellerContact($request, $business_id, $user_id, $createContact);
-        $calculation = $this->calculator->calculate($request->input('lines', []), $request->all());
+        // Drafts re-price fresh; accept / reject keep the quoted demand bonus.
+        $calculation = $this->calculator->calculate($request->input('lines', []), $request->all(), $this->demandFor($request, $status !== 'draft'));
 
         // If we were handed an existing offer id, reuse it — UNLESS that offer
         // is already finalized (accepted/rejected). Finalized offers are
@@ -976,7 +1079,17 @@ class BuyFromCustomerController extends Controller
 
         $offer->lines()->delete();
         foreach ($calculation['lines'] as $line) {
+            // demand_* are Beta-only and have no columns (they live in the sidecar).
+            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason']);
             $offer->lines()->create($line);
+        }
+
+        if ($this->isBeta($request)) {
+            try {
+                BuyBetaOffers::put((int) $business_id, (int) $offer->id, $calculation);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('BFC beta sidecar write failed', ['offer_id' => $offer->id, 'err' => $e->getMessage()]);
+            }
         }
 
         return $offer->fresh(['lines']);

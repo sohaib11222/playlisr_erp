@@ -165,11 +165,18 @@ class BuyOfferCalculatorService
         return 0.0;
     }
 
-    public function calculate(array $lines, array $offerInputs = [])
+    /**
+     * @param  callable|null  $demand  Beta buy form only: fn(array $line, $index) returning
+     *   ['multiplier' => float, 'level' => string, 'reason' => ?string]. The line's cash
+     *   value is multiplied by it, so the bump is part of the calculated (system) number
+     *   the overpay guard compares against. Null = today's math, unchanged output.
+     */
+    public function calculate(array $lines, array $offerInputs = [], callable $demand = null)
     {
         $rules = $this->getRules();
         $normalized = [];
         $cashTotal = 0;
+        $demandBonus = 0;
 
         foreach ($lines as $i => $line) {
             $itemType = $line['item_type'] ?? '';
@@ -215,10 +222,30 @@ class BuyOfferCalculatorService
             }
 
             $cashLine = round($cashLine, 2);
+            $demandInfo = null;
+            if ($demand !== null) {
+                try {
+                    // A $0 line can't earn a bonus, so skip its lookups.
+                    $raw = $cashLine > 0 ? $demand($line, $i) : null;
+                } catch (\Throwable $e) {
+                    $raw = null;
+                }
+                $raw = is_array($raw) ? $raw : [];
+                // Never pay less, never more than +20%, whatever the hook says.
+                $mult = min(1.20, max(1.0, (float) ($raw['multiplier'] ?? 1.0)));
+                $baseLine = $cashLine;
+                $cashLine = round($cashLine * $mult, 2);
+                $demandBonus += $cashLine - $baseLine;
+                $demandInfo = [
+                    'demand_multiplier' => $mult,
+                    'demand_level' => $mult > 1.0 ? ($raw['level'] ?? 'warm') : 'normal',
+                    'demand_reason' => $raw['reason'] ?? null,
+                ];
+            }
             $cashTotal += $cashLine;
             $creditLine = round($cashLine * (float) $rules['credit_bonus_multiplier'], 2);
 
-            $normalized[] = [
+            $row = [
                 'line_order' => $i,
                 'item_type' => $itemType,
                 'title' => $line['title'] ?? null,
@@ -233,6 +260,10 @@ class BuyOfferCalculatorService
                 'line_credit_total' => $creditLine,
                 'disposition' => $line['disposition'] ?? null,
             ];
+            if ($demandInfo !== null) {
+                $row += $demandInfo;
+            }
+            $normalized[] = $row;
         }
 
         $cashTotal = round($cashTotal, 2);
@@ -263,6 +294,9 @@ class BuyOfferCalculatorService
             'final_offer_cash' => $finalCash,
             'final_offer_credit' => round($finalCash * $creditBonus, 2),
         ];
+        if ($demand !== null) {
+            $result['demand_bonus_cash'] = round($demandBonus, 2);
+        }
 
         return $result;
     }

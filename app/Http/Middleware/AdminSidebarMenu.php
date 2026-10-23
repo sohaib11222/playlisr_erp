@@ -556,7 +556,13 @@ class AdminSidebarMenu
                             $sub->url(
                                 action('BuyFromCustomerController@create'),
                                 'Buy from Customer',
-                                ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer']
+                                ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) != 'beta']
+                            );
+                            // Jon 2026-10-23: experimental form that pays more on low-stock fast sellers.
+                            $sub->url(
+                                route('buy-from-customer.beta'),
+                                'Buy Form (Beta)',
+                                ['icon' => 'fa fas fa-flask', 'active' => request()->segment(1) == 'buy-from-customer' && request()->segment(2) == 'beta']
                             );
                         }
                         if (auth()->user()->can('product.update')) {

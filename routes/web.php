@@ -900,6 +900,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer', 'BuyFromCustomerController@create')->name('buy-from-customer.create');
     Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@create');
     Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');
+    // Beta buy form: pays up to 20% more on lines we're low on and selling fast.
+    Route::get('/buy-from-customer/beta', 'BuyFromCustomerController@createBeta')->name('buy-from-customer.beta');
+    Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@createBeta');
+    Route::post('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@calculateBeta')->name('buy-from-customer.beta.calculate');
     Route::post('/buy-from-customer/autosave', 'BuyFromCustomerController@autosave')->name('buy-from-customer.autosave');
     Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');
     Route::post('/buy-from-customer/accept', 'BuyFromCustomerController@accept')->name('buy-from-customer.accept');
