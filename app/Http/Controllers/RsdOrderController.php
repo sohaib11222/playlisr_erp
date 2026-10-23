@@ -498,6 +498,8 @@ class RsdOrderController extends Controller
             if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[1], $r[0])] = [$r[1], $r[0]];
         }
         $byKey = [];
+        $unmatched = [];
+        $orderedCount = [];
         foreach (glob(storage_path('app/rsd-order-*.json')) ?: [] as $file) {
             $state = json_decode((string) @file_get_contents($file), true);
             if (!is_array($state)) continue;
@@ -506,8 +508,10 @@ class RsdOrderController extends Controller
                 if (!empty($r[0]) && !empty($r[1])) $names[self::key($r[1], $r[0])] = [$r[1], $r[0]];
             }
             foreach ((array) ($state['ordered'] ?? []) as $store => $rows) {
+                $orderedCount[$store] = count((array) $rows);
                 foreach ((array) $rows as $key => $o) {
-                    if ((int) ($o['qty'] ?? 0) <= 0 || !isset($names[$key])) continue;
+                    if ((int) ($o['qty'] ?? 0) <= 0) continue;
+                    if (!isset($names[$key])) { $unmatched[$store] = ($unmatched[$store] ?? 0) + 1; continue; }
                     [$artist, $title] = $names[$key];
                     $title = trim(preg_replace('/\s*\(NOT RSD - REGULAR RELEASE\)\s*/i', '', $title));
                     $byKey[$key] = $byKey[$key] ?? ['artist' => $artist, 'title' => $title, 'stores' => []];
@@ -522,6 +526,7 @@ class RsdOrderController extends Controller
             'date' => config('rsd_order.event_date'),
             'updated' => now()->toDateTimeString(),
             'items' => $items,
+            'check' => ['ordered_rows' => $orderedCount, 'unmatched' => $unmatched],
         ])->header('Access-Control-Allow-Origin', '*')->header('Cache-Control', 'public, max-age=300');
     }
 
