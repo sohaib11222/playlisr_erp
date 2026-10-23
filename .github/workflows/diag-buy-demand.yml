@@ -1,0 +1,65 @@
+# One-off, read-only: why does the Beta buy form give no demand bonus on a
+# bulk type (e.g. 500 used R&B CDs)? Prints, per store and bulk type, the
+# format/genre categories matched and the sold / on-hand numbers behind it.
+# Writes nothing.
+
+name: Diag buy demand (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            cat > /tmp/diag_buy_demand.php <<'PHP'
+            <?php
+            require 'vendor/autoload.php';
+            $app = require 'bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            use Illuminate\Support\Facades\DB;
+            $svc = app(App\Services\BuyDemandService::class);
+            $r = new ReflectionClass($svc);
+            $m = function ($n) use ($r) { $x = $r->getMethod($n); $x->setAccessible(true); return $x; };
+            $tax = $m('taxonomy'); $gids = $m('groupIds'); $soh = $m('soldAndOnHand');
+            foreach (DB::table('business')->pluck('id') as $bid) {
+              list($formats, $subs) = $tax->invoke($svc, $bid);
+              $types = ['cd_rb_jazz_used', 'cd_punk_metal_hiphop_used', 'cd_rock_alt_newwave_used', 'bulk_vinyl_rb_jazz'];
+              foreach ($types as $t) {
+                list($f, $c, $g) = App\Services\BuyDemandService::TYPE_MAP[$t];
+                list($fi, $gi) = $gids->invoke($svc, $bid, $f, $c, $g);
+                echo "== business $bid $t\n  formats: " . implode(', ', array_map(function ($i) use ($formats) { return "$i=" . $formats[$i]; }, $fi)) . "\n";
+                echo "  genres: " . implode(', ', array_map(function ($i) use ($subs) { return "$i=" . $subs[$i]['name']; }, $gi)) . "\n";
+                if (empty($fi)) continue;
+                foreach (DB::table('business_locations')->where('business_id', $bid)->get(['id', 'name']) as $loc) {
+                  list($s, $o) = $gi ? $soh->invoke($svc, $bid, $loc->id, $fi, $gi) : [0, 0];
+                  list($fs, $fo) = $soh->invoke($svc, $bid, $loc->id, $fi, null);
+                  $res = $svc->forLine(['item_type' => $t], $bid, $loc->id);
+                  printf("  loc %d %s: genre sold=%d onhand=%d | format sold=%d onhand=%d | => %s x%.2f %s\n", $loc->id, $loc->name, $s, $o, $fs, $fo, $res['level'], $res['multiplier'], $res['reason']);
+                }
+              }
+              echo "  ALL CD-ish format names: " . implode(' | ', array_filter($formats, function ($n) { return stripos($n, 'cd') !== false || stripos($n, 'compact') !== false; })) . "\n";
+              $cdIds = array_keys(array_filter($formats, function ($n) { return stripos($n, 'cd') !== false; }));
+              echo "  subs under CD formats: " . implode(' | ', array_map(function ($s) { return $s['parent'] . ':' . $s['name'] . '->' . App\Http\Controllers\GenreFixController::canon($s['name']); }, array_filter($subs, function ($s) use ($cdIds) { return in_array($s['parent'], $cdIds); }))) . "\n";
+            }
+            PHP
+            php /tmp/diag_buy_demand.php
+            rm -f /tmp/diag_buy_demand.php
