@@ -46,7 +46,16 @@ class BulkTransferController extends Controller
 
         $history = $this->history($business_id);
 
-        return view('bulk_transfer.index', compact('locations', 'default_from', 'default_to', 'history'));
+        // "Transfer Selected" on the Products page sends ?ids=1,2,3; the list
+        // is filled with their SKUs (a SKU can't be mistaken for another id).
+        $prefill = '';
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->input('ids', ''))));
+        if ($ids) {
+            $prefill = implode("\n", \DB::table('products')->where('business_id', $business_id)
+                ->whereIn('id', array_slice($ids, 0, 500))->pluck('sku')->filter()->all());
+        }
+
+        return view('bulk_transfer.index', compact('locations', 'default_from', 'default_to', 'history', 'prefill'));
     }
 
     /** Step 1: resolve the pasted list, nothing is written. */

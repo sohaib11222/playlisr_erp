@@ -1068,6 +1068,17 @@
                 }
             })
 
+            // Opens Transfer Items with the selected products filled in.
+            $(document).on('click', '#transfer-selected', function(e){
+                e.preventDefault();
+                var selected = getSelectedProductIds();
+                if (!selected || !selected.length) {
+                    swal('@lang("lang_v1.no_row_selected")');
+                    return;
+                }
+                window.location.href = '{{ url('/transfers/bulk') }}?ids=' + selected.join(',');
+            });
+
             $(document).on('click', '#merge-selected', function(e){
                 e.preventDefault();
                 var selected = getSelectedProductIds();

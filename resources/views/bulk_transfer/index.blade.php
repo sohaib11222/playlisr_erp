@@ -88,7 +88,7 @@ body.transfer-v2 .tr-link { color: var(--tr-sel-ink); font-weight: 600; cursor: 
 
     <div class="tr-field" style="margin-bottom: 14px;">
       <label for="tr-list">Paste or scan product IDs / SKUs, one per line (a number like 158831 can be either)</label>
-      <textarea id="tr-list" placeholder="158831&#10;0602455912345 x2&#10;AXM-004,3" autofocus></textarea>
+      <textarea id="tr-list" placeholder="158831&#10;0602455912345 x2&#10;AXM-004,3" autofocus>{{ $prefill ?? '' }}</textarea>
       <div class="tr-hint">One per line. Add a quantity with "SKU x2" or "SKU,2". Without one, it moves 1.</div>
     </div>
 
@@ -194,6 +194,8 @@ body.transfer-v2 .tr-link { color: var(--tr-sel-ink); font-weight: 600; cursor: 
     }).fail(function () { msg('bad', 'Check failed. Try again.'); })
       .always(function () { $b.prop('disabled', false).text('Check list'); });
   });
+  // Came from Transfer Selected: check the list right away.
+  if ($.trim($('#tr-list').val()) !== '') $('#tr-check').trigger('click');
 
   $('#tr-move').on('click', function () {
     if (checkedKey !== key()) return;

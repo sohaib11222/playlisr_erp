@@ -82,6 +82,10 @@
                 &nbsp;
                 <button type="button" class="btn btn-xs" id="merge-selected" style="background:#6f42c1;color:#fff;"><i class="fa fa-compress"></i> Merge Selected</button>
                 @endif
+                @can('purchase.create')
+                &nbsp;
+                <button type="button" class="btn btn-xs btn-info" id="transfer-selected"><i class="fa fa-exchange-alt"></i> Transfer Selected</button>
+                @endcan
                 &nbsp;
                 {!! Form::open(['url' => route('products.bulkSendToPurchase'), 'method' => 'post', 'id' => 'bulk_send_to_purchase_form' ]) !!}
                 {!! Form::hidden('selected_products_for_purchase', null, ['id' => 'selected_products_for_purchase']) !!}
