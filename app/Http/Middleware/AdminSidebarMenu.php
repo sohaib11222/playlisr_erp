@@ -848,6 +848,7 @@ class AdminSidebarMenu
             }
             if ($user->can('product.update')) {
                 $admin_links[] = [url('/products/genre-fix'), 'Genre Fix', 'fa fas fa-tags', request()->segment(1) == 'products' && request()->segment(2) == 'genre-fix'];
+                $admin_links[] = [url('/products/format-check'), 'Format Check (CD vs LP)', 'fa fas fa-compact-disc', request()->segment(1) == 'products' && request()->segment(2) == 'format-check'];
             }
             if ($is_owner) {
                 $admin_links[] = [route('products.merge.index'), 'Merge Duplicates', 'fa fas fa-object-group', request()->segment(1) == 'products' && request()->segment(2) == 'merge'];

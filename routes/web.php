@@ -881,6 +881,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     // Genre Fix (Sarah 10/21): catalog-wide wrong/missing genre fixes, undoable.
     Route::get('/products/genre-fix', 'GenreFixController@index');
+    Route::get('/products/format-check', 'FormatCheckController@index');
+    Route::post('/products/format-check/apply', 'FormatCheckController@apply');
     Route::post('/products/genre-fix/apply', 'GenreFixController@apply');
     Route::post('/products/genre-fix/set-artist', 'GenreFixController@setArtist');
     Route::post('/products/genre-fix/save', 'GenreFixController@saveRecords');

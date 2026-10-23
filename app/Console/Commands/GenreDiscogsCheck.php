@@ -54,7 +54,8 @@ class GenreDiscogsCheck extends Command
         } catch (\Throwable $e) {
             $s = null;
         }
-        return is_array($s) ? $s + ['checked' => [], 'fixed' => 0, 'filled' => 0, 'recent' => []] : ['checked' => [], 'fixed' => 0, 'filled' => 0, 'recent' => []];
+        $empty = ['checked' => [], 'fixed' => 0, 'filled' => 0, 'recent' => [], 'fmt' => []];
+        return is_array($s) ? $s + $empty : $empty;
     }
 
     /** Eligible ids: active music records with a Discogs release, blanks first, then newest. */
@@ -100,7 +101,8 @@ class GenreDiscogsCheck extends Command
         }
 
         $state = self::state();
-        $queue = array_values(array_filter(self::queue($biz, array_keys($formats)), fn($id) => !isset($state['checked'][$id])));
+        // Records checked before the format check (10/23) are read once more for their format.
+        $queue = array_values(array_filter(self::queue($biz, array_keys($formats)), fn($id) => !isset($state['checked'][$id]) || !isset($state['fmt'][$id])));
         if ($this->option('skip-blank')) {
             $blank = array_flip(\DB::table('products')->where('business_id', $biz)->where(function ($q) { $q->whereNull('sub_category_id')->orWhere('sub_category_id', 0); })->pluck('id')->all());
             $queue = array_values(array_filter($queue, fn($id) => !isset($blank[$id])));
@@ -109,7 +111,7 @@ class GenreDiscogsCheck extends Command
 
         foreach ($queue as $id) {
             if (time() >= $deadline || ($limit && $n >= $limit)) break;
-            $p = \DB::table('products')->where('id', $id)->select('id', 'name', 'artist', 'category_id', 'sub_category_id', 'discogs_release_id')->first();
+            $p = \DB::table('products')->where('id', $id)->select('id', 'name', 'artist', 'sku', 'category_id', 'sub_category_id', 'discogs_release_id')->first();
             if (!$p) continue;
             $n++;
             $res = $svc->getReleaseById($p->discogs_release_id);
@@ -135,7 +137,19 @@ class GenreDiscogsCheck extends Command
                 if ($an === 'various') $various = true;
                 if ($an !== '' && preg_match('/\b' . preg_quote($an, '/') . '\b/', $ours)) $match = true;
             }
-            if (!$match && !$various) { $stats['artist_mismatch']++; continue; }
+            if (!$match && !$various) { $stats['artist_mismatch']++; $state['fmt'][$id] = 'x'; continue; }
+
+            // Release format for /products/format-check: vinyl / cd / cassette, "!" when the
+            // release's barcode is our SKU (same record for sure), "x" when it's unclear.
+            $family = \App\Http\Controllers\FormatCheckController::familyOfRelease((array) ($d['formats'] ?? []));
+            $sku = ltrim(preg_replace('/\D/', '', (string) $p->sku), '0');
+            $sameBarcode = false;
+            foreach ((array) ($d['identifiers'] ?? []) as $ident) {
+                if (($ident['type'] ?? '') !== 'Barcode') continue;
+                $b = ltrim(preg_replace('/\D/', '', (string) ($ident['value'] ?? '')), '0');
+                if (strlen($sku) >= 8 && $b === $sku) $sameBarcode = true;
+            }
+            $state['fmt'][$id] = $family ? $family . ($sameBarcode ? '!' : '') : 'x';
 
             $theirs = []; // our genre ids the release supports, most specific first
             foreach (array_merge($styles, $genres) as $g) {

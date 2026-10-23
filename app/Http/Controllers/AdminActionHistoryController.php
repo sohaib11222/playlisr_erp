@@ -502,6 +502,27 @@ class AdminActionHistoryController extends Controller
         // sub_category_id} — each product's BEFORE category refs. Undo restores
         // them, but only for products still sitting in the Audio Gear category we
         // moved them to (so a later manual re-category isn't clobbered).
+        // format-check: rows {id, category_id, sub_category_id, new_category_id};
+        // put each record back unless someone moved it again since.
+        if ($action === 'format-check') {
+            $restored = 0;
+            $skipped = 0;
+            foreach ($data['rows'] as $row) {
+                $cur = DB::table('products')->where('id', $row['id'] ?? 0)->value('category_id');
+                if ((int) $cur !== (int) ($row['new_category_id'] ?? 0)) { $skipped++; continue; }
+                DB::table('products')->where('id', $row['id'])->update(['category_id' => $row['category_id'], 'sub_category_id' => $row['sub_category_id']]);
+                $restored++;
+            }
+            $ids = array_column($data['rows'], 'id');
+            foreach (array_chunk($ids, 300) as $chunk) {
+                try { (new \App\Services\NivessaStockNotifier())->pushProductChanged($chunk); } catch (\Throwable $e) {}
+            }
+            $msg = "Put {$restored} record(s) back in their old format from snapshot {$key}";
+            $msg .= $skipped > 0 ? "; skipped {$skipped} changed since." : '.';
+            return redirect('/admin/admin-action-history')
+                ->with('status', ['success' => 1, 'msg' => $msg]);
+        }
+
         if ($action === 'recategorize-audio-gear') {
             $audioGearId = $data['audio_gear_id'] ?? null;
             $restored = 0;
