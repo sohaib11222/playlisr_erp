@@ -88,6 +88,19 @@ class ProductResource extends JsonResource
             }
         }
 
+        // Every copy is in the hold bin: tell the website until when, so it
+        // can say "On hold until mm/dd/yy" instead of just Out of Stock.
+        if (! request()->input('raw_stock')) {
+            $web_total = 0;
+            foreach ($array['product_variations'] ?? [] as $pv) {
+                foreach ($pv['variations'] ?? [] as $vv) {
+                    foreach ($vv['variation_location_details'] ?? [] as $d) $web_total += (float) ($d['qty_available'] ?? 0);
+                }
+            }
+            $until = \App\Services\ProductHolds::holdUntil((int) $array['business_id'], (int) $array['id']);
+            $array['on_hold_until'] = ($until && $web_total <= 0) ? $until : null;
+        }
+
         return array_diff_key($array, array_flip($this->__excludeFields()));
     }
 

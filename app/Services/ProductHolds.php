@@ -31,6 +31,8 @@ class ProductHolds
     private static $tableExists = null;
     // business_id => ['variation_id:location_id' => held qty]
     private static $held = [];
+    // business_id => [product_id => earliest active hold_until]
+    private static $until = [];
 
     public static function enabled(): bool
     {
@@ -116,6 +118,24 @@ class ProductHolds
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /** Earliest hold-until date of the product's active holds (Y-m-d), or null. */
+    public static function holdUntil(int $businessId, int $productId): ?string
+    {
+        if (!self::enabled()) return null;
+        if (!isset(self::$until[$businessId])) {
+            self::$until[$businessId] = [];
+            try {
+                foreach (DB::table('product_holds')->where('business_id', $businessId)->where('status', 'active')
+                    ->groupBy('product_id')->select('product_id', DB::raw('MIN(hold_until) as until'))->get() as $r) {
+                    self::$until[$businessId][(int) $r->product_id] = (string) $r->until;
+                }
+            } catch (\Throwable $e) {
+                // leave empty: no holds
+            }
+        }
+        return self::$until[$businessId][$productId] ?? null;
     }
 
     /** Active holds past their hold until date (optionally at one store). */
