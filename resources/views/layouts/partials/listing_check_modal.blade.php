@@ -22,7 +22,7 @@
     <div id="lc-card">
         <h3 id="lc-title">Put {{ $lc['items'] == 1 ? 'it' : 'them' }} on the floor now</h3>
         <div class="lc-floor">
-            <p style="margin:0">{{ $lc['items'] == 1 ? 'It is' : 'They are' }} for sale online{{ empty($lc['online']) ? ' once received' : '' }}. Don't leave {{ $lc['items'] == 1 ? 'it' : 'them' }} behind the desk.</p>
+            <p style="margin:0">@if($lc['items'] == 1) This item is now for sale on nivessa.com. Please put it out on the floor right away so we can find it for online orders. Do not keep it behind the desk. @else These items are now for sale on nivessa.com. Please put them out on the floor right away so we can find them for online orders. Do not keep them behind the desk. @endif</p>
         </div>
 
         @foreach(($lc['pairs'] ?? []) as $pair)
