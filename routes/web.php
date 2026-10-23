@@ -2209,6 +2209,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/alliance-invoice-import/apply', 'AmsInvoiceImportController@allianceApply');
     Route::post('/admin/redeye-invoice-import/preview', 'AmsInvoiceImportController@redeyePreview');
     Route::post('/admin/redeye-invoice-import/apply', 'AmsInvoiceImportController@redeyeApply');
+    Route::post('/admin/redeye-invoice-import/auto', 'AmsInvoiceImportController@redeyeAuto');
     // Every distributor invoice vs. its ERP purchase, gaps flagged.
     Route::get('/reports/distributor-invoice-audit', 'DistributorInvoiceAuditController@index');
     Route::post('/reports/distributor-invoice-audit/register', 'DistributorInvoiceAuditController@register');

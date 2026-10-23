@@ -613,6 +613,91 @@ class DistributorInvoiceIntake
         Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
     }
 
+    /**
+     * Redeye has no invoice feed the server can reach (their portal blocks
+     * server logins), so the daily Chrome task reads the invoices on
+     * b2b.redeyeworldwide.com/account-history and posts them here
+     * (/admin/redeye-invoice-import/auto). Redeye bills one invoice per
+     * order line group and ships them in one box, so invoices with the same
+     * date and store become ONE purchase (Ordered) whose notes list every
+     * invoice # and order #. An invoice is skipped if its invoice # or its
+     * order # (the 10/12 order was logged by order #) is already on a purchase.
+     * $invoices: [{invoice, so, date, ship_to, lines: [{upc, item, artist, title, qty, unit_price}]}]
+     */
+    public function importRedeye(array $invoices, $dry = false)
+    {
+        $this->dry = (bool) $dry;
+        $supplier_id = DistributorInvoiceImport::defaultSupplierId($this->business_id, 'redeye');
+        $groups = [];
+        foreach ($invoices as $iv) {
+            $inv = DistributorInvoiceImport::invoiceKey('redeye', $iv['invoice'] ?? '');
+            $so = preg_replace('/\D/', '', (string) ($iv['so'] ?? ''));
+            if ($inv === '') continue;
+            if ($this->alreadyHandled('redeye', $inv) || ($so !== '' && $this->alreadyHandled('redeye', $so))) continue;
+            $store = stripos((string) ($iv['ship_to'] ?? ''), 'pico') !== false ? 'pico' : 'hollywood';
+            $date = substr(DistributorInvoiceImport::normalizeDate($iv['date'] ?? ''), 0, 10);
+            $groups[$date . '|' . $store][] = ['invoice' => $inv, 'so' => $so, 'lines' => (array) ($iv['lines'] ?? [])];
+        }
+
+        foreach ($groups as $gk => $ivs) {
+            [$date, $store] = explode('|', $gk);
+            usort($ivs, function ($a, $b) { return strcmp($a['invoice'], $b['invoice']); });
+            $key = $ivs[0]['invoice'];
+            $invList = implode(', ', array_column($ivs, 'invoice'));
+            $location_id = (int) DB::table('business_locations')->where('business_id', $this->business_id)->where('name', $store)->value('id');
+            if (!$location_id || !$supplier_id) {
+                $this->addLog(['distributor' => 'redeye', 'invoice' => $key, 'status' => 'failed', 'msg' => 'No ' . (!$supplier_id ? 'Redeye supplier contact' : $store . ' store') . ' found.']);
+                continue;
+            }
+            $lines = [];
+            foreach ($ivs as $iv) {
+                foreach ($iv['lines'] as $l) {
+                    $qty = (float) ($l['qty'] ?? 0);
+                    $unit = (float) preg_replace('/[^0-9.]/', '', (string) ($l['unit_price'] ?? 0));
+                    $lines[] = ['upc' => (string) ($l['upc'] ?? ''), 'format' => strtoupper(strtok((string) ($l['item'] ?? ''), '-')),
+                                'description' => trim(($l['artist'] ?? '') . ' / ' . ($l['title'] ?? ''), ' /'),
+                                'qty' => $qty, 'unit_price' => $unit, 'line_total' => round($qty * $unit, 2)];
+                }
+            }
+            $preview = DistributorInvoiceImport::preview($this->business_id, $lines, $supplier_id, $location_id, $date, $key, 'redeye');
+            $take = []; $noCategory = [];
+            foreach ($preview as $l) {
+                if (!$l['matched'] && empty($l['new_product']['category_id'])) { $noCategory[] = $l['upc'] . ' ' . $l['description']; continue; }
+                $take[] = ['variation_id' => $l['variation_id'], 'qty' => $l['qty'], 'unit_price' => $l['unit_price'], 'upc' => $l['upc'],
+                           'description' => $l['description'], 'new_product' => $l['matched'] ? null : $l['new_product']];
+            }
+            $newCount = count(array_filter($take, function ($t) { return !empty($t['new_product']); }));
+            $sum = array_sum(array_map(function ($t) { return $t['qty'] * $t['unit_price']; }, $take));
+            if ($this->dry) {
+                $this->addLog(['distributor' => 'redeye', 'invoice' => $key, 'status' => 'dry-run',
+                    'msg' => sprintf('%s %s: invoices %s; %d lines, %d units, $%.2f, %d new products, %d need a category.',
+                        $date, $store, $invList, count($take), array_sum(array_column($take, 'qty')), $sum, $newCount, count($noCategory))]);
+                continue;
+            }
+            if (!$take) continue;
+            $sos = array_filter(array_column($ivs, 'so'));
+            $notes = 'Redeye invoices ' . $invList . ($sos ? ' / orders ' . implode(', ', array_unique($sos)) : '')
+                . ', one box to ' . ucfirst($store) . ', imported automatically from the Redeye portal';
+            try {
+                $res = DistributorInvoiceImport::apply('redeye', $this->business_id, $this->user_id, $location_id, $supplier_id, $key, $date, $notes, $take);
+            } catch (\Throwable $e) {
+                $this->addLog(['distributor' => 'redeye', 'invoice' => $key, 'status' => 'failed', 'msg' => 'Import failed, nothing was saved: ' . $e->getMessage()]);
+                $this->alert('redeye', $key, 'Import failed, nothing was saved: ' . $e->getMessage());
+                continue;
+            }
+            foreach (array_slice($ivs, 1) as $iv) {
+                Storage::disk('local')->put(DistributorInvoiceImport::sidecarPath('redeye', $iv['invoice']), json_encode(['invoice' => $iv['invoice'], 'transaction_id' => $res['transaction']->id, 'applied_at' => now()->toDateTimeString()]));
+            }
+            $this->addLog(['distributor' => 'redeye', 'invoice' => $key, 'status' => 'imported', 'source' => 'Redeye portal',
+                'transaction_id' => $res['transaction']->id,
+                'msg' => sprintf('Purchase #%d (%s): invoices %s; %d lines, $%.2f, %d new products.', $res['transaction']->id, ucfirst($store), $invList, $res['lines'], $res['total'], count($res['created_products']))]);
+            if ($noCategory) {
+                $this->alert('redeye', $key, 'Imported as purchase #' . $res['transaction']->id . ', but these lines had no category and were left off: ' . implode('; ', $noCategory) . '. Add them on the purchase.');
+            }
+        }
+        return $this->report;
+    }
+
     private function importPdf($distributor, $pdf, $source, $expectedInvoice, $seenKey)
     {
         try {

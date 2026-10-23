@@ -73,6 +73,20 @@ class AmsInvoiceImportController extends Controller
         return $this->runApply($request, 'redeye');
     }
 
+    // Daily Chrome task posts the invoices it read on the Redeye portal.
+    public function redeyeAuto(Request $request)
+    {
+        if (!$this->canAccess()) {
+            return response()->json(['success' => false, 'msg' => 'Unauthorized.'], 403);
+        }
+        $invoices = json_decode((string) $request->input('invoices', '[]'), true);
+        if (!is_array($invoices)) {
+            return response()->json(['success' => false, 'msg' => 'invoices must be a JSON array.'], 422);
+        }
+        $report = (new \App\Services\DistributorInvoiceIntake())->importRedeye($invoices, filter_var($request->input('dry', false), FILTER_VALIDATE_BOOLEAN));
+        return response()->json(['success' => true, 'report' => $report]);
+    }
+
     private function showPage($distributor)
     {
         if (!$this->canAccess()) {
