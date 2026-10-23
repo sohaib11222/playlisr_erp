@@ -114,6 +114,11 @@ class BuyOfferCalculatorService
                     ['under' => 30, 'percent' => 0.15],
                     ['under' => null, 'percent' => 0.20],
                 ]],
+                // Jon 2026-10-23, Beta buy form only: something valuable priced off
+                // recent eBay sold data. We pay (100 - margin)% of the eBay sold
+                // value; the margin comes from how fast the line's category sells
+                // (Settings -> Buy Margins, see BuyMarginSettings). Bulk is unchanged.
+                'ebay_value' => ['label' => 'Valuable item (eBay sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'beta_only' => true],
                 'cassette_player' => ['label' => 'Cassette Player', 'mode' => 'bulk_fixed', 'unit_rate' => 5.00, 'no_grading' => true],
                 'cd_player' => ['label' => 'CD Player', 'mode' => 'bulk_fixed', 'unit_rate' => 6.00, 'no_grading' => true],
                 'flatscreen_tv' => ['label' => 'Flatscreen TV', 'mode' => 'bulk_fixed', 'unit_rate' => 13.00, 'no_grading' => true],
@@ -126,11 +131,15 @@ class BuyOfferCalculatorService
         ];
     }
 
-    public function getItemTypesForDropdown()
+    /** @param bool $beta include Beta-form-only types (eBay value line) */
+    public function getItemTypesForDropdown($beta = false)
     {
         $rules = $this->getRules();
         $output = [];
         foreach ($rules['item_types'] as $key => $config) {
+            if (!$beta && !empty($config['beta_only'])) {
+                continue;
+            }
             $output[$key] = $config['label'];
         }
         // Alphabetize the dropdown by label (natural, case-insensitive) so
@@ -212,6 +221,10 @@ class BuyOfferCalculatorService
 
             if ($cfg['mode'] === 'individual_discogs') {
                 $cashLine = $quantity * $discogsMedian * $gradeMultiplier * $standardMultiplier;
+            } elseif ($cfg['mode'] === 'ebay_margin') {
+                // Filled in by the demand hook below (it knows the margin).
+                $standardMultiplier = 0;
+                $cashLine = 0;
             } elseif ($cfg['mode'] === 'value_percent') {
                 // Value-based: pay a % of the eBay value the cashier entered into
                 // the median-price column. The % steps by value (see value_tiers).
@@ -223,7 +236,30 @@ class BuyOfferCalculatorService
 
             $cashLine = round($cashLine, 2);
             $demandInfo = null;
-            if ($demand !== null) {
+            if ($cfg['mode'] === 'ebay_margin') {
+                // eBay value line: the hook returns the margin for the line's
+                // category speed. No hook (normal form) = default normal margin.
+                // Never a demand bonus on top: the margin is the whole price.
+                try {
+                    $raw = ($demand !== null && $discogsMedian > 0) ? $demand($line, $i) : null;
+                } catch (\Throwable $e) {
+                    $raw = null;
+                }
+                $raw = is_array($raw) ? $raw : [];
+                $floor = (float) BuyMarginSettings::DEFAULTS['floor'];
+                $margin = isset($raw['margin']) ? (float) $raw['margin'] : (float) BuyMarginSettings::DEFAULTS['normal'];
+                $margin = max($floor, min(95.0, $margin));
+                $standardMultiplier = round((100 - $margin) / 100, 4);
+                $cashLine = round($quantity * $discogsMedian * $standardMultiplier, 2);
+                $demandInfo = [
+                    'demand_multiplier' => 1.0,
+                    'demand_level' => 'margin',
+                    'demand_reason' => $raw['reason'] ?? null,
+                    'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
+                    'demand_margin' => $margin,
+                    'demand_tier' => $raw['tier'] ?? 'normal',
+                ];
+            } elseif ($demand !== null) {
                 try {
                     // A $0 line can't earn a bonus, so skip its lookups.
                     $raw = $cashLine > 0 ? $demand($line, $i) : null;

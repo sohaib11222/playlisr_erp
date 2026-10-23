@@ -92,7 +92,7 @@ class BuyFromCustomerController extends Controller
         // Sellers can be customers as well as suppliers (a customer can sell us
         // their collection), so load all contacts (excludes leads), not just suppliers.
         $contacts = Contact::contactDropdown($business_id, false, true, true);
-        $itemTypes = $this->calculator->getItemTypesForDropdown();
+        $itemTypes = $this->calculator->getItemTypesForDropdown($beta === true);
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
 
@@ -224,7 +224,7 @@ class BuyFromCustomerController extends Controller
         // data-attributes, so ask for the flat list. (Sarah 2026-07-20)
         $locations = BusinessLocation::forDropdown($business_id, false);
         $contacts = Contact::contactDropdown($business_id, false, true, true);
-        $itemTypes = $this->calculator->getItemTypesForDropdown();
+        $itemTypes = $this->calculator->getItemTypesForDropdown($isBeta);
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
 
@@ -272,7 +272,7 @@ class BuyFromCustomerController extends Controller
         // Sellers can be customers as well as suppliers (a customer can sell us
         // their collection), so load all contacts (excludes leads), not just suppliers.
         $contacts = Contact::contactDropdown($business_id, false, true, true);
-        $itemTypes = $this->calculator->getItemTypesForDropdown();
+        $itemTypes = $this->calculator->getItemTypesForDropdown($this->isBeta($request));
         $grades = $this->calculator->getGradesForDropdown();
         $purchaseBudget = $this->usedBudgetBar();
 
@@ -330,7 +330,12 @@ class BuyFromCustomerController extends Controller
         return function ($line, $i) use ($service, $business_id, $locationId, $quoted) {
             $k = self::demandLineKey($i, $line['item_type'] ?? '', $line['title'] ?? '', $line['genre'] ?? '');
             if (isset($quoted[$k])) {
-                return ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
+                $q = ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
+                if (isset($quoted[$k]['margin'])) {
+                    $q['margin'] = (float) $quoted[$k]['margin'];
+                    $q['tier'] = $quoted[$k]['tier'] ?? 'normal';
+                }
+                return $q;
             }
             return $service->forLine($line, $business_id, $locationId);
         };
@@ -647,7 +652,8 @@ class BuyFromCustomerController extends Controller
         $offer = BuyCustomerOffer::with(['lines', 'contact', 'createdBy', 'location'])
             ->where('business_id', $business_id)
             ->findOrFail($id);
-        $itemTypes = $this->calculator->getItemTypesForDropdown();
+        // Labels only: include Beta-only types so eBay-value lines are named.
+        $itemTypes = $this->calculator->getItemTypesForDropdown(true);
 
         return view('buy_from_customer.intake_sheet', compact('offer', 'itemTypes'));
     }
@@ -1119,7 +1125,7 @@ class BuyFromCustomerController extends Controller
         $offer->lines()->delete();
         foreach ($calculation['lines'] as $line) {
             // demand_* are Beta-only and have no columns (they live in the sidecar).
-            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre']);
+            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre'], $line['demand_margin'], $line['demand_tier']);
             $offer->lines()->create($line);
         }
 

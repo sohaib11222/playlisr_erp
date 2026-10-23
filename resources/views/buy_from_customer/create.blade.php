@@ -271,6 +271,7 @@
         .bfc-create .bfc-demand-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; text-align: left; }
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
+        .bfc-create .bfc-demand-margin { background: #FFF6D6; color: #6B5300; border: 1px solid #EBD58A; }
         .bfc-create .bfc-demand-normal { background: #F1F1F1; color: #555; border: 1px solid #DDD; font-weight: 500; }
         .bfc-create .bfc-genre { margin-top: 4px; height: 28px; padding: 2px 6px; font-size: 12px; }
         .bfc-create .bfc-demand-bonus { font-size: 15px; font-weight: 700; color: #7A1F1F; }
@@ -355,6 +356,12 @@
         $bfcDemandChip = function ($cl) {
             $lvl = $cl['demand_level'] ?? 'normal';
             $why = (string) ($cl['demand_reason'] ?? '');
+            // eBay-value line: the margin is the price, show it with the category speed.
+            if ($lvl === 'margin') {
+                $m = (float) ($cl['demand_margin'] ?? 0);
+                $label = 'Margin ' . round($m) . '% · pay ' . round(100 - $m) . '% of eBay';
+                return '<span class="bfc-demand-chip bfc-demand-margin">' . e($label . ($why !== '' ? ' · ' . $why : ' · pick a category to price by its sales speed')) . '</span>';
+            }
             // Normal lines still show their sales speed (gray), so the cashier
             // can see why there's no bonus.
             if (!in_array($lvl, ['hot', 'warm'], true)) {
@@ -366,7 +373,13 @@
         };
         // Beta: per item type, the genres a line can be narrowed to ([canon => label]).
         $bfcGenres = [];
+        $bfcMargins = \App\Services\BuyMarginSettings::DEFAULTS;
         if ($bfcBeta) {
+            try {
+                $bfcMargins = \App\Services\BuyMarginSettings::get((int) session('user.business_id'));
+            } catch (\Throwable $e) {
+                $bfcMargins = \App\Services\BuyMarginSettings::DEFAULTS;
+            }
             try {
                 $bfcGenres = app(\App\Services\BuyDemandService::class)->allGenreChoices((int) session('user.business_id'));
             } catch (\Throwable $e) {
@@ -658,12 +671,12 @@ HTML;
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     @php $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
-                                    <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @endif>
+                                    <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @if(($bfcRowDemand['demand_level'] ?? '') === 'margin') data-pay-pct="{{ round((100 - (float) ($bfcRowDemand['demand_margin'] ?? 65)) / 100, 4) }}" @endif @endif>
                                         <td>{!! Form::select("lines[$i][item_type]", $itemTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}
                                         @if($bfcBeta)
                                             <select name="lines[{{ $i }}][genre]" class="form-control bfc-genre" @if(empty($bfcRowGenres)) style="display:none;" @endif>
-                                                <option value="">Genre (optional)</option>
+                                                <option value="">{{ ($line['item_type'] ?? '') === 'ebay_value' ? 'Category (sets the margin)' : 'Genre (optional)' }}</option>
                                                 @foreach($bfcRowGenres as $gk => $gl)
                                                     <option value="{{ $gk }}" @if($gk === $bfcRowGenre) selected @endif>{{ $gl }}</option>
                                                 @endforeach
@@ -1425,18 +1438,38 @@ HTML;
         var BFC_BETA = @json((bool) $bfcBeta);
         var BFC_GENRES = @json((object) $bfcGenres);
         var BFC_DEMAND_URL = @json(route('buy-from-customer.beta.demand'));
+        var BFC_MARGINS = @json($bfcMargins);
+        // eBay-value line: fraction of the eBay value we pay. The server's
+        // margin for the line's category once known, else the normal margin.
+        function bfcPayPct($row) {
+            var p = parseFloat($row.attr('data-pay-pct'));
+            if (isFinite(p) && p > 0) return p;
+            var m = Math.max(parseFloat(BFC_MARGINS.floor) || 0, parseFloat(BFC_MARGINS.normal) || 65);
+            return (100 - m) / 100;
+        }
         // Beta: the genre dropdown under a line's title offers only the genres
         // its item type covers; keep the pick if the new type still has it.
         function bfcFillGenres($row) {
             var $g = $row.find('select.bfc-genre');
             if (!$g.length) return;
             var keep = $g.val() || '';
-            var choices = BFC_GENRES[$row.find('select[name$="[item_type]"]').val()] || {};
+            var type = $row.find('select[name$="[item_type]"]').val();
+            var isEbay = type === 'ebay_value';
+            var choices = BFC_GENRES[type] || {};
             var keys = Object.keys(choices).sort(function (a, b) { return choices[a].localeCompare(choices[b]); });
-            $g.empty().append($('<option>').val('').text('Genre (optional)'));
+            if ($g.hasClass('select2-hidden-accessible')) $g.select2('destroy');
+            $g.empty().append($('<option>').val('').text(isEbay ? 'Category (sets the margin)' : 'Genre (optional)'));
             keys.forEach(function (k) { $g.append($('<option>').val(k).text(choices[k])); });
             $g.val(keys.indexOf(keep) >= 0 ? keep : '').toggle(keys.length > 0);
+            // The eBay category list is every category, so make it searchable.
+            if (isEbay && keys.length && $.fn.select2) $g.select2({ width: '100%' });
         }
+        $(function () {
+            $('#offer_lines_table tbody tr').each(function () {
+                var $g = $(this).find('select.bfc-genre');
+                if ($g.length && $(this).find('select[name$="[item_type]"]').val() === 'ebay_value' && $.fn.select2) $g.select2({ width: '100%' });
+            });
+        });
         // Beta: ask the server for this line's bonus as soon as its type, genre
         // or title changes (same numbers Save and continue will use).
         var bfcDemandSeq = 0;
@@ -1447,12 +1480,20 @@ HTML;
             var genre = $row.find('select.bfc-genre').val() || '';
             var loc = $('#location_id').val() || '';
             $row.find('.bfc-demand-chip').remove();
-            $row.removeAttr('data-demand-mult');
+            $row.removeAttr('data-demand-mult').removeAttr('data-pay-pct');
             if (!type || !loc || (type === 'individual_vinyl' && !title && !genre)) { bfcRecalcAll(); return; }
             var seq = ++bfcDemandSeq;
             $row.data('demand-seq', seq);
             $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre }).done(function (d) {
                 if ($row.data('demand-seq') !== seq || !d) return;
+                if (d.level === 'margin') {
+                    var m = parseFloat(d.margin) || 65;
+                    $row.attr('data-pay-pct', (100 - m) / 100);
+                    $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-margin')
+                        .text('Margin ' + Math.round(m) + '% · pay ' + Math.round(100 - m) + '% of eBay · ' + (d.reason || 'pick a category to price by its sales speed')));
+                    bfcRecalcAll();
+                    return;
+                }
                 var mult = parseFloat(d.multiplier) || 1;
                 var lvl = (mult > 1 && (d.level === 'hot' || d.level === 'warm')) ? d.level : 'normal';
                 $row.attr('data-demand-mult', mult);
@@ -1516,6 +1557,8 @@ HTML;
                 line = qty * median * gm * computeStdMult(median);
             } else if (t.mode === 'value_percent') {
                 line = qty * median * bfcPercentForValue(median, t.value_tiers);
+            } else if (t.mode === 'ebay_margin') {
+                line = qty * median * bfcPayPct($row);
             } else {
                 line = qty * (parseFloat(t.unit_rate) || 0) * gm;
             }
@@ -1538,6 +1581,10 @@ HTML;
                 var f = median + ' × ' + gm + ' × ' + computeStdMult(median).toFixed(2);
                 return qty !== 1 ? (qty + ' × (' + f + ')') : f;
             }
+            if (t.mode === 'ebay_margin') {
+                if (median <= 0) return '';
+                return qty + ' × ' + median + ' × ' + Math.round(bfcPayPct($row) * 100) + '%';
+            }
             if (t.mode === 'value_percent') {
                 if (median <= 0) return '';
                 return qty + ' × ' + median + ' × ' + Math.round(bfcPercentForValue(median, t.value_tiers) * 100) + '%';
@@ -1554,10 +1601,10 @@ HTML;
         function bfcApplyRowState($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
-            var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent');
+            var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin');
             var $median = $row.find('input[name$="[discogs_median_price]"]');
             $median.prop('disabled', !usesValue).toggleClass('bfc-cell-off', !usesValue);
-            $median.attr('placeholder', usesValue ? (t.mode === 'value_percent' ? 'value $' : 'median $') : 'n/a');
+            $median.attr('placeholder', usesValue ? (t.mode === 'ebay_margin' ? 'eBay sold $' : (t.mode === 'value_percent' ? 'value $' : 'median $')) : 'n/a');
             if (!usesValue) { $median.removeClass('bfc-median-missing'); }
             var $grade = $row.find('select[name$="[condition_grade]"]');
             $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);
