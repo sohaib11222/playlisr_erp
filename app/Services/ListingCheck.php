@@ -121,7 +121,9 @@ class ListingCheck
         return DB::table('products as p')
             ->leftJoin('variations as v', function ($j) { $j->on('v.product_id', '=', 'p.id')->whereNull('v.deleted_at'); })
             ->where('p.id', $id)
-            ->first(['p.id', 'p.name', 'p.artist', 'p.sku', 'p.category_id', 'v.sell_price_inc_tax as price']);
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->first(['p.id', 'p.name', 'p.artist', 'p.sku', 'p.category_id', 'v.sell_price_inc_tax as price', 'c.name as category', 'sc.name as sub_category']);
     }
 
     private static function summary($p): array
@@ -129,7 +131,8 @@ class ListingCheck
         $name = (string) $p->name;
         $artist = trim((string) $p->artist);
         $label = ($artist !== '' && stripos($name, $artist) === false) ? $artist . ' - ' . $name : $name;
-        return ['id' => (int) $p->id, 'label' => $label, 'sku' => (string) $p->sku, 'price' => round((float) $p->price, 2)];
+        $category = implode(' - ', array_filter([trim((string) $p->category), trim((string) $p->sub_category)]));
+        return ['id' => (int) $p->id, 'label' => $label, 'category' => $category, 'sku' => (string) $p->sku, 'price' => round((float) $p->price, 2)];
     }
 
     private static function norm($s): string
