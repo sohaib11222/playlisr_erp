@@ -1,0 +1,71 @@
+# READ-ONLY diagnostic: open website orders whose items are stocked at a
+# store and were added to the ERP recently, with the Location text the
+# orders page now shows (Bins or Used New Arrivals). No writes.
+name: Diag new arrivals orders
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: List recent store items on open orders (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
+            $api = new \ReflectionMethod($c, 'websiteApi'); $api->setAccessible(true);
+            $bm = new \ReflectionMethod($c, 'loadBinMap'); $bm->setAccessible(true); $bm->invoke($c);
+            $resp = $api->invoke($c, 'GET', '/erp/orders/console?limit=300&includeArchived=0&payment_status=completed', null, 60);
+            $orders = $resp['data'] ?? [];
+            echo "ORDERS: " . count($orders) . "\n";
+            $erp = \App\Http\Controllers\WebsiteOrdersController::erpLocations($orders);
+            foreach ($orders as $o) {
+              $st = strtolower((string) ($o['order_status'] ?? ''));
+              if (in_array($st, ['delivered', 'cancelled', 'shipped', 'completed', 'refunded'], true)) continue;
+              foreach (($o['items'] ?? []) as $it) {
+                $pid = (int) ($it['product_id']['posProductId'] ?? 0);
+                if (!$pid || empty($erp[$pid])) continue;
+                $e = $erp[$pid];
+                $days = !empty($e['added']) ? floor((time() - strtotime($e['added'])) / 86400) : null;
+                if ($days === null || $days >= 45) continue;
+                $p = \App\Http\Controllers\WebsiteOrdersController::pullParts($it, $e);
+                echo "ROW | #" . ($o['orderNumber'] ?? $o['_id']) . " | " . $st . " | " . ($o['fulfillment_method'] ?? '') . " | " . ($it['product_id']['name'] ?? '') . " | " . $e['genre'] . " | added " . $e['added'] . " (" . $days . "d) | stores " . json_encode($e['stores'] ?: $e['stocked']) . " | LOCATION: " . $p['place'] . ($p['bin'] !== '' ? ' / Bin ' . $p['bin'] : '') . "\n";
+              }
+            }
+            PHP
+            echo "=== done ==="
