@@ -16,7 +16,7 @@
     #lc-card .lc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     #lc-card button { border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer; border: 1px solid #DFD2B3; background: #FFFFFF; color: #1F1B16; }
     #lc-card button.lc-primary { background: #DCEBFF; border-color: #9DC1F0; color: #1F4E8C; }
-    #lc-card .lc-done { width: 100%; margin-top: 6px; background: #2F6B3E; border-color: #2F6B3E; color: #FFFFFF; }
+    #lc-card .lc-done { display: block; margin: 6px 0 0 auto; padding: 5px 14px; font-size: 13px; background: #2F6B3E; border-color: #2F6B3E; color: #FFFFFF; }
 </style>
 <div id="lc-overlay" role="dialog" aria-modal="true" aria-labelledby="lc-title">
     <div id="lc-card">
