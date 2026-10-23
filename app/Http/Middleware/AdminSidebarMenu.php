@@ -68,13 +68,8 @@ class AdminSidebarMenu
                         );
                         $sub->url(
                             action('CustomerPickupController@index'),
-                            'Customer Pickups',
-                            ['icon' => 'fa fas fa-hand-holding', 'active' => request()->segment(1) == 'customer-pickups']
-                        );
-                        $sub->url(
-                            action('HoldController@index'),
-                            'Holds',
-                            ['icon' => 'fa fas fa-pause-circle', 'active' => request()->segment(1) == 'holds']
+                            'Customer Pickups & Holds',
+                            ['icon' => 'fa fas fa-hand-holding', 'active' => in_array(request()->segment(1), ['customer-pickups', 'holds'])]
                         );
                         // Moved from the website admin (Sarah, 2026-10-15).
                         $sub->url(route('wa.warehouse.packer'), 'Packer View', ['icon' => 'fa fas fa-dolly', 'active' => request()->is('website-admin/warehouse/packer*')]);
@@ -357,8 +352,8 @@ class AdminSidebarMenu
 
                             $sub->url(
                                 action('CustomerPickupController@index'),
-                                'Customer Pickups',
-                                ['icon' => 'fa fas fa-box', 'active' => request()->segment(1) == 'customer-pickups']
+                                'Customer Pickups & Holds',
+                                ['icon' => 'fa fas fa-box', 'active' => in_array(request()->segment(1), ['customer-pickups', 'holds'])]
                             );
                         }
 

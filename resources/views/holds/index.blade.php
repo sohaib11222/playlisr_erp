@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Holds')
+@section('title', 'Customer Pickups & Holds')
 
 @section('content')
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -87,9 +87,11 @@ body.holds-v2 .h-empty { padding: 26px 8px; text-align: center; font-size: 14px;
 
 <div class="holds-wrap">
     <div class="holds-head">
-        <h1>Holds</h1>
+        <h1>Customer Pickups &amp; Holds</h1>
         <p>Items set aside in the hold bin for a customer or an employee. A held item is off the website and the POS warns if it gets rung up. Customer holds can run up to {{ $maxCustomer * 24 }} hours, employee holds up to {{ $maxEmployee }} days. When a hold is past due, pull it from the bin and clear it here.</p>
     </div>
+
+    @include('customer_pickup._tabs')
 
     @if(is_string(session('status')))<div class="h-alert ok">{{ session('status') }}</div>@endif
     @if(is_string(session('error')))<div class="h-alert err">{{ session('error') }}</div>@endif

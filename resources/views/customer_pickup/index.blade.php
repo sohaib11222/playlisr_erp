@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Customer Pickups')
+@section('title', 'Customer Pickups & Holds')
 
 @section('content')
 @include('sale_pos.partials._redesign_v2')
@@ -92,13 +92,15 @@ body.pos-v2 .dataTables_wrapper .dataTables_paginate .paginate_button { border-r
 <div class="pickup-wrap">
     <div class="pickup-head">
         <div>
-            <h1>Customer Pickups</h1>
+            <h1>Customer Pickups &amp; Holds</h1>
             <p class="sub">Items held for customers and AMS special orders on their way in. Hit <strong>Arrived</strong> on an on-order item when it lands to alert the customer.</p>
         </div>
         <a href="{{ action('CustomerPickupController@create') }}" class="btn-accent">
             <i class="fa fa-plus"></i> Add Pickup
         </a>
     </div>
+
+    @include('customer_pickup._tabs')
 
     @if(is_string(session('status')))<div class="alert-ok">{{ session('status') }}</div>@endif
     @if(is_string(session('error')))<div class="alert-err">{{ session('error') }}</div>@endif
