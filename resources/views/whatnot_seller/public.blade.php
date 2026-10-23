@@ -41,7 +41,7 @@
 <body>
     <div class="card">
         <h1>{{ $s['seller_name'] }}'s Whatnot sales</h1>
-        <div class="sub">Mark every record you sell on Whatnot here. It comes off the website right away, and your commission is counted from this list.</div>
+        <div class="sub">Mark every record you sell on Whatnot here. It comes off the website right away, and you get paid for every item on this list.</div>
     </div>
 
     @if($flash)
@@ -81,11 +81,32 @@
     </div>
 
     <div class="card">
-        <h2>Your sales since {{ $period_start }}</h2>
+        <h2>3. Log your show hours</h2>
+        <form method="post" action="{{ url('/whatnot-seller/' . $token . '/hours') }}">
+            @csrf
+            <div class="row">
+                <input type="date" name="date" value="{{ now('America/Los_Angeles')->format('Y-m-d') }}" required>
+                <input type="number" name="hours" class="price" step="0.25" min="0.25" max="16" placeholder="Hours" required>
+                <button type="submit" class="add">Log</button>
+            </div>
+            <input type="text" name="note" placeholder="Note (optional)" style="margin-top:8px;">
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Your pay since {{ $period_start }}</h2>
         <div class="totals">
-            <div>Sold<b>${{ number_format($sales, 2) }}</b>{{ count($lines) }} items</div>
-            <div>Your commission<b>{{ $commission === null ? 'Not set' : '$' . number_format($commission, 2) }}</b>{{ $s['commission_pct'] !== null ? rtrim(rtrim(number_format($s['commission_pct'], 2), '0'), '.') . '% of sales' : '' }}</div>
+            <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each</div>
+            <div>Show hours<b>{{ rtrim(rtrim(number_format($pay['hours'], 2), '0'), '.') ?: '0' }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
+            <div>Total<b>${{ number_format($pay['total'], 2) }}</b>sold ${{ number_format($sales, 2) }}</div>
         </div>
+        @if(count($shows))
+            <table style="margin-top:10px;">
+                @foreach($shows as $h)
+                    <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>Show{{ $h['note'] !== '' ? ': ' . $h['note'] : '' }}</td><td class="num">{{ $h['hours'] }} hrs</td></tr>
+                @endforeach
+            </table>
+        @endif
         <table style="margin-top:10px;">
             @forelse($lines as $l)
                 <tr>
@@ -164,7 +185,7 @@
             return '<div class="item"><div class="t">' + esc(c.title) + '</div>'
                 + '<div class="meta">' + esc(c.store) + (c.sticker ? ' · Sticker ' + money(c.sticker) : ' · Not found in the ERP') + '</div>'
                 + '<div class="row" style="margin-top:6px;"><input type="number" class="price" inputmode="decimal" step="0.01" min="0" placeholder="Sold for" data-p="' + i + '" value="' + esc(c.price) + '">'
-                + '<span class="meta" style="flex:1">Whatnot sale price, before fees</span>'
+                + '<span class="meta" style="flex:1">What it actually sold for on Whatnot, before fees</span>'
                 + '<button type="button" class="rm" data-r="' + i + '">Remove</button></div>'
                 + '<div data-w="' + i + '"></div>'
                 + '<input type="text" placeholder="Why so low? (required under ' + MIN_PCT + '% of sticker)" data-n="' + i + '" value="' + esc(c.note) + '" class="' + (needsNote(c) ? '' : 'hidden') + '" style="margin-top:6px;">'

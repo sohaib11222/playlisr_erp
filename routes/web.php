@@ -124,6 +124,7 @@ Route::middleware(['setData'])->group(function () {
     // is the auth. He marks Whatnot sales; owners see /reports/whatnot-seller.
     Route::get('/whatnot-seller/{token}', 'WhatnotSellerController@page')->where('token', '[a-f0-9]{48}');
     Route::get('/whatnot-seller/{token}/search', 'WhatnotSellerController@search')->where('token', '[a-f0-9]{48}')->middleware('throttle:120,1');
+    Route::post('/whatnot-seller/{token}/hours', 'WhatnotSellerController@logHours')->where('token', '[a-f0-9]{48}')->middleware('throttle:20,1');
     Route::post('/whatnot-seller/{token}/sell', 'WhatnotSellerController@sell')->where('token', '[a-f0-9]{48}')->middleware('throttle:20,1');
 });
 
@@ -1391,6 +1392,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/whatnot', 'ReportController@whatnotReport');
     Route::get('/reports/whatnot-seller', 'WhatnotSellerController@dashboard');
     Route::post('/reports/whatnot-seller/settings', 'WhatnotSellerController@saveSettings');
+    Route::post('/reports/whatnot-seller/hours/delete', 'WhatnotSellerController@deleteHours');
     Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
     Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');

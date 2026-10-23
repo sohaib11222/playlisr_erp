@@ -10,9 +10,10 @@
     .wn-table td, .wn-table th { color: #222; }
     .wn-low { color: #a12622; font-weight: 600; }
     .wn-gap { color: #a12622; font-weight: 600; }
+    .wn-up { color: #2b6a2b; font-weight: 600; }
 </style>
 <section class="content-header">
-    <h1>Whatnot Seller <small style="color:#333;">what {{ $s['seller_name'] }} sold, for how much, and his commission</small></h1>
+    <h1>Whatnot Seller <small style="color:#333;">what {{ $s['seller_name'] }} sold, for how much, and his pay</small></h1>
 </section>
 
 <section class="content">
@@ -38,9 +39,9 @@
 
     <div class="row">
         <div class="col-sm-3"><div class="wn-kpi">Sold on Whatnot<b>${{ number_format($total, 2) }}</b>{{ $count }} items, {{ \Carbon\Carbon::parse($from)->format('m/d/y') }} to {{ \Carbon\Carbon::parse($to)->format('m/d/y') }}</div></div>
-        <div class="col-sm-3"><div class="wn-kpi">Average price vs sticker<b class="{{ $avg_pct !== null && $avg_pct < $s['min_pct_of_sticker'] ? 'wn-low' : '' }}">{{ $avg_pct === null ? 'n/a' : $avg_pct . '%' }}</b>${{ number_format($lost_vs_sticker, 2) }} under sticker in total</div></div>
-        <div class="col-sm-3"><div class="wn-kpi">Flagged sales<b class="{{ $flagged ? 'wn-low' : '' }}">{{ $flagged }}</b>too cheap, too new in store, or under cost</div></div>
-        <div class="col-sm-3"><div class="wn-kpi">Commission owed<b>{{ $owed_from === null ? 'Set paid through' : ($owed_commission === null ? 'Set rate' : '$' . number_format($owed_commission, 2)) }}</b>@if($owed_from)on ${{ number_format($owed_sales, 2) }} sold since {{ \Carbon\Carbon::parse($owed_from)->format('m/d/y') }}@else fill in the last day he was paid through below @endif</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">Sold under sticker<b class="{{ $under > 0 ? 'wn-low' : '' }}">${{ number_format($under, 2) }}</b>@if($premium > 0)<span class="wn-up">+${{ number_format($premium, 2) }} over sticker</span>@else average {{ $avg_pct === null ? 'n/a' : $avg_pct . '%' }} of sticker @endif</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">Flagged sales<b class="{{ $flagged ? 'wn-low' : '' }}">{{ $flagged }}</b>under sticker, too new in store, or under cost</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">{{ $s['seller_name'] }}'s pay for these dates<b>${{ number_format($pay['total'], 2) }}</b>{{ (int) $pay['items'] }} items x ${{ number_format($s['per_item'], 2) }} + {{ $pay['hours'] }} hrs x ${{ number_format($s['hourly_rate'], 2) }}</div></div>
     </div>
 
     <div class="row">
@@ -68,14 +69,14 @@
         </div>
         <div class="col-md-7">
             <div class="box box-default">
-                <div class="box-header"><h3 class="box-title">Rules and commission</h3></div>
+                <div class="box-header"><h3 class="box-title">Rules and pay</h3></div>
                 <div class="box-body">
                     <form method="post" action="{{ url('/reports/whatnot-seller/settings') }}">
                         @csrf
                         <div class="row">
                             <div class="col-sm-4 form-group"><label>Seller name</label><input class="form-control" name="seller_name" value="{{ $s['seller_name'] }}"></div>
-                            <div class="col-sm-4 form-group"><label>Commission %</label><input class="form-control" type="number" step="0.01" name="commission_pct" value="{{ $s['commission_pct'] }}" placeholder="not set"></div>
-                            <div class="col-sm-4 form-group"><label>Paid through</label><input class="form-control" type="date" name="paid_through" value="{{ $s['paid_through'] }}"></div>
+                            <div class="col-sm-4 form-group"><label>Per item sold ($)</label><input class="form-control" type="number" step="0.01" name="per_item" value="{{ $s['per_item'] }}"></div>
+                            <div class="col-sm-4 form-group"><label>Per hour ($)</label><input class="form-control" type="number" step="0.01" name="hourly_rate" value="{{ $s['hourly_rate'] }}"></div>
                         </div>
                         <div class="row">
                             <div class="col-sm-4 form-group"><label>Lowest % of sticker</label><input class="form-control" type="number" name="min_pct_of_sticker" value="{{ $s['min_pct_of_sticker'] }}"></div>
@@ -95,6 +96,20 @@
     </div>
 
     <div class="box box-default">
+        <div class="box-header"><h3 class="box-title">Show hours {{ $s['seller_name'] }} logged</h3></div>
+        <div class="box-body">
+            <table class="table table-condensed wn-table">
+                @forelse($shows as $h)
+                    <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ $h['hours'] }} hrs</td><td>{{ $h['note'] }}</td><td>logged {{ \Carbon\Carbon::parse($h['logged_at'])->format('m/d/y g:ia') }}</td>
+                        <td class="text-right"><form method="post" action="{{ url('/reports/whatnot-seller/hours/delete') }}" style="display:inline;">@csrf<input type="hidden" name="id" value="{{ $h['id'] }}"><button class="btn btn-xs btn-default">Remove</button></form></td></tr>
+                @empty
+                    <tr><td>No show hours logged in these dates. He logs them on his page.</td></tr>
+                @endforelse
+            </table>
+        </div>
+    </div>
+
+    <div class="box box-default">
         <div class="box-header"><h3 class="box-title">Every Whatnot item sold</h3> <span style="color:#222;">({{ $by_golden }} marked by {{ $s['seller_name'] }} himself, the rest rung up by staff on the POS)</span></div>
         <div class="box-body table-responsive">
             <table class="table table-striped table-condensed wn-table" id="wn-lines">
@@ -107,11 +122,11 @@
                         <td>{{ $l['store'] }}</td>
                         <td class="text-right">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
                         <td class="text-right">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'], 2) }}</td>
-                        <td class="text-right {{ $l['pct'] !== null && $l['pct'] < $s['min_pct_of_sticker'] ? 'wn-low' : '' }}">{{ $l['pct'] === null ? '' : $l['pct'] . '%' }}</td>
+                        <td class="text-right {{ $l['pct'] !== null && $l['pct'] < 100 ? 'wn-low' : ($l['pct'] !== null && $l['pct'] > 100 ? 'wn-up' : '') }}">{{ $l['pct'] === null ? '' : $l['pct'] . '%' }}</td>
                         <td class="text-right">{{ $l['cost'] ? '$' . number_format($l['cost'], 2) : '' }}</td>
                         <td class="text-right">{{ $l['days_in_store'] }}</td>
                         <td>@if($l['by_golden'])<span class="wn-golden">{{ $l['entered_by'] }}</span>@else{{ $l['entered_by'] }}@endif</td>
-                        <td>@foreach($l['flags'] as $f)<span class="wn-flag">{{ $f }}</span>@endforeach @if($l['note'] !== '') <div>{{ $l['note'] }}</div> @endif</td>
+                        <td>@if($l['sticker'] && $l['sold'] > $l['sticker'])<span class="wn-up">+${{ number_format(($l['sold'] - $l['sticker']) * $l['qty'], 2) }} over sticker</span> @endif @foreach($l['flags'] as $f)<span class="wn-flag">{{ $f }}</span>@endforeach @if($l['note'] !== '') <div>{{ $l['note'] }}</div> @endif</td>
                     </tr>
                 @empty
                     <tr><td colspan="10">No Whatnot sales in this range.</td></tr>

@@ -47,6 +47,9 @@ class WhatnotSellerController extends Controller
         $periodStart = $s['paid_through'] ? Carbon::parse($s['paid_through'])->addDay()->format('Y-m-d') : WS::now()->subDays(60)->format('Y-m-d');
         $lines = WS::soldLines($businessId, $periodStart, WS::now()->format('Y-m-d'));
         $sales = array_sum(array_map(function ($l) { return $l['sold'] * $l['qty']; }, $lines));
+        $items = array_sum(array_map(function ($l) { return $l['qty']; }, $lines));
+        $shows = WS::hoursBetween($periodStart, WS::now()->format('Y-m-d'));
+        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
 
         $stores = DB::table('business_locations')->where('business_id', $businessId)->whereNull('deleted_at')->orderBy('name')->pluck('name', 'id');
 
@@ -55,7 +58,8 @@ class WhatnotSellerController extends Controller
             's'            => $s,
             'lines'        => $lines,
             'sales'        => round($sales, 2),
-            'commission'   => WS::commissionFor($sales),
+            'pay'          => WS::pay($items, $hours),
+            'shows'        => $shows,
             'period_start' => Carbon::parse($periodStart)->format('m/d/y'),
             'stores'       => $stores,
             'flash'        => session('wn_flash'),
@@ -248,6 +252,32 @@ class WhatnotSellerController extends Controller
         return $back->with('wn_flash', ['ok' => empty($skipped), 'msg' => $msg]);
     }
 
+    public function logHours(Request $request, $token)
+    {
+        if (!WS::tokenValid($token)) {
+            abort(404);
+        }
+        $back = redirect('/whatnot-seller/' . $token);
+        $date = (string) $request->input('date');
+        $hours = round((float) $request->input('hours'), 2);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $date > WS::now()->format('Y-m-d') || $date < WS::now()->subDays(90)->format('Y-m-d')) {
+            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Pick the date of the show.']);
+        }
+        if ($hours <= 0 || $hours > 16) {
+            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Hours should be between 0 and 16.']);
+        }
+        $rows = WS::hours();
+        $rows[] = [
+            'id' => bin2hex(random_bytes(6)),
+            'date' => $date,
+            'hours' => $hours,
+            'note' => mb_substr(trim((string) $request->input('note', '')), 0, 120),
+            'logged_at' => WS::now()->format('Y-m-d H:i'),
+        ];
+        WS::saveHours($rows);
+        return $back->with('wn_flash', ['ok' => true, 'msg' => 'Logged ' . rtrim(rtrim(number_format($hours, 2), '0'), '.') . ' hours for ' . Carbon::parse($date)->format('m/d/y') . '.']);
+    }
+
     // ---------------------------------------------------------------- owners
 
     private function ensureAccess()
@@ -270,6 +300,7 @@ class WhatnotSellerController extends Controller
         $lines = WS::soldLines($businessId, $from, $to);
 
         $total = 0.0; $stickerTotal = 0.0; $soldWithSticker = 0.0; $flagged = 0; $byGolden = 0; $count = 0;
+        $under = 0.0; $premium = 0.0;
         $byMonth = [];
         foreach ($lines as $l) {
             $amt = $l['sold'] * $l['qty'];
@@ -278,6 +309,9 @@ class WhatnotSellerController extends Controller
             if ($l['sticker']) {
                 $stickerTotal += $l['sticker'] * $l['qty'];
                 $soldWithSticker += $amt;
+                $diff = ($l['sold'] - $l['sticker']) * $l['qty'];
+                if ($diff < -0.009) { $under += -$diff; }
+                if ($diff > 0.009) { $premium += $diff; }
             }
             if ($l['flags']) { $flagged++; }
             if ($l['by_golden']) { $byGolden++; }
@@ -300,13 +334,8 @@ class WhatnotSellerController extends Controller
             ];
         }
 
-        $owedFrom = $s['paid_through'] ? Carbon::parse($s['paid_through'])->addDay()->format('Y-m-d') : null;
-        $owedSales = 0.0;
-        if ($owedFrom) {
-            foreach (WS::soldLines($businessId, $owedFrom, WS::now()->format('Y-m-d')) as $l) {
-                $owedSales += $l['sold'] * $l['qty'];
-            }
-        }
+        $shows = WS::hoursBetween($from, $to);
+        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
 
         if (empty($s['token']) || empty($s['business_id'])) {
             $s['token'] = $s['token'] ?: bin2hex(random_bytes(24));
@@ -325,14 +354,13 @@ class WhatnotSellerController extends Controller
             'total' => round($total, 2),
             'count' => $count,
             'avg_pct' => $stickerTotal > 0 ? round($soldWithSticker / $stickerTotal * 100) : null,
-            'lost_vs_sticker' => round($stickerTotal - $soldWithSticker, 2),
+            'under' => round($under, 2),
+            'premium' => round($premium, 2),
             'flagged' => $flagged,
             'by_golden' => $byGolden,
             'month_rows' => $monthRows,
-            'owed_from' => $owedFrom,
-            'owed_sales' => round($owedSales, 2),
-            'owed_commission' => WS::commissionFor($owedSales),
-            'commission_period' => WS::commissionFor($total),
+            'pay' => WS::pay($count, $hours),
+            'shows' => $shows,
             'users' => $users,
         ]);
     }
@@ -346,7 +374,8 @@ class WhatnotSellerController extends Controller
         $data = $request->validate([
             'seller_name' => 'required|string|max:60',
             'user_id' => 'nullable|integer',
-            'commission_pct' => 'nullable|numeric|min:0|max:100',
+            'per_item' => 'required|numeric|min:0|max:100',
+            'hourly_rate' => 'required|numeric|min:0|max:500',
             'min_pct_of_sticker' => 'required|integer|min:0|max:100',
             'min_days_in_store' => 'required|integer|min:0|max:365',
             'paid_through' => 'nullable|date_format:Y-m-d',
@@ -355,7 +384,8 @@ class WhatnotSellerController extends Controller
         $s['business_id'] = (int) $request->session()->get('user.business_id');
         $s['seller_name'] = $data['seller_name'];
         $s['user_id'] = !empty($data['user_id']) ? (int) $data['user_id'] : null;
-        $s['commission_pct'] = ($data['commission_pct'] ?? '') === '' ? null : (float) $data['commission_pct'];
+        $s['per_item'] = (float) $data['per_item'];
+        $s['hourly_rate'] = (float) $data['hourly_rate'];
         $s['min_pct_of_sticker'] = (int) $data['min_pct_of_sticker'];
         $s['min_days_in_store'] = (int) $data['min_days_in_store'];
         $s['paid_through'] = $data['paid_through'] ?? null;
@@ -364,5 +394,13 @@ class WhatnotSellerController extends Controller
         }
         WS::saveSettings($s);
         return redirect('/reports/whatnot-seller')->with('status', ['success' => 1, 'msg' => $request->input('new_link') ? 'Saved. Old link no longer works, send him the new one.' : 'Saved.']);
+    }
+
+    public function deleteHours(Request $request)
+    {
+        $this->ensureAccess();
+        $id = (string) $request->input('id');
+        WS::saveHours(array_values(array_filter(WS::hours(), function ($h) use ($id) { return $h['id'] !== $id; })));
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Removed that show.']);
     }
 }

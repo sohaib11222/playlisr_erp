@@ -24,6 +24,7 @@ class WhatnotSeller
 {
     const SETTINGS_FILE = 'whatnot-seller/settings.json';
     const NOTE_TAG = 'WHATNOT-SELLER';
+    const HOURS_FILE = 'whatnot-seller/hours.json';
 
     public static function settings(): array
     {
@@ -40,7 +41,8 @@ class WhatnotSeller
             'token'              => null,
             'seller_name'        => 'Golden',
             'user_id'            => null,   // ERP user the sales are credited to (optional)
-            'commission_pct'     => null,   // % of the Whatnot sale price; null = not set yet
+            'per_item'           => 0.50,   // Sarah 10/23: $0.50 per item sold
+            'hourly_rate'        => 18,     // plus $18/hour on stream
             'min_pct_of_sticker' => 70,     // below this % of sticker = flagged
             'min_days_in_store'  => 30,     // items newer than this stay in the store
             'paid_through'       => null,   // Y-m-d, last day already paid out
@@ -181,6 +183,8 @@ class WhatnotSeller
             $flags = [];
             if ($pct !== null && $pct < (int) $s['min_pct_of_sticker']) {
                 $flags[] = 'Sold at ' . $pct . '% of sticker';
+            } elseif ($sticker && $sold < $sticker - 0.009) {
+                $flags[] = 'Under sticker by $' . number_format($sticker - $sold, 2);
             }
             if ($days === 0) {
                 $flags[] = 'Added to ERP the day it sold';
@@ -231,9 +235,37 @@ class WhatnotSeller
             })->all();
     }
 
-    public static function commissionFor(float $sales): ?float
+    /** Shows Golden logged: [{id, date (Y-m-d), hours, note, logged_at}]. */
+    public static function hours(): array
     {
-        $pct = self::settings()['commission_pct'];
-        return $pct === null || $pct === '' ? null : round($sales * (float) $pct / 100, 2);
+        try {
+            if (Storage::disk('local')->exists(self::HOURS_FILE)) {
+                return json_decode(Storage::disk('local')->get(self::HOURS_FILE), true) ?: [];
+            }
+        } catch (\Throwable $e) {
+        }
+        return [];
+    }
+
+    public static function saveHours(array $rows): void
+    {
+        usort($rows, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        Storage::disk('local')->put(self::HOURS_FILE, json_encode(array_values($rows), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    public static function hoursBetween(string $from, string $to): array
+    {
+        return array_values(array_filter(self::hours(), function ($h) use ($from, $to) {
+            return $h['date'] >= $from && $h['date'] <= $to;
+        }));
+    }
+
+    /** $0.50 per item + $18 per hour (Sarah 2026-10-23). */
+    public static function pay(float $items, float $hours): array
+    {
+        $s = self::settings();
+        $itemPay = round($items * (float) $s['per_item'], 2);
+        $hourPay = round($hours * (float) $s['hourly_rate'], 2);
+        return ['items' => $items, 'hours' => $hours, 'item_pay' => $itemPay, 'hour_pay' => $hourPay, 'total' => round($itemPay + $hourPay, 2)];
     }
 }
