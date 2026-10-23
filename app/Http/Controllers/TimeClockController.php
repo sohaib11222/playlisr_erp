@@ -583,7 +583,7 @@ class TimeClockController extends Controller
         $settings['require_at_store'] = $request->input('require_at_store') === '1';
         $settings['require_schedule'] = $request->input('require_schedule') === '1';
         $settings['schedule_window_min'] = max(1, min(240, (int) $request->input('schedule_window_min', TC::DEFAULT_WINDOW_MIN) ?: TC::DEFAULT_WINDOW_MIN));
-        $settings['window_v2'] = true;
+        $settings['window_v3'] = true;
         TC::saveSettings($settings);
         $msg = 'Store settings saved.';
         if ($bad) { $msg .= ' Skipped these because they are not IP addresses: ' . implode(', ', $bad) . '.'; }

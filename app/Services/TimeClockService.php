@@ -54,7 +54,7 @@ class TimeClockService
     // Clock-in more than this many minutes after the shift start is "late".
     const LATE_GRACE_MIN = 15;
     // Clock-in opens this many minutes before a shift (editable on settings).
-    const DEFAULT_WINDOW_MIN = 5;
+    const DEFAULT_WINDOW_MIN = 10;
     // Clock-out more than this many minutes after the shift end is flagged
     // "Stayed N min past shift" on Timecards and Payroll (hours unchanged).
     const STAYED_GRACE_MIN = 15;
@@ -178,15 +178,15 @@ class TimeClockService
     }
 
     /**
-     * Minutes before a scheduled start that clock-in opens (default 5, Sarah
-     * 10/13: no paying for unneeded early time). A saved 15 from before the
-     * change was just the old default.
+     * Minutes before a scheduled start that clock-in opens (default 10, Sarah
+     * 10/23, was 5 since 10/13). Values saved before 10/23 give way to the
+     * new default until settings are saved again.
      */
     public static function scheduleWindow(): int
     {
         $s = self::settings();
         $v = (int) ($s['schedule_window_min'] ?? self::DEFAULT_WINDOW_MIN);
-        if ($v === 15 && empty($s['window_v2'])) {
+        if (empty($s['window_v3'])) {
             $v = self::DEFAULT_WINDOW_MIN;
         }
         return $v > 0 ? min($v, 240) : self::DEFAULT_WINDOW_MIN;
