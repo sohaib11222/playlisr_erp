@@ -29,7 +29,7 @@
         <summary style="cursor:pointer;font-size:15px;color:#1e40af;">See what will change</summary>
         <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;">
           <tr><th style="{{ $td }}text-align:left;">Record</th><th style="{{ $td }}text-align:left;">Now</th><th style="{{ $td }}text-align:left;">Moves to</th><th style="{{ $td }}text-align:left;">How we know</th><th style="{{ $td }}text-align:right;">In stock</th></tr>
-          @foreach(array_slice($fix, 0, 500) as $r)
+          @foreach($fix as $r)
             <tr>
               <td style="{{ $td }}"><a href="{{ url('/products/' . $r['id'] . '/edit') }}" target="_blank">{{ $r['name'] }}</a></td>
               <td style="{{ $td }}">{{ $r['old_name'] }}</td>
@@ -39,7 +39,6 @@
             </tr>
           @endforeach
         </table>
-        @if(count($fix) > 500)<p style="margin:6px 0 0;">First 500 shown.</p>@endif
       </details>
     @endif
   </div>
