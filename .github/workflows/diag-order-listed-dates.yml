@@ -1,0 +1,76 @@
+# READ-ONLY diagnostic: for one website order, each item's "Listed" date
+# sources (website posCreatedAt / createdAt, ERP product created_at and who
+# made it, first purchase/stock-in line). No writes.
+name: Diag order listed dates
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: "nivessa.com order Mongo _id"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Item listed dates (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_ORDER_ID: ${{ github.event.inputs.order_id }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: DIAG_ORDER_ID
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_ORDER_ID
+            php artisan tinker --no-ansi <<'PHP'
+            $id = trim((string) getenv('DIAG_ORDER_ID'));
+            $c = app(\App\Http\Controllers\WebsiteOrdersController::class);
+            $api = new \ReflectionMethod($c, 'websiteApi'); $api->setAccessible(true);
+            $one = $api->invoke($c, 'GET', '/erp/orders/console?order=' . $id, null, 30);
+            $o = collect($one['data'] ?? [])->firstWhere('_id', $id);
+            if (!$o) { echo "NOT FOUND\n"; return; }
+            echo "ORDER #" . ($o['orderNumber'] ?? '') . " placed " . ($o['createdAt'] ?? '') . "\n";
+            foreach (($o['items'] ?? []) as $it) {
+              $pp = $it['product_id'] ?? [];
+              $pid = (int) ($pp['posProductId'] ?? 0);
+              echo "ITEM | " . ($pp['name'] ?? ($it['product_name'] ?? '')) . " | posProductId " . $pid . " | web posCreatedAt " . ($pp['posCreatedAt'] ?? '-') . " | web createdAt " . ($pp['createdAt'] ?? '-') . "\n";
+              if (!$pid) continue;
+              $p = \DB::table('products as p')->leftJoin('users as u', 'u.id', '=', 'p.created_by')->where('p.id', $pid)->select('p.sku', 'p.created_at', 'p.updated_at', 'u.first_name', 'u.last_name')->first();
+              echo "  ERP | sku " . ($p->sku ?? '') . " | created " . ($p->created_at ?? '') . " by " . trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? '')) . "\n";
+              $pl = \DB::table('purchase_lines as pl')->join('transactions as t', 't.id', '=', 'pl.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->where('pl.product_id', $pid)->orderBy('t.transaction_date')->select('t.type', 't.ref_no', 't.transaction_date', 't.created_at', 'bl.name as loc', 'pl.quantity')->get();
+              foreach ($pl as $r) echo "  STOCK-IN | " . $r->type . " " . $r->ref_no . " | date " . $r->transaction_date . " | entered " . $r->created_at . " | " . $r->loc . " | qty " . $r->quantity . "\n";
+            }
+            PHP
+            echo "=== done ==="
