@@ -124,6 +124,8 @@
 
         @include('layouts.partials.help-assistant')
 
+        @include('layouts.partials.listing_check_modal')
+
         <div class="modal fade view_modal" tabindex="-1" role="dialog"
         aria-labelledby="gridSystemModalLabel"></div>
 

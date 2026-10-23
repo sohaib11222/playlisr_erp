@@ -545,10 +545,17 @@ class PurchaseController extends Controller
             $this->transactionUtil->activityLog($transaction, 'added');
 
             DB::commit();
-            
+
             $output = ['success' => 1,
                             'msg' => __('purchase.purchase_add_success')
                         ];
+
+            // Floor reminder + "meant to edit an existing one?" popup on the
+            // next page (layouts/partials/listing_check_modal).
+            $listingCheck = \App\Services\ListingCheck::forPurchase($transaction, auth()->id());
+            if ($listingCheck) {
+                $request->session()->flash('listing_check', $listingCheck);
+            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Let Laravel render validation errors back to the form. The
             // generic Exception catch below was previously swallowing these
