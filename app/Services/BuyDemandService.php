@@ -44,6 +44,11 @@ class BuyDemandService
     const TITLE_WARM_MAX_ON_HAND = 0;
     const TITLE_MAX_MATCHES = 50;
 
+    // eBay-value lines: a category selling slower than this vs its format (or
+    // the whole store) gets the "slow" margin.
+    const SLOW_MAX_SPEED = 0.8;
+    const EBAY_TYPE = 'ebay_value';
+
     const HOT_MULTIPLIER = 1.20;
     const WARM_MULTIPLIER = 1.10;
 
@@ -126,6 +131,10 @@ class BuyDemandService
                 return self::normal();
             }
 
+            if ($itemType === self::EBAY_TYPE) {
+                return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
+            }
+
             $choices = $this->genreChoices($businessId, $itemType);
             $genre = (string) ($line['genre'] ?? '');
             $genre = isset($choices[$genre]) ? $genre : '';
@@ -194,10 +203,86 @@ class BuyDemandService
         return count($out) >= 2 ? $out : [];
     }
 
+    /**
+     * eBay-value lines can be any category: [c:<id> => "Format" or "Format > Genre"].
+     * Gear/apparel/etc. are top-level categories here too, so they can be picked.
+     */
+    public function categoryChoices($businessId)
+    {
+        list($formats, $subs) = $this->taxonomy((int) $businessId);
+        $out = [];
+        foreach ($formats as $id => $name) {
+            $out['c:' . $id] = trim($name);
+        }
+        foreach ($subs as $id => $sub) {
+            if (isset($formats[$sub['parent']])) {
+                $out['c:' . $id] = trim($formats[$sub['parent']]) . ' › ' . trim($sub['name']);
+            }
+        }
+        asort($out, SORT_NATURAL | SORT_FLAG_CASE);
+        return $out;
+    }
+
+    /**
+     * An eBay-value line's margin: how fast its category sells at the store
+     * (a genre vs its format, a top-level category vs the whole store) picks
+     * the fast / normal / slow margin from Settings -> Buy Margins. No
+     * category picked = normal. Never a demand multiplier: the margin is the
+     * whole price.
+     */
+    protected function ebayMargin($businessId, $locationId, $pick)
+    {
+        $tier = 'normal';
+        $reason = null;
+        list($formats, $subs) = $this->taxonomy($businessId);
+        $id = strpos($pick, 'c:') === 0 ? (int) substr($pick, 2) : 0;
+        if ($id > 0 && (isset($formats[$id]) || isset($subs[$id]))) {
+            $key = 'e:' . $businessId . ':' . $locationId . ':' . $id;
+            if (!isset($this->memo[$key])) {
+                $this->memo[$key] = Cache::remember('buydemand3:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
+                    if (isset($subs[$id])) {
+                        list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], [$id]);
+                        list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], null);
+                        $label = trim($subs[$id]['name']);
+                        $vs = 'the rest of ' . trim($formats[$subs[$id]['parent']] ?? 'this format');
+                    } else {
+                        list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$id], null);
+                        list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, null, null);
+                        $label = trim($formats[$id]);
+                        $vs = 'the store';
+                    }
+                    $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
+                    $baseTurn = $bOnHand > 0 ? $bSold / $bOnHand : 0;
+                    $speed = $baseTurn > 0 ? $turn / $baseTurn : 0;
+                    $tier = 'normal';
+                    if ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
+                        $tier = 'fast';
+                    } elseif ($onHand > 0 && $speed < self::SLOW_MAX_SPEED) {
+                        $tier = 'slow';
+                    }
+                    $reason = sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
+                    if ($speed > 0 && is_finite($speed)) {
+                        $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $vs);
+                    }
+                    return ['tier' => $tier, 'reason' => $reason];
+                });
+            }
+            $tier = $this->memo[$key]['tier'];
+            $reason = $this->memo[$key]['reason'];
+        }
+        return [
+            'multiplier' => 1.0,
+            'level' => 'margin',
+            'tier' => $tier,
+            'margin' => BuyMarginSettings::marginFor($businessId, $tier),
+            'reason' => $reason,
+        ];
+    }
+
     /** genreChoices() for every type that has any, for the Beta form's dropdowns. */
     public function allGenreChoices($businessId)
     {
-        $out = [];
+        $out = [self::EBAY_TYPE => $this->categoryChoices($businessId)];
         foreach (array_merge(array_keys(self::TYPE_MAP), array_keys(self::OPEN_TYPES)) as $t) {
             $c = $this->genreChoices($businessId, $t);
             if (!empty($c)) {
@@ -259,8 +344,8 @@ class BuyDemandService
         return $this->result($level, $reason);
     }
 
-    /** Units sold in the window and on hand now at the store; $genreIds null = whole format. */
-    protected function soldAndOnHand($businessId, $locationId, array $formatIds, $genreIds)
+    /** Units sold in the window and on hand now at the store; $genreIds null = whole format, $formatIds null = whole store. */
+    protected function soldAndOnHand($businessId, $locationId, $formatIds, $genreIds)
     {
         $sold = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
@@ -270,14 +355,16 @@ class BuyDemandService
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->where('t.transaction_date', '>=', now()->subDays(self::GROUP_WINDOW_DAYS))
-            ->whereNull('tsl.parent_sell_line_id')
-            ->whereIn('p.category_id', $formatIds);
+            ->whereNull('tsl.parent_sell_line_id');
         $onHand = DB::table('variation_location_details as vld')
             ->join('products as p', 'p.id', '=', 'vld.product_id')
             ->where('p.business_id', $businessId)
             ->where('vld.location_id', $locationId)
-            ->where('vld.qty_available', '>', 0)
-            ->whereIn('p.category_id', $formatIds);
+            ->where('vld.qty_available', '>', 0);
+        if ($formatIds !== null) {
+            $sold->whereIn('p.category_id', $formatIds);
+            $onHand->whereIn('p.category_id', $formatIds);
+        }
         if ($genreIds !== null) {
             $sold->whereIn('p.sub_category_id', $genreIds);
             $onHand->whereIn('p.sub_category_id', $genreIds);

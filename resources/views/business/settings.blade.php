@@ -35,6 +35,7 @@
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.sms_settings')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.reward_point_settings')</a>
                     <a href="#" class="list-group-item text-center">Store Credit Rewards</a>
+                    <a href="#" class="list-group-item text-center">Buy Margins</a>
                     <a href="#" class="list-group-item text-center">Gift Cards & Loyalty</a>
                     <a href="#" class="list-group-item text-center">Integrations</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.modules')</a>
@@ -83,6 +84,7 @@
                 <!-- tab 11 end -->
                 <!-- store credit rewards tab -->
                 @include('business.partials.settings_store_credit_reward')
+                @include('business.partials.settings_buy_margins')
                 <!-- store credit rewards tab end -->
                 <!-- tab 12 start -->
                 @include('business.partials.settings_gift_cards_loyalty')
