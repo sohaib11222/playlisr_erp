@@ -299,8 +299,11 @@ class CustomerWantController extends Controller
 
         $notifyResults = [];
         $contact = $want->contact_id ? Contact::find($want->contact_id) : null;
+        // Register the cashier is on, so the text names the store that actually has it.
+        $foundLocId = (int) ($request->input('location_id') ?: $request->session()->get('user.business_location_id') ?: 0);
+        $foundAt = $foundLocId ? optional(\App\BusinessLocation::find($foundLocId))->name : null;
         foreach ($channels as $ch) {
-            $notifyResults[$ch] = $this->sendWantNotification($ch, $want, $contact);
+            $notifyResults[$ch] = $this->sendWantNotification($ch, $want, $contact, $foundAt);
         }
 
         return response()->json([
@@ -314,7 +317,7 @@ class CustomerWantController extends Controller
      * Dispatch one notification channel for a fulfilled want.
      * Returns ['ok' => bool, 'msg' => string].
      */
-    private function sendWantNotification(string $channel, CustomerWant $want, ?Contact $contact): array
+    private function sendWantNotification(string $channel, CustomerWant $want, ?Contact $contact, ?string $storeName = null): array
     {
         if (!$contact) {
             return ['ok' => false, 'msg' => 'No contact linked to this want.'];
@@ -324,13 +327,11 @@ class CustomerWantController extends Controller
             if (empty($contact->email)) {
                 return ['ok' => false, 'msg' => 'Customer has no email on file.'];
             }
-            try {
-                \Mail::to($contact->email)->send(new \App\Mail\CustomerWantMatched($want, $contact));
-                return ['ok' => true, 'msg' => 'Emailed ' . $contact->email];
-            } catch (\Throwable $e) {
-                \Log::warning('CustomerWant email failed: ' . $e->getMessage());
-                return ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
-            }
+            $r = \App\Services\WantNotice::email($contact->email, 'want', trim((string) ($contact->first_name ?? '')),
+                \App\Services\WantNotice::store($storeName ?? optional($want->location)->name),
+                ['artist' => trim((string) $want->artist), 'title' => trim((string) $want->title), 'format' => (string) $want->format]);
+            if (!$r['ok']) \Log::warning('CustomerWant email failed: ' . $r['msg']);
+            return $r;
         }
 
         if ($channel === 'sms') {
@@ -346,12 +347,13 @@ class CustomerWantController extends Controller
             if ($title !== '' && $artist !== '') $label .= ' by ' . $artist;
             if (!empty($want->format)) $label .= ' (' . $want->format . ')';
             // No hold promise (Sarah, 2026-10-14); same wording as the 4pm auto-match.
-            $msg = \App\Services\WantNotice::text($first, $label, \App\Services\WantNotice::store(optional($want->location)->name), null);
+            // The store where the cashier found it (Sarah 10/23), else the want's store.
+            $msg = \App\Services\WantNotice::text($first, $label, \App\Services\WantNotice::store($storeName ?? optional($want->location)->name), null);
 
             try {
                 // Send from the store's own Quo line, like the other ERP texts.
                 $sms = app(\App\Services\OpenPhoneService::class);
-                $result = $sms->sendFromStore(optional($want->location)->name, $phone, $msg);
+                $result = $sms->sendFromStore($storeName ?? optional($want->location)->name, $phone, $msg);
             } catch (\Throwable $e) {
                 $result = ['success' => false, 'msg' => 'Text failed: ' . $e->getMessage()];
             }

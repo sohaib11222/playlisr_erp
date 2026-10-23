@@ -66,13 +66,12 @@ class AmsArrivalNotifier
             if (empty($email)) {
                 return ['ok' => false, 'msg' => 'Customer has no email on file.'];
             }
-            try {
-                \Mail::to($email)->send(new \App\Mail\CustomerPickupArrived($pickup, $contact, $label, $storeName));
-                return ['ok' => true, 'msg' => 'Emailed ' . $email];
-            } catch (\Throwable $e) {
-                \Log::warning('CustomerPickup email failed: ' . $e->getMessage());
-                return ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
-            }
+            $r = \App\Services\WantNotice::email($email, 'special', trim((string) ($contact->first_name ?? '')),
+                \App\Services\WantNotice::store($storeName),
+                ['artist' => trim((string) optional($pickup->product)->artist), 'title' => trim((string) optional($pickup->product)->name) ?: 'Your special order',
+                 'image' => (string) (optional($pickup->product)->image_url ?? '')]);
+            if (!$r['ok']) \Log::warning('CustomerPickup email failed: ' . $r['msg']);
+            return $r;
         }
 
         if ($channel === 'sms') {
@@ -81,18 +80,10 @@ class AmsArrivalNotifier
                 return ['ok' => false, 'msg' => 'Customer has no phone on file.'];
             }
             $first = trim((string) ($contact->first_name ?? ''));
-            $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
             $artist = trim((string) optional($pickup->product)->artist);
             $name = trim((string) optional($pickup->product)->name);
-            if ($name !== '' && $artist !== '') {
-                $what = 'Your ' . $name . ' by ' . $artist;
-            } elseif ($name !== '') {
-                $what = 'Your ' . $name;
-            } else {
-                $what = 'Your special order';
-            }
-            $msg = $hey . "Nivessa here. {$what} just came in at {$storeName}. "
-                 . "It's ready for pickup, and we're holding it for you at the counter.";
+            $label = $name !== '' ? $name . ($artist !== '' ? ' by ' . $artist : '') : '';
+            $msg = \App\Services\WantNotice::pickupText('special', $first, $label, \App\Services\WantNotice::store($storeName));
             try {
                 // Send from the store's own Quo line, like the other ERP texts.
                 $sms = app(\App\Services\OpenPhoneService::class);

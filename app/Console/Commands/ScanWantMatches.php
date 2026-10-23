@@ -231,14 +231,12 @@ class ScanWantMatches extends Command
         foreach ($channels as $ch) {
             if ($ch === 'email') {
                 if (empty($contact->email)) { $results[$ch] = ['ok' => false, 'msg' => 'no email']; continue; }
-                try {
-                    $stockStore = !empty($product->stock_location_id) ? optional(BusinessLocation::find((int) $product->stock_location_id))->name : null;
-                    Mail::to($contact->email)->send(new CustomerWantMatched($want, $contact, $stockStore ?: optional($want->location)->name, $link));
-                    $results[$ch] = ['ok' => true, 'msg' => 'emailed ' . $contact->email];
-                } catch (\Throwable $e) {
-                    Log::warning('wants:scan-matches email failed: ' . $e->getMessage());
-                    $results[$ch] = ['ok' => false, 'msg' => $e->getMessage()];
-                }
+                $stockStore = !empty($product->stock_location_id) ? optional(BusinessLocation::find((int) $product->stock_location_id))->name : null;
+                $results[$ch] = \App\Services\WantNotice::email($contact->email, 'want', trim((string) ($contact->first_name ?? '')),
+                    \App\Services\WantNotice::store($stockStore ?: optional($want->location)->name),
+                    ['artist' => trim((string) $want->artist), 'title' => trim((string) $want->title), 'format' => (string) $want->format,
+                     'image' => (string) (optional($product)->image_url ?? ''), 'link' => $link]);
+                if (!$results[$ch]['ok']) Log::warning('wants:scan-matches email failed: ' . $results[$ch]['msg']);
             } else {
                 $phone = $contact->mobile ?: $contact->alternate_number;
                 if (empty($phone)) { $results[$ch] = ['ok' => false, 'msg' => 'no phone']; continue; }

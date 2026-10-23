@@ -305,13 +305,10 @@ class InStoreOrderController extends Controller
                 if (empty($order->customer_email)) {
                     $results['email'] = ['ok' => false, 'msg' => 'No email on file for this order.'];
                 } else {
-                    try {
-                        \Mail::to($order->customer_email)->send(new \App\Mail\InStoreOrderReady($order, $storeName));
-                        $results['email'] = ['ok' => true, 'msg' => 'Emailed ' . $order->customer_email];
-                    } catch (\Throwable $e) {
-                        \Log::warning('InStoreOrder email failed: ' . $e->getMessage());
-                        $results['email'] = ['ok' => false, 'msg' => 'Email failed: ' . $e->getMessage()];
-                    }
+                    $results['email'] = \App\Services\WantNotice::email($order->customer_email, 'instore',
+                        trim(explode(' ', trim((string) $order->customer_name))[0] ?? ''),
+                        \App\Services\WantNotice::store($storeName), ['title' => (string) $order->item_name]);
+                    if (!$results['email']['ok']) \Log::warning('InStoreOrder email failed: ' . $results['email']['msg']);
                 }
             }
 
@@ -320,9 +317,7 @@ class InStoreOrderController extends Controller
                     $results['sms'] = ['ok' => false, 'msg' => 'No phone on file for this order.'];
                 } else {
                     $first = trim(explode(' ', trim($order->customer_name))[0] ?? '');
-                    $hey = $first !== '' ? ('Hey ' . $first . ', ') : 'Hey, ';
-                    $msg = $hey . "Nivessa here. Your {$order->item_name} order is ready for pickup at {$storeName}. "
-                         . "We're holding it for you at the counter.";
+                    $msg = \App\Services\WantNotice::pickupText('instore', $first, trim((string) $order->item_name), \App\Services\WantNotice::store($storeName));
                     try {
                         // Send from the store's own Quo line, like the other ERP texts.
                         $sms = app(\App\Services\OpenPhoneService::class);
