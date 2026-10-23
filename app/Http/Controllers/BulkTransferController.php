@@ -29,7 +29,7 @@ class BulkTransferController extends Controller
     {
         $this->guard();
         $business_id = (int) $request->session()->get('user.business_id');
-        $locations = BusinessLocation::forDropdown($business_id)->toArray();
+        $locations = array_map('ucfirst', BusinessLocation::forDropdown($business_id)->toArray());
 
         // Default From = the store the user is on duty at, then their home location.
         $default_from = (int) $request->session()->get('pos_duty_location_id', 0);
