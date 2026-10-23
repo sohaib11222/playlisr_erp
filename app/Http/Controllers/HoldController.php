@@ -33,10 +33,12 @@ class HoldController extends Controller
     /** Store locations this user may hold at, id => name. */
     private function locations(int $businessId): array
     {
-        $q = DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1);
+        // Stores only: nothing sits in a hold bin at a warehouse.
+        $q = DB::table('business_locations')->where('business_id', $businessId)->where('is_active', 1)
+            ->where('name', 'not like', '%warehouse%');
         $permitted = auth()->user()->permitted_locations($businessId);
         if ($permitted !== 'all') $q->whereIn('id', $permitted ?: [0]);
-        return $q->orderBy('name')->pluck('name', 'id')->all();
+        return array_map('ucfirst', $q->orderBy('name')->pluck('name', 'id')->all());
     }
 
     /** The open register's store, else the first permitted store. */
