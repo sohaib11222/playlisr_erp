@@ -27,8 +27,12 @@
 
         @foreach(($lc['pairs'] ?? []) as $pair)
             <div class="lc-pair">
-                <p style="margin:0 0 6px"><strong>We already have this:</strong> {{ $pair['old']['label'] }} (${{ number_format($pair['old']['price'], 2) }})</p>
-                <p style="margin:0">If you only meant to change its price, tell a manager.</p>
+                <p style="margin:0 0 6px">We already have <strong>{{ $pair['old']['label'] }}</strong> (${{ number_format($pair['old']['price'], 2) }}).</p>
+                <p style="margin:0"><strong>Did you just want to change the price?</strong></p>
+                <div class="lc-actions">
+                    <button type="button" class="lc-primary" onclick="window.location.href='{{ action('ProductController@edit', [$pair['old']['id']]) }}';">Yes</button>
+                    <button type="button" onclick="this.closest('.lc-pair').remove();">No, it's another copy</button>
+                </div>
             </div>
         @endforeach
 
