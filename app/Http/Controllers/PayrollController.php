@@ -106,6 +106,25 @@ class PayrollController extends Controller
         ];
 
         $freelancers = $this->computeFreelancers($config['freelancers']);
+        // Golden (Whatnot host, contractor): owed since his last payment, from
+        // the Whatnot Seller page (items + stream hours + tips). Sarah 10/23.
+        try {
+            $ws = \App\Services\WhatnotSeller::settings();
+            $wsFrom = \Carbon\Carbon::parse($ws['paid_thru'])->addDay()->format('Y-m-d');
+            $wsTo = min($end, \App\Services\WhatnotSeller::now()->format('Y-m-d'));
+            if ($wsFrom <= $wsTo) {
+                $wo = \App\Services\WhatnotSeller::owed((int) $businessId, $wsFrom, $wsTo);
+                $freelancers[] = [
+                    'id' => 'whatnot-seller', 'auto' => true,
+                    'name' => $ws['seller_name'] . ' (Whatnot)', 'model' => 'whatnot',
+                    'amount' => $wo['total'], 'method' => 'Venmo (Jon)', 'paid' => false,
+                    'note' => (int) $wo['items'] . ' items, ' . \App\Services\WhatnotSeller::hoursLabel($wo['minutes']) . ' on Whatnot, $' . number_format($wo['tips'], 2) . ' tips, ' . \Carbon\Carbon::parse($wsFrom)->format('m/d/y') . ' to ' . \Carbon\Carbon::parse($wsTo)->format('m/d/y'),
+                    'statement' => url('/reports/whatnot-seller/statement') . '?' . http_build_query(['start_date' => $wsFrom, 'end_date' => $wsTo]),
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('payroll whatnot row skipped: ' . $e->getMessage());
+        }
         $freelancerTotal = round(array_sum(array_column($freelancers, 'amount')), 2);
 
         return view('admin.payroll', [

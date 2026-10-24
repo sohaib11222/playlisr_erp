@@ -522,17 +522,21 @@
     <tbody>
       @forelse ($freelancers as $f)
         <tr>
-          <td><strong>{{ $f['name'] }}</strong></td>
-          <td>{{ ucfirst($f['model'] ?? 'flat') }}</td>
+          <td><strong>{{ $f['name'] }}</strong>@if (!empty($f['note']))<div class="text-muted" style="font-size:12px;">{{ $f['note'] }}</div>@endif</td>
+          <td>{{ ($f['model'] ?? '') === 'whatnot' ? 'Items + Whatnot hours' : ucfirst($f['model'] ?? 'flat') }}</td>
           <td class="text-right"><strong>${{ $fmt($f['amount']) }}</strong></td>
           <td>{{ $f['method'] ?? '' }}</td>
           <td>@if (!empty($f['paid']))<span class="label label-success">paid</span>@else<span class="label label-default">unpaid</span>@endif</td>
           <td class="text-right" style="white-space:nowrap;">
+            @if (!empty($f['auto']))
+            <a class="btn btn-xs btn-default" target="_blank" href="{{ $f['statement'] }}">Pay statement</a>
+            @else
             <button type="button" class="btn btn-xs btn-default" onclick='payrollEditFreelancer(@json($f, JSON_HEX_APOS | JSON_HEX_QUOT))'>Edit</button>
             <form method="POST" action="{{ url('/payroll/freelancer/delete') }}" style="display:inline;" onsubmit="return confirm('Remove {{ $f['name'] }}?');">
               {{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="id" value="{{ $f['id'] }}">
               <button type="submit" class="btn btn-xs btn-danger">Delete</button>
             </form>
+            @endif
           </td>
         </tr>
       @empty

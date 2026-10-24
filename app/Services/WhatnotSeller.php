@@ -26,6 +26,7 @@ class WhatnotSeller
     const NOTE_TAG = 'WHATNOT-SELLER';
     const HOURS_FILE = 'whatnot-seller/hours.json';
     const ORDERS_FILE = 'whatnot-seller/whatnot-orders.json';
+    const STREAMS_FILE = 'whatnot-seller/streams.json';
 
     public static function settings(): array
     {
@@ -47,6 +48,11 @@ class WhatnotSeller
             'premium_pct'        => 10,     // sold more than 10% over sticker...
             'premium_per_item'   => 0.65,   // ...pays 65 cents instead (Sarah 10/23)
             'premium_start'      => '2026-10-26', // the 65 cents starts next week
+            // Last payment Jon made (Venmo 10/15, $438.80 = 24h01m x $18 + $5
+            // tips for 9/28-10/10; no per-item pay before that).
+            'paid_thru'          => '2026-10-10',
+            'last_paid_on'       => '2026-10-15',
+            'last_paid_amount'   => 438.80,
             'min_pct_of_sticker' => 70,     // below this % of sticker = flagged
             'min_days_in_store'  => 30,     // items newer than this stay in the store
             'paid_through'       => null,   // Y-m-d, last day already paid out
@@ -261,22 +267,71 @@ class WhatnotSeller
         Storage::disk('local')->put(self::HOURS_FILE, json_encode(array_values($rows), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
-    public static function hoursBetween(string $from, string $to): array
+    /** Whatnot show times: {key: {start: 'Y-m-d H:i' (LA), minutes}}. */
+    public static function streams(): array
     {
-        return array_values(array_filter(self::hours(), function ($h) use ($from, $to) {
-            return $h['date'] >= $from && $h['date'] <= $to;
-        }));
+        try {
+            if (Storage::disk('local')->exists(self::STREAMS_FILE)) {
+                return json_decode(Storage::disk('local')->get(self::STREAMS_FILE), true) ?: [];
+            }
+        } catch (\Throwable $e) {
+        }
+        return [];
     }
 
-    /** True when a line sold more than premium_pct over its sticker. */
-    public static function isPremium(array $l): bool
+    /**
+     * His paid hours are the Whatnot stream length (Sarah 2026-10-23), so this
+     * lists the shows in the window as {date, hours, note}.
+     */
+    public static function hoursBetween(string $from, string $to): array
     {
-        $pct = self::settings()['premium_pct'];
-        $start = self::settings()['premium_start'];
-        if ($start && ($l['date_raw'] ?? '') < $start) {
-            return false;
+        $out = [];
+        foreach (self::streams() as $st) {
+            $date = substr($st['start'], 0, 10);
+            if ($date < $from || $date > $to) {
+                continue;
+            }
+            $out[] = [
+                'date' => $date,
+                'hours' => round($st['minutes'] / 60, 2),
+                'minutes' => (int) $st['minutes'],
+                'url' => !empty($st['id']) ? 'https://www.whatnot.com/dashboard/analytics/shows/' . $st['id'] : null,
+                'note' => 'Whatnot show ' . Carbon::parse($st['start'])->format('g:ia') . ', ' . intdiv($st['minutes'], 60) . 'h ' . str_pad($st['minutes'] % 60, 2, '0', STR_PAD_LEFT) . 'm',
+            ];
         }
-        return $pct !== null && $pct !== '' && !empty($l['sticker']) && $l['sold'] > $l['sticker'] * (1 + (float) $pct / 100) + 0.0001;
+        usort($out, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        return $out;
+    }
+
+    /** Tips buyers left on his shows (from the Whatnot reports), passed to him. */
+    public static function tipsBetween(string $from, string $to): float
+    {
+        $t = 0.0;
+        foreach (self::whatnotOrders() as $o) {
+            if ($o['type'] === 'TIP' && $o['date'] >= $from && $o['date'] <= $to) {
+                $t += (float) $o['earned'];
+            }
+        }
+        return round($t, 2);
+    }
+
+    /** Everything he's owed for a window: items, show hours, tips. */
+    public static function owed(int $businessId, string $from, string $to): array
+    {
+        $lines = self::soldLines($businessId, $from, $to);
+        $shows = self::hoursBetween($from, $to);
+        $minutes = array_sum(array_column($shows, 'minutes'));
+        $pay = self::pay($lines, round($minutes / 60, 4));
+        $pay['minutes'] = $minutes;
+        $pay['tips'] = self::tipsBetween($from, $to);
+        $pay['total'] = round($pay['total'] + $pay['tips'], 2);
+        $pay['shows'] = count($shows);
+        return $pay;
+    }
+
+    public static function hoursLabel(int $minutes): string
+    {
+        return intdiv($minutes, 60) . 'h ' . str_pad($minutes % 60, 2, '0', STR_PAD_LEFT) . 'm';
     }
 
     /** What one sold line pays him. */
@@ -326,6 +381,20 @@ class WhatnotSeller
             return [0, 0];
         }
         $head = fgetcsv($fh);
+        if ($head && in_array('STREAM_START_LA', $head, true)) {
+            $all = self::streams(); $added = 0; $skipped = 0;
+            while (($row = fgetcsv($fh)) !== false) {
+                if (count($row) !== count($head)) { continue; }
+                $r = array_combine($head, $row);
+                $start = Carbon::parse($r['STREAM_START_LA'])->format('Y-m-d H:i');
+                if (isset($all[$start])) { $skipped++; }
+                else { $added++; }
+                $all[$start] = ['start' => $start, 'minutes' => (int) $r['MINUTES'], 'id' => preg_replace('/[^a-f0-9-]/', '', (string) ($r['SHOW_ID'] ?? ''))];
+            }
+            fclose($fh);
+            Storage::disk('local')->put(self::STREAMS_FILE, json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return [$added, $skipped];
+        }
         if (!$head || !in_array('ORDER_ID', $head, true) || !in_array('ORIGINAL_ITEM_PRICE', $head, true)) {
             fclose($fh);
             throw new \RuntimeException('That is not a Whatnot weekly order report.');

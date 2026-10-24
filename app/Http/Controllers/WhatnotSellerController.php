@@ -44,12 +44,11 @@ class WhatnotSellerController extends Controller
         $s = WS::settings();
         $businessId = (int) $s['business_id'];
 
-        $periodStart = $s['paid_through'] ? Carbon::parse($s['paid_through'])->addDay()->format('Y-m-d') : WS::now()->subDays(60)->format('Y-m-d');
+        $periodStart = Carbon::parse($s['paid_thru'])->addDay()->format('Y-m-d');
         $lines = WS::soldLines($businessId, $periodStart, WS::now()->format('Y-m-d'));
         $sales = array_sum(array_map(function ($l) { return $l['sold'] * $l['qty']; }, $lines));
         $items = array_sum(array_map(function ($l) { return $l['qty']; }, $lines));
         $shows = WS::hoursBetween($periodStart, WS::now()->format('Y-m-d'));
-        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
 
         $stores = DB::table('business_locations')->where('business_id', $businessId)->whereNull('deleted_at')->orderBy('name')->pluck('name', 'id');
 
@@ -58,7 +57,7 @@ class WhatnotSellerController extends Controller
             's'            => $s,
             'lines'        => $lines,
             'sales'        => round($sales, 2),
-            'pay'          => WS::pay($lines, $hours),
+            'pay'          => WS::owed($businessId, $periodStart, WS::now()->format('Y-m-d')),
             'shows'        => $shows,
             'period_start' => Carbon::parse($periodStart)->format('m/d/y'),
             'stores'       => $stores,
@@ -252,32 +251,6 @@ class WhatnotSellerController extends Controller
         return $back->with('wn_flash', ['ok' => empty($skipped), 'msg' => $msg]);
     }
 
-    public function logHours(Request $request, $token)
-    {
-        if (!WS::tokenValid($token)) {
-            abort(404);
-        }
-        $back = redirect('/whatnot-seller/' . $token);
-        $date = (string) $request->input('date');
-        $hours = round((float) $request->input('hours'), 2);
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $date > WS::now()->format('Y-m-d') || $date < WS::now()->subDays(90)->format('Y-m-d')) {
-            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Pick the date of the show.']);
-        }
-        if ($hours <= 0 || $hours > 16) {
-            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Hours should be between 0 and 16.']);
-        }
-        $rows = WS::hours();
-        $rows[] = [
-            'id' => bin2hex(random_bytes(6)),
-            'date' => $date,
-            'hours' => $hours,
-            'note' => mb_substr(trim((string) $request->input('note', '')), 0, 120),
-            'logged_at' => WS::now()->format('Y-m-d H:i'),
-        ];
-        WS::saveHours($rows);
-        return $back->with('wn_flash', ['ok' => true, 'msg' => 'Logged ' . rtrim(rtrim(number_format($hours, 2), '0'), '.') . ' hours for ' . Carbon::parse($date)->format('m/d/y') . '.']);
-    }
-
     // ---------------------------------------------------------------- owners
 
     private function ensureAccess()
@@ -295,7 +268,8 @@ class WhatnotSellerController extends Controller
         $businessId = (int) $request->session()->get('user.business_id');
         $s = WS::settings();
 
-        $from = $request->input('start_date') ?: WS::now()->subDays(60)->format('Y-m-d');
+        $owedFrom = Carbon::parse($s['paid_thru'])->addDay()->format('Y-m-d');
+        $from = $request->input('start_date') ?: $owedFrom;
         $to = $request->input('end_date') ?: WS::now()->format('Y-m-d');
         $lines = WS::soldLines($businessId, $from, $to);
 
@@ -335,7 +309,6 @@ class WhatnotSellerController extends Controller
         }
 
         $shows = WS::hoursBetween($from, $to);
-        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
 
         if (empty($s['token']) || empty($s['business_id'])) {
             $s['token'] = $s['token'] ?: bin2hex(random_bytes(24));
@@ -359,7 +332,9 @@ class WhatnotSellerController extends Controller
             'flagged' => $flagged,
             'by_golden' => $byGolden,
             'month_rows' => $monthRows,
-            'pay' => WS::pay($lines, $hours),
+            'pay' => WS::owed($businessId, $from, $to),
+            'owed_now' => WS::owed($businessId, $owedFrom, WS::now()->format('Y-m-d')),
+            'owed_from' => $owedFrom,
             'shows' => $shows,
             'users' => $users,
             'daily' => WS::dailyCheck($lines, $from, $to),
@@ -383,7 +358,9 @@ class WhatnotSellerController extends Controller
             'premium_start' => 'nullable|date_format:Y-m-d',
             'min_pct_of_sticker' => 'required|integer|min:0|max:100',
             'min_days_in_store' => 'required|integer|min:0|max:365',
-            'paid_through' => 'nullable|date_format:Y-m-d',
+            'paid_thru' => 'required|date_format:Y-m-d',
+            'last_paid_on' => 'nullable|date_format:Y-m-d',
+            'last_paid_amount' => 'nullable|numeric|min:0',
         ]);
         $s = WS::settings();
         $s['business_id'] = (int) $request->session()->get('user.business_id');
@@ -396,20 +373,14 @@ class WhatnotSellerController extends Controller
         $s['premium_start'] = $data['premium_start'] ?? null;
         $s['min_pct_of_sticker'] = (int) $data['min_pct_of_sticker'];
         $s['min_days_in_store'] = (int) $data['min_days_in_store'];
-        $s['paid_through'] = $data['paid_through'] ?? null;
+        $s['paid_thru'] = $data['paid_thru'];
+        $s['last_paid_on'] = $data['last_paid_on'] ?? null;
+        $s['last_paid_amount'] = isset($data['last_paid_amount']) ? (float) $data['last_paid_amount'] : null;
         if ($request->input('new_link')) {
             $s['token'] = bin2hex(random_bytes(24));
         }
         WS::saveSettings($s);
         return redirect('/reports/whatnot-seller')->with('status', ['success' => 1, 'msg' => $request->input('new_link') ? 'Saved. Old link no longer works, send him the new one.' : 'Saved.']);
-    }
-
-    public function deleteHours(Request $request)
-    {
-        $this->ensureAccess();
-        $id = (string) $request->input('id');
-        WS::saveHours(array_values(array_filter(WS::hours(), function ($h) use ($id) { return $h['id'] !== $id; })));
-        return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Removed that show.']);
     }
 
     // Pay statement: every item and show in the period, what each pays, the
@@ -418,12 +389,11 @@ class WhatnotSellerController extends Controller
     {
         $lines = array_reverse(WS::soldLines($businessId, $from, $to));
         $shows = array_reverse(WS::hoursBetween($from, $to));
-        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
         return $this->noStore(response()->view('whatnot_seller.statement', [
             's' => WS::settings(),
             'lines' => $lines,
             'shows' => $shows,
-            'pay' => WS::pay($lines, $hours),
+            'pay' => WS::owed($businessId, $from, $to),
             'sales' => round(array_sum(array_map(function ($l) { return $l['sold'] * $l['qty']; }, $lines)), 2),
             'from' => $from, 'to' => $to,
             'back' => $backUrl,
@@ -433,7 +403,7 @@ class WhatnotSellerController extends Controller
     private function statementDates(Request $request): array
     {
         $to = $request->input('end_date') ?: WS::now()->format('Y-m-d');
-        $from = $request->input('start_date') ?: Carbon::parse($to)->startOfWeek(Carbon::MONDAY)->format('Y-m-d');
+        $from = $request->input('start_date') ?: Carbon::parse(WS::settings()['paid_thru'])->addDay()->format('Y-m-d');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
             abort(404);
         }

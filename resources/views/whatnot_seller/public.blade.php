@@ -81,29 +81,16 @@
     </div>
 
     <div class="card">
-        <h2>3. Log your show hours</h2>
-        <form method="post" action="{{ url('/whatnot-seller/' . $token . '/hours') }}">
-            @csrf
-            <div class="row">
-                <input type="date" name="date" value="{{ now('America/Los_Angeles')->format('Y-m-d') }}" required>
-                <input type="number" name="hours" class="price" step="0.25" min="0.25" max="16" placeholder="Hours" required>
-                <button type="submit" class="add">Log</button>
-            </div>
-            <input type="text" name="note" placeholder="Note (optional)" style="margin-top:8px;">
-        </form>
-    </div>
-
-    <div class="card">
         <h2>Your pay since {{ $period_start }} <a href="{{ url('/whatnot-seller/' . $token . '/statement') }}" style="font-size:14px; font-weight:normal; margin-left:8px;">Pay statement</a></h2>
         <div class="totals">
             <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each @if($s['premium_pct'] !== null) ({{ (int) $pay['premium_items'] }} at ${{ number_format($s['premium_per_item'], 2) }}) @endif</div>
-            <div>Show hours<b>{{ rtrim(rtrim(number_format($pay['hours'], 2), '0'), '.') ?: '0' }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
-            <div>Total<b>${{ number_format($pay['total'], 2) }}</b>sold ${{ number_format($sales, 2) }}</div>
+            <div>Whatnot hours<b>{{ \App\Services\WhatnotSeller::hoursLabel($pay['minutes']) }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
+            <div>Total<b>${{ number_format($pay['total'], 2) }}</b>incl. ${{ number_format($pay['tips'], 2) }} tips</div>
         </div>
         @if(count($shows))
             <table style="margin-top:10px;">
                 @foreach($shows as $h)
-                    <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>Show{{ $h['note'] !== '' ? ': ' . $h['note'] : '' }}</td><td class="num">{{ $h['hours'] }} hrs</td></tr>
+                    <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ $h['note'] }}</td><td class="num">${{ number_format($h['minutes'] / 60 * $s['hourly_rate'], 2) }}</td></tr>
                 @endforeach
             </table>
         @endif

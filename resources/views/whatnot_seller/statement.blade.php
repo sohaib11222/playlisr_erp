@@ -45,17 +45,18 @@
     <table>
         <tr class="sum"><td>{{ (int) $pay['items'] - (int) $pay['premium_items'] }} items x ${{ number_format($s['per_item'], 2) }}</td><td class="num">${{ number_format(((int) $pay['items'] - (int) $pay['premium_items']) * $s['per_item'], 2) }}</td></tr>
         <tr class="sum"><td>{{ (int) $pay['premium_items'] }} items sold 10%+ over sticker x ${{ number_format($s['premium_per_item'], 2) }}</td><td class="num">${{ number_format($pay['premium_items'] * $s['premium_per_item'], 2) }}</td></tr>
-        <tr class="sum"><td>{{ rtrim(rtrim(number_format($pay['hours'], 2), '0'), '.') ?: '0' }} show hours x ${{ number_format($s['hourly_rate'], 2) }}</td><td class="num">${{ number_format($pay['hour_pay'], 2) }}</td></tr>
+        <tr class="sum"><td>{{ \App\Services\WhatnotSeller::hoursLabel($pay['minutes']) }} on Whatnot ({{ $pay['shows'] }} shows) x ${{ number_format($s['hourly_rate'], 2) }}</td><td class="num">${{ number_format($pay['hour_pay'], 2) }}</td></tr>
+        <tr class="sum"><td>Tips</td><td class="num">${{ number_format($pay['tips'], 2) }}</td></tr>
         <tr class="total"><td>Total to pay</td><td class="num">${{ number_format($pay['total'], 2) }}</td></tr>
     </table>
     <div style="margin-top:6px;">Whatnot sales in this period: ${{ number_format($sales, 2) }}</div>
 
-    <h2>Show hours</h2>
+    <h2>Whatnot shows</h2>
     <table>
         @forelse($shows as $h)
-            <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ $h['note'] }}</td><td class="num">{{ $h['hours'] }} hrs</td><td class="num">${{ number_format($h['hours'] * $s['hourly_rate'], 2) }}</td></tr>
+            <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ $h['note'] }}</td><td class="num">${{ number_format($h['minutes'] / 60 * $s['hourly_rate'], 2) }}</td></tr>
         @empty
-            <tr><td>No show hours logged.</td></tr>
+            <tr><td>No Whatnot shows imported for these dates.</td></tr>
         @endforelse
     </table>
 
