@@ -561,10 +561,11 @@ class BuyDemandService
 
     /**
      * Jon 2026-10-23, huge lots only (an exploit guard): each copy is priced by
-     * how long it would sit. At this store's pace (last 60 days), copies that
-     * sell within lot_full_months (counting what's on the shelf) pay the line's
-     * rate, copies up to lot_half_months pay lot_half_pay%, the rest
-     * lot_quarter_pay%. Lots under lot_min_qty, or kinds with too few sales to
+     * how long the lot itself would take to sell at this store's pace (last 60
+     * days). Copies within lot_full_months pay the line's rate, up to
+     * lot_half_months lot_half_pay%, the rest lot_quarter_pay%. Measured on the
+     * lot alone: most shelves already hold 2+ years, which the flat overstock
+     * cut covers, so counting the shelf cut every routine 50-copy buy to 25%. Lots under lot_min_qty, or kinds with too few sales to
      * judge, are left alone. Settings -> Buy Margins. Only ever lowers pay.
      */
     protected function withLotTiers(array $res, $incoming, array $st, $businessId)
@@ -576,9 +577,8 @@ class BuyDemandService
         $perMonth = $st['sold'] / (self::GROUP_WINDOW_DAYS / 30);
         $fullCap = $s['lot_full_months'] * $perMonth;
         $halfCap = max($fullCap, $s['lot_half_months'] * $perMonth);
-        $on = (float) $st['on_hand'];
-        $nFull = min($incoming, max(0, $fullCap - $on));
-        $nHalf = min($incoming - $nFull, max(0, $halfCap - max($on, $fullCap)));
+        $nFull = min($incoming, $fullCap);
+        $nHalf = min($incoming - $nFull, max(0, $halfCap - $fullCap));
         $nQuarter = max(0, $incoming - $nFull - $nHalf);
         $mult = ($nFull + $nHalf * $s['lot_half_pay'] / 100 + $nQuarter * $s['lot_quarter_pay'] / 100) / $incoming;
         // The line's own rate already includes any overstock cut: the lot price
@@ -588,8 +588,8 @@ class BuyDemandService
         }
         $f = function ($n) { return number_format(round($n)); };
         $reason = $st['label'] . sprintf(
-            'big lot: we sell about %s a month and have %s; of these %s, %s would sell within %d months (full rate), %s within %d months (%d%%), %s later (%d%%). Pays %d%% on average.',
-            number_format($perMonth, 1), $f($on), $f($incoming),
+            'big lot: we sell about %s a month here; of these %s, %s would sell within %d months (full rate), %s within %d months (%d%%), %s later (%d%%). Pays %d%% on average.',
+            number_format($perMonth, 1), $f($incoming),
             $f($nFull), $s['lot_full_months'], $f($nHalf), $s['lot_half_months'], $s['lot_half_pay'], $f($nQuarter), $s['lot_quarter_pay'],
             round($mult * 100)
         );

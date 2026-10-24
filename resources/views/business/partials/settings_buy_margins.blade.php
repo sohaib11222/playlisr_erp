@@ -34,7 +34,7 @@
     <div class="clearfix"></div>
     <div class="col-sm-12">
         <h4 style="margin-top:10px;">Huge lots (Beta buy form)</h4>
-        <p class="help-block">When someone brings a lot of one thing, each copy is priced by how long it would take to sell at this store's pace, counting what's already on the shelf. Copies past the first mark pay less, past the second mark less again. Lots under the minimum, and normal buys, are not affected.</p>
+        <p class="help-block">When someone brings a lot of one thing, each copy is priced by how long the lot itself would take to sell at this store's pace (the overstock cut already covers a full shelf). Copies past the first mark pay less, past the second mark less again. Lots under the minimum, and normal buys, are not affected.</p>
     </div>
     @foreach(['lot_min_qty' => ['Applies to lots of (copies)', 'Same kind in one buy, all lines added up.', 1, 100000], 'lot_full_months' => ['Full rate up to (months)', 'Copies that would sell within this many months.', 0, 120], 'lot_half_months' => ['Then up to (months)', 'Copies selling after the first mark, up to this.', 0, 240], 'lot_half_pay' => ['…which pay (%)', 'Of the normal rate.', 0, 100], 'lot_quarter_pay' => ['Copies after that pay (%)', 'Of the normal rate.', 0, 100]] as $bmKey => $bmText)
         <div class="col-sm-3">
