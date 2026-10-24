@@ -74,6 +74,18 @@ class BuyFromCustomerController extends Controller
         return $this->create(true);
     }
 
+    /** GET /buy-from-customer/original: the pre-Beta form (Jon 2026-10-23: Beta is the default now). */
+    public function createOriginal()
+    {
+        return $this->create(false);
+    }
+
+    /** GET /buy-from-customer/beta: moved to /buy-from-customer, keeps ?contact_id= etc. */
+    public function betaMoved()
+    {
+        return redirect()->route('buy-from-customer.create', request()->query());
+    }
+
     public function create($beta = false)
     {
         if (!auth()->user()->can('purchase.create')) {
@@ -479,7 +491,7 @@ class BuyFromCustomerController extends Controller
             return $this->saveOffer($request, 'draft', $offerId);
         });
 
-        return redirect()->route($this->isBeta($request) ? 'buy-from-customer.beta' : 'buy-from-customer.create')
+        return redirect()->route($this->isBeta($request) ? 'buy-from-customer.create' : 'buy-from-customer.original')
             ->with('status', ['success' => 1, 'msg' => 'Draft offer saved successfully.'])
             ->with('saved_offer_id', $saved->id);
     }

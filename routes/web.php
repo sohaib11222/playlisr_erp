@@ -907,12 +907,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/purchases/get_purchase_entry_row', 'PurchaseController@getPurchaseEntryRow');
     Route::post('/purchases/check_ref_number', 'PurchaseController@checkRefNumber');
     Route::post('/purchases/duplicate-check', 'PurchaseController@duplicateCheck');
-    Route::get('/buy-from-customer', 'BuyFromCustomerController@create')->name('buy-from-customer.create');
-    Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@create');
+    // Jon 2026-10-23: Beta is the default buy form; the old one is "Original".
+    Route::get('/buy-from-customer', 'BuyFromCustomerController@createBeta')->name('buy-from-customer.create');
+    Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@createBeta');
+    Route::get('/buy-from-customer/original', 'BuyFromCustomerController@createOriginal')->name('buy-from-customer.original');
     Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');
     // Beta buy form: cuts only, pays up to 20% less on overstocked bulk (never more than Normal).
-    Route::get('/buy-from-customer/beta', 'BuyFromCustomerController@createBeta')->name('buy-from-customer.beta');
-    Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@createBeta');
+    // Old Beta links / bookmarks land on the default page (now Beta).
+    Route::get('/buy-from-customer/beta', 'BuyFromCustomerController@betaMoved')->name('buy-from-customer.beta');
+    Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@betaMoved');
     Route::post('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@calculateBeta')->name('buy-from-customer.beta.calculate');
     Route::get('/buy-from-customer/beta/demand', 'BuyFromCustomerController@betaDemand')->name('buy-from-customer.beta.demand');
     Route::post('/buy-from-customer/autosave', 'BuyFromCustomerController@autosave')->name('buy-from-customer.autosave');
