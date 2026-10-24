@@ -53,6 +53,7 @@ class BuyDemandService
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
     // format pays less. Needs a real pile, so small categories never get cut.
     const OVER_MIN_ON_HAND = 200;
+    const FLOOD_MIN_QTY = 50;
     const COOL_MAX_SPEED = 0.8;
     const COLD_MAX_SPEED = 0.5;
     const COOL_MULTIPLIER = 0.90;
@@ -557,6 +558,16 @@ class BuyDemandService
         $baseTurn = $baseOn > 0 ? $st['base_sold'] / $baseOn : 0;
         $speed = ($on > 0 && $baseTurn > 0) ? ($st['sold'] / $on) / $baseTurn : 0;
         $level = self::levelFor($st['sold'], $on, $speed, $baseTurn);
+        // Flood: a lot of FLOOD_MIN_QTY+ at least as big as the shelf is
+        // judged on speed alone, even under the 200-on-hand bar (188 games
+        // onto Pico's 9, where 1 sold in 60 days).
+        if (!in_array($level, ['cool', 'cold'], true) && $incoming >= self::FLOOD_MIN_QTY && $incoming >= $st['on_hand'] && $baseTurn > 0) {
+            if ($speed < self::COLD_MAX_SPEED) {
+                $level = 'cold';
+            } elseif ($speed < self::COOL_MAX_SPEED) {
+                $level = 'cool';
+            }
+        }
         $rank = ['cold' => 2, 'cool' => 1];
         if (($rank[$level] ?? 0) <= ($rank[$res['level']] ?? 0)) {
             return $res;
