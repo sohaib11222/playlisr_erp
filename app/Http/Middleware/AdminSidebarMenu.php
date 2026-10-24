@@ -549,7 +549,7 @@ class AdminSidebarMenu
                         }
                         if (auth()->user()->can('purchase.create')) {
                             $sub->url(
-                                action('BuyFromCustomerController@create'),
+                                route('buy-from-customer.create'),
                                 'Buy from Customer',
                                 ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer']
                             );

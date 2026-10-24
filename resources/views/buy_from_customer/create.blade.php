@@ -296,8 +296,8 @@
     @if(empty(request()->route('id')))
         {{-- Normal / Beta live on one page as tabs (Sarah 10/23). --}}
         <div class="bfc-form-tabs">
-            <a href="{{ route('buy-from-customer.create') }}" class="{{ empty($bfcBeta) ? 'on' : '' }}">Normal</a>
-            <a href="{{ route('buy-from-customer.beta') }}" class="{{ !empty($bfcBeta) ? 'on' : '' }}">Beta</a>
+            <a href="{{ route('buy-from-customer.create') }}" class="{{ !empty($bfcBeta) ? 'on' : '' }}">Beta</a>
+            <a href="{{ route('buy-from-customer.original') }}" class="{{ empty($bfcBeta) ? 'on' : '' }}">Original</a>
         </div>
         <style>
             .bfc-form-tabs { display: flex; gap: 8px; margin-top: 10px; }
@@ -418,7 +418,7 @@
 
     @if($bfcBeta)
         <div class="bfc-beta-banner">
-            <span><strong>Beta buy form:</strong> pays up to 20% less on bulk we have too much of at this store, and never more than the Normal form on bulk. Fast sellers are marked so you know what to take. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any cut right away.@if(auth()->user()->can('business_settings.access')) <a href="{{ url('/business/settings') }}#buy-margins" target="_blank">Edit margins</a>@endif</span>
+            <span><strong>Beta buy form:</strong> pays up to 20% less on bulk we have too much of at this store, and never more than the Original form on bulk. Fast sellers are marked so you know what to take. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any cut right away.@if(auth()->user()->can('business_settings.access')) <a href="{{ url('/business/settings') }}#buy-margins" target="_blank">Edit margins</a>@endif</span>
         </div>
     @endif
 
