@@ -37,10 +37,10 @@ class BuyOfferCalculatorService
                 'bulk_vinyl_pop_old' => ['label' => '10+ Bulk Vinyl: Pop (Old)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20, 'default_grade' => 'VG+'],
                 'bulk_vinyl_classical' => ['label' => '10+ Bulk Vinyl: Classical', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'default_grade' => 'VG+'],
                 'bulk_vinyl_soundtracks' => ['label' => '10+ Bulk Vinyl: Soundtracks', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20, 'default_grade' => 'VG+'],
-                'bulk_vinyl_anything_else' => ['label' => '10+ Bulk Vinyl: Anything Else', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'default_grade' => 'VG'],
+                'bulk_vinyl_anything_else' => ['label' => '10+ Bulk Vinyl: Other genres / mixed (Pop, Latin, Blues, Gospel, World…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'default_grade' => 'VG'],
 
-                'cd_general_used' => ['label' => 'CD: General USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
-                'cd_general_sealed' => ['label' => 'CD: General SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
+                'cd_general_used' => ['label' => 'CD: Other genres / mixed USED (Pop, Electronic, Latin, Country, K-pop…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
+                'cd_general_sealed' => ['label' => 'CD: Other genres / mixed SEALED (Pop, Electronic, Latin, Blues, K-pop…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
                 // Jon 2026-10-23: Punk / Metal / Hip-Hop CDs split into their own
                 // types, priced off 90 days of sales (both stores). Used: Hip-Hop
                 // 83 sold at $8.43 avg, 2.1x as fast as used CDs overall; Metal 40
@@ -85,12 +85,12 @@ class BuyOfferCalculatorService
                 'cassette_jazz_used' => ['label' => 'Cassette: Jazz USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.35],
                 'cassette_hh_metal_punk' => ['label' => 'Cassette: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'retired' => true],
                 'cassette_rb_jazz_rock' => ['label' => 'Cassette: R&B/Jazz/Rock', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'retired' => true],
-                'cassette_everything_else' => ['label' => 'Cassette: Everything Else', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
+                'cassette_everything_else' => ['label' => 'Cassette: Other genres / mixed / sealed (Pop, Country, Electronic, Soundtracks…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
 
                 'rpm45_hh_metal_punk' => ['label' => '45 RPM: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
                 'rpm45_newwave_rock_alt' => ['label' => '45 RPM: New Wave/Rock/Alt', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40],
                 'rpm45_without_sleeve' => ['label' => '45 RPM: Without Sleeve', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
-                'rpm45_anything_else' => ['label' => '45 RPM: Anything Else', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
+                'rpm45_anything_else' => ['label' => '45 RPM: Other genres / mixed (R&B/Soul, Pop, Country, Jazz…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
 
                 'dvd_used' => ['label' => 'DVD Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'no_grading' => true],
                 'dvd_sealed' => ['label' => 'DVD Sealed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
@@ -301,14 +301,16 @@ class BuyOfferCalculatorService
                     $raw = null;
                 }
                 $raw = is_array($raw) ? $raw : [];
-                // -20% (overstocked) to +20% (hot), whatever the hook says.
-                $mult = min(1.20, max(0.80, (float) ($raw['multiplier'] ?? 1.0)));
+                // Cuts only: -20% (way overstocked) to the base rate, never more,
+                // whatever the hook or an old pinned quote says (Jon 10/23).
+                $mult = min(1.0, max(0.80, (float) ($raw['multiplier'] ?? 1.0)));
                 $baseLine = $cashLine;
                 $cashLine = round($cashLine * $mult, 2);
                 $demandBonus += $cashLine - $baseLine;
                 $demandInfo = [
                     'demand_multiplier' => $mult,
-                    'demand_level' => $mult > 1.0 ? ($raw['level'] ?? 'warm') : ($mult < 1.0 ? ($raw['level'] ?? 'cool') : 'normal'),
+                    // Hot / warm stay as info (base pay); cool / cold carry the cut.
+                    'demand_level' => $mult < 1.0 ? ($raw['level'] ?? 'cool') : (in_array($raw['level'] ?? '', ['hot', 'warm'], true) ? $raw['level'] : 'normal'),
                     'demand_reason' => $raw['reason'] ?? null,
                     'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
                 ];

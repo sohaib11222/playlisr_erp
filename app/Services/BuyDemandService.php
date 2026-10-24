@@ -58,8 +58,10 @@ class BuyDemandService
     const COOL_MULTIPLIER = 0.90;
     const COLD_MULTIPLIER = 0.80;
 
-    const HOT_MULTIPLIER = 1.20;
-    const WARM_MULTIPLIER = 1.10;
+    // Cuts only (Jon 2026-10-23): Beta never pays more than the Normal form on
+    // bulk. Hot / warm still show on the line as info, but pay the base rate.
+    const HOT_MULTIPLIER = 1.0;
+    const WARM_MULTIPLIER = 1.0;
 
     const CACHE_SECONDS = 21600; // 6 hours
 
@@ -133,6 +135,12 @@ class BuyDemandService
     protected $memo = [];
     protected $taxonomy = [];
 
+    /** "Other genres" / "General" buckets: every OPEN_TYPES entry except individual vinyl. */
+    public static function isCatchAll($itemType)
+    {
+        return isset(self::OPEN_TYPES[$itemType]) && $itemType !== 'individual_vinyl';
+    }
+
     public static function normal()
     {
         return ['multiplier' => 1.0, 'level' => 'normal', 'reason' => null];
@@ -154,6 +162,12 @@ class BuyDemandService
 
             if ($itemType === self::EBAY_TYPE) {
                 return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
+            }
+
+            // Catch-all buckets (mixed lots) always pay their flat rate: no
+            // speed adjustment, so a box prices the same whoever rings it up.
+            if (self::isCatchAll($itemType)) {
+                return self::normal();
             }
 
             $choices = $this->genreChoices($businessId, $itemType);
@@ -200,7 +214,7 @@ class BuyDemandService
     public function genreChoices($businessId, $itemType)
     {
         $spec = $this->typeSpec($itemType);
-        if ($spec === null) {
+        if ($spec === null || self::isCatchAll($itemType)) {
             return [];
         }
         list($format, $condition, $genres) = $spec;
@@ -355,7 +369,7 @@ class BuyDemandService
     {
         $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType . ':' . $genre;
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand5:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
+            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
                 return $this->groupDemand($businessId, $locationId, $itemType, $genre, $genreLabel);
             });
         }
@@ -420,10 +434,10 @@ class BuyDemandService
         return 'normal';
     }
 
-    /** Short label for a level: "Hot +20%", "Overstocked −10%", "No change". */
+    /** Short label for a level: "Hot (no extra pay)", "Overstocked −10%", "No change". */
     public static function levelLabel($level)
     {
-        $labels = ['hot' => 'Hot +20%', 'warm' => 'Warm +10%', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%'];
+        $labels = ['hot' => 'Hot (no extra pay)', 'warm' => 'Warm (no extra pay)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%'];
         return $labels[$level] ?? 'No change';
     }
 
@@ -571,7 +585,7 @@ class BuyDemandService
         if (isset($this->memo[$key])) {
             return $this->memo[$key];
         }
-        return $this->memo[$key] = Cache::remember('buydemand2:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $words) {
+        return $this->memo[$key] = Cache::remember('buydemand7t:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $words) {
             $vinylIds = $this->formatIds($businessId, 'vinyl', 'any');
             if (empty($vinylIds)) {
                 return self::normal();
