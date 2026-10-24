@@ -49,6 +49,14 @@ class BuyDemandService
     const SLOW_MAX_SPEED = 0.8;
     const EBAY_TYPE = 'ebay_value';
 
+    // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
+    // format pays less. Needs a real pile, so small categories never get cut.
+    const OVER_MIN_ON_HAND = 200;
+    const COOL_MAX_SPEED = 0.8;
+    const COLD_MAX_SPEED = 0.5;
+    const COOL_MULTIPLIER = 0.90;
+    const COLD_MULTIPLIER = 0.80;
+
     const HOT_MULTIPLIER = 1.20;
     const WARM_MULTIPLIER = 1.10;
 
@@ -341,6 +349,10 @@ class BuyDemandService
             $level = 'hot';
         } elseif ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
             $level = 'warm';
+        } elseif ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COLD_MAX_SPEED) {
+            $level = 'cold';
+        } elseif ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COOL_MAX_SPEED) {
+            $level = 'cool';
         }
 
         $reason = ($genreLabel ? $genreLabel . ': ' : '') . sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
@@ -441,7 +453,8 @@ class BuyDemandService
 
     protected function result($level, $reason)
     {
-        $mult = $level === 'hot' ? self::HOT_MULTIPLIER : ($level === 'warm' ? self::WARM_MULTIPLIER : 1.0);
+        $mults = ['hot' => self::HOT_MULTIPLIER, 'warm' => self::WARM_MULTIPLIER, 'cool' => self::COOL_MULTIPLIER, 'cold' => self::COLD_MULTIPLIER];
+        $mult = $mults[$level] ?? 1.0;
         return ['multiplier' => $mult, 'level' => $level, 'reason' => $reason];
     }
 

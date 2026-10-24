@@ -283,14 +283,14 @@ class BuyOfferCalculatorService
                     $raw = null;
                 }
                 $raw = is_array($raw) ? $raw : [];
-                // Never pay less, never more than +20%, whatever the hook says.
-                $mult = min(1.20, max(1.0, (float) ($raw['multiplier'] ?? 1.0)));
+                // -20% (overstocked) to +20% (hot), whatever the hook says.
+                $mult = min(1.20, max(0.80, (float) ($raw['multiplier'] ?? 1.0)));
                 $baseLine = $cashLine;
                 $cashLine = round($cashLine * $mult, 2);
                 $demandBonus += $cashLine - $baseLine;
                 $demandInfo = [
                     'demand_multiplier' => $mult,
-                    'demand_level' => $mult > 1.0 ? ($raw['level'] ?? 'warm') : 'normal',
+                    'demand_level' => $mult > 1.0 ? ($raw['level'] ?? 'warm') : ($mult < 1.0 ? ($raw['level'] ?? 'cool') : 'normal'),
                     'demand_reason' => $raw['reason'] ?? null,
                     'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
                 ];
