@@ -102,12 +102,31 @@ class BuyOfferCalculatorService
                 'rpm45_without_sleeve' => ['label' => '45 RPM: Without Sleeve', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
                 'rpm45_anything_else' => ['label' => '45 RPM: Other genres / mixed (R&B/Soul, Pop, Country, Jazz…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
 
-                'dvd_used' => ['label' => 'DVD Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'no_grading' => true],
+                // Jon 2026-10-23: DVD, book and magazine subcategories priced off 90
+                // days of sales at both stores: rate = old base x (subcategory speed /
+                // category speed) x (its avg price / category avg), rounded, kept
+                // conservative where sales are thin. DVD/Blu-ray avg $7.28, turnover
+                // 0.16: e.g. Action 227 sold $7.30 1.4x -> $0.20; Music 18 sold, 297 in
+                // stock 0.4x -> $0.10; Romance 2 sold -> $0.05. The general types are
+                // now "other / mixed" (no speed adjustment on Beta).
+                'dvd_used' => ['label' => 'DVD Used: other genres / mixed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'no_grading' => true],
+                'dvd_action_used' => ['label' => 'DVD Used: Action / Adventure', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.20],
+                'dvd_animation_used' => ['label' => 'DVD Used: Animation', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.25],
+                'dvd_boxset_used' => ['label' => 'DVD Used: Box Sets', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.60],
+                'dvd_comedy_used' => ['label' => 'DVD Used: Comedy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.10],
+                'dvd_documentary_used' => ['label' => 'DVD Used: Documentary', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.15],
+                'dvd_drama_used' => ['label' => 'DVD Used: Drama', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.10],
+                'dvd_family_used' => ['label' => 'DVD Used: Family', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.15],
+                'dvd_fantasy_used' => ['label' => 'DVD Used: Fantasy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.30],
+                'dvd_musical_used' => ['label' => 'DVD Used: Musical', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.15],
+                'dvd_romance_used' => ['label' => 'DVD Used: Romance', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.05],
+                'dvd_thriller_used' => ['label' => 'DVD Used: Thriller', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.15],
+                'dvd_tv_used' => ['label' => 'DVD Used: TV', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.20],
                 'dvd_sealed' => ['label' => 'DVD Sealed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
                 'dvd_criterion_used' => ['label' => 'DVD Criterion Used', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
-                'dvd_music_used' => ['label' => 'DVD Music Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
-                'dvd_horror_used' => ['label' => 'DVD Horror Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'no_grading' => true],
-                'dvd_scifi_used' => ['label' => 'DVD Sci-Fi Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
+                'dvd_music_used' => ['label' => 'DVD Used: Music', 'mode' => 'bulk_fixed', 'unit_rate' => 0.10, 'no_grading' => true],
+                'dvd_horror_used' => ['label' => 'DVD Used: Horror', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
+                'dvd_scifi_used' => ['label' => 'DVD Used: Sci-Fi', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30, 'no_grading' => true],
                 'bluray_used' => ['label' => 'Blu-ray Used', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
                 'bluray_sealed' => ['label' => 'Blu-ray Sealed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
                 '4k_used' => ['label' => '4K Used', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'no_grading' => true],
@@ -118,8 +137,22 @@ class BuyOfferCalculatorService
                 'videogame_with_case' => ['label' => 'Video Game (with case)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
                 'videogame_no_case' => ['label' => 'Video Game (no case)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'no_grading' => true],
 
-                'magazine' => ['label' => 'Magazine', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
-                'book' => ['label' => 'Book', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40, 'no_grading' => true],
+                // Books avg $9.26 turnover 0.26 (Manga 2.0x, Zines 1.9x, Fantasy 0.1x);
+                // magazines avg $13.04 turnover 0.24 (Playboy 3.0x, Pop Culture 1.5x).
+                'magazine' => ['label' => 'Magazine: other / mixed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'no_grading' => true],
+                'magazine_mad' => ['label' => 'Magazine: Mad', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.25],
+                'magazine_playboy' => ['label' => 'Magazine: Playboy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.50],
+                'magazine_pop_culture' => ['label' => 'Magazine: Pop Culture', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.85],
+                'book' => ['label' => 'Book: other / mixed', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30, 'no_grading' => true],
+                'book_artist_band' => ['label' => 'Book: Artist & Band', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.55],
+                'book_bio' => ['label' => 'Book: Biographies & Memoirs', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.35],
+                'book_comic' => ['label' => 'Book: Comic Books', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.40],
+                'book_fantasy' => ['label' => 'Book: Fantasy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.10],
+                'book_historical' => ['label' => 'Book: Historical Fiction', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.25],
+                'book_manga' => ['label' => 'Book: Manga', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.75],
+                'book_music_history' => ['label' => 'Book: Music History & Culture', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.35],
+                'book_mystery' => ['label' => 'Book: Mystery / Thriller', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.20],
+                'book_zine' => ['label' => 'Book: Zines (indie & DIY)', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.50],
                 'coffee_table_book' => ['label' => 'Coffee Table Book', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'no_grading' => true],
 
                 'hat_cap' => ['label' => 'Hat / Cap (Snapback)', 'mode' => 'bulk_fixed', 'unit_rate' => 2.50, 'no_grading' => true],
@@ -424,6 +457,9 @@ class BuyOfferCalculatorService
         $equipmentKeys = ['receiver', 'dvd_player', 'camcorder_digital', 'camera', 'cassette_player', 'cd_player', 'flatscreen_tv'];
         $apparelKeys = ['hat_cap', 'hat_fitted', 'tshirt', 'tanktop', 'sweatshirt'];
         $printKeys = ['magazine', 'book', 'coffee_table_book'];
+        $isPrint = function ($t) use ($printKeys) {
+            return in_array($t, $printKeys, true) || strpos($t, 'book_') === 0 || strpos($t, 'magazine_') === 0;
+        };
         $toyKeys = ['mask', 'furry_doll', 'funko_pop', 'board_game'];
 
         foreach ($normalizedLines as $line) {
@@ -443,7 +479,7 @@ class BuyOfferCalculatorService
                 $formats['equipment'] += $qty;
             } elseif (strpos($t, 'cassette_') === 0) {
                 $formats['cassette'] += $qty;
-            } elseif (in_array($t, ['dvd_used', 'dvd_sealed', 'dvd_criterion_used', 'dvd_music_used', 'dvd_horror_used', 'dvd_scifi_used'], true)) {
+            } elseif (strpos($t, 'dvd_') === 0 && $t !== 'dvd_player') {
                 $formats['dvd'] += $qty;
             } elseif (strpos($t, 'bluray_') === 0 || $t === '4k_used') {
                 $formats['bluray'] += $qty;
@@ -453,7 +489,7 @@ class BuyOfferCalculatorService
                 $formats['video_game'] += $qty;
             } elseif (in_array($t, $apparelKeys, true)) {
                 $formats['apparel'] += $qty;
-            } elseif (in_array($t, $printKeys, true)) {
+            } elseif ($isPrint($t)) {
                 $formats['print'] += $qty;
             } elseif (strpos($t, 'pokemon_') === 0 || strpos($t, 'sports_card_') === 0) {
                 $formats['trading_card'] += $qty;

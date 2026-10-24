@@ -133,15 +133,39 @@ class BuyDemandService
      * cuts only (same -10% / -20% bars as music).
      */
     const NONMUSIC_MAP = [
-        'book' => '/^books?$/i',
+        // Subcategory types: [category regex, subcategory regex], compared with
+        // the rest of their category. "Other / mixed" (book, magazine, dvd_used)
+        // are catch-alls: no adjustment, see NONMUSIC_CATCHALL.
         'coffee_table_book' => '/^books?$/i',
-        'magazine' => '/magazine/i',
-        'dvd_used' => '/dvd|blu/i',
         'dvd_sealed' => '/dvd|blu/i',
         'dvd_criterion_used' => '/dvd|blu/i',
-        'dvd_music_used' => '/dvd|blu/i',
-        'dvd_horror_used' => '/dvd|blu/i',
-        'dvd_scifi_used' => '/dvd|blu/i',
+        'dvd_action_used' => ['/dvd|blu/i', '/^action/i'],
+        'dvd_animation_used' => ['/dvd|blu/i', '/^animation/i'],
+        'dvd_boxset_used' => ['/dvd|blu/i', '/^box/i'],
+        'dvd_comedy_used' => ['/dvd|blu/i', '/^comedy/i'],
+        'dvd_documentary_used' => ['/dvd|blu/i', '/^documentary/i'],
+        'dvd_drama_used' => ['/dvd|blu/i', '/^drama/i'],
+        'dvd_family_used' => ['/dvd|blu/i', '/^family/i'],
+        'dvd_fantasy_used' => ['/dvd|blu/i', '/^fantasy/i'],
+        'dvd_musical_used' => ['/dvd|blu/i', '/^musical/i'],
+        'dvd_romance_used' => ['/dvd|blu/i', '/^romance/i'],
+        'dvd_thriller_used' => ['/dvd|blu/i', '/^thriller/i'],
+        'dvd_tv_used' => ['/dvd|blu/i', '/^tv$/i'],
+        'dvd_music_used' => ['/dvd|blu/i', '/^music$/i'],
+        'dvd_horror_used' => ['/dvd|blu/i', '/^horror/i'],
+        'dvd_scifi_used' => ['/dvd|blu/i', '/^sci/i'],
+        'book_artist_band' => ['/^books?$/i', '/^artist/i'],
+        'book_bio' => ['/^books?$/i', '/^biograph/i'],
+        'book_comic' => ['/^books?$/i', '/^comic/i'],
+        'book_fantasy' => ['/^books?$/i', '/^fantasy/i'],
+        'book_historical' => ['/^books?$/i', '/^historical/i'],
+        'book_manga' => ['/^books?$/i', '/^manga/i'],
+        'book_music_history' => ['/^books?$/i', '/^music history/i'],
+        'book_mystery' => ['/^books?$/i', '/^mystery/i'],
+        'book_zine' => ['/^books?$/i', '/^zine/i'],
+        'magazine_mad' => ['/magazine/i', '/^mad/i'],
+        'magazine_playboy' => ['/magazine/i', '/^playboy/i'],
+        'magazine_pop_culture' => ['/magazine/i', '/^pop culture/i'],
         'bluray_used' => '/dvd|blu/i',
         'bluray_sealed' => '/dvd|blu/i',
         '4k_used' => '/dvd|blu/i',
@@ -153,6 +177,8 @@ class BuyDemandService
         'hat_cap' => '/apparel/i',
         'hat_fitted' => '/apparel/i',
     ];
+
+    const NONMUSIC_CATCHALL = ['book', 'magazine', 'dvd_used'];
 
     // Words that don't identify a release.
     const STOPWORDS = ['the', 'and', 'a', 'an', 'of', 'lp', 'lps', 'vinyl', 'record', 'records', 'album',
@@ -166,7 +192,8 @@ class BuyDemandService
     /** "Other genres" / "General" buckets: every OPEN_TYPES entry except individual vinyl. */
     public static function isCatchAll($itemType)
     {
-        return isset(self::OPEN_TYPES[$itemType]) && $itemType !== 'individual_vinyl';
+        return (isset(self::OPEN_TYPES[$itemType]) && $itemType !== 'individual_vinyl')
+            || in_array($itemType, self::NONMUSIC_CATCHALL, true);
     }
 
     public static function normal()
@@ -192,14 +219,14 @@ class BuyDemandService
                 return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
             }
 
-            if (isset(self::NONMUSIC_MAP[$itemType])) {
-                return $this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]);
-            }
-
             // Catch-all buckets (mixed lots) always pay their flat rate: no
             // speed adjustment, so a box prices the same whoever rings it up.
             if (self::isCatchAll($itemType)) {
                 return self::normal();
+            }
+
+            if (isset(self::NONMUSIC_MAP[$itemType])) {
+                return $this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]);
             }
 
             $choices = $this->genreChoices($businessId, $itemType);
@@ -376,9 +403,10 @@ class BuyDemandService
     }
 
     /** Books / magazines / DVDs / VHS / apparel: the category vs the whole store, cuts only. */
-    protected function nonMusicDemand($businessId, $locationId, $regex)
+    protected function nonMusicDemand($businessId, $locationId, $spec)
     {
-        list($formats) = $this->taxonomy($businessId);
+        list($regex, $subRegex) = is_array($spec) ? $spec : [$spec, null];
+        list($formats, $subs) = $this->taxonomy($businessId);
         $ids = [];
         $label = null;
         foreach ($formats as $id => $name) {
@@ -387,21 +415,37 @@ class BuyDemandService
                 $label = $label ?: trim($name);
             }
         }
+        $subIds = null;
+        if ($subRegex !== null) {
+            $subIds = [];
+            foreach ($subs as $id => $s) {
+                if (in_array($s['parent'], $ids, true) && preg_match($subRegex, trim($s['name']))) {
+                    $subIds[] = (int) $id;
+                    $label = trim($s['name']);
+                }
+            }
+            if (empty($subIds)) {
+                return self::normal();
+            }
+        }
         if (empty($ids)) {
             return self::normal();
         }
-        $key = 'n:' . $businessId . ':' . $locationId . ':' . implode(',', $ids);
+        $key = 'n:' . $businessId . ':' . $locationId . ':' . implode(',', $ids) . ':' . implode(',', (array) $subIds);
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $ids, $label) {
-                list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, $ids, null);
-                list($sSold, $sOnHand) = $this->soldAndOnHand($businessId, $locationId, null, null);
+            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $ids, $subIds, $label) {
+                // A subcategory vs the rest of its category; a category vs the store.
+                list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, $ids, $subIds);
+                list($sSold, $sOnHand) = $subIds !== null
+                    ? $this->soldAndOnHand($businessId, $locationId, $ids, null)
+                    : $this->soldAndOnHand($businessId, $locationId, null, null);
                 $storeTurn = $sOnHand > 0 ? $sSold / $sOnHand : 0;
                 $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
                 $speed = $storeTurn > 0 ? $turn / $storeTurn : 0;
                 $level = self::levelFor($sold, $onHand, $speed, $storeTurn);
                 $reason = sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
                 if ($speed > 0 && is_finite($speed)) {
-                    $reason .= sprintf(' (sells %.1fx as fast as the store)', $speed);
+                    $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $subIds !== null ? 'the rest of its category' : 'the store');
                 }
                 return $this->result($level, $reason);
             });
