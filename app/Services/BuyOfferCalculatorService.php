@@ -70,8 +70,21 @@ class BuyOfferCalculatorService
                 'cd_boxset_used' => ['label' => 'CD: Boxset USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.50],
                 'cd_boxset_sealed' => ['label' => 'CD: Boxset SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 3.00],
 
-                'cassette_hh_metal_punk' => ['label' => 'Cassette: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75],
-                'cassette_rb_jazz_rock' => ['label' => 'Cassette: R&B/Jazz/Rock', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50],
+                // Jon 2026-10-23: used cassettes split by genre, priced off 90 days
+                // of sales at both stores (avg used cassette $10.24, turnover 0.18).
+                // R&B/Soul 114 sold at ~$9.35, 1.4x as fast as used cassettes overall;
+                // Metal 10 at $12.70, 1.9x (only 29 in stock); Hip-Hop 32 at $12.25
+                // but 0.7x (245 in stock); Punk 3 sold; Rock 94 at $8.51, 0.9x; Jazz
+                // 17 at $8.06, 0.3x (276 in stock). The combined types stay (retired)
+                // so old buys keep their label.
+                'cassette_hiphop_used' => ['label' => 'Cassette: Hip-Hop USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75],
+                'cassette_metal_used' => ['label' => 'Cassette: Metal USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
+                'cassette_punk_used' => ['label' => 'Cassette: Punk USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75],
+                'cassette_rnb_used' => ['label' => 'Cassette: R&B/Soul USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75],
+                'cassette_rock_used' => ['label' => 'Cassette: Rock USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50],
+                'cassette_jazz_used' => ['label' => 'Cassette: Jazz USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.35],
+                'cassette_hh_metal_punk' => ['label' => 'Cassette: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'retired' => true],
+                'cassette_rb_jazz_rock' => ['label' => 'Cassette: R&B/Jazz/Rock', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'retired' => true],
                 'cassette_everything_else' => ['label' => 'Cassette: Everything Else', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
 
                 'rpm45_hh_metal_punk' => ['label' => '45 RPM: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
