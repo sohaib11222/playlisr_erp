@@ -5277,8 +5277,7 @@ function addManualProductRow() {
                        class="form-control manual-product-name-input" 
                        required 
                        placeholder="Product Name">
-                <input type="text" name="products[${newRowIndex}][reason]" class="form-control" style="margin-top:4px;"
-                       placeholder="Records, CDs, tapes, movies: why not scanned?">
+                <select name="products[${newRowIndex}][reason]" class="form-control manual-reason-select" style="margin-top:4px;"><option value="">Records, CDs, tapes, movies: why no scan?</option><option value="No barcode on it">No barcode on it</option><option value="Has a barcode, did not scan">Has a barcode, did not scan</option><option value="Scanned, not found in the ERP">Scanned, not found in the ERP</option></select>
             </td>
             <td>
                 <input type="text" 

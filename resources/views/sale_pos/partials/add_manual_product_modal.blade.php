@@ -8,7 +8,7 @@
                 </button>
 
 				<h4 class="modal-title">
-					Add Manual Products
+					Items With No Barcode
 				</h4>
 			</div>
 			<div class="modal-body">
@@ -35,10 +35,9 @@
                                            minlength="3"
                                            maxlength="150"
                                            placeholder="e.g. Airheads candy, Used Sharpie, Soda can">
-                                    <input type="text" name="products[0][reason]" class="form-control" style="margin-top:4px;"
-                                           placeholder="Records, CDs, tapes, movies: why not scanned?">
+                                    <select name="products[0][reason]" class="form-control manual-reason-select" style="margin-top:4px;"><option value="">Records, CDs, tapes, movies: why no scan?</option><option value="No barcode on it">No barcode on it</option><option value="Has a barcode, did not scan">Has a barcode, did not scan</option><option value="Scanned, not found in the ERP">Scanned, not found in the ERP</option></select>
                                     <small style="display:block;margin-top:4px;color:#2B2620;">
-                                        Snacks, drinks, bag fees and clearance bins are fine here. Records, CDs, tapes and movies must be scanned or searched; manual only if it is not in the ERP, with a reason.
+                                        Snacks, drinks, bag fees and clearance: leave the second box blank. Records, CDs, tapes and movies: pick why it was not scanned.
                                     </small>
                                 </td>
                                 <td>

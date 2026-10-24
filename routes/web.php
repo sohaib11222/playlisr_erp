@@ -275,6 +275,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/customer-pickups/{id}/mark-arrived', 'CustomerPickupController@markArrived');
     Route::post('/customer-pickups/{id}/put-back', 'CustomerPickupController@markPutBack');
     Route::post('/customer-pickups/{id}/shelved', 'CustomerPickupController@markShelved');
+    // Records/CDs/tapes/movies rung up with no barcode (Sarah, 2026-10-23).
+    Route::get('/reports/barcode-misses', 'BarcodeMissController@index');
     // Customer / employee holds (Jon, 2026-10-23): hold bin, off the website.
     Route::get('/holds', 'HoldController@index');
     Route::get('/holds/lookup', 'HoldController@lookup');

@@ -7196,34 +7196,51 @@ class SellPosController extends Controller
                     return $output;
                 }
 
-                // Records, CDs, tapes and movies must come off a real listing,
-                // or the stock never goes down and the website sells a copy we
-                // no longer have (Sarah 10/19: ~900 manual music sales since
-                // 9/1). Manual is still allowed when the item truly is not in
-                // the ERP, with a reason; snacks, bag fees, clearance are free.
-                // Pico is exempt (Sarah 10/22): most Pico stock is not in the
-                // ERP yet, so cashiers there ring manual items all day.
+                // Records, CDs, tapes and movies: the cashier picks why it has
+                // no scan (Sarah 10/23: tens of thousands of items have no
+                // barcode, so manual must always work). A name match in the ERP
+                // no longer blocks; "has a barcode, it did not scan" rows go to
+                // /reports/barcode-misses so broken barcodes get fixed.
+                // Pico is exempt (Sarah 10/22): most Pico stock is not in the ERP yet.
                 $catLabel = (string) \App\Category::where('id', (int) $categoryId)->value('name');
                 if (!$isPicoLocation && preg_match('/vinyl|\\bcds?\\b|cassette|7"|45 rpm|dvd|blu|vhs|laser|8 track/i', $catLabel) && stripos($catLabel, 'clearance') === false) {
-                    $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($productName . ' ' . $trimmedArtist)), function ($w) { return mb_strlen($w) >= 3; }));
-                    if ($words && $businessId) {
-                        $q = \DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')
-                            ->where('p.business_id', $businessId)->where('p.is_inactive', 0)->where('p.category_id', (int) $categoryId)->where('v.qty_available', '>', 0);
-                        foreach (array_slice($words, 0, 4) as $w) {
-                            $q->where(function ($x) use ($w) { $x->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
-                        }
-                        $found = $q->distinct()->limit(3)->pluck('p.name')->all();
-                        if ($found) {
-                            $output['success'] = false;
-                            $output['msg'] = 'This is in the ERP: ' . implode(' | ', $found) . '. Close this window and scan or search it instead (Row ' . ($index + 1) . ').';
-                            return $output;
-                        }
-                    }
                     $reason = trim((string) ($product['reason'] ?? ''));
                     if (mb_strlen($reason) < 5) {
                         $output['success'] = false;
-                        $output['msg'] = 'Records, CDs, tapes and movies have to be scanned or searched. If it really is not in the ERP, write why in the reason box (Row ' . ($index + 1) . ').';
+                        $output['msg'] = 'Records, CDs, tapes and movies: pick "No barcode" or "Has a barcode, did not scan" under the name (Row ' . ($index + 1) . ').';
                         return $output;
+                    }
+                    $found = [];
+                    $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($productName . ' ' . $trimmedArtist)), function ($w) { return mb_strlen($w) >= 3; }));
+                    if ($words && $businessId) {
+                        try {
+                            $q = \DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')
+                                ->where('p.business_id', $businessId)->where('p.is_inactive', 0)->where('p.category_id', (int) $categoryId)->where('v.qty_available', '>', 0);
+                            foreach (array_slice($words, 0, 4) as $w) {
+                                $q->where(function ($x) use ($w) { $x->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
+                            }
+                            $found = $q->distinct()->limit(3)->pluck('p.name')->all();
+                        } catch (\Throwable $e) {
+                            $found = [];
+                        }
+                    }
+                    try {
+                        if (\Schema::hasTable('barcode_scan_misses')) {
+                            \DB::table('barcode_scan_misses')->insert([
+                                'business_id' => (int) $businessId,
+                                'location_id' => (int) request()->get('location_id') ?: null,
+                                'user_id' => request()->session()->get('user.id'),
+                                'product_name' => mb_substr($productName, 0, 190),
+                                'artist' => mb_substr($trimmedArtist, 0, 190),
+                                'category_name' => mb_substr($catLabel, 0, 190),
+                                'price' => (float) $price,
+                                'reason' => mb_substr($reason, 0, 190),
+                                'erp_matches' => $found ? mb_substr(implode(' | ', $found), 0, 1000) : null,
+                                'created_at' => now(),
+                            ]);
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::warning('barcode_scan_misses insert failed: ' . $e->getMessage());
                     }
                     \Log::info('Manual music sale: ' . $productName . ' / ' . $trimmedArtist . ' / ' . $catLabel . ' / reason: ' . $reason . ' / user ' . request()->session()->get('user.id'));
                 }
