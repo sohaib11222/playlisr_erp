@@ -271,7 +271,7 @@
         .bfc-create .bfc-demand-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; text-align: left; }
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
-        .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
+        .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-demand-margin { background: #FFF6D6; color: #6B5300; border: 1px solid #EBD58A; }
         .bfc-create .bfc-demand-normal { background: #F1F1F1; color: #555; border: 1px solid #DDD; font-weight: 500; }
         .bfc-create .bfc-genre { margin-top: 4px; height: 28px; padding: 2px 6px; font-size: 12px; }
@@ -365,11 +365,11 @@
             }
             // Normal lines still show their sales speed (gray), so the cashier
             // can see why there's no bonus.
-            if (!in_array($lvl, ['hot', 'warm', 'cool', 'cold'], true)) {
+            if (!in_array($lvl, ['hot', 'warm', 'cool', 'cold', 'lot'], true)) {
                 return $why !== '' ? '<span class="bfc-demand-chip bfc-demand-normal">' . e('No change: ' . $why) . '</span>' : '';
             }
             $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
-            $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked'];
+            $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked', 'lot' => 'Big lot'];
             // Cuts only: hot / warm are info, they never add pay.
             $label = $pct < 0 ? $names[$lvl] . ' −' . abs($pct) . '%' : $names[$lvl] . ' (sells fast, no extra pay)';
             return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
@@ -1541,7 +1541,7 @@ HTML;
                     return;
                 }
                 var mult = parseFloat(d.multiplier) || 1;
-                var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked' };
+                var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked', lot: 'Big lot' };
                 // Cuts only: never pay above the base rate on the client either.
                 mult = Math.min(1, mult);
                 var lvl = names[d.level] ? d.level : 'normal';

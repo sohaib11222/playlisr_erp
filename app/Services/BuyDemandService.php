@@ -54,6 +54,8 @@ class BuyDemandService
     // format pays less. Needs a real pile, so small categories never get cut.
     const OVER_MIN_ON_HAND = 200;
     const FLOOD_MIN_QTY = 50;
+    // Lot pricing needs this many sold in the window to know the pace.
+    const LOT_MIN_SOLD = 3;
     const COOL_MAX_SPEED = 0.8;
     const COLD_MAX_SPEED = 0.5;
     const COOL_MULTIPLIER = 0.90;
@@ -233,7 +235,7 @@ class BuyDemandService
             $incoming = (float) ($line['incoming_quantity'] ?? $line['quantity'] ?? 0);
 
             if (isset(self::NONMUSIC_MAP[$itemType])) {
-                return $this->withIncoming($this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]), $incoming);
+                return $this->withIncoming($this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]), $incoming, $businessId);
             }
 
             $choices = $this->genreChoices($businessId, $itemType);
@@ -246,11 +248,11 @@ class BuyDemandService
                 if ($byTitle['level'] !== 'normal' || $genre === '') {
                     return $byTitle;
                 }
-                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $choices[$genre]), $incoming);
+                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $choices[$genre]), $incoming, $businessId);
             }
 
             if (isset(self::TYPE_MAP[$itemType]) || $genre !== '') {
-                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $genre !== '' ? $choices[$genre] : null), $incoming);
+                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $genre !== '' ? $choices[$genre] : null), $incoming, $businessId);
             }
             return self::normal();
         } catch (\Throwable $e) {
@@ -546,13 +548,60 @@ class BuyDemandService
      * stay as they were (info), and a line that wasn't cut before is only cut
      * because of the buy's own size.
      */
-    protected function withIncoming(array $res, $incoming)
+    protected function withIncoming(array $res, $incoming, $businessId = 0)
     {
         $st = $res['stats'] ?? null;
         $incoming = max(0, (float) $incoming);
         if (!$st || $incoming <= 0) {
             return $res;
         }
+        $flat = $this->withIncomingFlat($res, $incoming, $st);
+        return $this->withLotTiers($flat, $incoming, $st, $businessId);
+    }
+
+    /**
+     * Jon 2026-10-23, huge lots only (an exploit guard): each copy is priced by
+     * how long it would sit. At this store's pace (last 60 days), copies that
+     * sell within lot_full_months (counting what's on the shelf) pay the line's
+     * rate, copies up to lot_half_months pay lot_half_pay%, the rest
+     * lot_quarter_pay%. Lots under lot_min_qty, or kinds with too few sales to
+     * judge, are left alone. Settings -> Buy Margins. Only ever lowers pay.
+     */
+    protected function withLotTiers(array $res, $incoming, array $st, $businessId)
+    {
+        $s = BuyMarginSettings::get($businessId);
+        if ($incoming < $s['lot_min_qty'] || $st['sold'] < self::LOT_MIN_SOLD) {
+            return $res;
+        }
+        $perMonth = $st['sold'] / (self::GROUP_WINDOW_DAYS / 30);
+        $fullCap = $s['lot_full_months'] * $perMonth;
+        $halfCap = max($fullCap, $s['lot_half_months'] * $perMonth);
+        $on = (float) $st['on_hand'];
+        $nFull = min($incoming, max(0, $fullCap - $on));
+        $nHalf = min($incoming - $nFull, max(0, $halfCap - max($on, $fullCap)));
+        $nQuarter = max(0, $incoming - $nFull - $nHalf);
+        $mult = ($nFull + $nHalf * $s['lot_half_pay'] / 100 + $nQuarter * $s['lot_quarter_pay'] / 100) / $incoming;
+        // The line's own rate already includes any overstock cut: the lot price
+        // only applies when it's lower still.
+        if ($mult >= (float) $res['multiplier'] - 0.0001) {
+            return $res;
+        }
+        $f = function ($n) { return number_format(round($n)); };
+        $reason = $st['label'] . sprintf(
+            'big lot: we sell about %s a month and have %s; of these %s, %s would sell within %d months (full rate), %s within %d months (%d%%), %s later (%d%%). Pays %d%% on average.',
+            number_format($perMonth, 1), $f($on), $f($incoming),
+            $f($nFull), $s['lot_full_months'], $f($nHalf), $s['lot_half_months'], $s['lot_half_pay'], $f($nQuarter), $s['lot_quarter_pay'],
+            round($mult * 100)
+        );
+        if ($nQuarter > 0 && ($nFull + $nHalf) >= 1) {
+            $reason .= sprintf(' Think about taking only %s.', $f($nFull + $nHalf));
+        }
+        return array_merge($res, ['multiplier' => round($mult, 4), 'level' => 'lot', 'reason' => $reason]);
+    }
+
+    /** The flat -10% / -20% overstock cut, judged on the shelf after the buy. */
+    protected function withIncomingFlat(array $res, $incoming, array $st)
+    {
         $on = $st['on_hand'] + $incoming;
         $baseOn = $st['base_on_hand'] + $incoming;
         $baseTurn = $baseOn > 0 ? $st['base_sold'] / $baseOn : 0;
@@ -603,7 +652,7 @@ class BuyDemandService
     /** Short label for a level: "Hot (no extra pay)", "Overstocked −10%", "No change". */
     public static function levelLabel($level)
     {
-        $labels = ['hot' => 'Hot (no extra pay)', 'warm' => 'Warm (no extra pay)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%'];
+        $labels = ['hot' => 'Hot (no extra pay)', 'warm' => 'Warm (no extra pay)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%', 'lot' => 'Big lot (pays less)'];
         return $labels[$level] ?? 'No change';
     }
 
