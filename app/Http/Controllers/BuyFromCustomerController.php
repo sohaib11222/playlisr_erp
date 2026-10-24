@@ -210,7 +210,7 @@ class BuyFromCustomerController extends Controller
         // reopening a draft, so fall back to the bare form.
         $calculation = null;
         try {
-            $demand = $isBeta ? $this->demandHook($business_id, $offer->location_id, $offer->id) : null;
+            $demand = $isBeta ? $this->demandHook($business_id, $offer->location_id, $offer->id, $lines) : null;
             $calculation = $this->calculator->calculate($lines, $input_data, $demand);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('BFC draft reopen calc failed', ['offer_id' => $offer->id, 'err' => $e->getMessage()]);
@@ -311,11 +311,18 @@ class BuyFromCustomerController extends Controller
         }
         $business_id = (int) $request->session()->get('user.business_id');
         $offerId = $pinned ? (int) $request->input('offer_id', 0) : 0;
-        return $this->demandHook($business_id, $request->input('location_id'), $offerId ?: null);
+        return $this->demandHook($business_id, $request->input('location_id'), $offerId ?: null, (array) $request->input('lines', []));
     }
 
-    protected function demandHook($business_id, $locationId, $pinOfferId = null)
+    protected function demandHook($business_id, $locationId, $pinOfferId = null, array $allLines = [])
     {
+        // The whole buy's quantity per kind (type + genre), so the overstock
+        // check sees a lot split over several lines as one lot.
+        $incoming = [];
+        foreach ($allLines as $al) {
+            $ik = ($al['item_type'] ?? '') . '|' . ($al['genre'] ?? '');
+            $incoming[$ik] = ($incoming[$ik] ?? 0) + max(0, (float) ($al['quantity'] ?? 0));
+        }
         if ($this->demandService === null) {
             $this->demandService = app(BuyDemandService::class);
         }
@@ -327,7 +334,11 @@ class BuyFromCustomerController extends Controller
                 $quoted[self::demandLineKey($pl['line_order'] ?? '', $pl['item_type'] ?? '', $pl['title'] ?? '', $pl['genre'] ?? '')] = $pl;
             }
         }
-        return function ($line, $i) use ($service, $business_id, $locationId, $quoted) {
+        return function ($line, $i) use ($service, $business_id, $locationId, $quoted, $incoming) {
+            $ik = ($line['item_type'] ?? '') . '|' . ($line['genre'] ?? '');
+            if (isset($incoming[$ik])) {
+                $line['incoming_quantity'] = $incoming[$ik];
+            }
             $k = self::demandLineKey($i, $line['item_type'] ?? '', $line['title'] ?? '', $line['genre'] ?? '');
             if (isset($quoted[$k])) {
                 $q = ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
@@ -371,6 +382,8 @@ class BuyFromCustomerController extends Controller
             'item_type' => (string) $request->input('item_type', ''),
             'title' => (string) $request->input('title', ''),
             'genre' => (string) $request->input('genre', ''),
+            // The form sends the buy's total for this type + genre.
+            'incoming_quantity' => max(0, (float) $request->input('incoming_quantity', 0)),
         ];
         return response()->json($this->demandService->forLine($line, $business_id, $locationId));
     }

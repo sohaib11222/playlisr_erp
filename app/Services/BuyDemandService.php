@@ -228,8 +228,11 @@ class BuyDemandService
                 return self::normal();
             }
 
+            // How many of this kind the buy brings in (all its same-type lines).
+            $incoming = (float) ($line['incoming_quantity'] ?? $line['quantity'] ?? 0);
+
             if (isset(self::NONMUSIC_MAP[$itemType])) {
-                return $this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]);
+                return $this->withIncoming($this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]), $incoming);
             }
 
             $choices = $this->genreChoices($businessId, $itemType);
@@ -242,11 +245,11 @@ class BuyDemandService
                 if ($byTitle['level'] !== 'normal' || $genre === '') {
                     return $byTitle;
                 }
-                return $this->cachedGroup($businessId, $locationId, $itemType, $genre, $choices[$genre]);
+                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $choices[$genre]), $incoming);
             }
 
             if (isset(self::TYPE_MAP[$itemType]) || $genre !== '') {
-                return $this->cachedGroup($businessId, $locationId, $itemType, $genre, $genre !== '' ? $choices[$genre] : null);
+                return $this->withIncoming($this->cachedGroup($businessId, $locationId, $itemType, $genre, $genre !== '' ? $choices[$genre] : null), $incoming);
             }
             return self::normal();
         } catch (\Throwable $e) {
@@ -436,7 +439,7 @@ class BuyDemandService
         }
         $key = 'n:' . $businessId . ':' . $locationId . ':' . implode(',', $ids) . ':' . implode(',', (array) $subIds);
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $ids, $subIds, $label) {
+            $this->memo[$key] = Cache::remember('buydemand8:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $ids, $subIds, $label) {
                 // A subcategory vs the rest of its category; a category vs the store.
                 list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, $ids, $subIds);
                 list($sSold, $sOnHand) = $subIds !== null
@@ -446,11 +449,15 @@ class BuyDemandService
                 $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
                 $speed = $storeTurn > 0 ? $turn / $storeTurn : 0;
                 $level = self::levelFor($sold, $onHand, $speed, $storeTurn);
+                $vs = $subIds !== null ? 'the rest of its category' : 'the store';
                 $reason = sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
                 if ($speed > 0 && is_finite($speed)) {
-                    $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $subIds !== null ? 'the rest of its category' : 'the store');
+                    $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $vs);
                 }
-                return $this->result($level, $reason);
+                return $this->result($level, $reason) + ['stats' => [
+                    'sold' => $sold, 'on_hand' => $onHand, 'base_sold' => $sSold, 'base_on_hand' => $sOnHand,
+                    'label' => $label . ': ', 'vs' => $vs, 'home' => '',
+                ]];
             });
         }
         return $this->memo[$key];
@@ -482,7 +489,7 @@ class BuyDemandService
     {
         $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType . ':' . $genre;
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
+            $this->memo[$key] = Cache::remember('buydemand8:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
                 return $this->groupDemand($businessId, $locationId, $itemType, $genre, $genreLabel);
             });
         }
@@ -522,8 +529,43 @@ class BuyDemandService
         if ($speed > 0 && is_finite($speed)) {
             $reason .= sprintf(' (sells %.1fx as fast as the rest of this format here)', $speed);
         }
-        $reason .= $this->homeDaysNote($businessId, $locationId, $formatIds, $genreIds);
-        return $this->result($level, $reason);
+        $home = $this->homeDaysNote($businessId, $locationId, $formatIds, $genreIds);
+        $reason .= $home;
+        return $this->result($level, $reason) + ['stats' => [
+            'sold' => $sold, 'on_hand' => $onHand, 'base_sold' => $fmtSold, 'base_on_hand' => $fmtOnHand,
+            'label' => $genreLabel ? $genreLabel . ': ' : '', 'vs' => 'the rest of this format here', 'home' => $home,
+        ]];
+    }
+
+    /**
+     * Jon 2026-10-23: the overstock check counts what's being bought. A lot
+     * that would flood a category (188 games onto a shelf of 101) is judged on
+     * the shelf after the buy; the same type's lines in one buy are added up
+     * so a lot can't be split to dodge it. Only ever adds a cut: hot / warm
+     * stay as they were (info), and a line that wasn't cut before is only cut
+     * because of the buy's own size.
+     */
+    protected function withIncoming(array $res, $incoming)
+    {
+        $st = $res['stats'] ?? null;
+        $incoming = max(0, (float) $incoming);
+        if (!$st || $incoming <= 0) {
+            return $res;
+        }
+        $on = $st['on_hand'] + $incoming;
+        $baseOn = $st['base_on_hand'] + $incoming;
+        $baseTurn = $baseOn > 0 ? $st['base_sold'] / $baseOn : 0;
+        $speed = ($on > 0 && $baseTurn > 0) ? ($st['sold'] / $on) / $baseTurn : 0;
+        $level = self::levelFor($st['sold'], $on, $speed, $baseTurn);
+        $rank = ['cold' => 2, 'cool' => 1];
+        if (($rank[$level] ?? 0) <= ($rank[$res['level']] ?? 0)) {
+            return $res;
+        }
+        $reason = $st['label'] . sprintf('%d sold in last %d days, %d in stock + %s in this buy', $st['sold'], self::GROUP_WINDOW_DAYS, $st['on_hand'], rtrim(rtrim(number_format($incoming, 2, '.', ''), '0'), '.'));
+        if ($speed > 0) {
+            $reason .= sprintf(' (after this buy: sells %.1fx as fast as %s)', $speed, $st['vs']);
+        }
+        return array_merge($res, $this->result($level, $reason . $st['home']));
     }
 
     /**
