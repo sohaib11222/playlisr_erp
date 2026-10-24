@@ -350,9 +350,9 @@ class BuyOfferCalculatorService
                     $raw = null;
                 }
                 $raw = is_array($raw) ? $raw : [];
-                // Cuts only: -20% (way overstocked) to the base rate, never more,
-                // whatever the hook or an old pinned quote says (Jon 10/23).
-                $mult = min(1.0, max(0.80, (float) ($raw['multiplier'] ?? 1.0)));
+                // Cuts only: never above the base rate, whatever the hook or an old
+                // pinned quote says (Jon 10/23). Down to 25% for a huge lot.
+                $mult = min(1.0, max(0.25, (float) ($raw['multiplier'] ?? 1.0)));
                 $baseLine = $cashLine;
                 $cashLine = round($cashLine * $mult, 2);
                 $demandBonus += $cashLine - $baseLine;

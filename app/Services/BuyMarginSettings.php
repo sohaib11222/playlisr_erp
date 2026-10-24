@@ -16,7 +16,9 @@ use App\Business;
  */
 class BuyMarginSettings
 {
-    const DEFAULTS = ['fast' => 55, 'normal' => 65, 'slow' => 75, 'floor' => 50, 'hv_min' => 20, 'hv_pay' => 20, 'hv_fast_pay' => 25];
+    const DEFAULTS = ['fast' => 55, 'normal' => 65, 'slow' => 75, 'floor' => 50, 'hv_min' => 20, 'hv_pay' => 20, 'hv_fast_pay' => 25,
+        // Huge lots on Beta (BuyDemandService::withLotTiers).
+        'lot_min_qty' => 50, 'lot_full_months' => 12, 'lot_half_months' => 24, 'lot_half_pay' => 50, 'lot_quarter_pay' => 25];
 
     protected static $memo = [];
 
@@ -38,7 +40,13 @@ class BuyMarginSettings
         foreach (self::DEFAULTS as $k => $def) {
             $v = $common['buy_margin_' . $k] ?? null;
             $v = is_numeric($v) ? (float) $v : $def;
-            $out[$k] = $k === 'hv_min' ? max(0.0, $v) : max(0.0, min(95.0, $v));
+            if (in_array($k, ['hv_min', 'lot_min_qty', 'lot_full_months', 'lot_half_months'], true)) {
+                $out[$k] = max($k === 'lot_min_qty' ? 1.0 : 0.0, $v);
+            } elseif (in_array($k, ['lot_half_pay', 'lot_quarter_pay'], true)) {
+                $out[$k] = max(0.0, min(100.0, $v));
+            } else {
+                $out[$k] = max(0.0, min(95.0, $v));
+            }
         }
         return self::$memo[$businessId] = $out;
     }
