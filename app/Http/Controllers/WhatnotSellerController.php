@@ -58,7 +58,7 @@ class WhatnotSellerController extends Controller
             's'            => $s,
             'lines'        => $lines,
             'sales'        => round($sales, 2),
-            'pay'          => WS::pay($items, $hours),
+            'pay'          => WS::pay($lines, $hours),
             'shows'        => $shows,
             'period_start' => Carbon::parse($periodStart)->format('m/d/y'),
             'stores'       => $stores,
@@ -359,7 +359,7 @@ class WhatnotSellerController extends Controller
             'flagged' => $flagged,
             'by_golden' => $byGolden,
             'month_rows' => $monthRows,
-            'pay' => WS::pay($count, $hours),
+            'pay' => WS::pay($lines, $hours),
             'shows' => $shows,
             'users' => $users,
         ]);
@@ -376,6 +376,8 @@ class WhatnotSellerController extends Controller
             'user_id' => 'nullable|integer',
             'per_item' => 'required|numeric|min:0|max:100',
             'hourly_rate' => 'required|numeric|min:0|max:500',
+            'premium_pct' => 'nullable|numeric|min:0|max:1000',
+            'premium_per_item' => 'required|numeric|min:0|max:100',
             'min_pct_of_sticker' => 'required|integer|min:0|max:100',
             'min_days_in_store' => 'required|integer|min:0|max:365',
             'paid_through' => 'nullable|date_format:Y-m-d',
@@ -386,6 +388,8 @@ class WhatnotSellerController extends Controller
         $s['user_id'] = !empty($data['user_id']) ? (int) $data['user_id'] : null;
         $s['per_item'] = (float) $data['per_item'];
         $s['hourly_rate'] = (float) $data['hourly_rate'];
+        $s['premium_pct'] = ($data['premium_pct'] ?? '') === '' ? null : (float) $data['premium_pct'];
+        $s['premium_per_item'] = (float) $data['premium_per_item'];
         $s['min_pct_of_sticker'] = (int) $data['min_pct_of_sticker'];
         $s['min_days_in_store'] = (int) $data['min_days_in_store'];
         $s['paid_through'] = $data['paid_through'] ?? null;

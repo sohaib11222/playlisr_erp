@@ -41,7 +41,7 @@
         <div class="col-sm-3"><div class="wn-kpi">Sold on Whatnot<b>${{ number_format($total, 2) }}</b>{{ $count }} items, {{ \Carbon\Carbon::parse($from)->format('m/d/y') }} to {{ \Carbon\Carbon::parse($to)->format('m/d/y') }}</div></div>
         <div class="col-sm-3"><div class="wn-kpi">Sold under sticker<b class="{{ $under > 0 ? 'wn-low' : '' }}">${{ number_format($under, 2) }}</b>@if($premium > 0)<span class="wn-up">+${{ number_format($premium, 2) }} over sticker</span>@else average {{ $avg_pct === null ? 'n/a' : $avg_pct . '%' }} of sticker @endif</div></div>
         <div class="col-sm-3"><div class="wn-kpi">Flagged sales<b class="{{ $flagged ? 'wn-low' : '' }}">{{ $flagged }}</b>under sticker, too new in store, or under cost</div></div>
-        <div class="col-sm-3"><div class="wn-kpi">{{ $s['seller_name'] }}'s pay for these dates<b>${{ number_format($pay['total'], 2) }}</b>{{ (int) $pay['items'] }} items x ${{ number_format($s['per_item'], 2) }} + {{ $pay['hours'] }} hrs x ${{ number_format($s['hourly_rate'], 2) }}</div></div>
+        <div class="col-sm-3"><div class="wn-kpi">{{ $s['seller_name'] }}'s pay for these dates<b>${{ number_format($pay['total'], 2) }}</b>{{ (int) $pay['items'] - (int) $pay['premium_items'] }} items x ${{ number_format($s['per_item'], 2) }} + {{ (int) $pay['premium_items'] }} premium x ${{ number_format($s['premium_per_item'], 2) }} + {{ $pay['hours'] }} hrs x ${{ number_format($s['hourly_rate'], 2) }}</div></div>
     </div>
 
     <div class="row">
@@ -85,6 +85,10 @@
                                 <select class="form-control" name="user_id"><option value="">None</option>
                                     @foreach($users as $u)<option value="{{ $u->id }}" {{ (int) $s['user_id'] === (int) $u->id ? 'selected' : '' }}>{{ $u->name }}</option>@endforeach
                                 </select></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-4 form-group"><label>Premium: more than % over sticker</label><input class="form-control" type="number" step="1" name="premium_pct" value="{{ $s['premium_pct'] }}" placeholder="not set"></div>
+                            <div class="col-sm-4 form-group"><label>Premium pay per item ($)</label><input class="form-control" type="number" step="0.01" name="premium_per_item" value="{{ $s['premium_per_item'] }}"></div>
                         </div>
                         <button class="btn btn-primary">Save</button>
                         <label style="margin-left:14px; font-weight:normal;"><input type="checkbox" name="new_link" value="1"> Make a new link (the old one stops working)</label>

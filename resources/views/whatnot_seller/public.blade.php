@@ -77,7 +77,7 @@
             <input type="hidden" name="submit_id" id="submit_id">
             <button type="submit" class="save" id="save" disabled>Save sold items</button>
         </form>
-        <div class="meta" style="margin-top:8px;">Rules: sell at {{ $s['min_pct_of_sticker'] }}% of the sticker price or more, and leave anything in the store less than {{ $s['min_days_in_store'] }} days for in-store customers. If you go lower, write why.</div>
+        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) Sell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Rules: sell at {{ $s['min_pct_of_sticker'] }}% of the sticker price or more, and leave anything in the store less than {{ $s['min_days_in_store'] }} days for in-store customers. If you go lower, write why.</div>
     </div>
 
     <div class="card">
@@ -96,7 +96,7 @@
     <div class="card">
         <h2>Your pay since {{ $period_start }}</h2>
         <div class="totals">
-            <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each</div>
+            <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each @if($s['premium_pct'] !== null) ({{ (int) $pay['premium_items'] }} at ${{ number_format($s['premium_per_item'], 2) }}) @endif</div>
             <div>Show hours<b>{{ rtrim(rtrim(number_format($pay['hours'], 2), '0'), '.') ?: '0' }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
             <div>Total<b>${{ number_format($pay['total'], 2) }}</b>sold ${{ number_format($sales, 2) }}</div>
         </div>
@@ -123,6 +123,8 @@
 <script>
 (function () {
     var MIN_PCT = {{ (int) $s['min_pct_of_sticker'] }};
+    var PREM_PCT = @json($s['premium_pct']);
+    var PREM_PAY = {{ (float) $s['premium_per_item'] }};
     var searchUrl = @json(url('/whatnot-seller/' . $token . '/search'));
     var cart = [];
     var q = document.getElementById('q'), results = document.getElementById('results');
@@ -218,6 +220,9 @@
         var c = cart[i], w = document.querySelector('[data-w="' + i + '"]'), p = parseFloat(c.price), html = '';
         if (c.sticker && p > 0 && p < c.floor) {
             html += '<div class="bad">' + Math.round(p / c.sticker * 100) + '% of sticker. The lowest without a reason is ' + money(c.floor) + '.</div>';
+        }
+        if (PREM_PCT !== null && c.sticker && p > c.sticker * (1 + PREM_PCT / 100)) {
+            html += '<div class="ok" style="margin-top:6px;">Premium sale. You get ' + money(PREM_PAY) + ' for this one.</div>';
         }
         if (c.too_new) html += '<div class="warn">This one is new in the store. Write why it went on Whatnot.</div>';
         w.innerHTML = html;

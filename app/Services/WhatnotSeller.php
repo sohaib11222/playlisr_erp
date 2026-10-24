@@ -43,6 +43,8 @@ class WhatnotSeller
             'user_id'            => null,   // ERP user the sales are credited to (optional)
             'per_item'           => 0.50,   // Sarah 10/23: $0.50 per item sold
             'hourly_rate'        => 18,     // plus $18/hour on stream
+            'premium_pct'        => null,   // sold more than this % over sticker...
+            'premium_per_item'   => 0.65,   // ...pays 65 cents instead (Sarah 10/23)
             'min_pct_of_sticker' => 70,     // below this % of sticker = flagged
             'min_days_in_store'  => 30,     // items newer than this stay in the store
             'paid_through'       => null,   // Y-m-d, last day already paid out
@@ -260,12 +262,26 @@ class WhatnotSeller
         }));
     }
 
-    /** $0.50 per item + $18 per hour (Sarah 2026-10-23). */
-    public static function pay(float $items, float $hours): array
+    /** True when a line sold more than premium_pct over its sticker. */
+    public static function isPremium(array $l): bool
+    {
+        $pct = self::settings()['premium_pct'];
+        return $pct !== null && $pct !== '' && !empty($l['sticker']) && $l['sold'] > $l['sticker'] * (1 + (float) $pct / 100) + 0.0001;
+    }
+
+    /** $0.50 per item, $0.65 per premium item, + $18 per hour (Sarah 2026-10-23). */
+    public static function pay(array $lines, float $hours): array
     {
         $s = self::settings();
-        $itemPay = round($items * (float) $s['per_item'], 2);
+        $items = 0; $premium = 0;
+        foreach ($lines as $l) {
+            $items += $l['qty'];
+            if (self::isPremium($l)) {
+                $premium += $l['qty'];
+            }
+        }
+        $itemPay = round(($items - $premium) * (float) $s['per_item'] + $premium * (float) $s['premium_per_item'], 2);
         $hourPay = round($hours * (float) $s['hourly_rate'], 2);
-        return ['items' => $items, 'hours' => $hours, 'item_pay' => $itemPay, 'hour_pay' => $hourPay, 'total' => round($itemPay + $hourPay, 2)];
+        return ['items' => $items, 'premium_items' => $premium, 'hours' => $hours, 'item_pay' => $itemPay, 'hour_pay' => $hourPay, 'total' => round($itemPay + $hourPay, 2)];
     }
 }
