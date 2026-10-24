@@ -100,6 +100,12 @@ class BuyDemandService
 
         'cassette_hh_metal_punk' => ['cassette', 'any', ['hip hop', 'metal', 'punk']],
         'cassette_rb_jazz_rock' => ['cassette', 'any', ['rnb', 'jazz', 'rock']],
+        'cassette_hiphop_used' => ['cassette', 'used', ['hip hop']],
+        'cassette_metal_used' => ['cassette', 'used', ['metal']],
+        'cassette_punk_used' => ['cassette', 'used', ['punk']],
+        'cassette_rnb_used' => ['cassette', 'used', ['rnb']],
+        'cassette_rock_used' => ['cassette', 'used', ['rock']],
+        'cassette_jazz_used' => ['cassette', 'used', ['jazz']],
 
         'rpm45_hh_metal_punk' => ['45', 'any', ['hip hop', 'metal', 'punk']],
         'rpm45_newwave_rock_alt' => ['45', 'any', ['new wave', 'rock', 'alt']],
