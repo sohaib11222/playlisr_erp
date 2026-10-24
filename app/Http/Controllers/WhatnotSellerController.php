@@ -362,6 +362,8 @@ class WhatnotSellerController extends Controller
             'pay' => WS::pay($lines, $hours),
             'shows' => $shows,
             'users' => $users,
+            'daily' => WS::dailyCheck($lines, $from, $to),
+            'wn_range' => WS::whatnotImportedRange(),
         ]);
     }
 
@@ -452,5 +454,23 @@ class WhatnotSellerController extends Controller
         }
         [$from, $to] = $this->statementDates($request);
         return $this->statementView((int) WS::settings()['business_id'], $from, $to, url('/whatnot-seller/' . $token));
+    }
+
+    public function importCsv(Request $request)
+    {
+        $this->ensureAccess();
+        $files = $request->file('csv') ?: [];
+        if (!is_array($files)) { $files = [$files]; }
+        $added = 0; $skipped = 0; $bad = [];
+        foreach ($files as $f) {
+            try {
+                [$a, $k] = WS::importWhatnotCsv($f->getRealPath());
+                $added += $a; $skipped += $k;
+            } catch (\Throwable $e) {
+                $bad[] = $f->getClientOriginalName();
+            }
+        }
+        $msg = "Imported {$added} Whatnot rows" . ($skipped ? ", {$skipped} were already in" : '') . '.' . ($bad ? ' Not a Whatnot order report: ' . implode(', ', $bad) . '.' : '');
+        return redirect()->back()->with('status', ['success' => $bad ? 0 : 1, 'msg' => $msg]);
     }
 }

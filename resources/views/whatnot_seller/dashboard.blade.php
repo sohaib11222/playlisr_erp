@@ -131,22 +131,42 @@
                 </table>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="wn-card">
-                <div class="wn-label">Did every sale get marked?</div>
-                @php $hasStatement = count(array_filter($month_rows, function ($m) { return $m['statement'] !== null; })) > 0; @endphp
-                @if($hasStatement)
-                    <table class="table table-condensed" style="margin:6px 0 0;">
-                        <tr><th>Month</th><th class="text-right">In the ERP</th><th class="text-right">Whatnot says</th><th class="text-right">Missing</th></tr>
-                        @foreach($month_rows as $m)
-                            @php $gap = $m['statement'] === null ? null : round($m['statement'] - $m['erp'], 2); @endphp
-                            <tr><td>{{ $m['label'] }}</td><td class="text-right">${{ number_format($m['erp'], 2) }}</td><td class="text-right">{{ $m['statement'] === null ? '' : '$' . number_format($m['statement'], 2) }}</td><td class="text-right {{ $gap !== null && $gap > 1 ? 'wn-red' : '' }}">{{ $gap === null ? '' : '$' . number_format($gap, 2) }}</td></tr>
-                        @endforeach
-                    </table>
-                @else
-                    <p class="wn-sub">Not checked yet. Once Whatnot's sales totals are in, this shows how much sold on Whatnot but never got marked in the ERP.</p>
-                @endif
-            </div>
+    </div>
+
+    <div class="wn-card">
+        <div class="wn-label">Whatnot vs the ERP, day by day</div>
+        <p class="wn-sub" style="margin:0 0 10px;">Whatnot's own report shows what really sold and for how much. If Whatnot has more items than the ERP, some were never marked. If Whatnot's total is lower than the ERP sticker total, he sold under sticker that day.
+            @if($wn_range) Whatnot data loaded for {{ \Carbon\Carbon::parse($wn_range[0])->format('m/d/y') }} to {{ \Carbon\Carbon::parse($wn_range[1])->format('m/d/y') }}. @endif</p>
+        <form method="post" action="{{ url('/reports/whatnot-seller/import') }}" enctype="multipart/form-data" class="form-inline" style="margin-bottom:12px;">
+            @csrf
+            <input type="file" name="csv[]" accept=".csv" multiple class="form-control" style="height:auto;">
+            <button class="btn btn-default">Add Whatnot weekly reports</button>
+            <span class="wn-sub" style="margin-left:8px;">From Whatnot Seller Hub, Finances, Statements &amp; Reports, Download CSV.</span>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-condensed">
+                <thead><tr><th>Day</th><th class="text-right">Items on Whatnot</th><th class="text-right">Items in ERP</th><th class="text-right">Not marked</th><th class="text-right">Whatnot sold for</th><th class="text-right">ERP sticker</th><th class="text-right">Difference</th><th>Show</th></tr></thead>
+                <tbody>
+                @forelse($daily as $d)
+                    @php
+                        $miss = $d['wn_items'] === null ? null : $d['wn_items'] - $d['erp_items'];
+                        $dd = ($d['wn_total'] === null || $miss !== 0) ? null : round($d['wn_total'] - $d['erp_total'], 2);
+                    @endphp
+                    <tr>
+                        <td>{{ $d['date'] }}</td>
+                        <td class="text-right">{{ $d['wn_items'] === null ? 'no data' : $d['wn_items'] }}</td>
+                        <td class="text-right">{{ $d['erp_items'] }}</td>
+                        <td class="text-right {{ $miss !== null && $miss > 0 ? 'wn-red' : '' }}">{{ $miss !== null && $miss > 0 ? $miss : '' }}</td>
+                        <td class="text-right">{{ $d['wn_total'] === null ? '' : '$' . number_format($d['wn_total'], 2) }}</td>
+                        <td class="text-right">${{ number_format($d['erp_total'], 2) }}</td>
+                        <td class="text-right {{ $dd !== null && $dd < -0.009 ? 'wn-red' : ($dd !== null && $dd > 0.009 ? 'wn-green' : '') }}">@if($dd !== null && abs($dd) >= 0.01){{ ($dd > 0 ? '+' : '-') . '$' . number_format(abs($dd), 2) }}@elseif($miss !== null && $miss !== 0)<span class="wn-sub">counts differ</span>@endif</td>
+                        <td>{{ $d['shows'] }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="8">No Whatnot sales in these dates.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
 

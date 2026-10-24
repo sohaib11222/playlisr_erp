@@ -25,6 +25,7 @@ class WhatnotSeller
     const SETTINGS_FILE = 'whatnot-seller/settings.json';
     const NOTE_TAG = 'WHATNOT-SELLER';
     const HOURS_FILE = 'whatnot-seller/hours.json';
+    const ORDERS_FILE = 'whatnot-seller/whatnot-orders.json';
 
     public static function settings(): array
     {
@@ -299,5 +300,116 @@ class WhatnotSeller
         $itemPay = round(($items - $premium) * (float) $s['per_item'] + $premium * (float) $s['premium_per_item'], 2);
         $hourPay = round($hours * (float) $s['hourly_rate'], 2);
         return ['items' => $items, 'premium_items' => $premium, 'hours' => $hours, 'item_pay' => $itemPay, 'hour_pay' => $hourPay, 'total' => round($itemPay + $hourPay, 2)];
+    }
+
+    /** Rows imported from Whatnot's weekly order report CSVs, keyed by ledger id. */
+    public static function whatnotOrders(): array
+    {
+        try {
+            if (Storage::disk('local')->exists(self::ORDERS_FILE)) {
+                return json_decode(Storage::disk('local')->get(self::ORDERS_FILE), true) ?: [];
+            }
+        } catch (\Throwable $e) {
+        }
+        return [];
+    }
+
+    /**
+     * Parse one weekly order report CSV (Seller Hub > Finances > Statements &
+     * Reports) and merge it in. Re-importing the same week changes nothing.
+     * Returns [added, skipped].
+     */
+    public static function importWhatnotCsv(string $path): array
+    {
+        $fh = fopen($path, 'r');
+        if (!$fh) {
+            return [0, 0];
+        }
+        $head = fgetcsv($fh);
+        if (!$head || !in_array('ORDER_ID', $head, true) || !in_array('ORIGINAL_ITEM_PRICE', $head, true)) {
+            fclose($fh);
+            throw new \RuntimeException('That is not a Whatnot weekly order report.');
+        }
+        $all = self::whatnotOrders();
+        $added = 0; $skipped = 0;
+        while (($row = fgetcsv($fh)) !== false) {
+            if (count($row) !== count($head)) {
+                continue;
+            }
+            $r = array_combine($head, $row);
+            $key = $r['LEDGER_TRANSACTION_ID'] ?: ($r['ORDER_ID'] . '-' . $r['TRANSACTION_TYPE']);
+            if (isset($all[$key])) {
+                $skipped++;
+                continue;
+            }
+            $placed = $r['ORDER_PLACED_AT_UTC'] ?: $r['TRANSACTION_COMPLETED_AT_UTC'];
+            $all[$key] = [
+                'type'    => $r['TRANSACTION_TYPE'],
+                'order'   => $r['ORDER_ID'],
+                'date'    => $placed ? Carbon::parse($placed, 'UTC')->setTimezone('America/Los_Angeles')->format('Y-m-d') : '',
+                'title'   => $r['LISTING_TITLE'],
+                'show'    => trim($r['LIVESTREAM_TITLE']),
+                'qty'     => (float) ($r['QUANTITY_SOLD'] ?: 0),
+                'price'   => (float) ($r['ORIGINAL_ITEM_PRICE'] ?: 0),
+                'paid'    => (float) ($r['BUYER_PAID'] ?: 0),
+                'earned'  => (float) ($r['TRANSACTION_AMOUNT'] ?: 0),
+                'buyer'   => $r['BUYER_NAME'],
+            ];
+            $added++;
+        }
+        fclose($fh);
+        Storage::disk('local')->put(self::ORDERS_FILE, json_encode($all, JSON_UNESCAPED_SLASHES));
+        return [$added, $skipped];
+    }
+
+    /**
+     * Day by day: what Whatnot says sold (count + real prices) vs what's in
+     * the ERP (count + sticker). If Whatnot's total is lower than the ERP
+     * sticker total for the same items, he sold under sticker that day.
+     */
+    public static function dailyCheck(array $erpLines, string $from, string $to): array
+    {
+        $days = [];
+        foreach (self::whatnotOrders() as $o) {
+            if ($o['date'] < $from || $o['date'] > $to) {
+                continue;
+            }
+            $sign = 0;
+            if ($o['type'] === 'ORDER_EARNINGS') { $sign = 1; }
+            elseif (stripos($o['type'], 'REFUND') !== false) { $sign = -1; }
+            if (!$sign) {
+                continue;
+            }
+            $d = &$days[$o['date']];
+            $d['wn_items'] = ($d['wn_items'] ?? 0) + $sign * max(1, $o['qty']);
+            $d['wn_total'] = ($d['wn_total'] ?? 0) + $sign * $o['price'];
+            $d['shows'][$o['show']] = true;
+            unset($d);
+        }
+        foreach ($erpLines as $l) {
+            $d = &$days[$l['date_raw']];
+            $d['erp_items'] = ($d['erp_items'] ?? 0) + $l['qty'];
+            $d['erp_total'] = ($d['erp_total'] ?? 0) + ($l['sticker'] ?? $l['sold']) * $l['qty'];
+            unset($d);
+        }
+        krsort($days);
+        $out = [];
+        foreach ($days as $date => $d) {
+            $out[] = [
+                'date'      => Carbon::parse($date)->format('m/d/y'),
+                'wn_items'  => isset($d['wn_items']) ? (int) $d['wn_items'] : null,
+                'wn_total'  => isset($d['wn_total']) ? round($d['wn_total'], 2) : null,
+                'erp_items' => (int) ($d['erp_items'] ?? 0),
+                'erp_total' => round($d['erp_total'] ?? 0, 2),
+                'shows'     => implode(', ', array_keys($d['shows'] ?? [])),
+            ];
+        }
+        return $out;
+    }
+
+    public static function whatnotImportedRange(): ?array
+    {
+        $dates = array_filter(array_column(self::whatnotOrders(), 'date'));
+        return $dates ? [min($dates), max($dates)] : null;
     }
 }
