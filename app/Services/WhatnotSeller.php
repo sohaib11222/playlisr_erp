@@ -334,6 +334,17 @@ class WhatnotSeller
         return intdiv($minutes, 60) . 'h ' . str_pad($minutes % 60, 2, '0', STR_PAD_LEFT) . 'm';
     }
 
+    /** True when a line sold more than premium_pct over its sticker. */
+    public static function isPremium(array $l): bool
+    {
+        $s = self::settings();
+        $pct = $s['premium_pct'];
+        if ($s['premium_start'] && ($l['date_raw'] ?? '') < $s['premium_start']) {
+            return false;
+        }
+        return $pct !== null && $pct !== '' && !empty($l['sticker']) && $l['sold'] > $l['sticker'] * (1 + (float) $pct / 100) + 0.0001;
+    }
+
     /** What one sold line pays him. */
     public static function linePay(array $l): float
     {
