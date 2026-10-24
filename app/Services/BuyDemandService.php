@@ -253,7 +253,7 @@ class BuyDemandService
         if ($id > 0 && (isset($formats[$id]) || isset($subs[$id]))) {
             $key = 'e:' . $businessId . ':' . $locationId . ':' . $id;
             if (!isset($this->memo[$key])) {
-                $this->memo[$key] = Cache::remember('buydemand4:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
+                $this->memo[$key] = Cache::remember('buydemand5:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
                     if (isset($subs[$id])) {
                         list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], [$id]);
                         list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], null);
@@ -278,6 +278,9 @@ class BuyDemandService
                     if ($speed > 0 && is_finite($speed)) {
                         $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $vs);
                     }
+                    $reason .= isset($subs[$id])
+                        ? $this->homeDaysNote($businessId, $locationId, [$subs[$id]['parent']], [$id])
+                        : $this->homeDaysNote($businessId, $locationId, [$id], null);
                     return ['tier' => $tier, 'reason' => $reason];
                 });
             }
@@ -310,7 +313,7 @@ class BuyDemandService
     {
         $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType . ':' . $genre;
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand4:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
+            $this->memo[$key] = Cache::remember('buydemand5:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
                 return $this->groupDemand($businessId, $locationId, $itemType, $genre, $genreLabel);
             });
         }
@@ -344,22 +347,144 @@ class BuyDemandService
         $fmtTurn = $fmtOnHand > 0 ? $fmtSold / $fmtOnHand : 0;
         $speed = $fmtTurn > 0 ? $turn / $fmtTurn : 0;
 
-        $level = 'normal';
-        if ($sold >= self::HOT_MIN_SOLD && $speed >= self::HOT_MIN_SPEED) {
-            $level = 'hot';
-        } elseif ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
-            $level = 'warm';
-        } elseif ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COLD_MAX_SPEED) {
-            $level = 'cold';
-        } elseif ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COOL_MAX_SPEED) {
-            $level = 'cool';
-        }
+        $level = self::levelFor($sold, $onHand, $speed, $fmtTurn);
 
         $reason = ($genreLabel ? $genreLabel . ': ' : '') . sprintf('%d sold in last %d days, %d in stock', $sold, self::GROUP_WINDOW_DAYS, $onHand);
         if ($speed > 0 && is_finite($speed)) {
             $reason .= sprintf(' (sells %.1fx as fast as the rest of this format here)', $speed);
         }
+        $reason .= $this->homeDaysNote($businessId, $locationId, $formatIds, $genreIds);
         return $this->result($level, $reason);
+    }
+
+    /**
+     * Bonus / cut level from a genre's numbers at a store. One place, so the
+     * buy form and the Home "Fastest selling genres" Buy form column agree.
+     */
+    public static function levelFor($sold, $onHand, $speed, $fmtTurn)
+    {
+        if ($sold >= self::HOT_MIN_SOLD && $speed >= self::HOT_MIN_SPEED) {
+            return 'hot';
+        }
+        if ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
+            return 'warm';
+        }
+        if ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COLD_MAX_SPEED) {
+            return 'cold';
+        }
+        if ($onHand >= self::OVER_MIN_ON_HAND && $fmtTurn > 0 && $speed < self::COOL_MAX_SPEED) {
+            return 'cool';
+        }
+        return 'normal';
+    }
+
+    /** Short label for a level: "Hot +20%", "Overstocked −10%", "No change". */
+    public static function levelLabel($level)
+    {
+        $labels = ['hot' => 'Hot +20%', 'warm' => 'Warm +10%', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%'];
+        return $labels[$level] ?? 'No change';
+    }
+
+    /**
+     * Buy-form level for every genre (sub-category) at one store, in two
+     * grouped queries: [sub_category_id => ['level', 'speed', 'sold', 'on_hand']].
+     * Same 60-day window and math as a buy line with that genre picked.
+     */
+    public function levelsForStore($businessId, $locationId)
+    {
+        $businessId = (int) $businessId;
+        $locationId = (int) $locationId;
+        return Cache::remember('buydemand4:store:' . $businessId . ':' . $locationId, self::CACHE_SECONDS, function () use ($businessId, $locationId) {
+            $sold = DB::table('transaction_sell_lines as tsl')
+                ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->where('t.business_id', $businessId)
+                ->where('t.location_id', $locationId)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->where('t.transaction_date', '>=', now()->subDays(self::GROUP_WINDOW_DAYS))
+                ->whereNull('tsl.parent_sell_line_id')
+                ->groupBy('p.category_id', 'p.sub_category_id')
+                ->selectRaw('p.category_id as cat, p.sub_category_id as sub, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as q')
+                ->get();
+            $stock = DB::table('variation_location_details as vld')
+                ->join('products as p', 'p.id', '=', 'vld.product_id')
+                ->where('p.business_id', $businessId)
+                ->where('vld.location_id', $locationId)
+                ->where('vld.qty_available', '>', 0)
+                ->groupBy('p.category_id', 'p.sub_category_id')
+                ->selectRaw('p.category_id as cat, p.sub_category_id as sub, SUM(vld.qty_available) as q')
+                ->get();
+            $subs = [];
+            $fmt = [];
+            foreach ([[$sold, 0], [$stock, 1]] as $pair) {
+                foreach ($pair[0] as $r) {
+                    $cat = (int) $r->cat;
+                    $q = max(0, (float) $r->q);
+                    if (!isset($fmt[$cat])) $fmt[$cat] = [0, 0];
+                    $fmt[$cat][$pair[1]] += $q;
+                    if ((int) $r->sub > 0) {
+                        $k = (int) $r->sub;
+                        if (!isset($subs[$k])) $subs[$k] = [$cat, 0, 0];
+                        $subs[$k][$pair[1] + 1] += $q;
+                    }
+                }
+            }
+            $out = [];
+            foreach ($subs as $subId => $v) {
+                list($cat, $s, $o) = $v;
+                $s = (int) round($s);
+                $o = (int) round($o);
+                $fmtTurn = ($fmt[$cat][1] ?? 0) > 0 ? $fmt[$cat][0] / $fmt[$cat][1] : 0;
+                $turn = $o > 0 ? $s / $o : ($s > 0 ? INF : 0);
+                $speed = $fmtTurn > 0 ? $turn / $fmtTurn : 0;
+                $out[$subId] = [
+                    'level' => self::levelFor($s, $o, $speed, $fmtTurn),
+                    'speed' => is_finite($speed) ? round($speed, 2) : null,
+                    'sold' => $s,
+                    'on_hand' => $o,
+                ];
+            }
+            return $out;
+        });
+    }
+
+    /**
+     * " · Home report: N days avg to sell" for these categories at the store:
+     * the same number the Home "Fastest selling genres" row shows (avg days
+     * from intake to sale, last 3 months, needs 5+ sold). Empty when thin.
+     */
+    protected function homeDaysNote($businessId, $locationId, $formatIds, $genreIds)
+    {
+        try {
+            $q = DB::table('transaction_sell_lines_purchase_lines as tslp')
+                ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+                ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+                ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+                ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->where('sale.business_id', $businessId)
+                ->where('sale.location_id', $locationId)
+                ->where('sale.type', 'sell')
+                ->where('sale.status', 'final')
+                ->whereNull('sale.import_source')
+                ->whereBetween('sale.transaction_date', [now()->subMonths(3)->startOfDay(), now()->endOfDay()])
+                ->whereNotNull('purchase.transaction_date')
+                ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
+            if ($formatIds !== null) {
+                $q->whereIn('p.category_id', $formatIds);
+            }
+            if ($genreIds !== null) {
+                $q->whereIn('p.sub_category_id', $genreIds);
+            }
+            $r = $q->selectRaw('SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as d, SUM(tslp.quantity) as u')->first();
+            if (!$r || (float) $r->u < 5 || $r->d === null) {
+                return '';
+            }
+            return sprintf(' · Home report: %d days avg to sell', (int) round((float) $r->d));
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     /** Units sold in the window and on hand now at the store; $genreIds null = whole format, $formatIds null = whole store. */

@@ -1524,8 +1524,12 @@ class HomeController extends Controller
         if (!is_null($category_id)) {
             $q->where('p.category_id', $category_id);
         }
+        // Per-category totals for the Turnover column, before the >=5 / top-200 cut.
+        $catTotals = (clone $q)->selectRaw("NULLIF(c.name, '') as category, SUM(tslp.quantity) as units")
+            ->groupBy('c.name')->pluck('units', 'category')->all();
         $rows = $q->selectRaw("COALESCE(NULLIF(sc.name, ''), '(uncategorized)') as genre,
                 NULLIF(c.name, '') as category,
+                MIN(sc.id) as sub_id,
                 SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as avg_sell_days,
                 SUM(tslp.quantity) as units,
                 SUM(tslp.quantity * tsl.unit_price_inc_tax) as revenue,
@@ -1546,8 +1550,38 @@ class HomeController extends Controller
         // takes 2x as long shows a bar half as full. Floor avg_days at
         // 0.5 to keep the ratio finite for same-day flips.
         $min_days = (float) max(0.5, (float) ($rows->min('avg_sell_days') ?? 1));
-        return $rows->map(function ($r) use ($min_days, $stock) {
+        $catStock = [];
+        foreach ($stock as $k => $qty) {
+            $cat = substr($k, strrpos($k, '|') + 1);
+            $catStock[$cat] = ($catStock[$cat] ?? 0) + (int) $qty;
+        }
+        // One store picked: what the Beta buy form pays for each genre there
+        // (same BuyDemandService math, last 60 days at that store).
+        $buyLevels = [];
+        if (!is_null($location_id)) {
+            try {
+                $buyLevels = app(\App\Services\BuyDemandService::class)->levelsForStore($business_id, $location_id);
+            } catch (\Throwable $e) {
+                $buyLevels = [];
+            }
+        }
+        return $rows->map(function ($r) use ($min_days, $stock, $catTotals, $catStock, $buyLevels, $location_id) {
             $r->in_stock = (int) ($stock[$r->genre . '|' . ($r->category ?? '')] ?? 0);
+            // Turnover (Jon 2026-10-23): units sold ÷ in stock, over the same
+            // for its whole category in this window and store scope. 1.0x =
+            // average for the category; the buy form's bonus / cut uses this
+            // (over 60 days at the buying store). Null = nothing on the shelf.
+            $cu = (float) ($catTotals[$r->category] ?? 0);
+            $cs = (float) ($catStock[$r->category ?? ''] ?? 0);
+            $catTurn = $cs > 0 ? $cu / $cs : 0;
+            $r->turnover = ($r->in_stock > 0 && $catTurn > 0) ? round(((float) $r->units / $r->in_stock) / $catTurn, 2) : null;
+            $r->buy_level = null;
+            if (!is_null($location_id)) {
+                $bl = $buyLevels[(int) $r->sub_id] ?? null;
+                $r->buy_level = $bl ? $bl['level'] : 'normal';
+                $r->buy_label = \App\Services\BuyDemandService::levelLabel($r->buy_level);
+                $r->buy_title = $bl ? sprintf('Beta buy form at this store: %d sold in last 60 days, %d in stock, %sx as fast as the rest of %s', $bl['sold'], $bl['on_hand'], $bl['speed'] === null ? '∞' : number_format($bl['speed'], 1), $r->category) : 'No sales or stock data for the buy form';
+            }
             $days = max(0.5, (float) $r->avg_sell_days);
             $r->avg_sell_days = (float) $r->avg_sell_days;
             $r->units = (int) $r->units;

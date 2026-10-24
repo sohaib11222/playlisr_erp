@@ -575,7 +575,15 @@
         .fsg-custom { display:inline-flex; gap:6px; align-items:center; }
         .fsg-select { font-size:12px; color:#374151; border:1px solid #e5e7eb; border-radius:6px; padding:5px 8px; background:#fff; height:30px; }
         .fsg-body.loading { opacity:0.5; }
-        .fsg-row { display:grid; grid-template-columns:24px 1fr 120px 64px 76px 110px 70px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
+        .fsg-row { display:grid; grid-template-columns:24px 1fr 120px 64px 76px 110px 70px 72px 90px; gap:12px; align-items:center; padding:4px 10px; border-bottom:1px solid #f1f5f9; }
+        .fsg-row.fsg-with-buy { grid-template-columns:24px 1fr 100px 64px 76px 110px 70px 72px 80px 130px; }
+        .fsg-turn { font-size:13px; font-weight:600; color:#0f172a; text-align:right; }
+        .fsg-turn.up { color:#065f46; }
+        .fsg-turn.down { color:#991b1b; }
+        .fsg-turn.none { color:#9ca3af; font-weight:400; }
+        .fsg-buy { font-size:11px; font-weight:600; color:#6b7280; white-space:nowrap; }
+        .fsg-buy.hot, .fsg-buy.warm { color:#065f46; }
+        .fsg-buy.cool, .fsg-buy.cold { color:#991b1b; }
         .fsg-row:nth-child(odd) { background:#f8fafc; }
         .fsg-row > div { min-width:0; }
         .fsg-rank { font-size:13px; font-weight:600; color:#6b7280; text-align:center; }
@@ -1687,7 +1695,7 @@
             // stock; the choice sticks across store/range/category changes.
             // Empty values (no cost → no profit/day) always sort last.
             var fsgSort = null; // { key, dir }
-            var fsgSortDefaultDir = { genre: 'asc', days: 'asc', price: 'desc', ppd: 'desc', stock: 'desc' };
+            var fsgSortDefaultDir = { genre: 'asc', days: 'asc', price: 'desc', ppd: 'desc', stock: 'desc', turn: 'desc' };
             function fsgCompare(a, b, dir) {
                 var aEmpty = a === '' || a === null || (typeof a === 'number' && isNaN(a));
                 var bEmpty = b === '' || b === null || (typeof b === 'number' && isNaN(b));
