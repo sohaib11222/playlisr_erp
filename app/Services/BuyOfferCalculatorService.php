@@ -4,6 +4,16 @@ namespace App\Services;
 
 class BuyOfferCalculatorService
 {
+    // Jon 2026-10-23: we still buy pricier items, but never pay as if one item
+    // is worth more than this. A $1,200 record prices like a $350 one.
+    const VALUE_CAP = 350;
+    // Anything above this is a typo (a barcode in the price box), not a price.
+    const VALUE_TYPO = 10000;
+    // "1-9 items" lines: more than this many is a bulk lot.
+    const INDIVIDUAL_MAX_QTY = 20;
+    // Single records at this median or more need a Discogs link / ID.
+    const LINK_REQUIRED_FROM = 20;
+
     /**
      * Seeded rules from client sheet (phase 1).
      * cash_value = quantity * (base_amount from item OR discogs median) * multipliers.
@@ -246,10 +256,16 @@ class BuyOfferCalculatorService
             $gradeMultiplier = $noGrading ? 1.0 : (float) ($rules['grade_multipliers'][$grade] ?? 1);
             $standardMultiplier = (float) ($line['standard_multiplier'] ?? $rules['individual_vinyl_standard_multiplier']);
             $discogsMedian = (float) ($line['discogs_median_price'] ?? 0);
+            // Priced on at most VALUE_CAP per item; the typed value is still saved.
+            $payValue = min($discogsMedian, (float) self::VALUE_CAP);
+            if ($discogsMedian > self::VALUE_CAP && $cfg['mode'] === 'individual_discogs') {
+                // The form's 31% tier starts at $375, above the cap.
+                $standardMultiplier = min($standardMultiplier, 0.27);
+            }
             $unitRate = isset($cfg['unit_rate']) ? (float) $cfg['unit_rate'] : (float) ($line['unit_rate'] ?? 0);
 
             if ($cfg['mode'] === 'individual_discogs') {
-                $cashLine = $quantity * $discogsMedian * $gradeMultiplier * $standardMultiplier;
+                $cashLine = $quantity * $payValue * $gradeMultiplier * $standardMultiplier;
             } elseif ($cfg['mode'] === 'ebay_margin') {
                 // Filled in by the demand hook below (it knows the margin).
                 $standardMultiplier = 0;
@@ -257,8 +273,8 @@ class BuyOfferCalculatorService
             } elseif ($cfg['mode'] === 'value_percent') {
                 // Value-based: pay a % of the eBay value the cashier entered into
                 // the median-price column. The % steps by value (see value_tiers).
-                $standardMultiplier = $this->percentForValue($discogsMedian, $cfg['value_tiers'] ?? []);
-                $cashLine = $quantity * $discogsMedian * $standardMultiplier;
+                $standardMultiplier = $this->percentForValue($payValue, $cfg['value_tiers'] ?? []);
+                $cashLine = $quantity * $payValue * $standardMultiplier;
             } else {
                 $cashLine = $quantity * $unitRate * $gradeMultiplier;
             }
@@ -280,8 +296,8 @@ class BuyOfferCalculatorService
                 $margin = max((float) $hv['floor'], min(95.0, $margin));
                 $superFast = !empty($raw['super_fast']);
                 // Items worth $20+ pay at most 20% (25% if super fast), Jon 10/23.
-                $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $discogsMedian);
-                $cashLine = round($quantity * $discogsMedian * $standardMultiplier, 2);
+                $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $payValue);
+                $cashLine = round($quantity * $payValue * $standardMultiplier, 2);
                 $demandInfo = [
                     'demand_multiplier' => 1.0,
                     'demand_level' => 'margin',

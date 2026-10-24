@@ -1410,6 +1410,24 @@ HTML;
                 }
                 return false;
             }
+            // Jon 2026-10-23: same checks as BuyFromCustomerController::validateLineSanity.
+            var sanity = [];
+            $('#offer_lines_table tbody tr').each(function (i) {
+                var $row = $(this);
+                var type = $row.find('select[name$="[item_type]"]').val();
+                var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
+                var val = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+                var link = $.trim($row.find('input[name$="[discogs_link]"]').val() || '');
+                if (val > {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_TYPO }}) sanity.push('Line ' + (i + 1) + ': $' + val + ' is not a real price (a barcode or Discogs ID in the value box?).');
+                if (type === 'individual_vinyl' && qty > {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }}) sanity.push('Line ' + (i + 1) + ': "1-9 items" vinyl is for up to {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }} records. Use a 10+ Bulk Vinyl type.');
+                if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
+            });
+            if (sanity.length) {
+                e.preventDefault();
+                $('#bfc_calc_error').html('<strong>Fix these lines first:</strong><br>' + sanity.map(function (m) { return $('<span>').text(m).html(); }).join('<br>')).show();
+                $('html, body').animate({ scrollTop: $('#bfc_calc_error').offset().top - 140 }, 200);
+                return false;
+            }
             $('#bfc_calc_error').hide();
         });
 
@@ -1442,6 +1460,7 @@ HTML;
         }
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         var BFC_RULES = @json($bfcRules);
+        var BFC_VALUE_CAP = {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_CAP }};
         var BFC_BETA = @json((bool) $bfcBeta);
         var BFC_GENRES = @json((object) $bfcGenres);
         var BFC_DEMAND_URL = @json(route('buy-from-customer.beta.demand'));
@@ -1575,6 +1594,8 @@ HTML;
             if (qty <= 0) return 0;
             var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
             var median = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+            // Priced on at most BFC_VALUE_CAP per item (BuyOfferCalculatorService::VALUE_CAP).
+            median = Math.min(median, BFC_VALUE_CAP);
             var line = 0;
             if (t.mode === 'individual_discogs') {
                 line = qty * median * gm * computeStdMult(median);
@@ -1597,7 +1618,7 @@ HTML;
             if (!t) return '';
             var qty = parseFloat($row.find('input[name$="[quantity]"]').val()) || 0;
             if (qty <= 0) return '';
-            var median = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+            var median = Math.min(parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0, BFC_VALUE_CAP);
             var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
             if (t.mode === 'individual_discogs') {
                 if (median <= 0) return '';
