@@ -35,7 +35,7 @@
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.sms_settings')</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.reward_point_settings')</a>
                     <a href="#" class="list-group-item text-center">Store Credit Rewards</a>
-                    <a href="#" class="list-group-item text-center">Buy Margins</a>
+                    <a href="#" id="tab-trigger-buy-margins" class="list-group-item text-center">Buy Margins</a>
                     <a href="#" class="list-group-item text-center">Gift Cards & Loyalty</a>
                     <a href="#" class="list-group-item text-center">Integrations</a>
                     <a href="#" class="list-group-item text-center">@lang('lang_v1.modules')</a>
@@ -459,5 +459,12 @@
         });
     })();
     @endif
+
+    // #buy-margins opens the Buy Margins tab (linked from the Beta buy form).
+    $(function () {
+        if (window.location.hash === '#buy-margins') {
+            $('#tab-trigger-buy-margins').trigger('click');
+        }
+    });
 </script>
 @endsection

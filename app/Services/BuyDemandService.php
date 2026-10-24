@@ -47,6 +47,7 @@ class BuyDemandService
     // eBay-value lines: a category selling slower than this vs its format (or
     // the whole store) gets the "slow" margin.
     const SLOW_MAX_SPEED = 0.8;
+    const EBAY_SLOW_MIN_ON_HAND = 20;
     const EBAY_TYPE = 'ebay_value';
 
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
@@ -247,53 +248,88 @@ class BuyDemandService
     protected function ebayMargin($businessId, $locationId, $pick)
     {
         $tier = 'normal';
+        $superFast = false;
         $reason = null;
         list($formats, $subs) = $this->taxonomy($businessId);
         $id = strpos($pick, 'c:') === 0 ? (int) substr($pick, 2) : 0;
         if ($id > 0 && (isset($formats[$id]) || isset($subs[$id]))) {
             $key = 'e:' . $businessId . ':' . $locationId . ':' . $id;
             if (!isset($this->memo[$key])) {
-                $this->memo[$key] = Cache::remember('buydemand5:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
-                    if (isset($subs[$id])) {
-                        list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], [$id]);
-                        list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], null);
-                        $label = trim($subs[$id]['name']);
-                        $vs = 'the rest of ' . trim($formats[$subs[$id]['parent']] ?? 'this format');
-                    } else {
-                        list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$id], null);
-                        list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, null, null);
-                        $label = trim($formats[$id]);
-                        $vs = 'the store';
+                $this->memo[$key] = Cache::remember('buydemand6:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
+                    $measure = function ($locs) use ($businessId, $id, $formats, $subs) {
+                        if (isset($subs[$id])) {
+                            list($sold, $onHand) = $this->soldAndOnHand($businessId, $locs, [$subs[$id]['parent']], [$id]);
+                            list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locs, [$subs[$id]['parent']], null);
+                            $vs = 'the rest of ' . trim($formats[$subs[$id]['parent']] ?? 'this format');
+                        } else {
+                            list($sold, $onHand) = $this->soldAndOnHand($businessId, $locs, [$id], null);
+                            list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locs, null, null);
+                            $vs = 'the store';
+                        }
+                        return [$sold, $onHand, $bSold, $bOnHand, $vs];
+                    };
+                    $label = trim(isset($subs[$id]) ? $subs[$id]['name'] : $formats[$id]);
+                    list($sold, $onHand, $bSold, $bOnHand, $vs) = $measure($locationId);
+                    // Nothing at this store (Pico sells no cards): use both stores.
+                    $both = false;
+                    if ($sold == 0 && $onHand == 0) {
+                        $storeIds = $this->buyingStoreIds($businessId);
+                        if (count($storeIds) > 1) {
+                            list($sold, $onHand, $bSold, $bOnHand, $vs) = $measure($storeIds);
+                            $both = true;
+                            $vs = str_replace('the store', 'both stores', $vs);
+                        }
                     }
                     $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
                     $baseTurn = $bOnHand > 0 ? $bSold / $bOnHand : 0;
                     $speed = $baseTurn > 0 ? $turn / $baseTurn : 0;
+                    // Needs real numbers either way: 5+ sold to be fast, 20+ on
+                    // the shelf to be slow (1 Dragon Ball card isn't a trend).
                     $tier = 'normal';
                     if ($sold >= self::WARM_MIN_SOLD && $speed >= self::WARM_MIN_SPEED) {
                         $tier = 'fast';
-                    } elseif ($onHand > 0 && $speed < self::SLOW_MAX_SPEED) {
+                    } elseif ($onHand >= self::EBAY_SLOW_MIN_ON_HAND && $speed < self::SLOW_MAX_SPEED) {
                         $tier = 'slow';
                     }
-                    $reason = sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
+                    // Super fast = the bonus form's "hot" bar (10+ sold, 1.5x+).
+                    $superFast = $sold >= self::HOT_MIN_SOLD && $speed >= self::HOT_MIN_SPEED;
+                    $reason = ($both ? 'Both stores, ' : '') . sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
                     if ($speed > 0 && is_finite($speed)) {
                         $reason .= sprintf(' (sells %.1fx as fast as %s)', $speed, $vs);
                     }
-                    $reason .= isset($subs[$id])
-                        ? $this->homeDaysNote($businessId, $locationId, [$subs[$id]['parent']], [$id])
-                        : $this->homeDaysNote($businessId, $locationId, [$id], null);
-                    return ['tier' => $tier, 'reason' => $reason];
+                    if ($superFast) {
+                        $reason .= ' · super fast';
+                    }
+                    if (!$both) {
+                        $reason .= isset($subs[$id])
+                            ? $this->homeDaysNote($businessId, $locationId, [$subs[$id]['parent']], [$id])
+                            : $this->homeDaysNote($businessId, $locationId, [$id], null);
+                    }
+                    return ['tier' => $tier, 'super_fast' => $superFast, 'reason' => $reason];
                 });
             }
             $tier = $this->memo[$key]['tier'];
+            $superFast = !empty($this->memo[$key]['super_fast']);
             $reason = $this->memo[$key]['reason'];
         }
         return [
             'multiplier' => 1.0,
             'level' => 'margin',
             'tier' => $tier,
+            'super_fast' => $superFast,
             'margin' => BuyMarginSettings::marginFor($businessId, $tier),
+            'hv' => BuyMarginSettings::get($businessId),
             'reason' => $reason,
         ];
+    }
+
+    /** Pico + Hollywood (the stores that buy), for the both-stores fallback. */
+    protected function buyingStoreIds($businessId)
+    {
+        return DB::table('business_locations')->where('business_id', $businessId)
+            ->where(function ($q) {
+                $q->where('name', 'like', '%pico%')->orWhere('name', 'like', '%hollywood%');
+            })->pluck('id')->map(function ($v) { return (int) $v; })->all();
     }
 
     /** genreChoices() for every type that has any, for the Beta form's dropdowns. */
@@ -494,7 +530,7 @@ class BuyDemandService
             ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
             ->join('products as p', 'p.id', '=', 'tsl.product_id')
             ->where('t.business_id', $businessId)
-            ->where('t.location_id', $locationId)
+            ->whereIn('t.location_id', (array) $locationId)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->where('t.transaction_date', '>=', now()->subDays(self::GROUP_WINDOW_DAYS))
@@ -502,7 +538,7 @@ class BuyDemandService
         $onHand = DB::table('variation_location_details as vld')
             ->join('products as p', 'p.id', '=', 'vld.product_id')
             ->where('p.business_id', $businessId)
-            ->where('vld.location_id', $locationId)
+            ->whereIn('vld.location_id', (array) $locationId)
             ->where('vld.qty_available', '>', 0);
         if ($formatIds !== null) {
             $sold->whereIn('p.category_id', $formatIds);

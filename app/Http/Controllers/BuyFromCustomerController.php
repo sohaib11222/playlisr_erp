@@ -332,8 +332,11 @@ class BuyFromCustomerController extends Controller
             if (isset($quoted[$k])) {
                 $q = ['multiplier' => (float) ($quoted[$k]['multiplier'] ?? 1), 'level' => $quoted[$k]['level'] ?? 'normal', 'reason' => $quoted[$k]['reason'] ?? null];
                 if (isset($quoted[$k]['margin'])) {
-                    $q['margin'] = (float) $quoted[$k]['margin'];
+                    // base_margin = tier margin before the $20+ cap (older quotes: margin).
+                    $q['margin'] = (float) ($quoted[$k]['base_margin'] ?? $quoted[$k]['margin']);
                     $q['tier'] = $quoted[$k]['tier'] ?? 'normal';
+                    $q['super_fast'] = !empty($quoted[$k]['super_fast']);
+                    $q['hv'] = \App\Services\BuyMarginSettings::get($business_id);
                 }
                 return $q;
             }
@@ -1125,7 +1128,7 @@ class BuyFromCustomerController extends Controller
         $offer->lines()->delete();
         foreach ($calculation['lines'] as $line) {
             // demand_* are Beta-only and have no columns (they live in the sidecar).
-            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre'], $line['demand_margin'], $line['demand_tier']);
+            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre'], $line['demand_margin'], $line['demand_tier'], $line['demand_super_fast'], $line['demand_base_margin']);
             $offer->lines()->create($line);
         }
 

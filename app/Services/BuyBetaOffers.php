@@ -66,6 +66,8 @@ class BuyBetaOffers
                 'genre' => $l['demand_genre'] ?? null,
                 'margin' => $l['demand_margin'] ?? null,
                 'tier' => $l['demand_tier'] ?? null,
+                'super_fast' => !empty($l['demand_super_fast']),
+                'base_margin' => $l['demand_base_margin'] ?? null,
             ];
         }
         $all = self::load($business_id);
