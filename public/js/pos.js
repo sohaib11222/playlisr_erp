@@ -3047,6 +3047,8 @@ function getManualProductRows(inputData) {
                 } else {
                     toastr.error('Failed to add product rows');
                 }
+            } else if (result.erp_matches && result.erp_matches.length) {
+                showManualErpMatches(result.erp_match_row, result.erp_matches);
             } else {
                 toastr.error(result.msg || 'Failed to add products');
             }
@@ -5460,9 +5462,50 @@ function updateProductRowNumbers() {
 }
 
 // Helper function to reset the manual product modal
+// Item With No Barcode: the item is in the ERP, so the cashier taps the real
+// listing (stock goes down) or says none of these match (Sarah 10/23).
+function showManualErpMatches(rowIndex, matches) {
+    var $row = $('#manual_products_container input[name="products[' + rowIndex + '][name]"]').closest('.manual_product_row');
+    if (!$row.length) { toastr.error('This is in the ERP. Scan or search it instead.'); return; }
+    $row.find('.manual-erp-matches').remove();
+    var esc = function(t) { return $('<div>').text(t == null ? '' : String(t)).html(); };
+    var html = '<div class="manual-erp-matches" style="margin-top:6px;padding:8px;border:1px solid #DFD2B3;border-radius:8px;background:#FFF8E6;color:#1F1B16;">'
+        + '<div style="font-weight:700;margin-bottom:6px;">This is in the ERP. Tap the one you are selling:</div>';
+    matches.forEach(function(m) {
+        html += '<button type="button" class="btn btn-sm manual-erp-pick" data-variation-id="' + m.variation_id + '" style="display:block;width:100%;text-align:left;margin-bottom:4px;background:#DCEBFF;color:#1F4E8C;border:0;white-space:normal;">'
+            + esc(m.name) + (m.artist ? ' - ' + esc(m.artist) : '') + ' &nbsp; $' + Number(m.price).toFixed(2) + ' &nbsp; (' + m.qty + ' in stock)</button>';
+    });
+    html += '<button type="button" class="btn btn-sm btn-default manual-erp-none" style="display:block;width:100%;margin-top:2px;">None of these, add it as an item with no barcode</button></div>';
+    $row.find('td').eq(1).append(html);
+}
+
+$(document).on('click', '.manual-erp-pick', function() {
+    var $row = $(this).closest('.manual_product_row');
+    pos_product_row($(this).data('variation-id'));
+    if ($('#manual_products_container .manual_product_row').length > 1) {
+        $row.remove();
+        updateProductRowNumbers();
+        calculateManualProductSubtotal();
+    } else {
+        $('#add_manual_product_modal').modal('hide');
+        resetManualProductModal();
+    }
+});
+
+$(document).on('click', '.manual-erp-none', function() {
+    var $row = $(this).closest('.manual_product_row');
+    var idx = (String($row.find('input[name$="[name]"]').attr('name') || '').match(/\[(\d+)\]/) || [])[1];
+    if (!$row.find('input.manual-not-in-erp').length) {
+        $row.find('td').eq(1).append('<input type="hidden" class="manual-not-in-erp" name="products[' + idx + '][not_in_erp]" value="1">');
+    }
+    $row.find('.manual-erp-matches').remove();
+    $('#add_manual_product_button').trigger('click');
+});
+
 function resetManualProductModal() {
     // Remove all rows except the first one
     $('#manual_products_container .manual_product_row:not(:first)').remove();
+    $('#manual_products_container .manual-erp-matches, #manual_products_container input.manual-not-in-erp').remove();
     
     // Reset the first row - clear all input values
     $('#manual_products_container .manual_product_row:first').find('input, select').each(function() {

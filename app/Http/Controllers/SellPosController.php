@@ -7210,19 +7210,41 @@ class SellPosController extends Controller
                         $output['msg'] = 'Records, CDs, tapes and movies: pick "No barcode" or "Has a barcode, did not scan" under the name (Row ' . ($index + 1) . ').';
                         return $output;
                     }
+                    // In the ERP with stock here: ring the real listing so stock
+                    // goes down (Sarah 10/23: a listening party selling sealed
+                    // vinyl must update inventory). The POS shows the matches as
+                    // one-tap buttons; "None of these" sends not_in_erp=1.
                     $found = [];
+                    $matches = [];
                     $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($productName . ' ' . $trimmedArtist)), function ($w) { return mb_strlen($w) >= 3; }));
                     if ($words && $businessId) {
                         try {
                             $q = \DB::table('products as p')->join('variation_location_details as v', 'v.product_id', '=', 'p.id')
-                                ->where('p.business_id', $businessId)->where('p.is_inactive', 0)->where('p.category_id', (int) $categoryId)->where('v.qty_available', '>', 0);
+                                ->join('variations as va', 'va.id', '=', 'v.variation_id')
+                                ->where('p.business_id', $businessId)->where('p.is_inactive', 0)->where('p.category_id', (int) $categoryId)->where('v.qty_available', '>', 0)
+                                ->whereNull('va.deleted_at');
+                            if ((int) request()->get('location_id')) {
+                                $q->where('v.location_id', (int) request()->get('location_id'));
+                            }
                             foreach (array_slice($words, 0, 4) as $w) {
                                 $q->where(function ($x) use ($w) { $x->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
                             }
-                            $found = $q->distinct()->limit(3)->pluck('p.name')->all();
+                            $matches = $q->select('va.id as variation_id', 'p.name', 'p.artist', 'va.sell_price_inc_tax as price', 'v.qty_available as qty')
+                                ->orderBy('p.name')->limit(5)->get()->map(function ($m) {
+                                    return ['variation_id' => (int) $m->variation_id, 'name' => $m->name, 'artist' => (string) $m->artist, 'price' => round((float) $m->price, 2), 'qty' => (int) $m->qty];
+                                })->all();
+                            $found = array_values(array_unique(array_map(function ($m) { return $m['name']; }, $matches)));
                         } catch (\Throwable $e) {
+                            $matches = [];
                             $found = [];
                         }
+                    }
+                    if ($matches && empty($product['not_in_erp'])) {
+                        $output['success'] = false;
+                        $output['erp_matches'] = $matches;
+                        $output['erp_match_row'] = $index;
+                        $output['msg'] = 'This is in the ERP. Tap the right one so stock goes down (Row ' . ($index + 1) . ').';
+                        return $output;
                     }
                     try {
                         if (\Schema::hasTable('barcode_scan_misses')) {
@@ -7234,7 +7256,7 @@ class SellPosController extends Controller
                                 'artist' => mb_substr($trimmedArtist, 0, 190),
                                 'category_name' => mb_substr($catLabel, 0, 190),
                                 'price' => (float) $price,
-                                'reason' => mb_substr($reason, 0, 190),
+                                'reason' => mb_substr($reason . (!empty($product['not_in_erp']) && $found ? ' (said none of the ERP matches)' : ''), 0, 190),
                                 'erp_matches' => $found ? mb_substr(implode(' | ', $found), 0, 1000) : null,
                                 'created_at' => now(),
                             ]);
