@@ -378,6 +378,7 @@ class WhatnotSellerController extends Controller
             'hourly_rate' => 'required|numeric|min:0|max:500',
             'premium_pct' => 'nullable|numeric|min:0|max:1000',
             'premium_per_item' => 'required|numeric|min:0|max:100',
+            'premium_start' => 'nullable|date_format:Y-m-d',
             'min_pct_of_sticker' => 'required|integer|min:0|max:100',
             'min_days_in_store' => 'required|integer|min:0|max:365',
             'paid_through' => 'nullable|date_format:Y-m-d',
@@ -390,6 +391,7 @@ class WhatnotSellerController extends Controller
         $s['hourly_rate'] = (float) $data['hourly_rate'];
         $s['premium_pct'] = ($data['premium_pct'] ?? '') === '' ? null : (float) $data['premium_pct'];
         $s['premium_per_item'] = (float) $data['premium_per_item'];
+        $s['premium_start'] = $data['premium_start'] ?? null;
         $s['min_pct_of_sticker'] = (int) $data['min_pct_of_sticker'];
         $s['min_days_in_store'] = (int) $data['min_days_in_store'];
         $s['paid_through'] = $data['paid_through'] ?? null;

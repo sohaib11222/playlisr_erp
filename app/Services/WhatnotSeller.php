@@ -43,8 +43,9 @@ class WhatnotSeller
             'user_id'            => null,   // ERP user the sales are credited to (optional)
             'per_item'           => 0.50,   // Sarah 10/23: $0.50 per item sold
             'hourly_rate'        => 18,     // plus $18/hour on stream
-            'premium_pct'        => null,   // sold more than this % over sticker...
+            'premium_pct'        => 10,     // sold more than 10% over sticker...
             'premium_per_item'   => 0.65,   // ...pays 65 cents instead (Sarah 10/23)
+            'premium_start'      => '2026-10-26', // the 65 cents starts next week
             'min_pct_of_sticker' => 70,     // below this % of sticker = flagged
             'min_days_in_store'  => 30,     // items newer than this stay in the store
             'paid_through'       => null,   // Y-m-d, last day already paid out
@@ -266,6 +267,10 @@ class WhatnotSeller
     public static function isPremium(array $l): bool
     {
         $pct = self::settings()['premium_pct'];
+        $start = self::settings()['premium_start'];
+        if ($start && ($l['date_raw'] ?? '') < $start) {
+            return false;
+        }
         return $pct !== null && $pct !== '' && !empty($l['sticker']) && $l['sold'] > $l['sticker'] * (1 + (float) $pct / 100) + 0.0001;
     }
 
