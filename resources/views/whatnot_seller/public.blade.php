@@ -94,7 +94,7 @@
     </div>
 
     <div class="card">
-        <h2>Your pay since {{ $period_start }}</h2>
+        <h2>Your pay since {{ $period_start }} <a href="{{ url('/whatnot-seller/' . $token . '/statement') }}" style="font-size:14px; font-weight:normal; margin-left:8px;">Pay statement</a></h2>
         <div class="totals">
             <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each @if($s['premium_pct'] !== null) ({{ (int) $pay['premium_items'] }} at ${{ number_format($s['premium_per_item'], 2) }}) @endif</div>
             <div>Show hours<b>{{ rtrim(rtrim(number_format($pay['hours'], 2), '0'), '.') ?: '0' }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
@@ -113,6 +113,7 @@
                     <td>{{ $l['date'] }}</td>
                     <td>{{ $l['title'] }}</td>
                     <td class="num">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
+                    <td class="num">you get ${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
                 </tr>
             @empty
                 <tr><td>No Whatnot sales marked yet.</td></tr>

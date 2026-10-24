@@ -409,4 +409,48 @@ class WhatnotSellerController extends Controller
         WS::saveHours(array_values(array_filter(WS::hours(), function ($h) use ($id) { return $h['id'] !== $id; })));
         return redirect()->back()->with('status', ['success' => 1, 'msg' => 'Removed that show.']);
     }
+
+    // Pay statement: every item and show in the period, what each pays, the
+    // total. Owners open it from the dashboard; Golden from his page.
+    private function statementView(int $businessId, string $from, string $to, $backUrl)
+    {
+        $lines = array_reverse(WS::soldLines($businessId, $from, $to));
+        $shows = array_reverse(WS::hoursBetween($from, $to));
+        $hours = array_sum(array_map(function ($h) { return (float) $h['hours']; }, $shows));
+        return $this->noStore(response()->view('whatnot_seller.statement', [
+            's' => WS::settings(),
+            'lines' => $lines,
+            'shows' => $shows,
+            'pay' => WS::pay($lines, $hours),
+            'sales' => round(array_sum(array_map(function ($l) { return $l['sold'] * $l['qty']; }, $lines)), 2),
+            'from' => $from, 'to' => $to,
+            'back' => $backUrl,
+        ]));
+    }
+
+    private function statementDates(Request $request): array
+    {
+        $to = $request->input('end_date') ?: WS::now()->format('Y-m-d');
+        $from = $request->input('start_date') ?: Carbon::parse($to)->startOfWeek(Carbon::MONDAY)->format('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+            abort(404);
+        }
+        return [$from, $to];
+    }
+
+    public function statement(Request $request)
+    {
+        $this->ensureAccess();
+        [$from, $to] = $this->statementDates($request);
+        return $this->statementView((int) $request->session()->get('user.business_id'), $from, $to, url('/reports/whatnot-seller') . '?' . http_build_query(['start_date' => $from, 'end_date' => $to]));
+    }
+
+    public function publicStatement(Request $request, $token)
+    {
+        if (!WS::tokenValid($token)) {
+            abort(404);
+        }
+        [$from, $to] = $this->statementDates($request);
+        return $this->statementView((int) WS::settings()['business_id'], $from, $to, url('/whatnot-seller/' . $token));
+    }
 }

@@ -51,6 +51,7 @@
         <input type="date" name="end_date" value="{{ $to }}" class="form-control">
         <input type="hidden" name="show" value="{{ $tab }}">
         <button class="btn btn-primary">Show</button>
+        <a class="btn btn-default" style="margin-left:8px;" target="_blank" href="{{ url('/reports/whatnot-seller/statement') . '?' . http_build_query(['start_date' => $from, 'end_date' => $to]) }}">Pay statement for these dates</a>
     </form>
 
     <div class="row">
@@ -93,7 +94,7 @@
         @endif
         <div class="table-responsive">
             <table class="table table-striped table-condensed">
-                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sold for</th><th class="text-right">Sticker</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th>Marked by</th><th>Reason he gave</th></tr></thead>
+                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sold for</th><th class="text-right">Sticker</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th>Marked by</th><th class="text-right">His pay</th><th>Reason he gave</th></tr></thead>
                 <tbody>
                 @forelse($shown as $l)
                     @php $diff = $l['sticker'] ? ($l['sold'] - $l['sticker']) * $l['qty'] : null; @endphp
@@ -105,10 +106,11 @@
                         <td class="text-right {{ $diff !== null && $diff < -0.009 ? 'wn-red' : ($diff !== null && $diff > 0.009 ? 'wn-green' : '') }}">{{ $diff === null || abs($diff) < 0.01 ? '' : ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) }}</td>
                         <td class="text-right">{{ $l['days_in_store'] }}</td>
                         <td>{{ $l['entered_by'] }}</td>
+                        <td class="text-right">${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
                         <td>{{ $l['note'] }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="8">Nothing here for these dates.</td></tr>
+                    <tr><td colspan="9">Nothing here for these dates.</td></tr>
                 @endforelse
                 </tbody>
             </table>

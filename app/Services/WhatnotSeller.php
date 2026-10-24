@@ -274,6 +274,13 @@ class WhatnotSeller
         return $pct !== null && $pct !== '' && !empty($l['sticker']) && $l['sold'] > $l['sticker'] * (1 + (float) $pct / 100) + 0.0001;
     }
 
+    /** What one sold line pays him. */
+    public static function linePay(array $l): float
+    {
+        $s = self::settings();
+        return round($l['qty'] * (float) (self::isPremium($l) ? $s['premium_per_item'] : $s['per_item']), 2);
+    }
+
     /** $0.50 per item, $0.65 per premium item, + $18 per hour (Sarah 2026-10-23). */
     public static function pay(array $lines, float $hours): array
     {
