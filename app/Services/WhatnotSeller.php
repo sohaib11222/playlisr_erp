@@ -337,23 +337,23 @@ class WhatnotSeller
                 continue;
             }
             $r = array_combine($head, $row);
-            $key = $r['LEDGER_TRANSACTION_ID'] ?: ($r['ORDER_ID'] . '-' . $r['TRANSACTION_TYPE']);
+            $key = ($r['LEDGER_TRANSACTION_ID'] ?? '') ?: (($r['ORDER_ID'] ?? '') . '-' . ($r['TRANSACTION_TYPE'] ?? ''));
             if (isset($all[$key])) {
                 $skipped++;
                 continue;
             }
-            $placed = $r['ORDER_PLACED_AT_UTC'] ?: $r['TRANSACTION_COMPLETED_AT_UTC'];
+            $placed = ($r['ORDER_PLACED_AT_UTC'] ?? '') ?: ($r['TRANSACTION_COMPLETED_AT_UTC'] ?? '');
             $all[$key] = [
-                'type'    => $r['TRANSACTION_TYPE'],
-                'order'   => $r['ORDER_ID'],
+                'type'    => ($r['TRANSACTION_TYPE'] ?? ''),
+                'order'   => ($r['ORDER_ID'] ?? ''),
                 'date'    => $placed ? Carbon::parse($placed, 'UTC')->setTimezone('America/Los_Angeles')->format('Y-m-d') : '',
-                'title'   => $r['LISTING_TITLE'],
-                'show'    => trim($r['LIVESTREAM_TITLE']),
-                'qty'     => (float) ($r['QUANTITY_SOLD'] ?: 0),
-                'price'   => (float) ($r['ORIGINAL_ITEM_PRICE'] ?: 0),
-                'paid'    => (float) ($r['BUYER_PAID'] ?: 0),
-                'earned'  => (float) ($r['TRANSACTION_AMOUNT'] ?: 0),
-                'buyer'   => $r['BUYER_NAME'],
+                'title'   => ($r['LISTING_TITLE'] ?? ''),
+                'show'    => trim(($r['LIVESTREAM_TITLE'] ?? '')),
+                'qty'     => (float) (($r['QUANTITY_SOLD'] ?? '') ?: 0),
+                'price'   => (float) (($r['ORIGINAL_ITEM_PRICE'] ?? '') ?: 0),
+                'paid'    => (float) (($r['BUYER_PAID'] ?? '') ?: 0),
+                'earned'  => (float) (($r['TRANSACTION_AMOUNT'] ?? '') ?: 0),
+                'buyer'   => ($r['BUYER_NAME'] ?? ''),
             ];
             $added++;
         }
