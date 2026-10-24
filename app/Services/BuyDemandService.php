@@ -74,6 +74,12 @@ class BuyDemandService
 
         'cd_punk_metal_hiphop_used' => ['cd', 'used', ['punk', 'metal', 'nu metal', 'hip hop']],
         'cd_punk_metal_hiphop_sealed' => ['cd', 'sealed', ['punk', 'metal', 'nu metal', 'hip hop']],
+        'cd_hiphop_used' => ['cd', 'used', ['hip hop']],
+        'cd_metal_used' => ['cd', 'used', ['metal', 'nu metal']],
+        'cd_punk_used' => ['cd', 'used', ['punk']],
+        'cd_hiphop_sealed' => ['cd', 'sealed', ['hip hop']],
+        'cd_metal_sealed' => ['cd', 'sealed', ['metal', 'nu metal']],
+        'cd_punk_sealed' => ['cd', 'sealed', ['punk']],
         'cd_rock_alt_newwave_used' => ['cd', 'used', ['rock', 'alt', 'new wave']],
         'cd_rock_alt_newwave_sealed' => ['cd', 'sealed', ['rock', 'alt', 'new wave']],
         'cd_rb_jazz_used' => ['cd', 'used', ['rnb', 'jazz']],

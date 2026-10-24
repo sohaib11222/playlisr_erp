@@ -41,8 +41,21 @@ class BuyOfferCalculatorService
 
                 'cd_general_used' => ['label' => 'CD: General USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
                 'cd_general_sealed' => ['label' => 'CD: General SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
-                'cd_punk_metal_hiphop_used' => ['label' => 'CD: Punk/Metal/Hip-Hop USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
-                'cd_punk_metal_hiphop_sealed' => ['label' => 'CD: Punk/Metal/Hip-Hop SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00],
+                // Jon 2026-10-23: Punk / Metal / Hip-Hop CDs split into their own
+                // types, priced off 90 days of sales (both stores). Used: Hip-Hop
+                // 83 sold at $8.43 avg, 2.1x as fast as used CDs overall; Metal 40
+                // at $9.19, 1.6x; Punk 23 at $16.04, 1.2x. Sealed: Hip-Hop 382 at
+                // $20.55, 1.0x; Metal + Nu-Metal 266 at $15.90, 1.5x; Punk 17 at
+                // $18.46, 1.7x. The combined types stay (retired) so old buys
+                // still show their label.
+                'cd_hiphop_used' => ['label' => 'CD: Hip-Hop USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.25],
+                'cd_metal_used' => ['label' => 'CD: Metal USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
+                'cd_punk_used' => ['label' => 'CD: Punk USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
+                'cd_hiphop_sealed' => ['label' => 'CD: Hip-Hop SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 2.50],
+                'cd_metal_sealed' => ['label' => 'CD: Metal SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 2.25],
+                'cd_punk_sealed' => ['label' => 'CD: Punk SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00],
+                'cd_punk_metal_hiphop_used' => ['label' => 'CD: Punk/Metal/Hip-Hop USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'retired' => true],
+                'cd_punk_metal_hiphop_sealed' => ['label' => 'CD: Punk/Metal/Hip-Hop SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'retired' => true],
                 'cd_rock_alt_newwave_used' => ['label' => 'CD: Rock/Alt/New Wave USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
                 'cd_rock_alt_newwave_sealed' => ['label' => 'CD: Rock/Alt/New Wave SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.60],
                 'cd_rb_jazz_used' => ['label' => 'CD: R&B/Jazz USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20],
@@ -131,13 +144,16 @@ class BuyOfferCalculatorService
         ];
     }
 
-    /** @param bool $beta include Beta-form-only types (eBay value line) */
-    public function getItemTypesForDropdown($beta = false)
+    /**
+     * @param bool $beta include Beta-form-only types (eBay value line)
+     * @param bool $retired include retired types (labels for old buys)
+     */
+    public function getItemTypesForDropdown($beta = false, $retired = false)
     {
         $rules = $this->getRules();
         $output = [];
         foreach ($rules['item_types'] as $key => $config) {
-            if (!$beta && !empty($config['beta_only'])) {
+            if ((!$beta && !empty($config['beta_only'])) || (!$retired && !empty($config['retired']))) {
                 continue;
             }
             $output[$key] = $config['label'];

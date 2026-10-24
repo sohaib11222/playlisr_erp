@@ -386,6 +386,8 @@
                 $bfcGenres = [];
             }
         }
+        // Every type's label, so a reopened draft on a retired type keeps its pick.
+        $bfcAllTypes = app(\App\Services\BuyOfferCalculatorService::class)->getItemTypesForDropdown(true, true);
         $pmVal = $input['payment_method'] ?? ($input['payout_type'] ?? 'cash');
         if ($pmVal === 'cash') {
             $pmVal = 'cash_in_store';
@@ -670,9 +672,9 @@ HTML;
                                     ];
                                 @endphp
                                 @foreach($lines as $i => $line)
-                                    @php $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
+                                    @php $bfcRowTypes = isset($itemTypes[$line['item_type'] ?? '']) || empty($line['item_type']) ? $itemTypes : $itemTypes + [$line['item_type'] => $bfcAllTypes[$line['item_type']] ?? $line['item_type']]; $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
                                     <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @if(($bfcRowDemand['demand_level'] ?? '') === 'margin') data-pay-pct="{{ round((100 - (float) ($bfcRowDemand['demand_margin'] ?? 65)) / 100, 4) }}" @endif @endif>
-                                        <td>{!! Form::select("lines[$i][item_type]", $itemTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
+                                        <td>{!! Form::select("lines[$i][item_type]", $bfcRowTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}
                                         @if($bfcBeta)
                                             <select name="lines[{{ $i }}][genre]" class="form-control bfc-genre" @if(empty($bfcRowGenres)) style="display:none;" @endif>
