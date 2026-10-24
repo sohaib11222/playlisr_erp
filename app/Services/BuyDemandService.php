@@ -126,6 +126,34 @@ class BuyDemandService
         'rpm45_anything_else' => ['45', 'any'],
     ];
 
+    /**
+     * Non-music flat-rate types (Jon 2026-10-23): we were buying books,
+     * magazines and DVDs about twice as fast as we sell them. item_type =>
+     * regex on the top-level category name. Compared with the whole store,
+     * cuts only (same -10% / -20% bars as music).
+     */
+    const NONMUSIC_MAP = [
+        'book' => '/^books?$/i',
+        'coffee_table_book' => '/^books?$/i',
+        'magazine' => '/magazine/i',
+        'dvd_used' => '/dvd|blu/i',
+        'dvd_sealed' => '/dvd|blu/i',
+        'dvd_criterion_used' => '/dvd|blu/i',
+        'dvd_music_used' => '/dvd|blu/i',
+        'dvd_horror_used' => '/dvd|blu/i',
+        'dvd_scifi_used' => '/dvd|blu/i',
+        'bluray_used' => '/dvd|blu/i',
+        'bluray_sealed' => '/dvd|blu/i',
+        '4k_used' => '/dvd|blu/i',
+        'vhs_used' => '/^vhs/i',
+        'vhs_horror_used' => '/^vhs/i',
+        'tshirt' => '/apparel/i',
+        'tanktop' => '/apparel/i',
+        'sweatshirt' => '/apparel/i',
+        'hat_cap' => '/apparel/i',
+        'hat_fitted' => '/apparel/i',
+    ];
+
     // Words that don't identify a release.
     const STOPWORDS = ['the', 'and', 'a', 'an', 'of', 'lp', 'lps', 'vinyl', 'record', 'records', 'album',
         'used', 'sealed', 'new', 'original', 'press', 'pressing', 'reissue', 'edition', 'deluxe', 'remastered',
@@ -162,6 +190,10 @@ class BuyDemandService
 
             if ($itemType === self::EBAY_TYPE) {
                 return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
+            }
+
+            if (isset(self::NONMUSIC_MAP[$itemType])) {
+                return $this->nonMusicDemand($businessId, $locationId, self::NONMUSIC_MAP[$itemType]);
             }
 
             // Catch-all buckets (mixed lots) always pay their flat rate: no
@@ -341,6 +373,40 @@ class BuyDemandService
             'hv' => BuyMarginSettings::get($businessId),
             'reason' => $reason,
         ];
+    }
+
+    /** Books / magazines / DVDs / VHS / apparel: the category vs the whole store, cuts only. */
+    protected function nonMusicDemand($businessId, $locationId, $regex)
+    {
+        list($formats) = $this->taxonomy($businessId);
+        $ids = [];
+        $label = null;
+        foreach ($formats as $id => $name) {
+            if (preg_match($regex, trim($name))) {
+                $ids[] = (int) $id;
+                $label = $label ?: trim($name);
+            }
+        }
+        if (empty($ids)) {
+            return self::normal();
+        }
+        $key = 'n:' . $businessId . ':' . $locationId . ':' . implode(',', $ids);
+        if (!isset($this->memo[$key])) {
+            $this->memo[$key] = Cache::remember('buydemand7:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $ids, $label) {
+                list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, $ids, null);
+                list($sSold, $sOnHand) = $this->soldAndOnHand($businessId, $locationId, null, null);
+                $storeTurn = $sOnHand > 0 ? $sSold / $sOnHand : 0;
+                $turn = $onHand > 0 ? $sold / $onHand : ($sold > 0 ? INF : 0);
+                $speed = $storeTurn > 0 ? $turn / $storeTurn : 0;
+                $level = self::levelFor($sold, $onHand, $speed, $storeTurn);
+                $reason = sprintf('%s: %d sold in last %d days, %d in stock', $label, $sold, self::GROUP_WINDOW_DAYS, $onHand);
+                if ($speed > 0 && is_finite($speed)) {
+                    $reason .= sprintf(' (sells %.1fx as fast as the store)', $speed);
+                }
+                return $this->result($level, $reason);
+            });
+        }
+        return $this->memo[$key];
     }
 
     /** Pico + Hollywood (the stores that buy), for the both-stores fallback. */

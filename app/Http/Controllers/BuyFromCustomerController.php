@@ -816,6 +816,7 @@ class BuyFromCustomerController extends Controller
             'seller_first_name.required_if' => 'Enter the seller\'s first name before getting a quote.',
             'seller_phone.required_if' => 'Enter the seller\'s phone number before getting a quote.',
         ]);
+        $this->validateLineSanity($request);
 
         if ($requireFinal && !filter_var($request->input('is_donated'), FILTER_VALIDATE_BOOLEAN)) {
             // Sarah 2026-05-19: starting / 2nd / final offers are editable again,
@@ -860,18 +861,10 @@ class BuyFromCustomerController extends Controller
                 $paidCash += $toCash($priorCredit ? $prior->final_offer_credit : $prior->final_offer_cash, $priorCredit);
                 $autoCash += round((float) $prior->calculated_cash_total * 0.95, 2);
             }
+            $approver = null;
             if (self::isOverpay($paidCash, $autoCash)) {
-                $cashier = auth()->user();
-                $selfApprove = self::canApproveOverpay($cashier) && !filter_var($request->input('as_cashier'), FILTER_VALIDATE_BOOLEAN);
-                $approver = $selfApprove ? $cashier : $this->overpayApprover($request, $cashier);
-                // Or Luis / Zak approved it from their phone (texted link).
-                if (!$approver && $request->filled('overpay_request_id')) {
-                    $approval = BuyApprovalController::approvedFor($request->input('overpay_request_id'), optional($cashier)->id, $pm, $final);
-                    if ($approval) {
-                        $approver = \App\User::find($approval['approver_id']);
-                        $this->usedApprovalId = $approval['rid'];
-                    }
-                }
+                // Luis / Zak / a manager: here, by login, or from their phone.
+                $approver = $this->resolveApprover($request, $pm, $final);
                 if (!$approver) {
                     $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'), $pm);
                     if ($request->filled('approver_username')) {
@@ -886,20 +879,111 @@ class BuyFromCustomerController extends Controller
                     $request->input('price_override_reason')
                 ), 0, 500)]);
             }
+
+            // Jon 2026-10-23: a buy worth $250+ in cash, or a seller's 3rd buy
+            // in 7 days, needs Luis / Zak / a manager too, even at the system
+            // price (a big pile of flat-rate items adds up with no overpay).
+            $thisCash = $toCash($final, $pm === 'store_credit');
+            $reasons = [];
+            if ($thisCash >= self::SIGNOFF_CASH) {
+                $reasons[] = sprintf('this buy is worth $%s cash (over $%d)', number_format($thisCash, 2), self::SIGNOFF_CASH);
+            }
+            $weekBuys = $this->recentSellerBuys($request, self::SIGNOFF_REPEAT_DAYS * 24)->count();
+            if ($weekBuys >= self::SIGNOFF_REPEAT_PRIOR) {
+                $reasons[] = sprintf('this seller already sold to us %d times in the last %d days', $weekBuys, self::SIGNOFF_REPEAT_DAYS);
+            }
+            if (!empty($reasons)) {
+                $approver = $approver ?: $this->resolveApprover($request, $pm, $final);
+                if (!$approver) {
+                    $msg = sprintf('A manager has to approve this buy: %s. Ask %s or a manager to type their login below.',
+                        implode(' and ', $reasons), self::overpayContactName($request->input('location_id')));
+                    if ($request->filled('approver_username')) {
+                        $msg .= ' The approval login was not accepted.';
+                    }
+                    throw \Illuminate\Validation\ValidationException::withMessages(['final_amount_paid' => $msg]);
+                }
+                $request->merge(['price_override_reason' => mb_substr(sprintf(
+                    '[Manager sign-off: %s, approved by %s] %s',
+                    implode('; ', $reasons),
+                    trim($approver->first_name . ' ' . $approver->last_name),
+                    $request->input('price_override_reason')
+                ), 0, 500)]);
+            }
         }
     }
 
+    /**
+     * Jon 2026-10-23, both forms: lines the cashier can't just type in.
+     *  - a value over VALUE_TYPO is a typo (BFC-000818 had a barcode in the
+     *    median box: a $195 billion "record");
+     *  - "1-9 items" vinyl lines max INDIVIDUAL_MAX_QTY (bigger lots use bulk);
+     *  - single records at LINK_REQUIRED_FROM+ need the Discogs link / ID, so
+     *    the median can be checked later.
+     */
+    protected function validateLineSanity(Request $request)
+    {
+        $errors = [];
+        foreach ((array) $request->input('lines', []) as $i => $line) {
+            $n = is_numeric($i) ? ((int) $i + 1) : $i;
+            $type = (string) ($line['item_type'] ?? '');
+            $qty = (float) ($line['quantity'] ?? 0);
+            $value = (float) ($line['discogs_median_price'] ?? 0);
+            $link = trim((string) ($line['discogs_link'] ?? ''));
+            if ($value > BuyOfferCalculatorService::VALUE_TYPO) {
+                $errors["lines.$i.discogs_median_price"] = sprintf('Line %s: $%s is not a real price (check you didn\'t type a barcode or Discogs ID into the value box).', $n, number_format($value, 2));
+            }
+            if ($type === 'individual_vinyl' && $qty > BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY) {
+                $errors["lines.$i.quantity"] = sprintf('Line %s: "1-9 items" vinyl is for up to %d records. Use a 10+ Bulk Vinyl type for a bigger lot.', $n, BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY);
+            }
+            if ($type === 'individual_vinyl' && $value >= BuyOfferCalculatorService::LINK_REQUIRED_FROM && $link === '') {
+                $errors["lines.$i.discogs_link"] = sprintf('Line %s: records with a median of $%d or more need the Discogs link or release ID.', $n, BuyOfferCalculatorService::LINK_REQUIRED_FROM);
+            }
+        }
+        if (!empty($errors)) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
+    }
+
+    // Big buys and repeat sellers need a manager (Jon 2026-10-23).
+    const SIGNOFF_CASH = 250;
+    const SIGNOFF_REPEAT_DAYS = 7;
+    const SIGNOFF_REPEAT_PRIOR = 2; // the 3rd buy in 7 days needs sign-off
+
+    /**
+     * Who signed off on this accept, or null: the cashier if they can approve
+     * (and aren't testing as a cashier), a manager typing their login on this
+     * screen, or an approved phone request covering this amount.
+     */
+    protected function resolveApprover(Request $request, $pm, $final)
+    {
+        $cashier = auth()->user();
+        $selfApprove = self::canApproveOverpay($cashier) && !filter_var($request->input('as_cashier'), FILTER_VALIDATE_BOOLEAN);
+        $approver = $selfApprove ? $cashier : $this->overpayApprover($request, $cashier);
+        if (!$approver && $request->filled('overpay_request_id')) {
+            $approval = BuyApprovalController::approvedFor($request->input('overpay_request_id'), optional($cashier)->id, $pm, $final);
+            if ($approval) {
+                $approver = \App\User::find($approval['approver_id']);
+                $this->usedApprovalId = $approval['rid'];
+            }
+        }
+        return $approver;
+    }
+
     // Accepted, paid buys from the same seller (account or phone) in the last
-    // 24 hours, not counting the offer being accepted right now.
-    protected function recentSellerBuys(Request $request)
+    // $hours, not counting the offer being accepted right now. The walk-in
+    // default contact isn't a seller, so it falls back to the phone number.
+    protected function recentSellerBuys(Request $request, $hours = 24)
     {
         $contactId = $request->input('seller_mode') === 'contact' ? $request->input('contact_id') : null;
+        if (!empty($contactId) && \App\Contact::where('id', $contactId)->value('is_default')) {
+            $contactId = null;
+        }
         $phone = preg_replace('/\D+/', '', (string) $request->input('seller_phone'));
         if (empty($contactId) && strlen($phone) < 7) return collect();
 
         return BuyCustomerOffer::where('business_id', $request->session()->get('user.business_id'))
             ->where('status', 'accepted')
-            ->where('accepted_at', '>=', now()->subDay())
+            ->where('accepted_at', '>=', now()->subHours($hours))
             ->where(function ($q) { $q->whereNull('is_donated')->orWhere('is_donated', false); })
             ->when($request->input('offer_id'), function ($q, $id) { $q->where('id', '!=', $id); })
             ->where(function ($q) use ($contactId, $phone) {
