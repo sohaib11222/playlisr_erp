@@ -90,7 +90,7 @@
                                 {{ $offer->buy_record_number }}
                                 @php $bfcBetaRec = ($betaOffers ?? [])[(string) $offer->id] ?? null; @endphp
                                 @if($bfcBetaRec)
-                                    <br><span title="Priced on the Beta buy form" style="display:inline-block; margin-top:3px; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; background:#DCEBFF; color:#1F4E8C; border:1px solid #A9C8F0;">Beta @if((float) ($bfcBetaRec['bonus_cash'] ?? 0) > 0) +${{ number_format((float) $bfcBetaRec['bonus_cash'], 2) }} @endif</span>
+                                    <br><span title="Priced on the Beta buy form" style="display:inline-block; margin-top:3px; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; background:#DCEBFF; color:#1F4E8C; border:1px solid #A9C8F0;">Beta @if((float) ($bfcBetaRec['bonus_cash'] ?? 0) > 0) +${{ number_format((float) $bfcBetaRec['bonus_cash'], 2) }} @elseif((float) ($bfcBetaRec['bonus_cash'] ?? 0) < 0) −${{ number_format(abs((float) $bfcBetaRec['bonus_cash']), 2) }} @endif</span>
                                 @endif
                             </td>
                             @if(!empty($diagnostics['show_all'])) <td>{{ $offer->business_id }}</td> @endif

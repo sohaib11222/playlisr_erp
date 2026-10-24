@@ -271,6 +271,7 @@
         .bfc-create .bfc-demand-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; text-align: left; }
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
+        .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-demand-margin { background: #FFF6D6; color: #6B5300; border: 1px solid #EBD58A; }
         .bfc-create .bfc-demand-normal { background: #F1F1F1; color: #555; border: 1px solid #DDD; font-weight: 500; }
         .bfc-create .bfc-genre { margin-top: 4px; height: 28px; padding: 2px 6px; font-size: 12px; }
@@ -364,11 +365,12 @@
             }
             // Normal lines still show their sales speed (gray), so the cashier
             // can see why there's no bonus.
-            if (!in_array($lvl, ['hot', 'warm'], true)) {
+            if (!in_array($lvl, ['hot', 'warm', 'cool', 'cold'], true)) {
                 return $why !== '' ? '<span class="bfc-demand-chip bfc-demand-normal">' . e('No bonus: ' . $why) . '</span>' : '';
             }
             $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
-            $label = ($lvl === 'hot' ? 'Hot' : 'Warm') . ' +' . $pct . '%';
+            $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked'];
+            $label = $names[$lvl] . ' ' . ($pct > 0 ? '+' : '−') . abs($pct) . '%';
             return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
         };
         // Beta: per item type, the genres a line can be narrowed to ([canon => label]).
@@ -415,7 +417,7 @@
 
     @if($bfcBeta)
         <div class="bfc-beta-banner">
-            <span><strong>Beta buy form:</strong> pays up to 20% more on things that sell fast at this store. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any bonus right away.</span>
+            <span><strong>Beta buy form:</strong> pays up to 20% more on things that sell fast at this store, and up to 20% less on things we have too much of. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any bonus right away.</span>
         </div>
     @endif
 
@@ -716,7 +718,8 @@ HTML;
                             <span>Max cash offer <strong id="bfc_running_final">$0.00</strong></span>
                             <span>Max store credit offer <strong id="bfc_running_credit">$0.00</strong></span>
                             @if($bfcBeta && $calc)
-                                <span class="bfc-demand-bonus">Demand bonus: +${{ number_format((float) data_get($calc, 'demand_bonus_cash', 0), 2) }}</span>
+                                @php $bfcAdj = (float) data_get($calc, 'demand_bonus_cash', 0); @endphp
+                                <span class="bfc-demand-bonus">Speed adjustment: {{ $bfcAdj < 0 ? '−' : '+' }}${{ number_format(abs($bfcAdj), 2) }}</span>
                             @endif
                         </span>
                     </div>
@@ -816,7 +819,8 @@ HTML;
                             <div class="bfc-max-credit"><span>Max store credit offer</span><strong>@format_currency(data_get($calc, 'final_offer_credit', 0))</strong></div>
                         </div>
                         @if($bfcBeta)
-                            <p class="bfc-demand-bonus" style="margin:8px 0 0;">Demand bonus: +${{ number_format((float) data_get($calc, 'demand_bonus_cash', 0), 2) }} cash value (Beta, included in the offers above)</p>
+                            @php $bfcAdj = (float) data_get($calc, 'demand_bonus_cash', 0); @endphp
+                            <p class="bfc-demand-bonus" style="margin:8px 0 0;">Speed adjustment: {{ $bfcAdj < 0 ? '−' : '+' }}${{ number_format(abs($bfcAdj), 2) }} cash value (Beta, included in the offers above)</p>
                         @endif
 
                         <details class="bfc-breakdown">
@@ -1497,10 +1501,12 @@ HTML;
                     return;
                 }
                 var mult = parseFloat(d.multiplier) || 1;
-                var lvl = (mult > 1 && (d.level === 'hot' || d.level === 'warm')) ? d.level : 'normal';
+                var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked' };
+                var lvl = (mult !== 1 && names[d.level]) ? d.level : 'normal';
                 $row.attr('data-demand-mult', mult);
                 if (d.reason) {
-                    var label = lvl === 'normal' ? 'No bonus' : ((lvl === 'hot' ? 'Hot' : 'Warm') + ' +' + Math.round((mult - 1) * 100) + '%');
+                    var pct = Math.round((mult - 1) * 100);
+                    var label = lvl === 'normal' ? 'No bonus' : (names[lvl] + ' ' + (pct > 0 ? '+' : '−') + Math.abs(pct) + '%');
                     $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-' + lvl).text(label + ': ' + d.reason));
                 }
                 bfcRecalcAll();
@@ -1567,7 +1573,7 @@ HTML;
             line = Math.round(line * 100) / 100;
             // Beta: the server's demand bonus for this row (set after Save and continue).
             var dm = parseFloat($row.attr('data-demand-mult'));
-            if (isFinite(dm) && dm > 1) { line = Math.round(line * dm * 100) / 100; }
+            if (isFinite(dm) && dm > 0 && dm !== 1) { line = Math.round(line * dm * 100) / 100; }
             return line;
         }
         function bfcLineFormula($row) {
