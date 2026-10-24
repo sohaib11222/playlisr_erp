@@ -462,9 +462,13 @@
 
     // #buy-margins opens the Buy Margins tab (linked from the Beta buy form).
     $(function () {
-        if (window.location.hash === '#buy-margins') {
-            $('#tab-trigger-buy-margins').trigger('click');
+        function bfcOpenHashTab() {
+            if (window.location.hash === '#buy-margins') {
+                $('#tab-trigger-buy-margins').trigger('click');
+            }
         }
+        bfcOpenHashTab();
+        $(window).on('hashchange', bfcOpenHashTab);
     });
 </script>
 @endsection

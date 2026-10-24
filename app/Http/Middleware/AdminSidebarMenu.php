@@ -842,6 +842,12 @@ class AdminSidebarMenu
             if ($user->can('roles.view')) {
                 $admin_links[] = [action('RoleController@index'), __('user.roles'), 'fa fas fa-briefcase', request()->segment(1) == 'roles'];
             }
+            // The old Settings dropdown (Business Settings) is commented out below,
+            // which left the settings page with no link; Buy Margins lives there.
+            if ($user->can('business_settings.access')) {
+                $admin_links[] = [action('BusinessController@getBusinessSettings'), __('business.business_settings'), 'fa fas fa-cogs', request()->segment(1) == 'business' && request()->segment(2) == 'settings'];
+                $admin_links[] = [action('BusinessController@getBusinessSettings') . '#buy-margins', 'Buy Margins', 'fa fas fa-percent', false];
+            }
             if ($user->can('product.create')) {
                 $admin_links[] = [route('manual-item-price-rules.index'), 'Manual Item Price Rules', 'fa fas fa-dollar-sign', request()->segment(1) == 'settings' && request()->segment(2) == 'manual-item-price-rules'];
                 $admin_links[] = [route('product-entry-rules.index'), 'Product Entry Rules', 'fa fas fa-magic', request()->segment(1) == 'settings' && request()->segment(2) == 'product-entry-rules'];
