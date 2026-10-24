@@ -1520,7 +1520,15 @@ HTML;
             if (!type || !loc || (type === 'individual_vinyl' && !title && !genre)) { bfcRecalcAll(); return; }
             var seq = ++bfcDemandSeq;
             $row.data('demand-seq', seq);
-            $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre }).done(function (d) {
+            // The whole buy's quantity of this type + genre (overstock counts the lot).
+            var incoming = 0;
+            $('#offer_lines_table tbody tr').each(function () {
+                var $r = $(this);
+                if ($r.find('select[name$="[item_type]"]').val() === type && ($r.find('select.bfc-genre').val() || '') === genre) {
+                    incoming += parseFloat($r.find('input[name$="[quantity]"]').val()) || 0;
+                }
+            });
+            $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre, incoming_quantity: incoming }).done(function (d) {
                 if ($row.data('demand-seq') !== seq || !d) return;
                 if (d.level === 'margin') {
                     var m = parseFloat(d.margin) || 65;
@@ -1695,6 +1703,20 @@ HTML;
             });
             $(document).on('change', '#offer_lines_table select.bfc-genre, #offer_lines_table input[name$="[title]"]', function () {
                 bfcPreviewDemand($(this).closest('tr'));
+            });
+            // A quantity change can tip a lot into overstock: re-check every
+            // line of the same type + genre (the cut counts the whole lot).
+            $(document).on('change', '#offer_lines_table input[name$="[quantity]"]', function () {
+                var $row = $(this).closest('tr');
+                var type = $row.find('select[name$="[item_type]"]').val();
+                var genre = $row.find('select.bfc-genre').val() || '';
+                if (type === 'individual_vinyl' || type === 'ebay_value') return;
+                $('#offer_lines_table tbody tr').each(function () {
+                    var $r = $(this);
+                    if ($r.find('select[name$="[item_type]"]').val() === type && ($r.find('select.bfc-genre').val() || '') === genre) {
+                        bfcPreviewDemand($r);
+                    }
+                });
             });
             // Demand is per store: re-check every line that has something in it.
             $(document).on('change', '#location_id', function () {
