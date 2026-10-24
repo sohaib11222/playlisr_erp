@@ -179,6 +179,10 @@ class WhatnotSeller
             if ($qty <= 0) {
                 continue;
             }
+            // Bag fees ride along on some POS rings; they aren't items he sold.
+            if (preg_match('/\bbag fee\b/i', (string) ($r->product_id ? $r->name : $r->manual_name))) {
+                continue;
+            }
             $sold = (float) $r->unit_price_inc_tax;
             $sticker = $r->product_id ? (float) $r->sticker_now : null;
             $pct = ($sticker && $sticker > 0) ? round($sold / $sticker * 100) : null;
