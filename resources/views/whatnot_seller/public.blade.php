@@ -77,7 +77,7 @@
             <input type="hidden" name="submit_id" id="submit_id">
             <button type="submit" class="save" id="save" disabled>Save sold items</button>
         </form>
-        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) {{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? 'Starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') . ': s' : 'S' }}ell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Rules: sell at {{ $s['min_pct_of_sticker'] }}% of the sticker price or more, and leave anything in the store less than {{ $s['min_days_in_store'] }} days for in-store customers. If you go lower, write why.</div>
+        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) {{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? 'Starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') . ': s' : 'S' }}ell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Rules: you can take up to $1 off per $10 of sticker ($2 off $20, $3 off $30), and leave anything in the store less than {{ $s['min_days_in_store'] }} days for in-store customers. If you go lower, write why.</div>
     </div>
 
     <div class="card">

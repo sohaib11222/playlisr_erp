@@ -53,7 +53,7 @@ class WhatnotSeller
             'paid_thru'          => '2026-10-10',
             'last_paid_on'       => '2026-10-15',
             'last_paid_amount'   => 438.80,
-            'min_pct_of_sticker' => 70,     // below this % of sticker = flagged
+            'min_pct_of_sticker' => 90,     // Jon allows $1 off per $10 (10%); lower = flagged
             'min_days_in_store'  => 30,     // items newer than this stay in the store
             'paid_through'       => null,   // Y-m-d, last day already paid out
         ], $s);

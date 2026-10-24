@@ -88,7 +88,7 @@
                         <div class="wn-sub">{{ count($overLines) }} items</div>
                     </div>
                 </div>
-                <p class="wn-sub" style="margin:12px 0 0;">Counts the items he marks on his page with the real Whatnot price. Staff rings on the POS always use the sticker price, so those show no difference.</p>
+                <p class="wn-sub" style="margin:12px 0 0;">Allowed: up to {{ 100 - $s['min_pct_of_sticker'] }}% off ($1 off $10, $2 off $20). Staff rings on the POS always use the sticker, so real prices only show once he marks sales himself, or in "Check against Whatnot" below.</p>
             </div>
         </div>
     </div>
@@ -153,7 +153,7 @@
     <div class="wn-card">
         <details>
             <summary>Check against Whatnot, day by day</summary>
-            <p class="wn-sub" style="margin:10px 0;">Whatnot's own reports show what really sold and for how much. More items on Whatnot than in the ERP means some were never marked. A lower Whatnot total than the ERP sticker total means he sold under sticker that day.</p>
+            <p class="wn-sub" style="margin:10px 0;">Whatnot's own reports show what really sold and for how much. More items on Whatnot than in the ERP means some were never marked. Jon lets him take up to {{ 100 - $s['min_pct_of_sticker'] }}% off ($1 off a $10 record); days over that are red.</p>
             <form method="post" action="{{ url('/reports/whatnot-seller/import') }}" enctype="multipart/form-data" class="form-inline" style="margin-bottom:12px;">
                 @csrf
                 <input type="file" name="csv[]" accept=".csv" multiple class="form-control" style="height:auto;">
@@ -175,7 +175,8 @@
                             <td class="text-right {{ $miss !== null && $miss > 0 ? 'wn-red' : '' }}">{{ $miss !== null && $miss > 0 ? $miss : '' }}</td>
                             <td class="text-right">{{ $d['wn_total'] === null ? '' : '$' . number_format($d['wn_total'], 2) }}</td>
                             <td class="text-right">${{ number_format($d['erp_total'], 2) }}</td>
-                            <td class="text-right {{ $dd !== null && $dd < -0.009 ? 'wn-red' : ($dd !== null && $dd > 0.009 ? 'wn-green' : '') }}">{{ $dd !== null && abs($dd) >= 0.01 ? ($dd > 0 ? '+' : '-') . '$' . number_format(abs($dd), 2) : '' }}</td>
+                            @php $ddPct = ($dd !== null && $d['erp_total'] > 0) ? round(-$dd / $d['erp_total'] * 100) : null; @endphp
+                            <td class="text-right {{ $ddPct !== null && $ddPct > 100 - $s['min_pct_of_sticker'] ? 'wn-red' : ($dd !== null && $dd > 0.009 ? 'wn-green' : '') }}">{{ $dd !== null && abs($dd) >= 0.01 ? ($dd > 0 ? '+' : '-') . '$' . number_format(abs($dd), 2) . ($ddPct > 0 ? ' (' . $ddPct . '% off)' : '') : '' }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="7">No Whatnot sales in these dates.</td></tr>
