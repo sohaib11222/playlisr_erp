@@ -159,6 +159,36 @@
                 <input type="file" name="csv[]" accept=".csv" multiple class="form-control" style="height:auto;">
                 <button class="btn btn-default">Add Whatnot reports or show times</button>
             </form>
+            @php $ready = count(array_filter($sku_rows, function ($r) { return $r['status'] === 'ready'; })); @endphp
+            <div class="wn-label" style="margin-top:6px;">Record by record (Whatnot sales with our SKU)</div>
+            @if(count($sku_rows))
+                @if($ready)
+                    <form method="post" action="{{ url('/reports/whatnot-seller/import-sku-sales') }}" style="margin-bottom:8px;">@csrf
+                        <button class="btn btn-primary btn-sm">Mark {{ $ready }} unmarked {{ $ready === 1 ? 'sale' : 'sales' }} sold in the ERP</button>
+                        <span class="wn-sub">at the real Whatnot price, so they come off the website</span>
+                    </form>
+                @endif
+                <div class="table-responsive">
+                    <table class="table table-condensed">
+                        <thead><tr><th>Day</th><th>SKU</th><th>Item</th><th class="text-right">Whatnot price</th><th class="text-right">Sticker</th><th class="text-right">Off</th><th>In the ERP?</th></tr></thead>
+                        <tbody>
+                        @foreach($sku_rows as $r)
+                            @php $off = $r['sticker'] ? round(($r['sticker'] - $r['price']) / $r['sticker'] * 100) : null; @endphp
+                            <tr>
+                                <td>{{ $fmt($r['date']) }}</td><td>{{ $r['sku'] }}</td><td>{{ $r['title'] }}</td>
+                                <td class="text-right">${{ number_format($r['price'], 2) }}</td>
+                                <td class="text-right">{{ $r['sticker'] === null ? '' : '$' . number_format($r['sticker'], 2) }}</td>
+                                <td class="text-right {{ $off !== null && $off > 100 - $s['min_pct_of_sticker'] ? 'wn-red' : ($off !== null && $off < 0 ? 'wn-green' : '') }}">{{ $off === null ? '' : ($off < 0 ? '+' . abs($off) . '%' : $off . '%') }}</td>
+                                <td>{{ ['marked' => 'Yes', 'ready' => 'No, ready to mark', 'no_stock' => 'No, but stock is already 0', 'not_found' => 'SKU not in the ERP'][$r['status']] }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @else
+                <p class="wn-sub">None yet. Once {{ $name }} puts our barcode number in Whatnot's SKU box when he lists, each sale shows here with its real price.</p>
+            @endif
+            <div class="wn-label" style="margin-top:14px;">Day by day</div>
             <div class="table-responsive">
                 <table class="table table-condensed">
                     <thead><tr><th>Day</th><th class="text-right">Items on Whatnot</th><th class="text-right">Items in ERP</th><th class="text-right">Not marked</th><th class="text-right">Whatnot sold for</th><th class="text-right">ERP sticker</th><th class="text-right">Difference</th></tr></thead>

@@ -51,7 +51,7 @@
     <div class="card">
         <h2>1. Find what you sold</h2>
         <input type="text" id="q" placeholder="Artist or title, or type the barcode" autocomplete="off">
-        <div class="meta" style="margin-top:6px;">Barcode faded? Just type a couple of words from the artist or title.</div>
+        <div class="meta" style="margin-top:6px;">Barcode faded? Just type a couple of words from the artist or title. When you list a record on Whatnot, put its Whatnot SKU (shown below) in Whatnot's SKU box so the sale ties back to the record.</div>
         <div id="results"></div>
         <button type="button" class="link" id="notfound">Can't find it? Add it by name</button>
         <div id="manual" class="hidden" style="margin-top:8px;">
@@ -140,6 +140,7 @@
                     return '<div class="item"><div class="row"><div style="flex:1">'
                         + '<div class="t">' + esc(it.title) + '</div>'
                         + '<div class="meta">' + esc(it.category) + ' · ' + esc(it.store) + ' · Sticker ' + money(it.price) + ' · In store since ' + esc(it.added) + '</div>'
+                        + '<div class="meta"><b>Whatnot SKU: ' + esc(it.sku) + '</b></div>'
                         + (it.too_new ? '<div class="warn">New in store. Please leave it for in-store customers until ' + esc(it.ok_after) + '.</div>' : '')
                         + '</div><button type="button" class="add" data-i="' + i + '"' + (inCart ? ' disabled>Added' : '>Sold') + '</button></div></div>';
                 }).join('');

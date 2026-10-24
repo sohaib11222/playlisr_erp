@@ -1396,6 +1396,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/whatnot-seller/settings', 'WhatnotSellerController@saveSettings');
     Route::get('/reports/whatnot-seller/statement', 'WhatnotSellerController@statement');
     Route::post('/reports/whatnot-seller/import', 'WhatnotSellerController@importCsv');
+    Route::post('/reports/whatnot-seller/import-sku-sales', 'WhatnotSellerController@importSkuSales');
     Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
     Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');

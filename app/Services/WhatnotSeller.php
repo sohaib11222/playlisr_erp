@@ -180,6 +180,7 @@ class WhatnotSeller
                 'v.sell_price_inc_tax as sticker_now', 'v.default_purchase_price as cost',
             ]);
 
+        $wnPrice = self::whatnotPriceByProduct($businessId);
         $out = [];
         foreach ($rows as $r) {
             $qty = (float) $r->quantity - (float) $r->quantity_returned;
@@ -191,6 +192,13 @@ class WhatnotSeller
                 continue;
             }
             $sold = (float) $r->unit_price_inc_tax;
+            $fromWhatnot = false;
+            // Staff ring Whatnot sales at the sticker; if Whatnot's report has
+            // this item (by SKU), use what it really sold for.
+            if ($r->product_id && isset($wnPrice[(int) $r->product_id]) && strpos((string) $r->staff_note, self::NOTE_TAG) !== 0) {
+                $sold = (float) $wnPrice[(int) $r->product_id];
+                $fromWhatnot = true;
+            }
             $sticker = $r->product_id ? (float) $r->sticker_now : null;
             $pct = ($sticker && $sticker > 0) ? round($sold / $sticker * 100) : null;
             $days = $r->product_created_at ? Carbon::parse($r->product_created_at)->diffInDays(Carbon::parse($r->transaction_date)) : null;
@@ -225,8 +233,8 @@ class WhatnotSeller
                 'days_in_store'  => $days,
                 'cost'           => $r->cost !== null ? round((float) $r->cost, 2) : null,
                 'by_golden'      => strpos((string) $r->staff_note, self::NOTE_TAG) === 0,
-                'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (string) $r->entered_by,
-                'note'           => (string) $r->sell_line_note,
+                'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0 ? 'Whatnot report' : (string) $r->entered_by),
+                'note'           => trim((string) $r->sell_line_note . ($fromWhatnot ? ' (price from Whatnot report)' : '')),
                 'flags'          => $flags,
             ];
         }
@@ -434,6 +442,8 @@ class WhatnotSeller
                 'paid'    => (float) (($r['BUYER_PAID'] ?? '') ?: 0),
                 'earned'  => (float) (($r['TRANSACTION_AMOUNT'] ?? '') ?: 0),
                 'buyer'   => ($r['BUYER_NAME'] ?? ''),
+                'sku'     => trim(($r['SKU'] ?? '')),
+                'placed'  => $placed ? Carbon::parse($placed, 'UTC')->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s') : '',
             ];
             $added++;
         }
@@ -491,5 +501,85 @@ class WhatnotSeller
     {
         $dates = array_filter(array_column(self::whatnotOrders(), 'date'));
         return $dates ? [min($dates), max($dates)] : null;
+    }
+
+    public static function saveWhatnotOrders(array $all): void
+    {
+        Storage::disk('local')->put(self::ORDERS_FILE, json_encode($all, JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * Whatnot sales that carry our barcode in Whatnot's SKU field, matched to
+     * the ERP item: real Whatnot price vs sticker, and whether the ERP already
+     * has it as sold. status: marked | ready | no_stock | not_found.
+     */
+    public static function skuMatches(int $businessId, string $from, string $to): array
+    {
+        $out = [];
+        foreach (self::whatnotOrders() as $key => $o) {
+            if ($o['type'] !== 'ORDER_EARNINGS' || empty($o['sku']) || $o['date'] < $from || $o['date'] > $to) {
+                continue;
+            }
+            $v = DB::table('variations as v')
+                ->join('products as p', 'p.id', '=', 'v.product_id')
+                ->where('p.business_id', $businessId)
+                ->whereNull('v.deleted_at')
+                ->where(function ($q) use ($o) { $q->where('v.sub_sku', $o['sku'])->orWhere('p.sku', $o['sku']); })
+                ->first(['v.id as variation_id', 'p.id as product_id', 'p.name', 'p.artist', 'p.type', 'p.enable_stock', 'v.sell_price_inc_tax']);
+            $row = [
+                'key' => $key, 'date' => $o['date'], 'order' => $o['order'], 'sku' => $o['sku'],
+                'price' => (float) $o['price'], 'title' => $o['title'], 'sticker' => null, 'status' => 'not_found',
+                'product_id' => null, 'variation_id' => null, 'location_id' => null, 'placed' => $o['placed'] ?? '',
+            ];
+            if ($v) {
+                $row['title'] = self::displayName($v->name, $v->artist);
+                $row['sticker'] = round((float) $v->sell_price_inc_tax, 2);
+                $row['product_id'] = (int) $v->product_id;
+                $row['variation_id'] = (int) $v->variation_id;
+                $row['product_type'] = $v->type ?: 'single';
+                $row['enable_stock'] = (int) $v->enable_stock;
+                $marked = !empty($o['erp_tx']) || DB::table('transaction_sell_lines as tsl')
+                    ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                    ->where('t.business_id', $businessId)->where('t.type', 'sell')->where('t.status', 'final')
+                    ->where('t.is_whatnot', 1)->where('tsl.product_id', $v->product_id)->exists();
+                if ($marked) {
+                    $row['status'] = 'marked';
+                } else {
+                    $loc = DB::table('variation_location_details')->where('variation_id', $v->variation_id)
+                        ->where('qty_available', '>', 0)->orderByDesc('qty_available')->value('location_id');
+                    $row['status'] = $loc ? 'ready' : 'no_stock';
+                    $row['location_id'] = $loc ? (int) $loc : null;
+                }
+            }
+            $out[] = $row;
+        }
+        usort($out, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        return $out;
+    }
+
+    /** product_id => real Whatnot price, from SKU-tagged Whatnot report rows. */
+    public static function whatnotPriceByProduct(int $businessId): array
+    {
+        $skus = [];
+        foreach (self::whatnotOrders() as $o) {
+            if ($o['type'] === 'ORDER_EARNINGS' && !empty($o['sku'])) {
+                $skus[$o['sku']] = (float) $o['price'];
+            }
+        }
+        if (!$skus) {
+            return [];
+        }
+        $map = [];
+        $rows = DB::table('variations as v')->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.business_id', $businessId)
+            ->where(function ($q) use ($skus) { $q->whereIn('v.sub_sku', array_keys($skus))->orWhereIn('p.sku', array_keys($skus)); })
+            ->get(['p.id', 'p.sku', 'v.sub_sku']);
+        foreach ($rows as $r) {
+            $price = $skus[$r->sub_sku] ?? ($skus[$r->sku] ?? null);
+            if ($price !== null) {
+                $map[(int) $r->id] = $price;
+            }
+        }
+        return $map;
     }
 }

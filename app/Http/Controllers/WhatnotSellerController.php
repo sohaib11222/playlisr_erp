@@ -174,12 +174,32 @@ class WhatnotSellerController extends Controller
             return $back->with('wn_flash', ['ok' => false, 'msg' => 'Nothing saved: ' . implode(', ', $skipped)]);
         }
 
+        [$saved, $savedTotal, $errs] = $this->ring($businessId, $byLoc, WS::NOTE_TAG . ': entered by ' . $s['seller_name'] . ' on his Whatnot page');
+        $skipped = array_merge($skipped, $errs);
+
+        $msg = "Saved {$saved} item" . ($saved === 1 ? '' : 's') . ' ($' . number_format($savedTotal, 2) . ').';
+        if ($skipped) {
+            $msg .= ' Not saved: ' . implode(', ', $skipped) . '.';
+        }
+        return $back->with('wn_flash', ['ok' => empty($skipped), 'msg' => $msg]);
+    }
+
+    /**
+     * Ring Whatnot sales into the ERP: one final sale per store, paid as
+     * "other" (Whatnot pays us off-register), stock taken off and pushed to
+     * the website. $byLoc = [location_id => [product rows]]. Returns
+     * [items saved, $ total, error messages].
+     */
+    private function ring(int $businessId, array $byLoc, string $staffNote, ?string $date = null): array
+    {
+        $s = WS::settings();
         $walkIn = Contact::where('business_id', $businessId)->where('is_default', 1)->first()
             ?: Contact::where('business_id', $businessId)->where('type', 'customer')->first();
         $business = DB::table('business')->where('id', $businessId)->first(['id', 'owner_id', 'accounting_method']);
         $userId = (int) ($s['user_id'] ?: $business->owner_id);
         $saved = 0;
         $savedTotal = 0.0;
+        $errs = [];
         $productIds = [];
 
         foreach ($byLoc as $locationId => $products) {
@@ -196,13 +216,13 @@ class WhatnotSellerController extends Controller
                     'is_quotation' => 0,
                     'location_id' => $locationId,
                     'contact_id' => $walkIn->id,
-                    'transaction_date' => WS::now()->format('Y-m-d H:i:s'),
+                    'transaction_date' => $date ?: WS::now()->format('Y-m-d H:i:s'),
                     'final_total' => $finalTotal,
                     'discount_type' => 'fixed',
                     'discount_amount' => 0,
                     'channel' => 'whatnot',
                     'commission_agent' => $s['user_id'] ?: null,
-                    'staff_note' => WS::NOTE_TAG . ': entered by ' . $s['seller_name'] . ' on his Whatnot page',
+                    'staff_note' => $staffNote,
                     'sale_note' => 'Whatnot sale',
                     'exchange_rate' => 1,
                 ], $invoiceTotal, $userId, false);
@@ -231,7 +251,7 @@ class WhatnotSellerController extends Controller
             } catch (\Throwable $e) {
                 DB::rollBack();
                 Log::error('whatnot-seller sell failed: ' . $e->getFile() . ':' . $e->getLine() . ' ' . $e->getMessage());
-                $skipped[] = count($products) . ' item(s) at one store (error, nothing saved for them)';
+                $errs[] = count($products) . ' item(s) at one store (error, nothing saved for them)';
             }
         }
 
@@ -244,11 +264,7 @@ class WhatnotSellerController extends Controller
             }
         }
 
-        $msg = "Saved {$saved} item" . ($saved === 1 ? '' : 's') . ' ($' . number_format($savedTotal, 2) . ').';
-        if ($skipped) {
-            $msg .= ' Not saved: ' . implode(', ', $skipped) . '.';
-        }
-        return $back->with('wn_flash', ['ok' => empty($skipped), 'msg' => $msg]);
+        return [$saved, $savedTotal, $errs];
     }
 
     // ---------------------------------------------------------------- owners
@@ -339,6 +355,7 @@ class WhatnotSellerController extends Controller
             'users' => $users,
             'daily' => WS::dailyCheck($lines, $from, $to),
             'wn_range' => WS::whatnotImportedRange(),
+            'sku_rows' => WS::skuMatches($businessId, $from, $to),
         ]);
     }
 
@@ -442,5 +459,40 @@ class WhatnotSellerController extends Controller
         }
         $msg = "Imported {$added} Whatnot rows" . ($skipped ? ", {$skipped} were already in" : '') . '.' . ($bad ? ' Not a Whatnot order report: ' . implode(', ', $bad) . '.' : '');
         return redirect()->back()->with('status', ['success' => $bad ? 0 : 1, 'msg' => $msg]);
+    }
+
+    // Mark Whatnot sales that came in with our SKU but were never rung: one
+    // ERP sale each, at the real Whatnot price, dated when the order happened.
+    public function importSkuSales(Request $request)
+    {
+        $this->ensureAccess();
+        $businessId = (int) $request->session()->get('user.business_id');
+        $all = WS::whatnotOrders();
+        $done = 0; $total = 0.0; $errs = [];
+        foreach (WS::skuMatches($businessId, '2000-01-01', WS::now()->format('Y-m-d')) as $r) {
+            if ($r['status'] !== 'ready') {
+                continue;
+            }
+            $sticker = (float) $r['sticker'];
+            $price = (float) $r['price'];
+            $row = [
+                'product_id' => $r['product_id'], 'variation_id' => $r['variation_id'],
+                'product_type' => $r['product_type'], 'enable_stock' => $r['enable_stock'], 'quantity' => 1,
+                'unit_price' => $sticker > 0 ? $sticker : $price, 'unit_price_inc_tax' => $price,
+                'line_discount_type' => $sticker > $price ? 'fixed' : null,
+                'line_discount_amount' => $sticker > $price ? round($sticker - $price, 2) : 0,
+                'item_tax' => 0, 'tax_id' => null, 'base_unit_multiplier' => 1,
+                'sell_line_note' => 'Whatnot order ' . $r['order'],
+            ];
+            [$saved, $amt, $e] = $this->ring($businessId, [$r['location_id'] => [$row]], 'WHATNOT-IMPORT: Whatnot order ' . $r['order'], $r['placed'] ?: null);
+            if ($saved) {
+                $all[$r['key']]['erp_tx'] = true;
+                $done += $saved; $total += $amt;
+            }
+            $errs = array_merge($errs, $e);
+        }
+        WS::saveWhatnotOrders($all);
+        $msg = "Marked {$done} Whatnot sale" . ($done === 1 ? '' : 's') . ' sold in the ERP ($' . number_format($total, 2) . ').' . ($errs ? ' Problems: ' . implode(', ', $errs) : '');
+        return redirect()->back()->with('status', ['success' => $errs ? 0 : 1, 'msg' => $msg]);
     }
 }
