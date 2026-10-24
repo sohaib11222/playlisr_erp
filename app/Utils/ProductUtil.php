@@ -551,9 +551,32 @@ class ProductUtil extends Util
 
             $variation_location_d->qty_available += $qty_difference;
             $variation_location_d->save();
+
+            if ($qty_difference > 0) {
+                $this->ensureProductAtLocation($product_id, $location_id);
+            }
         }
         
         return true;
+    }
+
+    /**
+     * Stock arriving at a store (purchase receive, transfer in, adjustment)
+     * must also assign the product to that store. The POS only finds
+     * products assigned to its store, so without this a received copy at
+     * Pico of a Hollywood-only product scans as "doesn't exist" (or hits a
+     * duplicate listing with no stock there).
+     */
+    public function ensureProductAtLocation($product_id, $location_id)
+    {
+        if (empty($product_id) || empty($location_id)) {
+            return;
+        }
+        $exists = DB::table('product_locations')->where('product_id', $product_id)
+            ->where('location_id', $location_id)->exists();
+        if (!$exists) {
+            DB::table('product_locations')->insert(['product_id' => $product_id, 'location_id' => $location_id]);
+        }
     }
     
     public function updateProductQuantity2($location_id, $product_id, $variation_id, $new_quantity, $old_quantity = 0, $number_format = null, $uf_data = true)
@@ -594,6 +617,10 @@ class ProductUtil extends Util
             $variation_location_d->qty_available += $qty_difference;
             
             $variation_location_d->save();
+
+            if ($qty_difference > 0) {
+                $this->ensureProductAtLocation($product_id, $location_id);
+            }
             // $variation_location_d = VariationLocationDetails
             //               ::where('variation_id', $variation->id)
             //               ->where('product_id', $product_id)
