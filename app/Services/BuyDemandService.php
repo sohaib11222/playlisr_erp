@@ -128,7 +128,8 @@ class BuyDemandService
 
     /**
      * Non-music flat-rate types (Jon 2026-10-23): we were buying books,
-     * magazines and DVDs about twice as fast as we sell them. item_type =>
+     * magazines and DVDs about twice as fast as we sell them (video games
+     * added the same day). item_type =>
      * regex on the top-level category name. Compared with the whole store,
      * cuts only (same -10% / -20% bars as music).
      */
@@ -169,6 +170,8 @@ class BuyDemandService
         'bluray_used' => '/dvd|blu/i',
         'bluray_sealed' => '/dvd|blu/i',
         '4k_used' => '/dvd|blu/i',
+        'videogame_with_case' => '/video game/i',
+        'videogame_no_case' => '/video game/i',
         'vhs_used' => '/^vhs/i',
         'vhs_horror_used' => '/^vhs/i',
         'tshirt' => '/apparel/i',
