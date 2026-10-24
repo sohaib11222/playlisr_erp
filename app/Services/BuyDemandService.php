@@ -253,7 +253,7 @@ class BuyDemandService
         if ($id > 0 && (isset($formats[$id]) || isset($subs[$id]))) {
             $key = 'e:' . $businessId . ':' . $locationId . ':' . $id;
             if (!isset($this->memo[$key])) {
-                $this->memo[$key] = Cache::remember('buydemand3:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
+                $this->memo[$key] = Cache::remember('buydemand4:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $id, $formats, $subs) {
                     if (isset($subs[$id])) {
                         list($sold, $onHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], [$id]);
                         list($bSold, $bOnHand) = $this->soldAndOnHand($businessId, $locationId, [$subs[$id]['parent']], null);
@@ -310,7 +310,7 @@ class BuyDemandService
     {
         $key = 'g:' . $businessId . ':' . $locationId . ':' . $itemType . ':' . $genre;
         if (!isset($this->memo[$key])) {
-            $this->memo[$key] = Cache::remember('buydemand3:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
+            $this->memo[$key] = Cache::remember('buydemand4:' . $key, self::CACHE_SECONDS, function () use ($businessId, $locationId, $itemType, $genre, $genreLabel) {
                 return $this->groupDemand($businessId, $locationId, $itemType, $genre, $genreLabel);
             });
         }
