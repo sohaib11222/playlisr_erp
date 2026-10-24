@@ -262,18 +262,23 @@ class BuyOfferCalculatorService
                     $raw = null;
                 }
                 $raw = is_array($raw) ? $raw : [];
-                $floor = (float) BuyMarginSettings::DEFAULTS['floor'];
+                $hv = is_array($raw['hv'] ?? null) ? $raw['hv'] + BuyMarginSettings::DEFAULTS : BuyMarginSettings::DEFAULTS;
                 $margin = isset($raw['margin']) ? (float) $raw['margin'] : (float) BuyMarginSettings::DEFAULTS['normal'];
-                $margin = max($floor, min(95.0, $margin));
-                $standardMultiplier = round((100 - $margin) / 100, 4);
+                $margin = max((float) $hv['floor'], min(95.0, $margin));
+                $superFast = !empty($raw['super_fast']);
+                // Items worth $20+ pay at most 20% (25% if super fast), Jon 10/23.
+                $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $discogsMedian);
                 $cashLine = round($quantity * $discogsMedian * $standardMultiplier, 2);
                 $demandInfo = [
                     'demand_multiplier' => 1.0,
                     'demand_level' => 'margin',
                     'demand_reason' => $raw['reason'] ?? null,
                     'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
-                    'demand_margin' => $margin,
+                    // Effective margin on this line (after the $20+ cap / boost).
+                    'demand_margin' => round(100 - $standardMultiplier * 100, 2),
                     'demand_tier' => $raw['tier'] ?? 'normal',
+                    'demand_super_fast' => $superFast,
+                    'demand_base_margin' => $margin,
                 ];
             } elseif ($demand !== null) {
                 try {

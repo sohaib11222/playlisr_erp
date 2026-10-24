@@ -360,7 +360,7 @@
             // eBay-value line: the margin is the price, show it with the category speed.
             if ($lvl === 'margin') {
                 $m = (float) ($cl['demand_margin'] ?? 0);
-                $label = 'Margin ' . round($m) . '% · pay ' . round(100 - $m) . '% of eBay';
+                $label = 'Margin ' . round($m) . '% · pay ' . round(100 - $m) . '% of eBay' . (!empty($cl['demand_super_fast']) ? ' (super-fast boost)' : '');
                 return '<span class="bfc-demand-chip bfc-demand-margin">' . e($label . ($why !== '' ? ' · ' . $why : ' · pick a category to price by its sales speed')) . '</span>';
             }
             // Normal lines still show their sales speed (gray), so the cashier
@@ -417,7 +417,7 @@
 
     @if($bfcBeta)
         <div class="bfc-beta-banner">
-            <span><strong>Beta buy form:</strong> pays up to 20% more on things that sell fast at this store, and up to 20% less on things we have too much of. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any bonus right away.</span>
+            <span><strong>Beta buy form:</strong> pays up to 20% more on things that sell fast at this store, and up to 20% less on things we have too much of. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any bonus right away.@if(auth()->user()->can('business_settings.access')) <a href="{{ url('/business/settings') }}#buy-margins" target="_blank">Edit margins</a>@endif</span>
         </div>
     @endif
 
@@ -675,7 +675,7 @@ HTML;
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     @php $bfcRowTypes = isset($itemTypes[$line['item_type'] ?? '']) || empty($line['item_type']) ? $itemTypes : $itemTypes + [$line['item_type'] => $bfcAllTypes[$line['item_type']] ?? $line['item_type']]; $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
-                                    <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @if(($bfcRowDemand['demand_level'] ?? '') === 'margin') data-pay-pct="{{ round((100 - (float) ($bfcRowDemand['demand_margin'] ?? 65)) / 100, 4) }}" @endif @endif>
+                                    <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @if(($bfcRowDemand['demand_level'] ?? '') === 'margin') data-pay-pct="{{ round((100 - (float) ($bfcRowDemand['demand_base_margin'] ?? $bfcRowDemand['demand_margin'] ?? 65)) / 100, 4) }}" data-super-fast="{{ !empty($bfcRowDemand['demand_super_fast']) ? 1 : 0 }}" @endif @endif>
                                         <td>{!! Form::select("lines[$i][item_type]", $bfcRowTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}
                                         @if($bfcBeta)
@@ -1447,11 +1447,21 @@ HTML;
         var BFC_MARGINS = @json($bfcMargins);
         // eBay-value line: fraction of the eBay value we pay. The server's
         // margin for the line's category once known, else the normal margin.
+        // Mirrors BuyMarginSettings::payFraction: items worth hv_min+ pay at
+        // most hv_pay% (hv_fast_pay% when the category is a super-fast seller).
         function bfcPayPct($row) {
             var p = parseFloat($row.attr('data-pay-pct'));
-            if (isFinite(p) && p > 0) return p;
-            var m = Math.max(parseFloat(BFC_MARGINS.floor) || 0, parseFloat(BFC_MARGINS.normal) || 65);
-            return (100 - m) / 100;
+            if (!(isFinite(p) && p > 0)) {
+                var m = Math.max(parseFloat(BFC_MARGINS.floor) || 0, parseFloat(BFC_MARGINS.normal) || 65);
+                p = (100 - m) / 100;
+            }
+            var value = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
+            if (value >= (parseFloat(BFC_MARGINS.hv_min) || 20)) {
+                p = $row.attr('data-super-fast') === '1'
+                    ? (parseFloat(BFC_MARGINS.hv_fast_pay) || 25) / 100
+                    : Math.min(p, (parseFloat(BFC_MARGINS.hv_pay) || 20) / 100);
+            }
+            return p;
         }
         // Beta: the genre dropdown under a line's title offers only the genres
         // its item type covers; keep the pick if the new type still has it.
@@ -1494,9 +1504,11 @@ HTML;
                 if ($row.data('demand-seq') !== seq || !d) return;
                 if (d.level === 'margin') {
                     var m = parseFloat(d.margin) || 65;
-                    $row.attr('data-pay-pct', (100 - m) / 100);
+                    $row.attr('data-pay-pct', (100 - m) / 100).attr('data-super-fast', d.super_fast ? '1' : '0');
+                    var hvMin = parseFloat(BFC_MARGINS.hv_min) || 20;
+                    var hvNote = ' · $' + hvMin + '+ items: pay ' + (d.super_fast ? (BFC_MARGINS.hv_fast_pay + '% (super-fast boost)') : (BFC_MARGINS.hv_pay + '% max'));
                     $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-margin')
-                        .text('Margin ' + Math.round(m) + '% · pay ' + Math.round(100 - m) + '% of eBay · ' + (d.reason || 'pick a category to price by its sales speed')));
+                        .text('Margin ' + Math.round(m) + '% · pay ' + Math.round(100 - m) + '% of eBay' + hvNote + ' · ' + (d.reason || 'pick a category to price by its sales speed')));
                     bfcRecalcAll();
                     return;
                 }
