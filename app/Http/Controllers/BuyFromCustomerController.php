@@ -653,7 +653,7 @@ class BuyFromCustomerController extends Controller
             ->where('business_id', $business_id)
             ->findOrFail($id);
         // Labels only: include Beta-only types so eBay-value lines are named.
-        $itemTypes = $this->calculator->getItemTypesForDropdown(true);
+        $itemTypes = $this->calculator->getItemTypesForDropdown(true, true);
 
         return view('buy_from_customer.intake_sheet', compact('offer', 'itemTypes'));
     }
