@@ -52,7 +52,7 @@ class WantNotice
         $hi = 'Hi' . ($firstName !== '' ? ' ' . $firstName : '') . ', Nivessa Records here.';
         $msg = "{$hi} The record you asked us to look out for just came in at {$store['name']}: {$label}.";
         if ($link) {
-            return $msg . " Want it? Place a pickup order here and we'll pull it in 1 to 2 days: {$link} Or just come on by! {$store['address']}";
+            return $msg . " If you still want it, please place a pickup order here and we'll pull it in 1-2 days. {$link} Or just come on by! {$store['address']}";
         }
         return $msg . " Come by if you still want it! {$store['address']}";
     }
