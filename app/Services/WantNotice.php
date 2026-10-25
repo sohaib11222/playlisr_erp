@@ -60,10 +60,15 @@ class WantNotice
     /** Special order arrived / in-store order ready (Sarah's wording, 2026-10-23). */
     public static function pickupText(string $kind, string $firstName, string $label, array $store): string
     {
+        $short = ($store['key'] ?? '') === 'pico' ? 'Pico' : 'Hollywood';
+        if ($kind === 'special') {
+            // Sarah's wording, 2026-10-25.
+            $hi = 'Hi' . ($firstName !== '' ? ' ' . $firstName : '') . ', Nivessa here.';
+            $what = $label !== '' ? "Your {$label} just came in at {$short}." : "Your special order just came in at {$short}.";
+            return "{$hi} {$what} It's ready for pickup, and we're holding it for you at the counter. See you soon! {$store['address']}";
+        }
         $hi = 'Hi' . ($firstName !== '' ? ' ' . $firstName : '') . ', Nivessa Records here.';
-        $what = $kind === 'special'
-            ? ($label !== '' ? "Your special order just came in: {$label}." : 'Your special order just came in.')
-            : ($label !== '' ? "Your order is ready for pickup: {$label}." : 'Your order is ready for pickup.');
+        $what = $label !== '' ? "Your order is ready for pickup: {$label}." : 'Your order is ready for pickup.';
         return "{$hi} {$what} We're holding it at the counter at {$store['name']}, {$store['address']}. "
              . 'Just tell us your name at the register when you come by. See you soon!';
     }
