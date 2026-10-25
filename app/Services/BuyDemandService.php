@@ -278,6 +278,9 @@ class BuyDemandService
         $cur = (float) ($res['multiplier'] ?? 1.0);
         if ($mult < 1) {
             $new = min($cur, $mult);
+        } elseif ($cur < 1) {
+            // An overstock / big-lot cut beats a recent-sale bonus.
+            $new = $cur;
         } else {
             $new = max($cur, $mult);
         }
