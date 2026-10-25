@@ -125,7 +125,7 @@ class WhatnotSellerController extends Controller
                     ->where('vld.location_id', (int) ($it['location_id'] ?? 0))
                     ->first(['v.id', 'v.product_id', 'p.type', 'p.enable_stock', 'vld.qty_available', 'vld.location_id', 'v.sell_price_inc_tax']);
                 if (!$v || (float) $v->qty_available <= 0) {
-                    $skipped[] = ($it['title'] ?? 'an item') . ' (already sold or not in stock)';
+                    $skipped[] = ($it['title'] ?? 'an item') . ' (already marked sold)';
                     continue;
                 }
                 $sticker = (float) $v->sell_price_inc_tax;
@@ -171,7 +171,7 @@ class WhatnotSellerController extends Controller
         }
 
         if (empty($byLoc)) {
-            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Nothing saved: ' . implode(', ', $skipped)]);
+            return $back->with('wn_flash', ['ok' => false, 'msg' => 'Couldn\'t save: ' . implode(', ', $skipped)]);
         }
 
         [$saved, $savedTotal, $errs] = $this->ring($businessId, $byLoc, WS::NOTE_TAG . ': entered by ' . $s['seller_name'] . ' on his Whatnot page');
@@ -179,7 +179,7 @@ class WhatnotSellerController extends Controller
 
         $msg = "Saved {$saved} item" . ($saved === 1 ? '' : 's') . ' ($' . number_format($savedTotal, 2) . ').';
         if ($skipped) {
-            $msg .= ' Not saved: ' . implode(', ', $skipped) . '.';
+            $msg .= ' Couldn\'t save: ' . implode(', ', $skipped) . '.';
         }
         return $back->with('wn_flash', ['ok' => empty($skipped), 'msg' => $msg]);
     }

@@ -68,7 +68,7 @@
             <tr>
                 <td>{{ $l['date'] }}</td>
                 <td>{{ $l['title'] }}{{ $l['qty'] > 1 ? ' (x' . (int) $l['qty'] . ')' : '' }}</td>
-                <td class="num {{ $diff < -0.009 ? 'red' : ($diff > 0.009 ? 'green' : '') }}">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
+                <td class="num {{ $diff > 0.009 ? 'green' : '' }}">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
                 <td class="num">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
                 <td class="num">${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
             </tr>

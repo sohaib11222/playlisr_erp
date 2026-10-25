@@ -19,8 +19,8 @@
         .item:last-child { border-bottom: 0; }
         .t { font-weight: 600; font-size: 16px; }
         .meta { font-size: 14px; color: #333; margin-top: 2px; }
-        .warn { background: #fff4e5; color: #8a4b00; border-radius: 6px; padding: 6px 8px; font-size: 14px; margin-top: 6px; }
-        .bad { background: #fdecea; color: #a12622; border-radius: 6px; padding: 6px 8px; font-size: 14px; margin-top: 6px; }
+        .warn { background: #d7ebfb; color: #0b4a7a; border-radius: 6px; padding: 6px 8px; font-size: 14px; margin-top: 6px; }
+        .bad { background: #fff4e5; color: #8a4b00; border-radius: 6px; padding: 6px 8px; font-size: 14px; margin-top: 6px; }
         .ok { background: #eaf4ea; color: #2b6a2b; border-radius: 6px; padding: 10px; font-size: 15px; }
         button { font-size: 16px; padding: 10px 14px; border: 0; border-radius: 8px; cursor: pointer; }
         .add { background: #d7ebfb; color: #0b4a7a; font-weight: 600; white-space: nowrap; }
@@ -77,7 +77,7 @@
             <input type="hidden" name="submit_id" id="submit_id">
             <button type="submit" class="save" id="save" disabled>Save sold items</button>
         </form>
-        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) {{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? 'Starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') . ': s' : 'S' }}ell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Rules: you can take up to $1 off per $10 of sticker ($2 off $20, $3 off $30), and leave anything in the store less than {{ $s['min_days_in_store'] }} days for in-store customers. If you go lower, write why.</div>
+        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) {{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? 'Bonus starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') . ': s' : 'Bonus: s' }}ell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Good to know: up to $1 off per $10 of sticker is always fine ($2 off $20, $3 off $30). Records that came in within the last {{ $s['min_days_in_store'] }} days get shop floor time first. For anything outside that, just add a quick note.</div>
     </div>
 
     <div class="card">
@@ -141,7 +141,7 @@
                         + '<div class="t">' + esc(it.title) + '</div>'
                         + '<div class="meta">' + esc(it.category) + ' · ' + esc(it.store) + ' · Sticker ' + money(it.price) + ' · In store since ' + esc(it.added) + '</div>'
                         + '<div class="meta"><b>Whatnot SKU: ' + esc(it.sku) + '</b></div>'
-                        + (it.too_new ? '<div class="warn">New in store. Please leave it for in-store customers until ' + esc(it.ok_after) + '.</div>' : '')
+                        + (it.too_new ? '<div class="warn">Just came in. It gets shop floor time first, until ' + esc(it.ok_after) + '.</div>' : '')
                         + '</div><button type="button" class="add" data-i="' + i + '"' + (inCart ? ' disabled>Added' : '>Sold') + '</button></div></div>';
                 }).join('');
                 results.querySelectorAll('button[data-i]').forEach(function (b) {
@@ -179,7 +179,7 @@
                 + '<span class="meta" style="flex:1">What it actually sold for on Whatnot, before fees</span>'
                 + '<button type="button" class="rm" data-r="' + i + '">Remove</button></div>'
                 + '<div data-w="' + i + '"></div>'
-                + '<input type="text" placeholder="Why so low? (required under ' + MIN_PCT + '% of sticker)" data-n="' + i + '" value="' + esc(c.note) + '" class="' + (needsNote(c) ? '' : 'hidden') + '" style="margin-top:6px;">'
+                + '<input type="text" placeholder="Add a quick note about this one" data-n="' + i + '" value="' + esc(c.note) + '" class="' + (needsNote(c) ? '' : 'hidden') + '" style="margin-top:6px;">'
                 + '</div>';
         }).join('');
         el.querySelectorAll('input[data-p]').forEach(function (inp) {
@@ -208,12 +208,12 @@
     function warn(i) {
         var c = cart[i], w = document.querySelector('[data-w="' + i + '"]'), p = parseFloat(c.price), html = '';
         if (c.sticker && p > 0 && p < c.floor) {
-            html += '<div class="bad">' + Math.round(p / c.sticker * 100) + '% of sticker. The lowest without a reason is ' + money(c.floor) + '.</div>';
+            html += '<div class="warn">That one went for ' + money(c.sticker - p) + ' under the sticker. Add a quick note and you are all set.</div>';
         }
         if (PREM_PCT !== null && c.sticker && p > c.sticker * (1 + PREM_PCT / 100)) {
             html += '<div class="ok" style="margin-top:6px;">Premium sale. You get ' + money(PREM_PAY) + ' for this one.</div>';
         }
-        if (c.too_new) html += '<div class="warn">This one is new in the store. Write why it went on Whatnot.</div>';
+        if (c.too_new) html += '<div class="warn">This one just came in. Add a quick note and you are all set.</div>';
         w.innerHTML = html;
     }
 
