@@ -47,6 +47,20 @@
     @endforeach
     <div class="clearfix"></div>
     <div class="col-sm-12">
+        <h4 style="margin-top:10px;">Fast sellers (Beta buy form)</h4>
+        <p class="help-block">Extra pay on bulk lines whose genre / category sells faster than the rest of its format at the buying store. Overstock cuts and huge-lot pricing still win when they apply. Set to 0 for no extra pay.</p>
+    </div>
+    @foreach(['bonus_warm' => ['Warm bonus (%)', 'Sells 1.2x+ as fast (5+ sold in 60 days).', 0, 50], 'bonus_hot' => ['Hot bonus (%)', 'Sells 1.5x+ as fast (10+ sold in 60 days).', 0, 50]] as $bmKey => $bmText)
+        <div class="col-sm-3">
+            <div class="form-group">
+                {!! Form::label('buy_margin_' . $bmKey, $bmText[0] . ':') !!}
+                {!! Form::number('common_settings[buy_margin_' . $bmKey . ']', $bm[$bmKey], ['class' => 'form-control', 'id' => 'buy_margin_' . $bmKey, 'min' => $bmText[2], 'max' => $bmText[3], 'step' => 1]) !!}
+                <p class="help-block">{{ $bmText[1] }}</p>
+            </div>
+        </div>
+    @endforeach
+    <div class="clearfix"></div>
+    <div class="col-sm-12">
         <p class="help-block">
             <strong>Examples:</strong> a $15 item in a normal-speed category at 65% margin: we pay up to
             $5.25 cash. A $100 card: we pay up to $20 (20%), or $25 if its category is a super-fast seller.

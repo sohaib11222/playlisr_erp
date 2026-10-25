@@ -350,16 +350,16 @@ class BuyOfferCalculatorService
                     $raw = null;
                 }
                 $raw = is_array($raw) ? $raw : [];
-                // Cuts only: never above the base rate, whatever the hook or an old
-                // pinned quote says (Jon 10/23). Down to 25% for a huge lot.
-                $mult = min(1.0, max(0.25, (float) ($raw['multiplier'] ?? 1.0)));
+                // Down to 25% (huge lot), up to +50% (the most the fast-seller
+                // bonus setting allows), whatever the hook says.
+                $mult = min(1.50, max(0.25, (float) ($raw['multiplier'] ?? 1.0)));
                 $baseLine = $cashLine;
                 $cashLine = round($cashLine * $mult, 2);
                 $demandBonus += $cashLine - $baseLine;
                 $demandInfo = [
                     'demand_multiplier' => $mult,
                     // Hot / warm stay as info (base pay); cool / cold carry the cut.
-                    'demand_level' => $mult < 1.0 ? ($raw['level'] ?? 'cool') : (in_array($raw['level'] ?? '', ['hot', 'warm'], true) ? $raw['level'] : 'normal'),
+                    'demand_level' => $mult < 1.0 ? ($raw['level'] ?? 'cool') : ($mult > 1.0 ? ($raw['level'] ?? 'warm') : (in_array($raw['level'] ?? '', ['hot', 'warm'], true) ? $raw['level'] : 'normal')),
                     'demand_reason' => $raw['reason'] ?? null,
                     'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
                 ];

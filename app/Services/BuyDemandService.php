@@ -61,8 +61,8 @@ class BuyDemandService
     const COOL_MULTIPLIER = 0.90;
     const COLD_MULTIPLIER = 0.80;
 
-    // Cuts only (Jon 2026-10-23): Beta never pays more than the Normal form on
-    // bulk. Hot / warm still show on the line as info, but pay the base rate.
+    // Hot / warm are found here at 1.0; forLine() adds the warm / hot bonus
+    // from Settings -> Buy Margins (cuts-only 10/23, bonuses back 10/25).
     const HOT_MULTIPLIER = 1.0;
     const WARM_MULTIPLIER = 1.0;
 
@@ -212,6 +212,23 @@ class BuyDemandService
      * @return array{multiplier: float, level: string, reason: ?string}
      */
     public function forLine(array $line, $businessId, $locationId)
+    {
+        $res = $this->forLineRaw($line, $businessId, $locationId);
+        // Jon 2026-10-25: fast sellers pay more again (Settings -> Buy Margins,
+        // warm / hot bonus %). Applied last, so a cut or big-lot price wins.
+        $lvl = $res['level'] ?? 'normal';
+        if ($lvl === 'hot' || $lvl === 'warm') {
+            try {
+                $s = BuyMarginSettings::get($businessId);
+                $res['multiplier'] = round(1 + ($lvl === 'hot' ? $s['bonus_hot'] : $s['bonus_warm']) / 100, 4);
+            } catch (\Throwable $e) {
+                $res['multiplier'] = 1.0;
+            }
+        }
+        return $res;
+    }
+
+    protected function forLineRaw(array $line, $businessId, $locationId)
     {
         try {
             $businessId = (int) $businessId;
@@ -652,7 +669,7 @@ class BuyDemandService
     /** Short label for a level: "Hot (no extra pay)", "Overstocked −10%", "No change". */
     public static function levelLabel($level)
     {
-        $labels = ['hot' => 'Hot (no extra pay)', 'warm' => 'Warm (no extra pay)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%', 'lot' => 'Big lot (pays less)'];
+        $labels = ['hot' => 'Hot (pays more)', 'warm' => 'Warm (pays more)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%', 'lot' => 'Big lot (pays less)'];
         return $labels[$level] ?? 'No change';
     }
 
