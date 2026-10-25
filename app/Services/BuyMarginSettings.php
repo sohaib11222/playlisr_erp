@@ -20,7 +20,10 @@ class BuyMarginSettings
         // Huge lots on Beta (BuyDemandService::withLotTiers).
         'lot_min_qty' => 100, 'lot_full_months' => 12, 'lot_half_months' => 24, 'lot_half_pay' => 50, 'lot_quarter_pay' => 25,
         // Beta bonus on fast sellers, % on top of the base rate (Jon 2026-10-25).
-        'bonus_warm' => 10, 'bonus_hot' => 20];
+        'bonus_warm' => 10, 'bonus_hot' => 20,
+        // "Last sold on Discogs" on single records (BuyDemandService::lastSoldAdjust).
+        'ls_min_median' => 20, 'ls_recent_days' => 30, 'ls_recent_bonus' => 10,
+        'ls_stale_days' => 365, 'ls_stale_cut' => 10, 'ls_old_days' => 730, 'ls_old_cut' => 20];
 
     protected static $memo = [];
 
@@ -46,8 +49,10 @@ class BuyMarginSettings
                 $out[$k] = max($k === 'lot_min_qty' ? 1.0 : 0.0, $v);
             } elseif (in_array($k, ['lot_half_pay', 'lot_quarter_pay'], true)) {
                 $out[$k] = max(0.0, min(100.0, $v));
-            } elseif (in_array($k, ['bonus_warm', 'bonus_hot'], true)) {
+            } elseif (in_array($k, ['bonus_warm', 'bonus_hot', 'ls_recent_bonus', 'ls_stale_cut', 'ls_old_cut'], true)) {
                 $out[$k] = max(0.0, min(50.0, $v));
+            } elseif (in_array($k, ['ls_min_median', 'ls_recent_days', 'ls_stale_days', 'ls_old_days'], true)) {
+                $out[$k] = max(0.0, $v);
             } else {
                 $out[$k] = max(0.0, min(95.0, $v));
             }

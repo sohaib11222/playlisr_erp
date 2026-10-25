@@ -61,6 +61,20 @@
     @endforeach
     <div class="clearfix"></div>
     <div class="col-sm-12">
+        <h4 style="margin-top:10px;">"Last sold on Discogs" (single records, Beta)</h4>
+        <p class="help-block">The cashier can type the Last Sold date from the release's Discogs page. A recent sale pays a little more; an old one means the Discogs median may be out of date, so it pays less. Never sold counts as the oldest.</p>
+    </div>
+    @foreach(['ls_min_median' => ['Records with a median of ($)', 'The date box only shows from this median up.', 0, 100000], 'ls_recent_days' => ['Recent = within (days)', '', 0, 3650], 'ls_recent_bonus' => ['Recent bonus (%)', '', 0, 50], 'ls_stale_days' => ['Old after (days)', '', 0, 3650], 'ls_stale_cut' => ['Old cut (%)', '', 0, 50], 'ls_old_days' => ['Very old after (days)', '', 0, 3650], 'ls_old_cut' => ['Very old / never cut (%)', '', 0, 50]] as $bmKey => $bmText)
+        <div class="col-sm-3">
+            <div class="form-group">
+                {!! Form::label('buy_margin_' . $bmKey, $bmText[0] . ':') !!}
+                {!! Form::number('common_settings[buy_margin_' . $bmKey . ']', $bm[$bmKey], ['class' => 'form-control', 'id' => 'buy_margin_' . $bmKey, 'min' => $bmText[2], 'max' => $bmText[3], 'step' => 1]) !!}
+                @if($bmText[1] !== '')<p class="help-block">{{ $bmText[1] }}</p>@endif
+            </div>
+        </div>
+    @endforeach
+    <div class="clearfix"></div>
+    <div class="col-sm-12">
         <p class="help-block">
             <strong>Examples:</strong> a $15 item in a normal-speed category at 65% margin: we pay up to
             $5.25 cash. A $100 card: we pay up to $20 (20%), or $25 if its category is a super-fast seller.

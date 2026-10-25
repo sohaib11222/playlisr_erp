@@ -362,6 +362,7 @@ class BuyOfferCalculatorService
                     'demand_level' => $mult < 1.0 ? ($raw['level'] ?? 'cool') : ($mult > 1.0 ? ($raw['level'] ?? 'warm') : (in_array($raw['level'] ?? '', ['hot', 'warm'], true) ? $raw['level'] : 'normal')),
                     'demand_reason' => $raw['reason'] ?? null,
                     'demand_genre' => (string) ($line['genre'] ?? '') ?: null,
+                    'demand_last_sold' => !empty($line['discogs_never_sold']) ? 'never' : ((string) ($line['discogs_last_sold'] ?? '') ?: null),
                 ];
             }
             $cashTotal += $cashLine;

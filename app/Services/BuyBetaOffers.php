@@ -64,6 +64,7 @@ class BuyBetaOffers
                 'level' => $l['demand_level'] ?? 'normal',
                 'reason' => $l['demand_reason'] ?? null,
                 'genre' => $l['demand_genre'] ?? null,
+                'last_sold' => $l['demand_last_sold'] ?? null,
                 'margin' => $l['demand_margin'] ?? null,
                 'tier' => $l['demand_tier'] ?? null,
                 'super_fast' => !empty($l['demand_super_fast']),

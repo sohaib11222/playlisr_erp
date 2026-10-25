@@ -272,6 +272,12 @@
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
+        .bfc-create .bfc-lastsold { margin-top: 4px; }
+        .bfc-create .bfc-lastsold small { display: block; font-size: 11px; color: #666; }
+        .bfc-create .bfc-lastsold-date { height: 28px; padding: 2px 6px; font-size: 12px; }
+        .bfc-create .bfc-lastsold-never { font-size: 11px; font-weight: 400; margin: 2px 0 0; text-transform: none; letter-spacing: 0; }
+        .bfc-create .bfc-demand-stale { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
+        .bfc-create .bfc-demand-recent { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-margin { background: #FFF6D6; color: #6B5300; border: 1px solid #EBD58A; }
         .bfc-create .bfc-demand-normal { background: #F1F1F1; color: #555; border: 1px solid #DDD; font-weight: 500; }
         .bfc-create .bfc-genre { margin-top: 4px; height: 28px; padding: 2px 6px; font-size: 12px; }
@@ -365,11 +371,11 @@
             }
             // Normal lines still show their sales speed (gray), so the cashier
             // can see why there's no bonus.
-            if (!in_array($lvl, ['hot', 'warm', 'cool', 'cold', 'lot'], true)) {
+            if (!in_array($lvl, ['hot', 'warm', 'cool', 'cold', 'lot', 'recent', 'stale'], true)) {
                 return $why !== '' ? '<span class="bfc-demand-chip bfc-demand-normal">' . e('No change: ' . $why) . '</span>' : '';
             }
             $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
-            $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked', 'lot' => 'Big lot'];
+            $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked', 'lot' => 'Big lot', 'recent' => 'Sold recently', 'stale' => 'Old Discogs sales'];
             // Cuts only: hot / warm are info, they never add pay.
             $label = $pct < 0 ? $names[$lvl] . ' −' . abs($pct) . '%' : ($pct > 0 ? $names[$lvl] . ' +' . $pct . '%' : $names[$lvl] . ' (sells fast)');
             return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
@@ -687,7 +693,14 @@ HTML;
                                                 @endforeach
                                             </select>
                                         @endif</td>
-                                        <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}</td>
+                                        <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}
+                                        @if($bfcBeta)
+                                            <div class="bfc-lastsold" style="display:none;">
+                                                <small>Last sold on Discogs</small>
+                                                <input type="date" name="lines[{{ $i }}][discogs_last_sold]" value="{{ $line['discogs_last_sold'] ?? '' }}" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date">
+                                                <label class="bfc-lastsold-never"><input type="checkbox" name="lines[{{ $i }}][discogs_never_sold]" value="1" @if(!empty($line['discogs_never_sold'])) checked @endif> never sold</label>
+                                            </div>
+                                        @endif</td>
                                         <td>{!! Form::select("lines[$i][condition_grade]", array_combine($grades, $grades), $line['condition_grade'] ?? 'VG+', ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
                                         <td>
@@ -1295,7 +1308,7 @@ HTML;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
-                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"></td>'
+                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL">' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
@@ -1517,7 +1530,10 @@ HTML;
             var loc = $('#location_id').val() || '';
             $row.find('.bfc-demand-chip').remove();
             $row.removeAttr('data-demand-mult').removeAttr('data-pay-pct');
-            if (!type || !loc || (type === 'individual_vinyl' && !title && !genre)) { bfcRecalcAll(); return; }
+            var lastSold = $row.find('input.bfc-lastsold-date').val() || '';
+            var neverSold = $row.find('.bfc-lastsold-never input').is(':checked') ? '1' : '';
+            var median = $row.find('input[name$="[discogs_median_price]"]').val() || '';
+            if (!type || !loc || (type === 'individual_vinyl' && !title && !genre && !lastSold && !neverSold)) { bfcRecalcAll(); return; }
             var seq = ++bfcDemandSeq;
             $row.data('demand-seq', seq);
             // The whole buy's quantity of this type + genre (overstock counts the lot).
@@ -1528,7 +1544,7 @@ HTML;
                     incoming += parseFloat($r.find('input[name$="[quantity]"]').val()) || 0;
                 }
             });
-            $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre, incoming_quantity: incoming }).done(function (d) {
+            $.getJSON(BFC_DEMAND_URL, { location_id: loc, item_type: type, title: title, genre: genre, incoming_quantity: incoming, discogs_median_price: median, discogs_last_sold: lastSold, discogs_never_sold: neverSold }).done(function (d) {
                 if ($row.data('demand-seq') !== seq || !d) return;
                 if (d.level === 'margin') {
                     var m = parseFloat(d.margin) || 65;
@@ -1541,7 +1557,7 @@ HTML;
                     return;
                 }
                 var mult = parseFloat(d.multiplier) || 1;
-                var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked', lot: 'Big lot' };
+                var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked', lot: 'Big lot', recent: 'Sold recently', stale: 'Old Discogs sales' };
                 // Same bounds as the calculator: 25% (huge lot) to +50%.
                 mult = Math.max(0.25, Math.min(1.5, mult));
                 var lvl = names[d.level] ? d.level : 'normal';
@@ -1703,6 +1719,29 @@ HTML;
             });
             $(document).on('change', '#offer_lines_table select.bfc-genre, #offer_lines_table input[name$="[title]"]', function () {
                 bfcPreviewDemand($(this).closest('tr'));
+            });
+            // Last sold on Discogs: shown on single records at the threshold
+            // median+ (Settings -> Buy Margins), re-priced when it changes.
+            var BFC_LS_MIN = {{ (float) ($bfcMargins['ls_min_median'] ?? 20) }};
+            function bfcToggleLastSold($row) {
+                var on = $row.find('select[name$="[item_type]"]').val() === 'individual_vinyl'
+                    && (parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0) >= BFC_LS_MIN;
+                $row.find('.bfc-lastsold').toggle(on);
+                if (!on) { $row.find('input.bfc-lastsold-date').val(''); $row.find('.bfc-lastsold-never input').prop('checked', false); }
+            }
+            $(function () { $('#offer_lines_table tbody tr').each(function () { bfcToggleLastSold($(this)); }); });
+            $(document).on('input change', '#offer_lines_table input[name$="[discogs_median_price]"], #offer_lines_table select[name$="[item_type]"]', function () {
+                bfcToggleLastSold($(this).closest('tr'));
+            });
+            $(document).on('change', '#offer_lines_table input.bfc-lastsold-date, #offer_lines_table .bfc-lastsold-never input', function () {
+                var $row = $(this).closest('tr');
+                if ($(this).is(':checkbox') && $(this).is(':checked')) $row.find('input.bfc-lastsold-date').val('');
+                if ($(this).hasClass('bfc-lastsold-date') && $(this).val()) $row.find('.bfc-lastsold-never input').prop('checked', false);
+                bfcPreviewDemand($row);
+            });
+            $(document).on('change', '#offer_lines_table input[name$="[discogs_median_price]"]', function () {
+                var $row = $(this).closest('tr');
+                if ($row.find('input.bfc-lastsold-date').val() || $row.find('.bfc-lastsold-never input').is(':checked')) bfcPreviewDemand($row);
             });
             // A quantity change can tip a lot into overstock: re-check every
             // line of the same type + genre (the cut counts the whole lot).
