@@ -11,6 +11,12 @@ class BuyOfferCalculatorService
     const VALUE_TYPO = 10000;
     // "1-9 items" lines: more than this many is a bulk lot.
     const INDIVIDUAL_MAX_QTY = 20;
+    // Jon 2026-10-25: a signed record / CD pays this share of the signed copy's
+    // sold value (up to VALUE_CAP), like posters and other valuable items.
+    // Signed copies sell for a lot but slowly (4 used signed LPs sold in a year,
+    // 23 on the shelf), and a signature can be fake.
+    const SIGNED_PAY = 0.20;
+    const SIGNED_SIGNOFF_VALUE = 100;
     // Single records at this median or more need a Discogs link / ID.
     const LINK_REQUIRED_FROM = 20;
 
@@ -363,7 +369,8 @@ class BuyOfferCalculatorService
                 continue;
             }
 
-            $noGrading = !empty($cfg['no_grading']);
+            $signed = $itemType === 'individual_vinyl' && !empty($line['signed']);
+            $noGrading = !empty($cfg['no_grading']) || $signed;
             $grade = (string) ($line['condition_grade'] ?? '');
             if ($grade === '' || !isset($rules['grade_multipliers'][$grade])) {
                 // No grade picked: the type's default, VG for single records
@@ -381,7 +388,12 @@ class BuyOfferCalculatorService
             }
             $unitRate = isset($cfg['unit_rate']) ? (float) $cfg['unit_rate'] : (float) ($line['unit_rate'] ?? 0);
 
-            if ($cfg['mode'] === 'individual_discogs') {
+            if ($signed) {
+                // Signed: SIGNED_PAY of the signed copy's value, no grade, no
+                // speed adjustments (see the demand block below).
+                $standardMultiplier = self::SIGNED_PAY;
+                $cashLine = $quantity * $payValue * self::SIGNED_PAY;
+            } elseif ($cfg['mode'] === 'individual_discogs') {
                 $cashLine = $quantity * $payValue * $gradeMultiplier * $standardMultiplier;
             } elseif ($cfg['mode'] === 'ebay_margin') {
                 // Filled in by the demand hook below (it knows the margin).
@@ -429,7 +441,7 @@ class BuyOfferCalculatorService
                     'demand_super_fast' => $superFast,
                     'demand_base_margin' => $margin,
                 ];
-            } elseif ($demand !== null) {
+            } elseif ($demand !== null && !$signed) {
                 try {
                     // A $0 line can't earn a bonus, so skip its lookups.
                     $raw = $cashLine > 0 ? $demand($line, $i) : null;
@@ -458,7 +470,10 @@ class BuyOfferCalculatorService
             $row = [
                 'line_order' => $i,
                 'item_type' => $itemType,
-                'title' => $line['title'] ?? null,
+                // Signed lines keep a "(signed)" mark so they can be found later.
+                'title' => $signed && stripos((string) ($line['title'] ?? ''), 'sign') === false
+                    ? trim(((string) ($line['title'] ?? '')) . ' (signed)')
+                    : ($line['title'] ?? null),
                 'discogs_link' => $line['discogs_link'] ?? null,
                 'condition_grade' => $noGrading ? null : $grade,
                 'quantity' => $quantity,

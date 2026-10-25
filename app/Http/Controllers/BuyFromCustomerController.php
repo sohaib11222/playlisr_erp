@@ -167,6 +167,7 @@ class BuyFromCustomerController extends Controller
                 return [
                     'item_type' => $line->item_type,
                     'title' => $line->title,
+                    'signed' => $line->item_type === 'individual_vinyl' && stripos((string) $line->title, '(signed)') !== false ? '1' : '',
                     'discogs_link' => $line->discogs_link,
                     'condition_grade' => $line->condition_grade,
                     'quantity' => $line->quantity,
@@ -937,6 +938,17 @@ class BuyFromCustomerController extends Controller
                     $mintLots++;
                 }
             }
+            // Signed items worth over $100: someone checks the signature.
+            $signedBig = 0;
+            foreach ((array) $request->input('lines', []) as $bl) {
+                if (($bl['item_type'] ?? '') === 'individual_vinyl' && !empty($bl['signed'])
+                    && (float) ($bl['discogs_median_price'] ?? 0) > BuyOfferCalculatorService::SIGNED_SIGNOFF_VALUE) {
+                    $signedBig++;
+                }
+            }
+            if ($signedBig > 0) {
+                $reasons[] = sprintf('%d signed item%s worth over $%d (check the signature)', $signedBig, $signedBig === 1 ? ' is' : 's are', BuyOfferCalculatorService::SIGNED_SIGNOFF_VALUE);
+            }
             if ($mintLots > 0) {
                 $reasons[] = sprintf('%d bulk lot%s graded Near Mint / Mint', $mintLots, $mintLots === 1 ? ' is' : 's are');
             }
@@ -988,7 +1000,7 @@ class BuyFromCustomerController extends Controller
                 $errors["lines.$i.quantity"] = sprintf('Line %s: "1-9 items" vinyl is for up to %d records. Use a 10+ Bulk Vinyl type for a bigger lot.', $n, BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY);
             }
             $title = trim((string) ($line['title'] ?? ''));
-            if ($type === 'individual_vinyl' && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
+            if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
             if ($type === 'individual_vinyl' && $value >= BuyOfferCalculatorService::LINK_REQUIRED_FROM && $link === '') {
