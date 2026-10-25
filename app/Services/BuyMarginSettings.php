@@ -18,7 +18,7 @@ class BuyMarginSettings
 {
     const DEFAULTS = ['fast' => 55, 'normal' => 65, 'slow' => 75, 'floor' => 50, 'hv_min' => 20, 'hv_pay' => 20, 'hv_fast_pay' => 25,
         // Huge lots on Beta (BuyDemandService::withLotTiers).
-        'lot_min_qty' => 50, 'lot_full_months' => 12, 'lot_half_months' => 24, 'lot_half_pay' => 50, 'lot_quarter_pay' => 25,
+        'lot_min_qty' => 100, 'lot_full_months' => 12, 'lot_half_months' => 24, 'lot_half_pay' => 50, 'lot_quarter_pay' => 25,
         // Beta bonus on fast sellers, % on top of the base rate (Jon 2026-10-25).
         'bonus_warm' => 10, 'bonus_hot' => 20];
 
