@@ -122,12 +122,13 @@
                 <a href="{{ $qs(['show' => $key]) }}" class="{{ $tab === $key ? 'on' : '' }}">{{ $t[0] }} ({{ count($t[1]) }})</a>
             @endforeach
         </div>
+        <p class="wn-sub" style="margin:0 0 8px;">"Rung up at" is the price in the ERP. Staff ring Whatnot sales at the sticker, so it only shows the real Whatnot price when {{ $name }} marks the sale himself.</p>
         @if($tab === 'new')
             <p>These were in the store less than {{ $s['min_days_in_store'] }} days before they sold on Whatnot.</p>
         @endif
         <div class="table-responsive">
             <table class="table table-striped table-condensed">
-                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sold for</th><th class="text-right">Sticker</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th>Marked by</th><th class="text-right">His pay</th><th>Reason he gave</th></tr></thead>
+                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Rung up at</th><th class="text-right">Sticker</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th>Marked by</th><th class="text-right">His pay</th><th>Reason he gave</th></tr></thead>
                 <tbody>
                 @forelse($shown as $l)
                     @php $diff = $l['sticker'] ? ($l['sold'] - $l['sticker']) * $l['qty'] : null; @endphp
