@@ -1,0 +1,42 @@
+# READ-ONLY: runs scripts/diag/bfc_calc_check.php on prod (buy form item types,
+# pricing, rendered page). Dispatch with --ref <branch> to test that branch's
+# script against the deployed app.
+name: Diag BFC calc check
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Encode script
+        run: echo "SCRIPT_B64=$(base64 -w0 scripts/diag/bfc_calc_check.php)" >> "$GITHUB_ENV"
+      - name: Run check
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          envs: SCRIPT_B64
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "$SCRIPT_B64" | base64 -d > storage/bfc_calc_check.php
+            sed -i "s#__DIR__ . '/../../#'$(pwd)/#g" storage/bfc_calc_check.php
+            php storage/bfc_calc_check.php 2>&1
+            rm -f storage/bfc_calc_check.php
+            echo "=== done ==="
