@@ -912,7 +912,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer/calculate', 'BuyFromCustomerController@createBeta');
     Route::get('/buy-from-customer/original', 'BuyFromCustomerController@createOriginal')->name('buy-from-customer.original');
     Route::post('/buy-from-customer/calculate', 'BuyFromCustomerController@calculate')->name('buy-from-customer.calculate');
-    // Beta buy form: cuts only, pays up to 20% less on overstocked bulk (never more than Normal).
+    // Beta buy form: pays more on fast sellers, less on overstocked bulk / huge lots.
     // Old Beta links / bookmarks land on the default page (now Beta).
     Route::get('/buy-from-customer/beta', 'BuyFromCustomerController@betaMoved')->name('buy-from-customer.beta');
     Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@betaMoved');

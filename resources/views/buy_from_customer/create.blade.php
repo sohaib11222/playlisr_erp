@@ -371,7 +371,7 @@
             $pct = (int) round((((float) ($cl['demand_multiplier'] ?? 1)) - 1) * 100);
             $names = ['hot' => 'Hot', 'warm' => 'Warm', 'cool' => 'Overstocked', 'cold' => 'Way overstocked', 'lot' => 'Big lot'];
             // Cuts only: hot / warm are info, they never add pay.
-            $label = $pct < 0 ? $names[$lvl] . ' −' . abs($pct) . '%' : $names[$lvl] . ' (sells fast, no extra pay)';
+            $label = $pct < 0 ? $names[$lvl] . ' −' . abs($pct) . '%' : ($pct > 0 ? $names[$lvl] . ' +' . $pct . '%' : $names[$lvl] . ' (sells fast)');
             return '<span class="bfc-demand-chip bfc-demand-' . $lvl . '">' . e($label . ($why !== '' ? ': ' . $why : '')) . '</span>';
         };
         // Beta: per item type, the genres a line can be narrowed to ([canon => label]).
@@ -418,7 +418,7 @@
 
     @if($bfcBeta)
         <div class="bfc-beta-banner">
-            <span><strong>Beta buy form:</strong> pays up to 20% less on bulk we have too much of at this store, and never more than the Original form on bulk. Fast sellers are marked so you know what to take. Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any cut right away.@if(auth()->user()->can('business_settings.access')) <a href="{{ url('/business/settings') }}#buy-margins" target="_blank">Edit margins</a>@endif</span>
+            <span><strong>Beta buy form:</strong> pays more on bulk that sells fast at this store and less on what we have too much of (or huge lots). Pick the genre under the title when there's a dropdown. Each line shows how fast it sells and any cut right away.@if(auth()->user()->can('business_settings.access')) <a href="{{ url('/business/settings') }}#buy-margins" target="_blank">Edit margins</a>@endif</span>
         </div>
     @endif
 
@@ -1542,13 +1542,13 @@ HTML;
                 }
                 var mult = parseFloat(d.multiplier) || 1;
                 var names = { hot: 'Hot', warm: 'Warm', cool: 'Overstocked', cold: 'Way overstocked', lot: 'Big lot' };
-                // Cuts only: never pay above the base rate on the client either.
-                mult = Math.min(1, mult);
+                // Same bounds as the calculator: 25% (huge lot) to +50%.
+                mult = Math.max(0.25, Math.min(1.5, mult));
                 var lvl = names[d.level] ? d.level : 'normal';
                 $row.attr('data-demand-mult', mult);
                 if (d.reason) {
                     var pct = Math.round((mult - 1) * 100);
-                    var label = lvl === 'normal' ? 'No change' : (pct < 0 ? names[lvl] + ' −' + Math.abs(pct) + '%' : names[lvl] + ' (sells fast, no extra pay)');
+                    var label = lvl === 'normal' ? 'No change' : (pct < 0 ? names[lvl] + ' −' + Math.abs(pct) + '%' : (pct > 0 ? names[lvl] + ' +' + pct + '%' : names[lvl] + ' (sells fast)'));
                     $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-' + lvl).text(label + ': ' + d.reason));
                 }
                 bfcRecalcAll();
