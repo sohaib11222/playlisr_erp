@@ -905,7 +905,8 @@ class BuyFromCustomerController extends Controller
                 // Luis / Zak / a manager: here, by login, or from their phone.
                 $approver = $this->resolveApprover($request, $pm, $final);
                 if (!$approver) {
-                    $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'), $pm);
+                    $msg = self::overpayMessage($final, $autoFinal, $request->input('location_id'), $pm)
+                        . self::flatRateNudge((array) $request->input('lines', []), $this->isBeta($request));
                     if ($request->filled('approver_username')) {
                         $msg .= ' The approval login was not accepted.';
                     }
@@ -1081,6 +1082,26 @@ class BuyFromCustomerController extends Controller
         $suggested = max(0, (float) $suggested);
         return $paid > $suggested * self::OVERPAY_RATIO
             && ($paid - $suggested) >= self::OVERPAY_MIN_DOLLARS;
+    }
+
+    /**
+     * Jon 2026-10-25: nearly every big overpay on posters / Funko / cards /
+     * books / DVDs / VHS was one valuable item (signed, rare, $100 comic) rung
+     * up on a flat per-item line. When a buy over the limit has a flat-rate
+     * line, point to the eBay-value line ('' when there's none).
+     */
+    public static function flatRateNudge(array $lines, $isBeta)
+    {
+        $types = app(BuyOfferCalculatorService::class)->getRules()['item_types'];
+        foreach ($lines as $l) {
+            $cfg = $types[$l['item_type'] ?? ''] ?? null;
+            if ($cfg && $cfg['mode'] === 'bulk_fixed' && (float) ($l['quantity'] ?? 0) > 0) {
+                return $isBeta
+                    ? ' Is one item worth much more (signed, rare, sealed)? Put it on its own "Valuable item (eBay sold value)" line instead of paying over.'
+                    : ' Is one item worth much more (signed, rare, sealed)? Use the Beta form and put it on its own "Valuable item (eBay sold value)" line instead of paying over.';
+            }
+        }
+        return '';
     }
 
     public static function overpayMessage($paid, $suggested, $locationId = null, $pm = 'cash_in_store')

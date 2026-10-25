@@ -1003,7 +1003,8 @@ HTML;
                                          data-auto-cash="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_cash'], 2, '.', '') : '' }}"
                                          data-auto-credit="{{ $bfcPureAuto ? number_format((float) $bfcPureAuto['final_offer_credit'], 2, '.', '') : '' }}"
                                          data-can-overpay="{{ $bfcCanOverpay ? '1' : '0' }}"
-                                         data-call-who="{{ $bfcCallWho }}"></div>
+                                         data-call-who="{{ $bfcCallWho }}"
+                                         data-nudge="{{ \App\Http\Controllers\BuyFromCustomerController::flatRateNudge((array) ($input['lines'] ?? []), !empty($bfcBeta)) }}"></div>
                                     @if(!$bfcCanOverpay)
                                         <div id="bfc_overpay_approval" class="well well-sm" style="display:none; border-color:#d9534f;" data-force="{{ $errors->has('final_amount_paid') ? '1' : '0' }}">
                                             <strong>Text {{ $bfcCallWho }} for approval.</strong> Add photos of the collection so they can see it.
@@ -2170,7 +2171,7 @@ HTML;
                 if (!isFinite(paid) || !isFinite(auto)) return '';
                 auto = Math.max(0, auto);
                 if (!(paid > auto * 1.20 + 0.009 && (paid - auto) >= 5)) return '';
-                return 'You cannot pay $' + paid.toFixed(2) + ' ' + bfcPmWord() + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.';
+                return 'You cannot pay $' + paid.toFixed(2) + ' ' + bfcPmWord() + ' for this. The system says it is worth $' + auto.toFixed(2) + '. Please call ' + $a.data('call-who') + ' before buying.' + ($a.data('nudge') || '');
             }
             function bfcRefreshOverpay() {
                 var $a = $('#bfc_overpay_alert');
