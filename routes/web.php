@@ -28,6 +28,8 @@ Route::get('/discogs/search-product-price-2', [ProductController::class, 'search
 // from here — the ERP is the source of truth.
 Route::get('/events-feed.json', 'EventsController@publicFeed');
 Route::get('/rsd-ordered.json', 'RsdOrderController@publicOrdered');
+// Per-store "pays more / pays less" genres for nivessa.com /buy-sell-trade pages.
+Route::get('/buy-premiums.json', [\App\Http\Controllers\Api\NivessaBuyPremiumsController::class, 'publicFeed']);
 // Texted order links: public preview page (signed), then on to the order.
 Route::get('/o/{id}/{sig}', 'WebsiteOrdersController@sharePreview')->name('website-orders.share');
 // Short form (Sarah 10/22 "shorten these urls"): /o/100103-ab12cd
