@@ -241,8 +241,11 @@ class WhatnotSeller
                 'days_in_store'  => $days,
                 'cost'           => $r->cost !== null ? round((float) $r->cost, 2) : null,
                 'by_golden'      => strpos((string) $r->staff_note, self::NOTE_TAG) === 0,
+                // True when 'sold' is the real Whatnot price (he marked it,
+                // or it came from Whatnot), not just the sticker staff rang.
+                'real'           => $fromWhatnot || strpos((string) $r->staff_note, self::NOTE_TAG) === 0 || strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0,
                 'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0 ? 'Whatnot report' : (string) $r->entered_by),
-                'note'           => trim((string) $r->sell_line_note . ($fromWhatnot ? ' (real price from Whatnot)' : '')),
+                'note'           => trim((string) $r->sell_line_note . ''),
                 'flags'          => $flags,
             ];
         }

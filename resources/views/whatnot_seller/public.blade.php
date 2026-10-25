@@ -41,7 +41,7 @@
 <body>
     <div class="card">
         <h1>{{ $s['seller_name'] }}'s Whatnot sales</h1>
-        <div class="sub">Mark every record you sell on Whatnot here. It comes off the website right away, and you get paid for every item on this list.</div>
+        <div class="sub">Mark each record you sell. It comes off the website right away.</div>
     </div>
 
     @if($flash)
@@ -51,7 +51,7 @@
     <div class="card">
         <h2>1. Find what you sold</h2>
         <input type="text" id="q" placeholder="Artist or title, or type the barcode" autocomplete="off">
-        <div class="meta" style="margin-top:6px;">Barcode faded? Just type a couple of words from the artist or title. When you list a record on Whatnot, put its Whatnot SKU (shown below) in Whatnot's SKU box so the sale ties back to the record.</div>
+        <div class="meta" style="margin-top:6px;">Type a few words from the artist or title.</div>
         <div id="results"></div>
         <button type="button" class="link" id="notfound">Can't find it? Add it by name</button>
         <div id="manual" class="hidden" style="margin-top:8px;">
@@ -77,7 +77,7 @@
             <input type="hidden" name="submit_id" id="submit_id">
             <button type="submit" class="save" id="save" disabled>Save sold items</button>
         </form>
-        <div class="meta" style="margin-top:8px;">@if($s['premium_pct'] !== null) {{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? 'Bonus starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') . ': s' : 'Bonus: s' }}ell for more than {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}% over sticker and you get ${{ number_format($s['premium_per_item'], 2) }} for that item instead of ${{ number_format($s['per_item'], 2) }}. @endif Good to know: up to $1 off per $10 of sticker is always fine ($2 off $20, $3 off $30). Records that came in within the last {{ $s['min_days_in_store'] }} days get shop floor time first. For anything outside that, just add a quick note.</div>
+        <div class="meta" style="margin-top:8px;">Up to $1 off per $10 of sticker is fine. @if($s['premium_pct'] !== null)Bonus: ${{ number_format($s['premium_per_item'], 2) }} for anything {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}%+ over sticker{{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? ', starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') : '' }}.@endif</div>
     </div>
 
     <div class="card">
@@ -95,12 +95,14 @@
             </table>
         @endif
         <table style="margin-top:10px;">
+                <tr><th style="text-align:left">Date</th><th style="text-align:left">Record</th><th class="num">Sticker</th><th class="num">Sold for</th><th class="num">You get</th></tr>
             @forelse($lines as $l)
                 <tr>
                     <td>{{ $l['date'] }}</td>
                     <td>{{ $l['title'] }}</td>
-                    <td class="num">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
-                    <td class="num">you get ${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
+                    <td class="num">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
+                    <td class="num">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : '' }}</td>
+                    <td class="num">${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
                 </tr>
             @empty
                 <tr><td>No Whatnot sales marked yet.</td></tr>
@@ -140,7 +142,6 @@
                     return '<div class="item"><div class="row"><div style="flex:1">'
                         + '<div class="t">' + esc(it.title) + '</div>'
                         + '<div class="meta">' + esc(it.category) + ' · ' + esc(it.store) + ' · Sticker ' + money(it.price) + ' · In store since ' + esc(it.added) + '</div>'
-                        + '<div class="meta"><b>Whatnot SKU: ' + esc(it.sku) + '</b></div>'
                         + (it.too_new ? '<div class="warn">Just came in. It gets shop floor time first, until ' + esc(it.ok_after) + '.</div>' : '')
                         + '</div><button type="button" class="add" data-i="' + i + '"' + (inCart ? ' disabled>Added' : '>Sold') + '</button></div></div>';
                 }).join('');
@@ -176,7 +177,7 @@
             return '<div class="item"><div class="t">' + esc(c.title) + '</div>'
                 + '<div class="meta">' + esc(c.store) + (c.sticker ? ' · Sticker ' + money(c.sticker) : ' · Not found in the ERP') + '</div>'
                 + '<div class="row" style="margin-top:6px;"><input type="number" class="price" inputmode="decimal" step="0.01" min="0" placeholder="Sold for" data-p="' + i + '" value="' + esc(c.price) + '">'
-                + '<span class="meta" style="flex:1">What it actually sold for on Whatnot, before fees</span>'
+                + '<span class="meta" style="flex:1">Whatnot price</span>'
                 + '<button type="button" class="rm" data-r="' + i + '">Remove</button></div>'
                 + '<div data-w="' + i + '"></div>'
                 + '<input type="text" placeholder="Add a quick note about this one" data-n="' + i + '" value="' + esc(c.note) + '" class="' + (needsNote(c) ? '' : 'hidden') + '" style="margin-top:6px;">'

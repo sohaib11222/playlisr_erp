@@ -296,7 +296,7 @@ class WhatnotSellerController extends Controller
             $amt = $l['sold'] * $l['qty'];
             $total += $amt;
             $count += $l['qty'];
-            if ($l['sticker']) {
+            if ($l['sticker'] && $l['real']) {
                 $stickerTotal += $l['sticker'] * $l['qty'];
                 $soldWithSticker += $amt;
                 $diff = ($l['sold'] - $l['sticker']) * $l['qty'];

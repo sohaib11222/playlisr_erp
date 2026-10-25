@@ -5,8 +5,8 @@
 @php
     $WS = \App\Services\WhatnotSeller::class;
     $name = $s['seller_name'];
-    $underLines = array_values(array_filter($lines, function ($l) { return $l['sticker'] && $l['sold'] < $l['sticker'] - 0.009; }));
-    $overLines = array_values(array_filter($lines, function ($l) { return $l['sticker'] && $l['sold'] > $l['sticker'] + 0.009; }));
+    $underLines = array_values(array_filter($lines, function ($l) { return $l['sticker'] && $l['real'] && $l['sold'] < $l['sticker'] - 0.009; }));
+    $overLines = array_values(array_filter($lines, function ($l) { return $l['sticker'] && $l['real'] && $l['sold'] > $l['sticker'] + 0.009; }));
     $newLines = array_values(array_filter($lines, function ($l) use ($s) { return $l['days_in_store'] !== null && $l['days_in_store'] > 0 && $l['days_in_store'] < $s['min_days_in_store']; }));
     $tab = request('show', 'all');
     $tabs = [
@@ -88,7 +88,6 @@
                         <div class="wn-sub">{{ count($overLines) }} items</div>
                     </div>
                 </div>
-                <p class="wn-sub" style="margin:12px 0 0;">Allowed: up to {{ 100 - $s['min_pct_of_sticker'] }}% off ($1 off $10, $2 off $20). Staff rings on the POS always use the sticker, so real prices only show once he marks sales himself, or in "Check against Whatnot" below.</p>
             </div>
         </div>
     </div>
@@ -96,7 +95,6 @@
     <div class="wn-card">
         <details>
             <summary>Show hours from Whatnot: {{ $WS::hoursLabel(array_sum(array_column($shows, 'minutes'))) }}, {{ $fmt($from) }} to {{ $fmt($to) }}</summary>
-            <p class="wn-sub" style="margin:10px 0;">His paid hours are the length of each Whatnot stream, imported from Whatnot.</p>
             <table class="table table-condensed" style="margin:0;">
                 @forelse($shows as $h)
                     <tr><td>{{ $fmt($h['date']) }}</td><td>{{ $h['note'] }}</td><td>@if($h['url'])<a href="{{ $h['url'] }}" target="_blank">View show on Whatnot</a>@endif</td><td class="text-right">${{ number_format($h['minutes'] / 60 * $s['hourly_rate'], 2) }}</td></tr>
@@ -122,29 +120,27 @@
                 <a href="{{ $qs(['show' => $key]) }}" class="{{ $tab === $key ? 'on' : '' }}">{{ $t[0] }} ({{ count($t[1]) }})</a>
             @endforeach
         </div>
-        <p class="wn-sub" style="margin:0 0 8px;">"Rung up at" is the price in the ERP. Staff ring Whatnot sales at the sticker, so it only shows the real Whatnot price when {{ $name }} marks the sale himself.</p>
         @if($tab === 'new')
             <p>These were in the store less than {{ $s['min_days_in_store'] }} days before they sold on Whatnot.</p>
         @endif
         <div class="table-responsive">
             <table class="table table-striped table-condensed">
-                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Rung up at</th><th class="text-right">Sticker</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th>Marked by</th><th class="text-right">His pay</th><th>Reason he gave</th></tr></thead>
+                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sticker</th><th class="text-right">Sold for</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th class="text-right">His pay</th><th>Note</th></tr></thead>
                 <tbody>
                 @forelse($shown as $l)
-                    @php $diff = $l['sticker'] ? ($l['sold'] - $l['sticker']) * $l['qty'] : null; @endphp
+                    @php $diff = ($l['sticker'] && $l['real']) ? ($l['sold'] - $l['sticker']) * $l['qty'] : null; @endphp
                     <tr>
                         <td>{{ $l['date'] }}</td>
                         <td><a href="{{ url('/sells/' . $l['transaction_id']) }}" target="_blank">{{ $l['title'] }}</a></td>
-                        <td class="text-right">${{ number_format($l['sold'] * $l['qty'], 2) }}</td>
                         <td class="text-right">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
+                        <td class="text-right">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : 'not known yet' }}</td>
                         <td class="text-right {{ $diff !== null && $diff < -0.009 ? 'wn-red' : ($diff !== null && $diff > 0.009 ? 'wn-green' : '') }}">{{ $diff === null || abs($diff) < 0.01 ? '' : ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) }}</td>
                         <td class="text-right">{{ $l['days_in_store'] }}</td>
-                        <td>{{ $l['entered_by'] }}</td>
                         <td class="text-right">${{ number_format($WS::linePay($l), 2) }}</td>
                         <td>{{ $l['note'] }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="9">Nothing here for these dates.</td></tr>
+                    <tr><td colspan="8">Nothing here for these dates.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -154,7 +150,6 @@
     <div class="wn-card">
         <details>
             <summary>Check against Whatnot, day by day</summary>
-            <p class="wn-sub" style="margin:10px 0;">Whatnot's own reports show what really sold and for how much. More items on Whatnot than in the ERP means some were never marked. Jon lets him take up to {{ 100 - $s['min_pct_of_sticker'] }}% off ($1 off a $10 record); days over that are red.</p>
             <form method="post" action="{{ url('/reports/whatnot-seller/import') }}" enctype="multipart/form-data" class="form-inline" style="margin-bottom:12px;">
                 @csrf
                 <input type="file" name="csv[]" accept=".csv" multiple class="form-control" style="height:auto;">
@@ -187,7 +182,7 @@
                     </table>
                 </div>
             @else
-                <p class="wn-sub">None yet. Once {{ $name }} puts our barcode number in Whatnot's SKU box when he lists, each sale shows here with its real price.</p>
+                <p class="wn-sub">None yet.</p>
             @endif
             <div class="wn-label" style="margin-top:14px;">Record by record, from Whatnot video receipts</div>
             @if(count($receipt_rows))
@@ -243,7 +238,6 @@
     <div class="wn-card wn-set">
         <details>
             <summary>{{ $name }}'s link, pay rates and rules</summary>
-            <p style="line-height:1.5; margin-top:10px;">Send him this link. He doesn't log into the ERP and only sees the items he can sell and his own pay.</p>
             <div class="input-group" style="margin-bottom:16px;">
                 <input type="text" class="form-control" id="wn-link" value="{{ $link }}" readonly style="width:100%;">
                 <span class="input-group-btn"><button class="btn btn-default" type="button" onclick="var i=document.getElementById('wn-link');i.select();document.execCommand('copy');this.textContent='Copied';">Copy</button></span>
