@@ -32,7 +32,7 @@ class NivessaBuyPremiumsController extends Controller
 
     public function publicFeed()
     {
-        $data = Cache::remember('buypremiums3', 3600, function () {
+        $data = Cache::remember('buypremiums4', 3600, function () {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $s = BuyMarginSettings::get($businessId);
             $pct = [
@@ -116,7 +116,7 @@ class NivessaBuyPremiumsController extends Controller
     public static function cleanArtist($a)
     {
         $a = trim(preg_replace('/\s*\(\d+\)\s*$/', '', trim($a)));
-        if (!preg_match('/&|\band\b/i', $a) && preg_match('/^([^,]+),\s*([^,]+)$/', $a, $m) && str_word_count($m[1]) <= 2 && str_word_count($m[2]) <= 2) {
+        if ($a === mb_strtoupper($a) && !preg_match('/&|\band\b|,\s*the\b/i', $a) && preg_match('/^([^,]+),\s*([^,]+)$/', $a, $m) && str_word_count($m[1]) <= 2 && str_word_count($m[2]) <= 2) {
             $a = trim($m[2]) . ' ' . trim($m[1]);
         }
         if ($a === mb_strtoupper($a) || $a === mb_strtolower($a)) {
@@ -135,20 +135,32 @@ class NivessaBuyPremiumsController extends Controller
         $name = trim(preg_replace('/\s+/', ' ', $name));
         // Drop bracketed edition notes, including ones cut off mid-way.
         $name = trim(preg_replace('/\s*[\(\[][^\)\]]*([\)\]]|$)/', '', $name));
-        $parts = preg_split('/\s+[-–—\/]\s+/u', $name);
-        $title = trim((string) end($parts));
-        $who = count($parts) > 1 ? trim($parts[0]) : $artist;
-        if ($title === '' || ($who !== '' && mb_strtolower($title) === mb_strtolower($who))) {
-            return null;
+        if (preg_match(self::NOT_AN_ARTIST, $artist)) {
+            $artist = '';
         }
-        if ($who === '' || preg_match(self::NOT_AN_ARTIST, $who)) {
+        $sep = '/\s+[-–—\/]\s+/u';
+        if ($artist !== '') {
+            // "Artist - Title": cut the artist off the front; otherwise the
+            // whole name is the title.
+            $title = mb_stripos($name, $artist) === 0 ? mb_substr($name, mb_strlen($artist)) : $name;
+            $title = preg_replace('/^\s*[-–—\/:]\s*/u', '', $title);
             $who = $artist;
+        } else {
+            $parts = preg_split($sep, $name, 2);
+            if (count($parts) < 2) {
+                return null;
+            }
+            list($who, $title) = $parts;
+        }
+        // Distributor style "LATEEF,YUSEF / INTO SOMETHING": drop the name chunk.
+        $title = trim(preg_replace('/^[^\/]+,[^\/]+\s\/\s/u', '', trim($title)));
+        if ($title === '' || mb_strtolower($title) === mb_strtolower($who)) {
+            return null;
         }
         if ($title === mb_strtoupper($title)) {
             $title = mb_convert_case(mb_strtolower($title), MB_CASE_TITLE);
         }
-        $who = $who !== '' && !preg_match(self::NOT_AN_ARTIST, $who) ? self::cleanArtist($who) : '';
-        return $who !== '' ? $who . ' - ' . $title : $title;
+        return self::cleanArtist($who) . ' - ' . $title;
     }
 
     protected function wanted($businessId, $locationId)
