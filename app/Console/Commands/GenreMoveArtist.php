@@ -17,7 +17,7 @@ use Illuminate\Console\Command;
  */
 class GenreMoveArtist extends Command
 {
-    protected $signature = 'genres:move-artist {artist} {genre} {--business=1} {--commit : write (default: dry run)}';
+    protected $signature = 'genres:move-artist {artist} {genre} {--business=1} {--except= : product ids to leave alone, comma-separated} {--commit : write (default: dry run)}';
     protected $description = 'Move all records by one artist into a genre (same format).';
 
     public function handle()
@@ -53,6 +53,7 @@ class GenreMoveArtist extends Command
             ->where(function ($q) use ($like) { $q->where('artist', 'like', $like)->orWhere('name', 'like', $like); })
             ->select('id', 'name', 'artist', 'category_id', 'sub_category_id')->get();
 
+        $except = array_flip(array_filter(array_map('intval', explode(',', (string) $this->option('except')))));
         $done = [];
         $stats = ['matched' => 0, 'already' => 0, 'no_target_genre' => 0, 'moved' => 0];
         foreach ($rows as $p) {
@@ -60,6 +61,7 @@ class GenreMoveArtist extends Command
             $parts = preg_split('/\s+[-–—\/]\s+/u', (string) $p->name, 2);
             $byName = count($parts) === 2 && in_array($artistKey, self::keys($parts[0]), true);
             if (!$byArtist && !$byName) continue;
+            if (isset($except[(int) $p->id])) { $this->line("  skipped #{$p->id} {$p->name}"); continue; }
             $stats['matched']++;
             $fmt = (int) $p->category_id;
             $new = G::subFor($byCanon, $fmt, $target);
