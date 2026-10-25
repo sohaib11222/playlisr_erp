@@ -56,5 +56,4 @@ echo "PAGE status=" . $resp->getStatusCode() . " len=" . strlen($html) . " locat
 foreach (['signed_item', 'rare_vhs', 'VHS - rare', 'Comic - rare', 'bfc-signed', 'select2:select', 'signed_value'] as $needle) {
     echo "HAS '$needle': " . substr_count($html, $needle) . "\n";
 }
-file_put_contents('/tmp/bfc_page.html', $html);
 echo "HTMLB64_START\n" . chunk_split(base64_encode(gzencode($html, 9)), 4000) . "HTMLB64_END\n";
