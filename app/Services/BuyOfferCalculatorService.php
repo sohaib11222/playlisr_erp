@@ -47,10 +47,47 @@ class BuyOfferCalculatorService
                 'bulk_vinyl_pop_old' => ['label' => '10+ Bulk Vinyl: Pop (Old)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20, 'default_grade' => 'VG+'],
                 'bulk_vinyl_classical' => ['label' => '10+ Bulk Vinyl: Classical', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15, 'default_grade' => 'VG+'],
                 'bulk_vinyl_soundtracks' => ['label' => '10+ Bulk Vinyl: Soundtracks', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20, 'default_grade' => 'VG+'],
-                'bulk_vinyl_anything_else' => ['label' => '10+ Bulk Vinyl: Other genres / mixed (Pop, Latin, Blues, Gospel, World…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'default_grade' => 'VG'],
+                // Jon 2026-10-25: gaps vs what sells (90 days, both stores). Rate =
+                // a reference rate x genre speed vs its format x its avg price vs
+                // the format's, capped at 1.75x, rounded, conservative where thin.
+                // Used LP reference $0.60 (avg used LP $16.89): Pop (New) 210 sold
+                // $24.12 1.8x -> $1.00; Blues 86 $12.74 1.1x -> $0.50; Latin 116
+                // $17.65 0.55x (2,110 in stock) -> $0.35.
+                'bulk_vinyl_pop_new' => ['label' => '10+ Bulk Vinyl: Pop (New)', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
+                'bulk_vinyl_blues' => ['label' => '10+ Bulk Vinyl: Blues', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50],
+                'bulk_vinyl_latin' => ['label' => '10+ Bulk Vinyl: Latin', 'mode' => 'bulk_fixed', 'unit_rate' => 0.35],
+                // Sealed LP reference $4.00 (avg sealed LP $38.99, ~10%): e.g. Pop 811
+                // sold $41.95 2.3x -> $7.00, Hip-Hop 533 $45.71 1.1x -> $5.00, Rock 619
+                // $35.42 0.7x -> $2.75, Punk 79 sold 916 in stock -> $1.00. Not graded.
+                'bulk_vinyl_sealed_pop' => ['label' => '10+ Bulk SEALED Vinyl: Pop', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 7.00],
+                'bulk_vinyl_sealed_metal' => ['label' => '10+ Bulk SEALED Vinyl: Metal', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 6.50],
+                'bulk_vinyl_sealed_hiphop' => ['label' => '10+ Bulk SEALED Vinyl: Hip-Hop', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 5.00],
+                'bulk_vinyl_sealed_electronic' => ['label' => '10+ Bulk SEALED Vinyl: Electronic / Dance', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 4.50],
+                'bulk_vinyl_sealed_rnb' => ['label' => '10+ Bulk SEALED Vinyl: R&B / Soul / Funk', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 4.25],
+                'bulk_vinyl_sealed_alt' => ['label' => '10+ Bulk SEALED Vinyl: Alt / Indie', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 4.00],
+                'bulk_vinyl_sealed_jazz' => ['label' => '10+ Bulk SEALED Vinyl: Jazz', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 4.00],
+                'bulk_vinyl_sealed_latin' => ['label' => '10+ Bulk SEALED Vinyl: Latin', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 3.50],
+                'bulk_vinyl_sealed_soundtracks' => ['label' => '10+ Bulk SEALED Vinyl: Soundtracks', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 3.50],
+                'bulk_vinyl_sealed_rock' => ['label' => '10+ Bulk SEALED Vinyl: Rock', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 2.75],
+                'bulk_vinyl_sealed_newwave' => ['label' => '10+ Bulk SEALED Vinyl: New Wave / Post Punk', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 2.75],
+                'bulk_vinyl_sealed_reggae' => ['label' => '10+ Bulk SEALED Vinyl: Reggae', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 2.00],
+                'bulk_vinyl_sealed_country' => ['label' => '10+ Bulk SEALED Vinyl: Country', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.50],
+                'bulk_vinyl_sealed_folk' => ['label' => '10+ Bulk SEALED Vinyl: Folk', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.00],
+                'bulk_vinyl_sealed_punk' => ['label' => '10+ Bulk SEALED Vinyl: Punk', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.00],
+                'bulk_vinyl_sealed_other' => ['label' => '10+ Bulk SEALED Vinyl: Other genres / mixed (Blues, Classical, Disco, K-pop…)', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 3.00],
+                'bulk_vinyl_anything_else' => ['label' => '10+ Bulk Vinyl: Other genres / mixed (Gospel, World, K-pop, Children\'s…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25, 'default_grade' => 'VG'],
 
-                'cd_general_used' => ['label' => 'CD: Other genres / mixed USED (Pop, Electronic, Latin, Country, K-pop…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
-                'cd_general_sealed' => ['label' => 'CD: Other genres / mixed SEALED (Pop, Electronic, Latin, Blues, K-pop…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
+                'cd_general_used' => ['label' => 'CD: Other genres / mixed USED (Latin, Country, K-pop, World…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
+                'cd_general_sealed' => ['label' => 'CD: Other genres / mixed SEALED (Latin, K-pop, World, Children\'s…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.30],
+                // Sealed CD reference $0.60 (avg $17.95): Pop 207 sold 1.6x -> $1.00,
+                // Electronic 132 1.2x -> $0.80, Blues 77 1.1x -> $0.50, Country 0.5x -> $0.40.
+                'cd_pop_sealed' => ['label' => 'CD: Pop SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
+                'cd_electronic_sealed' => ['label' => 'CD: Electronic / Dance SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.80],
+                'cd_blues_sealed' => ['label' => 'CD: Blues SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50],
+                'cd_country_sealed' => ['label' => 'CD: Country SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40],
+                // Used CD (other was $0.15): Pop 137 sold 1.7x, Electronic 77 at $14.17.
+                'cd_pop_used' => ['label' => 'CD: Pop USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
+                'cd_electronic_used' => ['label' => 'CD: Electronic / Dance USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
                 // Jon 2026-10-23: Punk / Metal / Hip-Hop CDs split into their own
                 // types, priced off 90 days of sales (both stores). Used: Hip-Hop
                 // 83 sold at $8.43 avg, 2.1x as fast as used CDs overall; Metal 40
@@ -95,12 +132,16 @@ class BuyOfferCalculatorService
                 'cassette_jazz_used' => ['label' => 'Cassette: Jazz USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.35],
                 'cassette_hh_metal_punk' => ['label' => 'Cassette: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 0.75, 'retired' => true],
                 'cassette_rb_jazz_rock' => ['label' => 'Cassette: R&B/Jazz/Rock', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50, 'retired' => true],
+                // Alt Rock cassettes: 29 used + 22 sealed sold, ~$13.90, 2x as fast.
+                'cassette_alt' => ['label' => 'Cassette: Alt Rock (used or sealed)', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
                 'cassette_everything_else' => ['label' => 'Cassette: Other genres / mixed / sealed (Pop, Country, Electronic, Soundtracks…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.25],
 
                 'rpm45_hh_metal_punk' => ['label' => '45 RPM: Hip-Hop/Metal/Punk', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00],
                 'rpm45_newwave_rock_alt' => ['label' => '45 RPM: New Wave/Rock/Alt', 'mode' => 'bulk_fixed', 'unit_rate' => 0.40],
                 'rpm45_without_sleeve' => ['label' => '45 RPM: Without Sleeve', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
-                'rpm45_anything_else' => ['label' => '45 RPM: Other genres / mixed (R&B/Soul, Pop, Country, Jazz…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
+                // R&B/Soul 45s: our best-selling 45 genre, 102 sold $9.15, 1.35x.
+                'rpm45_rnb' => ['label' => '45 RPM: R&B / Soul / Funk', 'mode' => 'bulk_fixed', 'unit_rate' => 0.50],
+                'rpm45_anything_else' => ['label' => '45 RPM: Other genres / mixed (Pop, Country, Jazz…)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.15],
 
                 // Jon 2026-10-23: DVD, book and magazine subcategories priced off 90
                 // days of sales at both stores: rate = old base x (subcategory speed /
@@ -196,6 +237,13 @@ class BuyOfferCalculatorService
                 'furry_doll' => ['label' => 'Furry Doll', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
                 'funko_pop' => ['label' => 'Funko Pop', 'mode' => 'bulk_fixed', 'unit_rate' => 1.50, 'no_grading' => true],
                 'board_game' => ['label' => 'Board Game', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
+                // Toys avg $6.46, turnover 0.88 (fast): Action Figures 73 sold $6.97
+                // 1.65x -> $1.00; Squishies 260 sold ~$4.80 -> $0.50; other toys
+                // (blind boxes, keychains, misc) -> $0.50. Pins 19 sold $15.79 -> $1.50.
+                'toy_action_figure' => ['label' => 'Toy: Action Figure', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.00],
+                'toy_squishy' => ['label' => 'Toy: Squishy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.50],
+                'toy_other' => ['label' => 'Toy: Other / mixed (blind boxes, keychains…)', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.50],
+                'pin' => ['label' => 'Pin', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.50],
             ],
         ];
     }
@@ -488,7 +536,7 @@ class BuyOfferCalculatorService
         $isPrint = function ($t) use ($printKeys) {
             return in_array($t, $printKeys, true) || strpos($t, 'book_') === 0 || strpos($t, 'magazine_') === 0;
         };
-        $toyKeys = ['mask', 'furry_doll', 'funko_pop', 'board_game'];
+        $toyKeys = ['mask', 'furry_doll', 'funko_pop', 'board_game', 'toy_action_figure', 'toy_squishy', 'toy_other'];
 
         foreach ($normalizedLines as $line) {
             $t = (string) ($line['item_type'] ?? '');

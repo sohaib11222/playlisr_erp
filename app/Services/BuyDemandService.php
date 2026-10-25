@@ -89,6 +89,32 @@ class BuyDemandService
         'cd_punk_metal_hiphop_used' => ['cd', 'used', ['punk', 'metal', 'nu metal', 'hip hop']],
         'cd_punk_metal_hiphop_sealed' => ['cd', 'sealed', ['punk', 'metal', 'nu metal', 'hip hop']],
         'cd_hiphop_used' => ['cd', 'used', ['hip hop']],
+        'bulk_vinyl_pop_new' => ['vinyl', 'used', ['pop']],
+        'bulk_vinyl_blues' => ['vinyl', 'used', ['blues']],
+        'bulk_vinyl_latin' => ['vinyl', 'used', ['latin']],
+        'bulk_vinyl_sealed_pop' => ['vinyl', 'sealed', ['pop']],
+        'bulk_vinyl_sealed_metal' => ['vinyl', 'sealed', ['metal']],
+        'bulk_vinyl_sealed_hiphop' => ['vinyl', 'sealed', ['hip hop']],
+        'bulk_vinyl_sealed_electronic' => ['vinyl', 'sealed', ['electronic']],
+        'bulk_vinyl_sealed_rnb' => ['vinyl', 'sealed', ['rnb']],
+        'bulk_vinyl_sealed_alt' => ['vinyl', 'sealed', ['alt']],
+        'bulk_vinyl_sealed_jazz' => ['vinyl', 'sealed', ['jazz']],
+        'bulk_vinyl_sealed_latin' => ['vinyl', 'sealed', ['latin']],
+        'bulk_vinyl_sealed_soundtracks' => ['vinyl', 'sealed', ['soundtracks']],
+        'bulk_vinyl_sealed_rock' => ['vinyl', 'sealed', ['rock']],
+        'bulk_vinyl_sealed_newwave' => ['vinyl', 'sealed', ['new wave']],
+        'bulk_vinyl_sealed_reggae' => ['vinyl', 'sealed', ['reggae']],
+        'bulk_vinyl_sealed_country' => ['vinyl', 'sealed', ['country']],
+        'bulk_vinyl_sealed_folk' => ['vinyl', 'sealed', ['folk']],
+        'bulk_vinyl_sealed_punk' => ['vinyl', 'sealed', ['punk']],
+        'cd_pop_sealed' => ['cd', 'sealed', ['pop']],
+        'cd_electronic_sealed' => ['cd', 'sealed', ['electronic']],
+        'cd_blues_sealed' => ['cd', 'sealed', ['blues']],
+        'cd_country_sealed' => ['cd', 'sealed', ['country', 'folk country']],
+        'cd_pop_used' => ['cd', 'used', ['pop']],
+        'cd_electronic_used' => ['cd', 'used', ['electronic']],
+        'cassette_alt' => ['cassette', 'any', ['alt']],
+        'rpm45_rnb' => ['45', 'any', ['rnb']],
         'cd_metal_used' => ['cd', 'used', ['metal', 'nu metal']],
         'cd_punk_used' => ['cd', 'used', ['punk']],
         'cd_hiphop_sealed' => ['cd', 'sealed', ['hip hop']],
@@ -126,6 +152,7 @@ class BuyDemandService
         'cd_general_used' => ['cd', 'used'],
         'cd_general_sealed' => ['cd', 'sealed'],
         'cassette_everything_else' => ['cassette', 'any'],
+        'bulk_vinyl_sealed_other' => ['vinyl', 'sealed'],
         'rpm45_anything_else' => ['45', 'any'],
     ];
 
@@ -173,6 +200,9 @@ class BuyDemandService
         'bluray_used' => '/dvd|blu/i',
         'bluray_sealed' => '/dvd|blu/i',
         '4k_used' => '/dvd|blu/i',
+        'toy_action_figure' => ['/^toys$/i', '/action figure/i'],
+        'toy_squishy' => ['/^toys$/i', '/squish/i'],
+        'pin' => ['/decorative/i', '/^pins?$/i'],
         'videogame_with_case' => '/video game/i',
         'videogame_no_case' => '/video game/i',
         'vhs_used' => '/^vhs/i',
@@ -184,7 +214,7 @@ class BuyDemandService
         'hat_fitted' => '/apparel/i',
     ];
 
-    const NONMUSIC_CATCHALL = ['book', 'magazine', 'dvd_used'];
+    const NONMUSIC_CATCHALL = ['book', 'magazine', 'dvd_used', 'toy_other'];
 
     // Words that don't identify a release.
     const STOPWORDS = ['the', 'and', 'a', 'an', 'of', 'lp', 'lps', 'vinyl', 'record', 'records', 'album',
