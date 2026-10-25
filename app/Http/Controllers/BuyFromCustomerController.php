@@ -165,9 +165,9 @@ class BuyFromCustomerController extends Controller
             ->values()
             ->map(function ($line) {
                 return [
-                    'item_type' => $line->item_type,
+                    // Old signed single records reopen as a Signed item line.
+                    'item_type' => $line->item_type === 'individual_vinyl' && stripos((string) $line->title, '(signed)') !== false ? 'signed_item' : $line->item_type,
                     'title' => $line->title,
-                    'signed' => $line->item_type === 'individual_vinyl' && stripos((string) $line->title, '(signed)') !== false ? '1' : '',
                     'discogs_link' => $line->discogs_link,
                     'condition_grade' => $line->condition_grade,
                     'quantity' => $line->quantity,
@@ -941,7 +941,7 @@ class BuyFromCustomerController extends Controller
             // Signed items worth over $100: someone checks the signature.
             $signedBig = 0;
             foreach ((array) $request->input('lines', []) as $bl) {
-                if (($bl['item_type'] ?? '') === 'individual_vinyl' && !empty($bl['signed'])
+                if ((($bl['item_type'] ?? '') === 'signed_item' || (($bl['item_type'] ?? '') === 'individual_vinyl' && !empty($bl['signed'])))
                     && (float) ($bl['discogs_median_price'] ?? 0) > BuyOfferCalculatorService::SIGNED_SIGNOFF_VALUE) {
                     $signedBig++;
                 }
@@ -1108,6 +1108,19 @@ class BuyFromCustomerController extends Controller
         foreach ($lines as $l) {
             if (($l['item_type'] ?? '') === 'poster_2x3' && (float) ($l['quantity'] ?? 0) > 0) {
                 return ' Is a poster signed or rare? Put it on its own "Poster: signed / rare (enter its sold value)" line instead of paying over.';
+            }
+        }
+        // Rare VHS / DVD / book / comic lines (checked comics before books).
+        $rareLines = ['book_comic' => 'rare_comic', 'vhs_' => 'rare_vhs', 'dvd_' => 'rare_dvd', 'book' => 'rare_book', 'coffee_table_book' => 'rare_book'];
+        foreach ($lines as $l) {
+            $type = (string) ($l['item_type'] ?? '');
+            if ((float) ($l['quantity'] ?? 0) <= 0 || $type === 'dvd_player') {
+                continue;
+            }
+            foreach ($rareLines as $prefix => $rare) {
+                if (strpos($type, $prefix) === 0) {
+                    return ' Is one of them rare? Put it on its own "' . $types[$rare]['label'] . '" line instead of paying over.';
+                }
             }
         }
         foreach ($lines as $l) {

@@ -215,6 +215,16 @@ class BuyOfferCalculatorService
                 // fast here), $350 cap. Ordinary posters stay on the flat $2 line.
 
                 'poster_value' => ['label' => 'Poster: signed / rare (enter its sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                // Jon 2026-10-25: rare VHS / DVD / book / comic by its eBay median
+                // sold value, same rule as the valuable-poster line (margin from
+                // that category's speed, always the $20+ cap).
+                'rare_vhs' => ['label' => 'Rare VHS (enter eBay median sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                'rare_dvd' => ['label' => 'Rare DVD (enter eBay median sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                'rare_book' => ['label' => 'Rare Book (enter eBay median sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                'rare_comic' => ['label' => 'Rare Comic (enter eBay median sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                // Jon 2026-10-25: signed items get their own line (was a checkbox
+                // on single records): SIGNED_PAY of the signed copy's sold value.
+                'signed_item' => ['label' => 'Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
 
                 'poster_2x3' => ['label' => "Poster 2'x3'", 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
 
@@ -369,7 +379,8 @@ class BuyOfferCalculatorService
                 continue;
             }
 
-            $signed = $itemType === 'individual_vinyl' && !empty($line['signed']);
+            // Old drafts flagged signed single records with a checkbox.
+            $signed = $itemType === 'signed_item' || ($itemType === 'individual_vinyl' && !empty($line['signed']));
             $noGrading = !empty($cfg['no_grading']) || $signed;
             $grade = (string) ($line['condition_grade'] ?? '');
             if ($grade === '' || !isset($rules['grade_multipliers'][$grade])) {

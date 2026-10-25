@@ -49,6 +49,14 @@ class BuyDemandService
     const SLOW_MAX_SPEED = 0.8;
     const EBAY_SLOW_MIN_ON_HAND = 20;
     const EBAY_TYPE = 'ebay_value';
+    // Sold-value lines priced off one category's speed: [format, sub-genre or null].
+    const VALUE_TYPE_CATEGORY = [
+        'poster_value' => ['/poster/i', null],
+        'rare_vhs' => ['/^vhs/i', null],
+        'rare_dvd' => ['/dvd|blu/i', null],
+        'rare_book' => ['/^books?$/i', null],
+        'rare_comic' => ['/^books?$/i', '/^comic/i'],
+    ];
 
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
     // format pays less. Needs a real pile, so small categories never get cut.
@@ -346,15 +354,10 @@ class BuyDemandService
             if ($itemType === self::EBAY_TYPE) {
                 return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
             }
-            if ($itemType === 'poster_value') {
-                // Valuable-poster line: the Posters category's speed sets super fast.
-                list($formats) = $this->taxonomy($businessId);
-                foreach ($formats as $fid => $fname) {
-                    if (preg_match('/poster/i', $fname)) {
-                        return $this->ebayMargin($businessId, $locationId, 'c:' . $fid);
-                    }
-                }
-                return $this->ebayMargin($businessId, $locationId, '');
+            if (isset(self::VALUE_TYPE_CATEGORY[$itemType])) {
+                // Valuable-poster / rare VHS / DVD / book / comic lines: that
+                // category's speed sets the margin (and super fast).
+                return $this->ebayMargin($businessId, $locationId, $this->valueTypeCategory($businessId, self::VALUE_TYPE_CATEGORY[$itemType]));
             }
 
             // Catch-all buckets (mixed lots) always pay their flat rate: no
@@ -456,6 +459,26 @@ class BuyDemandService
         }
         asort($out, SORT_NATURAL | SORT_FLAG_CASE);
         return $out;
+    }
+
+    /** The 'c:<id>' category pick for a VALUE_TYPE_CATEGORY spec, '' if none matches. */
+    protected function valueTypeCategory($businessId, array $spec)
+    {
+        list($formatRe, $subRe) = $spec;
+        list($formats, $subs) = $this->taxonomy($businessId);
+        if ($subRe !== null) {
+            foreach ($subs as $id => $sub) {
+                if (preg_match($subRe, trim($sub['name'])) && preg_match($formatRe, trim($formats[$sub['parent']] ?? ''))) {
+                    return 'c:' . $id;
+                }
+            }
+        }
+        foreach ($formats as $fid => $fname) {
+            if (preg_match($formatRe, trim($fname))) {
+                return 'c:' . $fid;
+            }
+        }
+        return '';
     }
 
     /**
