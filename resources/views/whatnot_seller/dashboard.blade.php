@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Whatnot Seller')
+@section('title', 'Whatnot')
 
 @section('content')
 @php
@@ -45,7 +45,7 @@
 </style>
 
 <section class="content-header">
-    <h1>Whatnot Seller: {{ $name }}</h1>
+    <h1>Whatnot: {{ $name }}</h1>
 </section>
 
 <section class="content wn">

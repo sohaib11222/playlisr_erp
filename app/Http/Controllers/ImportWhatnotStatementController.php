@@ -185,7 +185,7 @@ class ImportWhatnotStatementController extends Controller
             . ", fees \$" . number_format($commission + $processing + $shipping, 2)
             . " (" . count($created_ids) . " transactions). Undo at /admin/admin-action-history if needed.";
 
-        return redirect('reports/whatnot?start_date=' . $period_end->copy()->startOfMonth()->format('Y-m-d')
+        return redirect('reports/whatnot-seller?start_date=' . $period_end->copy()->startOfMonth()->format('Y-m-d')
             . '&end_date=' . $period_end->format('Y-m-d'))
             ->with('status', ['success' => 1, 'msg' => $msg]);
     }

@@ -1396,7 +1396,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/revenue-by-employee-barcoding/{user_id}', 'ReportController@revenueByEmployeeBarcodingDetail')->name('reports.revenue-by-employee-barcoding.detail');
     Route::get('/reports/dead-stock', 'ReportController@deadStockReport');
     Route::get('/reports/selling-below-cost', 'ReportController@sellingBelowCostReport');
-    Route::get('/reports/whatnot', 'ReportController@whatnotReport');
+    // One Whatnot report (Sarah 10/25): the old Whatnot Sales page now opens
+    // the Whatnot Seller report.
+    Route::get('/reports/whatnot', 'WhatnotSellerController@legacyReport');
     Route::get('/reports/whatnot-seller', 'WhatnotSellerController@dashboard');
     Route::post('/reports/whatnot-seller/settings', 'WhatnotSellerController@saveSettings');
     Route::get('/reports/whatnot-seller/statement', 'WhatnotSellerController@statement');

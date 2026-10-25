@@ -496,4 +496,9 @@ class WhatnotSellerController extends Controller
         $msg = "Marked {$done} Whatnot sale" . ($done === 1 ? '' : 's') . ' sold in the ERP ($' . number_format($total, 2) . ').' . ($errs ? ' Problems: ' . implode(', ', $errs) : '');
         return redirect()->back()->with('status', ['success' => $errs ? 0 : 1, 'msg' => $msg]);
     }
+
+    public function legacyReport(Request $request)
+    {
+        return redirect('/reports/whatnot-seller' . ($request->getQueryString() ? '?' . $request->getQueryString() : ''));
+    }
 }

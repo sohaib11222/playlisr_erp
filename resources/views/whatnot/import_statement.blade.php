@@ -86,7 +86,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fa fa-upload"></i> Import statement
                         </button>
-                        <a href="{{ url('/reports/whatnot') }}" class="btn btn-default">Cancel</a>
+                        <a href="{{ url('/reports/whatnot-seller') }}" class="btn btn-default">Cancel</a>
                     </div>
 
                     <p class="help-block" style="margin-top:14px;">
