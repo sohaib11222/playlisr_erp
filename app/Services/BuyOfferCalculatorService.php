@@ -239,11 +239,12 @@ class BuyOfferCalculatorService
                 'board_game' => ['label' => 'Board Game', 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
                 // Toys avg $6.46, turnover 0.88 (fast): Action Figures 73 sold $6.97
                 // 1.65x -> $1.00; Squishies 260 sold ~$4.80 -> $0.50; other toys
-                // (blind boxes, keychains, misc) -> $0.50. Pins 19 sold $15.79 -> $1.50.
+                // (blind boxes, keychains, misc) -> $0.50. Pins 19 sold $15.79.
                 'toy_action_figure' => ['label' => 'Toy: Action Figure', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.00],
                 'toy_squishy' => ['label' => 'Toy: Squishy', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.50],
                 'toy_other' => ['label' => 'Toy: Other / mixed (blind boxes, keychains…)', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.50],
-                'pin' => ['label' => 'Pin', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 1.50],
+                // Jon 2026-10-25: pins come in bags, mostly not $15 pins: $0.33 each.
+                'pin' => ['label' => 'Pin', 'mode' => 'bulk_fixed', 'no_grading' => true, 'unit_rate' => 0.33],
             ],
         ];
     }
