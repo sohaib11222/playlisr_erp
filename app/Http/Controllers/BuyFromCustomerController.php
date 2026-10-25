@@ -1094,6 +1094,11 @@ class BuyFromCustomerController extends Controller
     {
         $types = app(BuyOfferCalculatorService::class)->getRules()['item_types'];
         foreach ($lines as $l) {
+            if (($l['item_type'] ?? '') === 'poster_2x3' && (float) ($l['quantity'] ?? 0) > 0) {
+                return ' Is a poster signed or rare? Put it on its own "Poster: signed / rare (enter its sold value)" line instead of paying over.';
+            }
+        }
+        foreach ($lines as $l) {
             $cfg = $types[$l['item_type'] ?? ''] ?? null;
             if ($cfg && $cfg['mode'] === 'bulk_fixed' && (float) ($l['quantity'] ?? 0) > 0) {
                 return $isBeta
