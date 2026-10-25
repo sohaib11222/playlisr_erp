@@ -189,6 +189,28 @@
             @else
                 <p class="wn-sub">None yet. Once {{ $name }} puts our barcode number in Whatnot's SKU box when he lists, each sale shows here with its real price.</p>
             @endif
+            <div class="wn-label" style="margin-top:14px;">Record by record, from Whatnot video receipts</div>
+            @if(count($receipt_rows))
+                <div class="table-responsive">
+                    <table class="table table-condensed">
+                        <thead><tr><th>Day</th><th>Whatnot order</th><th>Record in the video</th><th>Matched ERP item</th><th class="text-right">Whatnot price</th><th class="text-right">Sticker</th><th class="text-right">Off</th></tr></thead>
+                        <tbody>
+                        @foreach($receipt_rows as $r)
+                            @php $st = $r['match']['sticker'] ?? null; $off = $st ? round(($st - $r['price']) / $st * 100) : null; @endphp
+                            <tr>
+                                <td>{{ $fmt($r['date']) }}</td><td>{{ $r['order'] }}</td><td>{{ $r['record'] }}</td>
+                                <td>@if($r['match'])<a href="{{ url('/sells/' . $r['match']['transaction_id']) }}" target="_blank">{{ $r['match']['title'] }}</a>@else Not found in the ERP @endif</td>
+                                <td class="text-right">${{ number_format($r['price'], 2) }}</td>
+                                <td class="text-right">{{ $st === null ? '' : '$' . number_format($st, 2) }}</td>
+                                <td class="text-right {{ $off !== null && $off > 100 - $s['min_pct_of_sticker'] ? 'wn-red' : ($off !== null && $off < 0 ? 'wn-green' : '') }}">{{ $off === null ? '' : ($off < 0 ? '+' . abs($off) . '%' : $off . '%') }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @else
+                <p class="wn-sub">None loaded for these dates yet.</p>
+            @endif
             <div class="wn-label" style="margin-top:14px;">Day by day</div>
             <div class="table-responsive">
                 <table class="table table-condensed">

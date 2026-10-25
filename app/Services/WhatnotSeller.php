@@ -27,6 +27,7 @@ class WhatnotSeller
     const HOURS_FILE = 'whatnot-seller/hours.json';
     const ORDERS_FILE = 'whatnot-seller/whatnot-orders.json';
     const STREAMS_FILE = 'whatnot-seller/streams.json';
+    const RECEIPTS_FILE = 'whatnot-seller/video-receipts.json';
 
     public static function settings(): array
     {
@@ -172,7 +173,7 @@ class WhatnotSeller
             ->whereDate('t.transaction_date', '<=', $to)
             ->orderByDesc('t.transaction_date')
             ->get([
-                't.id as transaction_id', 't.invoice_no', 't.transaction_date', 't.staff_note',
+                't.id as transaction_id', 't.invoice_no', 't.transaction_date', 't.staff_note', 'tsl.id as line_id',
                 'bl.name as store', 'u.first_name as entered_by',
                 'tsl.product_id', 'tsl.product_name as manual_name', 'tsl.quantity', 'tsl.quantity_returned',
                 'tsl.unit_price_inc_tax', 'tsl.unit_price_before_discount', 'tsl.sell_line_note',
@@ -181,6 +182,10 @@ class WhatnotSeller
             ]);
 
         $wnPrice = self::whatnotPriceByProduct($businessId);
+        $receiptPrice = [];
+        foreach (self::receiptMatches($businessId) as $m) {
+            if ($m['match']) { $receiptPrice[$m['match']['id']] = (float) $m['price']; }
+        }
         $out = [];
         foreach ($rows as $r) {
             $qty = (float) $r->quantity - (float) $r->quantity_returned;
@@ -197,6 +202,9 @@ class WhatnotSeller
             // this item (by SKU), use what it really sold for.
             if ($r->product_id && isset($wnPrice[(int) $r->product_id]) && strpos((string) $r->staff_note, self::NOTE_TAG) !== 0) {
                 $sold = (float) $wnPrice[(int) $r->product_id];
+                $fromWhatnot = true;
+            } elseif (isset($receiptPrice[(int) $r->line_id]) && strpos((string) $r->staff_note, self::NOTE_TAG) !== 0) {
+                $sold = $receiptPrice[(int) $r->line_id];
                 $fromWhatnot = true;
             }
             $sticker = $r->product_id ? (float) $r->sticker_now : null;
@@ -234,7 +242,7 @@ class WhatnotSeller
                 'cost'           => $r->cost !== null ? round((float) $r->cost, 2) : null,
                 'by_golden'      => strpos((string) $r->staff_note, self::NOTE_TAG) === 0,
                 'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0 ? 'Whatnot report' : (string) $r->entered_by),
-                'note'           => trim((string) $r->sell_line_note . ($fromWhatnot ? ' (price from Whatnot report)' : '')),
+                'note'           => trim((string) $r->sell_line_note . ($fromWhatnot ? ' (real price from Whatnot)' : '')),
                 'flags'          => $flags,
             ];
         }
@@ -400,6 +408,26 @@ class WhatnotSeller
             return [0, 0];
         }
         $head = fgetcsv($fh);
+        if ($head && in_array('RECORD', $head, true) && in_array('ORDER_ID', $head, true)) {
+            $all = self::receipts(); $added = 0; $skipped = 0;
+            while (($row = fgetcsv($fh)) !== false) {
+                if (count($row) !== count($head)) { continue; }
+                $r = array_combine($head, $row);
+                $id = preg_replace('/[^0-9]/', '', (string) $r['ORDER_ID']);
+                if ($id === '') { continue; }
+                isset($all[$id]) ? $skipped++ : $added++;
+                $all[$id] = [
+                    'order' => $id,
+                    'date' => (string) ($r['PLACED_DATE'] ?? ''),
+                    'price' => (float) preg_replace('/[^0-9.]/', '', (string) ($r['PRICE'] ?? '')),
+                    'record' => trim((string) ($r['RECORD'] ?? '')),
+                    'sticker_seen' => trim((string) ($r['STICKER_SEEN'] ?? '')),
+                ];
+            }
+            fclose($fh);
+            Storage::disk('local')->put(self::RECEIPTS_FILE, json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return [$added, $skipped];
+        }
         if ($head && in_array('STREAM_START_LA', $head, true)) {
             $all = self::streams(); $added = 0; $skipped = 0;
             while (($row = fgetcsv($fh)) !== false) {
@@ -581,5 +609,79 @@ class WhatnotSeller
             }
         }
         return $map;
+    }
+
+    /** Records read off Whatnot video receipts: {order_id: {order, date, price, record, sticker_seen}}. */
+    public static function receipts(): array
+    {
+        try {
+            if (Storage::disk('local')->exists(self::RECEIPTS_FILE)) {
+                return json_decode(Storage::disk('local')->get(self::RECEIPTS_FILE), true) ?: [];
+            }
+        } catch (\Throwable $e) {
+        }
+        return [];
+    }
+
+    private static function words(string $t): array
+    {
+        $t = mb_strtolower(preg_replace('/\([^)]*\)/', ' ', $t));
+        $w = preg_split('/[^a-z0-9]+/u', $t, -1, PREG_SPLIT_NO_EMPTY);
+        return array_values(array_unique(array_filter($w, function ($x) {
+            return strlen($x) > 1 && !in_array($x, ['the', 'and', 'of', 'lp', 'vinyl', 'used', 'new', 'a'], true);
+        })));
+    }
+
+    /**
+     * Match each video receipt to the Whatnot item rung in the ERP within a
+     * couple of days of the order, by the words in the title. Each ERP line is
+     * used once. Returns rows with the matched sell line (or none).
+     */
+    public static function receiptMatches(int $businessId): array
+    {
+        $receipts = self::receipts();
+        if (!$receipts) {
+            return [];
+        }
+        $dates = array_filter(array_column($receipts, 'date'));
+        $from = Carbon::parse(min($dates))->subDays(1)->format('Y-m-d');
+        $to = Carbon::parse(max($dates))->addDays(3)->format('Y-m-d');
+        $lines = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')
+            ->leftJoin('variations as v', 'v.id', '=', 'tsl.variation_id')
+            ->where('t.business_id', $businessId)->where('t.type', 'sell')->where('t.status', 'final')->where('t.is_whatnot', 1)
+            ->whereDate('t.transaction_date', '>=', $from)->whereDate('t.transaction_date', '<=', $to)
+            ->get(['tsl.id', 'tsl.product_id', 'tsl.product_name', 't.id as transaction_id', 't.transaction_date', 'p.name', 'p.artist', 'v.sell_price_inc_tax as sticker']);
+        $pool = [];
+        foreach ($lines as $l) {
+            $title = $l->product_id ? self::displayName($l->name, $l->artist) : (string) $l->product_name;
+            $pool[] = ['id' => $l->id, 'product_id' => $l->product_id ? (int) $l->product_id : null, 'transaction_id' => (int) $l->transaction_id,
+                'date' => substr($l->transaction_date, 0, 10), 'title' => $title, 'words' => self::words($title),
+                'sticker' => $l->product_id ? round((float) $l->sticker, 2) : null, 'used' => false];
+        }
+        $out = [];
+        foreach ($receipts as $r) {
+            $rw = self::words($r['record']);
+            $best = null; $bestScore = 0;
+            if ($rw && stripos($r['record'], 'unknown') === false) {
+                foreach ($pool as $k => $c) {
+                    if ($c['used'] || !$c['words'] || $c['date'] < $r['date'] || $c['date'] > Carbon::parse($r['date'])->addDays(3)->format('Y-m-d')) {
+                        continue;
+                    }
+                    $hit = count(array_intersect($rw, $c['words']));
+                    $score = $hit / max(1, min(count($rw), count($c['words'])));
+                    if ($score > $bestScore) { $bestScore = $score; $best = $k; }
+                }
+            }
+            $row = $r + ['match' => null, 'score' => round($bestScore, 2)];
+            if ($best !== null && $bestScore >= 0.5) {
+                $pool[$best]['used'] = true;
+                $row['match'] = $pool[$best];
+            }
+            $out[] = $row;
+        }
+        usort($out, function ($a, $b) { return strcmp($b['date'] . $b['order'], $a['date'] . $a['order']); });
+        return $out;
     }
 }

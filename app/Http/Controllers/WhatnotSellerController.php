@@ -356,6 +356,7 @@ class WhatnotSellerController extends Controller
             'daily' => WS::dailyCheck($lines, $from, $to),
             'wn_range' => WS::whatnotImportedRange(),
             'sku_rows' => WS::skuMatches($businessId, $from, $to),
+            'receipt_rows' => array_values(array_filter(WS::receiptMatches($businessId), function ($r) use ($from, $to) { return $r['date'] >= $from && $r['date'] <= $to; })),
         ]);
     }
 
