@@ -927,6 +927,18 @@ class BuyFromCustomerController extends Controller
             if ($thisCash >= self::SIGNOFF_CASH) {
                 $reasons[] = sprintf('this buy is worth $%s cash (over $%d)', number_format($thisCash, 2), self::SIGNOFF_CASH);
             }
+            // A whole bulk lot graded Near Mint / Mint is rare (sealed excluded).
+            $mintLots = 0;
+            foreach ((array) $request->input('lines', []) as $bl) {
+                if (in_array((string) ($bl['condition_grade'] ?? ''), ['Near Mint', 'Mint'], true)
+                    && (float) ($bl['quantity'] ?? 0) > 0
+                    && $this->calculator->isBulkGraded((string) ($bl['item_type'] ?? ''))) {
+                    $mintLots++;
+                }
+            }
+            if ($mintLots > 0) {
+                $reasons[] = sprintf('%d bulk lot%s graded Near Mint / Mint', $mintLots, $mintLots === 1 ? ' is' : 's are');
+            }
             $weekBuys = $this->recentSellerBuys($request, self::SIGNOFF_REPEAT_DAYS * 24)->count();
             if ($weekBuys >= self::SIGNOFF_REPEAT_PRIOR) {
                 $reasons[] = sprintf('this seller already sold to us %d times in the last %d days', $weekBuys, self::SIGNOFF_REPEAT_DAYS);
@@ -973,6 +985,10 @@ class BuyFromCustomerController extends Controller
             }
             if ($type === 'individual_vinyl' && $qty > BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY) {
                 $errors["lines.$i.quantity"] = sprintf('Line %s: "1-9 items" vinyl is for up to %d records. Use a 10+ Bulk Vinyl type for a bigger lot.', $n, BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY);
+            }
+            $title = trim((string) ($line['title'] ?? ''));
+            if ($type === 'individual_vinyl' && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
+                $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
             if ($type === 'individual_vinyl' && $value >= BuyOfferCalculatorService::LINK_REQUIRED_FROM && $link === '') {
                 $errors["lines.$i.discogs_link"] = sprintf('Line %s: records with a median of $%d or more need the Discogs link or release ID.', $n, BuyOfferCalculatorService::LINK_REQUIRED_FROM);
