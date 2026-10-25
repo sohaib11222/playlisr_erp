@@ -1482,14 +1482,19 @@ HTML;
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         // Typing on a focused (closed) line dropdown opens it with those letters
         // already in its search box, so Tab + "sig" lands on Signed item.
+        // Keys can keep landing here after it opens, so they add to the search.
         $(document).on('keydown', '#offer_lines_table .select2-selection', function (e) {
-            if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1 || e.key === ' ') return;
+            if (e.ctrlKey || e.metaKey || e.altKey || !e.key) return;
             var $sel = $(this).closest('.select2-container').prev('select');
             if (!$sel.hasClass('select2-hidden-accessible') || $sel.prop('disabled')) return;
+            var isOpen = $sel.data('select2') && $sel.data('select2').isOpen();
+            var printable = e.key.length === 1 && (isOpen || e.key !== ' ');
+            if (!printable && !(isOpen && e.key === 'Backspace')) return;
             e.preventDefault();
-            $sel.select2('open');
+            if (!isOpen) $sel.select2('open');
             var $search = $('.select2-container--open .select2-search__field');
-            $search.val(e.key).trigger('input').trigger('focus');
+            var q = isOpen ? ($search.val() || '') : '';
+            $search.val(e.key === 'Backspace' ? q.slice(0, -1) : q + e.key).trigger('input').trigger('focus');
         });
         var BFC_RULES = @json($bfcRules);
         var BFC_VALUE_CAP = {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_CAP }};
