@@ -12,6 +12,10 @@ on:
       genre:
         description: Genre to move into (e.g. hip hop, pop)
         required: true
+      except:
+        description: Product ids to leave alone (comma-separated)
+        required: false
+        default: ''
       commit:
         description: Actually write (false = dry run)
         required: true
@@ -37,6 +41,7 @@ jobs:
           RUN_ARTIST: ${{ github.event.inputs.artist }}
           RUN_GENRE: ${{ github.event.inputs.genre }}
           RUN_COMMIT: ${{ github.event.inputs.commit }}
+          RUN_EXCEPT: ${{ github.event.inputs.except }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -44,7 +49,7 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: true
           command_timeout: 10m
-          envs: RUN_ARTIST,RUN_GENRE,RUN_COMMIT
+          envs: RUN_ARTIST,RUN_GENRE,RUN_COMMIT,RUN_EXCEPT
           script: |
             set -e
             cd /www/playlist.nivessa.com/app
@@ -52,4 +57,4 @@ jobs:
             if [ "$RUN_COMMIT" = "true" ]; then
               COMMIT_FLAG="--commit"
             fi
-            php artisan genres:move-artist "$RUN_ARTIST" "$RUN_GENRE" $COMMIT_FLAG
+            php artisan genres:move-artist "$RUN_ARTIST" "$RUN_GENRE" --except="$RUN_EXCEPT" $COMMIT_FLAG
