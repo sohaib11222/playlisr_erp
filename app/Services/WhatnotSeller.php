@@ -673,7 +673,9 @@ class WhatnotSeller
         $rlist = array_values($receipts);
         foreach ($rlist as $ri => $r) {
             $rw = self::words($r['record']);
-            if (!$rw || stripos($r['record'], 'unknown') !== false) { continue; }
+            // Unreadable ones, and lots (several records for one price), can't be
+            // compared to a single sticker.
+            if (!$rw || stripos($r['record'], 'unknown') !== false || preg_match('/\blot\b/i', $r['record'])) { continue; }
             $last = Carbon::parse($r['date'])->addDays(3)->format('Y-m-d');
             foreach ($pool as $k => $c) {
                 if (!$c['words'] || $c['date'] < $r['date'] || $c['date'] > $last) { continue; }
