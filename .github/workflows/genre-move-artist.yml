@@ -1,0 +1,55 @@
+# Move every music record by one artist into a genre, same format (Sarah
+# 2026-10-25). See app/Console/Commands/GenreMoveArtist.php. Dry run unless
+# commit = true; writes an undo snapshot.
+name: Genre move artist
+
+on:
+  workflow_dispatch:
+    inputs:
+      artist:
+        description: Artist (e.g. J. Cole)
+        required: true
+      genre:
+        description: Genre to move into (e.g. hip hop, pop)
+        required: true
+      commit:
+        description: Actually write (false = dry run)
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run genres:move-artist
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          RUN_ARTIST: ${{ github.event.inputs.artist }}
+          RUN_GENRE: ${{ github.event.inputs.genre }}
+          RUN_COMMIT: ${{ github.event.inputs.commit }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 10m
+          envs: RUN_ARTIST,RUN_GENRE,RUN_COMMIT
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            COMMIT_FLAG=""
+            if [ "$RUN_COMMIT" = "true" ]; then
+              COMMIT_FLAG="--commit"
+            fi
+            php artisan genres:move-artist "$RUN_ARTIST" "$RUN_GENRE" $COMMIT_FLAG
