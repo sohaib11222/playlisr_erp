@@ -14,15 +14,25 @@ use Illuminate\Support\Facades\DB;
  * the Beta buy form uses (BuyDemandService::levelsForStore): hot / warm pay
  * more, overstocked (cool / cold) pays less. Only names and percentages go
  * out, never sold / on-hand counts.
+ *
+ * Also per genre (Sarah 2026-10-25): artists we want (selling faster than we
+ * stock them) and recent big-ticket sales, names only, no prices.
  */
 class NivessaBuyPremiumsController extends Controller
 {
     // Formats the Beta form pays bonuses on; everything else is cuts-only.
     const MUSIC_FORMAT = '/vinyl|\bcds?\b|compact disc|cassette|tape|\b45s?\b|7"/i';
+    const WINDOW_DAYS = 60;
+    const ARTIST_MIN_SOLD = 3;
+    const ARTISTS_PER_GENRE = 8;
+    const RARE_WINDOW_DAYS = 180;
+    const RARE_MIN_PRICE = 50;
+    const RARE_PER_GENRE = 5;
+    const NOT_AN_ARTIST = '/^(various|various artists|v\/a|va|unknown|unknown artist|n\/a|none|-+)$/i';
 
     public function publicFeed()
     {
-        $data = Cache::remember('buypremiums1', 3600, function () {
+        $data = Cache::remember('buypremiums2', 3600, function () {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $s = BuyMarginSettings::get($businessId);
             $pct = [
@@ -70,10 +80,22 @@ class NivessaBuyPremiumsController extends Controller
                 };
                 usort($more, $sort);
                 usort($less, $sort);
+                $genres = [];
+                foreach ($this->wanted($businessId, (int) $store->id) as $subId => $g) {
+                    if (!isset($cats[$subId])) {
+                        continue;
+                    }
+                    $format = (string) ($cats[(int) ($parents[$subId] ?? 0)] ?? '');
+                    if ($format === '' || !preg_match(self::MUSIC_FORMAT, $format)) {
+                        continue;
+                    }
+                    $genres[] = ['format' => $format, 'genre' => trim((string) $cats[$subId])] + $g;
+                }
                 $out[$key] = [
                     'name' => $key === 'pico' ? 'Pico' : 'Hollywood',
                     'more' => $more,
                     'less' => $less,
+                    'genres' => $genres,
                 ];
             }
             return ['updated' => now()->toDateTimeString(), 'stores' => $out];
@@ -82,5 +104,100 @@ class NivessaBuyPremiumsController extends Controller
         return response()->json($data)
             ->header('Access-Control-Allow-Origin', '*')
             ->header('Cache-Control', 'public, max-age=900');
+    }
+
+    /**
+     * [sub_category_id => ['artists' => [...], 'rare' => [...]]] for one store.
+     * Artists: ARTIST_MIN_SOLD+ sold in WINDOW_DAYS and no more on the shelf
+     * than we sold, most sold first. Rare: the priciest single sales
+     * (RARE_MIN_PRICE+) in RARE_WINDOW_DAYS, one per title.
+     */
+    protected function wanted($businessId, $locationId)
+    {
+        $sold = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->where('t.business_id', $businessId)
+            ->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', now()->subDays(self::WINDOW_DAYS))
+            ->whereNull('tsl.parent_sell_line_id')
+            ->where('p.sub_category_id', '>', 0)
+            ->whereNotNull('p.artist')->where('p.artist', '!=', '')
+            ->groupBy('p.sub_category_id', 'p.artist')
+            ->havingRaw('q >= ?', [self::ARTIST_MIN_SOLD])
+            ->selectRaw('p.sub_category_id as sub, p.artist as artist, SUM(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) as q')
+            ->get();
+        $stock = [];
+        DB::table('variation_location_details as vld')
+            ->join('products as p', 'p.id', '=', 'vld.product_id')
+            ->where('p.business_id', $businessId)
+            ->where('vld.location_id', $locationId)
+            ->where('vld.qty_available', '>', 0)
+            ->where('p.sub_category_id', '>', 0)
+            ->whereNotNull('p.artist')->where('p.artist', '!=', '')
+            ->groupBy('p.sub_category_id', 'p.artist')
+            ->selectRaw('p.sub_category_id as sub, p.artist as artist, SUM(vld.qty_available) as q')
+            ->get()
+            ->each(function ($r) use (&$stock) {
+                $stock[(int) $r->sub . '|' . mb_strtolower(trim($r->artist))] = (float) $r->q;
+            });
+
+        $out = [];
+        $rows = $sold->sortByDesc(function ($r) { return (float) $r->q; });
+        foreach ($rows as $r) {
+            $artist = trim((string) $r->artist);
+            if (preg_match(self::NOT_AN_ARTIST, $artist)) {
+                continue;
+            }
+            $sub = (int) $r->sub;
+            if (($stock[$sub . '|' . mb_strtolower($artist)] ?? 0) > (float) $r->q) {
+                continue;
+            }
+            $out[$sub]['artists'] = $out[$sub]['artists'] ?? [];
+            if (count($out[$sub]['artists']) < self::ARTISTS_PER_GENRE) {
+                $out[$sub]['artists'][] = $artist;
+            }
+        }
+
+        $rare = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+            ->join('products as p', 'p.id', '=', 'tsl.product_id')
+            ->where('t.business_id', $businessId)
+            ->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->where('t.transaction_date', '>=', now()->subDays(self::RARE_WINDOW_DAYS))
+            ->whereNull('tsl.parent_sell_line_id')
+            ->where('p.sub_category_id', '>', 0)
+            ->where('tsl.unit_price_inc_tax', '>=', self::RARE_MIN_PRICE)
+            ->orderByDesc('tsl.unit_price_inc_tax')
+            ->limit(2000)
+            ->select('p.sub_category_id as sub', 'p.name', 'p.artist')
+            ->get();
+        $seen = [];
+        foreach ($rare as $r) {
+            $sub = (int) $r->sub;
+            $name = trim(preg_replace('/\s+/', ' ', (string) $r->name));
+            $artist = trim((string) $r->artist);
+            // Most records are named "Artist - Title"; add the artist when not.
+            if ($artist !== '' && !preg_match(self::NOT_AN_ARTIST, $artist) && stripos($name, $artist) === false) {
+                $name = $artist . ' - ' . $name;
+            }
+            $k = $sub . '|' . mb_strtolower($name);
+            if ($name === '' || isset($seen[$k])) {
+                continue;
+            }
+            $seen[$k] = true;
+            $out[$sub]['rare'] = $out[$sub]['rare'] ?? [];
+            if (count($out[$sub]['rare']) < self::RARE_PER_GENRE) {
+                $out[$sub]['rare'][] = $name;
+            }
+        }
+        foreach ($out as $sub => $g) {
+            $out[$sub] += ['artists' => [], 'rare' => []];
+        }
+        return $out;
     }
 }
