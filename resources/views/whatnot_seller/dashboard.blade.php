@@ -75,19 +75,28 @@
         </div>
         <div class="col-md-7">
             <div class="wn-card">
+                @php
+                    $known = array_values(array_filter($lines, function ($l) { return $l['real'] && $l['sticker']; }));
+                    $kSt = 0; $kSold = 0; $kAt = 0; $k10 = 0;
+                    foreach ($known as $l) {
+                        $kSt += $l['sticker'] * $l['qty']; $kSold += $l['sold'] * $l['qty'];
+                        if (abs($l['sold'] - $l['sticker']) < 0.01) { $kAt++; }
+                        if ($l['sold'] < $l['sticker'] * $s['min_pct_of_sticker'] / 100 - 0.009) { $k10++; }
+                    }
+                    $kPct = $kSt > 0 ? round(($kSt - $kSold) / $kSt * 100) : 0;
+                @endphp
                 <div class="wn-label">How he's pricing</div>
-                <div class="row">
-                    <div class="col-xs-6">
-                        <div class="wn-sub">Sold under sticker</div>
-                        <div class="wn-big {{ $under > 0 ? 'wn-red' : '' }}" style="font-size:28px;">${{ number_format($under, 2) }}</div>
-                        <div class="wn-sub">{{ count($underLines) }} items</div>
-                    </div>
-                    <div class="col-xs-6">
-                        <div class="wn-sub">Sold over sticker</div>
-                        <div class="wn-big {{ $premium > 0 ? 'wn-green' : '' }}" style="font-size:28px;">${{ number_format($premium, 2) }}</div>
-                        <div class="wn-sub">{{ count($overLines) }} items</div>
-                    </div>
-                </div>
+                <table class="wn-pay" style="width:100%;">
+                    <tr><td>Records with a known Whatnot price</td><td class="num">{{ count($known) }} of {{ count($lines) }}</td></tr>
+                    <tr><td>Sticker total</td><td class="num">${{ number_format($kSt, 2) }}</td></tr>
+                    <tr><td>Sold for</td><td class="num">${{ number_format($kSold, 2) }}</td></tr>
+                    <tr><td><strong>Difference</strong></td><td class="num {{ $kSold < $kSt ? 'wn-red' : 'wn-green' }}"><strong>{{ $kSold < $kSt ? '-' : '+' }}${{ number_format(abs($kSt - $kSold), 2) }} ({{ abs($kPct) }}% {{ $kSold < $kSt ? 'off' : 'over' }})</strong></td></tr>
+                    <tr><td>Under sticker</td><td class="num"><a href="{{ $qs(['show' => 'under']) }}">{{ count($underLines) }} records</a></td></tr>
+                    <tr><td>More than {{ 100 - $s['min_pct_of_sticker'] }}% off</td><td class="num">{{ $k10 }} records</td></tr>
+                    <tr><td>At sticker</td><td class="num">{{ $kAt }} records</td></tr>
+                    <tr><td>Over sticker</td><td class="num"><a href="{{ $qs(['show' => 'over']) }}">{{ count($overLines) }} records</a></td></tr>
+                    <tr><td>Price not known yet</td><td class="num">{{ count($lines) - count($known) }} records</td></tr>
+                </table>
             </div>
         </div>
     </div>
