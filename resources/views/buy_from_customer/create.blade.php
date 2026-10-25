@@ -272,6 +272,7 @@
         .bfc-create .bfc-demand-hot { background: #FBE3E3; color: #7A1F1F; border: 1px solid #F0B8B8; }
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
+        .bfc-create .bfc-signed { display: block; font-size: 11px; font-weight: 400; margin: 3px 0 0; text-transform: none; letter-spacing: 0; }
         .bfc-create .bfc-lastsold { margin-top: 4px; }
         .bfc-create .bfc-lastsold small { display: block; font-size: 11px; color: #666; }
         .bfc-create .bfc-lastsold-date { height: 28px; padding: 2px 6px; font-size: 12px; }
@@ -686,6 +687,7 @@ HTML;
                                     <tr @if($bfcRowDemand) data-demand-mult="{{ (float) ($bfcRowDemand['demand_multiplier'] ?? 1) }}" @if(($bfcRowDemand['demand_level'] ?? '') === 'margin') data-pay-pct="{{ round((100 - (float) ($bfcRowDemand['demand_base_margin'] ?? $bfcRowDemand['demand_margin'] ?? 65)) / 100, 4) }}" data-super-fast="{{ !empty($bfcRowDemand['demand_super_fast']) ? 1 : 0 }}" @endif @endif>
                                         <td>{!! Form::select("lines[$i][item_type]", $bfcRowTypes, $line['item_type'] ?? null, ['class' => 'form-control']) !!}</td>
                                         <td>{!! Form::text("lines[$i][title]", $line['title'] ?? null, ['class' => 'form-control']) !!}
+                                        <label class="bfc-signed" @if(($line['item_type'] ?? '') !== 'individual_vinyl') style="display:none;" @endif><input type="checkbox" name="lines[{{ $i }}][signed]" value="1" @if(!empty($line['signed'])) checked @endif> Signed (enter the signed copy's sold value)</label>
                                         @if($bfcBeta)
                                             <select name="lines[{{ $i }}][genre]" class="form-control bfc-genre" @if(empty($bfcRowGenres)) style="display:none;" @endif>
                                                 <option value="">{{ ($line['item_type'] ?? '') === 'ebay_value' ? 'Category (sets the margin)' : 'Genre (optional)' }}</option>
@@ -1310,7 +1312,7 @@ HTML;
             var idx = $tbody.find('tr').length;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
-                + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
+                + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control"><label class="bfc-signed"><input type="checkbox" name="lines[' + idx + '][signed]" value="1"> Signed (enter the signed copy\'s sold value)</label>' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
                 + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL">' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
@@ -1437,7 +1439,7 @@ HTML;
                 if (val > {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_TYPO }}) sanity.push('Line ' + (i + 1) + ': $' + val + ' is not a real price (a barcode or Discogs ID in the value box?).');
                 if (type === 'individual_vinyl' && qty > {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }}) sanity.push('Line ' + (i + 1) + ': "1-9 items" vinyl is for up to {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }} records. Use a 10+ Bulk Vinyl type.');
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
-                if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
+                if (type === 'individual_vinyl' && !$row.find('.bfc-signed input').is(':checked') && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
             });
             if (sanity.length) {
@@ -1481,6 +1483,34 @@ HTML;
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         var BFC_RULES = @json($bfcRules);
         var BFC_VALUE_CAP = {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_CAP }};
+        var BFC_SIGNED_PAY = {{ (float) \App\Services\BuyOfferCalculatorService::SIGNED_PAY }};
+        // Signed checkbox: single-record lines only; signed = no grade, priced by
+        // the signed copy's value, no speed / last-sold adjustments.
+        function bfcApplySigned($row) {
+            var isRec = $row.find('select[name$="[item_type]"]').val() === 'individual_vinyl';
+            var $cb = $row.find('.bfc-signed');
+            $cb.toggle(isRec);
+            if (!isRec) $cb.find('input').prop('checked', false);
+            var on = isRec && $cb.find('input').is(':checked');
+            $row.find('select.bfc-grade').prop('disabled', on).toggleClass('bfc-cell-off', on);
+            if (on) {
+                $row.find('input[name$="[discogs_median_price]"]').attr('placeholder', 'signed value $');
+                $row.find('.bfc-lastsold').hide();
+                $row.find('.bfc-demand-chip').remove();
+                $row.removeAttr('data-demand-mult');
+            }
+        }
+        $(document).on('change', '#offer_lines_table .bfc-signed input', function () {
+            var $row = $(this).closest('tr');
+            bfcApplySigned($row);
+            if (!$(this).is(':checked')) {
+                bfcApplyRowState($row);
+                if (BFC_BETA && typeof bfcPreviewDemand === 'function') bfcPreviewDemand($row);
+            }
+            bfcRecalcAll();
+        });
+        $(document).on('change', '#offer_lines_table select[name$="[item_type]"]', function () { bfcApplySigned($(this).closest('tr')); });
+        $(function () { $('#offer_lines_table tbody tr').each(function () { bfcApplySigned($(this)); }); });
         var BFC_BETA = @json((bool) $bfcBeta);
         var BFC_GENRES = @json((object) $bfcGenres);
         var BFC_DEMAND_URL = @json(route('buy-from-customer.beta.demand'));
@@ -1541,6 +1571,7 @@ HTML;
             var lastSold = $row.find('input.bfc-lastsold-date').val() || '';
             var neverSold = $row.find('.bfc-lastsold-never input').is(':checked') ? '1' : '';
             var median = $row.find('input[name$="[discogs_median_price]"]').val() || '';
+            if (type === 'individual_vinyl' && $row.find('.bfc-signed input').is(':checked')) { bfcRecalcAll(); return; }
             if (!type || !loc || (type === 'individual_vinyl' && !title && !genre && !lastSold && !neverSold)) { bfcRecalcAll(); return; }
             var seq = ++bfcDemandSeq;
             $row.data('demand-seq', seq);
@@ -1644,7 +1675,9 @@ HTML;
             // Priced on at most BFC_VALUE_CAP per item (BuyOfferCalculatorService::VALUE_CAP).
             median = Math.min(median, BFC_VALUE_CAP);
             var line = 0;
-            if (t.mode === 'individual_discogs') {
+            if (type === 'individual_vinyl' && $row.find('.bfc-signed input').is(':checked')) {
+                line = qty * median * BFC_SIGNED_PAY;
+            } else if (t.mode === 'individual_discogs') {
                 line = qty * median * gm * computeStdMult(median);
             } else if (t.mode === 'value_percent') {
                 line = qty * median * bfcPercentForValue(median, t.value_tiers);
@@ -1667,6 +1700,10 @@ HTML;
             if (qty <= 0) return '';
             var median = Math.min(parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0, BFC_VALUE_CAP);
             var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
+            if (type === 'individual_vinyl' && $row.find('.bfc-signed input').is(':checked')) {
+                if (median <= 0) return '';
+                return qty + ' × ' + median + ' × ' + Math.round(BFC_SIGNED_PAY * 100) + '% (signed)';
+            }
             if (t.mode === 'individual_discogs') {
                 if (median <= 0) return '';
                 var f = median + ' × ' + gm + ' × ' + computeStdMult(median).toFixed(2);
@@ -1707,6 +1744,7 @@ HTML;
                 $disposition.val('');
             }
             $clearanceOpt.prop('disabled', !isRecord).toggle(isRecord);
+            bfcApplySigned($row);
         }
         function bfcRecalcAll() {
             var cashTotal = 0;
@@ -1748,6 +1786,7 @@ HTML;
             var BFC_LS_MIN = {{ (float) ($bfcMargins['ls_min_median'] ?? 20) }};
             function bfcToggleLastSold($row) {
                 var on = $row.find('select[name$="[item_type]"]').val() === 'individual_vinyl'
+                    && !$row.find('.bfc-signed input').is(':checked')
                     && (parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0) >= BFC_LS_MIN;
                 $row.find('.bfc-lastsold').toggle(on);
                 if (!on) { $row.find('input.bfc-lastsold-date').val(''); $row.find('.bfc-lastsold-never input').prop('checked', false); }
