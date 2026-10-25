@@ -667,24 +667,36 @@ class WhatnotSeller
                 'date' => substr($l->transaction_date, 0, 10), 'title' => $title, 'words' => self::words($title),
                 'sticker' => $l->product_id ? round((float) $l->sticker, 2) : null, 'used' => false];
         }
-        $out = [];
-        foreach ($receipts as $r) {
+        // Best pairs first, so "Soundgarden - Badmotorfinger" can't take the
+        // "Superunknown" ring just because it was looked at first.
+        $pairs = [];
+        $rlist = array_values($receipts);
+        foreach ($rlist as $ri => $r) {
             $rw = self::words($r['record']);
-            $best = null; $bestScore = 0;
-            if ($rw && stripos($r['record'], 'unknown') === false) {
-                foreach ($pool as $k => $c) {
-                    if ($c['used'] || !$c['words'] || $c['date'] < $r['date'] || $c['date'] > Carbon::parse($r['date'])->addDays(3)->format('Y-m-d')) {
-                        continue;
-                    }
-                    $hit = count(array_intersect($rw, $c['words']));
-                    $score = $hit / max(1, min(count($rw), count($c['words'])));
-                    if ($score > $bestScore) { $bestScore = $score; $best = $k; }
-                }
+            if (!$rw || stripos($r['record'], 'unknown') !== false) { continue; }
+            $last = Carbon::parse($r['date'])->addDays(3)->format('Y-m-d');
+            foreach ($pool as $k => $c) {
+                if (!$c['words'] || $c['date'] < $r['date'] || $c['date'] > $last) { continue; }
+                $hit = count(array_intersect($rw, $c['words']));
+                if (!$hit) { continue; }
+                $score = $hit / max(1, min(count($rw), count($c['words'])));
+                // prefer full-title agreement, then same-day rings
+                $score += $hit / max(count($rw), count($c['words'])) * 0.5 + ($c['date'] === $r['date'] ? 0.01 : 0);
+                $pairs[] = [$score, $ri, $k];
             }
-            $row = $r + ['match' => null, 'score' => round($bestScore, 2)];
-            if ($best !== null && $bestScore >= 0.5) {
-                $pool[$best]['used'] = true;
-                $row['match'] = $pool[$best];
+        }
+        usort($pairs, function ($x, $y) { return $y[0] <=> $x[0]; });
+        $taken = []; $usedR = [];
+        foreach ($pairs as [$score, $ri, $k]) {
+            if (isset($usedR[$ri]) || isset($taken[$k]) || $score < 0.75) { continue; }
+            $usedR[$ri] = [$k, $score]; $taken[$k] = true;
+        }
+        $out = [];
+        foreach ($rlist as $ri => $r) {
+            $row = $r + ['match' => null, 'score' => 0];
+            if (isset($usedR[$ri])) {
+                $row['match'] = $pool[$usedR[$ri][0]];
+                $row['score'] = round($usedR[$ri][1], 2);
             }
             $out[] = $row;
         }
