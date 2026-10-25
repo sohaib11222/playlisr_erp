@@ -106,7 +106,7 @@ class SendEventCheckinTexts extends Command
                 // came or that it's night (Sarah, 2026-10-14; was "Thanks for
                 // coming out... tonight's giveaway", which reached no-shows).
                 $hi = $t['first'] !== '' ? 'Hi ' . $t['first'] . '! ' : 'Hi! ';
-                $message = $hi . 'The event at Nivessa is starting now. If you\'re here with us, check in at ' . self::LINK . ' to be entered into the giveaway. You must be here to win.';
+                $message = $hi . 'The event at Nivessa is starting now. If you\'re here with us, please check in at ' . self::LINK . ' to be entered into the giveaway. You must be here to win!';
                 $line = array_search($t['store'] === 'pico' ? 'phone_1' : 'phone_2', \App\Communication::QUO_NUMBERS, true);
                 if ($dry) {
                     $this->line("[dry] {$eventId} from {$line} to {$phone}: {$message}");
