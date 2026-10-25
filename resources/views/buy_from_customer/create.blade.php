@@ -1469,6 +1469,7 @@ HTML;
                     'no_grading' => !empty($bfcCfg['no_grading']),
                     'default_grade' => app(\App\Services\BuyOfferCalculatorService::class)->defaultGradeFor($bfcK),
                     'value_tiers' => $bfcCfg['value_tiers'] ?? null,
+                    'fixed_hv' => !empty($bfcCfg['fixed_hv']),
                 ];
             }
         @endphp
@@ -1495,7 +1496,8 @@ HTML;
                 p = (100 - m) / 100;
             }
             var value = parseFloat($row.find('input[name$="[discogs_median_price]"]').val()) || 0;
-            if (value >= (parseFloat(BFC_MARGINS.hv_min) || 20)) {
+            var tcfg = BFC_RULES.types[$row.find('select[name$="[item_type]"]').val()] || {};
+            if (value >= (parseFloat(BFC_MARGINS.hv_min) || 20) || tcfg.fixed_hv) {
                 p = $row.attr('data-super-fast') === '1'
                     ? (parseFloat(BFC_MARGINS.hv_fast_pay) || 25) / 100
                     : Math.min(p, (parseFloat(BFC_MARGINS.hv_pay) || 20) / 100);
@@ -1693,7 +1695,7 @@ HTML;
             var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin');
             var $median = $row.find('input[name$="[discogs_median_price]"]');
             $median.prop('disabled', !usesValue).toggleClass('bfc-cell-off', !usesValue);
-            $median.attr('placeholder', usesValue ? (t.mode === 'ebay_margin' ? 'eBay sold $' : (t.mode === 'value_percent' ? 'value $' : 'median $')) : 'n/a');
+            $median.attr('placeholder', usesValue ? (t.mode === 'ebay_margin' ? (t.fixed_hv ? 'sold value $' : 'eBay sold $') : (t.mode === 'value_percent' ? 'value $' : 'median $')) : 'n/a');
             if (!usesValue) { $median.removeClass('bfc-median-missing'); }
             var $grade = $row.find('select[name$="[condition_grade]"]');
             $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);

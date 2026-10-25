@@ -346,6 +346,16 @@ class BuyDemandService
             if ($itemType === self::EBAY_TYPE) {
                 return $this->ebayMargin($businessId, $locationId, (string) ($line['genre'] ?? ''));
             }
+            if ($itemType === 'poster_value') {
+                // Valuable-poster line: the Posters category's speed sets super fast.
+                list($formats) = $this->taxonomy($businessId);
+                foreach ($formats as $fid => $fname) {
+                    if (preg_match('/poster/i', $fname)) {
+                        return $this->ebayMargin($businessId, $locationId, 'c:' . $fid);
+                    }
+                }
+                return $this->ebayMargin($businessId, $locationId, '');
+            }
 
             // Catch-all buckets (mixed lots) always pay their flat rate: no
             // speed adjustment, so a box prices the same whoever rings it up.

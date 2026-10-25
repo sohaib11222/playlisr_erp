@@ -202,6 +202,14 @@ class BuyOfferCalculatorService
                 'tanktop' => ['label' => 'Tank Top', 'mode' => 'bulk_fixed', 'unit_rate' => 1.00, 'no_grading' => true],
                 'sweatshirt' => ['label' => 'Sweatshirt', 'mode' => 'bulk_fixed', 'unit_rate' => 3.50, 'no_grading' => true],
 
+                // Jon 2026-10-25: signed / rare posters by their real sold value, the
+
+                // "items worth more" rule: 20% of the value (25% if posters sell super
+
+                // fast here), $350 cap. Ordinary posters stay on the flat $2 line.
+
+                'poster_value' => ['label' => 'Poster: signed / rare (enter its sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+
                 'poster_2x3' => ['label' => "Poster 2'x3'", 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
 
                 'pokemon_regular' => ['label' => 'Pokemon Card (regular)', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05, 'no_grading' => true],
@@ -405,7 +413,10 @@ class BuyOfferCalculatorService
                 $margin = max((float) $hv['floor'], min(95.0, $margin));
                 $superFast = !empty($raw['super_fast']);
                 // Items worth $20+ pay at most 20% (25% if super fast), Jon 10/23.
-                $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $payValue);
+                // fixed_hv (valuable-poster line): always the $20+ rule, so a cheap
+                // poster typed here can't get the higher under-$20 rate.
+                $tierValue = !empty($cfg['fixed_hv']) ? max($payValue, (float) $hv['hv_min']) : $payValue;
+                $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $tierValue);
                 $cashLine = round($quantity * $payValue * $standardMultiplier, 2);
                 $demandInfo = [
                     'demand_multiplier' => 1.0,
