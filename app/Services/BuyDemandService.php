@@ -225,7 +225,79 @@ class BuyDemandService
                 $res['multiplier'] = 1.0;
             }
         }
+        if (($line['item_type'] ?? '') === 'individual_vinyl') {
+            $res = $this->lastSoldAdjust($res, $line, (int) $businessId);
+        }
         return $res;
+    }
+
+    /**
+     * Jon 2026-10-25, single records with a ls_min_median+ median: the cashier
+     * can type the "Last Sold" date from the release's Discogs page (or tick
+     * never sold). Recent sale = small bonus; a sale 1-2+ years old means the
+     * Discogs median may be stale, so pay less. A cut always wins; a bonus
+     * never stacks with the hot / warm one (the higher of the two).
+     */
+    protected function lastSoldAdjust(array $res, array $line, $businessId)
+    {
+        $median = (float) ($line['discogs_median_price'] ?? 0);
+        $never = !empty($line['discogs_never_sold']);
+        $raw = trim((string) ($line['discogs_last_sold'] ?? ''));
+        if (!$never && $raw === '') {
+            return $res;
+        }
+        try {
+            $s = BuyMarginSettings::get($businessId);
+            if ($median < $s['ls_min_median']) {
+                return $res;
+            }
+            $days = null;
+            if (!$never) {
+                $d = \Carbon\Carbon::parse($raw)->startOfDay();
+                if ($d->isFuture()) {
+                    return $res;
+                }
+                $days = $d->diffInDays(now()->startOfDay());
+            }
+        } catch (\Throwable $e) {
+            return $res;
+        }
+        $when = $never ? 'never sold on Discogs' : 'last sold on Discogs ' . \Carbon\Carbon::parse($raw)->format('M j, Y') . ' (' . $this->agoText($days) . ')';
+        if ($never || $days > $s['ls_old_days']) {
+            $mult = 1 - $s['ls_old_cut'] / 100;
+            $note = ucfirst($when) . ': the Discogs median may be out of date';
+        } elseif ($days > $s['ls_stale_days']) {
+            $mult = 1 - $s['ls_stale_cut'] / 100;
+            $note = ucfirst($when) . ': the Discogs median may be out of date';
+        } elseif ($days <= $s['ls_recent_days']) {
+            $mult = 1 + $s['ls_recent_bonus'] / 100;
+            $note = ucfirst($when) . ': buyers are active';
+        } else {
+            return $res;
+        }
+        $cur = (float) ($res['multiplier'] ?? 1.0);
+        if ($mult < 1) {
+            $new = min($cur, $mult);
+        } else {
+            $new = max($cur, $mult);
+        }
+        if (abs($new - $cur) < 0.0001) {
+            $res['reason'] = trim(($res['reason'] ?? '') . ' · ' . $note, ' ·');
+            return $res;
+        }
+        return array_merge($res, [
+            'multiplier' => round($new, 4),
+            'level' => $new < 1 ? 'stale' : 'recent',
+            'reason' => $note . (!empty($res['reason']) ? ' · ' . $res['reason'] : ''),
+        ]);
+    }
+
+    protected function agoText($days)
+    {
+        if ($days < 1) return 'today';
+        if ($days < 60) return $days . ' day' . ($days == 1 ? '' : 's') . ' ago';
+        if ($days < 730) return round($days / 30) . ' months ago';
+        return round($days / 365, 1) . ' years ago';
     }
 
     protected function forLineRaw(array $line, $businessId, $locationId)
@@ -675,7 +747,7 @@ class BuyDemandService
     /** Short label for a level: "Hot (no extra pay)", "Overstocked −10%", "No change". */
     public static function levelLabel($level)
     {
-        $labels = ['hot' => 'Hot (pays more)', 'warm' => 'Warm (pays more)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%', 'lot' => 'Big lot (pays less)'];
+        $labels = ['hot' => 'Hot (pays more)', 'warm' => 'Warm (pays more)', 'cool' => 'Overstocked −10%', 'cold' => 'Way overstocked −20%', 'lot' => 'Big lot (pays less)', 'recent' => 'Sold recently on Discogs', 'stale' => 'Old Discogs sales (pays less)'];
         return $labels[$level] ?? 'No change';
     }
 

@@ -204,14 +204,25 @@ class BuyFromCustomerController extends Controller
         if ($isBeta) {
             $input_data['beta'] = '1';
             $genres = [];
+            $lastSold = [];
             foreach ((array) ($betaRec['lines'] ?? []) as $bl) {
                 if (!empty($bl['genre'])) {
                     $genres[(string) ($bl['line_order'] ?? '')] = $bl['genre'];
+                }
+                if (!empty($bl['last_sold'])) {
+                    $lastSold[(string) ($bl['line_order'] ?? '')] = $bl['last_sold'];
                 }
             }
             foreach ($input_data['lines'] as $li => $l) {
                 if (isset($genres[(string) $li])) {
                     $input_data['lines'][$li]['genre'] = $genres[(string) $li];
+                }
+                if (isset($lastSold[(string) $li])) {
+                    if ($lastSold[(string) $li] === 'never') {
+                        $input_data['lines'][$li]['discogs_never_sold'] = '1';
+                    } else {
+                        $input_data['lines'][$li]['discogs_last_sold'] = $lastSold[(string) $li];
+                    }
                 }
             }
             $lines = $input_data['lines'];
@@ -394,6 +405,9 @@ class BuyFromCustomerController extends Controller
             'item_type' => (string) $request->input('item_type', ''),
             'title' => (string) $request->input('title', ''),
             'genre' => (string) $request->input('genre', ''),
+            'discogs_median_price' => (float) $request->input('discogs_median_price', 0),
+            'discogs_last_sold' => (string) $request->input('discogs_last_sold', ''),
+            'discogs_never_sold' => $request->input('discogs_never_sold') == '1' ? '1' : '',
             // The form sends the buy's total for this type + genre.
             'incoming_quantity' => max(0, (float) $request->input('incoming_quantity', 0)),
         ];
@@ -1237,7 +1251,7 @@ class BuyFromCustomerController extends Controller
         $offer->lines()->delete();
         foreach ($calculation['lines'] as $line) {
             // demand_* are Beta-only and have no columns (they live in the sidecar).
-            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre'], $line['demand_margin'], $line['demand_tier'], $line['demand_super_fast'], $line['demand_base_margin']);
+            unset($line['demand_multiplier'], $line['demand_level'], $line['demand_reason'], $line['demand_genre'], $line['demand_margin'], $line['demand_tier'], $line['demand_super_fast'], $line['demand_base_margin'], $line['demand_last_sold']);
             $offer->lines()->create($line);
         }
 
