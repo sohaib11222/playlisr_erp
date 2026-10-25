@@ -337,7 +337,7 @@ class WhatnotSeller
         $lines = self::soldLines($businessId, $from, $to);
         $shows = self::hoursBetween($from, $to);
         $minutes = array_sum(array_column($shows, 'minutes'));
-        $pay = self::pay($lines, round($minutes / 60, 4));
+        $pay = self::pay($lines, round($minutes / 60, 4), self::itemsSold($lines, $from, $to));
         $pay['minutes'] = $minutes;
         $pay['tips'] = self::tipsBetween($from, $to);
         $pay['total'] = round($pay['total'] + $pay['tips'], 2);
@@ -369,7 +369,7 @@ class WhatnotSeller
     }
 
     /** $0.50 per item, $0.65 per premium item, + $18 per hour (Sarah 2026-10-23). */
-    public static function pay(array $lines, float $hours): array
+    public static function pay(array $lines, float $hours, ?int $itemsOverride = null): array
     {
         $s = self::settings();
         $items = 0; $premium = 0;
@@ -378,6 +378,10 @@ class WhatnotSeller
             if (self::isPremium($l)) {
                 $premium += $l['qty'];
             }
+        }
+        if ($itemsOverride !== null) {
+            $items = $itemsOverride;
+            $premium = min($premium, $items);
         }
         $itemPay = round(($items - $premium) * (float) $s['per_item'] + $premium * (float) $s['premium_per_item'], 2);
         $hourPay = round($hours * (float) $s['hourly_rate'], 2);
@@ -683,5 +687,32 @@ class WhatnotSeller
         }
         usort($out, function ($a, $b) { return strcmp($b['date'] . $b['order'], $a['date'] . $a['order']); });
         return $out;
+    }
+
+    /**
+     * Items he sold, counted from Whatnot (Sarah 10/25: pay per Whatnot sale,
+     * not per record staff rang - a bundle is one sale). Per day: the Whatnot
+     * report if loaded, else the video receipts, else the ERP rings.
+     */
+    public static function itemsSold(array $lines, string $from, string $to): int
+    {
+        $wn = [];
+        foreach (self::whatnotOrders() as $o) {
+            if ($o['date'] < $from || $o['date'] > $to) { continue; }
+            if ($o['type'] === 'ORDER_EARNINGS') { $wn[$o['date']] = ($wn[$o['date']] ?? 0) + max(1, (int) $o['qty']); }
+            elseif (stripos($o['type'], 'REFUND') !== false && $o['type'] === 'ORDER_REFUND') { $wn[$o['date']] = ($wn[$o['date']] ?? 0) - 1; }
+        }
+        $rc = [];
+        foreach (self::receipts() as $r) {
+            if ($r['date'] >= $from && $r['date'] <= $to) { $rc[$r['date']] = ($rc[$r['date']] ?? 0) + 1; }
+        }
+        $erp = [];
+        foreach ($lines as $l) { $erp[$l['date_raw']] = ($erp[$l['date_raw']] ?? 0) + $l['qty']; }
+        $days = array_unique(array_merge(array_keys($wn), array_keys($rc), array_keys($erp)));
+        $n = 0;
+        foreach ($days as $d) {
+            $n += $wn[$d] ?? ($rc[$d] ?? ($erp[$d] ?? 0));
+        }
+        return (int) $n;
     }
 }
