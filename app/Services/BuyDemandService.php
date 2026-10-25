@@ -53,7 +53,7 @@ class BuyDemandService
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
     // format pays less. Needs a real pile, so small categories never get cut.
     const OVER_MIN_ON_HAND = 200;
-    const FLOOD_MIN_QTY = 50;
+    const FLOOD_MIN_QTY = 100; // fallback; the live number is lot_min_qty
     // Lot pricing needs this many sold in the window to know the pace.
     const LOT_MIN_SOLD = 3;
     const COOL_MAX_SPEED = 0.8;
@@ -572,7 +572,7 @@ class BuyDemandService
         if (!$st || $incoming <= 0) {
             return $res;
         }
-        $flat = $this->withIncomingFlat($res, $incoming, $st);
+        $flat = $this->withIncomingFlat($res, $incoming, $st, $businessId);
         return $this->withLotTiers($flat, $incoming, $st, $businessId);
     }
 
@@ -617,8 +617,14 @@ class BuyDemandService
     }
 
     /** The flat -10% / -20% overstock cut, judged on the shelf after the buy. */
-    protected function withIncomingFlat(array $res, $incoming, array $st)
+    protected function withIncomingFlat(array $res, $incoming, array $st, $businessId = 0)
     {
+        // Same lot size as huge-lot pricing (Settings -> Buy Margins, 100 since 10/25).
+        try {
+            $floodMin = (float) BuyMarginSettings::get($businessId)['lot_min_qty'];
+        } catch (\Throwable $e) {
+            $floodMin = (float) self::FLOOD_MIN_QTY;
+        }
         $on = $st['on_hand'] + $incoming;
         $baseOn = $st['base_on_hand'] + $incoming;
         $baseTurn = $baseOn > 0 ? $st['base_sold'] / $baseOn : 0;
@@ -627,7 +633,7 @@ class BuyDemandService
         // Flood: a lot of FLOOD_MIN_QTY+ at least as big as the shelf is
         // judged on speed alone, even under the 200-on-hand bar (188 games
         // onto Pico's 9, where 1 sold in 60 days).
-        if (!in_array($level, ['cool', 'cold'], true) && $incoming >= self::FLOOD_MIN_QTY && $incoming >= $st['on_hand'] && $baseTurn > 0) {
+        if (!in_array($level, ['cool', 'cold'], true) && $incoming >= $floodMin && $incoming >= $st['on_hand'] && $baseTurn > 0) {
             if ($speed < self::COLD_MAX_SPEED) {
                 $level = 'cold';
             } elseif ($speed < self::COOL_MAX_SPEED) {
