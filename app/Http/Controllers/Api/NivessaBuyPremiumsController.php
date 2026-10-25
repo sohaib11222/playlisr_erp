@@ -32,7 +32,7 @@ class NivessaBuyPremiumsController extends Controller
 
     public function publicFeed()
     {
-        $data = Cache::remember('buypremiums2', 3600, function () {
+        $data = Cache::remember('buypremiums3', 3600, function () {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $s = BuyMarginSettings::get($businessId);
             $pct = [
@@ -112,6 +112,45 @@ class NivessaBuyPremiumsController extends Controller
      * than we sold, most sold first. Rare: the priciest single sales
      * (RARE_MIN_PRICE+) in RARE_WINDOW_DAYS, one per title.
      */
+    /** "JACKSON, MICHAEL" / "Squeeze (2)" / "THE POLICE" -> "Michael Jackson" / "Squeeze" / "The Police". */
+    public static function cleanArtist($a)
+    {
+        $a = trim(preg_replace('/\s*\(\d+\)\s*$/', '', trim($a)));
+        if (!preg_match('/&|\band\b/i', $a) && preg_match('/^([^,]+),\s*([^,]+)$/', $a, $m) && str_word_count($m[1]) <= 2 && str_word_count($m[2]) <= 2) {
+            $a = trim($m[2]) . ' ' . trim($m[1]);
+        }
+        if ($a === mb_strtoupper($a) || $a === mb_strtolower($a)) {
+            $a = mb_convert_case(mb_strtolower($a), MB_CASE_TITLE);
+        }
+        return $a;
+    }
+
+    /**
+     * Catalog names come as "Artist - Title", "ARTIST / TITLE (180G/2LP...",
+     * or "ARTIST - LAST,FIRST / TITLE". Returns "Artist - Title" or null when
+     * there's no usable title.
+     */
+    public static function cleanTitle($name, $artist)
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        // Drop bracketed edition notes, including ones cut off mid-way.
+        $name = trim(preg_replace('/\s*[\(\[][^\)\]]*([\)\]]|$)/', '', $name));
+        $parts = preg_split('/\s+[-–—\/]\s+/u', $name);
+        $title = trim((string) end($parts));
+        $who = count($parts) > 1 ? trim($parts[0]) : $artist;
+        if ($title === '' || ($who !== '' && mb_strtolower($title) === mb_strtolower($who))) {
+            return null;
+        }
+        if ($who === '' || preg_match(self::NOT_AN_ARTIST, $who)) {
+            $who = $artist;
+        }
+        if ($title === mb_strtoupper($title)) {
+            $title = mb_convert_case(mb_strtolower($title), MB_CASE_TITLE);
+        }
+        $who = $who !== '' && !preg_match(self::NOT_AN_ARTIST, $who) ? self::cleanArtist($who) : '';
+        return $who !== '' ? $who . ' - ' . $title : $title;
+    }
+
     protected function wanted($businessId, $locationId)
     {
         $sold = DB::table('transaction_sell_lines as tsl')
@@ -147,16 +186,18 @@ class NivessaBuyPremiumsController extends Controller
         $out = [];
         $rows = $sold->sortByDesc(function ($r) { return (float) $r->q; });
         foreach ($rows as $r) {
-            $artist = trim((string) $r->artist);
-            if (preg_match(self::NOT_AN_ARTIST, $artist)) {
+            $raw = trim((string) $r->artist);
+            if (preg_match(self::NOT_AN_ARTIST, $raw)) {
                 continue;
             }
             $sub = (int) $r->sub;
-            if (($stock[$sub . '|' . mb_strtolower($artist)] ?? 0) > (float) $r->q) {
+            if (($stock[$sub . '|' . mb_strtolower($raw)] ?? 0) > (float) $r->q) {
                 continue;
             }
+            $artist = self::cleanArtist($raw);
             $out[$sub]['artists'] = $out[$sub]['artists'] ?? [];
-            if (count($out[$sub]['artists']) < self::ARTISTS_PER_GENRE) {
+            if (count($out[$sub]['artists']) < self::ARTISTS_PER_GENRE
+                && !in_array(mb_strtolower($artist), array_map('mb_strtolower', $out[$sub]['artists']), true)) {
                 $out[$sub]['artists'][] = $artist;
             }
         }
@@ -176,14 +217,22 @@ class NivessaBuyPremiumsController extends Controller
             ->limit(2000)
             ->select('p.sub_category_id as sub', 'p.name', 'p.artist')
             ->get();
+        // New sealed stock is retail, not something people bring in to sell.
+        $sealedSubs = DB::table('categories as c')
+            ->join('categories as f', 'f.id', '=', 'c.parent_id')
+            ->where('c.business_id', $businessId)
+            ->where(function ($q) {
+                $q->where('f.name', 'like', '%sealed%')->orWhere('f.name', 'like', '%new%');
+            })->pluck('c.id')->map(function ($v) { return (int) $v; })->flip()->all();
         $seen = [];
         foreach ($rare as $r) {
             $sub = (int) $r->sub;
-            $name = trim(preg_replace('/\s+/', ' ', (string) $r->name));
-            $artist = trim((string) $r->artist);
-            // Most records are named "Artist - Title"; add the artist when not.
-            if ($artist !== '' && !preg_match(self::NOT_AN_ARTIST, $artist) && stripos($name, $artist) === false) {
-                $name = $artist . ' - ' . $name;
+            if (isset($sealedSubs[$sub])) {
+                continue;
+            }
+            $name = self::cleanTitle((string) $r->name, trim((string) $r->artist));
+            if ($name === null) {
+                continue;
             }
             $k = $sub . '|' . mb_strtolower($name);
             if ($name === '' || isset($seen[$k])) {
