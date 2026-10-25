@@ -183,8 +183,10 @@ class WhatnotSeller
 
         $wnPrice = self::whatnotPriceByProduct($businessId);
         $receiptPrice = [];
+        $inStack = [];
         foreach (self::receiptMatches($businessId) as $m) {
             if ($m['match']) { $receiptPrice[$m['match']['id']] = (float) $m['price']; }
+            foreach ((array) $m['stack'] as $c) { $inStack[$c['id']] = $m['order']; }
         }
         $out = [];
         foreach ($rows as $r) {
@@ -243,6 +245,7 @@ class WhatnotSeller
                 'by_golden'      => strpos((string) $r->staff_note, self::NOTE_TAG) === 0,
                 // True when 'sold' is the real Whatnot price (he marked it,
                 // or it came from Whatnot), not just the sticker staff rang.
+                'stack'          => $inStack[(int) $r->line_id] ?? null,
                 'real'           => $fromWhatnot || strpos((string) $r->staff_note, self::NOTE_TAG) === 0 || strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0,
                 'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0 ? 'Whatnot report' : (string) $r->entered_by),
                 'note'           => trim((string) $r->sell_line_note . ''),
@@ -693,12 +696,50 @@ class WhatnotSeller
             if (isset($usedR[$ri]) || isset($taken[$k]) || $score < 0.75) { continue; }
             $usedR[$ri] = [$k, $score]; $taken[$k] = true;
         }
+        // Stacks: one Whatnot sale for several records. Give each stack the
+        // rings whose titles it names, then (when it's the only stack that day
+        // and nothing else that day is unread) the day's leftover rings.
+        $isStack = function ($r) { return (bool) preg_match('/\blot\b/i', $r['record']); };
+        $stackRings = [];
+        $spairs = [];
+        foreach ($rlist as $ri => $r) {
+            if (!$isStack($r)) { continue; }
+            $stackRings[$ri] = [];
+            $rw = self::words(preg_replace('/\b(lot|may|be|another|record|records|behind|more|others|several|stand|fanned|out|front|one|cover|white|red|maybe|unclear|it|on|with|has|is|are|other|lps|jazz|drawn|figures|next|to)\b/i', ' ', $r['record']));
+            if (!$rw) { continue; }
+            $last = Carbon::parse($r['date'])->addDays(3)->format('Y-m-d');
+            foreach ($pool as $k => $c) {
+                if (isset($taken[$k]) || !$c['words'] || $c['date'] < $r['date'] || $c['date'] > $last) { continue; }
+                $hit = count(array_intersect($rw, $c['words']));
+                if ($hit) { $spairs[] = [$hit + ($c['date'] === $r['date'] ? 0.01 : 0), $ri, $k]; }
+            }
+        }
+        usort($spairs, function ($x, $y) { return $y[0] <=> $x[0]; });
+        foreach ($spairs as [$sc, $ri, $k]) {
+            if (isset($taken[$k])) { continue; }
+            $taken[$k] = true; $stackRings[$ri][] = $k;
+        }
+        $byDay = [];
+        foreach ($rlist as $ri => $r) {
+            $byDay[$r['date']]['stacks'] = $byDay[$r['date']]['stacks'] ?? [];
+            $byDay[$r['date']]['unread'] = $byDay[$r['date']]['unread'] ?? 0;
+            if ($isStack($r)) { $byDay[$r['date']]['stacks'][] = $ri; }
+            elseif (!isset($usedR[$ri])) { $byDay[$r['date']]['unread']++; }
+        }
+        foreach ($byDay as $d => $info) {
+            if (count($info['stacks']) !== 1 || $info['unread'] > 0) { continue; }
+            foreach ($pool as $k => $c) {
+                if (!isset($taken[$k]) && $c['date'] === $d) { $taken[$k] = true; $stackRings[$info['stacks'][0]][] = $k; }
+            }
+        }
         $out = [];
         foreach ($rlist as $ri => $r) {
-            $row = $r + ['match' => null, 'score' => 0];
+            $row = $r + ['match' => null, 'score' => 0, 'stack' => null];
             if (isset($usedR[$ri])) {
                 $row['match'] = $pool[$usedR[$ri][0]];
                 $row['score'] = round($usedR[$ri][1], 2);
+            } elseif (isset($stackRings[$ri])) {
+                $row['stack'] = array_map(function ($k) use ($pool) { return $pool[$k]; }, $stackRings[$ri]);
             }
             $out[] = $row;
         }

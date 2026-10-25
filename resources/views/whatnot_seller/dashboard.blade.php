@@ -95,11 +95,43 @@
                     <tr><td>More than {{ 100 - $s['min_pct_of_sticker'] }}% off</td><td class="num">{{ $k10 }} records</td></tr>
                     <tr><td>At sticker</td><td class="num">{{ $kAt }} records</td></tr>
                     <tr><td>Over sticker</td><td class="num"><a href="{{ $qs(['show' => 'over']) }}">{{ count($overLines) }} records</a></td></tr>
-                    <tr><td>Price not known yet</td><td class="num">{{ count($lines) - count($known) }} records</td></tr>
+                    @php
+                        $stacks = array_values(array_filter($receipt_rows, function ($r) { return !empty($r['stack']); }));
+                        $sRec = 0; $sSt = 0; $sSold = 0;
+                        foreach ($stacks as $r) { $sRec += count($r['stack']); $sSold += $r['price']; foreach ($r['stack'] as $c) { $sSt += (float) $c['sticker']; } }
+                        $inStackCount = count(array_filter($lines, function ($l) { return $l['stack'] && !$l['real']; }));
+                    @endphp
+                    <tr><td>Sold in stacks</td><td class="num">{{ count($stacks) }} stacks, {{ $sRec }} records: ${{ number_format($sSt, 2) }} stickers, sold ${{ number_format($sSold, 2) }}</td></tr>
+                    <tr><td>Price not known yet</td><td class="num">{{ count($lines) - count($known) - $inStackCount }} records</td></tr>
                 </table>
             </div>
         </div>
     </div>
+
+    @if(count($stacks))
+    <div class="wn-card">
+        <details>
+            <summary>Stacks: several records sold as one ({{ count($stacks) }})</summary>
+            <div class="table-responsive" style="margin-top:10px;">
+                <table class="table table-condensed">
+                    <thead><tr><th>Day</th><th>Records in the stack</th><th class="text-right">Stickers</th><th class="text-right">Sold for</th><th class="text-right">Difference</th></tr></thead>
+                    <tbody>
+                    @foreach($stacks as $r)
+                        @php $st = array_sum(array_map(function ($c) { return (float) $c['sticker']; }, $r['stack'])); $d = $r['price'] - $st; @endphp
+                        <tr>
+                            <td>{{ $fmt($r['date']) }}</td>
+                            <td>@foreach($r['stack'] as $c)<div>{{ $c['title'] }}{{ $c['sticker'] ? ' ($' . number_format($c['sticker'], 2) . ')' : '' }}</div>@endforeach</td>
+                            <td class="text-right">${{ number_format($st, 2) }}</td>
+                            <td class="text-right">${{ number_format($r['price'], 2) }}</td>
+                            <td class="text-right {{ $d < -0.009 ? 'wn-red' : ($d > 0.009 ? 'wn-green' : '') }}">{{ abs($d) < 0.01 ? '' : ($d > 0 ? '+' : '-') . '$' . number_format(abs($d), 2) }}</td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    </div>
+    @endif
 
     <div class="wn-card">
         <details>
@@ -142,7 +174,7 @@
                         <td>{{ $l['date'] }}</td>
                         <td><a href="{{ url('/sells/' . $l['transaction_id']) }}" target="_blank">{{ $l['title'] }}</a></td>
                         <td class="text-right">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
-                        <td class="text-right">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : 'not known yet' }}</td>
+                        <td class="text-right">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : ($l['stack'] ? 'in a stack' : 'not known yet') }}</td>
                         <td class="text-right {{ $diff !== null && $diff < -0.009 ? 'wn-red' : ($diff !== null && $diff > 0.009 ? 'wn-green' : '') }}">{{ $diff === null || abs($diff) < 0.01 ? '' : ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) }}</td>
                         <td class="text-right">{{ $l['days_in_store'] }}</td>
                         <td class="text-right">${{ number_format($WS::linePay($l), 2) }}</td>
