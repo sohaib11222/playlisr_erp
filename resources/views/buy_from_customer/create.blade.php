@@ -666,7 +666,8 @@ HTML;
                                 @php
                                     // Sarah 2026-05-06: render 7 blank rows on first load so the cashier can
                                     // type a typical haul without having to click "Add line" each time.
-                                    $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => 'VG+', 'standard_multiplier' => 0.10];
+                                    // Jon 2026-10-25: no default grade on single records; the cashier picks.
+                                    $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => '', 'standard_multiplier' => 0.10];
                                     $lines = $input['lines'] ?? array_fill(0, 7, $defaultRow);
                                     // Where the item is meant to end up once it's sorted/priced. Optional —
                                     // set at intake, can be left blank and decided later.
@@ -701,7 +702,7 @@ HTML;
                                                 <label class="bfc-lastsold-never"><input type="checkbox" name="lines[{{ $i }}][discogs_never_sold]" value="1" @if(!empty($line['discogs_never_sold'])) checked @endif> never sold</label>
                                             </div>
                                         @endif</td>
-                                        <td>{!! Form::select("lines[$i][condition_grade]", array_combine($grades, $grades), $line['condition_grade'] ?? 'VG+', ['class' => 'form-control']) !!}</td>
+                                        <td>{!! Form::select("lines[$i][condition_grade]", ['' => 'Pick grade'] + array_combine($grades, $grades), $line['condition_grade'] ?? '', ['class' => 'form-control bfc-grade']) !!}</td>
                                         <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
                                         <td>
                                             {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
@@ -1302,14 +1303,15 @@ HTML;
             // a fresh row doesn't snap to whichever option is first in the
             // dropdown (which is alphabetical "Fair" — almost never right).
             var prevType = $lastRow.find('select[name$="[item_type]"]').val() || 'individual_vinyl';
-            var prevGrade = $lastRow.find('select[name$="[condition_grade]"]').val() || 'VG+';
+            // Grade isn't copied from the row above: each row gets its type's
+            // default (none for single records, VG for bulk, VG+ sealed).
             var prevStdMult = $lastRow.find('input[name$="[standard_multiplier]"]').val() || '0.10';
             var idx = $tbody.find('tr').length;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
                 + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL">' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
-                + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control">@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
+                + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
                 + '<td><select name="lines[' + idx + '][disposition]" class="form-control bfc-disposition">@foreach($dispositions as $dk => $dl)<option value="{{$dk}}">{{ $dl }}</option>@endforeach</select></td>'
@@ -1318,7 +1320,7 @@ HTML;
                 + '</tr>';
             var $newRow = $($.parseHTML(row));
             $newRow.find('select[name$="[item_type]"]').val(prevType);
-            $newRow.find('select[name$="[condition_grade]"]').val(prevGrade);
+            $newRow.find('select[name$="[condition_grade]"]').val(bfcDefaultGrade(prevType));
             bfcFillGenres($newRow);
             $tbody.append($newRow);
             bfcTypeSearch($newRow);
@@ -1433,6 +1435,8 @@ HTML;
                 var link = $.trim($row.find('input[name$="[discogs_link]"]').val() || '');
                 if (val > {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_TYPO }}) sanity.push('Line ' + (i + 1) + ': $' + val + ' is not a real price (a barcode or Discogs ID in the value box?).');
                 if (type === 'individual_vinyl' && qty > {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }}) sanity.push('Line ' + (i + 1) + ': "1-9 items" vinyl is for up to {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }} records. Use a 10+ Bulk Vinyl type.');
+                var title = $.trim($row.find('input[name$="[title]"]').val() || '');
+                if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
             });
             if (sanity.length) {
@@ -1462,6 +1466,7 @@ HTML;
                     'mode' => $bfcCfg['mode'],
                     'unit_rate' => $bfcCfg['unit_rate'] ?? null,
                     'no_grading' => !empty($bfcCfg['no_grading']),
+                    'default_grade' => app(\App\Services\BuyOfferCalculatorService::class)->defaultGradeFor($bfcK),
                     'value_tiers' => $bfcCfg['value_tiers'] ?? null,
                 ];
             }
@@ -1595,9 +1600,24 @@ HTML;
         function bfcGradeMult(type, grade) {
             var t = BFC_RULES.types[type];
             if (!t || t.no_grading) return 1.0;
-            var g = BFC_RULES.grades[grade];
-            return (g === undefined || g === null) ? 1 : g;
+            var g = BFC_RULES.grades[grade || bfcDefaultGrade(type)];
+            // No grade picked on a single record: $0 until the cashier picks one.
+            return (g === undefined || g === null) ? 0 : g;
         }
+        // Same as BuyOfferCalculatorService::defaultGradeFor.
+        function bfcDefaultGrade(type) {
+            var t = BFC_RULES.types[type];
+            return (t && t.default_grade) ? t.default_grade : '';
+        }
+        // A grade the cashier picked stays; otherwise switching the type
+        // resets it to the new type's default.
+        $(document).on('change', '#offer_lines_table select.bfc-grade', function (e) {
+            if (e.originalEvent) $(this).data('manual', true);
+        });
+        $(document).on('change', '#offer_lines_table select[name$="[item_type]"]', function () {
+            var $g = $(this).closest('tr').find('select.bfc-grade');
+            if (!$g.data('manual')) $g.val(bfcDefaultGrade($(this).val())).trigger('change');
+        });
         function bfcPercentForValue(v, tiers) {
             v = parseFloat(v) || 0;
             tiers = tiers || [];

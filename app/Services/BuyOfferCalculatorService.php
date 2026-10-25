@@ -220,6 +220,28 @@ class BuyOfferCalculatorService
         return $output;
     }
 
+    /**
+     * Jon 2026-10-25: VG+ was left on 72% of graded lines (89% of units) and
+     * grades mostly went up, rarely down. Single records have no default (the
+     * cashier must pick); bulk lots default to VG (mixed condition); sealed
+     * bulk stays VG+. Null = no grading or must pick.
+     */
+    public function defaultGradeFor($itemType)
+    {
+        $cfg = $this->getRules()['item_types'][$itemType] ?? null;
+        if (!$cfg || !empty($cfg['no_grading']) || $cfg['mode'] !== 'bulk_fixed') {
+            return null;
+        }
+        return strpos($itemType, '_sealed') !== false ? 'VG+' : 'VG';
+    }
+
+    /** A bulk lot whose Near Mint / Mint grade needs a manager (sealed lots are mint by nature). */
+    public function isBulkGraded($itemType)
+    {
+        $cfg = $this->getRules()['item_types'][$itemType] ?? null;
+        return $cfg && empty($cfg['no_grading']) && $cfg['mode'] === 'bulk_fixed' && strpos($itemType, '_sealed') === false;
+    }
+
     public function getGradesForDropdown()
     {
         return array_keys($this->getRules()['grade_multipliers']);
@@ -285,7 +307,12 @@ class BuyOfferCalculatorService
             }
 
             $noGrading = !empty($cfg['no_grading']);
-            $grade = $line['condition_grade'] ?? ($cfg['default_grade'] ?? 'VG+');
+            $grade = (string) ($line['condition_grade'] ?? '');
+            if ($grade === '' || !isset($rules['grade_multipliers'][$grade])) {
+                // No grade picked: the type's default, VG for single records
+                // (validation blocks those before Calculate anyway).
+                $grade = $this->defaultGradeFor($itemType) ?: 'VG';
+            }
             $gradeMultiplier = $noGrading ? 1.0 : (float) ($rules['grade_multipliers'][$grade] ?? 1);
             $standardMultiplier = (float) ($line['standard_multiplier'] ?? $rules['individual_vinyl_standard_multiplier']);
             $discogsMedian = (float) ($line['discogs_median_price'] ?? 0);
