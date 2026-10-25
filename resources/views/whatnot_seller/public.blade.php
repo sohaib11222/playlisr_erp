@@ -36,6 +36,10 @@
         td.num { text-align: right; white-space: nowrap; }
         .price { width: 110px; flex: none; }
         .hidden { display: none; }
+        table.pay td { font-size: 16px; padding: 8px 4px; }
+        table.pay tr.tot td { font-size: 20px; font-weight: 700; border-top: 2px solid #222; border-bottom: 0; }
+        table.list th { text-align: left; font-size: 13px; padding: 6px 4px; border-bottom: 2px solid #ddd; }
+        table.list th.num { text-align: right; }
     </style>
 </head>
 <body>
@@ -80,32 +84,43 @@
         <div class="meta" style="margin-top:8px;">Up to $1 off per $10 of sticker is fine. @if($s['premium_pct'] !== null)Bonus: ${{ number_format($s['premium_per_item'], 2) }} for anything {{ rtrim(rtrim(number_format($s['premium_pct'], 2), '0'), '.') }}%+ over sticker{{ $s['premium_start'] && $s['premium_start'] > now('America/Los_Angeles')->format('Y-m-d') ? ', starting ' . \Carbon\Carbon::parse($s['premium_start'])->format('m/d/y') : '' }}.@endif</div>
     </div>
 
+    @php $WSc = \App\Services\WhatnotSeller::class; @endphp
     <div class="card">
-        <h2>Your pay since {{ $period_start }} <a href="{{ url('/whatnot-seller/' . $token . '/statement') }}" style="font-size:14px; font-weight:normal; margin-left:8px;">Pay statement</a></h2>
-        <div class="totals">
-            <div>Items sold<b>{{ (int) $pay['items'] }}</b>${{ number_format($pay['item_pay'], 2) }} at ${{ number_format($s['per_item'], 2) }} each @if($s['premium_pct'] !== null) ({{ (int) $pay['premium_items'] }} at ${{ number_format($s['premium_per_item'], 2) }}) @endif</div>
-            <div>Whatnot hours<b>{{ \App\Services\WhatnotSeller::hoursLabel($pay['minutes']) }}</b>${{ number_format($pay['hour_pay'], 2) }} at ${{ number_format($s['hourly_rate'], 2) }}/hr</div>
-            <div>Total<b>${{ number_format($pay['total'], 2) }}</b>incl. ${{ number_format($pay['tips'], 2) }} tips</div>
-        </div>
-        @if(count($shows))
-            <table style="margin-top:10px;">
-                @foreach($shows as $h)
-                    <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ $h['note'] }}</td><td class="num">${{ number_format($h['minutes'] / 60 * $s['hourly_rate'], 2) }}</td></tr>
-                @endforeach
-            </table>
-        @endif
-        <table style="margin-top:10px;">
-                <tr><th style="text-align:left">Date</th><th style="text-align:left">Record</th><th class="num">Sticker</th><th class="num">Sold for</th><th class="num">You get</th></tr>
+        <h2>Your pay since {{ $period_start }}</h2>
+        <table class="pay">
+            <tr><td>{{ (int) $pay['items'] }} records sold</td><td class="num">${{ number_format($pay['item_pay'], 2) }}</td></tr>
+            <tr><td>{{ $WSc::hoursLabel($pay['minutes']) }} on Whatnot</td><td class="num">${{ number_format($pay['hour_pay'], 2) }}</td></tr>
+            <tr><td>Tips</td><td class="num">${{ number_format($pay['tips'], 2) }}</td></tr>
+            <tr class="tot"><td>Total</td><td class="num">${{ number_format($pay['total'], 2) }}</td></tr>
+        </table>
+        <a href="{{ url('/whatnot-seller/' . $token . '/statement') }}">Pay statement</a>
+    </div>
+
+    <div class="card">
+        <h2>Shows</h2>
+        <table class="list">
+            <tr><th>Date</th><th>Start</th><th>Length</th><th class="num">Pay</th></tr>
+            @forelse($shows as $h)
+                <tr><td>{{ \Carbon\Carbon::parse($h['date'])->format('m/d/y') }}</td><td>{{ \Illuminate\Support\Str::before(\Illuminate\Support\Str::after($h['note'], 'Whatnot show '), ',') }}</td><td>{{ $WSc::hoursLabel($h['minutes']) }}</td><td class="num">${{ number_format($h['minutes'] / 60 * $s['hourly_rate'], 2) }}</td></tr>
+            @empty
+                <tr><td colspan="4">No shows yet.</td></tr>
+            @endforelse
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Records sold</h2>
+        <table class="list">
+            <tr><th>Date</th><th>Record</th><th class="num">Sticker</th><th class="num">Sold for</th></tr>
             @forelse($lines as $l)
                 <tr>
                     <td>{{ $l['date'] }}</td>
                     <td>{{ $l['title'] }}</td>
                     <td class="num">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
                     <td class="num">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : '' }}</td>
-                    <td class="num">${{ number_format(\App\Services\WhatnotSeller::linePay($l), 2) }}</td>
                 </tr>
             @empty
-                <tr><td>No Whatnot sales marked yet.</td></tr>
+                <tr><td colspan="4">No records marked yet.</td></tr>
             @endforelse
         </table>
     </div>
