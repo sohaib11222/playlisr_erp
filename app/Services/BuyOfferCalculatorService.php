@@ -221,13 +221,20 @@ class BuyOfferCalculatorService
                 'poster_value' => ['label' => 'Poster: signed / rare (enter its sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
                 // Jon 2026-10-25: rare VHS / DVD / book / comic ($15+) by its eBay
                 // median sold value, paid by that category's speed (RARE_SPEED_PAY).
-                'rare_vhs' => ['label' => 'VHS - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
-                'rare_dvd' => ['label' => 'DVD - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
-                'rare_book' => ['label' => 'Book - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
-                'rare_comic' => ['label' => 'Comic - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_vhs' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'VHS - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_dvd' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'DVD - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_book' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Book - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_comic' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Comic - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                // Jon 2026-10-25: rare cards ($15+) and card packs by their eBay
+                // value, paid by the subcategory's speed (packs: no minimum).
+                'rare_mlb' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'MLB - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_nba' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'NBA - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_nfl' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'NFL - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_pokemon' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Pokemon - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'card_pack' => ['label' => 'Card Packs', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: framed art, flat $3.50; rare pieces by their value.
                 'framed_art' => ['label' => 'Framed Art', 'mode' => 'bulk_fixed', 'unit_rate' => 3.50, 'no_grading' => true],
-                'rare_framed_art' => ['label' => 'Framed Art - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_framed_art' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Framed Art - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: signed items get their own line (was a checkbox
                 // on single records): SIGNED_PAY of the signed copy's sold value.
                 'signed_item' => ['label' => 'Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],

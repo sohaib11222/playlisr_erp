@@ -25,6 +25,11 @@ $lines = [
     ['item_type' => 'rare_book', 'title' => 'Rare Book', 'quantity' => 1, 'discogs_median_price' => 15],
     ['item_type' => 'rare_comic', 'title' => 'Rare Comic', 'quantity' => 2, 'discogs_median_price' => 100],
     ['item_type' => 'framed_art', 'title' => 'Framed Art', 'quantity' => 3],
+    ['item_type' => 'rare_mlb', 'title' => 'MLB - rare', 'quantity' => 1, 'discogs_median_price' => 50],
+    ['item_type' => 'rare_nba', 'title' => 'NBA - rare', 'quantity' => 1, 'discogs_median_price' => 50],
+    ['item_type' => 'rare_nfl', 'title' => 'NFL - rare', 'quantity' => 1, 'discogs_median_price' => 50],
+    ['item_type' => 'rare_pokemon', 'title' => 'Pokemon - rare', 'quantity' => 1, 'discogs_median_price' => 50],
+    ['item_type' => 'card_pack', 'title' => 'Card Packs', 'quantity' => 10, 'discogs_median_price' => 6],
     ['item_type' => 'rare_framed_art', 'title' => 'Framed Art - rare', 'quantity' => 1, 'discogs_median_price' => 80],
     ['item_type' => 'individual_vinyl', 'title' => 'Old signed draft', 'signed' => '1', 'quantity' => 1, 'discogs_median_price' => 50],
 ];

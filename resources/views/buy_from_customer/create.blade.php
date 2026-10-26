@@ -1439,7 +1439,7 @@ HTML;
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
                 if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 var tcfg = BFC_RULES.types[type] || {};
-                if (tcfg.speed_pay && qty > 0 && val < BFC_RARE_MIN) sanity.push('Line ' + (i + 1) + ': "' + $row.find('select[name$="[item_type]"] option:selected').text() + '" is for items worth $' + BFC_RARE_MIN + '+ on eBay. Use the regular line for cheaper ones.');
+                if (tcfg.min_value && qty > 0 && val < tcfg.min_value) sanity.push('Line ' + (i + 1) + ': "' + $row.find('select[name$="[item_type]"] option:selected').text() + '" is for items worth $' + tcfg.min_value + '+ on eBay. Use the regular line for cheaper ones.');
                 if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
             });
             if (sanity.length) {
@@ -1473,6 +1473,7 @@ HTML;
                     'value_tiers' => $bfcCfg['value_tiers'] ?? null,
                     'fixed_hv' => !empty($bfcCfg['fixed_hv']),
                     'speed_pay' => !empty($bfcCfg['speed_pay']),
+                    'min_value' => $bfcCfg['min_value'] ?? null,
                 ];
             }
         @endphp
@@ -1521,7 +1522,6 @@ HTML;
         var BFC_GENRES = @json((object) $bfcGenres);
         var BFC_DEMAND_URL = @json(route('buy-from-customer.beta.demand'));
         var BFC_MARGINS = @json($bfcMargins);
-        var BFC_RARE_MIN = {{ (int) \App\Services\BuyOfferCalculatorService::RARE_MIN_VALUE }};
         var BFC_RARE_PAY = @json(\App\Services\BuyOfferCalculatorService::RARE_SPEED_PAY);
         var BFC_SPEED_NAMES = { slow: 'slow seller', normal: 'normal speed', fast: 'fast seller', super_fast: 'super-fast seller' };
         function bfcRareSpeed($row) {
@@ -1604,7 +1604,7 @@ HTML;
                     if ((BFC_RULES.types[type] || {}).speed_pay) {
                         var sp = bfcRareSpeed($row);
                         $row.find('.bfc-line-cell').append($('<span>').addClass('bfc-demand-chip bfc-demand-margin')
-                            .text('Rare, ' + BFC_SPEED_NAMES[sp] + ': pay ' + Math.round(BFC_RARE_PAY[sp] * 100) + '% of eBay' + (d.reason ? ' · ' + d.reason : '')));
+                            .text(BFC_SPEED_NAMES[sp].charAt(0).toUpperCase() + BFC_SPEED_NAMES[sp].slice(1) + ': pay ' + Math.round(BFC_RARE_PAY[sp] * 100) + '% of eBay' + (d.reason ? ' · ' + d.reason : '')));
                         bfcRecalcAll();
                         return;
                     }

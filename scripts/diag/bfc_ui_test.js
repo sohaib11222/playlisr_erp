@@ -26,7 +26,7 @@ const fs = require('fs');
   ok('page has line rows', st.rows > 0, st.rows);
   ok('signed checkbox gone', st.signedBox === 0);
   ok('type/grade/goes-to are searchable (select2)', st.typeS2 && st.gradeS2 && st.dispS2, st);
-  ok('new types in Type list', st.opts.length === 7, st.opts);
+  ok('new types in Type list', st.opts.length === 11, st.opts);
 
   // Type-to-search: focus row 1's Type box, type "signed", Enter.
   async function pick(rowN, selSel, text) {
@@ -101,6 +101,15 @@ const fs = require('fs');
   await setValue(6, 80);
   c = await cell(6);
   ok('typing "framed art - r" picks Framed Art - rare, $80 -> $16.00 before speed lookup', v === 'rare_framed_art' && c.value === '$16.00', { v, c });
+
+  v = await pick(7, 'select[name$="[item_type]"]', 'card p');
+  await setValue(7, 6);
+  c = await cell(7);
+  ok('typing "card p" picks Card Packs, $6 allowed -> $1.20', v === 'card_pack' && c.value === '$1.20', { v, c });
+  v = await pick(3, 'select[name$="[item_type]"]', 'pokemon - r');
+  ok('typing "pokemon - r" picks Pokemon - rare', v === 'rare_pokemon', v);
+  v = await pick(3, 'select[name$="[item_type]"]', 'nba - r');
+  ok('typing "nba - r" picks NBA - rare', v === 'rare_nba', v);
 
   // Add line keeps working with select2 on the new row.
   await page.click('#add_line_btn');

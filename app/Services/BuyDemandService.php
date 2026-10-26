@@ -57,6 +57,11 @@ class BuyDemandService
         'rare_book' => ['/^books?$/i', null],
         'rare_comic' => ['/^books?$/i', '/^comic/i'],
         'rare_framed_art' => ['/^art/i', '/^framed/i'],
+        'rare_mlb' => ['/^trading cards$/i', '/^mlb/i'],
+        'rare_nba' => ['/^trading cards$/i', '/^nba/i'],
+        'rare_nfl' => ['/^trading cards$/i', '/^nfl/i'],
+        'rare_pokemon' => ['/^trading cards$/i', '/^pokemon cards/i'],
+        'card_pack' => ['/^trading cards$/i', '/^packs$/i'],
     ];
 
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its
