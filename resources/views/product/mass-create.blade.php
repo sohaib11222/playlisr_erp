@@ -581,6 +581,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
             <h3 class="box-title">
                 <i class="fa fa-music"></i> Bulk Discogs Release IDs
+                <span style="font-size: 14px; font-weight: 600; color: #000; margin-left: 8px;">Type: number, price, condition (e.g. 1873085 19.99 VG+/G+)</span>
                 {{-- Sarah 2026-07-22: Discogs logo next to the heading. --}}
                 <span style="display:inline-flex; align-items:center; gap:5px; margin-left:8px; vertical-align:middle;">
                     <svg title="Discogs" role="img" aria-label="Discogs" viewBox="0 0 32 32" style="height:18px; width:18px;" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#333333" stroke-width="2.4"><circle cx="16" cy="16" r="14"/><circle cx="16" cy="16" r="8.2"/></g><circle cx="16" cy="16" r="2.4" fill="#333333"/></svg>
@@ -595,27 +596,37 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         </div>
         <div class="box-body" style="display: none;">
             <div class="form-group">
-                <label for="bulk_discogs_ids">
-                    <strong>Paste Discogs release IDs / URLs <em>or</em> CSV rows (one per line).</strong>
-                </label>
-                <div class="alert alert-info" style="margin-bottom: 10px; padding: 10px;">
-                    <strong>Accepted formats (mix and match, one per line):</strong>
-                    <ul style="margin-bottom: 0; padding-left: 20px;">
-                        <li>Discogs release ID, optionally with a trailing price &mdash; <code>1873085</code> or <code>1873085 19.99</code></li>
-                        <li>Add the condition before or after the price &mdash; <code>1873085 19.99 VG+</code>, <code>1873085 VG+ 19.99</code>, or record/sleeve <code>1873085 19.99 VG+/G+</code>. Grades: Sealed, M, NM, VG+, VG, G+, G, F, P. Sleeve can also be <code>generic</code> or <code>nocover</code>.</li>
-                        <li>Discogs release URL, optionally with a trailing price &mdash; <code>discogs.com/release/249504 25</code></li>
-                        <li>CSV row &mdash; <code>Product Name,Artist,Category,Subcategory,SKU,Price</code> (any field may be left blank, e.g. <code>Some LP,Some Artist,,,,19.99</code>). Wrap fields containing commas in double quotes.</li>
-                    </ul>
+                {{-- Plain how-to, condition included (Sarah, 2026-10-26: "more obvious suggestive text") --}}
+                <div style="margin-bottom: 12px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; color: #000; font-size: 15px;">
+                    <div style="font-weight: 800; font-size: 17px; margin-bottom: 6px;">One record per line: Discogs number, price, condition</div>
+                    <div style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; background: #fff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
+                        1873085 &nbsp;19.99 &nbsp;VG+/G+
+                    </div>
+                    <div style="margin-bottom: 6px;"><strong>1873085</strong> is the number at the end of the Discogs release link (you can paste the whole link instead). <strong>19.99</strong> is our price. <strong>VG+/G+</strong> is the record, then the sleeve.</div>
+                    <div style="margin-bottom: 6px;"><strong>Always add the condition.</strong> It prints on the sticker and shows on the website, so the customer knows what they are getting.</div>
+                    <table style="border-collapse: collapse; font-size: 14px; margin-top: 4px;">
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>Sealed</code></td><td>still in shrink</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>M</code> / <code>NM</code></td><td>mint / near mint, looks unplayed</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>VG+</code></td><td>light marks, plays great</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>VG</code></td><td>marks you can see and some surface noise</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>G+</code> / <code>G</code></td><td>heavy wear, plays through with noise</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>F</code> / <code>P</code></td><td>fair / poor, damaged</td></tr>
+                        <tr><td style="padding: 2px 12px 2px 0;"><code>generic</code> / <code>nocover</code></td><td>sleeve only: plain sleeve, or no cover at all</td></tr>
+                    </table>
+                    <div style="margin-top: 8px;">More examples: <code>1873085 19.99 VG+</code> (sleeve not graded), <code>1873085 VG 12</code> (either order works), <code>1873085 8 VG/generic</code>, <code>1873085 29.99 sealed</code></div>
                 </div>
                 <textarea
                     id="bulk_discogs_ids"
                     class="form-control"
                     rows="8"
-                    placeholder="Examples (mix and match):&#10;1873085&#10;1873085 19.99&#10;https://www.discogs.com/release/249504-Pink-Floyd-The-Dark-Side-Of-The-Moon&#10;https://www.discogs.com/release/249504 25&#10;discogs.com/release/366070 $12.50&#10;The Dark Side Of The Moon,Pink Floyd,Used Vinyl,Rock,SHVL 804,24.99"
-                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
-                <small class="text-muted">
-                    <i class="fa fa-info-circle"></i> Lines with commas are treated as direct CSV rows &mdash; no Discogs lookup. Category/Subcategory names must match an existing combo (case-insensitive); unmatched categories leave the row's category blank.
-                </small>
+                    placeholder="Type one per line, like this:&#10;1873085 19.99 VG+/G+&#10;249504 25 NM/VG+&#10;366070 12.50 VG/generic&#10;https://www.discogs.com/release/1234567 29.99 sealed"
+                    style="font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.6;"></textarea>
+                {{-- Live check of each line before fetching --}}
+                <div id="bulk_discogs_preview" style="margin-top: 8px; font-size: 14px; color: #000;"></div>
+                <details style="margin-top: 8px; color: #000; font-size: 13px;">
+                    <summary style="cursor: pointer;">Adding something that is not on Discogs?</summary>
+                    Type a CSV row instead: <code>Product Name,Artist,Category,Subcategory,SKU,Price</code> (leave any field blank, e.g. <code>Some LP,Some Artist,,,,19.99</code>). Wrap fields with commas in double quotes.
+                </details>
             </div>
             <div class="form-group">
                 <button type="button" class="btn btn-success" id="fetch_discogs_ids">
@@ -2964,6 +2975,22 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         return null;
     }
 
+    // Show how each typed line will be read, and nudge for a missing price or condition.
+    $('#bulk_discogs_ids').on('input', function() {
+        const lines = ($(this).val() || '').split(/\r?\n/).filter(l => l.trim());
+        const esc = t => $('<div>').text(t).html();
+        const html = lines.slice(0, 50).map(function(l) {
+            const e = parseDiscogsBulkLine(l);
+            if (!e) return `<div style="color:#b91c1c;font-weight:700;">${esc(l.trim())}: can't read this line. Start with the Discogs number.</div>`;
+            if (e.type === 'csv') return `<div>${esc(e.csv.name)}: added as typed (not from Discogs)</div>`;
+            const bits = [`Discogs ${e.id}`, e.price ? `$${e.price}` : '<span style="color:#b91c1c;font-weight:700;">no price</span>',
+                e.cond ? `Record ${esc(e.cond)}` : '<span style="color:#b91c1c;font-weight:700;">add a condition (VG+, VG, G+...)</span>'];
+            if (e.sleeve) bits.push(`Sleeve ${esc(e.sleeve)}`);
+            return `<div>${bits.join(', ')}</div>`;
+        }).join('');
+        $('#bulk_discogs_preview').html(html);
+    });
+
     $('#fetch_discogs_ids').on('click', function() {
         const raw = $('#bulk_discogs_ids').val() || '';
         const entries = raw.split(/\r?\n/)
@@ -3059,7 +3086,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             );
             if (!failed && !warnings.length) {
                 toastr.success(`Added ${added} row${added === 1 ? '' : 's'}.`);
-                $('#bulk_discogs_ids').val('');
+                $('#bulk_discogs_ids').val(''); $('#bulk_discogs_preview').empty();
             } else if (failed) {
                 toastr.warning(`${failed} of ${total} entries failed. See details on the page.`);
             } else {
@@ -3176,7 +3203,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
     });
 
     $('#clear_discogs_ids').on('click', function() {
-        $('#bulk_discogs_ids').val('');
+        $('#bulk_discogs_ids').val(''); $('#bulk_discogs_preview').empty();
         $('#discogs_fetch_status').html('');
     });
 
