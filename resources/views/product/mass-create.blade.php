@@ -2992,7 +2992,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             if (!e) return `<div style="color:#b91c1c;font-weight:700;">${esc(l.trim())}: can't read this line. Start with the Discogs number.</div>`;
             if (e.type === 'csv') return `<div>${esc(e.csv.name)}: added as typed (not from Discogs)</div>`;
             const bits = [`Discogs ${e.id}`, e.price ? `$${e.price}` : '<span style="color:#b91c1c;font-weight:700;">no price</span>',
-                e.cond ? `Record ${esc(e.cond)}` : '<span style="color:#b91c1c;font-weight:700;">add a condition (VG+, VG, G+...)</span>'];
+                e.cond ? `Media ${esc(e.cond)}` : '<span style="color:#b91c1c;font-weight:700;">add a grade (VG+/VG+, G/VG+...)</span>'];
             if (e.sleeve) bits.push(`Sleeve ${esc(e.sleeve)}`);
             return `<div>${bits.join(', ')}</div>`;
         }).join('');
@@ -3010,6 +3010,39 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         }
         const discogsCount = entries.filter(e => e.type === 'discogs').length;
         const csvCount = entries.length - discogsCount;
+
+        // Nudge for grades before fetching: without them the price label
+        // prints no condition. "Add anyway" re-clicks with the nudge skipped.
+        const ungraded = entries.filter(e => e.type === 'discogs' && !e.cond).length;
+        const $fetchBtn = $(this);
+        if (ungraded && !$fetchBtn.data('skipGradeNudge')) {
+            swal({
+                title: 'Add the grades?',
+                content: {
+                    element: 'div',
+                    attributes: {
+                        innerHTML: `<div style="text-align:left;font-size:15px;line-height:1.5;">`
+                            + `${ungraded === discogsCount ? 'None' : ungraded + ' of ' + discogsCount} of your lines ${ungraded === discogsCount ? 'have' : 'are missing'} a Media/Sleeve grade.<br><br>`
+                            + `It helps to add them after the price so the grade prints on the label:<br>`
+                            + `<code>1873085 19.99 VG+/VG+</code><br><code>1873085 12.99 G/VG+</code><br><br>`
+                            + `Media grade first, then sleeve.</div>`
+                    }
+                },
+                icon: 'info',
+                buttons: {
+                    cancel: { text: 'Go back & add grades', visible: true, value: false },
+                    confirm: { text: 'Add without grades', value: true, className: 'btn btn-default' }
+                }
+            }).then(function (go) {
+                if (go) {
+                    $fetchBtn.data('skipGradeNudge', true).trigger('click');
+                } else {
+                    $('#bulk_discogs_ids').focus();
+                }
+            });
+            return;
+        }
+        $fetchBtn.removeData('skipGradeNudge');
         const promptParts = [];
         if (discogsCount) promptParts.push(`fetch ${discogsCount} from Discogs`);
         if (csvCount) promptParts.push(`add ${csvCount} CSV row${csvCount === 1 ? '' : 's'}`);
