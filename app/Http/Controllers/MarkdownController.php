@@ -137,7 +137,8 @@ class MarkdownController extends Controller
                 'v.sell_price_inc_tax as price', 'v.default_purchase_price as cost', 'c.name as category', 'sc.name as sub_category',
                 DB::raw('COALESCE(p.listed_at, p.created_at) as listed_at'),
                 DB::raw('(SELECT md.original_price FROM product_markdowns md WHERE md.variation_id = v.id ORDER BY md.id ASC LIMIT 1) as original_price'),
-                DB::raw('(SELECT MAX(md.created_at) FROM product_markdowns md WHERE md.variation_id = v.id) as last_markdown_at'));
+                DB::raw('(SELECT MAX(md.created_at) FROM product_markdowns md WHERE md.variation_id = v.id) as last_markdown_at'),
+                DB::raw('(SELECT md.pct_off FROM product_markdowns md WHERE md.variation_id = v.id ORDER BY md.id DESC LIMIT 1) as last_pct'));
         if ($category_id) {
             $q->where('p.category_id', $category_id);
         }
@@ -205,10 +206,14 @@ class MarkdownController extends Controller
             }
         }
         [, $start, $step, $every, $max] = array_map('floatval', $bucket);
+        // One step at a time, however old the item is: a first markdown is
+        // always the small first step; the next step only comes once a full
+        // "every" period has passed since the last cut and it still did not sell.
+        $lastPct = (int) ($r->last_pct ?? 0);
+        $sinceLast = !empty($r->last_markdown_at) ? (int) \Carbon::parse($r->last_markdown_at)->diffInDays($now) : null;
         $pct = 0;
-        if ($age >= $start) {
-            $steps = 1 + (int) floor(($age - $start) / max(1, $every));
-            $pct = (int) min($steps * $step, $max);
+        if ($age >= $start && ($sinceLast === null || $sinceLast >= $every)) {
+            $pct = (int) min($lastPct + $step, $max);
         }
         $noCost = $cost <= 0;
         $floor = $noCost

@@ -32,7 +32,7 @@
     @endphp
     <div class="tr-table-wrap" style="margin-bottom:10px;">
       <table class="tr-table">
-        <thead><tr><th>Original price</th><th>First cut after</th><th>Each cut</th><th>Then every</th><th>Most off</th></tr></thead>
+        <thead><tr><th>Original price</th><th>First cut after</th><th>Each cut</th><th>Next cut if still unsold after</th><th>Most off</th></tr></thead>
         <tbody>
         @foreach($bk as $i => $b)
           <tr><td>{{ $bkLabel($i) }}</td><td>{{ $b[1] }} days</td><td>{{ $b[2] }}%</td><td>{{ $b[3] }} days</td><td>{{ $b[4] }}%</td></tr>
