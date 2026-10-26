@@ -2118,6 +2118,36 @@ class ContactController extends Controller
         }
     }
 
+    /**
+     * Sarah 2026-10-26: credit for a buy only comes from the buy form. Andy
+     * tried adding it by hand 3-4 times while a buy sat as a draft, and Zak's
+     * 7/23 manual +$70 for Aaron Saunders landed a minute before the same
+     * buy's +$70. So no manual credit for a customer with a buy in the last
+     * 48 hours (draft or finished); admins can still add it.
+     */
+    protected function recentBuyCreditBlock(Contact $contact)
+    {
+        if (auth()->user()->hasRole('Admin#' . $contact->business_id)) {
+            return null;
+        }
+        $buy = \App\BuyCustomerOffer::where('business_id', $contact->business_id)
+            ->where('contact_id', $contact->id)
+            ->where(function ($q) {
+                // Blank drafts (a form opened, nothing entered) don't count.
+                $q->where('status', 'accepted')
+                    ->orWhere(function ($q) { $q->where('status', 'draft')->where('calculated_cash_total', '>', 0); });
+            })
+            ->where('updated_at', '>=', now()->subHours(48))
+            ->orderBy('id', 'desc')
+            ->first();
+        if (!$buy) {
+            return null;
+        }
+        return $buy->status === 'accepted'
+            ? sprintf('This customer sold to us in the last 2 days (%s), and that credit was already added by the buy form. Ask a manager if they are owed more.', $buy->buy_record_number)
+            : sprintf('This customer has an unfinished buy (%s). Finish it on the buy form and the credit is added automatically. Do not add it here.', $buy->buy_record_number);
+    }
+
     public function updateStoreCredit($id, Request $request)
     {
         if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
@@ -2152,6 +2182,10 @@ class ContactController extends Controller
                     'redirect_url' => url('/buy-from-customer?contact_id=' . $contact->id),
                     'msg' => 'Collection purchases must go through the Buy From Customer form.'
                 ]);
+            }
+
+            if ($blocked = $this->recentBuyCreditBlock($contact)) {
+                return response()->json(['success' => false, 'msg' => $blocked]);
             }
 
             // Human-readable label for the audit trail / ledger.
@@ -2237,6 +2271,10 @@ class ContactController extends Controller
             }
             if ($reason === '') {
                 return response()->json(['success' => false, 'msg' => 'Reason is required for credit adjustments.']);
+            }
+
+            if ($delta > 0 && ($blocked = $this->recentBuyCreditBlock($contact))) {
+                return response()->json(['success' => false, 'msg' => $blocked]);
             }
 
             $currentBalance = (float) $contact->balance;
