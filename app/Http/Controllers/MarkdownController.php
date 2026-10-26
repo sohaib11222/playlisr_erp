@@ -52,7 +52,8 @@ class MarkdownController extends Controller
 
     public function rules(int $business_id): array
     {
-        $saved = @json_decode((string) @file_get_contents($this->rulesPath($business_id)), true);
+        $path = $this->rulesPath($business_id);
+        $saved = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
         $rules = array_merge(self::DEFAULT_RULES, is_array($saved) ? $saved : []);
         usort($rules['tiers'], function ($a, $b) { return $a[0] <=> $b[0]; });
         return $rules;
@@ -181,7 +182,10 @@ class MarkdownController extends Controller
         $target = $original * (1 - $pct / 100);
         $new = max($target, $floor);
         if (!empty($rules['round_99']) && $new >= 1) {
-            $new = ceil(round($new, 2)) - 0.01; // up to the next .99, so never under the floor
+            $new = ceil(round($new, 2)) - 0.01; // up to the next .99
+            if ($new < $floor - 0.001) {
+                $new += 1; // a whole-dollar floor ($19.00) must not round to $18.99
+            }
         }
         $new = round($new, 2);
         $due = $pct > 0 && $new <= $price - 0.5;
