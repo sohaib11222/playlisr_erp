@@ -26,7 +26,7 @@ const fs = require('fs');
   ok('page has line rows', st.rows > 0, st.rows);
   ok('signed checkbox gone', st.signedBox === 0);
   ok('type/grade/goes-to are searchable (select2)', st.typeS2 && st.gradeS2 && st.dispS2, st);
-  ok('new types in Type list', st.opts.length === 6, st.opts);
+  ok('new types in Type list', st.opts.length === 7, st.opts);
 
   // Type-to-search: focus row 1's Type box, type "signed", Enter.
   async function pick(rowN, selSel, text) {
