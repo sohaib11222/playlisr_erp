@@ -1,0 +1,70 @@
+# READ-ONLY: buy offers + store credit for a seller by name, plus recent BFC errors in the log.
+name: Diag BFC seller
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Seller name fragment"
+        required: true
+        default: "morales"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            N="${{ github.event.inputs.name }}"
+            php artisan tinker --no-ansi <<PHP
+            \$n = "$N";
+            foreach (\App\Contact::where('name','like','%'.\$n.'%')->orWhere('first_name','like','%'.\$n.'%')->get() as \$c) {
+              echo "CONTACT ".\$c->id." [".\$c->name."] type=".\$c->type." balance=".\$c->balance." mobile=".\$c->mobile." created=".\$c->created_at."\n";
+            }
+            foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
+              echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
+            }
+            echo "--- last 25 offers today ---\n";
+            foreach (\App\BuyCustomerOffer::where('created_at','>=',now()->subDays(2))->orderBy('id','desc')->limit(25)->get() as \$o) {
+              echo \$o->id." ".\$o->status." [".\$o->seller_name."] by=".\$o->created_by." pm=".\$o->payment_method." ".\$o->updated_at."\n";
+            }
+            PHP
+            echo "=== log ==="
+            L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
+            grep -n -i "buy-from-customer\|BuyFromCustomer\|bfc" "$L" | tail -40 | cut -c1-600
+            echo "=== done ==="
