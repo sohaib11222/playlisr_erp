@@ -999,6 +999,10 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && $qty > BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY) {
                 $errors["lines.$i.quantity"] = sprintf('Line %s: "1-9 items" vinyl is for up to %d records. Use a 10+ Bulk Vinyl type for a bigger lot.', $n, BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY);
             }
+            $cfg = $this->calculator->getRules()['item_types'][$type] ?? [];
+            if (!empty($cfg['speed_pay']) && $qty > 0 && $value < BuyOfferCalculatorService::RARE_MIN_VALUE) {
+                $errors["lines.$i.discogs_median_price"] = sprintf('Line %s: "%s" is for items worth $%d or more on eBay. Use the regular line for cheaper ones.', $n, $cfg['label'], BuyOfferCalculatorService::RARE_MIN_VALUE);
+            }
             $title = trim((string) ($line['title'] ?? ''));
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);

@@ -1,0 +1,41 @@
+# READ-ONLY: renders /buy-from-customer on prod (scripts/diag/bfc_calc_check.php)
+# and drives it in headless Chrome. Runs on push to diag-ui/** branches.
+name: Diag BFC UI test
+
+on:
+  push:
+    branches: ['diag-ui/**']
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render page on prod
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3; do ssh-keyscan -T 10 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 5; done
+          scp -i ~/.ssh/id -P $P scripts/diag/bfc_calc_check.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/bfc_calc_check.php"
+          ssh -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" storage/bfc_calc_check.php && php storage/bfc_calc_check.php; rm -f storage/bfc_calc_check.php" > out.txt 2>&1
+          grep -v -E '^[A-Za-z0-9+/=]{100,}$' out.txt | grep -v HTMLB64
+          awk '/^HTMLB64_START/{f=1;next}/^HTMLB64_END/{f=0}f' out.txt | tr -d '\n ' | base64 -d | gunzip > page.html
+          ls -la page.html
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Drive the form
+        run: |
+          npm i --no-save --silent puppeteer@22.15.0
+          node scripts/diag/bfc_ui_test.js page.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bfc-screenshot
+          path: bfc.png
