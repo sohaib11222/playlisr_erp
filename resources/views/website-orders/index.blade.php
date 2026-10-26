@@ -820,6 +820,8 @@
                         @php [$lineTag, $lineTagCls] = $line['gift'] ? ['', ''] : \App\Http\Controllers\WebsiteOrdersController::itemTag($erpLocations[(int) ($lineErp ?? 0)]['genre'] ?? null, $lineItem['product_id']['subCategory'] ?? null, $lineItem['product_id']['productType'] ?? null); @endphp
                         @if($lineTag !== '' && !$woDone)<span class="wo-cond {{ $lineTagCls }}">{{ $lineTag }}</span>@endif
                         @if($lineFmt && !$woDone)<span class="wo-tag fmt">{{ $lineFmt }}</span>@endif
+                        {{-- Condition the customer saw on the listing, so the packer checks it (Nick, 2026-10-26) --}}
+                        @if(!$line['gift'] && !$woDone && !empty($lineItem['product_id']['condition']))<span class="wo-tag fmt">Listed as: {{ $lineItem['product_id']['condition'] }}</span>@endif
                         @php $rowAnyPl = $line['gift'] ? null : ($rowPickLines[strtolower(trim((string) $line['name']))] ?? null); @endphp
                         @if(!empty($lineItem['substituted_from']['name']))<span class="wo-big-tag sub">SUBSTITUTE</span>@elseif($rowAnyPl && ($rowAnyPl['status'] ?? '') === "Can't Find" && in_array($status, ['shipped', 'delivered', 'email_sent'], true))<span class="wo-big-tag cf">NOT SENT</span>@endif
                         <div class="wo-prod-price">{{ $lineItem['quantity'] ?? $line['qty'] }} &times; ${{ number_format((float) ($lineItem['price'] ?? 0), 2) }}</div>
@@ -906,8 +908,11 @@
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="cf" onclick="woHwCheck(this, {{ json_encode(strtolower(trim((string) $line['name']))) }})">Not here either</button>
                             @elseif($plMissing && $activeTab === 'cant_find')
                               {{-- After talking to the customer: swap for another record (Sarah, 2026-10-21) --}}
-                              <button type="button" class="go" onclick="woSubOpen('{{ $o['_id'] }}', '{{ $line['id'] }}', {{ json_encode($line['name']) }}, {{ json_encode($customerName) }})">Substitute</button><button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
-                            @elseif($plDone || $plMissing)
+                              {{-- Someone found it after all: one tap and it ships (Nick, 2026-10-26) --}}
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="go" onclick="woSubOpen('{{ $o['_id'] }}', '{{ $line['id'] }}', {{ json_encode($line['name']) }}, {{ json_encode($customerName) }})">Substitute</button><button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
+                            @elseif($plMissing)
+                              <button type="button" class="go" onclick="woPick(this, 'Picked')">Found it</button><button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
+                            @elseif($plDone)
                               <button type="button" class="undo" onclick="woPick(this, 'Not Picked')">Undo</button>
                             @else
                               <button type="button" class="go" onclick="woPick(this, 'Picked')">Mark picked</button><button type="button" class="cf" onclick="woPick(this, 'Can\'t Find')">Can't find</button><button type="button" class="ds" onclick="woPick(this, 'Dropshipped')">Dropshipped</button>
@@ -1577,10 +1582,11 @@
         <textarea name="internal_note" id="wo-cancel-internal" rows="3" placeholder="What happened and why we refunded, e.g. couldn't find it at Pico after checking the bins twice" oninput="woCancelReady()" style="width:100%;font-size:14px;padding:8px;border:1px solid #d1d5db;border-radius:6px;color:#000;"></textarea>
         <input type="hidden" name="item_names" id="wo-cancel-item-names" value="">
         <label>5. Type CANCEL to confirm</label>
-        <input type="text" id="wo-cancel-typed" autocomplete="off" placeholder="CANCEL" oninput="woCancelReady()">
+        <input type="text" id="wo-cancel-typed" autocomplete="off" placeholder="Type the word CANCEL here" oninput="woCancelReady()">
+        <div id="wo-cancel-missing" style="display:none;margin-top:8px;font-size:14px;font-weight:700;color:#b91c1c;"></div>
         <div class="wo-dialog-actions">
           <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Keep the order</button>
-          <button type="submit" class="wo-btn wo-btn-danger" disabled>Cancel &amp; refund</button>
+          <button type="submit" class="wo-btn wo-btn-danger">Cancel &amp; refund</button>
         </div>
       </form>
     </dialog>
@@ -1660,8 +1666,14 @@
         var giftLeft = parseInt(form.dataset.giftLeft || '0', 10);
         // Typed CANCEL replaces the browser pop-up (Sarah, 2026-10-16)
         var ok = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
-        if ((document.getElementById('wo-cancel-internal').value || '').trim().length < 10) { alert('Write the reason for Jon in step 4.'); return false; }
-        if (!ok) { alert('Type CANCEL in step 5 to confirm.'); return false; }
+        // Say what's missing right in the box instead of a dead button (Nick, 2026-10-26)
+        var miss = [];
+        if (!form.querySelector('select[name="reason"]').value) miss.push('pick a reason in step 2');
+        if ((document.getElementById('wo-cancel-internal').value || '').trim().length < 10) miss.push('write the reason for Jon in step 4 (a full sentence)');
+        if (!ok) miss.push('type the word CANCEL in step 5');
+        var missEl = document.getElementById('wo-cancel-missing');
+        if (miss.length) { missEl.textContent = 'Before this works: ' + miss.join(', ') + '.'; missEl.style.display = 'block'; return false; }
+        missEl.style.display = 'none';
         document.getElementById('wo-cancel-item-names').value = Array.prototype.map.call(picked, function (cb) { return cb.parentNode.querySelector('span').childNodes[0].textContent.trim(); }).join('||');
         if (ok) {
           // One submit only: a second click used to send a second cancel.
@@ -1673,7 +1685,7 @@
       function woOpenCancel(orderId, btn) {
         var form = document.getElementById('wo-cancel-form');
         form.action = '{{ url("/website-orders") }}/' + orderId + '/cancel';
-        form.reset();
+        form.reset(); document.getElementById("wo-cancel-missing").style.display = "none";
         var box = document.getElementById('wo-cancel-items');
         box.innerHTML = '';
         var lines = [];
@@ -2090,7 +2102,8 @@
     var typed = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
     var btn = form.querySelector('button[type="submit"]');
     var why = (document.getElementById('wo-cancel-internal').value || '').trim().length >= 10;
-    if (btn && btn.textContent !== 'Cancelling...') btn.disabled = !(typed && picked.length && why);
+    if (btn && btn.textContent !== 'Cancelling...') btn.style.opacity = (typed && picked.length && why) ? '1' : '.55';
+    if (typed && picked.length && why) document.getElementById('wo-cancel-missing').style.display = 'none';
   }
 </script>
 
