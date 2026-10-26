@@ -59,9 +59,12 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- last 25 offers today ---\n";
-            foreach (\App\BuyCustomerOffer::where('created_at','>=',now()->subDays(2))->orderBy('id','desc')->limit(25)->get() as \$o) {
-              echo \$o->id." ".\$o->status." [".\$o->seller_name."] by=".\$o->created_by." pm=".\$o->payment_method." ".\$o->updated_at."\n";
+            echo "--- user 64 ---\n";
+            \$u=\App\User::find(64); echo \$u->first_name." ".\$u->last_name." ".\$u->username."\n";
+            foreach (\App\BuyCustomerOffer::whereIn('id',[1114,1236,1237,1238,1239,1240,1241,1242,1243,1244])->get() as \$o) {
+              \$a=\$o->getAttributes(); unset(\$a['calculation_snapshot'],\$a['seller_signature_data']);
+              echo "#".\$o->id." ".json_encode(array_filter(\$a, function(\$v){return \$v!==null && \$v!=='' ;}))."\n";
+              foreach (\$o->lines()->get() as \$l) echo "   line [".\$l->title."] ".\$l->item_type." qty=".\$l->quantity." cash=".\$l->line_cash_total." credit=".\$l->line_credit_total."\n";
             }
             PHP
             echo "=== log ==="
