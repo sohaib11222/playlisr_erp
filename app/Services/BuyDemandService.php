@@ -56,6 +56,7 @@ class BuyDemandService
         'rare_dvd' => ['/dvd|blu/i', null],
         'rare_book' => ['/^books?$/i', null],
         'rare_comic' => ['/^books?$/i', '/^comic/i'],
+        'rare_framed_art' => ['/fram|\bart\b/i', null],
     ];
 
     // Overstock (Jon 10/23): a lot on the shelf that sells slower than its

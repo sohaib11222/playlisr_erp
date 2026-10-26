@@ -225,6 +225,9 @@ class BuyOfferCalculatorService
                 'rare_dvd' => ['label' => 'DVD - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 'rare_book' => ['label' => 'Book - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 'rare_comic' => ['label' => 'Comic - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                // Jon 2026-10-25: framed art, flat $3.50; rare pieces by their value.
+                'framed_art' => ['label' => 'Framed Art', 'mode' => 'bulk_fixed', 'unit_rate' => 3.50, 'no_grading' => true],
+                'rare_framed_art' => ['label' => 'Framed Art - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: signed items get their own line (was a checkbox
                 // on single records): SIGNED_PAY of the signed copy's sold value.
                 'signed_item' => ['label' => 'Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],

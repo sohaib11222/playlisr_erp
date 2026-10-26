@@ -1114,8 +1114,8 @@ class BuyFromCustomerController extends Controller
                 return ' Is a poster signed or rare? Put it on its own "Poster: signed / rare (enter its sold value)" line instead of paying over.';
             }
         }
-        // Rare VHS / DVD / book / comic lines (checked comics before books).
-        $rareLines = ['book_comic' => 'rare_comic', 'vhs_' => 'rare_vhs', 'dvd_' => 'rare_dvd', 'book' => 'rare_book', 'coffee_table_book' => 'rare_book'];
+        // Rare VHS / DVD / book / comic / framed-art lines (checked comics before books).
+        $rareLines = ['book_comic' => 'rare_comic', 'vhs_' => 'rare_vhs', 'dvd_' => 'rare_dvd', 'book' => 'rare_book', 'coffee_table_book' => 'rare_book', 'framed_art' => 'rare_framed_art'];
         foreach ($lines as $l) {
             $type = (string) ($l['item_type'] ?? '');
             if ((float) ($l['quantity'] ?? 0) <= 0 || $type === 'dvd_player') {
