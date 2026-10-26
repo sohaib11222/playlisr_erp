@@ -59,15 +59,15 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- verify block ---\n";
-            \Auth::loginUsingId(64);
-            \$ctl = app(\App\Http\Controllers\ContactController::class);
-            \$m = new \ReflectionMethod(\$ctl, 'recentBuyCreditBlock'); \$m->setAccessible(true);
-            foreach ([14576, 740, 14389] as \$cid) echo \$cid.": ".var_export(\$m->invoke(\$ctl, \App\Contact::find(\$cid)), true)."\n";
-            \Auth::loginUsingId(1); echo "admin 14576: ".var_export(\$m->invoke(\$ctl, \App\Contact::find(14576)), true)."\n";
-            echo "--- aaron 740 ---\n";
-            foreach (\DB::table('store_credit_logs')->where('contact_id',740)->orderBy('id')->get(['source','amount','balance_after','reason','created_at','user_id']) as \$r) echo json_encode(\$r)."\n";
-            echo \App\Contact::find(740)->balance_notes."\n";
+            echo "--- adjust 740 ---\n";
+            \$c=\App\Contact::find(740); echo "before=".\$c->balance."\n";
+            if ("$N" === "apply740" && abs((float)\$c->balance - 123.54) < 0.01) {
+              \Auth::loginUsingId(1); session(['user.business_id' => 1]);
+              \$r = app(\App\Http\Controllers\ContactController::class)->adjustStoreCredit(740, new \Illuminate\Http\Request(['amount' => -70, 'reason' => 'Duplicate credit: 7/23 manual +\$70 by Zak was the same buy as BFC-000444 (+\$70). Removed per Sarah 10/26.']));
+              echo json_encode(\$r->getData())."\n";
+            }
+            echo "after=".\App\Contact::find(740)->balance."\n";
+            foreach (\DB::table('store_credit_logs')->where('contact_id',740)->orderBy('id','desc')->limit(2)->get(['source','amount','balance_after','reason','user_id','created_at']) as \$r) echo json_encode(\$r)."\n";
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
