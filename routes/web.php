@@ -1165,7 +1165,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/service-staff-line-orders', 'ReportController@serviceStaffLineOrders');
     Route::get('/reports/table-report', 'ReportController@getTableReport');
     Route::get('/reports/profit-loss', 'ReportController@getProfitLoss');
-    Route::get('/reports/get-opening-stock', 'ReportController@getOpeningStock');
     Route::get('/reports/purchase-sell', 'ReportController@getPurchaseSell');
     Route::get('/reports/customer-supplier', 'ReportController@getCustomerSuppliers');
     Route::get('/reports/stock-report', 'ReportController@getStockReport');
