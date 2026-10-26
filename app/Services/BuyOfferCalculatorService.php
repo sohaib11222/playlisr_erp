@@ -17,6 +17,10 @@ class BuyOfferCalculatorService
     // 23 on the shelf), and a signature can be fake.
     const SIGNED_PAY = 0.20;
     const SIGNED_SIGNOFF_VALUE = 100;
+    // Jon 2026-10-25: "<format> - rare" lines are for items worth $15+, and pay
+    // by how fast that category sells here (BuyDemandService speed tier).
+    const RARE_MIN_VALUE = 15;
+    const RARE_SPEED_PAY = ['slow' => 0.15, 'normal' => 0.20, 'fast' => 0.22, 'super_fast' => 0.25];
     // Single records at this median or more need a Discogs link / ID.
     const LINK_REQUIRED_FROM = 20;
 
@@ -215,13 +219,12 @@ class BuyOfferCalculatorService
                 // fast here), $350 cap. Ordinary posters stay on the flat $2 line.
 
                 'poster_value' => ['label' => 'Poster: signed / rare (enter its sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
-                // Jon 2026-10-25: rare VHS / DVD / book / comic by its eBay median
-                // sold value, same rule as the valuable-poster line (margin from
-                // that category's speed, always the $20+ cap).
-                'rare_vhs' => ['label' => 'VHS - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
-                'rare_dvd' => ['label' => 'DVD - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
-                'rare_book' => ['label' => 'Book - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
-                'rare_comic' => ['label' => 'Comic - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'fixed_hv' => true],
+                // Jon 2026-10-25: rare VHS / DVD / book / comic ($15+) by its eBay
+                // median sold value, paid by that category's speed (RARE_SPEED_PAY).
+                'rare_vhs' => ['label' => 'VHS - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_dvd' => ['label' => 'DVD - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_book' => ['label' => 'Book - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'rare_comic' => ['label' => 'Comic - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: signed items get their own line (was a checkbox
                 // on single records): SIGNED_PAY of the signed copy's sold value.
                 'signed_item' => ['label' => 'Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
@@ -440,6 +443,10 @@ class BuyOfferCalculatorService
                 // poster typed here can't get the higher under-$20 rate.
                 $tierValue = !empty($cfg['fixed_hv']) ? max($payValue, (float) $hv['hv_min']) : $payValue;
                 $standardMultiplier = BuyMarginSettings::payFraction($hv, $margin, $superFast, $tierValue);
+                if (!empty($cfg['speed_pay'])) {
+                    $speed = $superFast ? 'super_fast' : (string) ($raw['tier'] ?? 'normal');
+                    $standardMultiplier = self::RARE_SPEED_PAY[$speed] ?? self::RARE_SPEED_PAY['normal'];
+                }
                 $cashLine = round($quantity * $payValue * $standardMultiplier, 2);
                 $demandInfo = [
                     'demand_multiplier' => 1.0,
