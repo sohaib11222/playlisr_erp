@@ -59,13 +59,12 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- user 64 ---\n";
-            \$u=\App\User::find(64); echo \$u->first_name." ".\$u->last_name." ".\$u->username."\n";
-            foreach (\App\BuyCustomerOffer::whereIn('id',[1114,1236,1237,1238,1239,1240,1241,1242,1243,1244])->get() as \$o) {
-              \$a=\$o->getAttributes(); unset(\$a['calculation_snapshot'],\$a['seller_signature_data']);
-              echo "#".\$o->id." ".json_encode(array_filter(\$a, function(\$v){return \$v!==null && \$v!=='' ;}))."\n";
-              foreach (\$o->lines()->get() as \$l) echo "   line [".\$l->title."] ".\$l->item_type." qty=".\$l->quantity." cash=".\$l->line_cash_total." credit=".\$l->line_credit_total."\n";
-            }
+            echo "--- credit ledger 14576 ---\n";
+            \$c=\App\Contact::find(14576); echo "balance=".\$c->balance." name=".\$c->name."\n";
+            if (\Schema::hasTable('store_credit_logs')) foreach (\DB::table('store_credit_logs')->where('contact_id',14576)->orderBy('id')->get() as \$r) echo json_encode(\$r)."\n";
+            foreach (\App\Transaction::where('contact_id',14576)->orderBy('id')->get(['id','type','status','final_total','transaction_date','created_by']) as \$t) echo "TX ".json_encode(\$t)."\n";
+            foreach (\DB::table('transaction_payments')->join('transactions','transactions.id','=','transaction_payments.transaction_id')->where('transactions.contact_id',14576)->get(['transaction_payments.transaction_id','method','amount']) as \$p) echo "PAY ".json_encode(\$p)."\n";
+            echo "notes: ".substr((string)\$c->custom_field4,0,0).\$c->shipping_address."\n";
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
