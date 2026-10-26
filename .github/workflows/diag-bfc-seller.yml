@@ -59,44 +59,19 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- e2e (rolled back) ---\n";
-            \Auth::loginUsingId(1);
-            \$mk = function (\$uri, \$method='GET', \$params=[]) { \$req = \Illuminate\Http\Request::create(\$uri, \$method, \$params); \$req->setLaravelSession(app('session')->driver()); app()->instance('request', \$req); session(['user.business_id' => 1, 'business.id' => 1, 'business.accounting_method' => 'fifo']); return \$req; };
-            view()->share('errors', new \Illuminate\Support\ViewErrorBag);
-            \$html = function (\$v) { if (is_object(\$v) && method_exists(\$v, 'render')) return \$v->render(); if (\$v instanceof \Illuminate\Http\RedirectResponse) return 'REDIRECT '.\$v->getTargetUrl().' '.json_encode(session('status')); if (\$v instanceof \Illuminate\Http\JsonResponse) return json_encode(\$v->getData()); return (string) \$v; };
-            echo "listed_at filled: ".\DB::table('products')->whereNotNull('listed_at')->count()." of ".\DB::table('products')->count()."\n";
-            \DB::beginTransaction();
-            try {
-              \$pick = \DB::table('variation_location_details as vld')->join('variations as v','v.id','=','vld.variation_id')->join('products as p','p.id','=','v.product_id')->where('vld.location_id',1)->where('vld.qty_available','>=',1)->where('p.enable_stock',1)->whereNotNull('v.sub_sku')->where('v.sub_sku','!=','')->orderBy('p.id','desc')->first(['p.id','v.sub_sku','p.name']);
-              echo "pick ".json_encode(\$pick)."\n";
-              \$req = \$mk('/transfers/bulk','POST',['from_location_id'=>1,'to_location_id'=>2,'list'=>'ID '.\$pick->id]);
-              \$res = app(\App\Http\Controllers\BulkTransferController::class)->store(\$req)->getData(true);
-              echo "store: ".json_encode(array_intersect_key(\$res, array_flip(['success','msg','moved_qty','code','slip_url','labels_url'])))."\n";
-              echo "history0: ".json_encode(\$res['history'][0] ?? null)."\n";
-              \$rid = \DB::table('transfer_receipts')->where('code', \$res['code'])->value('id');
-              \$c = app(\App\Http\Controllers\TransferReceiptController::class);
-              foreach (['slip','labels'] as \$m) { \$h = \$html(\$c->\$m(\$mk('/x'), \$rid)); echo \$m.": len=".strlen(\$h)." goes_to=".substr_count(\$h,'GOES TO')." img=".substr_count(\$h,'data:image/png')."\n"; }
-              \$h = \$html(\$c->receive(\$mk('/transfers/receive','GET',['code'=>\$res['code']]))); echo "receive: len=".strlen(\$h)." mark=".substr_count(\$h,'Mark received')." onway=".substr_count(\$h,\$res['code'])."\n";
-              echo "confirm(none scanned): ".\$html(\$c->confirm(\$mk('/x','POST',['got'=>[]]), \$rid))."\n";
-              echo "row: ".json_encode(\DB::table('transfer_receipts')->where('id',\$rid)->first(['status','received_by','missing_json']))."\n";
-              \$h = \$html(\$c->log(\$mk('/transfers/log'))); echo "log: len=".strlen(\$h)." missing=".substr_count(\$h,'missing')."\n";
-              \$h = \$html(app(\App\Http\Controllers\BulkTransferController::class)->index(\$mk('/transfers/bulk'))); echo "bulk index len=".strlen(\$h)."\n";
-              \$t0=microtime(true);
-              \$mc = app(\App\Http\Controllers\MarkdownController::class);
-              \$h = \$html(\$mc->index(\$mk('/markdowns','GET',['location_id'=>2]))); echo "markdowns: len=".strlen(\$h)." secs=".round(microtime(true)-\$t0,1)."\n";
-              preg_match('/<strong>([0-9,]+)<\/strong> items \(([^)]*)\)/', \$h, \$mm); echo "due: ".json_encode(\$mm)."\n";
-              preg_match_all('/Cost tied up: <strong>[^<]*|Shelf value now: <strong>[^<]*|After markdown: <strong>[^<]*|Stopped at cost: <strong>[^<]*|[0-9,]+ old items have a cost[^.]*/', \$h, \$mm); echo json_encode(\$mm[0])."\n";
-              \$rules = \$mc->rules(1); [\$rows,\$st] = \$mc->candidates(1, 2, 0, 0, \$rules);
-              foreach (array_slice(\$rows,0,5) as \$r) echo "  ".\$r['name']." listed=".\$r['listed']." age=".\$r['age_days']." cost=".\$r['cost']." price=".\$r['price']." -> ".\$r['new_price']." (".\$r['pct']."% floor=".\$r['floor'].")\n";
-              \$ages=[]; foreach (\$rows as \$r) { \$k=\$r['pct']; \$ages[\$k]=(\$ages[\$k]??0)+1; } ksort(\$ages); echo "by step: ".json_encode(\$ages)."\n";
-              \$vids = array_column(array_slice(\$rows,0,3),'variation_id');
-              \$h = \$html(\$mc->apply(\$mk('/markdowns/apply','POST',['location_id'=>2,'variation_ids'=>\$vids]))); echo "apply: ".\$h." labels=".session('markdown_labels_url')."\n";
-              echo "md rows: ".json_encode(\DB::table('product_markdowns')->get(['variation_id','original_price','old_price','new_price','pct_off','hit_floor','listed_at']))."\n";
-              \$lc = app(\App\Http\Controllers\LabelsController::class); \$pids = \DB::table('product_markdowns')->pluck('product_id')->implode(',');
-              \$h = \$html(\$lc->show(\$mk('/labels/show','GET',['listed'=>1,'product_ids'=>\$pids]))); preg_match_all('/purchase_date\]" value="([^"]*)"/', \$h, \$mm); echo "label dates: ".json_encode(\$mm[1])."\n";
-            } catch (\Throwable \$e) { echo "ERR ".\$e->getMessage()." ".\$e->getFile().":".\$e->getLine()."\n"; }
-            \DB::rollBack();
-            echo "rolled back; receipts=".\DB::table('transfer_receipts')->count()." markdowns=".\DB::table('product_markdowns')->count()."\n";
+            echo "--- speed by bucket ---\n";
+            \$sold = \DB::select("SELECT LEAST(FLOOR(sl.unit_price_inc_tax/10),10) b, DATEDIFF(t.transaction_date, COALESCE(p.listed_at,p.created_at)) d FROM transaction_sell_lines sl JOIN transactions t ON t.id=sl.transaction_id JOIN products p ON p.id=sl.product_id WHERE t.type='sell' AND t.status='final' AND t.business_id=1 AND t.transaction_date >= '2025-10-26' AND sl.unit_price_inc_tax >= 1 AND COALESCE(p.listed_at,p.created_at) >= '2024-02-01' AND COALESCE(p.listed_at,p.created_at) <= t.transaction_date");
+            \$g=[]; foreach (\$sold as \$r) \$g[(int)\$r->b][]=(int)\$r->d;
+            ksort(\$g);
+            \$pc=function(\$a,\$p){ \$i=(int)floor((count(\$a)-1)*\$p); return \$a[\$i]; };
+            foreach (\$g as \$b=>\$a) { sort(\$a); \$n=count(\$a); \$w30=count(array_filter(\$a,function(\$x){return \$x<=30;})); \$w90=count(array_filter(\$a,function(\$x){return \$x<=90;}));
+              echo "sold \$".(\$b*10)."-".(\$b==10?'+':(\$b*10+10)).": n=\$n median=".\$pc(\$a,.5)." p75=".\$pc(\$a,.75)." p90=".\$pc(\$a,.9)." within30=".round(100*\$w30/\$n)."% within90=".round(100*\$w90/\$n)."%\n"; }
+            \$st = \DB::select("SELECT LEAST(FLOOR(v.sell_price_inc_tax/10),10) b, SUM(vld.qty_available) q, SUM(CASE WHEN COALESCE(p.listed_at,p.created_at) < NOW() - INTERVAL 90 DAY THEN vld.qty_available ELSE 0 END) q90, SUM(CASE WHEN COALESCE(p.listed_at,p.created_at) < NOW() - INTERVAL 180 DAY THEN vld.qty_available ELSE 0 END) q180, SUM(vld.qty_available*GREATEST(v.default_purchase_price,0)) cost FROM variation_location_details vld JOIN variations v ON v.id=vld.variation_id JOIN products p ON p.id=v.product_id WHERE p.business_id=1 AND vld.qty_available>0 AND vld.location_id IN (1,2) AND v.sell_price_inc_tax>=1 GROUP BY b ORDER BY b");
+            foreach (\$st as \$r) echo "stock \$".(\$r->b*10).": qty=".round(\$r->q)." >90d=".round(\$r->q90)." >180d=".round(\$r->q180)." cost=".round(\$r->cost)."\n";
+            \$sp = \DB::select("SELECT LEAST(FLOOR(sl.unit_price_inc_tax/10),10) b, COUNT(*) n, SUM(sl.quantity) q FROM transaction_sell_lines sl JOIN transactions t ON t.id=sl.transaction_id WHERE t.type='sell' AND t.status='final' AND t.business_id=1 AND t.transaction_date >= NOW() - INTERVAL 90 DAY AND sl.unit_price_inc_tax>=1 GROUP BY b ORDER BY b");
+            foreach (\$sp as \$r) echo "sold90d \$".(\$r->b*10).": qty=".round(\$r->q)."\n";
+            \$mk = \DB::select("SELECT ROUND(AVG(CASE WHEN v.default_purchase_price>0 AND v.default_purchase_price < v.sell_price_inc_tax THEN v.default_purchase_price/v.sell_price_inc_tax END)*100) costpct, LEAST(FLOOR(v.sell_price_inc_tax/10),10) b FROM variation_location_details vld JOIN variations v ON v.id=vld.variation_id WHERE vld.qty_available>0 AND v.sell_price_inc_tax>=1 GROUP BY b ORDER BY b");
+            foreach (\$mk as \$r) echo "cost% \$".(\$r->b*10).": ".\$r->costpct."\n";
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
