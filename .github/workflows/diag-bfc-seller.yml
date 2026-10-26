@@ -59,19 +59,17 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- speed by bucket ---\n";
-            \$sold = \DB::select("SELECT LEAST(FLOOR(sl.unit_price_inc_tax/10),10) b, DATEDIFF(t.transaction_date, COALESCE(p.listed_at,p.created_at)) d FROM transaction_sell_lines sl JOIN transactions t ON t.id=sl.transaction_id JOIN products p ON p.id=sl.product_id WHERE t.type='sell' AND t.status='final' AND t.business_id=1 AND t.transaction_date >= '2025-10-26' AND sl.unit_price_inc_tax >= 1 AND COALESCE(p.listed_at,p.created_at) >= '2024-02-01' AND COALESCE(p.listed_at,p.created_at) <= t.transaction_date");
-            \$g=[]; foreach (\$sold as \$r) \$g[(int)\$r->b][]=(int)\$r->d;
-            ksort(\$g);
-            \$pc=function(\$a,\$p){ \$i=(int)floor((count(\$a)-1)*\$p); return \$a[\$i]; };
-            foreach (\$g as \$b=>\$a) { sort(\$a); \$n=count(\$a); \$w30=count(array_filter(\$a,function(\$x){return \$x<=30;})); \$w90=count(array_filter(\$a,function(\$x){return \$x<=90;}));
-              echo "sold \$".(\$b*10)."-".(\$b==10?'+':(\$b*10+10)).": n=\$n median=".\$pc(\$a,.5)." p75=".\$pc(\$a,.75)." p90=".\$pc(\$a,.9)." within30=".round(100*\$w30/\$n)."% within90=".round(100*\$w90/\$n)."%\n"; }
-            \$st = \DB::select("SELECT LEAST(FLOOR(v.sell_price_inc_tax/10),10) b, SUM(vld.qty_available) q, SUM(CASE WHEN COALESCE(p.listed_at,p.created_at) < NOW() - INTERVAL 90 DAY THEN vld.qty_available ELSE 0 END) q90, SUM(CASE WHEN COALESCE(p.listed_at,p.created_at) < NOW() - INTERVAL 180 DAY THEN vld.qty_available ELSE 0 END) q180, SUM(vld.qty_available*GREATEST(v.default_purchase_price,0)) cost FROM variation_location_details vld JOIN variations v ON v.id=vld.variation_id JOIN products p ON p.id=v.product_id WHERE p.business_id=1 AND vld.qty_available>0 AND vld.location_id IN (1,2) AND v.sell_price_inc_tax>=1 GROUP BY b ORDER BY b");
-            foreach (\$st as \$r) echo "stock \$".(\$r->b*10).": qty=".round(\$r->q)." >90d=".round(\$r->q90)." >180d=".round(\$r->q180)." cost=".round(\$r->cost)."\n";
-            \$sp = \DB::select("SELECT LEAST(FLOOR(sl.unit_price_inc_tax/10),10) b, COUNT(*) n, SUM(sl.quantity) q FROM transaction_sell_lines sl JOIN transactions t ON t.id=sl.transaction_id WHERE t.type='sell' AND t.status='final' AND t.business_id=1 AND t.transaction_date >= NOW() - INTERVAL 90 DAY AND sl.unit_price_inc_tax>=1 GROUP BY b ORDER BY b");
-            foreach (\$sp as \$r) echo "sold90d \$".(\$r->b*10).": qty=".round(\$r->q)."\n";
-            \$mk = \DB::select("SELECT ROUND(AVG(CASE WHEN v.default_purchase_price>0 AND v.default_purchase_price < v.sell_price_inc_tax THEN v.default_purchase_price/v.sell_price_inc_tax END)*100) costpct, LEAST(FLOOR(v.sell_price_inc_tax/10),10) b FROM variation_location_details vld JOIN variations v ON v.id=vld.variation_id WHERE vld.qty_available>0 AND v.sell_price_inc_tax>=1 GROUP BY b ORDER BY b");
-            foreach (\$mk as \$r) echo "cost% \$".(\$r->b*10).": ".\$r->costpct."\n";
+            echo "--- md check ---\n";
+            \Auth::loginUsingId(1);
+            \$req = \Illuminate\Http\Request::create('/markdowns','GET',['location_id'=>2]); \$req->setLaravelSession(app('session')->driver()); app()->instance('request', \$req); session(['user.business_id'=>1,'business.id'=>1]);
+            view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+            \$mc = app(\App\Http\Controllers\MarkdownController::class);
+            \$h = \$mc->index(\$req)->render(); echo "page len=".strlen(\$h)."\n";
+            foreach ([1,2] as \$loc) { [\$rows,\$st] = \$mc->candidates(1, \$loc, 0, 0, \$mc->rules(1));
+              \$by=[]; foreach (\$rows as \$r) { \$k=min(10,(int)floor(\$r['original_price']/10))*10; \$by[\$k]['n']=(\$by[\$k]['n']??0)+1; \$by[\$k]['pct'][]=\$r['pct_off_now']; }
+              ksort(\$by); echo "LOC \$loc due=".\$st['due']." selling_skipped=".\$st['selling']." cost=".round(\$st['cost_tied'])." now=".round(\$st['value_now'])." new=".round(\$st['value_new'])."\n";
+              foreach (\$by as \$k=>\$v) echo "  \$".\$k.": n=".\$v['n']." avg_cut=".round(array_sum(\$v['pct'])/count(\$v['pct']))."%\n";
+              foreach (array_slice(\$rows,0,3) as \$r) echo "  e.g. ".\$r['name']." ".\$r['listed']." \$".\$r['price']." -> \$".\$r['new_price']." (".\$r['pct']."%)\n"; }
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
