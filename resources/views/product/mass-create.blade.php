@@ -1123,7 +1123,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             const noGrade = selected.length && selected.val() !== '' && String(selected.data('graded')) === '0';
             $this.closest('.tr, .product-row').find('.massadd_condition, .massadd_sleeve_condition').each(function () {
                 if (noGrade) $(this).val('');
-                $(this).prop('disabled', noGrade).attr('title', noGrade ? 'No grade for this category' : $(this).hasClass('massadd_condition') ? 'Record condition' : 'Sleeve condition');
+                $(this).prop('disabled', noGrade).attr('title', noGrade ? 'No grade for this category' : $(this).hasClass('massadd_condition') ? 'Media Grade' : 'Sleeve Grade');
             });
 
             // Pre-fill the default purchase price for the chosen category

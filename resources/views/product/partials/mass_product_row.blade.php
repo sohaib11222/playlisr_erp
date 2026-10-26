@@ -121,12 +121,12 @@
         @endphp
         <div style="display:flex; gap:2px; align-items:center;">
             <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
-                <select name="products[{{ $index }}][condition]" class="form-control massadd_condition" title="Record condition">
-                    <option value="">Record</option>
+                <select name="products[{{ $index }}][condition]" class="form-control massadd_condition" title="Media Grade">
+                    <option value="">Media Grade</option>
                     @foreach($woGrades as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
                 </select>
-                <select name="products[{{ $index }}][sleeve_condition]" class="form-control massadd_sleeve_condition" title="Sleeve condition">
-                    <option value="">Sleeve</option>
+                <select name="products[{{ $index }}][sleeve_condition]" class="form-control massadd_sleeve_condition" title="Sleeve Grade">
+                    <option value="">Sleeve Grade</option>
                     @foreach($woSleeves as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
                 </select>
             </div>
