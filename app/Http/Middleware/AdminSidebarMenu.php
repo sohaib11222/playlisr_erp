@@ -397,7 +397,24 @@ class AdminSidebarMenu
                             $sub->url(
                                 url('/transfers/bulk'),
                                 'Transfer Items',
-                                ['icon' => 'fa fas fa-exchange-alt', 'active' => request()->segment(1) == 'transfers']
+                                ['icon' => 'fa fas fa-exchange-alt', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'bulk']
+                            );
+                            $sub->url(
+                                url('/transfers/receive'),
+                                'Receive Transfer',
+                                ['icon' => 'fa fas fa-truck-loading', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'receive']
+                            );
+                            $sub->url(
+                                url('/transfers/log'),
+                                'Transfer Log',
+                                ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'log']
+                            );
+                        }
+                        if (auth()->user()->can('product.update')) {
+                            $sub->url(
+                                url('/markdowns'),
+                                'Markdowns',
+                                ['icon' => 'fa fas fa-tags', 'active' => request()->segment(1) == 'markdowns']
                             );
                         }
                         if (auth()->user()->can('product.create')) {

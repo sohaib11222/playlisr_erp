@@ -103,6 +103,8 @@ class BulkTransferController extends Controller
                 return ['product_id' => $r['product_id'], 'variation_id' => $r['variation_id'], 'qty' => (float) $r['qty'], 'price' => (float) $r['price']];
             }, $ok);
             $t = app(BinMoveController::class)->transfer($business_id, $from, $to, $lines, self::NOTE_PREFIX . ' by ' . $name, (int) $user->id);
+            // Acceptance ID the other store scans to mark the box received.
+            $receipt = !\Schema::hasTable('transfer_receipts') ? ['id' => null, 'code' => null] : TransferReceiptController::createFor($business_id, $t, $from, $to, (float) array_sum(array_column($ok, 'qty')), (int) $user->id);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -124,6 +126,9 @@ class BulkTransferController extends Controller
             'transfer_id' => $t->id,
             'print_url' => url('stock-transfers/print/' . $t->id),
             'list_url' => url('stock-transfers'),
+            'code' => $receipt['code'],
+            'slip_url' => $receipt['id'] ? url('transfers/slip/' . $receipt['id']) : null,
+            'labels_url' => $receipt['id'] ? url('transfers/labels/' . $receipt['id']) : null,
             'history' => $this->history($business_id),
         ]);
     }
@@ -289,12 +294,15 @@ class BulkTransferController extends Controller
             ->leftJoin('business_locations as l1', 'l1.id', '=', 't.location_id')
             ->leftJoin('business_locations as l2', 'l2.id', '=', 't2.location_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->when(\Schema::hasTable('transfer_receipts'), function ($q) {
+                $q->leftJoin('transfer_receipts as r', 'r.transaction_id', '=', 't.id')->addSelect('r.id as receipt_id', 'r.code', 'r.status as receipt_status');
+            })
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell_transfer')
             ->where('t.additional_notes', 'like', self::NOTE_PREFIX . '%')
             ->orderBy('t.id', 'desc')
             ->limit(20)
-            ->select('t.id', 't.ref_no', 't.transaction_date', 'l1.name as from_name', 'l2.name as to_name', 'u.first_name', 'u.last_name',
+            ->addSelect('t.id', 't.ref_no', 't.transaction_date', 'l1.name as from_name', 'l2.name as to_name', 'u.first_name', 'u.last_name',
                 DB::raw('(SELECT COALESCE(SUM(quantity), 0) FROM transaction_sell_lines WHERE transaction_id = t.id) as items'))
             ->get();
         return $rows->map(function ($r) {
@@ -307,6 +315,10 @@ class BulkTransferController extends Controller
                 'items' => $this->fmt($r->items),
                 'by' => trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')),
                 'print_url' => url('stock-transfers/print/' . $r->id),
+                'code' => $r->code ?? null,
+                'receipt_status' => $r->receipt_status ?? null,
+                'slip_url' => !empty($r->receipt_id) ? url('transfers/slip/' . $r->receipt_id) : null,
+                'labels_url' => !empty($r->receipt_id) ? url('transfers/labels/' . $r->receipt_id) : null,
             ];
         })->all();
     }

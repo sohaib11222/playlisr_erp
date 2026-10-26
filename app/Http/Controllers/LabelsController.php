@@ -54,6 +54,16 @@ class LabelsController extends Controller
         } else if (!empty($product_ids)) {
             $productIdsArray = explode(",", $product_ids);
             $products = $this->productUtil->getDetailsFromProducts($business_id, $productIdsArray);
+            // Markdowns (?listed=1): the tag keeps the ORIGINAL listed date.
+            if ($request->get('listed') && \Schema::hasColumn('products', 'listed_at')) {
+                $listed = DB::table('products')->whereIn('id', $productIdsArray)
+                    ->select('id', DB::raw('COALESCE(listed_at, created_at) as l'))->pluck('l', 'id');
+                foreach ($products as $p) {
+                    if (!empty($listed[$p->product_id])) {
+                        $p->purchase_date = \Carbon::parse($listed[$p->product_id])->format('m/d/Y');
+                    }
+                }
+            }
         }
 
         //get price groups

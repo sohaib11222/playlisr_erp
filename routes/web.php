@@ -1645,6 +1645,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/transfers/bulk', 'BulkTransferController@index');
     Route::post('/transfers/bulk/preview', 'BulkTransferController@preview');
     Route::post('/transfers/bulk', 'BulkTransferController@store');
+    Route::get('/transfers/slip/{id}', 'TransferReceiptController@slip');
+    Route::get('/transfers/labels/{id}', 'TransferReceiptController@labels');
+    Route::get('/transfers/receive', 'TransferReceiptController@receive');
+    Route::post('/transfers/receive/{id}', 'TransferReceiptController@confirm');
+    Route::get('/transfers/log', 'TransferReceiptController@log');
+
+    // Markdowns: age + cost-floor price cuts (Sarah 2026-10-26).
+    Route::get('/markdowns', 'MarkdownController@index');
+    Route::post('/markdowns/apply', 'MarkdownController@apply');
+    Route::post('/markdowns/rules', 'MarkdownController@saveRules');
     
     Route::get('/opening-stock/add/{product_id}', 'OpeningStockController@add');
     Route::post('/opening-stock/save', 'OpeningStockController@save');
