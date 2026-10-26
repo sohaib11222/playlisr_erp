@@ -24,6 +24,8 @@ $lines = [
     ['item_type' => 'rare_dvd', 'title' => 'Rare DVD', 'quantity' => 1, 'discogs_median_price' => 60],
     ['item_type' => 'rare_book', 'title' => 'Rare Book', 'quantity' => 1, 'discogs_median_price' => 15],
     ['item_type' => 'rare_comic', 'title' => 'Rare Comic', 'quantity' => 2, 'discogs_median_price' => 100],
+    ['item_type' => 'framed_art', 'title' => 'Framed Art', 'quantity' => 3],
+    ['item_type' => 'rare_framed_art', 'title' => 'Framed Art - rare', 'quantity' => 1, 'discogs_median_price' => 80],
     ['item_type' => 'individual_vinyl', 'title' => 'Old signed draft', 'signed' => '1', 'quantity' => 1, 'discogs_median_price' => 50],
 ];
 $m = new ReflectionMethod($ctl, 'demandHook');
@@ -42,6 +44,9 @@ $cats = $ds->categoryChoices($biz);
 foreach (App\Services\BuyDemandService::VALUE_TYPE_CATEGORY as $t => $spec) {
     $pick = $vc->invoke($ds, $biz, $spec);
     echo "CATEGORY $t => $pick " . ($cats[$pick] ?? '(none)') . "\n";
+}
+foreach ($cats as $ck => $cn) {
+    if (preg_match('/art|frame|print|paint|wall|decor/i', $cn)) echo "ARTCAT $ck $cn\n";
 }
 echo "NUDGE vhs_used: " . App\Http\Controllers\BuyFromCustomerController::flatRateNudge([['item_type' => 'vhs_used', 'quantity' => 5]], true) . "\n";
 echo "NUDGE book_comic: " . App\Http\Controllers\BuyFromCustomerController::flatRateNudge([['item_type' => 'book_comic', 'quantity' => 5]], true) . "\n";

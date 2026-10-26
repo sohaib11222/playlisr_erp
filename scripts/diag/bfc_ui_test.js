@@ -94,6 +94,14 @@ const fs = require('fs');
   v = await pick(4, 'select.bfc-disposition', 'holly');
   ok('typing "holly" on Goes-to picks Hollywood', v === 'hollywood', v);
 
+  v = await pick(5, 'select[name$="[item_type]"]', 'framed');
+  c = await cell(5);
+  ok('typing "framed" picks Framed Art, flat $3.50', v === 'framed_art' && c.value === '$3.50', { v, c });
+  v = await pick(6, 'select[name$="[item_type]"]', 'framed art - r');
+  await setValue(6, 80);
+  c = await cell(6);
+  ok('typing "framed art - r" picks Framed Art - rare, $80 -> $16.00 before speed lookup', v === 'rare_framed_art' && c.value === '$16.00', { v, c });
+
   // Add line keeps working with select2 on the new row.
   await page.click('#add_line_btn');
   await new Promise(r => setTimeout(r, 300));
