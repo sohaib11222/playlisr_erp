@@ -1000,8 +1000,8 @@ class BuyFromCustomerController extends Controller
                 $errors["lines.$i.quantity"] = sprintf('Line %s: "1-9 items" vinyl is for up to %d records. Use a 10+ Bulk Vinyl type for a bigger lot.', $n, BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY);
             }
             $cfg = $this->calculator->getRules()['item_types'][$type] ?? [];
-            if (!empty($cfg['speed_pay']) && $qty > 0 && $value < BuyOfferCalculatorService::RARE_MIN_VALUE) {
-                $errors["lines.$i.discogs_median_price"] = sprintf('Line %s: "%s" is for items worth $%d or more on eBay. Use the regular line for cheaper ones.', $n, $cfg['label'], BuyOfferCalculatorService::RARE_MIN_VALUE);
+            if (!empty($cfg['min_value']) && $qty > 0 && $value < $cfg['min_value']) {
+                $errors["lines.$i.discogs_median_price"] = sprintf('Line %s: "%s" is for items worth $%d or more on eBay. Use the regular line for cheaper ones.', $n, $cfg['label'], $cfg['min_value']);
             }
             $title = trim((string) ($line['title'] ?? ''));
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
@@ -1115,7 +1115,7 @@ class BuyFromCustomerController extends Controller
             }
         }
         // Rare VHS / DVD / book / comic / framed-art lines (checked comics before books).
-        $rareLines = ['book_comic' => 'rare_comic', 'vhs_' => 'rare_vhs', 'dvd_' => 'rare_dvd', 'book' => 'rare_book', 'coffee_table_book' => 'rare_book', 'framed_art' => 'rare_framed_art'];
+        $rareLines = ['book_comic' => 'rare_comic', 'vhs_' => 'rare_vhs', 'dvd_' => 'rare_dvd', 'book' => 'rare_book', 'coffee_table_book' => 'rare_book', 'framed_art' => 'rare_framed_art', 'pokemon_' => 'rare_pokemon'];
         foreach ($lines as $l) {
             $type = (string) ($l['item_type'] ?? '');
             if ((float) ($l['quantity'] ?? 0) <= 0 || $type === 'dvd_player') {
