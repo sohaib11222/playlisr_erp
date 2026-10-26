@@ -13,6 +13,27 @@
                 {{ session('status.msg') }}
             </div>
         @endif
+        {{-- Sarah 2026-10-26: say plainly the buy is done and the credit is on the account. --}}
+        @if($offer->status === 'accepted')
+            @php $bfcCredit = data_get(session('bfc_finished'), 'credit'); @endphp
+            <div style="border:3px solid #1e8e3e; background:#e8f5e9; border-radius:6px; padding:14px 18px; margin-bottom:15px; color:#14532d;">
+                <div style="font-size:20px; font-weight:800;"><i class="fa fa-check-circle"></i> Buy finished</div>
+                @if($bfcCredit)
+                    <div style="font-size:17px; margin-top:6px;">
+                        <strong>${{ number_format((float) $bfcCredit['amount'], 2) }} store credit is now on {{ $bfcCredit['name'] }}'s account.</strong>
+                        New balance: ${{ number_format((float) $bfcCredit['balance'], 2) }}. Do not add it again by hand.
+                    </div>
+                @elseif($offer->payout_type === 'store_credit' && !$offer->is_donated && (float) $offer->final_offer_credit > 0)
+                    <div style="font-size:17px; margin-top:6px;">
+                        <strong>${{ number_format((float) $offer->final_offer_credit, 2) }} store credit was added to {{ optional($offer->contact)->name ?: 'the customer' }}'s account</strong> when this buy was finished. Do not add it again by hand.
+                    </div>
+                @endif
+            </div>
+        @elseif($offer->status === 'draft')
+            <div style="border:3px solid #c62828; background:#ffebee; border-radius:6px; padding:14px 18px; margin-bottom:15px; color:#7f1d1d; font-size:17px;">
+                <strong>This buy is NOT finished.</strong> Nothing is paid and no store credit is added until you open it and click Accept and finish buy.
+            </div>
+        @endif
         <button type="button" class="btn btn-primary" onclick="window.print()"><i class="fa fa-print"></i> Print</button>
         <button type="button" class="btn btn-default" id="bfc_copy_discogs_links"><i class="fa fa-copy"></i> Copy Discogs Links</button>
         <a href="{{ route('buy-from-customer.history') }}" class="btn btn-default"><i class="fa fa-arrow-left"></i> Back to History</a>

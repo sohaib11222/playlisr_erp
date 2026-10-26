@@ -507,7 +507,7 @@ class BuyFromCustomerController extends Controller
         });
 
         return redirect()->route($this->isBeta($request) ? 'buy-from-customer.create' : 'buy-from-customer.original')
-            ->with('status', ['success' => 1, 'msg' => 'Draft offer saved successfully.'])
+            ->with('status', ['success' => 1, 'msg' => 'Draft saved. This buy is NOT finished: nothing is paid and no store credit is added until you click Accept and finish buy.'])
             ->with('saved_offer_id', $saved->id);
     }
 
@@ -533,8 +533,9 @@ class BuyFromCustomerController extends Controller
             // ContactController::updateStoreCredit (balance + audit + storefront
             // sync). Inside the same transaction so a failure rolls back the
             // whole acceptance rather than leaving credit without a purchase.
+            $created['credit'] = null;
             if ($offer->payout_type === 'store_credit' && !$offer->is_donated) {
-                $this->creditStoreCreditPayout($offer, $created['purchase']);
+                $created['credit'] = $this->creditStoreCreditPayout($offer, $created['purchase']);
             }
             $created['offer_id'] = $offer->id;
             return $created;
@@ -553,8 +554,11 @@ class BuyFromCustomerController extends Controller
 
         // Straight to the intake sheet — that's the printout Sarah wants in
         // hand right after the box changes ownership, not buried in History.
+        // Sarah 2026-10-26: tell the cashier in plain words that the credit
+        // is on the account now (Andy kept adding it by hand while unsure).
         return redirect()->route('buy-from-customer.intake-sheet', $result['offer_id'])
-            ->with('status', ['success' => 1, 'msg' => $msg]);
+            ->with('status', ['success' => 1, 'msg' => $msg])
+            ->with('bfc_finished', ['credit' => $result['credit']]);
     }
 
     public function reject(Request $request, $id = null)
@@ -1682,18 +1686,18 @@ class BuyFromCustomerController extends Controller
     {
         $amount = (float) $offer->final_offer_credit;
         if ($amount <= 0) {
-            return;
+            return null;
         }
 
         // Seller is resolved/created in saveOffer, so contact_id is normally
         // set; fall back to the purchase's contact just in case.
         $contactId = $offer->contact_id ?: $purchase->contact_id;
         if (empty($contactId)) {
-            return;
+            return null;
         }
         $contact = Contact::where('business_id', $offer->business_id)->find($contactId);
         if (empty($contact)) {
-            return;
+            return null;
         }
 
         $newBalance = (float) $contact->balance + $amount;
@@ -1740,6 +1744,8 @@ class BuyFromCustomerController extends Controller
                 ['contact_id' => (int) $contact->id, 'action' => 'add', 'offer_id' => (int) $offer->id]
             );
         }
+
+        return ['name' => $contact->name, 'amount' => $amount, 'balance' => $newBalance];
     }
 
     // Adds product_id / variation_id / purchase_line_id to

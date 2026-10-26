@@ -211,6 +211,7 @@
         .content .bfc-btn { font-size: 16px !important; padding: 10px 20px !important; height: 46px; line-height: 1.5; border-radius: 6px; }
         .content .bfc-btn .fa { font-size: 16px !important; margin-right: 6px; vertical-align: 0; }
         .content #reject_buy_offer_form, .content #save_draft_buy_offer_form { display: none !important; }
+        .content .bfc-not-finished { border: 3px solid #c62828; background: #ffebee; color: #7f1d1d; border-radius: 6px; padding: 12px 16px; margin-bottom: 15px; font-size: 16px; }
         .content .bfc-action-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid #ddd; }
         .content .bfc-action-spacer { flex: 1; }
         .content .bfc-btn-accept { background: #1e8e3e !important; border-color: #1e8e3e !important; color: #fff !important; font-weight: 700; font-size: 18px !important; }
@@ -337,6 +338,12 @@
             </ul>
         </div>
     @endif
+
+    {{-- Sarah 2026-10-26: staff thought a draft meant the credit was on the
+         account, then added it by hand. Say it at the top and at the buttons. --}}
+    <div class="bfc-not-finished">
+        <strong>This buy is NOT finished yet.</strong> Nothing is paid and <strong>no store credit is added</strong> until the seller signs and you click the green <strong>Accept and finish buy</strong> button at the bottom. Never add buy credit by hand on the customer's page.
+    </div>
 
     @php
         $input = $input_data ?? old();
@@ -1072,6 +1079,9 @@ HTML;
                                 {!! Form::close() !!}
 
                                 {{-- One action row; buttons submit their forms via the form= attribute. --}}
+                                <div class="bfc-not-finished" style="margin-top:18px; margin-bottom:0;">
+                                    Store credit goes on the customer's account <strong>only</strong> when you click <strong>Accept and finish buy</strong>. Save draft does not add any credit.
+                                </div>
                                 <div class="bfc-action-bar">
                                     <button type="submit" form="accept_buy_offer_form" class="btn bfc-btn bfc-btn-accept" id="accept_buy_offer_btn"><i class="fa fa-check"></i> Accept and finish buy</button>
                                     <button type="submit" form="save_draft_buy_offer_form" class="btn bfc-btn bfc-btn-draft"><i class="fa fa-save"></i> Save draft</button>
