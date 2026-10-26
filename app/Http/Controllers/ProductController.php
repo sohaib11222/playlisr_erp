@@ -4181,6 +4181,17 @@ class ProductController extends Controller
      * ("Record Players", "Cassette Deck", "CD Player", "DVD", "VHS") is excluded
      * first.
      */
+    /**
+     * Mass Add Record/Sleeve grade only applies to vinyl/CD/cassette/etc.
+     * Takes a combo label ("Parent > Sub") and checks either half.
+     */
+    public static function isGradedCategoryLabel($label)
+    {
+        $parts = explode(' > ', (string) $label, 2);
+        return self::isMusicCategoryName($parts[0])
+            || (isset($parts[1]) && self::isMusicCategoryName($parts[1]));
+    }
+
     public static function isMusicCategoryName($name)
     {
         $n = strtolower(trim((string) $name));
@@ -4467,7 +4478,13 @@ class ProductController extends Controller
                         $product->save();
                     }
                     // Record + sleeve grade from the row (Sarah, 2026-10-26)
-                    if ((!empty($productData['condition']) || !empty($productData['sleeve_condition']))
+                    // Non-music categories (DVD, toys, gear, ...) never carry a grade.
+                    $gradeCatName = $product->category_id ? DB::table('categories')->where('id', $product->category_id)->value('name') : null;
+                    $gradeSubName = $product->sub_category_id ? DB::table('categories')->where('id', $product->sub_category_id)->value('name') : null;
+                    $gradeAllowed = !$product->category_id
+                        || self::isMusicCategoryName($gradeCatName)
+                        || ($gradeSubName !== null && self::isMusicCategoryName($gradeSubName));
+                    if ($gradeAllowed && (!empty($productData['condition']) || !empty($productData['sleeve_condition']))
                         && \Schema::hasColumn('products', 'condition')) {
                         $product->condition = !empty($productData['condition']) ? mb_substr(trim($productData['condition']), 0, 40) : null;
                         $product->sleeve_condition = !empty($productData['sleeve_condition']) ? mb_substr(trim($productData['sleeve_condition']), 0, 40) : null;
