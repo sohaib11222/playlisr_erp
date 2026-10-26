@@ -59,19 +59,15 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- render ---\n";
-            \Auth::loginUsingId(1);
-            \$req = \Illuminate\Http\Request::create('/buy-from-customer', 'GET');
-            \$req->setLaravelSession(app('session')->driver()); app()->instance('request', \$req);
-            session(['user.business_id' => 1, 'business.id' => 1, 'bfc_finished' => ['credit' => ['name' => 'Edgar Moralis', 'amount' => 11, 'balance' => 11.98]]]);
-            view()->share('errors', new \Illuminate\Support\ViewErrorBag);
-            \$ctl = app(\App\Http\Controllers\BuyFromCustomerController::class);
-            foreach (['intake' => function() use (\$ctl) { return \$ctl->intakeSheet(1237); }, 'draftsheet' => function() use (\$ctl) { return \$ctl->intakeSheet(1114); }, 'create' => function() use (\$ctl) { return \$ctl->create(); }] as \$k => \$fn) {
-              try { \$v = \$fn(); \$html = is_object(\$v) && method_exists(\$v,'render') ? \$v->render() : (string) \$v;
-                preg_match_all('/(Buy finished|store credit is now on[^<]*|This buy is NOT finished[^<]*|only<\/strong> when you click)/', \$html, \$mm);
-                echo \$k.": len=".strlen(\$html)." ".json_encode(array_values(array_unique(\$mm[0])))."\n";
-              } catch (\Throwable \$e) { echo \$k." ERROR ".\$e->getMessage()."\n"; }
-            }
+            echo "--- age data ---\n";
+            \$q = "SELECT p.id, p.created_at, v.default_purchase_price cost, v.sell_price_inc_tax price, (SELECT MIN(t.transaction_date) FROM purchase_lines pl JOIN transactions t ON t.id=pl.transaction_id WHERE pl.variation_id=v.id AND t.type IN ('purchase','opening_stock')) first_buy, (SELECT SUM(qty_available) FROM variation_location_details vld WHERE vld.variation_id=v.id) qty FROM products p JOIN variations v ON v.product_id=p.id AND v.deleted_at IS NULL WHERE p.business_id=1 HAVING qty>0";
+            \$rows = \DB::select(\$q); echo "instock variations=".count(\$rows)."\n";
+            \$b=[]; \$fb=[]; \$nocost=0; \$costgtprice=0; \$diff=0;
+            foreach (\$rows as \$r) { \$d = \$r->created_at; \$y=substr(\$d,0,7); \$b[\$y]=(\$b[\$y]??0)+1; \$f = \$r->first_buy ? substr(\$r->first_buy,0,10) : 'none'; if (\$f==='none' || \$f < '2024-02-01') \$fb[\$f]=(\$fb[\$f]??0)+1; if ((float)\$r->cost<=0) \$nocost++; if ((float)\$r->cost>(float)\$r->price) \$costgtprice++; if (\$r->first_buy && abs(strtotime(\$r->first_buy)-strtotime(\$r->created_at))>86400*7) \$diff++; }
+            ksort(\$b); echo "created by month: ".json_encode(\$b)."\n"; arsort(\$fb); echo "old/none first_buy: ".json_encode(array_slice(\$fb,0,10))."\n";
+            echo "nocost=\$nocost cost>price=\$costgtprice created_vs_firstbuy_differ_7d=\$diff\n";
+            echo "locations: ".json_encode(\DB::table('business_locations')->where('business_id',1)->get(['id','name','location_id']))."\n";
+            echo "barcodes: ".json_encode(\DB::table('barcodes')->get(['id','name','width','height','is_default','stickers_in_one_row']))."\n";
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
