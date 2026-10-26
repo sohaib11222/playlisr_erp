@@ -1475,9 +1475,19 @@ HTML;
         @endphp
         // Sarah 2026-10-08: item Type is searchable (type "sweat" to find Sweatshirt).
         // Jon 2026-10-25: grade and Goes-to too (genre: see bfcFillGenres).
+        // Options that start with the search come first ("signed" -> Signed item,
+        // not "Poster: signed / rare").
+        function bfcStartsFirst(data) {
+            var q = $.trim($('.select2-container--open .select2-search__field').val() || '').toLowerCase();
+            if (!q) return data;
+            var starts = function (d) { return (d.text || '').toLowerCase().indexOf(q) === 0 ? 0 : 1; };
+            return data.map(function (d, i) { return [d, i]; })
+                .sort(function (a, b) { return (starts(a[0]) - starts(b[0])) || (a[1] - b[1]); })
+                .map(function (p) { return p[0]; });
+        }
         function bfcTypeSearch($scope) {
             if (!$.fn.select2) return;
-            $scope.find('select[name$="[item_type]"], select.bfc-grade, select.bfc-disposition').not('.select2-hidden-accessible').select2({ width: '100%' });
+            $scope.find('select[name$="[item_type]"], select.bfc-grade, select.bfc-disposition').not('.select2-hidden-accessible').select2({ width: '100%', sorter: bfcStartsFirst });
         }
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         // Typing on a focused (closed) line dropdown opens it with those letters
