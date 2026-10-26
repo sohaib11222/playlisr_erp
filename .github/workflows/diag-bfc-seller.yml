@@ -62,8 +62,10 @@ jobs:
             echo "--- adjust 740 ---\n";
             \$c=\App\Contact::find(740); echo "before=".\$c->balance."\n";
             if ("$N" === "apply740" && abs((float)\$c->balance - 123.54) < 0.01) {
-              \Auth::loginUsingId(1); session(['user.business_id' => 1]);
-              \$r = app(\App\Http\Controllers\ContactController::class)->adjustStoreCredit(740, new \Illuminate\Http\Request(['amount' => -70, 'reason' => 'Duplicate credit: 7/23 manual +\$70 by Zak was the same buy as BFC-000444 (+\$70). Removed per Sarah 10/26.']));
+              \Auth::loginUsingId(1);
+              \$req = \Illuminate\Http\Request::create('/', 'POST', ['amount' => -70, 'reason' => 'Duplicate credit: 7/23 manual +\$70 by Zak was the same buy as BFC-000444 (+\$70). Removed per Sarah 10/26.']);
+              \$req->setLaravelSession(app('session')->driver()); app()->instance('request', \$req); session(['user.business_id' => 1]);
+              \$r = app(\App\Http\Controllers\ContactController::class)->adjustStoreCredit(740, \$req);
               echo json_encode(\$r->getData())."\n";
             }
             echo "after=".\App\Contact::find(740)->balance."\n";
