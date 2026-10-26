@@ -3022,10 +3022,20 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     element: 'div',
                     attributes: {
                         innerHTML: `<div style="text-align:left;font-size:15px;line-height:1.5;">`
-                            + `${ungraded === discogsCount ? 'None' : ungraded + ' of ' + discogsCount} of your lines ${ungraded === discogsCount ? 'have' : 'are missing'} a Media/Sleeve grade.<br><br>`
-                            + `It helps to add them after the price so the grade prints on the label:<br>`
-                            + `<code>1873085 19.99 VG+/VG+</code><br><code>1873085 12.99 G/VG+</code><br><br>`
-                            + `Media grade first, then sleeve.</div>`
+                            + `${ungraded === discogsCount ? 'None' : ungraded + ' of ' + discogsCount} of your lines ${ungraded === discogsCount ? 'have' : 'are missing'} a Record/Cover grade.<br><br>`
+                            + `It helps to add them after the price so the grade prints on the label. Record grade first, then cover:<br><br>`
+                            + `<div style="font-family:monospace;font-size:15px;background:#f5f5f5;padding:8px 10px;border-radius:4px;">`
+                            + `<div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;">`
+                            + `<span>https://www.discogs.com/release/1873085 19.99</span>`
+                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#1d4ed8;">Record</small><b style="color:#1d4ed8;">VG+</b></span>`
+                            + `<b>/</b>`
+                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#b45309;">Cover</small><b style="color:#b45309;">VG+</b></span>`
+                            + `</div></div><br>`
+                            + `More examples:<br>`
+                            + `<code>https://www.discogs.com/release/1873085 12.99 G/VG+</code><br>`
+                            + `<code>https://www.discogs.com/release/249504 24.99 NM/VG</code><br>`
+                            + `<code>https://www.discogs.com/release/1873085 9.99 VG+/Generic</code><br><br>`
+                            + `<span style="color:#1d4ed8;font-weight:700;">Record</span> = the vinyl/CD/tape itself. <span style="color:#b45309;font-weight:700;">Cover</span> = the sleeve or case.</div>`
                     }
                 },
                 icon: 'info',
