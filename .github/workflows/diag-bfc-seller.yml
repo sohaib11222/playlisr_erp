@@ -59,26 +59,15 @@ jobs:
             foreach (\App\BuyCustomerOffer::where('seller_name','like','%'.\$n.'%')->orderBy('id','desc')->limit(20)->get() as \$o) {
               echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] contact=".(\$o->contact_id ?? '-')." payout=".\$o->payout_type." pm=".\$o->payment_method." cash=".\$o->final_offer_cash." credit=".\$o->final_offer_credit." paid=".(\$o->final_amount_paid ?? '-')." by=".\$o->created_by." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at." purchase=".(\$o->accepted_purchase_id ?? '-')."\n";
             }
-            echo "--- sources ---\n";
-            foreach (\DB::table('store_credit_logs')->select('source',\DB::raw('count(*) n'),\DB::raw('sum(amount) s'),\DB::raw('min(created_at) f'))->groupBy('source')->get() as \$r) echo json_encode(\$r)."\n";
-            echo "--- andy (64) credit rows ---\n";
-            foreach (\DB::table('store_credit_logs')->where('user_id',64)->orderBy('id')->get() as \$r) echo json_encode(\$r)."\n";
-            echo "--- contacts with BOTH buy credit and a manual add within 3 days ---\n";
-            \$bfc = \DB::table('store_credit_logs')->where('source','buy_from_customer')->get();
-            foreach (\$bfc as \$b) {
-              \$m = \DB::table('store_credit_logs')->where('contact_id',\$b->contact_id)->where('source','!=','buy_from_customer')->where('amount','>',0)
-                 ->whereBetween('created_at',[date('Y-m-d H:i:s',strtotime(\$b->created_at)-3*86400), date('Y-m-d H:i:s',strtotime(\$b->created_at)+3*86400)])->get();
-              foreach (\$m as \$x) {
-                \$c = \App\Contact::find(\$b->contact_id);
-                echo "C".\$b->contact_id." [".\$c->name."] bal=".\$c->balance." | BUY +".\$b->amount." ".\$b->created_at." (offer ".\$b->buy_customer_offer_id.", user ".\$b->user_id.") | ".\$x->source." +".\$x->amount." ".\$x->created_at." user ".\$x->user_id." reason=".\$x->reason."\n";
-              }
-            }
-            echo "--- manual adds with reason collection/buy, any time ---\n";
-            foreach (\DB::table('store_credit_logs')->where('source','!=','buy_from_customer')->where(function(\$q){\$q->where('reason','like','%ollection%')->orWhere('reason','like','%buy%')->orWhere('reason','like','%trade%');})->get() as \$r) echo json_encode(\$r)."\n";
-            echo "--- user names ---\n";
-            foreach (\App\User::whereIn('id', \DB::table('store_credit_logs')->pluck('user_id')->unique())->get() as \$u) echo \$u->id."=".\$u->first_name." ";
-            echo "\n--- contacts with balance_notes mentioning Andy ---\n";
-            foreach (\App\Contact::where('balance_notes','like','%by Andy%')->get() as \$c) echo "C".\$c->id." [".\$c->name."] bal=".\$c->balance."\n".\$c->balance_notes."\n";
+            echo "--- verify block ---\n";
+            \Auth::loginUsingId(64);
+            \$ctl = app(\App\Http\Controllers\ContactController::class);
+            \$m = new \ReflectionMethod(\$ctl, 'recentBuyCreditBlock'); \$m->setAccessible(true);
+            foreach ([14576, 740, 14389] as \$cid) echo \$cid.": ".var_export(\$m->invoke(\$ctl, \App\Contact::find(\$cid)), true)."\n";
+            \Auth::loginUsingId(1); echo "admin 14576: ".var_export(\$m->invoke(\$ctl, \App\Contact::find(14576)), true)."\n";
+            echo "--- aaron 740 ---\n";
+            foreach (\DB::table('store_credit_logs')->where('contact_id',740)->orderBy('id')->get(['source','amount','balance_after','reason','created_at','user_id']) as \$r) echo json_encode(\$r)."\n";
+            echo \App\Contact::find(740)->balance_notes."\n";
             PHP
             echo "=== log ==="
             L=storage/logs/laravel-$(date +%Y-%m-%d).log; [ -f "$L" ] || L=storage/logs/laravel.log
