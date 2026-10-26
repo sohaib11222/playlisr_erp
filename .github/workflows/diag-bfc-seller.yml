@@ -64,6 +64,7 @@ jobs:
             \$req = \Illuminate\Http\Request::create('/buy-from-customer', 'GET');
             \$req->setLaravelSession(app('session')->driver()); app()->instance('request', \$req);
             session(['user.business_id' => 1, 'business.id' => 1, 'bfc_finished' => ['credit' => ['name' => 'Edgar Moralis', 'amount' => 11, 'balance' => 11.98]]]);
+            view()->share('errors', new \Illuminate\Support\ViewErrorBag);
             \$ctl = app(\App\Http\Controllers\BuyFromCustomerController::class);
             foreach (['intake' => function() use (\$ctl) { return \$ctl->intakeSheet(1237); }, 'draftsheet' => function() use (\$ctl) { return \$ctl->intakeSheet(1114); }, 'create' => function() use (\$ctl) { return \$ctl->create(); }] as \$k => \$fn) {
               try { \$v = \$fn(); \$html = is_object(\$v) && method_exists(\$v,'render') ? \$v->render() : (string) \$v;
