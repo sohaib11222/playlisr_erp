@@ -54,6 +54,9 @@
 					@elseif(!empty($page_product->purchase_date) && array_key_exists('purchase_date', $print ?? []))
 						<span style="display: block !important; font-size: {{$print['purchase_date_size'] ?? 12}}px;"><b>{{ $page_product->purchase_date }}</b></span>
 					@endif
+					@if(!empty($page_product->condition_label))
+						<span style="display: block !important; font-weight: bold; font-size: {{ max((int)($print['name_size'] ?? 10) + 3, 14) }}px; white-space: nowrap; overflow: hidden; max-width: 100%;">{{ $page_product->condition_label }}</span>
+					@endif
 				</div>
 
 				{{-- Large barcode fills the remaining width --}}
@@ -117,6 +120,10 @@
 					<span style="display: block !important; font-size: {{ round(($print['name_size'] ?? 12)*$txt) }}px; font-weight: bold;">
 						Bin: {{ $page_product->bin_position }}
 					</span>
+				@endif
+
+				@if(!empty($page_product->condition_label))
+					<span style="display: block !important; font-size: {{ round(($print['name_size'] ?? 12)*$txt) }}px; font-weight: bold;">{{ $page_product->condition_label }}</span>
 				@endif
 
 				{{-- Price + purchase date on one line (no "Price" label) --}}

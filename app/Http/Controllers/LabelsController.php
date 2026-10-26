@@ -37,6 +37,26 @@ class LabelsController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+    public static function conditionLabel($productId): ?string
+    {
+        if (!$productId || !\Schema::hasColumn('products', 'condition')) return null;
+        $row = DB::table('products')->where('id', $productId)->first(['condition', 'sleeve_condition']);
+        if (!$row) return null;
+        $short = function ($g) {
+            $g = trim((string) $g);
+            if ($g === '') return null;
+            if (preg_match('/\(([^)]+)\)/', $g, $m)) return $m[1] === 'NM or M-' ? 'NM' : $m[1];
+            return $g;
+        };
+        $rec = $short($row->condition);
+        $slv = $short($row->sleeve_condition);
+        if ($rec === 'Sealed') return 'Sealed';
+        $parts = [];
+        if ($rec) $parts[] = 'Record ' . $rec;
+        if ($slv) $parts[] = 'Sleeve ' . $slv;
+        return $parts ? implode(', ', $parts) : null;
+    }
+
     public function show(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');
@@ -195,6 +215,8 @@ class LabelsController extends Controller
                 if (!empty($value['lot_number'])) {
                     $details->lot_number = $value['lot_number'];
                 }
+                // Record + sleeve grade on the sticker, e.g. "Record VG+, Sleeve G+" (Sarah, 2026-10-26)
+                $details->condition_label = self::conditionLabel($details->product_id ?? null);
 
                 if (!empty($value['price_group_id'])) {
                     $tax_id = $print['price_type'] == 'inclusive' ? : $details->tax_id;

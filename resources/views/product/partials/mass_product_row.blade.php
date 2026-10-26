@@ -112,6 +112,29 @@
         </div>
     </td>
 
+    {{-- Record + sleeve grade, filled from "1873085 19.99 VG+/G+" in Bulk Discogs IDs (Sarah, 2026-10-26) --}}
+    <td class="td col-condition" data-hide-on-selection="yes" data-row-index="{{ $index }}">
+        @php
+            $woGrades = ['Sealed', 'Mint (M)', 'Near Mint (NM or M-)', 'Very Good Plus (VG+)', 'Very Good (VG)', 'Good Plus (G+)', 'Good (G)', 'Fair (F)', 'Poor (P)'];
+            $woSleeves = array_merge($woGrades, ['Generic', 'No Cover', 'Not Graded']);
+        @endphp
+        <div style="display:flex; gap:2px; align-items:center;">
+            <div style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;">
+                <select name="products[{{ $index }}][condition]" class="form-control massadd_condition" title="Record condition">
+                    <option value="">Record</option>
+                    @foreach($woGrades as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
+                </select>
+                <select name="products[{{ $index }}][sleeve_condition]" class="form-control massadd_sleeve_condition" title="Sleeve condition">
+                    <option value="">Sleeve</option>
+                    @foreach($woSleeves as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
+                </select>
+            </div>
+            <button type="button" class="btn btn-primary btn-xs copy-down" style="padding: 4px 6px; border-radius: 0; flex-shrink: 0;" data-class="massadd_condition" data-row-index="{{ $index }}" title="Copy Down">
+                <i class="fa fa-arrow-down"></i>
+            </button>
+        </div>
+    </td>
+
     <td class="th" style="min-width: 60px; width: 60px;">-</td>
 
     <td class="td expandable" data-hide-on-selection="yes" data-row-index="{{ $index }}">

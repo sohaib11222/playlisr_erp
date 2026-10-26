@@ -4466,6 +4466,13 @@ class ProductController extends Controller
                         $product->buy_offer_line_id = $buyLotId;
                         $product->save();
                     }
+                    // Record + sleeve grade from the row (Sarah, 2026-10-26)
+                    if ((!empty($productData['condition']) || !empty($productData['sleeve_condition']))
+                        && \Schema::hasColumn('products', 'condition')) {
+                        $product->condition = !empty($productData['condition']) ? mb_substr(trim($productData['condition']), 0, 40) : null;
+                        $product->sleeve_condition = !empty($productData['sleeve_condition']) ? mb_substr(trim($productData['sleeve_condition']), 0, 40) : null;
+                        $product->save();
+                    }
                     // Генерация SKU, если поле пустое
                     if (empty(trim($productData['sku']))) {
                         $generatedSku = $this->productUtil->generateProductSku($product->id);

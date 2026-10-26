@@ -602,6 +602,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     <strong>Accepted formats (mix and match, one per line):</strong>
                     <ul style="margin-bottom: 0; padding-left: 20px;">
                         <li>Discogs release ID, optionally with a trailing price &mdash; <code>1873085</code> or <code>1873085 19.99</code></li>
+                        <li>Add the condition before or after the price &mdash; <code>1873085 19.99 VG+</code>, <code>1873085 VG+ 19.99</code>, or record/sleeve <code>1873085 19.99 VG+/G+</code>. Grades: Sealed, M, NM, VG+, VG, G+, G, F, P. Sleeve can also be <code>generic</code> or <code>nocover</code>.</li>
                         <li>Discogs release URL, optionally with a trailing price &mdash; <code>discogs.com/release/249504 25</code></li>
                         <li>CSV row &mdash; <code>Product Name,Artist,Category,Subcategory,SKU,Price</code> (any field may be left blank, e.g. <code>Some LP,Some Artist,,,,19.99</code>). Wrap fields containing commas in double quotes.</li>
                     </ul>
@@ -712,6 +713,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     <th class="th col-locations">@lang('business.business_locations')</th>
                     <th class="th price-col">Purchase Price</th>
                     <th class="th price-col">Selling Price</th>
+                    <th class="th col-condition">Condition</th>
                     <th class="th" style="min-width: 60px; width: 60px;">
                         <button type="button" class="btn btn-primary btn-xs show-expandables">
                             More
@@ -2753,7 +2755,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         $row.after(subRow);
     }
 
-    function addRowFromDiscogsData(discogsData, rowIdx, price) {
+    function addRowFromDiscogsData(discogsData, rowIdx, price, cond, sleeve) {
         return new Promise(function(resolve) {
             $.ajax({
                 url: "{{ route('product.getMassProductRow') }}",
@@ -2788,6 +2790,8 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     if (price) {
                         $row.find('input[name*="[single_dsp_inc_tax]"]').val(price);
                     }
+                    if (cond) $row.find('.massadd_condition').val(cond);
+                    if (sleeve) $row.find('.massadd_sleeve_condition').val(sleeve);
                     // Pre-select Business Locations to the cashier's
                     // currently-open register (Hollywood / Pico / etc.) so
                     // bulk Discogs adds land in the store the operator is
@@ -2914,13 +2918,24 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             };
         }
 
-        // Discogs path (existing behavior).
+        // Discogs path. Price and condition can come in either order after
+        // the ID/URL: "1873085 19.99 VG+", "1873085 VG+/G+ $19.99" (Sarah, 2026-10-26).
         let head = trimmed;
         let price = null;
-        const priceMatch = trimmed.match(/\s+\$?(\d+(?:\.\d+)?)\s*$/);
-        if (priceMatch) {
-            price = priceMatch[1];
-            head = trimmed.slice(0, priceMatch.index).trim();
+        let cond = null;
+        let sleeve = null;
+        for (let guard = 0; guard < 4; guard++) {
+            const priceMatch = head.match(/\s+\$?(\d+(?:\.\d+)?)\s*$/);
+            const condMatch = head.match(/\s+([A-Za-z+\-]+(?:\s*\/\s*[A-Za-z+\-]+)?)\s*$/);
+            if (priceMatch && price === null) {
+                price = priceMatch[1];
+                head = head.slice(0, priceMatch.index).trim();
+            } else if (condMatch && cond === null && parseGrade(condMatch[1].split('/')[0])) {
+                const parts = condMatch[1].split('/');
+                cond = parseGrade(parts[0]);
+                sleeve = parts[1] ? parseGrade(parts[1], true) : null;
+                head = head.slice(0, condMatch.index).trim();
+            } else break;
         }
         let id = null;
         if (/^\d+$/.test(head)) {
@@ -2930,7 +2945,23 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             if (m) id = m[1];
         }
         if (!id) return null;
-        return { type: 'discogs', id: id, price: price };
+        return { type: 'discogs', id: id, price: price, cond: cond, sleeve: sleeve };
+    }
+
+    // Short grade -> the Discogs wording the website shows.
+    function parseGrade(raw, isSleeve) {
+        const k = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
+        const map = {
+            'SEALED': 'Sealed', 'S': 'Sealed', 'SS': 'Sealed',
+            'M': 'Mint (M)', 'MINT': 'Mint (M)',
+            'NM': 'Near Mint (NM or M-)', 'M-': 'Near Mint (NM or M-)', 'NM-': 'Near Mint (NM or M-)',
+            'VG+': 'Very Good Plus (VG+)', 'VG': 'Very Good (VG)',
+            'G+': 'Good Plus (G+)', 'G': 'Good (G)', 'F': 'Fair (F)', 'P': 'Poor (P)',
+        };
+        if (map[k]) return map[k];
+        if (isSleeve && (k === 'GENERIC' || k === 'GEN')) return 'Generic';
+        if (isSleeve && (k === 'NOCOVER' || k === 'NC')) return 'No Cover';
+        return null;
     }
 
     $('#fetch_discogs_ids').on('click', function() {
@@ -3068,7 +3099,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     type: 'GET',
                     success: function(resp) {
                         if (resp && resp.success) {
-                            addRowFromDiscogsData(resp.data, nextMassRowIndex(), price)
+                            addRowFromDiscogsData(resp.data, nextMassRowIndex(), price, entry.cond, entry.sleeve)
                                 .then(() => { added++; resolve(false); });
                         } else {
                             const msg = (resp && resp.message) ? resp.message : 'Unknown error from server.';
