@@ -23,7 +23,24 @@ use Illuminate\Http\Request;
 class MarkdownController extends Controller
 {
     const DEFAULT_RULES = [
-        'tiers' => [[90, 10], [180, 20], [270, 30], [365, 40], [540, 50]],
+        // Per $10 price bucket (by original price), from 12 months of sales
+        // (10/26): cheap records sell in ~2 months, $30-50 sealed LPs take
+        // 9-10 months as normal, $60+ collectibles sell fast. Start = about
+        // 2x the bucket's median days to sell; pricier = smaller steps.
+        // [from $, start after days, % per step, days between steps, max % off]
+        'buckets' => [
+            [0, 120, 10, 60, 40],
+            [10, 180, 10, 60, 30],
+            [20, 240, 10, 90, 30],
+            [30, 300, 10, 90, 25],
+            [40, 300, 8, 90, 25],
+            [50, 240, 8, 90, 20],
+            [60, 150, 5, 60, 20],
+            [80, 180, 5, 60, 20],
+            [100, 120, 5, 60, 15],
+        ],
+        // Any copy of the title sold in this many days = still selling, skip.
+        'recent_sale_days' => 60,
         'min_margin_pct' => 0,
         'no_cost_max_off' => 30,
         'min_price' => 1.99,
@@ -55,7 +72,7 @@ class MarkdownController extends Controller
         $path = $this->rulesPath($business_id);
         $saved = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
         $rules = array_merge(self::DEFAULT_RULES, is_array($saved) ? $saved : []);
-        usort($rules['tiers'], function ($a, $b) { return $a[0] <=> $b[0]; });
+        usort($rules['buckets'], function ($a, $b) { return $a[0] <=> $b[0]; });
         return $rules;
     }
 
@@ -92,8 +109,17 @@ class MarkdownController extends Controller
      */
     public function candidates(int $business_id, int $location_id, int $category_id, int $min_age, array $rules, array $onlyVariationIds = []): array
     {
-        $firstTier = (int) ($rules['tiers'][0][0] ?? 90);
-        $cutoff = now()->subDays(max($firstTier, $min_age))->toDateTimeString();
+        $firstStart = (int) min(array_map(function ($b) { return (int) $b[1]; }, $rules['buckets']));
+        $cutoff = now()->subDays(max($firstStart, $min_age))->toDateTimeString();
+        // Titles that sold recently are not slow, whatever their age.
+        $selling = [];
+        if ((int) $rules['recent_sale_days'] > 0) {
+            $selling = array_flip(DB::table('transaction_sell_lines as sl')
+                ->join('transactions as t', 't.id', '=', 'sl.transaction_id')
+                ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+                ->where('t.transaction_date', '>=', now()->subDays((int) $rules['recent_sale_days']))
+                ->distinct()->pluck('sl.product_id')->all());
+        }
 
         $q = DB::table('variation_location_details as vld')
             ->join('variations as v', 'v.id', '=', 'vld.variation_id')
@@ -124,10 +150,14 @@ class MarkdownController extends Controller
 
         $rows = [];
         $stats = ['scanned' => 0, 'due' => 0, 'qty' => 0, 'cost_tied' => 0.0, 'value_now' => 0.0, 'value_new' => 0.0,
-            'at_floor' => 0, 'cost_over_price' => 0, 'no_cost' => 0, 'capped' => false];
+            'at_floor' => 0, 'cost_over_price' => 0, 'no_cost' => 0, 'selling' => 0, 'capped' => false];
         $now = now();
         foreach ($q->get() as $r) {
             $stats['scanned']++;
+            if (isset($selling[$r->product_id])) {
+                $stats['selling']++;
+                continue;
+            }
             $calc = $this->suggest($r, $rules, $now);
             if ($calc['cost_over_price']) {
                 $stats['cost_over_price']++;
@@ -168,11 +198,17 @@ class MarkdownController extends Controller
         $cost = (float) $r->cost;
         $original = $r->original_price !== null ? round((float) $r->original_price, 2) : $price;
         $age = (int) \Carbon::parse($r->listed_at)->diffInDays($now);
-        $pct = 0;
-        foreach ($rules['tiers'] as $t) {
-            if ($age >= (int) $t[0]) {
-                $pct = (int) $t[1];
+        $bucket = $rules['buckets'][0];
+        foreach ($rules['buckets'] as $b) {
+            if ($original >= (float) $b[0]) {
+                $bucket = $b;
             }
+        }
+        [, $start, $step, $every, $max] = array_map('floatval', $bucket);
+        $pct = 0;
+        if ($age >= $start) {
+            $steps = 1 + (int) floor(($age - $start) / max(1, $every));
+            $pct = (int) min($steps * $step, $max);
         }
         $noCost = $cost <= 0;
         $floor = $noCost
@@ -278,19 +314,19 @@ class MarkdownController extends Controller
         if (!auth()->user()->hasRole('Admin#' . $business_id)) {
             abort(403, 'Only an admin can change the markdown rules.');
         }
-        $tiers = [];
-        foreach ((array) $request->input('tiers', []) as $t) {
-            $days = (int) ($t['days'] ?? 0);
-            $pct = (int) ($t['pct'] ?? 0);
-            if ($days > 0 && $pct > 0 && $pct < 100) {
-                $tiers[] = [$days, $pct];
+        $buckets = [];
+        foreach ((array) $request->input('buckets', []) as $b) {
+            $row = [(int) ($b['from'] ?? -1), (int) ($b['start'] ?? 0), (int) ($b['step'] ?? 0), (int) ($b['every'] ?? 0), (int) ($b['max'] ?? 0)];
+            if ($row[0] >= 0 && $row[1] > 0 && $row[2] > 0 && $row[3] > 0 && $row[4] > 0 && $row[4] < 95) {
+                $buckets[] = $row;
             }
         }
-        if (!$tiers) {
-            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Add at least one step (days and % off).']);
+        if (!$buckets || min(array_column($buckets, 0)) !== 0) {
+            return redirect()->back()->with('status', ['success' => 0, 'msg' => 'Keep a row that starts at $0, with every box filled.']);
         }
         $rules = [
-            'tiers' => $tiers,
+            'buckets' => $buckets,
+            'recent_sale_days' => max(0, (int) $request->input('recent_sale_days', 60)),
             'min_margin_pct' => max(0, (float) $request->input('min_margin_pct', 0)),
             'no_cost_max_off' => min(90, max(0, (float) $request->input('no_cost_max_off', 30))),
             'min_price' => max(0, (float) $request->input('min_price', 1.99)),

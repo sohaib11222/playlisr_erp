@@ -12,7 +12,7 @@
 <div class="tr-wrap" style="max-width:1400px;">
   <div class="tr-head">
     <h1>Markdowns</h1>
-    <p>Old stock gets cheaper in steps so it sells and frees up cash. Age counts from the original listed date, every step is off the original price, and nothing goes below what we paid. Nothing changes until a manager clicks Mark down.</p>
+    <p>Old stock gets cheaper in small steps so it sells and frees up cash. When the first cut comes and how big it is depends on the price: expensive items get smaller cuts. Age counts from the original listed date, every step is off the original price, and nothing goes below what we paid. Nothing changes until a manager clicks Mark down.</p>
   </div>
 
   @if(session('status'))
@@ -26,12 +26,22 @@
 
   <div class="tr-card">
     <h2>The rules</h2>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-      @foreach($rules['tiers'] as $t)
-        <span class="tr-pill dup" style="font-size:13px;">{{ $t[0] }}+ days: {{ $t[1] }}% off</span>
-      @endforeach
+    @php
+      $bk = $rules['buckets'];
+      $bkLabel = function ($i) use ($bk) { $from = $bk[$i][0]; $to = isset($bk[$i + 1]) ? $bk[$i + 1][0] : null; return '$' . $from . ($to !== null ? ' - $' . $to : '+'); };
+    @endphp
+    <div class="tr-table-wrap" style="margin-bottom:10px;">
+      <table class="tr-table">
+        <thead><tr><th>Original price</th><th>First cut after</th><th>Each cut</th><th>Then every</th><th>Most off</th></tr></thead>
+        <tbody>
+        @foreach($bk as $i => $b)
+          <tr><td>{{ $bkLabel($i) }}</td><td>{{ $b[1] }} days</td><td>{{ $b[2] }}%</td><td>{{ $b[3] }} days</td><td>{{ $b[4] }}%</td></tr>
+        @endforeach
+        </tbody>
+      </table>
     </div>
     <p style="font-size:14px; margin:0;">
+      Skipped if any copy of the title sold in the last {{ $rules['recent_sale_days'] }} days (it is still selling).
       Never below cost{{ $rules['min_margin_pct'] > 0 ? ' + ' . $rules['min_margin_pct'] . '%' : '' }}.
       No cost on file: never more than {{ $rules['no_cost_max_off'] }}% off.
       Never under {{ $money($rules['min_price']) }}.
@@ -45,16 +55,26 @@
         <summary class="tr-link">Change the rules</summary>
         <form method="post" action="{{ url('/markdowns/rules') }}" style="margin-top:12px;">
           @csrf
+          <div class="tr-table-wrap" style="margin-bottom:12px;">
+            <table class="tr-table">
+              <thead><tr><th>From $</th><th>First cut after (days)</th><th>Each cut %</th><th>Then every (days)</th><th>Most off %</th></tr></thead>
+              <tbody>
+              @for($i = 0; $i < max(count($bk) + 2, 10); $i++)
+                <tr>
+                  <td><input type="number" min="0" name="buckets[{{ $i }}][from]" value="{{ $bk[$i][0] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:5px;"></td>
+                  <td><input type="number" min="1" name="buckets[{{ $i }}][start]" value="{{ $bk[$i][1] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:5px;"></td>
+                  <td><input type="number" min="1" max="50" name="buckets[{{ $i }}][step]" value="{{ $bk[$i][2] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:5px;"></td>
+                  <td><input type="number" min="1" name="buckets[{{ $i }}][every]" value="{{ $bk[$i][3] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:5px;"></td>
+                  <td><input type="number" min="1" max="90" name="buckets[{{ $i }}][max]" value="{{ $bk[$i][4] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:5px;"></td>
+                </tr>
+              @endfor
+              </tbody>
+            </table>
+            <span class="tr-hint">Leave a row empty to drop it.</span>
+          </div>
           <div class="tr-row">
-            @for($i = 0; $i < 6; $i++)
-              <div class="tr-field" style="min-width:150px; flex:0;">
-                <label>Step {{ $i + 1 }}: days / % off</label>
-                <div style="display:flex; gap:6px;">
-                  <input type="number" min="1" name="tiers[{{ $i }}][days]" value="{{ $rules['tiers'][$i][0] ?? '' }}" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:6px;">
-                  <input type="number" min="1" max="95" name="tiers[{{ $i }}][pct]" value="{{ $rules['tiers'][$i][1] ?? '' }}" style="width:60px; border:1px solid var(--tr-line-2); border-radius:7px; padding:6px;">
-                </div>
-              </div>
-            @endfor
+            <div class="tr-field" style="min-width:220px; flex:0;"><label>Still selling: skip if sold in (days)</label>
+              <input type="number" min="0" name="recent_sale_days" value="{{ $rules['recent_sale_days'] }}" style="border:1px solid var(--tr-line-2); border-radius:7px; padding:6px;"></div>
           </div>
           <div class="tr-row">
             <div class="tr-field" style="min-width:180px; flex:0;"><label>Profit over cost to keep (%)</label>
@@ -87,7 +107,7 @@
       <div class="tr-field" style="min-width:200px;"><label>Category</label>
         <select name="category_id"><option value="0">All</option>@foreach($categories as $id => $name)<option value="{{ $id }}" {{ $id == $category_id ? 'selected' : '' }}>{{ $name }}</option>@endforeach</select></div>
       <div class="tr-field" style="min-width:160px;"><label>Listed at least (days ago)</label>
-        <select name="min_age"><option value="0">Any due</option>@foreach($rules['tiers'] as $t)<option value="{{ $t[0] }}" {{ $min_age == $t[0] ? 'selected' : '' }}>{{ $t[0] }}+ days</option>@endforeach</select></div>
+        <select name="min_age"><option value="0">Any due</option>@foreach([120, 180, 240, 300, 365, 540] as $d)<option value="{{ $d }}" {{ $min_age == $d ? 'selected' : '' }}>{{ $d }}+ days</option>@endforeach</select></div>
       <button type="submit" class="tr-btn tr-btn-primary" style="height:40px;">Show items</button>
     </form>
   </div>
@@ -100,6 +120,7 @@
       <div>Shelf value now: <strong>{{ $money($stats['value_now']) }}</strong></div>
       <div>After markdown: <strong>{{ $money($stats['value_new']) }}</strong></div>
       <div>Stopped at cost: <strong>{{ number_format($stats['at_floor']) }}</strong></div>
+      <div>Skipped, still selling: <strong>{{ number_format($stats['selling']) }}</strong></div>
     </div>
     @if($stats['cost_over_price'])
       <div class="tr-msg bad" style="font-weight:500;">{{ number_format($stats['cost_over_price']) }} old items have a cost equal to or above their price, so they are never marked down. Their cost is probably wrong.</div>
@@ -141,7 +162,7 @@
               <td class="num">{{ $money($r['price']) }}</td>
               <td class="num"><strong>{{ $money($r['new_price']) }}</strong></td>
               <td>
-                <span class="tr-pill dup">{{ $r['pct'] }}% step</span>
+                <span class="tr-pill dup">{{ $r['pct'] }}% off original</span>
                 @if($r['hit_floor'])<span class="tr-pill bad">{{ $r['no_cost'] ? 'max off, no cost' : 'stopped at cost' }}</span>@endif
                 @if($r['last_markdown'])<div style="font-size:12px;">last cut {{ $r['last_markdown'] }}</div>@endif
               </td>
