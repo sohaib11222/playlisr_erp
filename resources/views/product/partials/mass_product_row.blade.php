@@ -44,7 +44,8 @@
                         @foreach($category_combos ?? [] as $combo)
                             <option value="{{ $combo['id'] }}"
                                     data-category-id="{{ $combo['category_id'] }}"
-                                    data-sub-category-id="{{ $combo['sub_category_id'] ?? '' }}">
+                                    data-sub-category-id="{{ $combo['sub_category_id'] ?? '' }}"
+                                    data-graded="{{ \App\Http\Controllers\ProductController::isGradedCategoryLabel($combo['label']) ? 1 : 0 }}">
                                 {{ $combo['label'] }}
                             </option>
                         @endforeach

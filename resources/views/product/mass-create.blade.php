@@ -1118,6 +1118,14 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             $(`#products_${rowIndex}_category_id`).val(categoryId);
             $(`#products_${rowIndex}_sub_category_id`).val(subCategoryId);
 
+            // Record/Sleeve grade only for vinyl/CD/cassette/etc. — lock and
+            // clear it for DVDs, toys, gear and other non-music categories.
+            const noGrade = selected.length && selected.val() !== '' && String(selected.data('graded')) === '0';
+            $this.closest('.tr, .product-row').find('.massadd_condition, .massadd_sleeve_condition').each(function () {
+                if (noGrade) $(this).val('');
+                $(this).prop('disabled', noGrade).attr('title', noGrade ? 'No grade for this category' : $(this).hasClass('massadd_condition') ? 'Record condition' : 'Sleeve condition');
+            });
+
             // Pre-fill the default purchase price for the chosen category
             // (only when the operator hasn't already typed a cost). Covers
             // manual category picks as well as the Discogs/artist auto-fills.
