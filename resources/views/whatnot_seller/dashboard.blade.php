@@ -102,6 +102,11 @@
                         $inStackCount = count(array_filter($lines, function ($l) { return $l['stack'] && !$l['real']; }));
                     @endphp
                     <tr><td>Sold in stacks</td><td class="num">{{ count($stacks) }} stacks, {{ $sRec }} records: ${{ number_format($sSt, 2) }} stickers, sold ${{ number_format($sSold, 2) }}</td></tr>
+                    @php
+                        $cp = 0; $cpN = 0;
+                        foreach ($receipt_rows as $r) { if ($r['coupon'] > 0) { $cp += $r['coupon']; $cpN++; } }
+                    @endphp
+                    <tr><td>Coupons (our Whatnot Rewards Club)</td><td class="num">{{ $cpN }} sales, -${{ number_format($cp, 2) }}</td></tr>
                     <tr><td>Price not known yet</td><td class="num">{{ count($lines) - count($known) - $inStackCount }} records</td></tr>
                 </table>
             </div>
@@ -166,7 +171,7 @@
         @endif
         <div class="table-responsive">
             <table class="table table-striped table-condensed">
-                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sticker</th><th class="text-right">Sold for</th><th class="text-right">Difference</th><th class="text-right">Days in store</th><th class="text-right">His pay</th><th>Note</th></tr></thead>
+                <thead><tr><th>Date</th><th>Item</th><th class="text-right">Sticker</th><th class="text-right">Sold for</th><th class="text-right">Difference</th><th class="text-right">Coupon</th><th class="text-right">Days in store</th><th class="text-right">His pay</th><th>Note</th></tr></thead>
                 <tbody>
                 @forelse($shown as $l)
                     @php $diff = ($l['sticker'] && $l['real']) ? ($l['sold'] - $l['sticker']) * $l['qty'] : null; @endphp
@@ -176,12 +181,13 @@
                         <td class="text-right">{{ $l['sticker'] === null ? '' : '$' . number_format($l['sticker'] * $l['qty'], 2) }}</td>
                         <td class="text-right">{{ $l['real'] ? '$' . number_format($l['sold'] * $l['qty'], 2) : ($l['stack'] ? 'in a stack' : 'not known yet') }}</td>
                         <td class="text-right {{ $diff !== null && $diff < -0.009 ? 'wn-red' : ($diff !== null && $diff > 0.009 ? 'wn-green' : '') }}">{{ $diff === null || abs($diff) < 0.01 ? '' : ($diff > 0 ? '+' : '-') . '$' . number_format(abs($diff), 2) }}</td>
+                        <td class="text-right">{{ $l['coupon'] > 0 ? '-$' . number_format($l['coupon'], 2) : '' }}</td>
                         <td class="text-right">{{ $l['days_in_store'] }}</td>
                         <td class="text-right">${{ number_format($WS::linePay($l), 2) }}</td>
                         <td>{{ $l['note'] }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="8">Nothing here for these dates.</td></tr>
+                    <tr><td colspan="9">Nothing here for these dates.</td></tr>
                 @endforelse
                 </tbody>
             </table>

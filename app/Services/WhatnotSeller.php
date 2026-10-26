@@ -183,9 +183,10 @@ class WhatnotSeller
 
         $wnPrice = self::whatnotPriceByProduct($businessId);
         $receiptPrice = [];
+        $receiptCoupon = [];
         $inStack = [];
         foreach (self::receiptMatches($businessId) as $m) {
-            if ($m['match']) { $receiptPrice[$m['match']['id']] = (float) $m['price']; }
+            if ($m['match']) { $receiptPrice[$m['match']['id']] = (float) $m['price']; $receiptCoupon[$m['match']['id']] = (float) $m['coupon']; }
             foreach ((array) $m['stack'] as $c) { $inStack[$c['id']] = $m['order']; }
         }
         $out = [];
@@ -246,6 +247,7 @@ class WhatnotSeller
                 // True when 'sold' is the real Whatnot price (he marked it,
                 // or it came from Whatnot), not just the sticker staff rang.
                 'stack'          => $inStack[(int) $r->line_id] ?? null,
+                'coupon'         => $receiptCoupon[(int) $r->line_id] ?? 0.0,
                 'real'           => $fromWhatnot || strpos((string) $r->staff_note, self::NOTE_TAG) === 0 || strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0,
                 'entered_by'     => strpos((string) $r->staff_note, self::NOTE_TAG) === 0 ? $s['seller_name'] : (strpos((string) $r->staff_note, 'WHATNOT-IMPORT') === 0 ? 'Whatnot report' : (string) $r->entered_by),
                 'note'           => trim((string) $r->sell_line_note . ''),
@@ -465,6 +467,9 @@ class WhatnotSeller
             $r = array_combine($head, $row);
             $key = ($r['LEDGER_TRANSACTION_ID'] ?? '') ?: (($r['ORDER_ID'] ?? '') . '-' . ($r['TRANSACTION_TYPE'] ?? ''));
             if (isset($all[$key])) {
+                // Re-import fills in fields older imports didn't keep.
+                if (($r['COUPON_COST'] ?? '') !== '') { $all[$key]['coupon'] = abs((float) $r['COUPON_COST']); }
+                if (($r['POST_COUPON_PRICE'] ?? '') !== '') { $all[$key]['post'] = (float) $r['POST_COUPON_PRICE']; }
                 $skipped++;
                 continue;
             }
@@ -481,6 +486,10 @@ class WhatnotSeller
                 'earned'  => (float) (($r['TRANSACTION_AMOUNT'] ?? '') ?: 0),
                 'buyer'   => ($r['BUYER_NAME'] ?? ''),
                 'sku'     => trim(($r['SKU'] ?? '')),
+                // Rewards Club coupon (our own loyalty discount) taken off his
+                // winning price; 'price' stays the winning price.
+                'coupon'  => abs((float) (($r['COUPON_COST'] ?? '') ?: 0)),
+                'post'    => (($r['POST_COUPON_PRICE'] ?? '') !== '') ? (float) $r['POST_COUPON_PRICE'] : null,
                 'placed'  => $placed ? Carbon::parse($placed, 'UTC')->setTimezone('America/Los_Angeles')->format('Y-m-d H:i:s') : '',
             ];
             $added++;
@@ -732,8 +741,13 @@ class WhatnotSeller
                 if (!isset($taken[$k]) && $c['date'] === $d) { $taken[$k] = true; $stackRings[$info['stacks'][0]][] = $k; }
             }
         }
+        $coupons = self::couponByOrder();
         $out = [];
         foreach ($rlist as $ri => $r) {
+            // Receipt price is after the coupon; his winning price adds it back.
+            $r['coupon'] = $coupons[(string) $r['order']] ?? 0.0;
+            $r['paid'] = (float) $r['price'];
+            $r['price'] = round((float) $r['price'] + $r['coupon'], 2);
             $row = $r + ['match' => null, 'score' => 0, 'stack' => null];
             if (isset($usedR[$ri])) {
                 $row['match'] = $pool[$usedR[$ri][0]];
@@ -772,5 +786,17 @@ class WhatnotSeller
             $n += $wn[$d] ?? ($rc[$d] ?? ($erp[$d] ?? 0));
         }
         return (int) $n;
+    }
+
+    /** order id => coupon $ (Rewards Club) from the Whatnot reports. */
+    public static function couponByOrder(): array
+    {
+        $m = [];
+        foreach (self::whatnotOrders() as $o) {
+            if ($o['type'] === 'ORDER_EARNINGS' && !empty($o['order'])) {
+                $m[(string) $o['order']] = (float) ($o['coupon'] ?? 0);
+            }
+        }
+        return $m;
     }
 }
