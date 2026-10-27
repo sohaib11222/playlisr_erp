@@ -613,7 +613,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                         <tr><td style="padding: 2px 12px 2px 0;"><code>F</code> / <code>P</code></td><td>fair / poor, damaged</td></tr>
                         <tr><td style="padding: 2px 12px 2px 0;"><code>generic</code> / <code>nocover</code></td><td>sleeve only: plain sleeve, or no cover at all</td></tr>
                     </table>
-                    <div style="margin-top: 8px;">More examples: <code>1873085 19.99 VG+</code> (sleeve not graded), <code>1873085 VG 12</code> (either order works), <code>1873085 8 VG/generic</code>, <code>1873085 29.99 sealed</code></div>
+                    <div style="margin-top: 8px;">More examples: <code>1873085 19.99 VG+</code> (sleeve not graded), <code>1873085 VG 12</code> (either order works), <code>1873085 8 VG/generic</code>, <code>1873085 19.99 VG+ G+</code> (a space works instead of the slash), <code>1873085 29.99 sealed</code></div>
                 </div>
                 <textarea
                     id="bulk_discogs_ids"
@@ -2939,22 +2939,32 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
 
         // Discogs path. Price and condition can come in either order after
         // the ID/URL: "1873085 19.99 VG+", "1873085 VG+/G+ $19.99" (Sarah, 2026-10-26).
+        // The slash is optional: "1873085 19.99 VG+ G+" reads as record VG+, cover G+.
         let head = trimmed;
         let price = null;
         let cond = null;
         let sleeve = null;
-        for (let guard = 0; guard < 4; guard++) {
+        const gradeWords = []; // space-separated grades, in typed order
+        for (let guard = 0; guard < 5; guard++) {
             const priceMatch = head.match(/\s+\$?(\d+(?:\.\d+)?)\s*$/);
             const condMatch = head.match(/\s+([A-Za-z+\-]+(?:\s*\/\s*[A-Za-z+\-]+)?)\s*$/);
+            const word = condMatch && condMatch[1].indexOf('/') === -1 ? condMatch[1] : null;
             if (priceMatch && price === null) {
                 price = priceMatch[1];
                 head = head.slice(0, priceMatch.index).trim();
-            } else if (condMatch && cond === null && parseGrade(condMatch[1].split('/')[0])) {
+            } else if (condMatch && !word && cond === null && !gradeWords.length && parseGrade(condMatch[1].split('/')[0])) {
                 const parts = condMatch[1].split('/');
                 cond = parseGrade(parts[0]);
                 sleeve = parts[1] ? parseGrade(parts[1], true) : null;
                 head = head.slice(0, condMatch.index).trim();
+            } else if (word && cond === null && gradeWords.length < 2 && (parseGrade(word) || parseGrade(word, true))) {
+                gradeWords.unshift(word);
+                head = head.slice(0, condMatch.index).trim();
             } else break;
+        }
+        if (gradeWords.length) {
+            cond = parseGrade(gradeWords[0]);
+            sleeve = gradeWords[1] ? parseGrade(gradeWords[1], true) : (cond ? null : parseGrade(gradeWords[0], true));
         }
         let id = null;
         if (/^\d+$/.test(head)) {
@@ -3035,6 +3045,8 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                             + `<code>https://www.discogs.com/release/1873085 12.99 G/VG+</code><br>`
                             + `<code>https://www.discogs.com/release/249504 24.99 NM/VG</code><br>`
                             + `<code>https://www.discogs.com/release/1873085 9.99 VG+/Generic</code><br><br>`
+                            + `No slash needed, a space works too:<br>`
+                            + `<code>https://www.discogs.com/release/1873085 19.99 VG+ G+</code><br><br>`
                             + `<span style="color:#1d4ed8;font-weight:700;">Record</span> = the vinyl/CD/tape itself. <span style="color:#b45309;font-weight:700;">Cover</span> = the sleeve or case.</div>`
                     }
                 },
