@@ -702,7 +702,33 @@ class BuyFromCustomerController extends Controller
         // Labels only: include Beta-only types so eBay-value lines are named.
         $itemTypes = $this->calculator->getItemTypesForDropdown(true, true);
 
-        return view('buy_from_customer.intake_sheet', compact('offer', 'itemTypes'));
+        // Jon 2026-10-26: what the associate entered vs what the system said.
+        // Pricing is for admins and the person who made the buy.
+        $showInputs = (int) $offer->created_by === (int) auth()->id()
+            || $this->productUtil->is_admin(auth()->user(), $business_id);
+        $inputs = null;
+        if ($showInputs) {
+            $isCredit = $offer->payout_type === 'store_credit';
+            $bonus = (float) ($this->calculator->getRules()['credit_bonus_multiplier'] ?? 1.5);
+            $maxCash = round((float) $offer->calculated_cash_total * 0.95, 2);
+            // Suggestions were whole dollars from 10/26 6:47pm (PR #199).
+            if ((string) ($offer->accepted_at ?: $offer->updated_at) >= '2026-10-26 18:47:00') {
+                $maxCash = BuyOfferCalculatorService::roundOffer($maxCash);
+            }
+            $max = $isCredit ? round($maxCash * $bonus, 2) : $maxCash;
+            $paid = (float) ($isCredit ? $offer->final_offer_credit : $offer->final_offer_cash);
+            $demand = [];
+            try {
+                foreach ((array) data_get(BuyBetaOffers::get((int) $business_id, (int) $offer->id), 'lines', []) as $d) {
+                    $demand[$d['line_order'] ?? ''] = $d;
+                }
+            } catch (\Throwable $e) {
+                $demand = [];
+            }
+            $inputs = compact('isCredit', 'max', 'paid', 'demand');
+        }
+
+        return view('buy_from_customer.intake_sheet', compact('offer', 'itemTypes', 'inputs'));
     }
 
     /**
