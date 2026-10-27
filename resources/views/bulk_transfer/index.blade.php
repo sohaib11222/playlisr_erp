@@ -6,9 +6,10 @@
 @include('bulk_transfer.partials.style')
 
 <div class="tr-wrap">
+  @include('bulk_transfer.partials.tabs')
   <div class="tr-head">
     <h1>Transfer Items</h1>
-    <p>Move a list of records from one store to another. Stock moves as a real stock transfer, so Stock History stays right. Each move gets an acceptance ID the other store scans to receive it. <a class="tr-link" href="{{ url('/transfers/receive') }}">Receive a transfer</a> &middot; <a class="tr-link" href="{{ url('/transfers/log') }}">Transfer log</a></p>
+    <p>Move a list of records from one store to another. Stock moves as a real stock transfer, so Stock History stays right. Each move gets an acceptance ID the other store scans to receive it.</p>
   </div>
 
   <div id="tr-result"></div>

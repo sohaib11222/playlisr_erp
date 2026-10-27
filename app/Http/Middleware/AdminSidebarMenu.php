@@ -393,21 +393,12 @@ class AdminSidebarMenu
                             );
                         }
                         // Bulk store-to-store move; same permission as stock transfers (purchase.create).
+                        // One entry for all of /transfers/*; Receive + Log are tabs on the page.
                         if (auth()->user()->can('purchase.create')) {
                             $sub->url(
                                 url('/transfers/bulk'),
-                                'Transfer Items',
-                                ['icon' => 'fa fas fa-exchange-alt', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'bulk']
-                            );
-                            $sub->url(
-                                url('/transfers/receive'),
-                                'Receive Transfer',
-                                ['icon' => 'fa fas fa-truck-loading', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'receive']
-                            );
-                            $sub->url(
-                                url('/transfers/log'),
-                                'Transfer Log',
-                                ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'transfers' && request()->segment(2) == 'log']
+                                'Transfers',
+                                ['icon' => 'fa fas fa-exchange-alt', 'active' => request()->segment(1) == 'transfers']
                             );
                         }
                         if (auth()->user()->can('product.update')) {
