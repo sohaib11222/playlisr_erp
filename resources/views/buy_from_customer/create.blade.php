@@ -661,7 +661,7 @@ HTML;
                                 <tr>
                                     <th>Type</th>
                                     <th>Title/Notes</th>
-                                    <th>Discogs / eBay sold link</th>
+                                    <th>Discogs median / eBay recently sold link</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / value</th>
@@ -1765,7 +1765,7 @@ HTML;
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
             var ebay = bfcNeedsEbaySold(t);
-            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay SOLD link (required)' : 'Release ID or URL');
+            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay recently sold link (required)' : 'Release ID or URL');
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
             var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin' || t.mode === 'signed_value');
             var $median = $row.find('input[name$="[discogs_median_price]"]');
