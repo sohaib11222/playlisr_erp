@@ -3041,6 +3041,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                             + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#b45309;">Cover</small><b style="color:#b45309;">VG+</b></span>`
                             + `</div></div><br>`
                             + `More examples:<br>`
+                            + `<code>https://www.discogs.com/release/1873085 19.99 VG+ VG+</code><br>`
                             + `<code>https://www.discogs.com/release/1873085 12.99 G VG+</code><br>`
                             + `<code>https://www.discogs.com/release/249504 24.99 NM VG</code><br>`
                             + `<code>https://www.discogs.com/release/1873085 9.99 VG+ Generic</code><br><br>`
