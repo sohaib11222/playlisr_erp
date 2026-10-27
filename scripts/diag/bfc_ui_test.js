@@ -82,6 +82,8 @@ const fs = require('fs');
   const calcErr = () => page.evaluate(() => { $('#bfc_calc_error').hide().empty(); $('#buy_offer_form').one('submit', e => e.preventDefault()); $('#buy_offer_form button[type="submit"], #buy_offer_form input[type="submit"]').first().trigger('click'); return $('#bfc_calc_error').text(); });
   const setLink = (n, u) => page.evaluate((sel, u) => $(sel).find('input[name$="[discogs_link]"]').val(u).trigger('input'), row(n), u);
   const ebayUi = await page.evaluate(sel => { const $r = $(sel); $r.find('input[name$="[title]"]').val('Faces of Death VHS').trigger('input'); return { ph: $r.find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $r.find('a.bfc-ebay-search').is(':visible'), href: $r.find('a.bfc-ebay-search').attr('href') }; }, row(2));
+  const help = await page.evaluate(sel => ({ box: $('#bfc_ebay_help').is(':visible'), howto: $(sel).find('a.bfc-ebay-howto').is(':visible'), steps: $('#bfc_ebay_help li').length }), row(2));
+  ok('eBay how-to box + "How?" link show for eBay lines', help.box && help.howto && help.steps === 5, help);
   ok('VHS - rare shows eBay SOLD link box + search button', ebayUi.ph === 'eBay recently sold link (required)' && ebayUi.btn && /LH_Sold=1/.test(ebayUi.href) && /Faces%20of%20Death/.test(ebayUi.href), ebayUi);
   await setLink(2, '');
   let err = await calcErr();

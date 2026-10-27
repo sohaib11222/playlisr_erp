@@ -275,6 +275,11 @@
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-lastsold { margin-top: 4px; }
         .bfc-create .bfc-ebay-search { display: block; margin-top: 4px; font-size: 12px; white-space: nowrap; }
+        .bfc-create .bfc-ebay-help { background: #fff8e1; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 14px; }
+        .bfc-create .bfc-ebay-help summary { font-weight: 700; cursor: pointer; }
+        .bfc-create .bfc-ebay-help ol { margin: 8px 0 4px; padding-left: 20px; }
+        .bfc-create .bfc-ebay-help li { margin-bottom: 4px; }
+        .bfc-create .bfc-ebay-howto { font-size: 12px; }
         .bfc-create .bfc-lastsold small { display: block; font-size: 11px; color: #666; }
         .bfc-create .bfc-lastsold-date { height: 28px; padding: 2px 6px; font-size: 12px; }
         .bfc-create .bfc-lastsold-never { font-size: 11px; font-weight: 400; margin: 2px 0 0; text-transform: none; letter-spacing: 0; }
@@ -655,6 +660,19 @@ HTML;
                     <div id="bfc_items_gate_hint" class="bfc-items-gate-hint" style="display:none;">
                         <i class="fa fa-lock"></i> Fill in the seller first (pick their account, or type a first name and phone). Then you can add items.
                     </div>
+                    {{-- Jon 2026-10-26: how to get an eBay recently sold price + link. Shown while any line is eBay-priced. --}}
+                    <details id="bfc_ebay_help" class="bfc-ebay-help" style="display:none;" open>
+                        <summary>How to find the eBay recently sold price and link</summary>
+                        <ol>
+                            <li>Type the item's title on the line: artist / name, format, year or edition.</li>
+                            <li>Click <strong>Search eBay sold items ↗</strong> under the link box. eBay opens showing only <strong>sold</strong> listings (sold prices are green).<br>
+                                <small>Searching on eBay yourself? Turn on <strong>Sold items</strong>: on a computer it's on the left under "Show only"; on a phone tap <strong>Filter</strong>, then <strong>Sold items</strong>.</small></li>
+                            <li>Check the results are the same item: same edition, format and condition. Skip lots, bundles and "for parts". Change the search words until they match.</li>
+                            <li>Look at what sold in the last few months and type the <strong>typical (middle) price</strong> in the value box, not the highest one.</li>
+                            <li>Copy the link from the address bar of that sold-results page and paste it in the link box.</li>
+                        </ol>
+                        <small>Not accepted: a single listing page (ebay.com/itm/…) or a search without the Sold items filter.</small>
+                    </details>
                     <div class="table-responsive">
                         <table class="table table-bordered" id="offer_lines_table">
                             <thead>
@@ -692,6 +710,7 @@ HTML;
                                         @endif</td>
                                         <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}
                                         <a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a>
+                                        <a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>
                                         @if($bfcBeta)
                                             <div class="bfc-lastsold" style="display:none;">
                                                 <small>Last sold on Discogs</small>
@@ -1311,7 +1330,7 @@ HTML;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
-                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
+                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a><a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
@@ -1757,6 +1776,11 @@ HTML;
             var q = $.trim($row.find('input[name$="[title]"]').val() || '');
             return 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(q) + '&LH_Sold=1&LH_Complete=1';
         }
+        $(document).on('click', '#offer_lines_table a.bfc-ebay-howto', function (e) {
+            e.preventDefault();
+            var $h = $('#bfc_ebay_help').show().prop('open', true);
+            $('html, body').animate({ scrollTop: $h.offset().top - 90 }, 200);
+        });
         $(document).on('input', '#offer_lines_table input[name$="[title]"]', function () {
             var $row = $(this).closest('tr');
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row));
@@ -1767,6 +1791,8 @@ HTML;
             var ebay = bfcNeedsEbaySold(t);
             $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay recently sold link (required)' : 'Release ID or URL');
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
+            $row.find('a.bfc-ebay-howto').toggle(ebay);
+            $('#bfc_ebay_help').toggle($('#offer_lines_table a.bfc-ebay-howto').filter(function () { return this.style.display !== 'none'; }).length > 0);
             var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin' || t.mode === 'signed_value');
             var $median = $row.find('input[name$="[discogs_median_price]"]');
             $median.prop('disabled', !usesValue).toggleClass('bfc-cell-off', !usesValue);
