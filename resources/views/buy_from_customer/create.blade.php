@@ -43,10 +43,10 @@
         .bfc-create #offer_lines_table td { padding: 6px; vertical-align: middle; }
         .bfc-create #offer_lines_table .form-control { height: 32px; font-size: 12px; padding: 4px 8px; }
         .bfc-create #offer_lines_table td:first-child { width: 220px; }
-        .bfc-create #offer_lines_table td:nth-child(4) { width: 110px; }
-        .bfc-create #offer_lines_table td:nth-child(5),
-        .bfc-create #offer_lines_table td:nth-child(6),
-        .bfc-create #offer_lines_table td:nth-child(7) { width: 110px; }
+        .bfc-create #offer_lines_table td:nth-child(3) { width: 110px; }
+        .bfc-create #offer_lines_table td:nth-child(4) { width: 70px; }
+        .bfc-create #offer_lines_table td:nth-child(5) { width: 230px; }
+        .bfc-create #offer_lines_table td:nth-child(6) { width: 120px; }
         .bfc-create #offer_lines_table td:last-child { width: 40px; text-align: center; }
         /* Individual-Discogs line missing its median price — the grade multiplier
            has nothing to scale, so flag the cell before Calculate. */
@@ -275,7 +275,7 @@
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-lastsold { margin-top: 4px; }
         .bfc-create .bfc-link { margin-top: 4px; }
-        .bfc-create .bfc-ebay-search { display: block; margin-top: 4px; font-size: 12px; white-space: nowrap; }
+        .bfc-create .bfc-ebay-search { display: inline-block; margin: 4px 8px 0 0; font-size: 12px; white-space: nowrap; }
         .bfc-create .bfc-ebay-help { background: #fff8e1; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 14px; }
         .bfc-create .bfc-ebay-help summary { font-weight: 700; cursor: pointer; }
         .bfc-create .bfc-ebay-help ol { margin: 8px 0 4px; padding-left: 20px; }
@@ -1789,7 +1789,9 @@ HTML;
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
             var ebay = bfcNeedsEbaySold(t);
-            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay recently sold link (required)' : 'Release ID or URL');
+            // The link box only where a link means something: Discogs records and eBay lines.
+            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay recently sold link (required)' : 'Discogs release ID or URL')
+                .toggle(ebay || t.mode === 'individual_discogs' || !!$.trim($row.find('input[name$="[discogs_link]"]').val()));
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
             $row.find('a.bfc-ebay-howto').toggle(ebay);
             $('#bfc_ebay_help').toggle($('#offer_lines_table a.bfc-ebay-howto').filter(function () { return this.style.display !== 'none'; }).length > 0);
