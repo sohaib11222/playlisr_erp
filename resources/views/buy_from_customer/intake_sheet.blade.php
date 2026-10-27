@@ -203,7 +203,8 @@
     }
     onReady(function ($) {
         $('#bfc_copy_discogs_links').on('click', function () {
-            var links = @json($offer->lines->pluck('discogs_url')->filter()->values());
+            // eBay sold links live in the same column; copy only the Discogs ones.
+            var links = @json($offer->lines->pluck('discogs_url')->filter()->values()).filter(function (u) { return /discogs\.com/i.test(u); });
             var $status = $('#bfc_copy_discogs_links_status');
             if (!links.length) {
                 $status.text('No Discogs links on this collection.');

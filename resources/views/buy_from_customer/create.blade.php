@@ -274,6 +274,7 @@
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-lastsold { margin-top: 4px; }
+        .bfc-create .bfc-ebay-search { display: block; margin-top: 4px; font-size: 12px; white-space: nowrap; }
         .bfc-create .bfc-lastsold small { display: block; font-size: 11px; color: #666; }
         .bfc-create .bfc-lastsold-date { height: 28px; padding: 2px 6px; font-size: 12px; }
         .bfc-create .bfc-lastsold-never { font-size: 11px; font-weight: 400; margin: 2px 0 0; text-transform: none; letter-spacing: 0; }
@@ -660,7 +661,7 @@ HTML;
                                 <tr>
                                     <th>Type</th>
                                     <th>Title/Notes</th>
-                                    <th>Discogs Link</th>
+                                    <th>Discogs / eBay sold link</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / value</th>
@@ -690,6 +691,7 @@ HTML;
                                             </select>
                                         @endif</td>
                                         <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}
+                                        <a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a>
                                         @if($bfcBeta)
                                             <div class="bfc-lastsold" style="display:none;">
                                                 <small>Last sold on Discogs</small>
@@ -1309,7 +1311,7 @@ HTML;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
-                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL">' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
+                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
@@ -1436,6 +1438,10 @@ HTML;
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
                 if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 var tcfg = BFC_RULES.types[type] || {};
+                if (bfcNeedsEbaySold(tcfg) && qty > 0) {
+                    if (!link) sanity.push('Line ' + (i + 1) + ': paste the link to eBay SOLD listings for this item (click "Search eBay sold items", check the prices, copy that page\'s link).');
+                    else if (!bfcIsEbaySoldUrl(link)) sanity.push('Line ' + (i + 1) + ': that is not an eBay sold-items link. Search eBay, turn on the "Sold items" filter, and copy that results page link.');
+                }
                 if (tcfg.min_value && qty > 0 && val < tcfg.min_value) sanity.push('Line ' + (i + 1) + ': "' + $row.find('select[name$="[item_type]"] option:selected').text() + '" is for items worth $' + tcfg.min_value + '+ on eBay. Use the regular line for cheaper ones.');
                 if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
             });
@@ -1739,9 +1745,28 @@ HTML;
             }
             return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
         }
+        // eBay-value lines need the eBay SOLD results link (mirrors
+        // BuyOfferCalculatorService::isEbaySoldUrl: an ebay.* search with LH_Sold=1).
+        function bfcNeedsEbaySold(t) { return t.mode === 'ebay_margin' || t.mode === 'value_percent'; }
+        function bfcIsEbaySoldUrl(u) {
+            var m = $.trim(u || '').match(/^https?:\/\/([^\/?#]+)[^?#]*\?([^#]*)/i);
+            if (!m || !/(^|\.)ebay\.[a-z.]+$/i.test(m[1])) return false;
+            return m[2].split('&').some(function (kv) { var p = kv.split('='); return p[0].toLowerCase() === 'lh_sold' && p[1] === '1'; });
+        }
+        function bfcEbaySearchHref($row) {
+            var q = $.trim($row.find('input[name$="[title]"]').val() || '');
+            return 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(q) + '&LH_Sold=1&LH_Complete=1';
+        }
+        $(document).on('input', '#offer_lines_table input[name$="[title]"]', function () {
+            var $row = $(this).closest('tr');
+            $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row));
+        });
         function bfcApplyRowState($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
+            var ebay = bfcNeedsEbaySold(t);
+            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay SOLD link (required)' : 'Release ID or URL');
+            $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
             var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin' || t.mode === 'signed_value');
             var $median = $row.find('input[name$="[discogs_median_price]"]');
             $median.prop('disabled', !usesValue).toggleClass('bfc-cell-off', !usesValue);

@@ -1012,6 +1012,13 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
+            if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type)) {
+                if ($link === '') {
+                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: paste the link to eBay SOLD listings for this item (search eBay, turn on "Sold items", copy the page link).', $n);
+                } elseif (!BuyOfferCalculatorService::isEbaySoldUrl($link)) {
+                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: that is not an eBay sold-items link. Search eBay, turn on the "Sold items" filter, and copy that results page link.', $n);
+                }
+            }
             if ($type === 'individual_vinyl' && $value >= BuyOfferCalculatorService::LINK_REQUIRED_FROM && $link === '') {
                 $errors["lines.$i.discogs_link"] = sprintf('Line %s: records with a median of $%d or more need the Discogs link or release ID.', $n, BuyOfferCalculatorService::LINK_REQUIRED_FROM);
             }
