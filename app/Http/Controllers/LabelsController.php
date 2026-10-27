@@ -40,8 +40,19 @@ class LabelsController extends Controller
     public static function conditionLabel($productId): ?string
     {
         if (!$productId || !\Schema::hasColumn('products', 'condition')) return null;
-        $row = DB::table('products')->where('id', $productId)->first(['condition', 'sleeve_condition']);
+        $row = DB::table('products')->where('id', $productId)->first(['condition', 'sleeve_condition', 'category_id', 'sub_category_id']);
         if (!$row) return null;
+        // Sealed Vinyl / CD / Cassette print Mint/Mint unless a used grade was typed (Sarah, 2026-10-26).
+        // The stored condition stays "Sealed" so the website's Sealed filter keeps matching.
+        if (trim((string) $row->condition) === '' || trim((string) $row->condition) === 'Sealed') {
+            $catNames = DB::table('categories')->whereIn('id', array_filter([$row->category_id, $row->sub_category_id]))->pluck('name');
+            foreach ($catNames as $n) {
+                $n = strtolower((string) $n);
+                if (strpos($n, 'sealed') !== false && preg_match('/vinyl|\bcds?\b|cassette|\blps?\b/', $n)) {
+                    return 'Record M, Sleeve M';
+                }
+            }
+        }
         $short = function ($g) {
             $g = trim((string) $g);
             if ($g === '') return null;
