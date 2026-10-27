@@ -136,7 +136,7 @@
         document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
         document.getElementById('scExtra').innerHTML = extra.map(row).join('');
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
-        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Not saved until you tap Done, then Save.';
+        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Counts save when you tap Done, then Save. Genre changes save right away.';
     }
     // Draft kept on this device after every scan, so closing the tab, a
     // dead battery or a refresh never loses a half-counted bin (Sarah 10/14).
