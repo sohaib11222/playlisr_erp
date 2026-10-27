@@ -6,9 +6,10 @@
 @include('bulk_transfer.partials.style')
 
 <div class="tr-wrap">
+  @include('bulk_transfer.partials.tabs')
   <div class="tr-head">
     <h1>Receive Transfer</h1>
-    <p>Scan the acceptance ID on the slip in the box (it starts with TR), then scan every item. <a class="tr-link" href="{{ url('/transfers/bulk') }}">Transfer Items</a> &middot; <a class="tr-link" href="{{ url('/transfers/log') }}">Transfer log</a></p>
+    <p>Scan the acceptance ID on the slip in the box (it starts with TR), then scan every item.</p>
   </div>
 
   @if(session('status'))

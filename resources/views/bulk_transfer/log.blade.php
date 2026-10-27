@@ -6,9 +6,10 @@
 @include('bulk_transfer.partials.style')
 
 <div class="tr-wrap" style="max-width:1300px;">
+  @include('bulk_transfer.partials.tabs')
   <div class="tr-head">
     <h1>Transfer Log</h1>
-    <p>Every Transfer Items move: who sent it, who received it, and what was missing. <a class="tr-link" href="{{ url('/transfers/bulk') }}">Transfer Items</a> &middot; <a class="tr-link" href="{{ url('/transfers/receive') }}">Receive a transfer</a></p>
+    <p>Every Transfer Items move: who sent it, who received it, and what was missing.</p>
   </div>
   <div class="tr-actions" style="margin-bottom:14px;">
     @foreach(['' => 'All', 'in_transit' => 'On the way', 'received_missing' => 'Items missing', 'received' => 'Received'] as $k => $label)
