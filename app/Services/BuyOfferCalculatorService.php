@@ -555,6 +555,29 @@ class BuyOfferCalculatorService
     }
 
     /**
+     * Jon 2026-10-26: lines priced off an eBay value need the link to eBay's
+     * sold results. eBay blocks our server from reading its pages, so a link
+     * counts as sold only when it's an eBay search with the "Sold items"
+     * filter on (LH_Sold=1); a single /itm/ page can't be proven sold.
+     */
+    public function requiresEbaySoldLink($itemType)
+    {
+        $cfg = $this->getRules()['item_types'][$itemType] ?? null;
+        return $cfg && in_array($cfg['mode'], ['ebay_margin', 'value_percent'], true);
+    }
+
+    public static function isEbaySoldUrl($url)
+    {
+        $parts = parse_url(trim((string) $url));
+        if (empty($parts['host']) || !preg_match('/(^|\.)ebay\.[a-z.]+$/i', $parts['host'])) {
+            return false;
+        }
+        parse_str($parts['query'] ?? '', $q);
+        $q = array_change_key_case($q, CASE_LOWER);
+        return (string) ($q['lh_sold'] ?? '') === '1';
+    }
+
+    /**
      * Jon 2026-10-26: suggested cash offers are whole dollars ($9.45 -> $9,
      * $9.58 -> $10), at least $1 when there's anything to pay for. Credit stays
      * exactly credit_bonus x the cash offer.
