@@ -78,6 +78,22 @@ const fs = require('fs');
   const msg = await page.evaluate(() => { $('#bfc_calc_error').hide().empty(); const b = $('#buy_offer_form button[type="submit"], #buy_offer_form input[type="submit"]').first(); b.trigger('click'); return $('#bfc_calc_error').text(); });
   ok('VHS - rare at $10 is blocked', /worth \$15\+/.test(msg), msg.slice(0, 200));
   await setValue(2, 40);
+  // eBay sold link: required on eBay-value lines, must be a sold-items search.
+  const calcErr = () => page.evaluate(() => { $('#bfc_calc_error').hide().empty(); $('#buy_offer_form button[type="submit"], #buy_offer_form input[type="submit"]').first().trigger('click'); return $('#bfc_calc_error').text(); });
+  const setLink = (n, u) => page.evaluate((sel, u) => $(sel).find('input[name$="[discogs_link]"]').val(u).trigger('input'), row(n), u);
+  const ebayUi = await page.evaluate(sel => { const $r = $(sel); $r.find('input[name$="[title]"]').val('Faces of Death VHS').trigger('input'); return { ph: $r.find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $r.find('a.bfc-ebay-search').is(':visible'), href: $r.find('a.bfc-ebay-search').attr('href') }; }, row(2));
+  ok('VHS - rare shows eBay SOLD link box + search button', ebayUi.ph === 'eBay SOLD link (required)' && ebayUi.btn && /LH_Sold=1/.test(ebayUi.href) && /Faces%20of%20Death/.test(ebayUi.href), ebayUi);
+  await setLink(2, '');
+  let err = await calcErr();
+  ok('no eBay link -> blocked', /Line 2: paste the link to eBay SOLD/.test(err), err.slice(0, 300));
+  await setLink(2, 'https://www.ebay.com/itm/123456789012');
+  err = await calcErr();
+  ok('eBay item link (not sold search) -> blocked', /Line 2: that is not an eBay sold-items link/.test(err), err.slice(0, 300));
+  await setLink(2, 'https://www.ebay.com/sch/i.html?_nkw=faces+of+death+vhs&_sacat=0&LH_Sold=1&LH_Complete=1');
+  err = await calcErr();
+  ok('eBay sold search link -> accepted', !/Line 2:/.test(err), err.slice(0, 300));
+  const recUi = await page.evaluate(sel => ({ ph: $(sel).find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $(sel).find('a.bfc-ebay-search').is(':visible') }), row(4));
+  ok('record line keeps Discogs link box, no eBay button', recUi.ph === 'Release ID or URL' && !recUi.btn, recUi);
 
   v = await pick(3, 'select[name$="[item_type]"]', 'comic - r');
   ok('typing "comic - r" picks Comic - rare', v === 'rare_comic', v);
