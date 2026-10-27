@@ -95,7 +95,7 @@ const fs = require('fs');
   err = await calcErr();
   ok('eBay sold search link -> accepted', !/Line 2:/.test(err), err.slice(0, 300));
   const recUi = await page.evaluate(sel => ({ ph: $(sel).find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $(sel).find('a.bfc-ebay-search').is(':visible') }), row(4));
-  ok('record line keeps Discogs link box, no eBay button', recUi.ph === 'Release ID or URL' && !recUi.btn, recUi);
+  ok('record line keeps Discogs link box, no eBay button', recUi.ph === 'Discogs release ID or URL' && !recUi.btn, recUi);
 
   v = await pick(3, 'select[name$="[item_type]"]', 'comic - r');
   ok('typing "comic - r" picks Comic - rare', v === 'rare_comic', v);
@@ -113,6 +113,7 @@ const fs = require('fs');
   v = await pick(5, 'select[name$="[item_type]"]', 'framed');
   c = await cell(5);
   ok('typing "framed" picks Framed Art, flat $3.50', v === 'framed_art' && c.value === '$3.50', { v, c });
+  ok('flat-price line hides the link box', !(await page.evaluate(sel => $(sel).find('input[name$="[discogs_link]"]').is(':visible'), row(5))));
   v = await pick(6, 'select[name$="[item_type]"]', 'framed art - r');
   await setValue(6, 80);
   c = await cell(6);
