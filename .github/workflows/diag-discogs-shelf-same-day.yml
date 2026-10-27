@@ -1,0 +1,38 @@
+# One-off, read-only: finds the Discogs listings at a shelf location (e.g. FL414)
+# and every shelf location that had listings posted the same day.
+# Reads the Discogs inventory API only. Writes nothing.
+
+name: Diag Discogs shelf same-day listings (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Shelf location, e.g. FL414'
+        default: 'FL414'
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 40m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnNldF90aW1lX2xpbWl0KDApOyBpbmlfc2V0KCdtZW1vcnlfbGltaXQnLCAnMTAyNE0nKTsKJHRhcmdldCA9IHN0cnRvdXBwZXIocHJlZ19yZXBsYWNlKCcvW1xzXC1fXSsvJywgJycsICRhcmd2WzFdID8/ICdGTDQxNCcpKTsKJG5vcm0gPSBmbigkbCkgPT4gc3RydG91cHBlcihwcmVnX3JlcGxhY2UoJy9bXHNcLV9dKy8nLCAnJywgKHN0cmluZykgJGwpKTsKJHN2YyA9IG5ldyBBcHBcU2VydmljZXNcRGlzY29nc1NlcnZpY2UoREI6OnRhYmxlKCdidXNpbmVzcycpLT52YWx1ZSgnaWQnKSk7CiRycCA9IG5ldyBSZWZsZWN0aW9uUHJvcGVydHkoJHN2YywgJ3Rva2VuJyk7ICRycC0+c2V0QWNjZXNzaWJsZSh0cnVlKTsgJHRvayA9ICRycC0+Z2V0VmFsdWUoJHN2Yyk7CmVjaG8gIlRhcmdldCBzaGVsZiAkdGFyZ2V0LCB0b2tlbiAiLigkdG9rID8gJ29rJyA6ICdtaXNzaW5nJykuIlxuIjsKJHR6ID0gbmV3IERhdGVUaW1lWm9uZSgnQW1lcmljYS9Mb3NfQW5nZWxlcycpOwokcm93cyA9IFtdOyAkcGFnZSA9IDE7ICRwYWdlcyA9IDE7CmRvIHsKICBmb3IgKCR0cnkgPSAwOyAkdHJ5IDwgNDsgJHRyeSsrKSB7CiAgICAkY2ggPSBjdXJsX2luaXQoImh0dHBzOi8vYXBpLmRpc2NvZ3MuY29tL3VzZXJzL25pdmVzc2EvaW52ZW50b3J5P3NvcnQ9bGlzdGVkJnNvcnRfb3JkZXI9ZGVzYyZwZXJfcGFnZT0xMDAmcGFnZT0kcGFnZSIpOwogICAgY3VybF9zZXRvcHRfYXJyYXkoJGNoLCBbQ1VSTE9QVF9SRVRVUk5UUkFOU0ZFUj0+dHJ1ZSwgQ1VSTE9QVF9USU1FT1VUPT4zMCwgQ1VSTE9QVF9IVFRQSEVBREVSPT5bIkF1dGhvcml6YXRpb246IERpc2NvZ3MgdG9rZW49JHRvayIsICJVc2VyLUFnZW50OiBOaXZlc3NhRVJQLzEuMCJdXSk7CiAgICAkYiA9IGN1cmxfZXhlYygkY2gpOyAkY29kZSA9IGN1cmxfZ2V0aW5mbygkY2gsIENVUkxJTkZPX0hUVFBfQ09ERSk7IGN1cmxfY2xvc2UoJGNoKTsKICAgIGlmICgkY29kZSA9PSAyMDApIGJyZWFrOyBzbGVlcCgkY29kZSA9PSA0MjkgPyAzMCA6IDUpOwogIH0KICBpZiAoJGNvZGUgIT0gMjAwKSB7IGVjaG8gInBhZ2UgJHBhZ2UgRVJSICRjb2RlXG4iOyAkcGFnZSsrOyBjb250aW51ZTsgfQogICRqID0ganNvbl9kZWNvZGUoJGIsIHRydWUpOyAkcGFnZXMgPSAkalsncGFnaW5hdGlvbiddWydwYWdlcyddID8/ICRwYWdlczsKICBmb3JlYWNoICgkalsnbGlzdGluZ3MnXSA/PyBbXSBhcyAkbCkgewogICAgJGQgPSAobmV3IERhdGVUaW1lKCRsWydwb3N0ZWQnXSkpLT5zZXRUaW1lem9uZSgkdHopOwogICAgJHJvd3NbXSA9IFsnZGF5Jz0+JGQtPmZvcm1hdCgnWS1tLWQnKSwgJ3RpbWUnPT4kZC0+Zm9ybWF0KCdIOmknKSwgJ2xvYyc9PnRyaW0oKHN0cmluZykoJGxbJ2xvY2F0aW9uJ10gPz8gJycpKSwgJ3N0YXR1cyc9PiRsWydzdGF0dXMnXSA/PyAnJywKICAgICAgJ2lkJz0+JGxbJ2lkJ10sICd3aGF0Jz0+bWJfc3Vic3RyKCgkbFsncmVsZWFzZSddWydkZXNjcmlwdGlvbiddID8/ICcnKSwgMCwgNzApLCAncHJpY2UnPT4kbFsncHJpY2UnXVsndmFsdWUnXSA/PyAnJ107CiAgfQogIGlmICgkcGFnZSAlIDUwID09IDApIGVjaG8gInBhZ2UgJHBhZ2UvJHBhZ2VzXG4iOwogICRwYWdlKys7IHVzbGVlcCgxMTAwMDAwKTsKfSB3aGlsZSAoJHBhZ2UgPD0gJHBhZ2VzKTsKZWNobyAiTGlzdGluZ3Mgc2Nhbm5lZDogIi5jb3VudCgkcm93cykuIlxuIjsKJGhpdHMgPSBhcnJheV92YWx1ZXMoYXJyYXlfZmlsdGVyKCRyb3dzLCBmbigkcikgPT4gJG5vcm0oJHJbJ2xvYyddKSA9PT0gJHRhcmdldCkpOwplY2hvICJcbiMjIyBMaXN0aW5ncyBhdCAkdGFyZ2V0ICgiLmNvdW50KCRoaXRzKS4iKVxuIjsKZm9yZWFjaCAoJGhpdHMgYXMgJHIpIGVjaG8gInskclsnZGF5J119IHskclsndGltZSddfSB8IHskclsnc3RhdHVzJ119IHwgXCR7JHJbJ3ByaWNlJ119IHwgeyRyWyd3aGF0J119IHwgbGlzdGluZyB7JHJbJ2lkJ119XG4iOwpmb3JlYWNoIChhcnJheV91bmlxdWUoYXJyYXlfY29sdW1uKCRoaXRzLCAnZGF5JykpIGFzICRkYXkpIHsKICAkc2FtZSA9IGFycmF5X2ZpbHRlcigkcm93cywgZm4oJHIpID0+ICRyWydkYXknXSA9PT0gJGRheSk7CiAgJGJ5TG9jID0gW107CiAgZm9yZWFjaCAoJHNhbWUgYXMgJHIpIHsgJGsgPSAkclsnbG9jJ10gPT09ICcnID8gJyhubyBsb2NhdGlvbiknIDogJHJbJ2xvYyddOyAkYnlMb2NbJGtdW10gPSAkcjsgfQogIGtzb3J0KCRieUxvYywgU09SVF9OQVRVUkFMIHwgU09SVF9GTEFHX0NBU0UpOwogIGVjaG8gIlxuIyMjIFNoZWxmIGxvY2F0aW9ucyB3aXRoIGxpc3RpbmdzIHBvc3RlZCAkZGF5ICgiLmNvdW50KCRzYW1lKS4iIGxpc3RpbmdzLCAiLmNvdW50KCRieUxvYykuIiBsb2NhdGlvbnMpXG4iOwogIGZvcmVhY2ggKCRieUxvYyBhcyAkbG9jID0+ICRycykgewogICAgJHRpbWVzID0gYXJyYXlfY29sdW1uKCRycywgJ3RpbWUnKTsgc29ydCgkdGltZXMpOwogICAgZWNobyAiJGxvYyB8ICIuY291bnQoJHJzKS4iIGxpc3RpbmdzIHwgIi4kdGltZXNbMF0uIi0iLmVuZCgkdGltZXMpLiJcbiI7CiAgfQp9Cg==' | base64 -d > /tmp/diag_shelf.php
+            php /tmp/diag_shelf.php '${{ inputs.location }}'
+            rm -f /tmp/diag_shelf.php
