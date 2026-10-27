@@ -581,7 +581,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
             <h3 class="box-title">
                 <i class="fa fa-music"></i> Bulk Discogs Release IDs
-                <span style="font-size: 14px; font-weight: 600; color: #000; margin-left: 8px;">Type: number, price, condition (e.g. 1873085 19.99 VG+/G+)</span>
+                <span style="font-size: 14px; font-weight: 600; color: #000; margin-left: 8px;">Type: number, price, record grade, cover grade (e.g. 1873085 19.99 VG+ G+)</span>
                 {{-- Sarah 2026-07-22: Discogs logo next to the heading. --}}
                 <span style="display:inline-flex; align-items:center; gap:5px; margin-left:8px; vertical-align:middle;">
                     <svg title="Discogs" role="img" aria-label="Discogs" viewBox="0 0 32 32" style="height:18px; width:18px;" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#333333" stroke-width="2.4"><circle cx="16" cy="16" r="14"/><circle cx="16" cy="16" r="8.2"/></g><circle cx="16" cy="16" r="2.4" fill="#333333"/></svg>
@@ -598,11 +598,11 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             <div class="form-group">
                 {{-- Plain how-to, condition included (Sarah, 2026-10-26: "more obvious suggestive text") --}}
                 <div style="margin-bottom: 12px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; color: #000; font-size: 15px;">
-                    <div style="font-weight: 800; font-size: 17px; margin-bottom: 6px;">One record per line: Discogs number, price, condition</div>
+                    <div style="font-weight: 800; font-size: 17px; margin-bottom: 6px;">One record per line: Discogs number, price, record grade, cover grade</div>
                     <div style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; background: #fff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
-                        1873085 &nbsp;19.99 &nbsp;VG+/G+
+                        1873085 &nbsp;19.99 &nbsp;VG+ &nbsp;G+
                     </div>
-                    <div style="margin-bottom: 6px;"><strong>1873085</strong> is the number at the end of the Discogs release link (you can paste the whole link instead). <strong>19.99</strong> is our price. <strong>VG+/G+</strong> is the record, then the sleeve.</div>
+                    <div style="margin-bottom: 6px;"><strong>1873085</strong> is the number at the end of the Discogs release link (you can paste the whole link instead). <strong>19.99</strong> is our price. <strong>VG+</strong> is the record, <strong>G+</strong> is the sleeve, with a space between them.</div>
                     <div style="margin-bottom: 6px;"><strong>Always add the condition.</strong> It prints on the sticker and shows on the website, so the customer knows what they are getting.</div>
                     <table style="border-collapse: collapse; font-size: 14px; margin-top: 4px;">
                         <tr><td style="padding: 2px 12px 2px 0;"><code>Sealed</code></td><td>still in shrink</td></tr>
@@ -613,13 +613,13 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                         <tr><td style="padding: 2px 12px 2px 0;"><code>F</code> / <code>P</code></td><td>fair / poor, damaged</td></tr>
                         <tr><td style="padding: 2px 12px 2px 0;"><code>generic</code> / <code>nocover</code></td><td>sleeve only: plain sleeve, or no cover at all</td></tr>
                     </table>
-                    <div style="margin-top: 8px;">More examples: <code>1873085 19.99 VG+</code> (sleeve not graded), <code>1873085 VG 12</code> (either order works), <code>1873085 8 VG/generic</code>, <code>1873085 19.99 VG+ G+</code> (a space works instead of the slash), <code>1873085 29.99 sealed</code></div>
+                    <div style="margin-top: 8px;">More examples: <code>1873085 19.99 VG+</code> (sleeve not graded), <code>1873085 VG 12</code> (either order works), <code>1873085 8 VG generic</code>, <code>1873085 19.99 NM VG+</code>, <code>1873085 29.99 sealed</code></div>
                 </div>
                 <textarea
                     id="bulk_discogs_ids"
                     class="form-control"
                     rows="8"
-                    placeholder="Type one per line, like this:&#10;1873085 19.99 VG+/G+&#10;249504 25 NM/VG+&#10;366070 12.50 VG/generic&#10;https://www.discogs.com/release/1234567 29.99 sealed"
+                    placeholder="Type one per line, like this:&#10;1873085 19.99 VG+ G+&#10;249504 25 NM VG+&#10;366070 12.50 VG generic&#10;https://www.discogs.com/release/1234567 29.99 sealed"
                     style="font-family: 'Courier New', monospace; font-size: 15px; line-height: 1.6;"></textarea>
                 {{-- Live check of each line before fetching --}}
                 <div id="bulk_discogs_preview" style="margin-top: 8px; font-size: 14px; color: #000;"></div>
@@ -3002,7 +3002,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             if (!e) return `<div style="color:#b91c1c;font-weight:700;">${esc(l.trim())}: can't read this line. Start with the Discogs number.</div>`;
             if (e.type === 'csv') return `<div>${esc(e.csv.name)}: added as typed (not from Discogs)</div>`;
             const bits = [`Discogs ${e.id}`, e.price ? `$${e.price}` : '<span style="color:#b91c1c;font-weight:700;">no price</span>',
-                e.cond ? `Media ${esc(e.cond)}` : '<span style="color:#b91c1c;font-weight:700;">add a grade (VG+/VG+, G/VG+...)</span>'];
+                e.cond ? `Media ${esc(e.cond)}` : '<span style="color:#b91c1c;font-weight:700;">add a grade (VG+ VG+, G VG+...)</span>'];
             if (e.sleeve) bits.push(`Sleeve ${esc(e.sleeve)}`);
             return `<div>${bits.join(', ')}</div>`;
         }).join('');
@@ -3038,15 +3038,12 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                             + `<div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;">`
                             + `<span>https://www.discogs.com/release/1873085 19.99</span>`
                             + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#1d4ed8;">Record</small><b style="color:#1d4ed8;">VG+</b></span>`
-                            + `<b>/</b>`
                             + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#b45309;">Cover</small><b style="color:#b45309;">VG+</b></span>`
                             + `</div></div><br>`
                             + `More examples:<br>`
-                            + `<code>https://www.discogs.com/release/1873085 12.99 G/VG+</code><br>`
-                            + `<code>https://www.discogs.com/release/249504 24.99 NM/VG</code><br>`
-                            + `<code>https://www.discogs.com/release/1873085 9.99 VG+/Generic</code><br><br>`
-                            + `No slash needed, a space works too:<br>`
-                            + `<code>https://www.discogs.com/release/1873085 19.99 VG+ G+</code><br><br>`
+                            + `<code>https://www.discogs.com/release/1873085 12.99 G VG+</code><br>`
+                            + `<code>https://www.discogs.com/release/249504 24.99 NM VG</code><br>`
+                            + `<code>https://www.discogs.com/release/1873085 9.99 VG+ Generic</code><br><br>`
                             + `<span style="color:#1d4ed8;font-weight:700;">Record</span> = the vinyl/CD/tape itself. <span style="color:#b45309;font-weight:700;">Cover</span> = the sleeve or case.</div>`
                     }
                 },
