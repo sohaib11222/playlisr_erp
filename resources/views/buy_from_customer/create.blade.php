@@ -664,7 +664,6 @@ HTML;
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / value</th>
-                                    <th>Destination</th>
                                     <th>Line value</th>
                                     <th></th>
                                 </tr>
@@ -676,17 +675,6 @@ HTML;
                                     // Jon 2026-10-25: no default grade on single records; the cashier picks.
                                     $defaultRow = ['item_type' => 'individual_vinyl', 'quantity' => 1, 'condition_grade' => '', 'standard_multiplier' => 0.10];
                                     $lines = $input['lines'] ?? array_fill(0, 7, $defaultRow);
-                                    // Where the item is meant to end up once it's sorted/priced. Optional —
-                                    // set at intake, can be left blank and decided later.
-                                    $dispositions = [
-                                        '' => '—',
-                                        'store' => 'Store',
-                                        'discogs' => 'Discogs',
-                                        'ebay' => 'eBay',
-                                        'hollywood' => 'Hollywood',
-                                        'trash' => 'Trash',
-                                        'clearance_bin' => 'Clearance Bin (records only)',
-                                    ];
                                 @endphp
                                 @foreach($lines as $i => $line)
                                     @php $bfcRowTypes = isset($itemTypes[$line['item_type'] ?? '']) || empty($line['item_type']) ? $itemTypes : $itemTypes + [$line['item_type'] => $bfcAllTypes[$line['item_type']] ?? $line['item_type']]; $bfcRowDemand = $bfcDemand[$i] ?? null; $bfcRowGenres = $bfcGenres[$line['item_type'] ?? ''] ?? []; $bfcRowGenre = (string) ($line['genre'] ?? ''); @endphp
@@ -715,8 +703,8 @@ HTML;
                                             {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
                                             {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
                                         </td>
-                                        <td>{!! Form::select("lines[$i][disposition]", $dispositions, $line['disposition'] ?? '', ['class' => 'form-control bfc-disposition']) !!}</td>
-                                        <td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small>@if($bfcRowDemand) {!! $bfcDemandChip($bfcRowDemand) !!} @endif</td>
+                                        {{-- Jon 2026-10-26: no Destination column; an old draft keeps its pick. --}}
+                                        <td class="bfc-line-cell">@if(!empty($line['disposition'])){!! Form::hidden("lines[$i][disposition]", $line['disposition']) !!}@endif<span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small>@if($bfcRowDemand) {!! $bfcDemandChip($bfcRowDemand) !!} @endif</td>
                                         <td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>
                                     </tr>
                                 @endforeach
@@ -1325,7 +1313,6 @@ HTML;
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
-                + '<td><select name="lines[' + idx + '][disposition]" class="form-control bfc-disposition">@foreach($dispositions as $dk => $dl)<option value="{{$dk}}">{{ $dl }}</option>@endforeach</select></td>'
                 + '<td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
@@ -1488,7 +1475,7 @@ HTML;
             }
         @endphp
         // Sarah 2026-10-08: item Type is searchable (type "sweat" to find Sweatshirt).
-        // Jon 2026-10-25: grade and Goes-to too (genre: see bfcFillGenres).
+        // Jon 2026-10-25: grade too (genre: see bfcFillGenres).
         // Options that start with the search come first ("signed" -> Signed item,
         // not "Poster: signed / rare").
         function bfcStartsFirst(data) {
@@ -1501,7 +1488,7 @@ HTML;
         }
         function bfcTypeSearch($scope) {
             if (!$.fn.select2) return;
-            $scope.find('select[name$="[item_type]"], select.bfc-grade, select.bfc-disposition').not('.select2-hidden-accessible').select2({ width: '100%', sorter: bfcStartsFirst });
+            $scope.find('select[name$="[item_type]"], select.bfc-grade').not('.select2-hidden-accessible').select2({ width: '100%', sorter: bfcStartsFirst });
         }
         $(function () { bfcTypeSearch($('#offer_lines_table')); });
         // Typing on a focused (closed) line dropdown opens it with those letters
@@ -1752,13 +1739,6 @@ HTML;
             }
             return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
         }
-        // Clearance Bin is a records-only destination — same "is this vinyl"
-        // check the calculator itself uses (individual_vinyl / bulk_vinyl_*),
-        // plus 45s since they're vinyl too. Not a hard server-side block, just
-        // keeps the option out of the way for non-record rows.
-        function bfcIsRecordItemType(type) {
-            return type === 'individual_vinyl' || (type || '').indexOf('bulk_vinyl_') === 0 || (type || '').indexOf('rpm45_') === 0;
-        }
         function bfcApplyRowState($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
@@ -1769,14 +1749,6 @@ HTML;
             if (!usesValue) { $median.removeClass('bfc-median-missing'); }
             var $grade = $row.find('select[name$="[condition_grade]"]');
             $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);
-
-            var $disposition = $row.find('select[name$="[disposition]"]');
-            var $clearanceOpt = $disposition.find('option[value="clearance_bin"]');
-            var isRecord = bfcIsRecordItemType(type);
-            if (!isRecord && $disposition.val() === 'clearance_bin') {
-                $disposition.val('').trigger('change.select2');
-            }
-            $clearanceOpt.prop('disabled', !isRecord).toggle(isRecord);
         }
         function bfcRecalcAll() {
             var cashTotal = 0;

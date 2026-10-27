@@ -20,12 +20,13 @@ const fs = require('fs');
     signedBox: $('.bfc-signed').length,
     typeS2: $('#offer_lines_table select[name$="[item_type]"]').first().hasClass('select2-hidden-accessible'),
     gradeS2: $('#offer_lines_table select.bfc-grade').first().hasClass('select2-hidden-accessible'),
-    dispS2: $('#offer_lines_table select.bfc-disposition').first().hasClass('select2-hidden-accessible'),
+    destCol: $('#offer_lines_table th').filter(function () { return /destination/i.test($(this).text()); }).length + $('#offer_lines_table select[name$="[disposition]"]').length,
     opts: $('#offer_lines_table select[name$="[item_type]"]').first().find('option').map(function () { return this.text; }).get().filter(t => /rare|Signed item/.test(t)),
   }));
   ok('page has line rows', st.rows > 0, st.rows);
   ok('signed checkbox gone', st.signedBox === 0);
-  ok('type/grade/goes-to are searchable (select2)', st.typeS2 && st.gradeS2 && st.dispS2, st);
+  ok('type/grade are searchable (select2)', st.typeS2 && st.gradeS2, st);
+  ok('Destination column gone', st.destCol === 0, st.destCol);
   ok('new types in Type list', st.opts.length === 11, st.opts);
 
   // Type-to-search: focus row 1's Type box, type "signed", Enter.
@@ -90,9 +91,6 @@ const fs = require('fs');
   c = await cell(4);
   ok('record line still prices with its grade', c.value !== '$0.00' && !c.gradeDisabled, c);
 
-  // Goes-to dropdown.
-  v = await pick(4, 'select.bfc-disposition', 'holly');
-  ok('typing "holly" on Goes-to picks Hollywood', v === 'hollywood', v);
 
   v = await pick(5, 'select[name$="[item_type]"]', 'framed');
   c = await cell(5);
