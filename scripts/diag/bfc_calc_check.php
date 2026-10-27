@@ -41,6 +41,9 @@ foreach ($res['lines'] ?? $res['normalized'] ?? [] as $l) {
     printf("LINE %-17s value=%-6s pay=%-6s cash=%-7s credit=%-7s grade=%s margin=%s reason=%s title=%s\n", $l['item_type'], $l['discogs_median_price'], $l['standard_multiplier'], $l['line_cash_total'], $l['line_credit_total'], $l['condition_grade'] ?? '-', $l['demand_margin'] ?? '-', $l['demand_reason'] ?? '-', $l['title']);
 }
 echo "KEYS " . implode(',', array_keys($res)) . "\n";
+foreach ([9.45, 9.58, 0.30, 0, 123.5] as $x) echo "ROUND $x => " . App\Services\BuyOfferCalculatorService::roundOffer($x) . "\n";
+$o = $calc->calculate([['item_type' => 'framed_art', 'quantity' => 3]]);
+printf("OFFERS total=%s start=%s/%s second=%s/%s final=%s/%s\n", $o['calculated_cash_total'], $o['starting_offer_cash'], $o['starting_offer_credit'], $o['second_offer_cash'], $o['second_offer_credit'], $o['final_offer_cash'], $o['final_offer_credit']);
 
 $ds = app(App\Services\BuyDemandService::class);
 $vc = new ReflectionMethod($ds, 'valueTypeCategory');

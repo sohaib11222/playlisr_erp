@@ -883,7 +883,8 @@ class BuyFromCustomerController extends Controller
             $final = is_numeric($finalAmountPaid)
                 ? (float) $finalAmountPaid
                 : ($pm === 'store_credit' ? (float) $request->input('final_offer_credit') : (float) $request->input('final_offer_cash'));
-            if (abs($final - $autoFinal) > 0.009) {
+            // Jon 2026-10-26: only paying MORE than the suggestion needs a reason.
+            if ($final - $autoFinal > 0.009) {
                 $request->validate([
                     'price_override_reason' => 'required|string|max:500',
                 ]);
@@ -903,7 +904,7 @@ class BuyFromCustomerController extends Controller
             foreach ($this->recentSellerBuys($request) as $prior) {
                 $priorCredit = $prior->payout_type === 'store_credit';
                 $paidCash += $toCash($priorCredit ? $prior->final_offer_credit : $prior->final_offer_cash, $priorCredit);
-                $autoCash += round((float) $prior->calculated_cash_total * 0.95, 2);
+                $autoCash += BuyOfferCalculatorService::roundOffer((float) $prior->calculated_cash_total * 0.95);
             }
             $approver = null;
             if (self::isOverpay($paidCash, $autoCash)) {

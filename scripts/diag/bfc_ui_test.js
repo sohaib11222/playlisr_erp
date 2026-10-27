@@ -119,6 +119,15 @@ const fs = require('fs');
   ok('new row: typing "dvd - r" picks DVD - rare', v === 'rare_dvd', v);
 
   await page.screenshot({ path: 'bfc.png', clip: await page.$eval('#offer_lines_table', e => { const r = e.getBoundingClientRect(); return { x: 0, y: r.top + window.scrollY - 10, width: 1600, height: Math.min(r.height + 20, 900) }; }) });
+  const lad = await page.evaluate(() => ({
+    total: $('#bfc_running_total').text(), fin: $('#bfc_running_final').text(),
+    start: $('[name="starting_offer_cash"]').val(), second: $('[name="second_offer_cash"]').val(),
+    finalCash: $('[name="final_offer_cash"]').val(), finalCredit: $('[name="final_offer_credit"]').val(),
+  }));
+  const tot = parseFloat(lad.total.replace(/[$,]/g, ''));
+  const want = Math.max(1, Math.round(tot * 0.95));
+  ok('suggested final is whole dollars = round(95% of total)', lad.fin === '$' + want.toFixed(2) && (!lad.finalCash || parseFloat(lad.finalCash) === want), lad);
+  ok('ladder cash offers are whole dollars', [lad.start, lad.second, lad.finalCash].every(v => !v || /\.00$/.test(v)), lad);
   ok('no JS errors', errors.length === 0, errors.slice(0, 5));
   await browser.close();
 })().catch(e => { console.log('FAIL crashed: ' + e.message); process.exit(1); });
