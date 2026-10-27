@@ -274,6 +274,7 @@
         .bfc-create .bfc-demand-warm { background: #DCEBFF; color: #1F4E8C; border: 1px solid #A9C8F0; }
         .bfc-create .bfc-demand-cool, .bfc-create .bfc-demand-cold, .bfc-create .bfc-demand-lot { background: #E6F4EA; color: #1E5631; border: 1px solid #A8D5B5; }
         .bfc-create .bfc-lastsold { margin-top: 4px; }
+        .bfc-create .bfc-link { margin-top: 4px; }
         .bfc-create .bfc-ebay-search { display: block; margin-top: 4px; font-size: 12px; white-space: nowrap; }
         .bfc-create .bfc-ebay-help { background: #fff8e1; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 14px; }
         .bfc-create .bfc-ebay-help summary { font-weight: 700; cursor: pointer; }
@@ -679,10 +680,9 @@ HTML;
                                 <tr>
                                     <th>Type</th>
                                     <th>Title/Notes</th>
-                                    <th>Discogs median / eBay recently sold link</th>
                                     <th>Grade</th>
                                     <th>Qty</th>
-                                    <th>Discogs median / value</th>
+                                    <th>Discogs median / eBay recently sold<br><small>price + link</small></th>
                                     <th>Line value</th>
                                     <th></th>
                                 </tr>
@@ -708,7 +708,13 @@ HTML;
                                                 @endforeach
                                             </select>
                                         @endif</td>
-                                        <td>{!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control', 'placeholder' => 'Release ID or URL']) !!}
+                                        <td>{!! Form::select("lines[$i][condition_grade]", ['' => 'Pick grade'] + array_combine($grades, $grades), $line['condition_grade'] ?? '', ['class' => 'form-control bfc-grade']) !!}</td>
+                                        <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
+                                        <td>
+                                            {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
+                                            {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
+                                            {{-- Jon 2026-10-26: one column for the price and its Discogs / eBay sold link. --}}
+                                            {!! Form::text("lines[$i][discogs_link]", $line['discogs_link'] ?? null, ['class' => 'form-control bfc-link', 'placeholder' => 'Release ID or URL']) !!}
                                         <a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a>
                                         <a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>
                                         @if($bfcBeta)
@@ -717,12 +723,7 @@ HTML;
                                                 <input type="date" name="lines[{{ $i }}][discogs_last_sold]" value="{{ $line['discogs_last_sold'] ?? '' }}" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date">
                                                 <label class="bfc-lastsold-never"><input type="checkbox" name="lines[{{ $i }}][discogs_never_sold]" value="1" @if(!empty($line['discogs_never_sold'])) checked @endif> never sold</label>
                                             </div>
-                                        @endif</td>
-                                        <td>{!! Form::select("lines[$i][condition_grade]", ['' => 'Pick grade'] + array_combine($grades, $grades), $line['condition_grade'] ?? '', ['class' => 'form-control bfc-grade']) !!}</td>
-                                        <td>{!! Form::number("lines[$i][quantity]", $line['quantity'] ?? 1, ['class' => 'form-control', 'step' => '0.01', 'min' => '0.01']) !!}</td>
-                                        <td>
-                                            {!! Form::number("lines[$i][discogs_median_price]", $line['discogs_median_price'] ?? null, ['class' => 'form-control', 'step' => '0.01', 'min' => '0']) !!}
-                                            {!! Form::hidden("lines[$i][standard_multiplier]", $line['standard_multiplier'] ?? 0.10, ['class' => 'bfc-std']) !!}
+                                        @endif
                                         </td>
                                         {{-- Jon 2026-10-26: no Destination column; an old draft keeps its pick. --}}
                                         <td class="bfc-line-cell">@if(!empty($line['disposition'])){!! Form::hidden("lines[$i][disposition]", $line['disposition']) !!}@endif<span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small>@if($bfcRowDemand) {!! $bfcDemandChip($bfcRowDemand) !!} @endif</td>
@@ -1330,10 +1331,9 @@ HTML;
             var row = '<tr>'
                 + '<td><select name="lines[' + idx + '][item_type]" class="form-control">@foreach($itemTypes as $k => $label)<option value="{{$k}}">{{ $label }}</option>@endforeach</select></td>'
                 + '<td><input type="text" name="lines[' + idx + '][title]" class="form-control">' + (BFC_BETA ? '<select name="lines[' + idx + '][genre]" class="form-control bfc-genre" style="display:none;"></select>' : '') + '</td>'
-                + '<td><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a><a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td><select name="lines[' + idx + '][condition_grade]" class="form-control bfc-grade"><option value="">Pick grade</option>@foreach($grades as $g)<option value="{{$g}}">{{ $g }}</option>@endforeach</select></td>'
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
-                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"></td>'
+                + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control bfc-link" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a><a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
