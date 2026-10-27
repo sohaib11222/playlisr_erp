@@ -178,6 +178,85 @@
                 </tbody>
             </table>
 
+            @if($inputs)
+                {{-- Jon 2026-10-26: what the associate typed vs what the system said. Not printed. --}}
+                <div class="no-print bfc-inputs">
+                    <h4 style="margin-top:25px;">What {{ optional($offer->createdBy)->first_name ?: 'the associate' }} entered vs what the system said</h4>
+                    <table class="table table-condensed table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Title</th>
+                                <th>Grade</th>
+                                <th class="text-right">Qty</th>
+                                <th class="text-right">Value entered</th>
+                                <th>Link entered</th>
+                                <th>How the system priced it</th>
+                                <th class="text-right">Line value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($offer->lines as $line)
+                                @php
+                                    $bfcD = $inputs['demand'][$line->line_order] ?? null;
+                                    $bfcV = (float) $line->discogs_median_price;
+                                    $bfcHow = [];
+                                    if ($bfcV > 0) {
+                                        $bfcHow[] = '$' . number_format($bfcV, 2) . ' × ' . round((float) $line->standard_multiplier * 100, 1) . '%' . ((float) $line->grade_multiplier != 1.0 ? ' × grade ' . (float) $line->grade_multiplier : '');
+                                    } elseif ((float) $line->unit_rate > 0) {
+                                        $bfcHow[] = number_format((float) $line->quantity, 2) . ' × $' . number_format((float) $line->unit_rate, 2) . ((float) $line->grade_multiplier != 1.0 ? ' × grade ' . (float) $line->grade_multiplier : '');
+                                    }
+                                    if ($bfcD && !empty($bfcD['reason'])) {
+                                        $bfcHow[] = $bfcD['reason'];
+                                    }
+                                    if ($bfcD && (float) ($bfcD['multiplier'] ?? 1) != 1.0 && ($bfcD['level'] ?? '') !== 'margin') {
+                                        $bfcHow[] = 'speed adjustment × ' . round((float) $bfcD['multiplier'], 2);
+                                    }
+                                @endphp
+                                <tr>
+                                    <td>{{ $itemTypes[$line->item_type] ?? $line->item_type }}</td>
+                                    <td>{{ $line->title ?: '—' }}</td>
+                                    <td>{{ $line->condition_grade ?: '—' }}</td>
+                                    <td class="text-right">{{ number_format((float) $line->quantity, 2) }}</td>
+                                    <td class="text-right">{{ $bfcV > 0 ? '$' . number_format($bfcV, 2) : '—' }}</td>
+                                    <td style="max-width:220px; word-break:break-all;">
+                                        @if($line->discogs_url)
+                                            <a href="{{ $line->discogs_url }}" target="_blank" rel="noopener">{{ \Illuminate\Support\Str::limit($line->discogs_link, 70) }}</a>
+                                        @else
+                                            {{ $line->discogs_link ?: '—' }}
+                                        @endif
+                                    </td>
+                                    <td><small>{{ implode(' · ', $bfcHow) ?: '—' }}</small></td>
+                                    <td class="text-right">${{ number_format((float) ($inputs['isCredit'] ? $line->line_credit_total : $line->line_cash_total), 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    @php
+                        $bfcCur = $inputs['isCredit'] ? 'credit' : 'cash';
+                        $bfcDiff = round($inputs['paid'] - $inputs['max'], 2);
+                    @endphp
+                    <table class="table table-bordered" style="max-width:520px;">
+                        <tr><th style="width:55%; background:#f9f9f9;">System total ({{ $bfcCur }})</th><td class="text-right">${{ number_format((float) ($inputs['isCredit'] ? $offer->calculated_credit_total : $offer->calculated_cash_total), 2) }}</td></tr>
+                        <tr><th style="background:#f9f9f9;">Starting offer on the form</th><td class="text-right">${{ number_format((float) ($inputs['isCredit'] ? $offer->starting_offer_credit : $offer->starting_offer_cash), 2) }}</td></tr>
+                        <tr><th style="background:#f9f9f9;">2nd offer on the form</th><td class="text-right">${{ number_format((float) ($inputs['isCredit'] ? $offer->second_offer_credit : $offer->second_offer_cash), 2) }}</td></tr>
+                        <tr><th style="background:#f9f9f9;">System max offer (95%)</th><td class="text-right">${{ number_format($inputs['max'], 2) }}</td></tr>
+                        <tr><th style="background:#f9f9f9;">Paid</th><td class="text-right"><strong>${{ number_format($inputs['paid'], 2) }}</strong></td></tr>
+                        <tr>
+                            <th style="background:#f9f9f9;">Paid vs system max</th>
+                            <td class="text-right" style="font-weight:700; color:{{ $bfcDiff > 0.009 ? '#c62828' : ($bfcDiff < -0.009 ? '#1e8e3e' : '#111') }};">
+                                @if($offer->is_donated) Donated
+                                @elseif($bfcDiff > 0.009) ${{ number_format($bfcDiff, 2) }} more
+                                @elseif($bfcDiff < -0.009) ${{ number_format(-$bfcDiff, 2) }} less
+                                @else Exactly the system max
+                                @endif
+                            </td>
+                        </tr>
+                        <tr><th style="background:#f9f9f9;">Reason given</th><td>{{ $offer->price_override_reason ?: '—' }}</td></tr>
+                    </table>
+                </div>
+            @endif
+
             <p style="margin-top:25px; border-top:1px solid #ddd; padding-top:15px;">
                 <strong>Instructions:</strong> Print this sheet (or copy the ID number and storage location onto a label)
                 and affix it to the box. Store the box at the location noted above.
